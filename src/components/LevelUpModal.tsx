@@ -36,7 +36,11 @@ export default function LevelUpModal({ oldRank, newRank, onClose }: LevelUpModal
         
         {phase === 1 && oldRank && (
           <div style={{ animation: 'leaveLeft 1s forwards', animationDelay: '1s', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'absolute' }}>
-            <ShieldAlert size={150} color={oldRank.color} style={{ filter: `drop-shadow(0 0 20px ${oldRank.color})` }} />
+            {oldRank.imageUrl ? (
+              <img src={oldRank.imageUrl} alt={oldRank.name} style={{ width: 150, height: 150, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${oldRank.color})` }} />
+            ) : (
+              <ShieldAlert size={150} color={oldRank.color} style={{ filter: `drop-shadow(0 0 20px ${oldRank.color})` }} />
+            )}
             <h3 style={{ marginTop: '1rem', color: oldRank.color, fontSize: '2rem' }}>{oldRank.name}</h3>
           </div>
         )}
@@ -44,7 +48,11 @@ export default function LevelUpModal({ oldRank, newRank, onClose }: LevelUpModal
         {phase === 2 && (
           <div style={{ animation: 'epicZoom 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'absolute' }}>
             <div style={{ animation: 'epicGlow 3s infinite alternate', color: newRank.color, borderRadius: '50%' }}>
-              <ShieldAlert size={200} color={newRank.color} />
+              {newRank.imageUrl ? (
+                <img src={newRank.imageUrl} alt={newRank.name} style={{ width: 250, height: 250, objectFit: 'contain', filter: `drop-shadow(0 0 30px ${newRank.color})` }} />
+              ) : (
+                <ShieldAlert size={200} color={newRank.color} />
+              )}
             </div>
             <h3 style={{ marginTop: '2rem', color: newRank.color, fontSize: '3.5rem', textShadow: `0 0 30px ${newRank.color}`, textTransform: 'uppercase', letterSpacing: '2px', whiteSpace: 'nowrap' }}>
               {newRank.name}

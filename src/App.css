@@ -12,7 +12,12 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 2rem;
-  margin-bottom: 4rem;
+  margin-bottom: 2rem;
+  position: sticky;
+  top: 1rem;
+  z-index: 50;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .logo-container {

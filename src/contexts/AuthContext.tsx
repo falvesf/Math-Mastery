@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { initRanks } from '../lib/ranks';
 import { auth, db } from '../lib/firebase';
 
 export type UserRole = 'student' | 'teacher' | 'admin';
@@ -14,6 +15,7 @@ export interface UserData {
   photoURL: string;
   classId?: string;
   xp?: number;
+  coins?: number;
   lastSeenRank?: string;
 }
 
@@ -37,9 +39,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user && user.email?.endsWith('@eaportal.org')) {
-        setCurrentUser(user);
+    // Carrega as patentes customizadas globais primeiro
+    initRanks().then(() => {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (user && user.email?.endsWith('@eaportal.org')) {
+          setCurrentUser(user);
         
         // Buscar ou criar o documento do usuário no Firestore
         const userRef = doc(db, 'users', user.uid);
@@ -72,9 +76,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUserData(null);
       }
       setLoading(false);
-    });
+      });
 
-    return unsubscribe;
+      return () => unsubscribe();
+    });
   }, []);
 
   return (

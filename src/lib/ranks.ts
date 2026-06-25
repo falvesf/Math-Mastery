@@ -1,7 +1,11 @@
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from './firebase';
+
 export interface RankDef {
   name: string;
   minXp: number;
   color: string;
+  imageUrl?: string;
 }
 
 export const RANKS: RankDef[] = [
@@ -33,3 +37,16 @@ export function getRankForXp(xp: number): RankDef {
   }
   return currentRank;
 }
+
+export const initRanks = async () => {
+  try {
+    const snap = await getDocs(collection(db, 'custom_ranks'));
+    if (!snap.empty) {
+      const loadedRanks = snap.docs.map(d => d.data() as RankDef).sort((a,b) => a.minXp - b.minXp);
+      RANKS.length = 0; // clear existing
+      RANKS.push(...loadedRanks);
+    }
+  } catch (e) {
+    console.error("Failed to load custom ranks", e);
+  }
+};

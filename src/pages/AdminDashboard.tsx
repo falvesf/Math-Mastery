@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, updateDoc, setDoc, addDoc, serverTimestamp, getDoc, deleteDoc } from 'firebase/firestore';
-import { getRankForXp, RANKS } from '../lib/ranks';
+import { getRankForXp } from '../lib/ranks';
 import { DEFAULT_EVALUATIONS, type EvaluationType } from '../lib/evaluations';
+import ImageGalleryModal from '../components/ImageGalleryModal';
+import AdminStoreManager from '../components/AdminStoreManager';
+import AdminRankManager from '../components/AdminRankManager';
 
 export interface ClassDef {
   id: string;
@@ -14,9 +17,16 @@ export interface ClassDef {
   color: string;
 }
 
+export interface QuestOption {
+  text: string;
+  imageUrl?: string;
+}
+
 export interface QuestQuestion {
   title: string;
-  options: string[];
+  imageUrl?: string;
+  timeLimit: number; // Em segundos
+  options: QuestOption[];
   correctIndex: number;
 }
 
@@ -24,6 +34,7 @@ export interface QuestDef {
   id: string;
   title: string;
   description: string;
+  coverImageUrl?: string;
   baseXp: number;
   allowRetries: boolean;
   xpPenaltyPerRetry: number;
@@ -68,10 +79,15 @@ export default function AdminDashboard() {
   const [isCreatingQuest, setIsCreatingQuest] = useState(false);
   const [questTitle, setQuestTitle] = useState('');
   const [questDesc, setQuestDesc] = useState('');
+  const [questCover, setQuestCover] = useState('');
   const [questXp, setQuestXp] = useState('1000');
   const [questRetries, setQuestRetries] = useState(false);
   const [questPenalty, setQuestPenalty] = useState('0');
-  const [questQuestions, setQuestQuestions] = useState<QuestQuestion[]>([{ title: '', options: ['', '', '', ''], correctIndex: 0 }]);
+  const [questQuestions, setQuestQuestions] = useState<QuestQuestion[]>([
+    { title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }
+  ]);
+  const [galleryTarget, setGalleryTarget] = useState<string | null>(null);
+  const [pixabayKey, setPixabayKey] = useState('');
 
   const fetchEvaluations = async () => {
     const docRef = doc(db, 'settings', 'evaluations');
@@ -84,6 +100,12 @@ export default function AdminDashboard() {
       setEvaluations(DEFAULT_EVALUATIONS);
       setGradeType(DEFAULT_EVALUATIONS[0].id);
       await setDoc(docRef, { types: DEFAULT_EVALUATIONS });
+    }
+
+    const apiRef = doc(db, 'settings', 'api');
+    const apiSnap = await getDoc(apiRef);
+    if (apiSnap.exists()) {
+      setPixabayKey(apiSnap.data().pixabayKey || '');
     }
   };
 
@@ -148,8 +170,9 @@ export default function AdminDashboard() {
     const xpToRemove = parseInt(removeAmount);
     if (isNaN(xpToRemove) || xpToRemove <= 0) return;
     const newXp = Math.max(0, (selectedStudent.xp || 0) - xpToRemove);
+    const newCoins = Math.max(0, (selectedStudent.coins || 0) - xpToRemove);
     const userRef = doc(db, 'users', selectedStudent.uid);
-    await updateDoc(userRef, { xp: newXp });
+    await updateDoc(userRef, { xp: newXp, coins: newCoins });
     await addDoc(collection(db, 'xp_logs'), {
       studentId: selectedStudent.uid,
       studentName: selectedStudent.name,
@@ -158,7 +181,7 @@ export default function AdminDashboard() {
       xpGained: -xpToRemove,
       timestamp: serverTimestamp()
     });
-    setSelectedStudent({ ...selectedStudent, xp: newXp });
+    setSelectedStudent({ ...selectedStudent, xp: newXp, coins: newCoins });
     setRemoveAmount('');
     setRemoveReason('');
     fetchStudents();
@@ -173,8 +196,9 @@ export default function AdminDashboard() {
     const selectedEval = evaluations.find(e => e.id === gradeType) || evaluations[0];
     const xpGained = numGrade * selectedEval.weight;
     const newXp = (selectedStudent.xp || 0) + xpGained;
+    const newCoins = (selectedStudent.coins || 0) + xpGained;
     const userRef = doc(db, 'users', selectedStudent.uid);
-    await updateDoc(userRef, { xp: newXp });
+    await updateDoc(userRef, { xp: newXp, coins: newCoins });
     await addDoc(collection(db, 'xp_logs'), {
       studentId: selectedStudent.uid,
       studentName: selectedStudent.name,
@@ -185,7 +209,7 @@ export default function AdminDashboard() {
       xpGained: xpGained,
       timestamp: serverTimestamp()
     });
-    setSelectedStudent({ ...selectedStudent, xp: newXp });
+    setSelectedStudent({ ...selectedStudent, xp: newXp, coins: newCoins });
     setGrade('');
     fetchStudents(); 
     loadStudentHistoryLocally(selectedStudent.uid);
@@ -196,9 +220,10 @@ export default function AdminDashboard() {
     if (window.confirm("Atenção! Você está apagando este registro do histórico. O XP do aluno será recalculado. Deseja continuar?")) {
       await deleteDoc(doc(db, 'xp_logs', logId));
       const newXp = Math.max(0, (selectedStudent.xp || 0) - xpGained);
+      const newCoins = Math.max(0, (selectedStudent.coins || 0) - xpGained);
       const userRef = doc(db, 'users', selectedStudent.uid);
-      await updateDoc(userRef, { xp: newXp });
-      setSelectedStudent({ ...selectedStudent, xp: newXp });
+      await updateDoc(userRef, { xp: newXp, coins: newCoins });
+      setSelectedStudent({ ...selectedStudent, xp: newXp, coins: newCoins });
       fetchStudents();
       loadStudentHistoryLocally(selectedStudent.uid);
     }
@@ -259,19 +284,18 @@ export default function AdminDashboard() {
 
   // Missões Handlers
   const handleAddQuestion = () => {
-    setQuestQuestions([...questQuestions, { title: '', options: ['', '', '', ''], correctIndex: 0 }]);
+    setQuestQuestions([...questQuestions, { title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
   };
 
-  const handleUpdateQuestion = (index: number, field: string, value: any) => {
+  const handleUpdateQuestion = (index: number, field: keyof QuestQuestion, value: any) => {
     const updated = [...questQuestions];
-    if (field === 'title') updated[index].title = value;
-    if (field === 'correctIndex') updated[index].correctIndex = value;
+    updated[index] = { ...updated[index], [field]: value };
     setQuestQuestions(updated);
   };
 
-  const handleUpdateOption = (qIndex: number, optIndex: number, value: string) => {
+  const handleUpdateOption = (qIndex: number, optIndex: number, field: keyof QuestOption, value: string) => {
     const updated = [...questQuestions];
-    updated[qIndex].options[optIndex] = value;
+    updated[qIndex].options[optIndex] = { ...updated[qIndex].options[optIndex], [field]: value };
     setQuestQuestions(updated);
   };
 
@@ -282,6 +306,7 @@ export default function AdminDashboard() {
       id: questId,
       title: questTitle,
       description: questDesc,
+      coverImageUrl: questCover,
       baseXp: parseInt(questXp) || 0,
       allowRetries: questRetries,
       xpPenaltyPerRetry: questRetries ? (parseInt(questPenalty) || 0) : 0,
@@ -290,7 +315,8 @@ export default function AdminDashboard() {
     };
     await setDoc(doc(db, 'quests', questId), newQuest);
     setIsCreatingQuest(false);
-    setQuestTitle(''); setQuestDesc(''); setQuestQuestions([{ title: '', options: ['', '', '', ''], correctIndex: 0 }]);
+    setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0');
+    setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
     fetchQuests();
   };
 
@@ -304,6 +330,23 @@ export default function AdminDashboard() {
       await deleteDoc(doc(db, 'quests', id));
       fetchQuests();
     }
+  };
+
+  const handleGallerySelect = (url: string) => {
+    if (galleryTarget === 'cover') setQuestCover(url);
+    else if (galleryTarget?.startsWith('question-')) {
+      const qIndex = parseInt(galleryTarget.split('-')[1]);
+      handleUpdateQuestion(qIndex, 'imageUrl', url);
+    } else if (galleryTarget?.startsWith('option-')) {
+      const [, qIndexStr, optIndexStr] = galleryTarget.split('-');
+      handleUpdateOption(parseInt(qIndexStr), parseInt(optIndexStr), 'imageUrl', url);
+    }
+    setGalleryTarget(null);
+  };
+
+  const handleSavePixabayKey = async () => {
+    await setDoc(doc(db, 'settings', 'api'), { pixabayKey: pixabayKey }, { merge: true });
+    alert("Chave API salva com sucesso!");
   };
 
   return (
@@ -331,12 +374,15 @@ export default function AdminDashboard() {
 
       <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
         {/* Sidebar */}
-        <div className="glass-panel" style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', height: 'fit-content' }}>
+        <div className="glass-panel" style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', height: 'fit-content', position: 'sticky', top: '100px' }}>
           <button className={`login-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'users' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Users size={20} /> Alunos & Notas
           </button>
           <button className={`login-btn ${activeTab === 'quests' ? 'active' : ''}`} onClick={() => setActiveTab('quests')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'quests' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'quests' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Swords size={20} /> Missões (Quizzes)
+          </button>
+          <button className={`login-btn ${activeTab === 'store' ? 'active' : ''}`} onClick={() => setActiveTab('store')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'store' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'store' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+            <Store size={20} /> Loja de Itens
           </button>
           <button className={`login-btn ${activeTab === 'classes' ? 'active' : ''}`} onClick={() => setActiveTab('classes')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'classes' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'classes' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <BookOpen size={20} /> Turmas
@@ -425,7 +471,7 @@ export default function AdminDashboard() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                     <div>
                       <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Central de Missões</h2>
-                      <p style={{ color: 'var(--text-secondary)' }}>Crie desafios onde os alunos ganham XP automaticamente ao acertar.</p>
+                      <p style={{ color: 'var(--text-secondary)' }}>Crie desafios ao estilo Kahoot para os alunos faturarem XP.</p>
                     </div>
                     <button className="login-btn" onClick={() => setIsCreatingQuest(true)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
                       <Plus size={18} style={{ marginRight: '0.5rem' }} /> Nova Missão
@@ -437,14 +483,21 @@ export default function AdminDashboard() {
                       <p style={{ color: 'var(--text-secondary)' }}>Nenhuma missão criada ainda.</p>
                     ) : quests.map(quest => (
                       <div key={quest.id} className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderLeft: `4px solid ${quest.active ? 'var(--accent-green)' : 'var(--text-secondary)'}` }}>
-                        <div>
-                          <h3 style={{ fontSize: '1.3rem', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Swords size={20} color="var(--gold-primary)" /> {quest.title}
-                          </h3>
-                          <div style={{ display: 'flex', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                            <span>Recompensa: <strong style={{ color: 'var(--gold-primary)' }}>{quest.baseXp} XP</strong></span>
-                            <span>Modo: {quest.allowRetries ? `Vidas Extras (-${quest.xpPenaltyPerRetry} XP por erro)` : 'Tentativa Única (Hardcore)'}</span>
-                            <span>{quest.questions.length} Perguntas</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                          {quest.coverImageUrl ? (
+                            <img src={quest.coverImageUrl} alt="Capa" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }} />
+                          ) : (
+                            <div style={{ width: '80px', height: '80px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                              <Swords size={32} color="var(--text-secondary)" />
+                            </div>
+                          )}
+                          <div>
+                            <h3 style={{ fontSize: '1.3rem', margin: '0 0 0.5rem 0' }}>{quest.title}</h3>
+                            <div style={{ display: 'flex', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                              <span>Recompensa: <strong style={{ color: 'var(--gold-primary)' }}>{quest.baseXp} XP</strong></span>
+                              <span>Modo: {quest.allowRetries ? `Vidas Extras` : 'Hardcore'}</span>
+                              <span>{quest.questions.length} Perguntas</span>
+                            </div>
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -462,7 +515,7 @@ export default function AdminDashboard() {
               ) : (
                 <div style={{ animation: 'slideUp 0.3s ease-out' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                    <h2 style={{ fontSize: '1.8rem', margin: 0 }}>Criar Nova Missão Escolar</h2>
+                    <h2 style={{ fontSize: '1.8rem', margin: 0 }}>Criar Nova Missão (Estilo Kahoot)</h2>
                     <button className="login-btn" onClick={() => setIsCreatingQuest(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)' }}>
                       Cancelar
                     </button>
@@ -470,72 +523,154 @@ export default function AdminDashboard() {
 
                   <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-                      <div style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Missão (ex: Batalha das Equações)</label>
-                        <input type="text" value={questTitle} onChange={e => setQuestTitle(e.target.value)} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
-                      </div>
                       
-                      <div style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Descrição (Lore da Missão)</label>
-                        <textarea value={questDesc} onChange={e => setQuestDesc(e.target.value)} rows={3} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} placeholder="Um monstro apareceu! Resolva os problemas para derrotá-lo..."></textarea>
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Recompensa Base de XP</label>
-                        <input type="number" value={questXp} onChange={e => setQuestXp(e.target.value)} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Modo de Jogo</label>
-                        <select value={questRetries ? 'vidas' : 'hardcore'} onChange={e => setQuestRetries(e.target.value === 'vidas')} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }}>
-                          <option value="hardcore">Tentativa Única (Errou, falhou a missão)</option>
-                          <option value="vidas">Vidas Extras (Pode tentar novamente com penalidade)</option>
-                        </select>
-                      </div>
-
-                      {questRetries && (
-                        <div style={{ gridColumn: '1 / -1', background: 'rgba(239, 68, 68, 0.1)', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid var(--accent-red)' }}>
-                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-red)', fontWeight: 'bold' }}>Penalidade de XP por cada erro na Missão</label>
-                          <input type="number" value={questPenalty} onChange={e => setQuestPenalty(e.target.value)} placeholder="Ex: 50" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }} />
-                          <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Se a recompensa base for 1000 XP e a penalidade 100, no primeiro erro a recompensa máxima passará a ser 900 XP.</p>
+                      {/* Lado Esquerdo: Textos */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Missão</label>
+                          <input type="text" value={questTitle} onChange={e => setQuestTitle(e.target.value)} placeholder="Ex: A Masmorra das Frações" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
                         </div>
-                      )}
+                        
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Descrição (Lore da Missão)</label>
+                          <textarea value={questDesc} onChange={e => setQuestDesc(e.target.value)} rows={3} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} placeholder="Um monstro apareceu! Resolva os problemas para derrotá-lo..."></textarea>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Recompensa Base de XP</label>
+                          <input type="number" value={questXp} onChange={e => setQuestXp(e.target.value)} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+                        </div>
+                      </div>
+
+                      {/* Lado Direito: Imagem e Configs */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Imagem de Capa (Opcional - Cole uma URL de imagem)</label>
+                          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                            <input type="text" value={questCover} onChange={e => setQuestCover(e.target.value)} placeholder="URL ou Galeria ->" style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                            <button onClick={() => setGalleryTarget('cover')} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                              <Search size={20} />
+                            </button>
+                          </div>
+                          {questCover && (
+                            <div style={{ width: '100%', height: '200px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <img src={questCover} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Modo de Jogo</label>
+                          <select value={questRetries ? 'vidas' : 'hardcore'} onChange={e => setQuestRetries(e.target.value === 'vidas')} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }}>
+                            <option value="hardcore">Tentativa Única (Errou, falhou a missão)</option>
+                            <option value="vidas">Vidas Extras (Pode tentar novamente com penalidade)</option>
+                          </select>
+                        </div>
+
+                        {questRetries && (
+                          <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid var(--accent-red)' }}>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-red)', fontWeight: 'bold' }}>Penalidade de XP por cada erro</label>
+                            <input type="number" value={questPenalty} onChange={e => setQuestPenalty(e.target.value)} placeholder="Ex: 50" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }} />
+                          </div>
+                        )}
+                      </div>
+
                     </div>
                   </div>
 
-                  <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Perguntas / Desafios</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Perguntas do Desafio</h3>
+                    <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.9rem' }}>Deixe o texto e a imagem em branco se quiser ocultar uma opção (mínimo de 2 opções).</p>
+                  </div>
                   
                   {questQuestions.map((q, qIndex) => (
-                    <div key={qIndex} className="glass-panel" style={{ padding: '2rem', marginBottom: '1.5rem', position: 'relative' }}>
-                      <div style={{ position: 'absolute', top: '-15px', left: '20px', background: 'var(--accent-blue)', padding: '0.2rem 1rem', borderRadius: '20px', fontWeight: 'bold' }}>
+                    <div key={qIndex} className="glass-panel" style={{ padding: '2.5rem 2rem 2rem 2rem', marginBottom: '2rem', position: 'relative' }}>
+                      <div style={{ position: 'absolute', top: '-15px', left: '20px', background: 'var(--accent-blue)', padding: '0.2rem 1.5rem', borderRadius: '20px', fontWeight: 'bold', fontSize: '1.1rem' }}>
                         Pergunta {qIndex + 1}
                       </div>
-                      
-                      <input 
-                        type="text" 
-                        value={q.title} 
-                        onChange={e => handleUpdateQuestion(qIndex, 'title', e.target.value)} 
-                        placeholder="Digite o enigma ou pergunta aqui..." 
-                        style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem', marginBottom: '1.5rem', marginTop: '0.5rem' }} 
-                      />
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        {q.options.map((opt, optIndex) => (
-                          <div key={optIndex} style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: q.correctIndex === optIndex ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '8px', border: q.correctIndex === optIndex ? '1px solid var(--accent-green)' : '1px solid transparent' }}>
-                            <input 
-                              type="radio" 
-                              name={`correct-${qIndex}`} 
-                              checked={q.correctIndex === optIndex}
-                              onChange={() => handleUpdateQuestion(qIndex, 'correctIndex', optIndex)}
-                              style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                            />
+                      {/* Configurações da Pergunta: Texto, Tempo e Imagem */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          <input 
+                            type="text" 
+                            value={q.title} 
+                            onChange={e => handleUpdateQuestion(qIndex, 'title', e.target.value)} 
+                            placeholder="Digite o enigma ou pergunta aqui..." 
+                            style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} 
+                          />
+                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                            <ImageIcon size={20} color="var(--text-secondary)" />
                             <input 
                               type="text" 
-                              value={opt} 
-                              onChange={e => handleUpdateOption(qIndex, optIndex, e.target.value)}
-                              placeholder={`Opção ${['A', 'B', 'C', 'D'][optIndex]}`}
-                              style={{ flex: 1, padding: '0.75rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: 'none', color: 'white', fontFamily: 'inherit' }}
+                              value={q.imageUrl || ''} 
+                              onChange={e => handleUpdateQuestion(qIndex, 'imageUrl', e.target.value)} 
+                              placeholder="URL ou Galeria ->" 
+                              style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px dashed var(--border-glass)', color: 'white', fontFamily: 'inherit' }} 
                             />
+                            <button onClick={() => setGalleryTarget(`question-${qIndex}`)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                              <Search size={18} />
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                            <Clock size={18} /> Tempo (Segundos)
+                          </label>
+                          <input 
+                            type="number" 
+                            value={q.timeLimit} 
+                            onChange={e => handleUpdateQuestion(qIndex, 'timeLimit', parseInt(e.target.value) || 0)} 
+                            style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem', textAlign: 'center' }} 
+                          />
+                        </div>
+                      </div>
+
+                      {q.imageUrl && (
+                        <div style={{ width: '100%', height: '200px', marginBottom: '1.5rem', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-glass)' }}>
+                          <img src={q.imageUrl} alt="Imagem da pergunta" style={{ width: '100%', height: '100%', objectFit: 'contain', background: 'rgba(0,0,0,0.5)' }} />
+                        </div>
+                      )}
+
+                      {/* Opções */}
+                      <h4 style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>Alternativas (Mínimo de 2)</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        {q.options.map((opt, optIndex) => (
+                          <div key={optIndex} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: q.correctIndex === optIndex ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: q.correctIndex === optIndex ? '2px solid var(--accent-green)' : '1px solid transparent' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                              <input 
+                                type="radio" 
+                                name={`correct-${qIndex}`} 
+                                checked={q.correctIndex === optIndex}
+                                onChange={() => handleUpdateQuestion(qIndex, 'correctIndex', optIndex)}
+                                style={{ width: '24px', height: '24px', cursor: 'pointer' }}
+                              />
+                              <input 
+                                type="text" 
+                                value={opt.text} 
+                                onChange={e => handleUpdateOption(qIndex, optIndex, 'text', e.target.value)}
+                                placeholder={`Texto da Opção ${['A', 'B', 'C', 'D'][optIndex]} (Deixe vazio p/ ocultar)`}
+                                style={{ flex: 1, padding: '0.75rem', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontFamily: 'inherit' }}
+                              />
+                            </div>
+                            <div style={{ display: 'flex', gap: '1rem', paddingLeft: '2.5rem' }}>
+                              <input 
+                                type="text" 
+                                value={opt.imageUrl || ''} 
+                                onChange={e => handleUpdateOption(qIndex, optIndex, 'imageUrl', e.target.value)}
+                                placeholder={`URL / Galeria ->`}
+                                style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.2)', border: '1px dashed rgba(255,255,255,0.1)', color: 'var(--text-secondary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
+                              />
+                              <button onClick={() => setGalleryTarget(`option-${qIndex}-${optIndex}`)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                <Search size={14} />
+                              </button>
+                            </div>
+                            {opt.imageUrl && (
+                              <div style={{ paddingLeft: '2.5rem', marginTop: '0.5rem' }}>
+                                <img src={opt.imageUrl} alt="" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border-glass)' }} />
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -544,10 +679,10 @@ export default function AdminDashboard() {
 
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
                     <button className="login-btn" onClick={handleAddQuestion} style={{ flex: 1, background: 'rgba(255,255,255,0.1)', border: '1px dashed var(--border-glass)' }}>
-                      <Plus size={18} style={{ marginRight: '0.5rem' }} /> Adicionar Pergunta
+                      <Plus size={18} style={{ marginRight: '0.5rem' }} /> Adicionar Nova Pergunta
                     </button>
                     <button className="login-btn" onClick={handleSaveQuest} style={{ flex: 2, background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
-                      <Save size={18} style={{ marginRight: '0.5rem' }} /> Salvar Missão no Banco de Dados
+                      <Save size={18} style={{ marginRight: '0.5rem' }} /> Salvar Missão
                     </button>
                   </div>
                 </div>
@@ -602,8 +737,21 @@ export default function AdminDashboard() {
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <div>
-                  <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Tipos de Avaliação</h2>
-                  <p style={{ color: 'var(--text-secondary)' }}>Defina como os alunos ganham XP customizando os pesos das notas.</p>
+                  <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Configurações do Sistema</h2>
+                  <p style={{ color: 'var(--text-secondary)' }}>Ajuste pesos das notas e integrações externas.</p>
+                </div>
+              </div>
+
+              <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', background: 'rgba(0,0,0,0.2)', borderLeft: '4px solid var(--accent-blue)' }}>
+                <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><ImageIcon size={20}/> Integração Pixabay (Banco de Imagens)</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                  Para buscar imagens direto na criação de missões, crie uma conta gratuita em pixabay.com, vá em API e cole a sua chave aqui.
+                </p>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <input type="text" value={pixabayKey} onChange={e => setPixabayKey(e.target.value)} placeholder="Cole a API Key do Pixabay..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                  <button className="login-btn" onClick={handleSavePixabayKey} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 1.5rem' }}>
+                    Salvar Chave
+                  </button>
                 </div>
               </div>
 
@@ -642,22 +790,13 @@ export default function AdminDashboard() {
 
           {/* Aba Ranks */}
           {activeTab === 'ranks' && (
-            <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <h2 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Patentes e Artes</h2>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Quando as artes do projeto chegarem, faremos o upload das imagens aqui para substituir as bordas coloridas no painel do aluno.</p>
-              <div style={{ display: 'grid', gap: '1rem' }}>
-                {RANKS.map(rank => (
-                  <div key={rank.name} className="glass-panel" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem' }}>
-                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: rank.color }}></div>
-                    <div>
-                      <h3 style={{ margin: 0, color: rank.color }}>{rank.name}</h3>
-                      <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Requisito: {rank.minXp} XP</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <AdminRankManager pixabayKey={pixabayKey} />
           )}
+          {/* Aba Loja */}
+          {activeTab === 'store' && (
+            <AdminStoreManager pixabayKey={pixabayKey} />
+          )}
+
         </div>
       </div>
 
@@ -820,6 +959,14 @@ export default function AdminDashboard() {
 
           </div>
         </div>
+      )}
+
+      {galleryTarget && (
+        <ImageGalleryModal 
+          onClose={() => setGalleryTarget(null)}
+          onSelectImage={handleGallerySelect}
+          apiKey={pixabayKey}
+        />
       )}
     </div>
   );

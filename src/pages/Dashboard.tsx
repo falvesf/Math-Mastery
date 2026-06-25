@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package } from 'lucide-react';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { getRankForXp, RANKS, type RankDef } from '../lib/ranks';
 import LevelUpModal from '../components/LevelUpModal';
+import StudentStore from '../components/StudentStore';
+import StudentInventory from '../components/StudentInventory';
 
 export default function Dashboard() {
   const { userData } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState('quests');
   const [xpHistory, setXpHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   
@@ -22,6 +24,11 @@ export default function Dashboard() {
   // Level Up Animation State
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [levelUpData, setLevelUpData] = useState<{oldRank: RankDef | null, newRank: RankDef} | null>(null);
+
+  // Quests State
+  const [activeQuests, setActiveQuests] = useState<any[]>([]);
+  const [completedQuestIds, setCompletedQuestIds] = useState<string[]>([]);
+  const [loadingQuests, setLoadingQuests] = useState(true);
 
   useEffect(() => {
     if (userData?.uid && userData.role === 'student') {
@@ -34,6 +41,29 @@ export default function Dashboard() {
         setLoadingHistory(false);
       };
       fetchHistory();
+
+      const fetchQuests = async () => {
+        setLoadingQuests(true);
+        
+        // Buscar tentativas concluídas
+        const attemptQ = query(collection(db, 'quest_attempts'), where('studentId', '==', userData.uid), where('status', '==', 'completed'));
+        const attemptSnap = await getDocs(attemptQ);
+        const completedIds: string[] = [];
+        attemptSnap.forEach(doc => {
+          if (doc.data().questId) completedIds.push(doc.data().questId);
+        });
+        setCompletedQuestIds(completedIds);
+
+        // Buscar missões ativas
+        const q = query(collection(db, 'quests'), where('active', '==', true));
+        const snap = await getDocs(q);
+        const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Ordenar as mais novas primeiro
+        fetched.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setActiveQuests(fetched);
+        setLoadingQuests(false);
+      };
+      fetchQuests();
     }
   }, [userData]);
 
@@ -196,6 +226,12 @@ export default function Dashboard() {
       {/* Navegação de Abas do Aluno */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
         <button 
+          onClick={() => setActiveTab('quests')}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'quests' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+        >
+          <Swords size={20} /> Central de Missões
+        </button>
+        <button 
           onClick={() => setActiveTab('profile')}
           style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'profile' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
@@ -213,19 +249,133 @@ export default function Dashboard() {
         >
           <TrendingUp size={20} /> Ranking Geral (Top 10)
         </button>
+        <button 
+          onClick={() => setActiveTab('store')}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'store' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+        >
+          <Store size={20} /> Mercado
+        </button>
+        <button 
+          onClick={() => setActiveTab('inventory')}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'inventory' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'inventory' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+        >
+          <Package size={20} /> Mochila
+        </button>
       </div>
 
       <main className="main-content">
         
+        {activeTab === 'quests' && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+              <Swords size={32} color="var(--gold-primary)" />
+              <div>
+                <h2 style={{ fontSize: '2rem', margin: 0 }}>Central de Missões</h2>
+                <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Enfrente os desafios do seu professor para ganhar XP e subir de patente.</p>
+              </div>
+            </div>
+
+            {loadingQuests ? (
+              <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>Buscando missões disponíveis...</p>
+            ) : activeQuests.length === 0 ? (
+              <div className="glass-panel" style={{ padding: '4rem', textAlign: 'center' }}>
+                <ShieldAlert size={64} style={{ margin: '0 auto 1rem auto', color: 'var(--text-secondary)', opacity: 0.5 }} />
+                <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Nenhuma missão ativa</h3>
+                <p style={{ color: 'var(--text-secondary)' }}>O professor ainda não publicou nenhuma missão, ou você já completou todas. Volte mais tarde!</p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '2rem' }}>
+                {activeQuests.map(quest => {
+                  const isCompleted = completedQuestIds.includes(quest.id);
+                  
+                  return (
+                    <div 
+                      key={quest.id} 
+                      className="glass-panel" 
+                      style={{ 
+                        padding: 0, 
+                        overflow: 'hidden', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        transition: 'transform 0.2s', 
+                        cursor: 'pointer',
+                        opacity: isCompleted ? 0.7 : 1,
+                        filter: isCompleted ? 'grayscale(30%)' : 'none'
+                      }} 
+                      onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'} 
+                      onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'} 
+                      onClick={() => navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`)}
+                    >
+                      <div style={{ height: '200px', width: '100%', position: 'relative' }}>
+                        {quest.coverImageUrl ? (
+                          <img src={quest.coverImageUrl} alt={quest.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(45deg, var(--bg-dark), var(--accent-blue))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Swords size={64} color="rgba(255,255,255,0.2)" />
+                          </div>
+                        )}
+                        <div style={{ position: 'absolute', top: '10px', right: '10px', background: isCompleted ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${isCompleted ? 'var(--accent-green)' : 'var(--gold-primary)'}`, color: isCompleted ? 'black' : 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {isCompleted ? <CheckCircle size={16} /> : <Star size={16} />} 
+                          {isCompleted ? 'Concluída' : `${quest.baseXp} XP`}
+                        </div>
+                      </div>
+                      <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                        <h3 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem 0' }}>{quest.title}</h3>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1.5rem', flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {quest.description || 'Uma missão misteriosa aguarda você...'}
+                        </p>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)' }}>
+                          <div style={{ display: 'flex', gap: '1rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><ShieldAlert size={14} /> {quest.allowRetries ? 'Vidas Extras' : 'Hardcore'}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Clock size={14} /> {quest.questions?.length || 0} Desafios</span>
+                          </div>
+                          <button 
+                            className="login-btn" 
+                            style={{ 
+                              background: isCompleted ? 'rgba(255,255,255,0.1)' : 'var(--gold-primary)', 
+                              color: isCompleted ? 'white' : 'black', 
+                              border: isCompleted ? '1px solid var(--border-glass)' : 'none', 
+                              padding: '0.5rem 1.5rem', 
+                              fontSize: '1rem' 
+                            }} 
+                            onClick={(e) => { e.stopPropagation(); navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`); }}
+                          >
+                            {isCompleted ? 'Revisar' : 'Jogar Agora'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'profile' && (
           <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', animation: 'fadeIn 0.3s ease-out' }}>
             {/* Perfil do Aluno (Esquerda) */}
             <div className="glass-panel" style={{ flex: '1 1 400px', padding: '3rem 2rem', textAlign: 'center' }}>
-              <div style={{ position: 'relative', display: 'inline-block', marginBottom: '1.5rem' }}>
-                <img src={userData?.photoURL} alt="Avatar" style={{ width: 120, height: 120, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40` }} />
-                <div style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(-50%)', background: 'var(--bg-dark)', padding: '0.25rem 1rem', borderRadius: '20px', border: `2px solid ${currentRank.color}`, color: currentRank.color, fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
-                  {currentRank.name}
-                </div>
+              <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem' }}>
+                {currentRank.imageUrl ? (
+                  <>
+                    <img src={currentRank.imageUrl} alt={currentRank.name} style={{ width: 140, height: 140, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, marginBottom: '1rem', animation: 'epicZoom 1s ease-out' }} />
+                    <div style={{ position: 'absolute', bottom: 50, right: -10 }}>
+                      <img src={userData?.photoURL} alt="Avatar" style={{ width: 50, height: 50, borderRadius: '50%', border: `2px solid ${currentRank.color}` }} />
+                    </div>
+                    <div style={{ background: 'var(--bg-dark)', padding: '0.25rem 1rem', borderRadius: '20px', border: `2px solid ${currentRank.color}`, color: currentRank.color, fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+                      {currentRank.name}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <img src={userData?.photoURL} alt="Avatar" style={{ width: 120, height: 120, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40` }} />
+                    <div style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(-50%)', background: 'var(--bg-dark)', padding: '0.25rem 1rem', borderRadius: '20px', border: `2px solid ${currentRank.color}`, color: currentRank.color, fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+                      {currentRank.name}
+                    </div>
+                  </>
+                )}
               </div>
               
               <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>{userData?.name}</h2>
@@ -323,6 +473,14 @@ export default function Dashboard() {
             </div>
             {renderRankingList(top10General)}
           </div>
+        )}
+
+        {activeTab === 'store' && userData && (
+          <StudentStore userData={userData} />
+        )}
+
+        {activeTab === 'inventory' && userData && (
+          <StudentInventory userData={userData} />
         )}
 
       </main>

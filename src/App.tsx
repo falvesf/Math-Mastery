@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import QuestGameplay from './pages/QuestGameplay';
 import { Loader2 } from 'lucide-react';
 import './App.css';
 
@@ -47,6 +48,14 @@ function AppRoutes() {
         element={
           <PrivateRoute requiredRole="admin">
             <AdminDashboard />
+          </PrivateRoute>
+        } 
+      />
+      <Route 
+        path="/quest/:questId" 
+        element={
+          <PrivateRoute>
+            <QuestGameplay />
           </PrivateRoute>
         } 
       />
