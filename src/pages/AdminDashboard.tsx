@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { signOut } from 'firebase/auth';
@@ -66,8 +66,28 @@ export default function AdminDashboard() {
   const [editingStudent, setEditingStudent] = useState<UserData | null>(null);
   const [editName, setEditName] = useState('');
   const [editClass, setEditClass] = useState('');
+  const [editRole, setEditRole] = useState('student');
+
+  // Novos States - Filtros e Seleção em Massa
+  const [studentSearch, setStudentSearch] = useState('');
+  const [selectedClassTab, setSelectedClassTab] = useState('all');
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [studentSortBy, setStudentSortBy] = useState<'xp' | 'name' | 'class'>('xp');
+  const [studentSortOrder, setStudentSortOrder] = useState<'desc' | 'asc'>('desc');
+  
+  // XP em Massa
+  const [isBulkXpModalOpen, setIsBulkXpModalOpen] = useState(false);
+  const [bulkXpAction, setBulkXpAction] = useState<'add' | 'remove'>('add');
+  const [bulkXpAmount, setBulkXpAmount] = useState('');
+  const [bulkXpReason, setBulkXpReason] = useState('');
+  
+  // Apagar Aluno
+  const [deletingStudent, setDeletingStudent] = useState<UserData | null>(null);
 
   // Config States
+  // Config States
+  const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
+  const [editingEvalId, setEditingEvalId] = useState<string | null>(null);
   const [newEvalName, setNewEvalName] = useState('');
   const [newEvalWeight, setNewEvalWeight] = useState('');
   
@@ -77,6 +97,10 @@ export default function AdminDashboard() {
 
   // Missões States
   const [isCreatingQuest, setIsCreatingQuest] = useState(false);
+  const [isQuestHistoryModalOpen, setIsQuestHistoryModalOpen] = useState(false);
+  const [selectedQuestForHistory, setSelectedQuestForHistory] = useState<QuestDef | null>(null);
+  const [questHistoryAttempts, setQuestHistoryAttempts] = useState<any[]>([]);
+  const [editingQuestId, setEditingQuestId] = useState<string | null>(null);
   const [questTitle, setQuestTitle] = useState('');
   const [questDesc, setQuestDesc] = useState('');
   const [questCover, setQuestCover] = useState('');
@@ -126,12 +150,14 @@ export default function AdminDashboard() {
 
   const fetchStudents = async () => {
     setLoading(true);
-    const q = query(collection(db, 'users'), where('role', '==', 'student'));
+    const q = query(collection(db, 'users'));
     const querySnapshot = await getDocs(q);
     const loadedStudents: UserData[] = [];
     querySnapshot.forEach((doc) => {
       loadedStudents.push(doc.data() as UserData);
     });
+    // Sort by name
+    loadedStudents.sort((a, b) => a.name.localeCompare(b.name));
     setStudents(loadedStudents);
     setLoading(false);
   };
@@ -232,12 +258,26 @@ export default function AdminDashboard() {
   // Avaliações
   const handleAddEvaluation = async () => {
     if (!newEvalName || !newEvalWeight) return;
-    const newEval = { id: Date.now().toString(), name: newEvalName, weight: Number(newEvalWeight) };
-    const updated = [...evaluations, newEval];
+    const newEval = { id: editingEvalId || Date.now().toString(), name: newEvalName, weight: Number(newEvalWeight) };
+    
+    let updated;
+    if (editingEvalId) {
+      updated = evaluations.map(e => e.id === editingEvalId ? newEval : e);
+    } else {
+      updated = [...evaluations, newEval];
+    }
+    
     setEvaluations(updated);
+    setEditingEvalId(null);
     setNewEvalName('');
     setNewEvalWeight('');
     await setDoc(doc(db, 'settings', 'evaluations'), { types: updated });
+  };
+
+  const handleEditEvaluation = (ev: EvaluationType) => {
+    setEditingEvalId(ev.id);
+    setNewEvalName(ev.name);
+    setNewEvalWeight(ev.weight.toString());
   };
 
   const handleRemoveEvaluation = async (id: string) => {
@@ -267,18 +307,81 @@ export default function AdminDashboard() {
     }
   };
 
-  // Editar Aluno
+  // Editar Aluno / Usuário
   const openEditModal = (student: UserData) => {
     setEditingStudent(student);
     setEditName(student.name || '');
     setEditClass(student.classId || '');
+    setEditRole(student.role || 'student');
   };
 
   const handleSaveStudent = async () => {
     if (!editingStudent) return;
     const userRef = doc(db, 'users', editingStudent.uid);
-    await updateDoc(userRef, { name: editName, classId: editClass });
+    const updateData: any = { name: editName, classId: editClass, role: editRole };
+    
+    // Promovendo para equipe concede 50k XP
+    if (editRole !== 'student' && editingStudent.role === 'student') {
+      updateData.xp = 50000;
+      updateData.coins = Math.max(50000, editingStudent.coins || 0);
+    }
+    
+    await updateDoc(userRef, updateData);
     setEditingStudent(null);
+    fetchStudents();
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!deletingStudent) return;
+    try {
+      await deleteDoc(doc(db, 'users', deletingStudent.uid));
+      // NOTA: Em um sistema real em produção via Firebase Auth, não conseguimos deletar a conta Auth pelo cliente.
+      // O usuário seria recriado ao logar, então você pode adicionar uma flag `disabled` ou rodar isso numa Cloud Function.
+      // Para os fins deste projeto, deletamos o documento.
+      setDeletingStudent(null);
+      fetchStudents();
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao excluir usuário');
+    }
+  };
+
+  const handleBulkXp = async () => {
+    if (selectedStudentIds.length === 0 || !bulkXpAmount || !bulkXpReason) return;
+    const xpChange = parseInt(bulkXpAmount);
+    if (isNaN(xpChange) || xpChange <= 0) return;
+
+    for (const uid of selectedStudentIds) {
+      const student = students.find(s => s.uid === uid);
+      if (!student) continue;
+
+      let newXp, newCoins, gain;
+      if (bulkXpAction === 'add') {
+        gain = xpChange;
+        newXp = (student.xp || 0) + gain;
+        newCoins = (student.coins || 0) + gain;
+      } else {
+        gain = -xpChange;
+        newXp = Math.max(0, (student.xp || 0) + gain);
+        newCoins = Math.max(0, (student.coins || 0) + gain);
+      }
+
+      const userRef = doc(db, 'users', uid);
+      await updateDoc(userRef, { xp: newXp, coins: newCoins });
+      await addDoc(collection(db, 'xp_logs'), {
+        studentId: uid,
+        studentName: student.name,
+        evalName: 'Ação em Massa',
+        justification: bulkXpReason,
+        xpGained: gain,
+        timestamp: serverTimestamp()
+      });
+    }
+
+    setIsBulkXpModalOpen(false);
+    setBulkXpAmount('');
+    setBulkXpReason('');
+    setSelectedStudentIds([]);
     fetchStudents();
   };
 
@@ -301,7 +404,7 @@ export default function AdminDashboard() {
 
   const handleSaveQuest = async () => {
     if (!questTitle || questQuestions.length === 0) return;
-    const questId = Date.now().toString();
+    const questId = editingQuestId || Date.now().toString();
     const newQuest: QuestDef = {
       id: questId,
       title: questTitle,
@@ -315,9 +418,46 @@ export default function AdminDashboard() {
     };
     await setDoc(doc(db, 'quests', questId), newQuest);
     setIsCreatingQuest(false);
+    setEditingQuestId(null);
     setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0');
     setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
     fetchQuests();
+  };
+
+  const handleEditQuest = (quest: QuestDef) => {
+    setEditingQuestId(quest.id);
+    setQuestTitle(quest.title);
+    setQuestDesc(quest.description);
+    setQuestCover(quest.coverImageUrl || '');
+    setQuestXp(quest.baseXp.toString());
+    setQuestRetries(quest.allowRetries);
+    setQuestPenalty((quest.xpPenaltyPerRetry || 0).toString());
+    setQuestQuestions(quest.questions);
+    setIsCreatingQuest(true);
+  };
+
+  const openQuestHistory = async (quest: QuestDef) => {
+    setSelectedQuestForHistory(quest);
+    setIsQuestHistoryModalOpen(true);
+    setLoading(true);
+    
+    const attemptsRef = collection(db, 'quest_attempts');
+    const q = query(attemptsRef, where('questId', '==', quest.id));
+    const snap = await getDocs(q);
+    
+    const loaded: any[] = [];
+    snap.forEach(d => {
+      loaded.push({ id: d.id, ...d.data() });
+    });
+    
+    setQuestHistoryAttempts(loaded);
+    setLoading(false);
+  };
+
+  const handleResetQuestAttempt = async (attemptId: string) => {
+    if (!confirm('Deseja realmente RESETAR o desafio para este aluno? Ele poderá fazer a missão novamente. O XP ganho anteriormente não será removido automaticamente.')) return;
+    await deleteDoc(doc(db, 'quest_attempts', attemptId));
+    setQuestHistoryAttempts(prev => prev.filter(a => a.id !== attemptId));
   };
 
   const handleToggleQuestActive = async (id: string, currentStatus: boolean) => {
@@ -344,14 +484,11 @@ export default function AdminDashboard() {
     setGalleryTarget(null);
   };
 
-  const handleSavePixabayKey = async () => {
-    await setDoc(doc(db, 'settings', 'api'), { pixabayKey: pixabayKey }, { merge: true });
-    alert("Chave API salva com sucesso!");
-  };
+
 
   return (
-    <div className="app-container" style={{ maxWidth: '1400px' }}>
-      <nav className="navbar glass-panel" style={{ marginBottom: '2rem' }}>
+    <div className="app-container" style={{ maxWidth: '1400px', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1rem 2rem' }}>
+      <nav className="navbar glass-panel" style={{ marginBottom: '1rem', flexShrink: 0 }}>
         <div className="logo-container">
           <ShieldAlert className="logo-icon" color="var(--accent-red)" size={32} />
           <h1 className="title-glow" style={{ color: 'var(--accent-red)', textShadow: '0 0 15px rgba(239, 68, 68, 0.3)' }}>
@@ -372,9 +509,9 @@ export default function AdminDashboard() {
         </div>
       </nav>
 
-      <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '1.5rem', flex: 1, overflow: 'hidden' }}>
         {/* Sidebar */}
-        <div className="glass-panel" style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', height: 'fit-content', position: 'sticky', top: '100px' }}>
+        <div className="glass-panel" style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', flexShrink: 0 }}>
           <button className={`login-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'users' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Users size={20} /> Alunos & Notas
           </button>
@@ -396,70 +533,222 @@ export default function AdminDashboard() {
         </div>
 
         {/* Content */}
-        <div className="glass-panel" style={{ flex: 1, padding: '2rem', minHeight: '600px', minWidth: '300px' }}>
+        <div className="glass-panel" id="admin-content-scroll" style={{ flex: 1, padding: '2rem', overflowY: 'auto', position: 'relative' }}>
           
           {/* Aba de Usuários */}
           {activeTab === 'users' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
-                  <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Gerenciamento de Alunos</h2>
-                  <p style={{ color: 'var(--text-secondary)' }}>Alunos aparecem aqui automaticamente após fazerem login com a conta @eaportal.org.</p>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Gerenciamento de Usuários</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Controle de alunos, turmas e equipe escolar.</p>
+                </div>
+                
+                {selectedStudentIds.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(251, 191, 36, 0.1)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--gold-primary)' }}>
+                    <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>{selectedStudentIds.length} selecionados</span>
+                    <button 
+                      className="login-btn" 
+                      onClick={() => setIsBulkXpModalOpen(true)}
+                      style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0.5rem 1rem' }}
+                    >
+                      <Star size={18} style={{ marginRight: '0.5rem' }} /> XP em Massa
+                    </button>
+                    <button 
+                      onClick={() => setSelectedStudentIds([])}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Filtros e Busca */}
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative', flex: '1 1 300px' }}>
+                    <Search size={20} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                    <input 
+                      type="text" 
+                      placeholder="Buscar por nome..." 
+                      value={studentSearch}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      style={{ width: '100%', padding: '1rem 1rem 1rem 3rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '1.1rem' }}
+                    />
+                  </div>
+                  <select 
+                    value={studentSortBy} 
+                    onChange={e => setStudentSortBy(e.target.value as any)}
+                    style={{ padding: '0 1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                  >
+                    <option value="xp">Por XP</option>
+                    <option value="name">Por Nome</option>
+                    <option value="class">Por Turma</option>
+                  </select>
+                  <select 
+                    value={studentSortOrder} 
+                    onChange={e => setStudentSortOrder(e.target.value as any)}
+                    style={{ padding: '0 1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                  >
+                    <option value="desc">Descendente</option>
+                    <option value="asc">Ascendente</option>
+                  </select>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                  <button 
+                    onClick={() => setSelectedClassTab('all')}
+                    style={{ padding: '0.5rem 1.5rem', borderRadius: '20px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'all' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'all' ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+                  >
+                    Todos
+                  </button>
+                  <button 
+                    onClick={() => setSelectedClassTab('staff')}
+                    style={{ padding: '0.5rem 1.5rem', borderRadius: '20px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'staff' ? 'var(--accent-red)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'staff' ? 'white' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+                  >
+                    Equipe (Prof/Admin)
+                  </button>
+                  {schoolClasses.map(cls => (
+                    <button 
+                      key={cls.id}
+                      onClick={() => setSelectedClassTab(cls.name)}
+                      style={{ padding: '0.5rem 1.5rem', borderRadius: '20px', border: `1px solid ${cls.color}`, background: selectedClassTab === cls.name ? cls.color : 'rgba(255,255,255,0.05)', color: selectedClassTab === cls.name ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+                    >
+                      {cls.name}
+                    </button>
+                  ))}
+                  <button 
+                    onClick={() => setSelectedClassTab('unassigned')}
+                    style={{ padding: '0.5rem 1.5rem', borderRadius: '20px', border: '1px solid var(--text-secondary)', background: selectedClassTab === 'unassigned' ? 'var(--text-secondary)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'unassigned' ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+                  >
+                    Sem Turma
+                  </button>
+                </div>
                 </div>
               </div>
 
               {loading ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Carregando alunos do banco de dados...</div>
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Carregando usuários do banco de dados...</div>
               ) : students.length === 0 ? (
                 <div style={{ padding: '3rem', textAlign: 'center', border: '1px dashed var(--border-glass)', borderRadius: '8px' }}>
                   <GraduationCap size={48} color="var(--text-secondary)" style={{ opacity: 0.5, margin: '0 auto 1rem auto' }} />
-                  <h3>Nenhum aluno logou no sistema ainda</h3>
+                  <h3>Nenhum usuário logou no sistema ainda</h3>
                   <p style={{ color: 'var(--text-secondary)' }}>Os alunos da instituição devem fazer o primeiro acesso via Google para aparecerem aqui.</p>
                 </div>
-              ) : (
-                <div style={{ display: 'grid', gap: '1rem' }}>
-                  {students.map(student => {
-                    const currentRank = getRankForXp(student.xp || 0);
-                    const sClass = schoolClasses.find(c => c.name === student.classId);
-                    const classColor = sClass ? sClass.color : 'var(--text-secondary)';
+              ) : (() => {
+                const filteredStudents = students.filter(student => {
+                  const matchesSearch = student.name.toLowerCase().includes(studentSearch.toLowerCase());
+                  
+                  let matchesTab = true;
+                  if (selectedClassTab === 'staff') {
+                    matchesTab = student.role !== 'student';
+                  } else if (selectedClassTab === 'unassigned') {
+                    matchesTab = !student.classId && student.role === 'student';
+                  } else if (selectedClassTab === 'all') {
+                    matchesTab = student.role === 'student';
+                  } else {
+                    matchesTab = student.classId === selectedClassTab && student.role === 'student';
+                  }
 
-                    return (
-                      <div key={student.uid} className="glass-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', background: 'rgba(255,255,255,0.02)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-                          <img src={student.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}` }} />
-                          <div>
-                            <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-primary)' }}>{student.name}</h3>
-                            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.95rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: classColor }}>
-                                <BookOpen size={14} /> {student.classId || 'Sem Turma'}
-                              </span>
-                              <span style={{ color: currentRank.color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><ShieldAlert size={14} /> {currentRank.name}</span>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--gold-primary)' }}><Star size={14} /> {student.xp || 0} XP</span>
+                  return matchesSearch && matchesTab;
+                });
+
+                filteredStudents.sort((a, b) => {
+                  let comparison = 0;
+                  if (studentSortBy === 'xp') {
+                    comparison = (a.xp || 0) - (b.xp || 0);
+                  } else if (studentSortBy === 'name') {
+                    comparison = a.name.localeCompare(b.name);
+                  } else if (studentSortBy === 'class') {
+                    const classA = a.classId || '';
+                    const classB = b.classId || '';
+                    comparison = classA.localeCompare(classB);
+                  }
+                  
+                  return studentSortOrder === 'desc' ? -comparison : comparison;
+                });
+
+                if (filteredStudents.length === 0) {
+                  return <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Nenhum usuário encontrado para estes filtros.</div>;
+                }
+
+                return (
+                  <div style={{ display: 'grid', gap: '1rem' }}>
+                    {filteredStudents.map(student => {
+                      const currentRank = getRankForXp(student.xp || 0);
+                      const sClass = schoolClasses.find(c => c.name === student.classId);
+                      const classColor = sClass ? sClass.color : 'var(--text-secondary)';
+                      const isSelected = selectedStudentIds.includes(student.uid);
+
+                      return (
+                        <div key={student.uid} className="glass-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', background: isSelected ? 'rgba(251, 191, 36, 0.05)' : 'rgba(255,255,255,0.02)', border: isSelected ? '1px solid var(--gold-primary)' : '1px solid transparent' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedStudentIds([...selectedStudentIds, student.uid]);
+                                else setSelectedStudentIds(selectedStudentIds.filter(id => id !== student.uid));
+                              }}
+                              style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                            />
+                            <img src={student.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}` }} />
+                            <div>
+                              <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {student.name}
+                                {student.role !== 'student' && (
+                                  <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.5rem', background: 'var(--accent-red)', borderRadius: '12px', color: 'white', textTransform: 'uppercase' }}>
+                                    {student.role === 'admin' ? 'Admin' : student.role === 'teacher' ? 'Professor' : 'Coord.'}
+                                  </span>
+                                )}
+                              </h3>
+                              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.95rem', color: 'var(--text-secondary)', marginTop: '0.4rem', flexWrap: 'wrap' }}>
+                                {student.role === 'student' && (
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: classColor }}>
+                                    <BookOpen size={14} /> {student.classId || 'Sem Turma'}
+                                  </span>
+                                )}
+                                <span style={{ color: currentRank.color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><ShieldAlert size={14} /> {currentRank.name}</span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--gold-primary)' }}><Star size={14} /> {student.xp || 0} XP</span>
+                              </div>
                             </div>
                           </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button 
+                              className="login-btn" 
+                              onClick={() => openEditModal(student)}
+                              style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderColor: 'transparent' }}
+                              title="Editar/Promover Usuário"
+                            >
+                              <Edit2 size={18} />
+                            </button>
+                            {student.role === 'student' && (
+                              <button 
+                                className="login-btn" 
+                                onClick={() => setSelectedStudent(student)}
+                                style={{ borderColor: 'var(--gold-primary)', color: 'var(--gold-primary)', background: 'rgba(251, 191, 36, 0.1)' }}
+                                title="Gerenciar XP"
+                              >
+                                <Star size={18} />
+                              </button>
+                            )}
+                            <button 
+                              className="login-btn" 
+                              onClick={() => setDeletingStudent(student)}
+                              style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', borderColor: 'transparent' }}
+                              title="Excluir Usuário"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button 
-                            className="login-btn" 
-                            onClick={() => openEditModal(student)}
-                            style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderColor: 'transparent' }}
-                            title="Editar Aluno"
-                          >
-                            <Edit2 size={18} />
-                          </button>
-                          <button 
-                            className="login-btn" 
-                            onClick={() => setSelectedStudent(student)}
-                            style={{ borderColor: 'var(--gold-primary)', color: 'var(--gold-primary)', background: 'rgba(251, 191, 36, 0.1)' }}
-                          >
-                            <Star size={18} style={{ marginRight: '0.5rem' }} /> Gerenciar XP
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -468,10 +757,10 @@ export default function AdminDashboard() {
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               {!isCreatingQuest ? (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                  <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Central de Missões</h2>
-                      <p style={{ color: 'var(--text-secondary)' }}>Crie desafios ao estilo Kahoot para os alunos faturarem XP.</p>
+                      <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Central de Missões</h2>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Crie desafios ao estilo Kahoot para os alunos faturarem XP.</p>
                     </div>
                     <button className="login-btn" onClick={() => setIsCreatingQuest(true)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
                       <Plus size={18} style={{ marginRight: '0.5rem' }} /> Nova Missão
@@ -501,10 +790,16 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                          <button onClick={() => openQuestHistory(quest)} style={{ background: 'transparent', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }} title="Ver Histórico">
+                            <History size={18} /> Histórico
+                          </button>
+                          <button onClick={() => handleEditQuest(quest)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Missão">
+                            <Edit2 size={20} />
+                          </button>
                           <button onClick={() => handleToggleQuestActive(quest.id, quest.active)} style={{ background: quest.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.1)', color: quest.active ? 'var(--accent-green)' : 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
                             {quest.active ? 'Ativa (Visível)' : 'Rascunho (Oculta)'}
                           </button>
-                          <button onClick={() => handleDeleteQuest(quest.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer' }}>
+                          <button onClick={() => handleDeleteQuest(quest.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Missão">
                             <Trash2 size={20} />
                           </button>
                         </div>
@@ -515,8 +810,8 @@ export default function AdminDashboard() {
               ) : (
                 <div style={{ animation: 'slideUp 0.3s ease-out' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                    <h2 style={{ fontSize: '1.8rem', margin: 0 }}>Criar Nova Missão (Estilo Kahoot)</h2>
-                    <button className="login-btn" onClick={() => setIsCreatingQuest(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)' }}>
+                    <h2 style={{ fontSize: '1.8rem', margin: 0 }}>{editingQuestId ? 'Editar Missão' : 'Criar Nova Missão (Estilo Kahoot)'}</h2>
+                    <button className="login-btn" onClick={() => { setIsCreatingQuest(false); setEditingQuestId(null); }} style={{ background: 'transparent', border: '1px solid var(--border-glass)' }}>
                       Cancelar
                     </button>
                   </div>
@@ -693,8 +988,9 @@ export default function AdminDashboard() {
           {/* Aba de Turmas */}
           {activeTab === 'classes' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Gerenciamento de Turmas</h2>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Crie turmas para agrupar os alunos e gerar Rankings exclusivos.</p>
+              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+                <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Gerenciamento de Turmas</h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem', marginTop: 0 }}>Crie turmas para agrupar os alunos e gerar Rankings exclusivos.</p>
               
               <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', background: 'rgba(0,0,0,0.2)' }}>
                 <h3 style={{ marginBottom: '1rem' }}>Criar Nova Turma</h3>
@@ -710,6 +1006,7 @@ export default function AdminDashboard() {
                   <button className="login-btn" onClick={handleAddClass} style={{ background: 'var(--accent-blue)', color: 'white', border: 'none', height: '45px' }}>
                     <Plus size={20} />
                   </button>
+                </div>
                 </div>
               </div>
 
@@ -735,53 +1032,41 @@ export default function AdminDashboard() {
           {/* Aba de Configurações */}
           {activeTab === 'config' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <div>
-                  <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Configurações do Sistema</h2>
-                  <p style={{ color: 'var(--text-secondary)' }}>Ajuste pesos das notas e integrações externas.</p>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Configurações do Sistema</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Ajuste pesos das notas e integrações externas.</p>
                 </div>
               </div>
 
-              <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', background: 'rgba(0,0,0,0.2)', borderLeft: '4px solid var(--accent-blue)' }}>
-                <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><ImageIcon size={20}/> Integração Pixabay (Banco de Imagens)</h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                  Para buscar imagens direto na criação de missões, crie uma conta gratuita em pixabay.com, vá em API e cole a sua chave aqui.
-                </p>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <input type="text" value={pixabayKey} onChange={e => setPixabayKey(e.target.value)} placeholder="Cole a API Key do Pixabay..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
-                  <button className="login-btn" onClick={handleSavePixabayKey} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 1.5rem' }}>
-                    Salvar Chave
-                  </button>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Tipos de Avaliação</h3>
+                <button 
+                  className="login-btn" 
+                  onClick={() => { setEditingEvalId(null); setNewEvalName(''); setNewEvalWeight(''); setIsEvalModalOpen(true); }}
+                  style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0.5rem 1rem' }}
+                >
+                  <Plus size={18} style={{ marginRight: '0.5rem' }} /> Adicionar
+                </button>
               </div>
+            </div>
 
-              <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', background: 'rgba(0,0,0,0.2)' }}>
-                <h3 style={{ marginBottom: '1rem' }}>Adicionar Nova Avaliação</h3>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
-                  <div style={{ flex: 2 }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Nome da Atividade</label>
-                    <input type="text" value={newEvalName} onChange={e => setNewEvalName(e.target.value)} placeholder="Ex: Tarefa de Casa" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Multiplicador (Peso)</label>
-                    <input type="number" value={newEvalWeight} onChange={e => setNewEvalWeight(e.target.value)} placeholder="Ex: 50" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
-                  </div>
-                  <button className="login-btn" onClick={handleAddEvaluation} style={{ background: 'var(--gold-primary)', color: 'var(--bg-dark)', border: 'none', height: '45px' }}>
-                    <Plus size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{ display: 'grid', gap: '1rem' }}>
                 {evaluations.map(ev => (
                   <div key={ev.id} className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', background: 'rgba(255,255,255,0.02)' }}>
                     <div>
                       <h4 style={{ fontSize: '1.2rem', margin: '0 0 0.25rem 0' }}>{ev.name}</h4>
                       <p style={{ margin: 0, color: 'var(--gold-primary)', fontSize: '0.9rem' }}>Nota × {ev.weight} = XP Final</p>
                     </div>
-                    <button onClick={() => handleRemoveEvaluation(ev.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir">
-                      <Trash2 size={20} />
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button onClick={() => { handleEditEvaluation(ev); setIsEvalModalOpen(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar">
+                        <Edit2 size={20} />
+                      </button>
+                      <button onClick={() => handleRemoveEvaluation(ev.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir">
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -818,12 +1103,24 @@ export default function AdminDashboard() {
 
             <div style={{ marginBottom: '2rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Turma Oficial</label>
-              <select value={editClass} onChange={e => setEditClass(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}>
+              <select value={editClass} onChange={e => setEditClass(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', marginBottom: '1rem' }}>
                 <option value="">Sem Turma</option>
                 {schoolClasses.map(cls => (
                   <option key={cls.id} value={cls.name}>{cls.name}</option>
                 ))}
               </select>
+
+              {userData?.role === 'admin' && (
+                <>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Permissão no Sistema (Role)</label>
+                  <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }}>
+                    <option value="student">Aluno (Padrão)</option>
+                    <option value="teacher">Professor</option>
+                    <option value="coordinator">Coordenador</option>
+                    <option value="admin">Administrador (Super)</option>
+                  </select>
+                </>
+              )}
             </div>
 
             <button className="login-btn" onClick={handleSaveStudent} style={{ width: '100%', justifyContent: 'center', background: 'var(--accent-blue)', color: 'white', border: 'none' }}>
@@ -959,14 +1256,196 @@ export default function AdminDashboard() {
 
           </div>
         </div>
+      )}      {/* Modal Apagar Aluno */}
+      {deletingStudent && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="glass-panel" style={{ width: '450px', padding: '2rem', animation: 'slideUp 0.3s ease-out', textAlign: 'center' }}>
+            <Trash2 size={48} color="var(--accent-red)" style={{ margin: '0 auto 1.5rem auto' }} />
+            <h3 style={{ fontSize: '1.5rem', margin: '0 0 1rem 0' }}>Excluir {deletingStudent.name}?</h3>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', lineHeight: '1.5' }}>
+              Atenção: Esta ação apagará permanentemente o XP, itens, moedas e histórico deste usuário. Essa ação <strong>não</strong> pode ser desfeita. Deseja continuar?
+            </p>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button onClick={() => setDeletingStudent(null)} style={{ flex: 1, padding: '0.75rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button onClick={handleDeleteStudent} style={{ flex: 1, padding: '0.75rem', background: 'var(--accent-red)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>
+                Sim, Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Bulk XP */}
+      {isBulkXpModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="glass-panel" style={{ width: '500px', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Star size={24} /> XP em Massa
+              </h3>
+              <button onClick={() => setIsBulkXpModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+            
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+              Você está alterando o XP de <strong>{selectedStudentIds.length} alunos</strong> ao mesmo tempo.
+            </p>
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
+              <button onClick={() => setBulkXpAction('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: bulkXpAction === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: bulkXpAction === 'add' ? 'white' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: bulkXpAction === 'add' ? 'bold' : 'normal' }}>
+                Adicionar XP
+              </button>
+              <button onClick={() => setBulkXpAction('remove')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: bulkXpAction === 'remove' ? 'rgba(239, 68, 68, 0.2)' : 'transparent', color: bulkXpAction === 'remove' ? 'var(--accent-red)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: bulkXpAction === 'remove' ? 'bold' : 'normal' }}>
+                Retirar XP
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Quantidade de XP</label>
+              <input type="number" value={bulkXpAmount} onChange={e => setBulkXpAmount(e.target.value)} placeholder="Ex: 500" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+            </div>
+
+            <div style={{ marginBottom: '2rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Justificativa (Aparecerá no histórico de todos)</label>
+              <input type="text" value={bulkXpReason} onChange={e => setBulkXpReason(e.target.value)} placeholder="Ex: Vitória no Desafio das Frações" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+            </div>
+
+            <button className="login-btn" onClick={handleBulkXp} style={{ width: '100%', justifyContent: 'center', background: bulkXpAction === 'add' ? 'var(--gold-primary)' : 'var(--accent-red)', color: bulkXpAction === 'add' ? 'black' : 'white', border: 'none' }}>
+              Confirmar para {selectedStudentIds.length} Alunos
+            </button>
+          </div>
+        </div>
       )}
 
       {galleryTarget && (
         <ImageGalleryModal 
           onClose={() => setGalleryTarget(null)}
           onSelectImage={handleGallerySelect}
-          apiKey={pixabayKey}
         />
+      )}
+
+      {isEvalModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="glass-panel" style={{ width: '400px', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>{editingEvalId ? 'Editar Avaliação' : 'Nova Avaliação'}</h3>
+              <button onClick={() => { setIsEvalModalOpen(false); setEditingEvalId(null); setNewEvalName(''); setNewEvalWeight(''); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Atividade</label>
+              <input type="text" value={newEvalName} onChange={e => setNewEvalName(e.target.value)} placeholder="Ex: Tarefa de Casa" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+            </div>
+
+            <div style={{ marginBottom: '2rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Multiplicador (Peso)</label>
+              <input type="number" value={newEvalWeight} onChange={e => setNewEvalWeight(e.target.value)} placeholder="Ex: 50" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+            </div>
+
+            <button className="login-btn" onClick={() => { handleAddEvaluation(); setIsEvalModalOpen(false); }} style={{ width: '100%', justifyContent: 'center', background: 'var(--gold-primary)', color: 'var(--bg-dark)', border: 'none' }}>
+              {editingEvalId ? 'Salvar Alterações' : 'Criar Avaliação'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Histórico de Missão */}
+      {isQuestHistoryModalOpen && selectedQuestForHistory && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.8rem', margin: '0 0 0.5rem 0' }}>Histórico: {selectedQuestForHistory.title}</h2>
+                <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Respostas e desempenho dos alunos</p>
+              </div>
+              <button onClick={() => setIsQuestHistoryModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+
+            {loading ? (
+              <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Carregando histórico...</p>
+            ) : questHistoryAttempts.length === 0 ? (
+              <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nenhum aluno tentou esta missão ainda.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                {(() => {
+                  const groups = new Map<string, any[]>();
+                  
+                  questHistoryAttempts.forEach(attempt => {
+                    const student = students.find(s => s.uid === attempt.studentId);
+                    let classIdentifier = 'unassigned';
+                    // student.classId actually stores the string NAME of the class (e.g. "6º ano A"), not the auto-generated ID
+                    if (student?.classId && schoolClasses.some(c => c.name === student.classId)) {
+                      classIdentifier = student.classId;
+                    }
+                    if (!groups.has(classIdentifier)) groups.set(classIdentifier, []);
+                    groups.get(classIdentifier)!.push(attempt);
+                  });
+
+                  return [...schoolClasses.map(c => c.name), 'unassigned'].map(clsName => {
+                    const attemptsInClass = groups.get(clsName) || [];
+                    
+                    if (attemptsInClass.length === 0) return null;
+
+                    const clsInfo = schoolClasses.find(c => c.name === clsName) || { name: 'Sem Turma / Desconhecidos', color: '#94a3b8' };
+
+                    return (
+                      <div key={clsName} style={{ background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '12px', border: `1px solid ${clsInfo.color}` }}>
+                        <h3 style={{ margin: '0 0 1rem 0', color: clsInfo.color, borderBottom: `1px solid ${clsInfo.color}`, paddingBottom: '0.5rem' }}>{clsInfo.name}</h3>
+                        
+                        <div style={{ display: 'grid', gap: '1rem' }}>
+                          {attemptsInClass.map(attempt => {
+                            const student = students.find(s => s.uid === attempt.studentId);
+                            const dateStr = attempt.timestamp ? new Date(attempt.timestamp.seconds * 1000).toLocaleString('pt-BR') : 'Data desconhecida';
+                            
+                            return (
+                              <div key={attempt.id} style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px', borderLeft: `4px solid ${attempt.status === 'completed' ? 'var(--accent-green)' : 'var(--accent-red)'}` }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                                  <div>
+                                    <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem' }}>{student?.name || 'Aluno Desconhecido (Deletado)'}</h4>
+                                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                      <span>Data: {dateStr}</span>
+                                      <span>Status: <strong style={{ color: attempt.status === 'completed' ? 'var(--accent-green)' : 'var(--accent-red)' }}>{attempt.status === 'completed' ? 'Concluído' : 'Fracassou/Abandonou'}</strong></span>
+                                      <span>XP Ganho: <strong style={{ color: 'var(--gold-primary)' }}>{attempt.earnedXp}</strong></span>
+                                    </div>
+                                  </div>
+                                  <button onClick={() => handleResetQuestAttempt(attempt.id)} className="login-btn" style={{ background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', padding: '0.5rem 1rem' }} title="Resetar tentativa do aluno">
+                                    <RefreshCw size={16} style={{ marginRight: '0.5rem' }} /> Resetar
+                                  </button>
+                                </div>
+                                
+                                {attempt.answers && attempt.answers.length > 0 ? (
+                                  <div style={{ background: 'rgba(0,0,0,0.5)', padding: '1rem', borderRadius: '8px' }}>
+                                    <h5 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)' }}>Respostas Selecionadas:</h5>
+                                    <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                      {attempt.answers.map((ans: any, i: number) => (
+                                        <li key={i} style={{ color: ans.isCorrect ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                                          Questão {ans.qIndex + 1}: {ans.text} {ans.isCorrect ? '✓' : '✗'}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                ) : (
+                                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Nenhum detalhe de respostas salvo para esta tentativa.</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

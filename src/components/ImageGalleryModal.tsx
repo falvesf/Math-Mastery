@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { X, Search, Image as ImageIcon, UploadCloud } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Search, Image as ImageIcon, UploadCloud, Settings, Save } from 'lucide-react';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { storage, db } from '../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface ImageGalleryModalProps {
   onSelectImage: (url: string) => void;
@@ -19,6 +20,26 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
   // Estados de Upload
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  const [localApiKey, setLocalApiKey] = useState(apiKey || '');
+  const [showApiSettings, setShowApiSettings] = useState(false);
+
+  useEffect(() => {
+    if (!apiKey) {
+      const fetchKey = async () => {
+        const snap = await getDoc(doc(db, 'settings', 'api'));
+        if (snap.exists()) setLocalApiKey(snap.data().pixabayKey || '');
+      };
+      fetchKey();
+    }
+  }, [apiKey]);
+
+  const activeApiKey = apiKey || localApiKey;
+
+  const handleSavePixabayKey = async () => {
+    await setDoc(doc(db, 'settings', 'api'), { pixabayKey: localApiKey }, { merge: true });
+    setShowApiSettings(false);
+  };
 
   const openGoogleImages = (query: string) => {
     window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`, '_blank');
@@ -68,14 +89,14 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
 
   const handlePixabaySearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey || !searchQuery.trim()) return;
+    if (!activeApiKey || !searchQuery.trim()) return;
 
     setLoading(true);
     setError('');
     
     try {
       // Adicionado lang=pt para buscar corretamente em português
-      const response = await fetch(`https://pixabay.com/api/?key=${apiKey}&q=${encodeURIComponent(searchQuery)}&lang=pt&per_page=100&safesearch=true`);
+      const response = await fetch(`https://pixabay.com/api/?key=${activeApiKey}&q=${encodeURIComponent(searchQuery)}&lang=pt&per_page=100&safesearch=true`);
       const data = await response.json();
       
       if (data.hits && data.hits.length > 0) {
@@ -109,17 +130,44 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
           
           {/* Lado Esquerdo: Pixabay Search */}
           <div style={{ flex: 2, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <h3 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ImageIcon size={20} /> Busca Direta (Pixabay)
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ImageIcon size={20} /> Busca Direta (Pixabay)
+              </h3>
+              <button 
+                onClick={() => setShowApiSettings(!showApiSettings)} 
+                style={{ background: showApiSettings ? 'rgba(59, 130, 246, 0.2)' : 'transparent', border: '1px solid var(--border-glass)', borderRadius: '6px', color: showApiSettings ? 'var(--accent-blue)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.4rem', display: 'flex', alignItems: 'center' }}
+                title="Configurar Integração"
+              >
+                <Settings size={18} />
+              </button>
+            </div>
+
+            {showApiSettings && (
+              <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '1rem', marginBottom: '1rem', animation: 'fadeIn 0.2s' }}>
+                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Cole aqui sua API Key gratuita do Pixabay.com</p>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input 
+                    type="text" 
+                    value={localApiKey}
+                    onChange={e => setLocalApiKey(e.target.value)}
+                    placeholder="Sua API Key..."
+                    style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', color: 'white' }}
+                  />
+                  <button onClick={handleSavePixabayKey} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', borderRadius: '6px', padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                    <Save size={16} /> Salvar
+                  </button>
+                </div>
+              </div>
+            )}
             
-            {!apiKey ? (
+            {!activeApiKey && !showApiSettings ? (
               <div style={{ background: 'rgba(59, 130, 246, 0.1)', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--accent-blue)' }}>
                 <p style={{ margin: '0 0 1rem 0', color: 'white' }}>
                   A busca direta de imagens gratuitas está desativada.
                 </p>
                 <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                  Para buscar imagens de monstros, cenários e matemática sem sair do sistema, vá até a aba <strong>Configurações</strong> e adicione a sua Chave de API gratuita do <strong>Pixabay</strong>.
+                  Para buscar imagens sem sair do sistema, clique na engrenagem acima e adicione a sua Chave de API gratuita do <strong>Pixabay</strong>.
                 </p>
               </div>
             ) : (

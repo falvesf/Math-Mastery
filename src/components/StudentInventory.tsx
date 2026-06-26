@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Package, ShieldAlert, CheckCircle } from 'lucide-react';
+import { Package, ShieldAlert, CheckCircle, Gift } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
+import { RANKS } from '../lib/ranks';
 
 interface UserItem {
   id: string;
@@ -12,6 +13,10 @@ interface UserItem {
   itemImageUrl: string;
   quantity: number;
   equipped: boolean;
+  giftedBy?: string;
+  gameEffect?: string;
+  count?: number;
+  docIds?: string[];
 }
 
 export default function StudentInventory({ userData }: { userData: UserData }) {
@@ -31,23 +36,73 @@ export default function StudentInventory({ userData }: { userData: UserData }) {
     snap.forEach(d => {
       loaded.push({ id: d.id, ...d.data() } as UserItem);
     });
-    setItems(loaded);
+
+    const groupedMap = new Map<string, UserItem>();
+    loaded.forEach(item => {
+      const key = `${item.itemId}-${item.giftedBy || 'self'}`;
+      if (groupedMap.has(key)) {
+        const existing = groupedMap.get(key)!;
+        existing.count = (existing.count || 1) + 1;
+        if (existing.docIds) existing.docIds.push(item.id);
+        if (item.equipped) existing.equipped = true;
+      } else {
+        groupedMap.set(key, { ...item, count: 1, docIds: [item.id] });
+      }
+    });
+
+    setItems(Array.from(groupedMap.values()));
     setLoading(false);
   };
 
   const handleEquip = async (item: UserItem) => {
-    // If it's a title or border, maybe unequip others of the same type? 
-    // Keep it simple: just toggle equipped status
     const newState = !item.equipped;
-    await updateDoc(doc(db, 'user_items', item.id), { equipped: newState });
+    const docToUpdate = item.docIds ? item.docIds[0] : item.id;
+    await updateDoc(doc(db, 'user_items', docToUpdate), { equipped: newState });
     setItems(items.map(i => i.id === item.id ? { ...i, equipped: newState } : i));
   };
 
   const handleUseConsumable = async (item: UserItem) => {
+    if (item.gameEffect === 'restore_hp') {
+      const currentRankIndex = RANKS.findIndex(r => r.name === userData.lastSeenRank) || 0;
+      const maxHearts = 3 + Math.floor(currentRankIndex / 2);
+      
+      if ((userData.hearts || 0) >= maxHearts) {
+        alert("Sua vida já está cheia!");
+        return;
+      }
+      if (!confirm(`Deseja beber "${item.itemTitle}" e restaurar todo o seu HP?`)) return;
+      
+      const userRef = doc(db, 'users', userData.uid);
+      await updateDoc(userRef, { hearts: maxHearts });
+      userData.hearts = maxHearts;
+
+      const docToDelete = item.docIds ? item.docIds[0] : item.id;
+      await deleteDoc(doc(db, 'user_items', docToDelete));
+      
+      if ((item.count || 1) > 1) {
+        setItems(items.map(i => i.id === item.id ? { ...i, count: (i.count || 2) - 1, docIds: i.docIds?.slice(1) } : i));
+      } else {
+        setItems(items.filter(i => i.id !== item.id));
+      }
+      alert("HP restaurado completamente!");
+      return;
+    }
+
+    if (item.gameEffect && item.gameEffect !== 'none' && item.gameEffect !== 'restore_hp') {
+      alert(`O item "${item.itemTitle}" é um Poder de Jogo! Você só pode utilizá-lo de dentro de uma Missão/Desafio ativo.`);
+      return;
+    }
+
     if (!confirm(`Tem certeza que deseja consumir "${item.itemTitle}" agora? O professor precisará validar a ação na vida real.`)) return;
-    // Remove the item from inventory (consumed)
-    await deleteDoc(doc(db, 'user_items', item.id));
-    setItems(items.filter(i => i.id !== item.id));
+    
+    const docToDelete = item.docIds ? item.docIds[0] : item.id;
+    await deleteDoc(doc(db, 'user_items', docToDelete));
+    
+    if ((item.count || 1) > 1) {
+      setItems(items.map(i => i.id === item.id ? { ...i, count: (i.count || 2) - 1, docIds: i.docIds?.slice(1) } : i));
+    } else {
+      setItems(items.filter(i => i.id !== item.id));
+    }
     alert(`Você utilizou o item: ${item.itemTitle}! Avise seu professor para que ele valide o efeito.`);
   };
 
@@ -75,10 +130,24 @@ export default function StudentInventory({ userData }: { userData: UserData }) {
                 </div>
               )}
               <div>
-                <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.2rem' }}>{item.itemTitle}</h3>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
-                  {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
-                </span>
+                <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {item.itemTitle}
+                  {item.count && item.count > 1 && (
+                    <span style={{ fontSize: '0.9rem', color: 'var(--gold-primary)', background: 'rgba(251, 191, 36, 0.1)', padding: '0.1rem 0.5rem', borderRadius: '12px' }}>
+                      x{item.count}
+                    </span>
+                  )}
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.5rem', borderRadius: '4px', alignSelf: 'flex-start' }}>
+                    {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
+                  </span>
+                  {item.giftedBy && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Gift size={12} /> Presente de: {item.giftedBy}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

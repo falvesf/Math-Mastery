@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart } from 'lucide-react';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
@@ -224,7 +224,7 @@ export default function Dashboard() {
       </nav>
 
       {/* Navegação de Abas do Aluno */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '1rem', padding: '1rem', flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 100, background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '2rem', margin: '0 -2rem 2rem -2rem' }}>
         <button 
           onClick={() => setActiveTab('quests')}
           style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'quests' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
@@ -254,12 +254,6 @@ export default function Dashboard() {
           style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'store' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <Store size={20} /> Mercado
-        </button>
-        <button 
-          onClick={() => setActiveTab('inventory')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'inventory' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'inventory' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
-        >
-          <Package size={20} /> Mochila
         </button>
       </div>
 
@@ -339,7 +333,14 @@ export default function Dashboard() {
                               padding: '0.5rem 1.5rem', 
                               fontSize: '1rem' 
                             }} 
-                            onClick={(e) => { e.stopPropagation(); navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`); }}
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              if (!isCompleted && (userData?.hearts || 0) < 1 && userData?.role === 'student') {
+                                alert("Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.");
+                                return;
+                              }
+                              navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`); 
+                            }}
                           >
                             {isCompleted ? 'Revisar' : 'Jogar Agora'}
                           </button>
@@ -388,6 +389,15 @@ export default function Dashboard() {
                   <span style={{ color: 'var(--text-secondary)' }}>Experiência Total</span>
                   <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <Star size={20} /> {userData?.xp || 0} XP
+                  </span>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem', marginTop: '1rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Vidas (HP)</span>
+                  <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    {Array.from({ length: 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) }).map((_, i) => (
+                      <Heart key={i} size={24} fill={i < (userData?.hearts || 0) ? '#ef4444' : 'transparent'} color={i < (userData?.hearts || 0) ? '#ef4444' : 'rgba(255,255,255,0.2)'} />
+                    ))}
                   </span>
                 </div>
                 
@@ -446,41 +456,46 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
+
+            {/* Inventário Movido para Cá */}
+            <div style={{ width: '100%', marginTop: '1rem' }}>
+              {userData && <StudentInventory userData={userData} />}
+            </div>
           </div>
         )}
 
         {activeTab === 'ranking_class' && (
-          <div className="glass-panel" style={{ padding: '2rem', animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+          <div className="glass-panel" style={{ padding: '0', animation: 'fadeIn 0.3s ease-out' }}>
+            <div style={{ padding: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
               <Users size={32} color="var(--gold-primary)" />
               <div>
                 <h2 style={{ fontSize: '2rem', margin: 0 }}>Top 10 da Turma</h2>
                 <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Sua sala: {userData?.classId || 'Não definida'}</p>
               </div>
             </div>
-            {userData?.classId ? renderRankingList(classStudents) : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
+            <div style={{ padding: '2rem' }}>
+              {userData?.classId ? renderRankingList(classStudents) : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
+            </div>
           </div>
         )}
 
         {activeTab === 'ranking_general' && (
-          <div className="glass-panel" style={{ padding: '2rem', animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+          <div className="glass-panel" style={{ padding: '0', animation: 'fadeIn 0.3s ease-out' }}>
+            <div style={{ padding: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
               <Trophy size={32} color="var(--gold-primary)" />
               <div>
                 <h2 style={{ fontSize: '2rem', margin: 0 }}>Top 10 Geral</h2>
                 <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Os maiores pontuadores de toda a escola.</p>
               </div>
             </div>
-            {renderRankingList(top10General)}
+            <div style={{ padding: '2rem' }}>
+              {renderRankingList(top10General)}
+            </div>
           </div>
         )}
 
         {activeTab === 'store' && userData && (
           <StudentStore userData={userData} />
-        )}
-
-        {activeTab === 'inventory' && userData && (
-          <StudentInventory userData={userData} />
         )}
 
       </main>

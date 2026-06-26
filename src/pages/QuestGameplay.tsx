@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
-import { ArrowLeft, Clock, ShieldAlert, Swords, Star, CheckCircle, XCircle, Package, Shield, Zap } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, Swords, Clock, Star, Shield, Heart, CheckCircle, XCircle, Package, Zap } from 'lucide-react';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 
@@ -13,7 +13,12 @@ interface UserItem {
   itemTitle: string;
   itemImageUrl: string;
   gameEffect?: GameEffectType;
+  usableInQuest?: boolean;
   itemType: 'consumable' | 'equippable';
+  equipped: boolean;
+  giftedBy?: string;
+  count?: number;
+  docIds?: string[];
 }
 
 export default function QuestGameplay() {
@@ -40,8 +45,16 @@ export default function QuestGameplay() {
   const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
   const [hasShield, setHasShield] = useState(false);
   
+  // RPG Battle States
+  const [battleMessage, setBattleMessage] = useState<string>('Prepare-se para a batalha!');
+  const [playerAnim, setPlayerAnim] = useState<'idle' | 'attack' | 'hurt'>('idle');
+  const [monsterAnim, setMonsterAnim] = useState<'idle' | 'attack' | 'hurt'>('idle');
+  
   // Feedback Visual (certo/errado)
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
+
+  // Histórico de Respostas
+  const [studentAnswers, setStudentAnswers] = useState<{ qIndex: number; text: string; isCorrect: boolean }[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -101,11 +114,24 @@ export default function QuestGameplay() {
         const pLoaded: UserItem[] = [];
         pSnap.forEach(d => {
           const item = d.data() as UserItem;
-          if (item.gameEffect && item.gameEffect !== 'none') {
+          if (item.usableInQuest) {
             pLoaded.push({ ...item, id: d.id });
           }
         });
-        setPowerups(pLoaded);
+
+        const groupedMap = new Map<string, UserItem>();
+        pLoaded.forEach(item => {
+          const key = `${item.itemId}`;
+          if (groupedMap.has(key)) {
+            const existing = groupedMap.get(key)!;
+            existing.count = (existing.count || 1) + 1;
+            existing.docIds = [...(existing.docIds || [existing.id]), item.id];
+          } else {
+            groupedMap.set(key, { ...item, count: 1, docIds: [item.id] });
+          }
+        });
+        
+        setPowerups(Array.from(groupedMap.values()));
       }
     };
 
@@ -122,6 +148,28 @@ export default function QuestGameplay() {
         setTimeLeft(prev => {
           if (prev <= 1) {
             clearInterval(timerRef.current!);
+            
+            // Record timeout as a wrong answer
+            setStudentAnswers(prevAns => [...prevAns, {
+              qIndex: currentQIndex,
+              text: '(Tempo Esgotado)',
+              isCorrect: false
+            }]);
+
+            const timeoutMsgs = [
+              "O monstro foi mais rápido e te acertou em cheio!",
+              "Você demorou demais para agir!",
+              "O tempo acabou e você sofreu dano!",
+              "A lentidão custou caro nesta rodada..."
+            ];
+            setBattleMessage(timeoutMsgs[Math.floor(Math.random() * timeoutMsgs.length)]);
+            setPlayerAnim('hurt');
+            setMonsterAnim('attack');
+            setTimeout(() => {
+              setPlayerAnim('idle');
+              setMonsterAnim('idle');
+            }, 1000);
+
             handleTimeOut();
             return 0;
           }
@@ -140,6 +188,11 @@ export default function QuestGameplay() {
   };
 
   const startGame = () => {
+    if (userData?.role === 'student' && (userData?.hearts || 0) < 1 && !isStudyMode) {
+      alert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
+      setGameState('result');
+      return;
+    }
     setGameState('playing');
     setCurrentQIndex(0);
     setEliminatedOptions([]);
@@ -152,7 +205,9 @@ export default function QuestGameplay() {
       alert('Você já tem um Escudo ativo!');
       return;
     }
-    if (item.gameEffect === 'remove_wrong') {
+    if (item.gameEffect === 'none') {
+      alert(`Você ativou o item "${item.itemTitle}"! Mostre esta mensagem para o seu professor para receber a vantagem prometida.`);
+    } else if (item.gameEffect === 'remove_wrong') {
       const q = quest!.questions[currentQIndex];
       const wrongIndices = q.options
         .map((_, i) => i)
@@ -181,25 +236,73 @@ export default function QuestGameplay() {
 
     const q = quest.questions[currentQIndex];
     const isCorrect = optIndex === q.correctIndex;
+    
+    // Save answer
+    setStudentAnswers(prev => [...prev, {
+      qIndex: currentQIndex,
+      text: q.options[optIndex].text,
+      isCorrect
+    }]);
 
     if (isCorrect) {
       setFeedback('correct');
+      
+      const msgs = [
+        "Muito bem! Um golpe crítico no monstro!",
+        "Você acertou em cheio!",
+        "Incrível! O monstro sentiu essa!",
+        "Excelente! Continue pressionando!",
+        "Golpe de mestre!"
+      ];
+      setBattleMessage(msgs[Math.floor(Math.random() * msgs.length)]);
+      setPlayerAnim('attack');
+      setMonsterAnim('hurt');
+      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
+
       setTimeout(() => {
         setFeedback(null);
+        setBattleMessage('Prepare-se para o próximo round!');
         nextQuestion();
-      }, 1500);
+      }, 2000);
     } else {
       setFeedback('wrong');
+      
+      const wrongMsgs = [
+        "O monstro defendeu e te acertou!",
+        "Errou! Cuidado com o contra-ataque!",
+        "Seu golpe passou raspando... e o monstro revidou!",
+        "O inimigo é forte, tente focar mais!"
+      ];
+      setBattleMessage(wrongMsgs[Math.floor(Math.random() * wrongMsgs.length)]);
+      setPlayerAnim('hurt');
+      setMonsterAnim('attack');
+      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
       
       if (hasShield) {
         setHasShield(false);
         setEliminatedOptions([...eliminatedOptions, optIndex]); // eliminate the one they just clicked
         setTimeout(() => {
           setFeedback(null);
-        }, 1500);
+          setBattleMessage('Seu escudo absorveu o dano do monstro! Tente novamente!');
+        }, 2000);
         return;
       }
       
+      let newHearts = userData?.hearts || 0;
+      if (userData?.role === 'student' && !isStudyMode) {
+        newHearts = Math.max(0, newHearts - 1);
+        userData.hearts = newHearts;
+        const userRef = doc(db, 'users', userData.uid);
+        await updateDoc(userRef, { hearts: newHearts });
+      }
+      
+      if (newHearts === 0 && userData?.role === 'student' && !isStudyMode) {
+        setTimeout(() => {
+          finishGame(false, 0, 'Você perdeu todos os seus corações (Game Over). Descanse ou use um item para tentar novamente mais tarde.');
+        }, 2000);
+        return;
+      }
+
       if (!quest.allowRetries) {
         // Hardcore mode: insta fail
         setTimeout(() => {
@@ -211,6 +314,7 @@ export default function QuestGameplay() {
         setCurrentXp(newXp);
         setTimeout(() => {
           setFeedback(null);
+          setBattleMessage('Respire fundo e tente novamente!');
           // O aluno tenta novamente a mesma pergunta
         }, 1000);
       }
@@ -227,9 +331,11 @@ export default function QuestGameplay() {
     }
   };
 
-  const finishGame = async (isWin: boolean, finalXp: number) => {
+  const finishGame = async (isWin: boolean, finalXp: number, customMessage?: string) => {
     setWon(isWin);
     setGameState('result');
+    if (customMessage) setErrorMessage(customMessage);
+
     if (userData?.role === 'admin' || isStudyMode) return; // Admins and study mode don't get XP
     
     setSaving(true);
@@ -256,11 +362,68 @@ export default function QuestGameplay() {
       studentId: userData!.uid,
       status: isWin ? 'completed' : 'failed',
       earnedXp: isWin ? finalXp : 0,
+      answers: studentAnswers,
       timestamp: serverTimestamp()
     });
 
     setSaving(false);
+    setSaving(false);
   };
+
+  const handleAbandon = async () => {
+    if (gameState === 'playing' && !isStudyMode && userData?.role === 'student') {
+      if (!confirm("Tem certeza que deseja abandonar? Você perderá 1 vida e receberá penalidade de XP para as perguntas não respondidas. A missão será encerrada permanentemente!")) {
+        return;
+      }
+      
+      let newHearts = userData.hearts || 0;
+      if (newHearts > 0) {
+        newHearts -= 1;
+        userData.hearts = newHearts;
+        await updateDoc(doc(db, 'users', userData.uid), { hearts: newHearts });
+      }
+
+      const remainingQuestions = quest!.questions.length - currentQIndex;
+      const penalty = remainingQuestions * quest!.xpPenaltyPerRetry;
+      const finalXp = Math.max(0, currentXp - penalty);
+      
+      finishGame(true, finalXp, `Você abandonou a missão. Recebeu apenas ${finalXp} XP (penalidade aplicada).`);
+    } else {
+      navigate('/dashboard');
+    }
+  };
+
+  const handleUsePowerup = async (item: UserItem) => {
+    if (gameState !== 'playing') {
+      alert("Você só pode usar itens durante a batalha!");
+      return;
+    }
+    
+    if (item.gameEffect === 'remove_wrong') {
+      const q = quest!.questions[currentQIndex];
+      const correctIdx = q.correctIndex;
+      const wrongIndices = q.options
+        .map((_, i) => (i !== correctIdx && !eliminatedOptions.includes(i) ? i : -1))
+        .filter(i => i !== -1);
+      
+      if (wrongIndices.length === 0) {
+        alert("Não há mais opções erradas para remover!");
+        return;
+      }
+      const randomWrong = wrongIndices[Math.floor(Math.random() * wrongIndices.length)];
+      setEliminatedOptions([...eliminatedOptions, randomWrong]);
+      
+    } else if (item.gameEffect === 'add_time') {
+      setTimeLeft(prev => prev + 30);
+      
+    } else if (item.gameEffect === 'extra_life' || item.gameEffect === 'restore_hp') {
+      setHasShield(true);
+    }
+    
+    await deleteDoc(doc(db, 'user_items', item.id));
+    setPowerups(powerups.filter(p => p.id !== item.id));
+  };
+
 
   if (gameState === 'loading') {
     return <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><h2>Carregando Campo de Batalha...</h2></div>;
@@ -269,6 +432,7 @@ export default function QuestGameplay() {
   return (
     <div className="app-container" style={{ 
       position: 'relative', 
+      height: '100vh',
       overflow: 'hidden',
       background: quest?.coverImageUrl ? `url(${quest.coverImageUrl}) center/cover no-repeat` : 'var(--bg-dark)'
     }}>
@@ -278,23 +442,62 @@ export default function QuestGameplay() {
       <div style={{ position: 'relative', zIndex: 10, width: '100%', maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
         
         {/* Header */}
-        <div style={{ padding: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button onClick={() => navigate('/dashboard')} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ArrowLeft /> Abandonar
-          </button>
+        <div style={{ padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+            <button onClick={handleAbandon} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <ArrowLeft /> Abandonar
+            </button>
+            {gameState === 'playing' && quest && (
+              <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                Desafio {currentQIndex + 1} de {quest.questions.length}
+              </span>
+            )}
+          </div>
+          
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {gameState === 'playing' && powerups.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginRight: '1rem' }}>
+                {powerups.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => handleUsePowerup(p)}
+                    title={`Usar: ${p.itemTitle}`}
+                    style={{ position: 'relative', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    {p.itemImageUrl ? (
+                      <img src={p.itemImageUrl} alt={p.itemTitle} style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'cover' }} />
+                    ) : (
+                      <Zap size={24} color="var(--gold-primary)" style={{ padding: '4px' }} />
+                    )}
+                    {p.count && p.count > 1 && (
+                      <span style={{ position: 'absolute', top: -5, right: -5, background: 'var(--accent-red)', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', zIndex: 2 }}>
+                        {p.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {hasShield && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(59, 130, 246, 0.3)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', animation: 'epicGlow 2s infinite alternate' }}>
                 <Shield size={18} />
-                <span style={{ fontWeight: 'bold' }}>Escudo Ativo</span>
+                <span style={{ fontWeight: 'bold' }}>Escudo</span>
               </div>
             )}
             {gameState === 'playing' && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--gold-primary)' }}>
                   <Star size={18} color="var(--gold-primary)" />
-                  <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)' }}>{currentXp} XP Restante</span>
+                  <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)' }}>{currentXp} XP</span>
                 </div>
+                {!isStudyMode && userData?.role === 'student' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid #ef4444' }}>
+                    {Array.from({ length: userData.hearts || 0 }).map((_, i) => (
+                      <Heart key={i} size={18} fill="#ef4444" color="#ef4444" />
+                    ))}
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5 ? 'var(--accent-red)' : 'white' }}>
                   <Clock size={18} />
                   <span style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>{timeLeft}s</span>
@@ -304,8 +507,42 @@ export default function QuestGameplay() {
           </div>
         </div>
 
+        {/* Battle Arena Fixed */}
+        {gameState === 'playing' && (
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20 }}>
+            
+            {/* Player Side */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'attack' ? 'translateX(50px)' : playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+              <div style={{ position: 'relative' }}>
+                <img src={userData?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData?.name}`} alt="Player" style={{ width: '80px', height: '80px', borderRadius: '50%', border: '3px solid var(--gold-primary)', background: 'var(--bg-dark)', objectFit: 'cover' }} />
+                {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: -10, background: 'rgba(239, 68, 68, 0.5)', borderRadius: '50%', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite' }} />}
+              </div>
+              <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
+            </div>
+
+            {/* Battle Message */}
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 2rem' }}>
+              <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', textAlign: 'center', minWidth: '250px', backdropFilter: 'blur(10px)', boxShadow: 'var(--shadow-glass)' }}>
+                <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'white', minHeight: '1.5em', fontStyle: 'italic' }}>
+                  {battleMessage}
+                </p>
+              </div>
+            </div>
+
+            {/* Monster Side */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'attack' ? 'translateX(-50px)' : monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+              <div style={{ position: 'relative' }}>
+                <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '90px', height: '90px', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
+                {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: -10, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite' }} />}
+              </div>
+              <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Inimigo</span>
+            </div>
+          </div>
+        )}
+
         {/* Content Area */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 2rem 2rem 2rem' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', padding: '2rem', overflowY: 'auto' }}>
+
           
           {gameState === 'intro' && quest && (
             <div className="glass-panel" style={{ width: '100%', maxWidth: '800px', padding: '4rem', textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
@@ -337,10 +574,6 @@ export default function QuestGameplay() {
           {gameState === 'playing' && quest && (
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '2rem', animation: 'fadeIn 0.3s ease-out' }}>
               
-              <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-                <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', letterSpacing: '2px', textTransform: 'uppercase' }}>Desafio {currentQIndex + 1} de {quest.questions.length}</span>
-              </div>
-
               {/* Question Card */}
               <div className="glass-panel" style={{ padding: '3rem', position: 'relative', border: feedback === 'correct' ? '2px solid var(--accent-green)' : feedback === 'wrong' ? '2px solid var(--accent-red)' : '1px solid var(--border-glass)' }}>
                 {quest.questions[currentQIndex].imageUrl && (

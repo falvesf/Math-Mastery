@@ -120,12 +120,12 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       )}
 
       <div className="glass-panel" style={{ padding: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Medal color="var(--gold-primary)" /> Patentes e Artes
             </h2>
-            <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
               Configure as patentes do jogo, a experiência necessária e as imagens (artes) de cada uma.
             </p>
           </div>

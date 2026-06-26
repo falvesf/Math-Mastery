@@ -6,7 +6,7 @@ import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search } from 'lucide-re
 import ImageGalleryModal from './ImageGalleryModal';
 import { RANKS } from '../lib/ranks';
 
-export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life';
+export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp';
 
 export interface StoreItem {
   id: string;
@@ -16,6 +16,7 @@ export interface StoreItem {
   cost: number;
   type: 'consumable' | 'equippable';
   gameEffect?: GameEffectType;
+  usableInQuest?: boolean;
   minRankRequired: number; // Index of RANKS array
   active: boolean;
 }
@@ -28,7 +29,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<StoreItem>>({
-    title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', minRankRequired: 0, active: true, imageUrl: ''
+    title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: ''
   });
   
   const [showGallery, setShowGallery] = useState(false);
@@ -118,45 +119,47 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         
         {/* Economy Config Section */}
-        <div>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Coins color="var(--gold-primary)" /> Configuração de Economia
-          </h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-            Defina como os alunos pagarão pelos itens na loja. O valor nas vitrines mudará automaticamente de Moedas para XP.
-          </p>
+        <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div>
+              <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Coins color="var(--gold-primary)" /> Configuração de Economia
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>
+                O valor na loja mudará de Moedas para XP automaticamente.
+              </p>
+            </div>
+          </div>
           
-          <div style={{ display: 'flex', gap: '2rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
             <div 
               onClick={() => handleSaveEconomy('coins')}
-              style={{ flex: 1, padding: '1.5rem', borderRadius: '12px', cursor: 'pointer', border: economyType === 'coins' ? '2px solid var(--gold-primary)' : '1px solid var(--border-glass)', background: economyType === 'coins' ? 'rgba(251, 191, 36, 0.1)' : 'rgba(0,0,0,0.2)' }}
+              style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', border: economyType === 'coins' ? '2px solid var(--gold-primary)' : '1px solid var(--border-glass)', background: economyType === 'coins' ? 'rgba(251, 191, 36, 0.1)' : 'rgba(0,0,0,0.2)' }}
             >
-              <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Coins /> Moedas de Ouro</h3>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>O XP ganho define a patente (nunca cai). O aluno ganha moedas junto com o XP para gastar livremente.</p>
+              <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Coins size={16} /> Moedas de Ouro</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Ganha moedas para gastar. A patente não cai.</p>
             </div>
 
             <div 
               onClick={() => handleSaveEconomy('xp')}
-              style={{ flex: 1, padding: '1.5rem', borderRadius: '12px', cursor: 'pointer', border: economyType === 'xp' ? '2px solid var(--accent-red)' : '1px solid var(--border-glass)', background: economyType === 'xp' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0,0,0,0.2)' }}
+              style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', border: economyType === 'xp' ? '2px solid var(--accent-red)' : '1px solid var(--border-glass)', background: economyType === 'xp' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0,0,0,0.2)' }}
             >
-              <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><ShieldAlert /> Gasto de XP (Hardcore)</h3>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>O aluno gasta o próprio XP. Se o XP cair, ele perde a patente e cai no ranking. Gera dilemas difíceis!</p>
+              <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><ShieldAlert size={16} /> Gasto de XP</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Gasta o próprio XP. Pode perder patentes.</p>
             </div>
           </div>
-        </div>
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border-glass)', margin: 0 }} />
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-glass)', margin: '0 0 1rem 0' }} />
 
-        {/* Items List Section */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ fontSize: '1.5rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Star color="var(--gold-primary)" /> Catálogo de Itens
             </h2>
-            <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', minRankRequired: 0, active: true, imageUrl: '' }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
+            <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '' }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
               <Plus size={18} /> Novo Item
             </button>
           </div>
+        </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {items.map(item => (
@@ -189,7 +192,6 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             )}
           </div>
         </div>
-      </div>
 
       {/* Modal Novo/Editar Item */}
       {isEditing && createPortal(
@@ -217,15 +219,22 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               </div>
 
               {formData.type === 'consumable' && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Poder no Jogo (Gameplay)</label>
-                  <select value={formData.gameEffect || 'none'} onChange={e => setFormData({...formData, gameEffect: e.target.value as GameEffectType})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
-                    <option value="none">Nenhum (Uso na vida real / Estético)</option>
-                    <option value="remove_wrong">Amuleto (Elimina 1 alternativa errada)</option>
-                    <option value="add_time">Ampulheta (Adiciona +30 segundos)</option>
-                    <option value="extra_life">Escudo (Protege contra erro na questão atual)</option>
-                  </select>
-                </div>
+                <>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Poder no Jogo (Gameplay)</label>
+                    <select value={formData.gameEffect || 'none'} onChange={e => setFormData({...formData, gameEffect: e.target.value as GameEffectType})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+                      <option value="none">Nenhum (Efeito Personalizado do Professor / Vida Real)</option>
+                      <option value="remove_wrong">Amuleto (Elimina 1 alternativa errada)</option>
+                      <option value="add_time">Ampulheta (Adiciona +30 segundos)</option>
+                      <option value="extra_life">Escudo (Protege contra erro na questão atual)</option>
+                      <option value="restore_hp">Poção de Vida (Restaura todo o HP do aluno)</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input type="checkbox" checked={formData.usableInQuest || false} onChange={e => setFormData({...formData, usableInQuest: e.target.checked})} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
+                    <label style={{ color: 'var(--text-secondary)' }}>Pode ser utilizado DENTRO dos desafios?</label>
+                  </div>
+                </>
               )}
 
               <div>
