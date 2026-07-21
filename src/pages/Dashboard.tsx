@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { auth, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart } from 'lucide-react';
@@ -120,18 +120,41 @@ export default function Dashboard() {
     return () => unsub();
   }, [userData?.classId]);
 
+  const recentBubblesRef = useRef<string[]>([]);
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      const studentsWithStatus = allStudents.filter(s => s.customStatusText && s.customStatusText.trim() !== '');
-      if (studentsWithStatus.length > 0) {
-        const randomStudent = studentsWithStatus[Math.floor(Math.random() * studentsWithStatus.length)];
-        setActiveBubbleId(randomStudent.uid);
-        setTimeout(() => {
-          setActiveBubbleId(prev => prev === randomStudent.uid ? null : prev);
-        }, 4000);
-      }
-    }, 8000);
-    return () => clearInterval(interval);
+    let timeoutId: any;
+
+    const scheduleNextBubble = () => {
+      // Tempo aleatório entre 60.000ms (1 min) e 120.000ms (2 min)
+      const delay = Math.floor(Math.random() * (120000 - 60000 + 1)) + 60000;
+      
+      timeoutId = setTimeout(() => {
+        const studentsWithStatus = allStudents.filter(s => s.customStatusText && s.customStatusText.trim() !== '');
+        if (studentsWithStatus.length > 0) {
+          let available = studentsWithStatus.filter(s => !recentBubblesRef.current.includes(s.uid));
+          
+          if (available.length === 0) {
+            recentBubblesRef.current = [];
+            available = studentsWithStatus;
+          }
+          
+          const randomStudent = available[Math.floor(Math.random() * available.length)];
+          setActiveBubbleId(randomStudent.uid);
+          recentBubblesRef.current.push(randomStudent.uid);
+          
+          setTimeout(() => {
+            setActiveBubbleId(prev => prev === randomStudent.uid ? null : prev);
+          }, 4000);
+        }
+        
+        scheduleNextBubble();
+      }, delay);
+    };
+
+    scheduleNextBubble();
+    
+    return () => clearTimeout(timeoutId);
   }, [allStudents]);
 
   const currentRank = getRankForXp(userData?.xp || 0);
