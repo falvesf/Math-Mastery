@@ -273,28 +273,14 @@ export default function QuestGameplay() {
         ];
         setBattleMessage(msgs[Math.floor(Math.random() * msgs.length)]);
       }
-        if (isCritical) {
-           const nextQExists = currentQIndex < quest.questions.length - 1;
-           if (nextQExists) {
-              setEliminatedOptions([]);
-              const targetIndex = currentQIndex + 2;
-              if (targetIndex >= quest.questions.length) {
-                // Fatality (Crítico)
-                setPlayerAnim('attack-fatal');
-                setTimeout(() => {
-                  const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
-                  const fatality = deaths[Math.floor(Math.random() * deaths.length)];
-                  setMonsterAnim(fatality);
-                  setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
-                  setTimeout(() => finishGame(true, currentXp), 3500);
-                }, 500);
-              } else {
-                setPlayerAnim('attack');
-                setMonsterAnim('hurt');
-                setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
-                setTimeout(() => setCurrentQIndex(targetIndex), 2000);
-              }
-           } else {
+
+      const nextQExists = currentQIndex < quest.questions.length - 1;
+
+      if (isCritical) {
+         if (nextQExists) {
+            setEliminatedOptions([]);
+            const targetIndex = currentQIndex + 2;
+            if (targetIndex >= quest.questions.length) {
               // Fatality (Crítico)
               setPlayerAnim('attack-fatal');
               setTimeout(() => {
@@ -304,27 +290,49 @@ export default function QuestGameplay() {
                 setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
                 setTimeout(() => finishGame(true, currentXp), 3500);
               }, 500);
-           }
-        } else {
-           const nextQExists = currentQIndex < quest.questions.length - 1;
-           if (!nextQExists) {
-              // Fatality Normal
-              setPlayerAnim('attack-fatal');
-              setTimeout(() => {
-                const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
-                const fatality = deaths[Math.floor(Math.random() * deaths.length)];
-                setMonsterAnim(fatality);
-                setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
-                setTimeout(() => finishGame(true, currentXp), 3500);
-              }, 500);
-           } else {
+            } else {
               setPlayerAnim('attack');
               setMonsterAnim('hurt');
               setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
-              setTimeout(() => nextQuestion(), 2000);
-           }
-        }
-      }, 500); // reduced delay for triggering attack visual
+              setTimeout(() => {
+                setFeedback(null);
+                setBattleMessage('Prepare-se para o próximo round!');
+                setCurrentQIndex(targetIndex);
+              }, 2000);
+            }
+         } else {
+            // Fatality (Crítico)
+            setPlayerAnim('attack-fatal');
+            setTimeout(() => {
+              const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
+              const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+              setMonsterAnim(fatality);
+              setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
+              setTimeout(() => finishGame(true, currentXp), 3500);
+            }, 500);
+         }
+      } else {
+         if (!nextQExists) {
+            // Fatality Normal
+            setPlayerAnim('attack-fatal');
+            setTimeout(() => {
+              const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
+              const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+              setMonsterAnim(fatality);
+              setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
+              setTimeout(() => finishGame(true, currentXp), 3500);
+            }, 500);
+         } else {
+            setPlayerAnim('attack');
+            setMonsterAnim('hurt');
+            setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
+            setTimeout(() => {
+              setFeedback(null);
+              setBattleMessage('Prepare-se para o próximo round!');
+              nextQuestion();
+            }, 2000);
+         }
+      }
     } else {
       setFeedback('wrong');
       
