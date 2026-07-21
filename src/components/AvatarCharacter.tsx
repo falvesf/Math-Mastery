@@ -114,10 +114,7 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
     } else if (animation === 'run') {
       viewerRef.current.animation = new RunningAnimation();
     } else if (animation === 'cheer') {
-      viewerRef.current.animation = {
-        progress: 0,
-        paused: false,
-        speed: 1,
+      class CheerAnimation extends IdleAnimation {
         play(player: any, time: number) {
           player.position.y = Math.abs(Math.sin(time * 5)) * 6;
           player.skin.leftArm.rotation.x = Math.PI;
@@ -130,7 +127,8 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
           player.skin.leftLeg.rotation.z = -0.1;
           player.skin.rightLeg.rotation.z = 0.1;
         }
-      } as any;
+      }
+      viewerRef.current.animation = new CheerAnimation();
     } else {
       viewerRef.current.animation = new IdleAnimation();
     }
