@@ -12,6 +12,8 @@ import StudentInventory from '../components/StudentInventory';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
+import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
+import { Edit3, MessageCircle } from 'lucide-react';
 
 export default function Dashboard() {
   const { showAlert } = useDialog();
@@ -39,6 +41,9 @@ export default function Dashboard() {
   const [activeQuests, setActiveQuests] = useState<any[]>([]);
   const [completedQuestIds, setCompletedQuestIds] = useState<string[]>([]);
   const [loadingQuests, setLoadingQuests] = useState(true);
+
+  // Status Bubbles
+  const [activeBubbleId, setActiveBubbleId] = useState<string | null>(null);
 
   useEffect(() => {
     if (userData?.uid && userData.role === 'student') {
@@ -104,17 +109,31 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchRankings = async () => {
-      setLoadingRankings(true);
-      const q = query(collection(db, 'users'), where('role', '==', 'student'));
-      const snap = await getDocs(q);
+    const q = query(collection(db, 'users'), where('role', '==', 'student'));
+    const unsub = onSnapshot(q, (snap) => {
       const loaded: UserData[] = [];
       snap.forEach(d => loaded.push(d.data() as UserData));
       loaded.sort((a, b) => (b.xp || 0) - (a.xp || 0));
       setAllStudents(loaded);
       setLoadingRankings(false);
-    };
-    fetchRankings();
-  }, []);
+    });
+
+    return () => unsub();
+  }, [userData?.classId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const studentsWithStatus = allStudents.filter(s => s.customStatusText && s.customStatusText.trim() !== '');
+      if (studentsWithStatus.length > 0) {
+        const randomStudent = studentsWithStatus[Math.floor(Math.random() * studentsWithStatus.length)];
+        setActiveBubbleId(randomStudent.uid);
+        setTimeout(() => {
+          setActiveBubbleId(prev => prev === randomStudent.uid ? null : prev);
+        }, 4000);
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [allStudents]);
 
   const currentRank = getRankForXp(userData?.xp || 0);
 
@@ -156,8 +175,25 @@ export default function Dashboard() {
     }
   };
 
-  const handleLogout = () => {
-    signOut(auth);
+  const handleLogout = async () => {
+    await signOut(auth);
+  };
+
+  const handleEditStatus = async () => {
+    const status = prompt('Digite sua mensagem de status (ex: Feliz da vida!, Cansado de matemática...):', userData?.customStatusText || '');
+    if (status === null) return;
+    
+    if (hasProfanity(status)) {
+      await showAlert('Sua mensagem contém palavras inadequadas e não foi salva.');
+      return;
+    }
+    
+    if (status.length > 50) {
+      await showAlert('Sua mensagem é muito longa! Use no máximo 50 caracteres.');
+      return;
+    }
+
+    await updateDoc(doc(db, 'users', userData!.uid), { customStatusText: status });
   };
 
   // Calcular progresso para a próxima patente
@@ -175,7 +211,7 @@ export default function Dashboard() {
   const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
   const top10General = allStudents.slice(0, 10);
 
-  const RankingAvatar = ({ student, size, animation = 'idle' }: { student: UserData; size: number; animation?: 'idle'|'walk'|'run'|'cheer' }) => {
+  const RankingAvatar = ({ student, size }: { student: UserData; size: number }) => {
     const [eqItems, setEqItems] = useState<any[]>([]);
 
     useEffect(() => {
@@ -195,10 +231,18 @@ export default function Dashboard() {
       fetchEq();
     }, [student.uid]);
 
+    const avatarState = getProfileAvatarState(student);
+
     return (
-      <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {activeBubbleId === student.uid && student.customStatusText && (
+          <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', background: 'white', color: 'black', padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap', zIndex: 50, boxShadow: '0 4px 10px rgba(0,0,0,0.5)', animation: 'epicZoom 0.3s ease-out' }}>
+            {student.customStatusText}
+            <div style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%) rotate(45deg)', width: 8, height: 8, background: 'white' }} />
+          </div>
+        )}
         {student.avatarConfig ? (
-          <AvatarCharacter config={student.avatarConfig} equippedItems={eqItems} size={size} interactive={false} animation={animation} />
+          <AvatarCharacter config={student.avatarConfig} equippedItems={eqItems} size={size} interactive={false} animation={avatarState.animation as any} expression={avatarState.expression as any} />
         ) : (
           <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
         )}
@@ -259,7 +303,7 @@ export default function Dashboard() {
                 </div>
                 
                 <div style={{ padding: '2px', borderRadius: '50%', border: `2px solid ${medalColor}`, boxShadow: rankPos === 1 ? '0 0 10px rgba(251,191,36,0.5)' : 'none' }}>
-                  <RankingAvatar student={student} size={avatarSize} animation={rankPos === 1 ? 'cheer' : 'idle'} />
+                  <RankingAvatar student={student} size={avatarSize} />
                 </div>
                 
                 <div>
@@ -321,14 +365,10 @@ export default function Dashboard() {
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
-            {(liveAvatarConfig || userData?.avatarConfig) ? (
-              <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={36} equippedItems={equippedItems} interactive={false} animation={(liveAvatarConfig || userData.avatarConfig)?.animationState || 'idle'} />
-              </div>
-            ) : (
-              <img src={userData?.photoURL} alt="Avatar" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: '50%', border: `2px solid ${currentRank.color}` }} />
-            )}
-            <span style={{ fontWeight: 600 }}>{userData?.name?.split(' ')[0]}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+              {userData && <RankingAvatar student={userData} size={36} />}
+              <span style={{ fontWeight: 'bold' }}>{userData?.name?.split(' ')[0]}</span>
+            </div>
           </div>
           <button className="login-btn" onClick={handleLogout} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
             <LogOut size={20} />
@@ -484,7 +524,7 @@ export default function Dashboard() {
                     <div style={{ position: 'absolute', bottom: 50, right: -10 }}>
                       {(liveAvatarConfig || userData?.avatarConfig) ? (
                         <div style={{ width: 50, height: 50, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                          <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={50} equippedItems={equippedItems} interactive={false} animation={(liveAvatarConfig || userData.avatarConfig)?.animationState || 'idle'} showSlots={true} />
+                          <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={50} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} />
                         </div>
                       ) : (
                         <img src={userData?.photoURL} alt="Avatar" style={{ width: 50, height: 50, borderRadius: '50%', border: `2px solid ${currentRank.color}` }} />
@@ -498,7 +538,7 @@ export default function Dashboard() {
                   <>
                     {(liveAvatarConfig || userData?.avatarConfig) ? (
                       <div style={{ width: 120, height: 120, borderRadius: '50%', overflow: 'visible', border: `4px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: `0 0 20px ${currentRank.color}40` }}>
-                        <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={100} equippedItems={equippedItems} interactive={false} animation={(liveAvatarConfig || userData.avatarConfig)?.animationState || 'idle'} showSlots={true} />
+                        <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={100} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} />
                       </div>
                     ) : (
                       <img src={userData?.photoURL} alt="Avatar" style={{ width: 120, height: 120, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, objectFit: 'cover' }} />
@@ -510,7 +550,20 @@ export default function Dashboard() {
                 )}
               </div>
               
-              <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>{userData?.name}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <h2 style={{ fontSize: '2rem', color: 'var(--text-primary)' }}>{userData?.name}</h2>
+              </div>
+              
+              {userData?.customStatusText && (
+                <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.5rem 1rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                  <MessageCircle size={16} /> <i>"{userData.customStatusText}"</i>
+                </div>
+              )}
+              
+              <button onClick={handleEditStatus} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.9rem', marginBottom: '1.5rem', opacity: 0.8 }} className="hover-brightness">
+                <Edit3 size={14} /> Editar Status
+              </button>
+
               <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '2rem' }}>
                 Turma: {userData?.classId || 'Não definida'}
               </p>

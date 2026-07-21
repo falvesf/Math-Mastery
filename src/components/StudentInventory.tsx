@@ -122,7 +122,12 @@ export default function StudentInventory({ userData, onEquip }: { userData: User
       if (!confirmed) return;
       
       const userRef = doc(db, 'users', userData.uid);
-      await updateDoc(userRef, { hearts: maxHearts });
+      await updateDoc(userRef, { 
+        hearts: maxHearts,
+        happyBuffUntil: null,
+        happyBuffDuration: null,
+        stunnedUntil: null
+      });
       userData.hearts = maxHearts;
 
       const docToDelete = item.docIds ? item.docIds[0] : item.id;

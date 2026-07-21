@@ -433,6 +433,36 @@ export default function QuestGameplay() {
       });
     }
 
+    if (userData && userData.role === 'student' && !isStudyMode) {
+      const userRef = doc(db, 'users', userData.uid);
+      const updates: any = {};
+      const now = Date.now();
+      
+      const rankIdx = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
+      const mHearts = Math.max(3, 3 + Math.floor(rankIdx / 2));
+      const hpPerc = (currentHearts / mHearts) * 100;
+      
+      if (!isWin || currentHearts === 0) {
+        updates.stunnedUntil = now + 10 * 60 * 1000;
+        updates.happyBuffUntil = null;
+        updates.happyBuffDuration = null;
+      } else if (hpPerc === 100) {
+        let newDuration = 5;
+        if (userData.happyBuffUntil && userData.happyBuffUntil > now) {
+          newDuration = (userData.happyBuffDuration || 5) * 2;
+        }
+        updates.happyBuffUntil = now + newDuration * 60 * 1000;
+        updates.happyBuffDuration = newDuration;
+        updates.stunnedUntil = null;
+      } else {
+        updates.happyBuffUntil = null;
+        updates.happyBuffDuration = null;
+        updates.stunnedUntil = null;
+      }
+      
+      await updateDoc(userRef, updates);
+    }
+
     // Save Attempt
     await addDoc(collection(db, 'quest_attempts'), {
       questId: quest?.id,
@@ -443,7 +473,6 @@ export default function QuestGameplay() {
       timestamp: serverTimestamp()
     });
 
-    setSaving(false);
     setSaving(false);
   };
 
