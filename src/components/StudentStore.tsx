@@ -26,6 +26,19 @@ interface MarketItem {
   avatarPart?: string;
 }
 
+const getAttributeName = (type: string) => {
+  switch(type) {
+    case 'attack': return 'Ataque';
+    case 'defense': return 'Defesa';
+    case 'xp': return 'XP Extra';
+    case 'coins': return 'Moedas Extras';
+    case 'vitality': return 'Vitalidade';
+    case 'fortitude': return 'Fortitude';
+    case 'persuasion': return 'Persuasão';
+    default: return type;
+  }
+};
+
 export default function StudentStore({ userData }: { userData: UserData }) {
   const { showAlert, showConfirm, showPrompt } = useDialog();
   const [activeTab, setActiveTab] = useState<'official' | 'market'>('official');
@@ -503,10 +516,24 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
                   Vendido por: <strong style={{ color: 'var(--gold-primary)' }}>{item.sellerName}</strong>
                 </p>
-                <div style={{ flex: 1, marginBottom: '1rem' }}>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
-                    {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
-                  </span>
+                <div style={{ flex: 1, marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                      {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
+                    </span>
+                  </div>
+                  {item.itemType === 'equippable' && item.baseAttributeType && item.baseAttributeType !== 'none' && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <div style={{ color: 'var(--text-primary)' }}>
+                        <strong style={{ color: 'var(--gold-primary)' }}>+{item.baseAttributeValue}</strong> {getAttributeName(item.baseAttributeType)}
+                      </div>
+                      {item.adds && item.adds.length > 0 && item.adds.map((add, idx) => (
+                        <div key={idx} style={{ color: 'var(--text-secondary)' }}>
+                          <strong style={{ color: '#60A5FA' }}>+{add.value}</strong> {getAttributeName(add.type)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 
                 {item.studentId === userData.uid ? (
