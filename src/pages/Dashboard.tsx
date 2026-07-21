@@ -175,6 +175,37 @@ export default function Dashboard() {
   const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
   const top10General = allStudents.slice(0, 10);
 
+  const RankingAvatar = ({ student, size }: { student: UserData; size: number }) => {
+    const [eqItems, setEqItems] = useState<any[]>([]);
+
+    useEffect(() => {
+      if (!student.uid) return;
+      const fetchEq = async () => {
+        const q = query(collection(db, 'user_items'), where('studentId', '==', student.uid), where('equipped', '==', true));
+        const snap = await getDocs(q);
+        const items: any[] = [];
+        snap.forEach(d => {
+          const data = d.data();
+          if (data.itemImageUrl && data.avatarPart) {
+             items.push({ imageUrl: data.itemImageUrl, avatarPart: data.avatarPart });
+          }
+        });
+        setEqItems(items);
+      };
+      fetchEq();
+    }, [student.uid]);
+
+    return (
+      <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {student.avatarConfig ? (
+          <AvatarCharacter config={student.avatarConfig} equippedItems={eqItems} size={size * 1.5} interactive={false} />
+        ) : (
+          <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        )}
+      </div>
+    );
+  };
+
   const renderRankingList = (list: UserData[]) => {
     if (loadingRankings) return <p style={{ color: 'var(--text-secondary)' }}>Calculando as posições...</p>;
     if (list.length === 0) return <p style={{ color: 'var(--text-secondary)' }}>Nenhum aluno no ranking.</p>;
@@ -186,23 +217,53 @@ export default function Dashboard() {
           const sRank = getRankForXp(student.xp || 0);
           
           let medalColor = 'var(--text-secondary)';
-          if (rankPos === 1) medalColor = '#fbbf24'; // Gold
-          if (rankPos === 2) medalColor = '#94a3b8'; // Silver
-          if (rankPos === 3) medalColor = '#b45309'; // Bronze
+          let bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.02)';
+          let borderStyle = student.uid === userData?.uid ? '1px solid var(--gold-primary)' : '1px solid transparent';
+          let avatarSize = 45;
+          let fontSizeTitle = '1.1rem';
+          let fontSizeXp = '1.2rem';
+          
+          if (rankPos === 1) {
+            medalColor = '#fbbf24'; // Gold
+            avatarSize = 80;
+            fontSizeTitle = '1.5rem';
+            fontSizeXp = '1.6rem';
+            bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.2)' : 'linear-gradient(90deg, rgba(251, 191, 36, 0.1), rgba(0,0,0,0.2))';
+            borderStyle = '1px solid #fbbf24';
+          } else if (rankPos === 2) {
+            medalColor = '#94a3b8'; // Silver
+            avatarSize = 65;
+            fontSizeTitle = '1.3rem';
+            fontSizeXp = '1.4rem';
+            bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.15)' : 'linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(0,0,0,0.2))';
+            borderStyle = '1px solid #94a3b8';
+          } else if (rankPos === 3) {
+            medalColor = '#b45309'; // Bronze
+            avatarSize = 55;
+            fontSizeTitle = '1.2rem';
+            fontSizeXp = '1.3rem';
+            bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'linear-gradient(90deg, rgba(180, 83, 9, 0.1), rgba(0,0,0,0.2))';
+            borderStyle = '1px solid #b45309';
+          }
 
           return (
             <div key={student.uid} className="glass-panel" style={{ 
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', 
-              background: student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.02)',
-              border: student.uid === userData?.uid ? '1px solid var(--gold-primary)' : '1px solid transparent'
+              background: bgStyle,
+              border: borderStyle,
+              boxShadow: rankPos === 1 ? '0 0 15px rgba(251, 191, 36, 0.2)' : 'none'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <div style={{ width: '30px', textAlign: 'center', fontSize: '1.2rem', fontWeight: 'bold', color: medalColor }}>
+                <div style={{ width: '40px', textAlign: 'center', fontSize: rankPos <= 3 ? '1.5rem' : '1.2rem', fontWeight: 'bold', color: medalColor }}>
                   {rankPos}º
                 </div>
-                <img src={student.photoURL} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: `2px solid ${sRank.color}` }} />
+                
+                <div style={{ padding: '2px', borderRadius: '50%', border: `2px solid ${medalColor}`, boxShadow: rankPos === 1 ? '0 0 10px rgba(251,191,36,0.5)' : 'none' }}>
+                  <RankingAvatar student={student} size={avatarSize} />
+                </div>
+                
                 <div>
-                  <h4 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <h4 style={{ margin: 0, fontSize: fontSizeTitle, display: 'flex', alignItems: 'center', gap: '0.5rem', color: rankPos === 1 ? '#fbbf24' : 'white' }}>
                     {student.name} {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'black', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
                   </h4>
                   <div style={{ fontSize: '0.85rem', color: sRank.color, fontWeight: 'bold' }}>
@@ -210,7 +271,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+              <div style={{ fontSize: fontSizeXp, fontWeight: 'bold', color: 'var(--gold-primary)' }}>
                 {student.xp || 0} XP
               </div>
             </div>
