@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation } from 'skinview3d';
+import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation, FunctionAnimation } from 'skinview3d';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
 
@@ -114,21 +114,18 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
     } else if (animation === 'run') {
       viewerRef.current.animation = new RunningAnimation();
     } else if (animation === 'cheer') {
-      class CheerAnimation extends IdleAnimation {
-        play(player: any, time: number) {
-          player.position.y = Math.abs(Math.sin(time * 5)) * 6;
-          player.skin.leftArm.rotation.x = Math.PI;
-          player.skin.rightArm.rotation.x = Math.PI;
-          player.skin.leftArm.rotation.z = 0.2 + Math.sin(time * 10) * 0.1;
-          player.skin.rightArm.rotation.z = -0.2 - Math.sin(time * 10) * 0.1;
-          player.skin.head.rotation.x = -0.2;
-          player.skin.leftLeg.rotation.x = 0;
-          player.skin.rightLeg.rotation.x = 0;
-          player.skin.leftLeg.rotation.z = -0.1;
-          player.skin.rightLeg.rotation.z = 0.1;
-        }
-      }
-      viewerRef.current.animation = new CheerAnimation();
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        player.position.y = Math.abs(Math.sin(time * 5)) * 6;
+        player.skin.leftArm.rotation.x = Math.PI;
+        player.skin.rightArm.rotation.x = Math.PI;
+        player.skin.leftArm.rotation.z = 0.2 + Math.sin(time * 10) * 0.1;
+        player.skin.rightArm.rotation.z = -0.2 - Math.sin(time * 10) * 0.1;
+        player.skin.head.rotation.x = -0.2;
+        player.skin.leftLeg.rotation.x = 0;
+        player.skin.rightLeg.rotation.x = 0;
+        player.skin.leftLeg.rotation.z = -0.1;
+        player.skin.rightLeg.rotation.z = 0.1;
+      });
     } else {
       viewerRef.current.animation = new IdleAnimation();
     }
