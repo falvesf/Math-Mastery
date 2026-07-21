@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { RANKS } from '../lib/ranks';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, ShieldAlert, Swords, Clock, Star, Shield, Heart, CheckCircle, XCircle, Package, Zap } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
@@ -506,6 +507,29 @@ export default function QuestGameplay() {
     return <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><h2>Carregando Campo de Batalha...</h2></div>;
   }
 
+  const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
+  const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2));
+  const hpPercentage = (currentHearts / maxHearts) * 100;
+
+  let baseAnim: 'idle' | 'exhausted' = 'idle';
+  let baseExp: 'normal' | 'serious' | 'sad' = 'normal';
+
+  if (hpPercentage >= 75) {
+    baseAnim = 'idle';
+    baseExp = 'normal';
+  } else if (hpPercentage >= 50) {
+    baseAnim = 'idle';
+    baseExp = 'serious';
+  } else if (hpPercentage >= 25) {
+    baseAnim = 'exhausted';
+    baseExp = 'serious';
+  } else {
+    baseAnim = 'exhausted';
+    baseExp = 'sad';
+  }
+
+  const activePlayerAnim = (playerAnim === 'idle' || playerAnim === 'exhausted') ? baseAnim : playerAnim;
+
   return (
     <div className="app-container" style={{ 
       position: 'relative', 
@@ -594,9 +618,9 @@ export default function QuestGameplay() {
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
             >
               <div style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={playerAnim as any} interactive={false} />
+                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={activePlayerAnim as any} expression={baseExp} interactive={false} />
                 {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
-                <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - currentHearts) / 3)) } as any} />
+                <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
               </div>
               <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
             </div>
@@ -793,10 +817,11 @@ export default function QuestGameplay() {
                       config={userData?.avatarConfig || null} 
                       equippedItems={playerEquippedItems} 
                       size={100} 
-                      animation={(currentHearts === 3) ? 'cheer' : currentHearts === 2 ? 'idle' : 'exhausted'} 
+                      animation={hpPercentage === 100 ? 'cheer' : baseAnim} 
+                      expression={hpPercentage === 100 ? 'normal' : baseExp}
                       interactive={false} 
                     />
-                    <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - currentHearts) / 3)) } as any} />
+                    <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
                   </div>
                   <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
                   <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem' }}>O monstro foi derrotado e o desafio foi superado.</p>

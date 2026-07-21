@@ -31,19 +31,24 @@ export interface EquippedItem {
 export interface AvatarCharacterProps {
   config: AvatarConfig | null;
   equippedItems?: EquippedItem[];
-  size?: number; // largura base
+  size?: number;
   animation?: 'idle' | 'walk' | 'run' | 'cheer' | 'attack' | 'hurt' | 'exhausted' | 'death-fall' | 'death-explode';
+  expression?: 'normal' | 'serious' | 'sad';
   interactive?: boolean;
   showSlots?: boolean;
 }
 
-export default function AvatarCharacter({ config, equippedItems = [], size = 120, animation = 'idle', interactive = true, showSlots = false }: AvatarCharacterProps) {
+export default function AvatarCharacter({ config, equippedItems = [], size = 120, animation = 'idle', expression = 'normal', interactive = true, showSlots = false }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
 
   // States to hold generated skin URLs
-  const [skinUrls, setSkinUrls] = useState<{ normal: string; blink: string; hurt: string; exhausted: string } | null>(null);
+  const [skinUrls, setSkinUrls] = useState<{
+    normal: { base: string; blink: string };
+    serious: { base: string; blink: string };
+    sad: { base: string; blink: string };
+  } | null>(null);
 
   const bgItems = equippedItems.filter(i => i.avatarPart === 'background');
 
@@ -86,14 +91,30 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
                 const finalUrl = (config.customSkinUrl.startsWith('http') || config.customSkinUrl.startsWith('data:')) 
                     ? config.customSkinUrl 
                     : `https://${config.customSkinUrl}`;
-                setSkinUrls({ normal: finalUrl, blink: finalUrl, hurt: finalUrl, exhausted: finalUrl });
+                setSkinUrls({ 
+                    normal: { base: finalUrl, blink: finalUrl },
+                    serious: { base: finalUrl, blink: finalUrl },
+                    sad: { base: finalUrl, blink: finalUrl }
+                });
             } else {
                 const normalUrl = await generateMinecraftSkinUrl(config, false);
-                const blinkUrl = await generateMinecraftSkinUrl(config, true);
-                const hurtConfig = { ...config, mouthStyle: 'sad' };
-                const hurtUrl = await generateMinecraftSkinUrl(hurtConfig, true);
-                const exhaustedUrl = await generateMinecraftSkinUrl(hurtConfig, false);
-                if (isMounted) setSkinUrls({ normal: normalUrl, blink: blinkUrl, hurt: hurtUrl, exhausted: exhaustedUrl });
+                const normalBlinkUrl = await generateMinecraftSkinUrl(config, true);
+                
+                const seriousConfig = { ...config, mouthStyle: 'neutral' as any };
+                const seriousUrl = await generateMinecraftSkinUrl(seriousConfig, false);
+                const seriousBlinkUrl = await generateMinecraftSkinUrl(seriousConfig, true);
+
+                const sadConfig = { ...config, mouthStyle: 'sad' as any };
+                const sadUrl = await generateMinecraftSkinUrl(sadConfig, false);
+                const sadBlinkUrl = await generateMinecraftSkinUrl(sadConfig, true);
+                
+                if (isMounted) {
+                    setSkinUrls({ 
+                        normal: { base: normalUrl, blink: normalBlinkUrl },
+                        serious: { base: seriousUrl, blink: seriousBlinkUrl },
+                        sad: { base: sadUrl, blink: sadBlinkUrl }
+                    });
+                }
             }
         } catch (e) {
             console.error("Error generating 3D skins", e);
@@ -116,26 +137,17 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
       const applySkins = async () => {
           if (animation === 'hurt') {
               if (blinkInterval) clearInterval(blinkInterval);
-              await viewerRef.current!.loadSkin(skinUrls.hurt);
-          } else if (animation === 'exhausted') {
-              await viewerRef.current!.loadSkin(skinUrls.exhausted);
-              blinkInterval = setInterval(() => {
-                  if (!viewerRef.current) return;
-                  if (skinUrls.blink === skinUrls.normal) return; 
-                  viewerRef.current.loadSkin(skinUrls.hurt);
-                  setTimeout(() => {
-                      if (viewerRef.current && isMounted) viewerRef.current.loadSkin(skinUrls.exhausted);
-                  }, 150);
-              }, 3500 + Math.random() * 2000);
+              await viewerRef.current!.loadSkin(skinUrls.sad.blink);
           } else {
-              await viewerRef.current!.loadSkin(skinUrls.normal);
+              const activeUrls = skinUrls[expression] || skinUrls.normal;
+              await viewerRef.current!.loadSkin(activeUrls.base);
               
               blinkInterval = setInterval(() => {
                   if (!viewerRef.current) return;
-                  if (skinUrls.blink === skinUrls.normal) return; // Prevent unnecessary reloading for custom skins that don't have blink frames
-                  viewerRef.current.loadSkin(skinUrls.blink);
+                  if (activeUrls.blink === activeUrls.base) return; 
+                  viewerRef.current.loadSkin(activeUrls.blink);
                   setTimeout(() => {
-                      if (viewerRef.current && isMounted) viewerRef.current.loadSkin(skinUrls.normal);
+                      if (viewerRef.current && isMounted) viewerRef.current.loadSkin(activeUrls.base);
                   }, 150);
               }, 3500 + Math.random() * 2000);
           }
@@ -147,7 +159,7 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
           isMounted = false;
           if (blinkInterval) clearInterval(blinkInterval);
       };
-  }, [skinUrls, animation]);
+  }, [skinUrls, animation, expression]);
 
   useEffect(() => {
     if (!viewerRef.current) return;
