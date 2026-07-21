@@ -56,14 +56,17 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
       baseColor: string, 
       x: number, y: number, 
       w: number, d: number, h: number, 
-      variance = 10
+      variance = 10,
+      skipBottom = false
   ) => {
       fillTextured(baseColor, x, y + d, d, h, variance, -5);       // Right
       fillTextured(baseColor, x + d, y + d, w, h, variance, 0);    // Front
       fillTextured(baseColor, x + d + w, y + d, d, h, variance, -5); // Left
       fillTextured(baseColor, x + d + w + d, y + d, w, h, variance, -10); // Back
       fillTextured(baseColor, x + d, y, w, d, variance, +10);      // Top
-      fillTextured(baseColor, x + d + w, y, w, d, variance, -15);  // Bottom
+      if (!skipBottom) {
+          fillTextured(baseColor, x + d + w, y, w, d, variance, -15);  // Bottom
+      }
   };
 
   const fill = (color: string, x: number, y: number, w: number, h: number) => {
@@ -93,13 +96,96 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
   // ROUPAS (Pixel Art Fiel)
   // ==========================================
   
-  if (gender === 'male') {
+  const style = config.clothingStyle || (gender === 'female' ? 'dress' : 't-shirt');
+
+  if (style === 'dress') {
+      // Vestido Refinado
+      // Topo Vestido (Cor principal = userShirt)
+      drawCuboid(userShirt, 16, 16, 8, 4, 12, 8); // Body Base
+      // Mangas Curtas
+      drawCuboid(userShirt, 40, 16, 4, 4, 4, 8, true); // Right Arm
+      drawCuboid(userShirt, 32, 48, 4, 4, 4, 8, true); // Left Arm
+      // Decote
+      fill(skin, 23, 20, 2, 3);
+      
+      // Saia do vestido nas pernas (mesma cor principal do vestido!)
+      drawCuboid(userShirt, 0, 16, 4, 4, 8, 8); // Right Leg
+      drawCuboid(userShirt, 16, 48, 4, 4, 8, 8); // Left Leg
+      
+      // Detalhes do vestido (usando a cor secundária: userPants)
+      // 1. Cinto na cintura
+      fillTextured(userPants, 20, 26, 8, 2, 5, 0); // Frente
+      fillTextured(userPants, 32, 26, 8, 2, 5, -10); // Costas
+      fillTextured(userPants, 16, 26, 4, 2, 5, -5); // Lado dir
+      fillTextured(userPants, 28, 26, 4, 2, 5, -5); // Lado esq
+      fill(adjustColor(userPants, 30), 23, 26, 2, 2); // Fivela brilhante
+      
+      // 2. Barra da saia (trim) de 2 pixels
+      // Perna Direita
+      fill(userPants, 0, 26, 4, 2); // Right face
+      fill(userPants, 4, 26, 4, 2); // Front face
+      fill(userPants, 8, 26, 4, 2); // Left face
+      fill(userPants, 12, 26, 4, 2); // Back face
+      // Perna Esquerda
+      fill(userPants, 16, 58, 4, 2); // Right face
+      fill(userPants, 20, 58, 4, 2); // Front face
+      fill(userPants, 24, 58, 4, 2); // Left face
+      fill(userPants, 28, 58, 4, 2); // Back face
+  } else if (style === 'tank-top') {
+      // Regata e Shorts
+      drawCuboid(userShirt, 16, 16, 8, 4, 12, 8); // Body
+      
+      // Decote cavado e costas
+      fill(skin, 22, 17, 4, 5); // Frente
+      fill(skin, 34, 17, 4, 5); // Costas
+      // Alças da regata
+      fill(userShirt, 20, 16, 2, 4); // Ombro dir
+      fill(userShirt, 26, 16, 2, 4); // Ombro esq
+      fill(userShirt, 32, 16, 2, 4); // Costas dir
+      fill(userShirt, 38, 16, 2, 4); // Costas esq
+      
+      // Shorts
+      drawCuboid(userPants, 0, 16, 4, 4, 6, 10); // Right Leg
+      drawCuboid(userPants, 16, 48, 4, 4, 6, 10); // Left Leg
+  } else if (style === 't-shirt') {
+      // Camiseta e Calça
+      drawCuboid(userShirt, 16, 16, 8, 4, 12, 8); // Body
+      // Mangas Curtas
+      drawCuboid(userShirt, 40, 16, 4, 4, 4, 8, true); // Right Arm
+      drawCuboid(userShirt, 32, 48, 4, 4, 4, 8, true); // Left Arm
+      
+      // Calça
+      drawCuboid(userPants, 0, 16, 4, 4, 12, 10); // Right Leg
+      drawCuboid(userPants, 16, 48, 4, 4, 12, 10); // Left Leg
+  } else {
+      // Manga Longa e Calça
+      drawCuboid(userShirt, 16, 16, 8, 4, 12, 8); // Body
+      // Mangas Longas (altura 9 para deixar 3 pixels para as mãos)
+      drawCuboid(userShirt, 40, 16, 4, 4, 9, 8, true); // Right Arm
+      drawCuboid(userShirt, 32, 48, 4, 4, 9, 8, true); // Left Arm
+      
       // Calça
       drawCuboid(userPants, 0, 16, 4, 4, 12, 10); // Right Leg
       drawCuboid(userPants, 16, 48, 4, 4, 12, 10); // Left Leg
       
-      // Botas Pretas (Na Jacket Layer da Perna para sobressaliência)
-      const shoes = '#1a1a1a';
+      if (gender === 'male') {
+          // Cinto sobre a camisa
+          const belt = '#2a1d13';
+          const buckle = '#a0a0a0';
+          fillTextured(belt, 20, 26, 8, 2, 5, 0); // Frente
+          fillTextured(belt, 32, 26, 8, 2, 5, -10); // Costas
+          fillTextured(belt, 16, 26, 4, 2, 5, -5); // Lado dir
+          fillTextured(belt, 28, 26, 4, 2, 5, -5); // Lado esq
+          fill(buckle, 23, 26, 2, 2);
+          fill('#000000', 24, 26, 1, 1);
+      }
+  }
+
+  // ==========================================
+  // SAPATOS
+  // ==========================================
+  if (gender === 'male') {
+      const shoes = '#1a1a1a'; // Tenis preto
       const drawShoe = (xOff: number, yOff: number) => {
           fillTextured(shoes, xOff, yOff + 12, 4, 4, 5, -5); // Right
           fillTextured(shoes, xOff + 4, yOff + 12, 4, 4, 5, 0); // Front
@@ -109,59 +195,8 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
           fill('#333333', xOff + 5, yOff + 12, 2, 3); // Cadarço
       };
       drawShoe(0, 32); drawShoe(0, 48);
-
-      // Camisa Base
-      drawCuboid(userShirt, 16, 16, 8, 4, 12, 8); // Body
-      // Mangas
-      drawCuboid(userShirt, 40, 16, 4, 4, 8, 8); // Right Arm
-      drawCuboid(userShirt, 32, 48, 4, 4, 8, 8); // Left Arm
-
-      // Colete de Couro Marrom (Body Jacket)
-      const vest = '#634b35';
-      // Desenhamos na camada Jacket (Body 2 = x:16, y:32)
-      // W=8, D=4, H=12
-      // Frente (20,36, W8, H12)
-      fillTextured(vest, 20, 36, 8, 10, 12, 0); // Colete vai até H10
-      // Fazer decote V na frente
-      ctx.clearRect(23, 36, 2, 4); 
-      // Costas (32, 36, W8, H12)
-      fillTextured(vest, 32, 36, 8, 10, 12, -10);
-      // Lados
-      fillTextured(vest, 16, 36, 4, 10, 12, -5); // Right
-      fillTextured(vest, 28, 36, 4, 10, 12, -5); // Left
-      // Topo dos ombros
-      fillTextured(vest, 20, 32, 2, 4, 10, 5); // Ombro Dir
-      fillTextured(vest, 26, 32, 2, 4, 10, 5); // Ombro Esq
-
-      // Cinto (Desenhado sobre a camisa base, Y=26, H=2)
-      const belt = '#2a1d13';
-      const buckle = '#a0a0a0';
-      fillTextured(belt, 20, 26, 8, 2, 5, 0); // Frente
-      fillTextured(belt, 32, 26, 8, 2, 5, -10); // Costas
-      fillTextured(belt, 16, 26, 4, 2, 5, -5); // Lado dir
-      fillTextured(belt, 28, 26, 4, 2, 5, -5); // Lado esq
-      // Fivela
-      fill(buckle, 23, 26, 2, 2);
-      fill('#000000', 24, 26, 1, 1); // Furo
-
   } else {
-      // Vestido Feminino Refinado
-      const dressDark = adjustColor(userShirt, -15);
-      // Topo Vestido
-      drawCuboid(userShirt, 16, 16, 8, 4, 12, 8); // Body Base
-      // Decote
-      fill(skin, 23, 20, 2, 3);
-      
-      // Saia do vestido nas pernas
-      drawCuboid(userPants, 0, 16, 4, 4, 8, 8); // Right Leg
-      drawCuboid(userPants, 16, 48, 4, 4, 8, 8); // Left Leg
-      
-      // Detalhes da saia (Jacket Layer pernas)
-      fillTextured(dressDark, 4, 40, 4, 6, 8, 0); // Right Front
-      fillTextured(dressDark, 4, 56, 4, 6, 8, 0); // Left Front
-      
-      // Sapatos Femininos
-      const shoes = '#3d2c23';
+      const shoes = '#3d2c23'; // Sapato feminino delicado
       const drawShoe = (xOff: number, yOff: number) => {
           fillTextured(shoes, xOff, yOff + 14, 4, 2, 5, -5); // Right
           fillTextured(shoes, xOff + 4, yOff + 14, 4, 2, 5, 0); // Front
@@ -170,12 +205,6 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
           fillTextured(shoes, xOff + 8, yOff, 4, 4, 5, -15); // Bottom
       };
       drawShoe(0, 32); drawShoe(0, 48);
-      
-      // Cinto no vestido
-      const belt = '#ffffff';
-      fillTextured(belt, 20, 25, 8, 1, 5, 0); // Frente
-      fillTextured(belt, 32, 25, 8, 1, 5, -10); // Costas
-      fill('#e8e8e8', 23, 25, 2, 1);
   }
 
   // ==========================================
@@ -267,6 +296,9 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
       drawCuboid(hair, 32, 0, 8, 8, 8, 20); 
       ctx.clearRect(40, 11, 8, 5); // Limpa o rosto na camada Hat
       
+      // Limpa a base (fundo) do Hat Layer para não parecer uma barba (x: 48 a 56, y: 0 a 8)
+      ctx.clearRect(48, 0, 8, 8);
+      
       // Se for cabelo curto, o Hat Layer não deve cobrir as laterais e costas até o pescoço
       if (effectiveStyle === 'short' || effectiveStyle === 'spiky' || effectiveStyle === 'messy') {
           ctx.clearRect(32, 12, 8, 4); // Limpa base do Right Face (Hat)
@@ -279,6 +311,32 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
       fill(hair, 40, 10, 2, 2); 
       fill(hair, 44, 10, 3, 1); 
       fill(hair, 46, 11, 1, 1);
+  }
+
+  // ==========================================
+  // PÊLOS FACIAIS (Barba / Bigode)
+  // ==========================================
+  if (config.facialHair && config.facialHair !== 'none') {
+      const facialHairColor = adjustColor(hair, -15); // Cor um pouco mais escura que o cabelo
+      if (config.facialHair === 'mustache' || config.facialHair === 'beard') {
+          // Bigode
+          fill(facialHairColor, 10, 13, 4, 1);
+      }
+      if (config.facialHair === 'goatee' || config.facialHair === 'beard') {
+          // Cavanhaque / Queixo
+          fill(facialHairColor, 10, 15, 4, 1);
+          fill(facialHairColor, 11, 16, 2, 1);
+      }
+      if (config.facialHair === 'beard') {
+          // Laterais da barba
+          fill(facialHairColor, 8, 13, 2, 3); // Lado esquerdo do rosto
+          fill(facialHairColor, 14, 13, 2, 3); // Lado direito do rosto
+          // Linha do queixo nas laterais da cabeça (Right and Left faces)
+          fill(facialHairColor, 4, 14, 4, 2); // Right face (jaw)
+          fill(facialHairColor, 16, 14, 4, 2); // Left face (jaw)
+          // Fundo do queixo (Bottom face)
+          fill(facialHairColor, 16, 0, 8, 4); // Metade da frente do bottom face
+      }
   }
 
   if (effectiveStyle === 'long') {

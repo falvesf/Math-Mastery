@@ -13,6 +13,8 @@ export interface AvatarConfig {
   eyeStyle?: string;
   shirtColor?: string;
   pantsColor?: string;
+  clothingStyle?: 'dress' | 'pants-shirt' | 't-shirt' | 'tank-top';
+  facialHair?: 'none' | 'beard' | 'mustache' | 'goatee';
   handedness?: 'right' | 'left';
   animationState?: 'idle' | 'walk' | 'run';
   customSkinUrl?: string;
@@ -32,7 +34,7 @@ export interface AvatarCharacterProps {
   config: AvatarConfig | null;
   equippedItems?: EquippedItem[];
   size?: number;
-  animation?: 'idle' | 'walk' | 'run' | 'cheer' | 'attack' | 'hurt' | 'exhausted' | 'death-fall' | 'death-explode';
+  animation?: 'none' | 'idle' | 'walk' | 'run' | 'cheer' | 'attack' | 'hurt' | 'exhausted' | 'death-fall' | 'death-explode';
   expression?: 'normal' | 'serious' | 'sad';
   interactive?: boolean;
   showSlots?: boolean;
@@ -52,36 +54,52 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
 
   const bgItems = equippedItems.filter(i => i.avatarPart === 'background');
 
+  // 1. Initialize and dispose viewer
   useEffect(() => {
     if (!canvasRef.current) return;
     
-    if (!viewerRef.current) {
-        const viewer = new SkinViewer({
-            canvas: canvasRef.current,
-            width: size,
-            height: size * 1.8,
-            skin: "" // We will set this dynamically
-        });
-        viewer.animation = new IdleAnimation();
+    const viewer = new SkinViewer({
+        canvas: canvasRef.current,
+        width: size,
+        height: size * 1.8,
+        skin: "" 
+    });
+    viewer.animation = new IdleAnimation();
 
-        viewer.controls.enableZoom = interactive;
-        viewer.controls.enableRotate = interactive;
-        viewer.controls.enablePan = interactive;
-        
-        viewerRef.current = viewer;
-        
-        // Em versões recentes do skinview3d, setar a cor de fundo como transparente no renderer:
-        if (viewerRef.current.renderer) {
-            viewerRef.current.renderer.setClearColor(0x000000, 0);
-        }
-        
-        // Move camera to frame it nicely
-        viewerRef.current.camera.position.set(0, 10, 60);
-    } else {
-        viewerRef.current.width = size;
-        viewerRef.current.height = size * 1.8;
+    viewer.controls.enableZoom = interactive;
+    viewer.controls.enableRotate = interactive;
+    viewer.controls.enablePan = interactive;
+    
+    viewerRef.current = viewer;
+    
+    if (viewer.renderer) {
+        viewer.renderer.setClearColor(0x000000, 0);
     }
+    
+    viewer.camera.position.set(0, 10, 60);
 
+    return () => {
+        if (viewerRef.current) {
+            viewerRef.current.dispose();
+            viewerRef.current = null;
+        }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 2. Update size and interactivity when they change
+  useEffect(() => {
+      if (viewerRef.current) {
+          viewerRef.current.width = size;
+          viewerRef.current.height = size * 1.8;
+          viewerRef.current.controls.enableZoom = interactive;
+          viewerRef.current.controls.enableRotate = interactive;
+          viewerRef.current.controls.enablePan = interactive;
+      }
+  }, [size, interactive]);
+
+  // 3. Generate skins when config changes
+  useEffect(() => {
     let isMounted = true;
 
     const generateSkins = async () => {
@@ -126,28 +144,33 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
     return () => {
         isMounted = false;
     };
-  }, [config, size]);
+  }, [config]);
 
   // Handle Skin Application & Blinking
   useEffect(() => {
       if (!viewerRef.current || !skinUrls) return;
       let isMounted = true;
       let blinkInterval: any;
+      let blinkTimeout: any;
 
       const applySkins = async () => {
           if (animation === 'hurt') {
-              if (blinkInterval) clearInterval(blinkInterval);
               await viewerRef.current!.loadSkin(skinUrls.sad.blink);
           } else {
               const activeUrls = skinUrls[expression] || skinUrls.normal;
               await viewerRef.current!.loadSkin(activeUrls.base);
               
+              if (!isMounted) return;
+              
               blinkInterval = setInterval(() => {
-                  if (!viewerRef.current) return;
+                  if (!viewerRef.current || !isMounted) return;
                   if (activeUrls.blink === activeUrls.base) return; 
                   viewerRef.current.loadSkin(activeUrls.blink);
-                  setTimeout(() => {
-                      if (viewerRef.current && isMounted) viewerRef.current.loadSkin(activeUrls.base);
+                  
+                  blinkTimeout = setTimeout(() => {
+                      if (viewerRef.current && isMounted) {
+                          viewerRef.current.loadSkin(activeUrls.base);
+                      }
                   }, 150);
               }, 3500 + Math.random() * 2000);
           }
@@ -158,6 +181,7 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
       return () => {
           isMounted = false;
           if (blinkInterval) clearInterval(blinkInterval);
+          if (blinkTimeout) clearTimeout(blinkTimeout);
       };
   }, [skinUrls, animation, expression]);
 
@@ -188,7 +212,11 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
 
     resetBones();
 
-    if (animation === 'walk') {
+    if (animation === 'none') {
+      viewerRef.current.animation = null;
+    } else if (animation === 'idle') {
+      viewerRef.current.animation = new IdleAnimation();
+    } else if (animation === 'walk') {
       viewerRef.current.animation = new WalkingAnimation();
     } else if (animation === 'run') {
       viewerRef.current.animation = new RunningAnimation();
@@ -416,4 +444,35 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
       })}
     </div>
   );
+}
+
+export function AvatarFace2D({ config, size }: { config: AvatarConfig, size: number }) {
+    const [faceUrl, setFaceUrl] = useState('');
+    
+    useEffect(() => {
+        let isMounted = true;
+        const generate = async () => {
+            const skinUrl = config.customSkinUrl || await generateMinecraftSkinUrl(config, false);
+            if (!isMounted) return;
+            const img = new Image();
+            img.onload = () => {
+                if (!isMounted) return;
+                const canvas = document.createElement('canvas');
+                canvas.width = 8;
+                canvas.height = 8;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(img, 8, 8, 8, 8, 0, 0, 8, 8);
+                    ctx.drawImage(img, 40, 8, 8, 8, 0, 0, 8, 8);
+                    setFaceUrl(canvas.toDataURL('image/png'));
+                }
+            };
+            img.src = skinUrl.startsWith('http') && !skinUrl.startsWith('data:') ? `https://${skinUrl}` : skinUrl;
+        };
+        generate();
+        return () => { isMounted = false; };
+    }, [config]);
+    
+    if (!faceUrl) return <div style={{ width: size, height: size, background: 'transparent' }} />;
+    return <img src={faceUrl} style={{ width: size, height: size, imageRendering: 'pixelated', objectFit: 'cover' }} alt="Face" />;
 }

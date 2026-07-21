@@ -46,7 +46,7 @@ export default function Dashboard() {
   const [activeBubbleId, setActiveBubbleId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (userData?.uid && userData.role === 'student') {
+    if (userData?.uid) {
       const fetchHistory = async () => {
         const q = query(collection(db, 'xp_logs'), where('studentId', '==', userData.uid));
         const snap = await getDocs(q);
@@ -73,9 +73,17 @@ export default function Dashboard() {
         const q = query(collection(db, 'quests'), where('active', '==', true));
         const snap = await getDocs(q);
         const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // Filtrar por turmas alvo
+        const filteredQuests = fetched.filter((quest: any) => {
+          if (!quest.targetClasses || quest.targetClasses.length === 0) return true;
+          if (userData.role !== 'student') return true; // Professores/Admins veem todas
+          return quest.targetClasses.includes(userData.classId);
+        });
+
         // Ordenar as mais novas primeiro
-        fetched.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        setActiveQuests(fetched);
+        filteredQuests.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setActiveQuests(filteredQuests);
         setLoadingQuests(false);
       };
       fetchQuests();
@@ -233,8 +241,9 @@ export default function Dashboard() {
   const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
   const top10General = allStudents.slice(0, 10);
 
-  const RankingAvatar = ({ student, size }: { student: UserData; size: number }) => {
+  const RankingAvatar = ({ student, size, rankPos = 1 }: { student: UserData; size: number, rankPos?: number }) => {
     const [eqItems, setEqItems] = useState<any[]>([]);
+    const [isHovered, setIsHovered] = useState(false);
 
     useEffect(() => {
       if (!student.uid) return;
@@ -254,9 +263,14 @@ export default function Dashboard() {
     }, [student.uid]);
 
     const avatarState = getProfileAvatarState(student);
+    const show3D = rankPos <= 3 || isHovered;
 
     return (
-      <div style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div 
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: rankPos > 3 ? 'pointer' : 'default' }}
+      >
         {activeBubbleId === student.uid && student.customStatusText && (
           <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', background: 'white', color: 'black', padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap', zIndex: 50, boxShadow: '0 4px 10px rgba(0,0,0,0.5)', animation: 'epicZoom 0.3s ease-out' }}>
             {student.customStatusText}
@@ -264,7 +278,14 @@ export default function Dashboard() {
           </div>
         )}
         {student.avatarConfig ? (
-          <AvatarCharacter config={student.avatarConfig} equippedItems={eqItems} size={size} interactive={false} animation={avatarState.animation as any} expression={avatarState.expression as any} />
+          <AvatarCharacter 
+            config={student.avatarConfig} 
+            equippedItems={eqItems} 
+            size={size} 
+            interactive={false} 
+            animation={show3D ? (avatarState.animation as any) : 'none'} 
+            expression={avatarState.expression as any} 
+          />
         ) : (
           <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
         )}
@@ -325,7 +346,7 @@ export default function Dashboard() {
                 </div>
                 
                 <div style={{ padding: '2px', borderRadius: '50%', border: `2px solid ${medalColor}`, boxShadow: rankPos === 1 ? '0 0 10px rgba(251,191,36,0.5)' : 'none' }}>
-                  <RankingAvatar student={student} size={avatarSize} />
+                  <RankingAvatar student={student} size={avatarSize} rankPos={rankPos} />
                 </div>
                 
                 <div>
@@ -362,6 +383,7 @@ export default function Dashboard() {
           isOpen={isCustomizingAvatar}
           onClose={() => setIsCustomizingAvatar(false)}
           userData={userData}
+          initialConfig={liveAvatarConfig || userData.avatarConfig}
           onSave={(newConfig) => {
             setLiveAvatarConfig(newConfig);
           }}
@@ -388,7 +410,11 @@ export default function Dashboard() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-              {userData && <RankingAvatar student={userData} size={36} />}
+              {userData && (
+                <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
+                  <AvatarCharacter config={liveAvatarConfig || userData.avatarConfig} size={36} interactive={false} animation="none" />
+                </div>
+              )}
               <span style={{ fontWeight: 'bold' }}>{userData?.name?.split(' ')[0]}</span>
             </div>
           </div>
@@ -632,7 +658,7 @@ export default function Dashboard() {
                 <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Histórico de Conquistas</h3>
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ flex: 1, overflowY: 'auto', maxHeight: '600px', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {userData?.role === 'admin' ? (
                   <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
                     <ShieldAlert size={48} style={{ opacity: 0.5, margin: '0 auto 1rem auto' }} />

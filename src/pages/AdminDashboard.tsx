@@ -46,6 +46,9 @@ export interface QuestDef {
   monsterName?: string;
   monsterAvatarConfig?: AvatarConfig;
   active: boolean;
+  createdBy?: string;
+  creatorRole?: string;
+  targetClasses?: string[];
 }
 
 export default function AdminDashboard() {
@@ -120,6 +123,9 @@ export default function AdminDashboard() {
   const [questMonsterName, setQuestMonsterName] = useState('');
   const [questMonsterConfig, setQuestMonsterConfig] = useState<AvatarConfig | null>(null);
   const [isCustomizingMonster, setIsCustomizingMonster] = useState(false);
+  const [questCreatedBy, setQuestCreatedBy] = useState<string | null>(null);
+  const [questCreatorRole, setQuestCreatorRole] = useState<string | null>(null);
+  const [questTargetClasses, setQuestTargetClasses] = useState<string[]>([]);
   
   const [galleryTarget, setGalleryTarget] = useState<string | null>(null);
   const [pixabayKey, setPixabayKey] = useState('');
@@ -429,12 +435,16 @@ export default function AdminDashboard() {
       questions: questQuestions,
       monsterName: questMonsterName,
       monsterAvatarConfig: questMonsterConfig || undefined,
-      active: true
+      active: true,
+      createdBy: questCreatedBy || userData?.uid,
+      creatorRole: questCreatorRole || userData?.role,
+      targetClasses: questTargetClasses
     };
     await setDoc(doc(db, 'quests', questId), newQuest);
     setIsCreatingQuest(false);
     setEditingQuestId(null);
     setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
+    setQuestCreatedBy(null); setQuestCreatorRole(null); setQuestTargetClasses([]);
     setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
     fetchQuests();
   };
@@ -450,6 +460,9 @@ export default function AdminDashboard() {
     setQuestQuestions(quest.questions);
     setQuestMonsterName(quest.monsterName || '');
     setQuestMonsterConfig(quest.monsterAvatarConfig || null);
+    setQuestCreatedBy(quest.createdBy || null);
+    setQuestCreatorRole(quest.creatorRole || null);
+    setQuestTargetClasses(quest.targetClasses || []);
     setIsCreatingQuest(true);
   };
 
@@ -519,7 +532,11 @@ export default function AdminDashboard() {
             <ArrowLeft size={18} style={{ marginRight: '0.5rem' }} /> Voltar
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
-            <img src={userData?.photoURL} alt="Avatar" style={{ width: 36, borderRadius: '50%', border: '2px solid var(--accent-red)' }} />
+            {userData && (
+              <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)', border: '2px solid var(--accent-red)' }}>
+                <AvatarCharacter config={userData.avatarConfig} size={36} interactive={false} animation="none" />
+              </div>
+            )}
             <span style={{ fontWeight: 600 }}>{userData?.name?.split(' ')[0]}</span>
           </div>
           <button className="login-btn" onClick={() => signOut(auth)} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
@@ -793,9 +810,19 @@ export default function AdminDashboard() {
                   </div>
 
                   <div style={{ display: 'grid', gap: '1rem' }}>
-                    {quests.length === 0 ? (
+                    {quests.filter(q => {
+                      if (userData?.role === 'admin') return true;
+                      if (userData?.role === 'teacher') return q.createdBy === userData?.uid || q.creatorRole === 'admin';
+                      return true;
+                    }).length === 0 ? (
                       <p style={{ color: 'var(--text-secondary)' }}>Nenhuma missão criada ainda.</p>
-                    ) : quests.map(quest => (
+                    ) : quests.filter(q => {
+                      if (userData?.role === 'admin') return true;
+                      if (userData?.role === 'teacher') return q.createdBy === userData?.uid || q.creatorRole === 'admin';
+                      return true;
+                    }).map(quest => {
+                      const isOwnerOrAdmin = userData?.role === 'admin' || quest.createdBy === userData?.uid;
+                      return (
                       <div key={quest.id} className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderLeft: `4px solid ${quest.active ? 'var(--accent-green)' : 'var(--text-secondary)'}` }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                           {quest.coverImageUrl ? (
@@ -811,6 +838,8 @@ export default function AdminDashboard() {
                               <span>Recompensa: <strong style={{ color: 'var(--gold-primary)' }}>{quest.baseXp} XP</strong></span>
                               <span>Modo: {quest.allowRetries ? `Vidas Extras` : 'Hardcore'}</span>
                               <span>{quest.questions.length} Perguntas</span>
+                              {quest.targetClasses && quest.targetClasses.length > 0 && <span style={{ color: 'var(--accent-blue)' }}>Turmas: {quest.targetClasses.join(', ')}</span>}
+                              {quest.creatorRole === 'admin' && <span style={{ padding: '0.1rem 0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', borderRadius: '12px', fontSize: '0.75rem' }}>Oficial</span>}
                             </div>
                           </div>
                         </div>
@@ -818,18 +847,23 @@ export default function AdminDashboard() {
                           <button onClick={() => openQuestHistory(quest)} style={{ background: 'transparent', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }} title="Ver Histórico">
                             <History size={18} /> Histórico
                           </button>
-                          <button onClick={() => handleEditQuest(quest)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Missão">
-                            <Edit2 size={20} />
-                          </button>
-                          <button onClick={() => handleToggleQuestActive(quest.id, quest.active)} style={{ background: quest.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.1)', color: quest.active ? 'var(--accent-green)' : 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                            {quest.active ? 'Ativa (Visível)' : 'Rascunho (Oculta)'}
-                          </button>
-                          <button onClick={() => handleDeleteQuest(quest.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Missão">
-                            <Trash2 size={20} />
-                          </button>
+                          {isOwnerOrAdmin && (
+                            <>
+                              <button onClick={() => handleEditQuest(quest)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Missão">
+                                <Edit2 size={20} />
+                              </button>
+                              <button onClick={() => handleToggleQuestActive(quest.id, quest.active)} style={{ background: quest.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.1)', color: quest.active ? 'var(--accent-green)' : 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                {quest.active ? 'Ativa (Visível)' : 'Rascunho (Oculta)'}
+                              </button>
+                              <button onClick={() => handleDeleteQuest(quest.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Missão">
+                                <Trash2 size={20} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               ) : (
@@ -859,6 +893,36 @@ export default function AdminDashboard() {
                         <div>
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Recompensa Base de XP</label>
                           <input type="number" value={questXp} onChange={e => setQuestXp(e.target.value)} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Turmas Alvo (Deixe vazio para todas)</label>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                            {schoolClasses.length === 0 ? <span style={{ color: 'var(--text-secondary)' }}>Nenhuma turma cadastrada</span> : schoolClasses.map(cls => (
+                              <button
+                                key={cls.id}
+                                onClick={() => {
+                                  if (questTargetClasses.includes(cls.name)) {
+                                    setQuestTargetClasses(questTargetClasses.filter(c => c !== cls.name));
+                                  } else {
+                                    setQuestTargetClasses([...questTargetClasses, cls.name]);
+                                  }
+                                }}
+                                style={{
+                                  padding: '0.5rem 1rem',
+                                  borderRadius: '20px',
+                                  border: `1px solid ${cls.color}`,
+                                  background: questTargetClasses.includes(cls.name) ? cls.color : 'rgba(255,255,255,0.05)',
+                                  color: questTargetClasses.includes(cls.name) ? 'black' : 'white',
+                                  cursor: 'pointer',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.9rem'
+                                }}
+                              >
+                                {cls.name}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
 
@@ -1095,7 +1159,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gap: '1rem' }}>
+              <div style={{ display: 'grid', gap: '1rem' }}>
                 {evaluations.map(ev => (
                   <div key={ev.id} className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', background: 'rgba(255,255,255,0.02)' }}>
                     <div>
