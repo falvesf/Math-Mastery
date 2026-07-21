@@ -196,11 +196,11 @@ export default function Dashboard() {
     }, [student.uid]);
 
     return (
-      <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {student.avatarConfig ? (
-          <AvatarCharacter config={student.avatarConfig} equippedItems={eqItems} size={size * 1.5} interactive={false} />
+          <AvatarCharacter config={student.avatarConfig} equippedItems={eqItems} size={size} interactive={false} />
         ) : (
-          <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
         )}
       </div>
     );
