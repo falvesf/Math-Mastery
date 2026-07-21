@@ -20,6 +20,10 @@ export interface UserData {
   hearts?: number;
   lastHeartRegen?: number; // timestamp in milliseconds
   extraInventorySpace?: number; // espaços extras na mochila
+  stunnedUntil?: number | null;
+  happyBuffUntil?: number | null;
+  happyBuffDuration?: number | null;
+  customStatusText?: string;
   avatarConfig?: {
     skinColor: string;
     hairColor: string;

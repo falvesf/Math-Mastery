@@ -4,7 +4,7 @@ import { signOut } from 'firebase/auth';
 import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart } from 'lucide-react';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { getRankForXp, RANKS, type RankDef } from '../lib/ranks';
 import LevelUpModal from '../components/LevelUpModal';
 import StudentStore from '../components/StudentStore';
@@ -108,7 +108,6 @@ export default function Dashboard() {
   }, [userData, inventoryRefresh]);
 
   useEffect(() => {
-    const fetchRankings = async () => {
     const q = query(collection(db, 'users'), where('role', '==', 'student'));
     const unsub = onSnapshot(q, (snap) => {
       const loaded: UserData[] = [];
