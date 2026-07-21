@@ -32,7 +32,7 @@ interface UserItem {
 }
 
 export default function StudentInventory({ userData, onEquip }: { userData: UserData, onEquip?: () => void }) {
-  const { showAlert, showConfirm } = useDialog();
+  const { showAlert, showConfirm, showConfirmWithCheckbox } = useDialog();
   const [items, setItems] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sellModalItem, setSellModalItem] = useState<UserItem | null>(null);
@@ -166,16 +166,26 @@ export default function StudentInventory({ userData, onEquip }: { userData: User
       await showAlert("Desequipe o item antes de jogá-lo fora!");
       return;
     }
-    const confirmed = await showConfirm(`Tem certeza que deseja DESCARTAR "${item.itemTitle}"? Ele ficará perdido e poderá ser encontrado por outros jogadores em missões.`);
-    if (!confirmed) return;
+    const result = await showConfirmWithCheckbox(
+      `Tem certeza que deseja DESCARTAR "${item.itemTitle}"? Ele ficará perdido e poderá ser encontrado por outros jogadores em missões.`,
+      "Destruir item permanentemente (ninguém poderá encontrar)"
+    );
+    if (!result || !result.confirmed) return;
     
     const docToUpdate = item.docIds ? item.docIds[0] : item.id;
-    await updateDoc(doc(db, 'user_items', docToUpdate), {
-      studentId: 'dropped',
-      droppedBy: userData.uid
-    });
-    fetchInventory();
-    await showAlert("Item jogado fora!");
+    
+    if (result.checked) {
+      await deleteDoc(doc(db, 'user_items', docToUpdate));
+      fetchInventory();
+      await showAlert("Item destruído permanentemente!");
+    } else {
+      await updateDoc(doc(db, 'user_items', docToUpdate), {
+        studentId: 'dropped',
+        droppedBy: userData.uid
+      });
+      fetchInventory();
+      await showAlert("Item jogado fora!");
+    }
   };
 
   const submitSell = async () => {

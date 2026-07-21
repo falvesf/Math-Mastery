@@ -11,6 +11,7 @@ interface DialogOptions {
 interface DialogContextType {
   showAlert: (message: string, title?: string) => Promise<void>;
   showConfirm: (message: string, title?: string) => Promise<boolean>;
+  showConfirmWithCheckbox: (message: string, checkboxLabel: string, title?: string) => Promise<{ confirmed: boolean, checked: boolean } | null>;
   showPrompt: (message: string, defaultValue?: string, title?: string) => Promise<string | null>;
 }
 
@@ -18,9 +19,10 @@ const DialogContext = createContext<DialogContextType | undefined>(undefined);
 
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [type, setType] = useState<'alert' | 'confirm' | 'prompt'>('alert');
+  const [type, setType] = useState<'alert' | 'confirm' | 'confirm-checkbox' | 'prompt'>('alert');
   const [dialogState, setDialogState] = useState<DialogOptions & { defaultValue?: string }>({ message: '' });
   const [promptValue, setPromptValue] = useState('');
+  const [checkboxState, setCheckboxState] = useState<{ label: string, checked: boolean } | null>(null);
   const [resolvePromise, setResolvePromise] = useState<{ resolve: (value: any) => void } | null>(null);
 
   const showAlert = useCallback((message: string, title?: string) => {
@@ -36,6 +38,16 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     return new Promise<boolean>((resolve) => {
       setType('confirm');
       setDialogState({ message, title });
+      setResolvePromise({ resolve });
+      setIsOpen(true);
+    });
+  }, []);
+
+  const showConfirmWithCheckbox = useCallback((message: string, checkboxLabel: string, title?: string) => {
+    return new Promise<{ confirmed: boolean, checked: boolean } | null>((resolve) => {
+      setType('confirm-checkbox');
+      setDialogState({ message, title });
+      setCheckboxState({ label: checkboxLabel, checked: false });
       setResolvePromise({ resolve });
       setIsOpen(true);
     });
@@ -58,6 +70,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         resolvePromise.resolve(undefined);
       } else if (type === 'prompt') {
         resolvePromise.resolve(result ? promptValue : null);
+      } else if (type === 'confirm-checkbox') {
+        resolvePromise.resolve(result ? { confirmed: true, checked: checkboxState?.checked || false } : null);
       } else {
         resolvePromise.resolve(result);
       }
@@ -65,7 +79,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <DialogContext.Provider value={{ showAlert, showConfirm, showPrompt }}>
+    <DialogContext.Provider value={{ showAlert, showConfirm, showConfirmWithCheckbox, showPrompt }}>
       {children}
       {isOpen && createPortal(
         <div style={{
@@ -131,11 +145,22 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               </div>
               <div style={{ flex: 1, marginTop: '0.2rem' }}>
                 <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', color: 'white' }}>
-                  {dialogState.title || (type === 'alert' ? 'Aviso' : type === 'confirm' ? 'Confirmação' : 'Entrada de Dados')}
+                  {dialogState.title || (type === 'alert' ? 'Aviso' : (type === 'confirm' || type === 'confirm-checkbox') ? 'Confirmação' : 'Entrada de Dados')}
                 </h3>
                 <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: '1.5', fontSize: '1.05rem' }}>
                   {dialogState.message}
                 </p>
+                {type === 'confirm-checkbox' && checkboxState && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1.5rem', cursor: 'pointer', color: 'white', padding: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--accent-red)', borderRadius: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={checkboxState.checked}
+                      onChange={(e) => setCheckboxState({ ...checkboxState, checked: e.target.checked })}
+                      style={{ width: '20px', height: '20px', accentColor: 'var(--accent-red)' }}
+                    />
+                    {checkboxState.label}
+                  </label>
+                )}
                 {type === 'prompt' && (
                   <input
                     type="text"
@@ -161,7 +186,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
-              {(type === 'confirm' || type === 'prompt') && (
+              {(type === 'confirm' || type === 'confirm-checkbox' || type === 'prompt') && (
                 <button
                   onClick={() => handleClose(false)}
                   style={{
