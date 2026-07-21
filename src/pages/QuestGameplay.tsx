@@ -292,8 +292,8 @@ export default function QuestGameplay() {
               }, 500);
             } else {
               setPlayerAnim('attack');
-              setMonsterAnim('hurt');
-              setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
+              setTimeout(() => setMonsterAnim('hurt'), 350);
+              setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1200);
               setTimeout(() => {
                 setFeedback(null);
                 setBattleMessage('Prepare-se para o próximo round!');
@@ -324,8 +324,8 @@ export default function QuestGameplay() {
             }, 500);
          } else {
             setPlayerAnim('attack');
-            setMonsterAnim('hurt');
-            setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
+            setTimeout(() => setMonsterAnim('hurt'), 350);
+            setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1200);
             setTimeout(() => {
               setFeedback(null);
               setBattleMessage('Prepare-se para o próximo round!');
@@ -343,9 +343,9 @@ export default function QuestGameplay() {
         "O inimigo é forte, tente focar mais!"
       ];
       setBattleMessage(wrongMsgs[Math.floor(Math.random() * wrongMsgs.length)]);
-      setPlayerAnim('hurt');
       setMonsterAnim('attack');
-      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
+      setTimeout(() => setPlayerAnim('hurt'), 350);
+      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1200);
       
       if (hasShield) {
         setHasShield(false);
