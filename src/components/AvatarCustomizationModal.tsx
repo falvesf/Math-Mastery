@@ -169,7 +169,9 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
           <UserIcon size={32} color="var(--accent-primary)" />
-          <h2 style={{ margin: 0, fontSize: '1.5rem' }}>Personalizar Personagem</h2>
+          <h2 style={{ margin: 0, fontSize: '1.5rem', textTransform: 'uppercase' }}>
+            {customSaveMode ? 'Personalizar Monstro' : 'Personalizar Personagem'}
+          </h2>
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
@@ -215,7 +217,21 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
           {/* Controls */}
           <div style={{ flex: '2 1 400px' }}>
             
-            <div style={{ marginBottom: '1.5rem' }}>
+            {customSaveMode && (
+              <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-primary)', borderRadius: '8px' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL da Skin Customizada (Opcional - Ex: Nova Skin)</label>
+                <input 
+                  type="text" 
+                  value={config.customSkinUrl || ''} 
+                  onChange={e => setConfig({ ...config, customSkinUrl: e.target.value })} 
+                  placeholder="Deixe em branco para usar o gerador abaixo" 
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} 
+                />
+                {config.customSkinUrl && <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: 'var(--accent-primary)' }}>Skin externa ativada. As configurações visuais abaixo serão ignoradas na renderização do monstro.</p>}
+              </div>
+            )}
+            
+            <div style={{ marginBottom: '1.5rem', opacity: config.customSkinUrl ? 0.5 : 1, pointerEvents: config.customSkinUrl ? 'none' : 'auto' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Modelo Base (Gênero)</label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 {['male', 'female'].map(gender => (
@@ -340,8 +356,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
               disabled={saving}
               style={{ width: '100%', marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
             >
-              <Save size={20} />
-              {saving ? 'Salvando...' : 'Salvar Personagem'}
+              <Save size={20} /> {saving ? 'Salvando...' : customSaveMode ? 'Salvar Monstro' : 'Salvar Personagem'}
             </button>
           </div>
         </div>

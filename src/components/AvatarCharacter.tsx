@@ -15,6 +15,7 @@ export interface AvatarConfig {
   pantsColor?: string;
   handedness?: 'right' | 'left';
   animationState?: 'idle' | 'walk' | 'run';
+  customSkinUrl?: string;
 }
 
 export interface EquippedItem {
@@ -79,20 +80,25 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
     const loadSkins = async () => {
         if (!config || !viewerRef.current) return;
         try {
-            const normalUrl = await generateMinecraftSkinUrl(config, false);
-            const blinkUrl = await generateMinecraftSkinUrl(config, true);
-            
-            if (!isMounted) return;
-            await viewerRef.current.loadSkin(normalUrl);
-            if (!isMounted) return;
-            
-            blinkInterval = setInterval(() => {
-                if (!viewerRef.current) return;
-                viewerRef.current.loadSkin(blinkUrl);
-                setTimeout(() => {
-                    if (viewerRef.current && isMounted) viewerRef.current.loadSkin(normalUrl);
-                }, 150);
-            }, 3500 + Math.random() * 2000);
+            if (config.customSkinUrl) {
+                if (!isMounted) return;
+                await viewerRef.current.loadSkin(config.customSkinUrl);
+            } else {
+                const normalUrl = await generateMinecraftSkinUrl(config, false);
+                const blinkUrl = await generateMinecraftSkinUrl(config, true);
+                
+                if (!isMounted) return;
+                await viewerRef.current.loadSkin(normalUrl);
+                if (!isMounted) return;
+                
+                blinkInterval = setInterval(() => {
+                    if (!viewerRef.current) return;
+                    viewerRef.current.loadSkin(blinkUrl);
+                    setTimeout(() => {
+                        if (viewerRef.current && isMounted) viewerRef.current.loadSkin(normalUrl);
+                    }, 150);
+                }, 3500 + Math.random() * 2000);
+            }
             
         } catch (e) {
             console.error("Error loading 3D skin", e);
