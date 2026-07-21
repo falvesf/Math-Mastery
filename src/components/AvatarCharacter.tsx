@@ -32,7 +32,7 @@ export interface AvatarCharacterProps {
   config: AvatarConfig | null;
   equippedItems?: EquippedItem[];
   size?: number; // largura base
-  animation?: 'idle' | 'walk' | 'run' | 'cheer' | 'attack' | 'hurt';
+  animation?: 'idle' | 'walk' | 'run' | 'cheer' | 'attack' | 'hurt' | 'death-fall' | 'death-explode';
   interactive?: boolean;
   showSlots?: boolean;
 }
@@ -136,6 +136,32 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
 
   useEffect(() => {
     if (!viewerRef.current) return;
+    const player = viewerRef.current.playerObject;
+
+    // Função para resetar posições e rotações alteradas por mortes/ataques
+    const resetBones = () => {
+      if (!player || !player.skin) return;
+      player.position.set(0, 0, 0);
+      player.rotation.set(0, 0, 0);
+      player.skin.head.position.set(0, 8, 0);
+      player.skin.head.rotation.set(0, 0, 0);
+      player.skin.body.position.set(0, 0, 0);
+      player.skin.body.rotation.set(0, 0, 0);
+      
+      const isSlim = viewerRef.current?.animation?.constructor.name.includes("Slim"); 
+      // Approximate reset
+      player.skin.leftArm.position.set(-6, 4, 0);
+      player.skin.leftArm.rotation.set(0, 0, 0);
+      player.skin.rightArm.position.set(6, 4, 0);
+      player.skin.rightArm.rotation.set(0, 0, 0);
+      player.skin.leftLeg.position.set(-2, -4, 0);
+      player.skin.leftLeg.rotation.set(0, 0, 0);
+      player.skin.rightLeg.position.set(2, -4, 0);
+      player.skin.rightLeg.rotation.set(0, 0, 0);
+    };
+
+    resetBones();
+
     if (animation === 'walk') {
       viewerRef.current.animation = new WalkingAnimation();
     } else if (animation === 'run') {
@@ -168,6 +194,40 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
         player.skin.leftArm.rotation.z = 0.5;
         player.skin.rightArm.rotation.z = -0.5;
         player.position.z = Math.abs(Math.sin(time * 10)) * -3;
+      });
+    } else if (animation === 'death-fall') {
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        const fall = Math.min(time * 3, Math.PI / 2);
+        player.rotation.x = -fall;
+        player.position.y = -fall * 10;
+        player.position.z = -fall * 5;
+        player.skin.leftArm.rotation.z = fall * 0.5;
+        player.skin.rightArm.rotation.z = -fall * 0.5;
+      });
+    } else if (animation === 'death-explode') {
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        const scatter = Math.min(time * 8, 30);
+        player.skin.head.position.y = 8 + scatter * 1.5;
+        player.skin.head.rotation.y = time * 5;
+        
+        player.skin.leftArm.position.x = -6 - scatter;
+        player.skin.leftArm.position.y = 4 + scatter * 0.5;
+        player.skin.leftArm.rotation.z = time * -10;
+
+        player.skin.rightArm.position.x = 6 + scatter;
+        player.skin.rightArm.position.y = 4 + scatter * 0.5;
+        player.skin.rightArm.rotation.z = time * 10;
+
+        player.skin.leftLeg.position.x = -2 - scatter * 0.5;
+        player.skin.leftLeg.position.y = -4 - scatter;
+        player.skin.leftLeg.rotation.x = time * -5;
+
+        player.skin.rightLeg.position.x = 2 + scatter * 0.5;
+        player.skin.rightLeg.position.y = -4 - scatter;
+        player.skin.rightLeg.rotation.x = time * 5;
+
+        player.skin.body.position.z = -scatter;
+        player.skin.body.rotation.x = time * 3;
       });
     } else {
       viewerRef.current.animation = new IdleAnimation();

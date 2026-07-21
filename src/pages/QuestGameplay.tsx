@@ -288,15 +288,34 @@ export default function QuestGameplay() {
               setEliminatedOptions([]);
               const targetIndex = currentQIndex + 2;
               if (targetIndex >= quest.questions.length) {
-                finishGame(true, currentXp);
+                // Fatality!
+                const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
+                const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+                setMonsterAnim(fatality);
+                setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
+                setTimeout(() => finishGame(true, currentXp), 4500);
               } else {
                 setCurrentQIndex(targetIndex);
               }
            } else {
-              finishGame(true, currentXp);
+              // Fatality!
+              const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
+              const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+              setMonsterAnim(fatality);
+              setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
+              setTimeout(() => finishGame(true, currentXp), 4500);
            }
         } else {
-           nextQuestion();
+           const nextQExists = currentQIndex < quest.questions.length - 1;
+           if (!nextQExists) {
+              const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
+              const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+              setMonsterAnim(fatality);
+              setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
+              setTimeout(() => finishGame(true, currentXp), 4500);
+           } else {
+              nextQuestion();
+           }
         }
       }, 2000);
     } else {
@@ -548,9 +567,12 @@ export default function QuestGameplay() {
           <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20 }}>
             
             {/* Player Side */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'attack' ? 'translateX(50px)' : playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+            <div 
+              className={playerAnim === 'attack' ? 'teleport-player' : ''}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim === 'attack' ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
+            >
               <div style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={playerAnim} interactive={false} />
+                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={playerAnim as any} interactive={false} />
                 {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
               </div>
               <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
@@ -559,26 +581,44 @@ export default function QuestGameplay() {
             {/* Battle Message */}
             <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 2rem' }}>
               <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', textAlign: 'center', minWidth: '250px', backdropFilter: 'blur(10px)', boxShadow: 'var(--shadow-glass)' }}>
-                <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'white', minHeight: '1.5em', fontStyle: 'italic' }}>
+                <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'white', minHeight: '1.5em', fontStyle: 'italic', textShadow: battleMessage.includes('FATALITY') ? '0 0 10px red' : 'none' }}>
                   {battleMessage}
                 </p>
               </div>
             </div>
 
             {/* Monster Side */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'attack' ? 'translateX(-50px)' : monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
-              <div style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                {quest?.monsterAvatarConfig ? (
-                  <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={100} animation={monsterAnim === 'hurt' ? 'hurt' : monsterAnim === 'attack' ? 'attack' : 'idle'} interactive={false} />
-                ) : (
-                  <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
-                )}
-                {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
-              </div>
+            <div 
+              className={monsterAnim === 'attack' ? 'teleport-monster' : ''}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim === 'attack' ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
+            >
+              {monsterAnim === 'death-slice' ? (
+                <div style={{ position: 'relative', width: '120px', height: '180px' }}>
+                  <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                    <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={100} animation="idle" interactive={false} />
+                  </div>
+                  <div className="death-slice-right" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                    <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={100} animation="idle" interactive={false} />
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  className={monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : ''}
+                  style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+                >
+                  {quest?.monsterAvatarConfig ? (
+                    <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={100} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'death-fall' || monsterAnim === 'death-explode') ? monsterAnim as any : 'idle'} interactive={false} />
+                  ) : (
+                    <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
+                  )}
+                  {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
+                </div>
+              )}
+              
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>{quest?.monsterName || 'Inimigo'}</span>
+                <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>{quest?.monsterName || 'Inimigo'}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
-                  {Array.from({ length: Math.max(0, (quest?.questions.length || 0) - currentQIndex) }).map((_, i) => (
+                  {Array.from({ length: Math.max(0, (quest?.questions.length || 0) - currentQIndex - (monsterAnim.startsWith('death-') ? 1 : 0)) }).map((_, i) => (
                     <Heart key={i} size={14} fill="#ef4444" color="#ef4444" />
                   ))}
                 </div>
