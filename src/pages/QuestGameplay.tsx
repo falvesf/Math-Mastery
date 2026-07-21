@@ -549,9 +549,9 @@ export default function QuestGameplay() {
             
             {/* Player Side */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'attack' ? 'translateX(50px)' : playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
-              <div style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '50%', border: '3px solid var(--gold-primary)', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={150} animation={playerAnim} interactive={false} />
-                {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: -10, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite' }} />}
+              <div style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={playerAnim} interactive={false} />
+                {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
               </div>
               <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
             </div>
@@ -567,15 +567,22 @@ export default function QuestGameplay() {
 
             {/* Monster Side */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'attack' ? 'translateX(-50px)' : monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
-              <div style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '50%', border: '3px solid var(--accent-red)', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <div style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                 {quest?.monsterAvatarConfig ? (
-                  <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={150} animation={monsterAnim === 'hurt' ? 'hurt' : monsterAnim === 'attack' ? 'attack' : 'idle'} interactive={false} />
+                  <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={100} animation={monsterAnim === 'hurt' ? 'hurt' : monsterAnim === 'attack' ? 'attack' : 'idle'} interactive={false} />
                 ) : (
-                  <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
+                  <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
                 )}
-                {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: -10, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite' }} />}
+                {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
               </div>
-              <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>{quest?.monsterName || 'Inimigo'}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>{quest?.monsterName || 'Inimigo'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
+                  {Array.from({ length: Math.max(0, (quest?.questions.length || 0) - currentQIndex) }).map((_, i) => (
+                    <Heart key={i} size={14} fill="#ef4444" color="#ef4444" />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
