@@ -121,6 +121,7 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
               
               blinkInterval = setInterval(() => {
                   if (!viewerRef.current) return;
+                  if (skinUrls.blink === skinUrls.normal) return; // Prevent unnecessary reloading for custom skins that don't have blink frames
                   viewerRef.current.loadSkin(skinUrls.blink);
                   setTimeout(() => {
                       if (viewerRef.current && isMounted) viewerRef.current.loadSkin(skinUrls.normal);
