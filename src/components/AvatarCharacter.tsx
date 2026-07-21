@@ -32,7 +32,7 @@ export interface AvatarCharacterProps {
   config: AvatarConfig | null;
   equippedItems?: EquippedItem[];
   size?: number; // largura base
-  animation?: 'idle' | 'walk' | 'run' | 'cheer' | 'attack' | 'hurt' | 'death-fall' | 'death-explode';
+  animation?: 'idle' | 'walk' | 'run' | 'cheer' | 'attack' | 'hurt' | 'exhausted' | 'death-fall' | 'death-explode';
   interactive?: boolean;
   showSlots?: boolean;
 }
@@ -43,7 +43,7 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
 
   // States to hold generated skin URLs
-  const [skinUrls, setSkinUrls] = useState<{ normal: string; blink: string; hurt: string } | null>(null);
+  const [skinUrls, setSkinUrls] = useState<{ normal: string; blink: string; hurt: string; exhausted: string } | null>(null);
 
   const bgItems = equippedItems.filter(i => i.avatarPart === 'background');
 
@@ -86,13 +86,14 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
                 const finalUrl = (config.customSkinUrl.startsWith('http') || config.customSkinUrl.startsWith('data:')) 
                     ? config.customSkinUrl 
                     : `https://${config.customSkinUrl}`;
-                setSkinUrls({ normal: finalUrl, blink: finalUrl, hurt: finalUrl });
+                setSkinUrls({ normal: finalUrl, blink: finalUrl, hurt: finalUrl, exhausted: finalUrl });
             } else {
                 const normalUrl = await generateMinecraftSkinUrl(config, false);
                 const blinkUrl = await generateMinecraftSkinUrl(config, true);
                 const hurtConfig = { ...config, mouthStyle: 'sad' };
                 const hurtUrl = await generateMinecraftSkinUrl(hurtConfig, true);
-                if (isMounted) setSkinUrls({ normal: normalUrl, blink: blinkUrl, hurt: hurtUrl });
+                const exhaustedUrl = await generateMinecraftSkinUrl(hurtConfig, false);
+                if (isMounted) setSkinUrls({ normal: normalUrl, blink: blinkUrl, hurt: hurtUrl, exhausted: exhaustedUrl });
             }
         } catch (e) {
             console.error("Error generating 3D skins", e);
@@ -116,6 +117,16 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
           if (animation === 'hurt') {
               if (blinkInterval) clearInterval(blinkInterval);
               await viewerRef.current!.loadSkin(skinUrls.hurt);
+          } else if (animation === 'exhausted') {
+              await viewerRef.current!.loadSkin(skinUrls.exhausted);
+              blinkInterval = setInterval(() => {
+                  if (!viewerRef.current) return;
+                  if (skinUrls.blink === skinUrls.normal) return; 
+                  viewerRef.current.loadSkin(skinUrls.hurt);
+                  setTimeout(() => {
+                      if (viewerRef.current && isMounted) viewerRef.current.loadSkin(skinUrls.exhausted);
+                  }, 150);
+              }, 3500 + Math.random() * 2000);
           } else {
               await viewerRef.current!.loadSkin(skinUrls.normal);
               
@@ -188,7 +199,7 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
         player.skin.rightArm.rotation.x = Math.sin(time * 15) * 2;
         player.position.z = Math.sin(time * 10) * 2;
       });
-    } else if (animation === 'hurt') {
+    } else if (animation === 'hurt' || animation === 'exhausted') {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
         // Jogado para trás, braços abertos
         player.skin.head.rotation.x = -0.5;

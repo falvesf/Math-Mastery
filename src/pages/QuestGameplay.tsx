@@ -793,7 +793,7 @@ export default function QuestGameplay() {
                       config={userData?.avatarConfig || null} 
                       equippedItems={playerEquippedItems} 
                       size={100} 
-                      animation={(currentHearts === 3) ? 'cheer' : currentHearts === 2 ? 'idle' : 'hurt'} 
+                      animation={(currentHearts === 3) ? 'cheer' : currentHearts === 2 ? 'idle' : 'exhausted'} 
                       interactive={false} 
                     />
                     <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - currentHearts) / 3)) } as any} />
