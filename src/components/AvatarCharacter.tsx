@@ -31,7 +31,7 @@ export interface AvatarCharacterProps {
   config: AvatarConfig | null;
   equippedItems?: EquippedItem[];
   size?: number; // largura base
-  animation?: 'idle' | 'walk' | 'run' | 'cheer';
+  animation?: 'idle' | 'walk' | 'run' | 'cheer' | 'attack' | 'hurt';
   interactive?: boolean;
   showSlots?: boolean;
 }
@@ -125,6 +125,22 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
         player.skin.rightLeg.rotation.x = 0;
         player.skin.leftLeg.rotation.z = -0.1;
         player.skin.rightLeg.rotation.z = 0.1;
+      });
+    } else if (animation === 'attack') {
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        // Movimento rápido de ataque com braço direito e pequeno avanço
+        player.skin.rightArm.rotation.x = Math.sin(time * 15) * 2;
+        player.position.z = Math.sin(time * 10) * 2;
+      });
+    } else if (animation === 'hurt') {
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        // Jogado para trás, braços abertos
+        player.skin.head.rotation.x = -0.5;
+        player.skin.leftArm.rotation.x = -Math.PI / 4;
+        player.skin.rightArm.rotation.x = -Math.PI / 4;
+        player.skin.leftArm.rotation.z = 0.5;
+        player.skin.rightArm.rotation.z = -0.5;
+        player.position.z = Math.abs(Math.sin(time * 10)) * -3;
       });
     } else {
       viewerRef.current.animation = new IdleAnimation();

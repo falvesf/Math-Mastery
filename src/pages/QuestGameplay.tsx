@@ -5,6 +5,7 @@ import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, query, whe
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, ShieldAlert, Swords, Clock, Star, Shield, Heart, CheckCircle, XCircle, Package, Zap } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
+import AvatarCharacter, { type AvatarConfig, type EquippedItem } from '../components/AvatarCharacter';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 
@@ -44,6 +45,7 @@ export default function QuestGameplay() {
   
   // Power-up States
   const [powerups, setPowerups] = useState<UserItem[]>([]);
+  const [playerEquippedItems, setPlayerEquippedItems] = useState<EquippedItem[]>([]);
   const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
   const [hasShield, setHasShield] = useState(false);
   
@@ -109,15 +111,20 @@ export default function QuestGameplay() {
       setCurrentXp(qData.baseXp);
       setGameState('intro');
 
-      // Fetch Powerups
+      // Fetch Powerups & Equipped Items
       if (userData?.uid && !isStudyMode) {
-        const pQ = query(collection(db, 'user_items'), where('studentId', '==', userData.uid), where('itemType', '==', 'consumable'));
+        const pQ = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
         const pSnap = await getDocs(pQ);
         const pLoaded: UserItem[] = [];
+        const eLoaded: EquippedItem[] = [];
+        
         pSnap.forEach(d => {
           const item = d.data() as UserItem;
-          if (item.usableInQuest) {
+          if (item.itemType === 'consumable' && item.usableInQuest) {
             pLoaded.push({ ...item, id: d.id });
+          }
+          if (item.equipped) {
+            eLoaded.push(item as unknown as EquippedItem);
           }
         });
 
@@ -134,6 +141,7 @@ export default function QuestGameplay() {
         });
         
         setPowerups(Array.from(groupedMap.values()));
+        setPlayerEquippedItems(eLoaded);
       }
     };
 
@@ -249,14 +257,23 @@ export default function QuestGameplay() {
     if (isCorrect) {
       setFeedback('correct');
       
-      const msgs = [
-        "Muito bem! Um golpe crítico no monstro!",
-        "Você acertou em cheio!",
-        "Incrível! O monstro sentiu essa!",
-        "Excelente! Continue pressionando!",
-        "Golpe de mestre!"
-      ];
-      setBattleMessage(msgs[Math.floor(Math.random() * msgs.length)]);
+      const timeRatio = timeLeft / quest.questions[currentQIndex].timeLimit;
+      const critChance = timeRatio > 0.5 ? 0.02 : 0.0025;
+      const isCritical = Math.random() < critChance;
+      
+      if (isCritical) {
+        setBattleMessage('DANO CRÍTICO! Você deu um golpe duplo super efetivo!');
+      } else {
+        const msgs = [
+          "Muito bem! O monstro sentiu o golpe!",
+          "Você acertou em cheio!",
+          "Incrível! Belíssimo ataque!",
+          "Excelente! Continue pressionando!",
+          "Golpe de mestre!"
+        ];
+        setBattleMessage(msgs[Math.floor(Math.random() * msgs.length)]);
+      }
+      
       setPlayerAnim('attack');
       setMonsterAnim('hurt');
       setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
@@ -264,7 +281,23 @@ export default function QuestGameplay() {
       setTimeout(() => {
         setFeedback(null);
         setBattleMessage('Prepare-se para o próximo round!');
-        nextQuestion();
+        
+        if (isCritical) {
+           const nextQExists = currentQIndex < quest.questions.length - 1;
+           if (nextQExists) {
+              setEliminatedOptions([]);
+              const targetIndex = currentQIndex + 2;
+              if (targetIndex >= quest.questions.length) {
+                finishGame(true, currentXp);
+              } else {
+                setCurrentQIndex(targetIndex);
+              }
+           } else {
+              finishGame(true, currentXp);
+           }
+        } else {
+           nextQuestion();
+        }
       }, 2000);
     } else {
       setFeedback('wrong');
@@ -516,9 +549,9 @@ export default function QuestGameplay() {
             
             {/* Player Side */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'attack' ? 'translateX(50px)' : playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
-              <div style={{ position: 'relative' }}>
-                <img src={userData?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData?.name}`} alt="Player" style={{ width: '80px', height: '80px', borderRadius: '50%', border: '3px solid var(--gold-primary)', background: 'var(--bg-dark)', objectFit: 'cover' }} />
-                {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: -10, background: 'rgba(239, 68, 68, 0.5)', borderRadius: '50%', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite' }} />}
+              <div style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '50%', border: '3px solid var(--gold-primary)', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={150} animation={playerAnim} interactive={false} />
+                {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: -10, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite' }} />}
               </div>
               <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
             </div>
@@ -534,11 +567,15 @@ export default function QuestGameplay() {
 
             {/* Monster Side */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'attack' ? 'translateX(-50px)' : monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
-              <div style={{ position: 'relative' }}>
-                <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '90px', height: '90px', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
+              <div style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '50%', border: '3px solid var(--accent-red)', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {quest?.monsterAvatarConfig ? (
+                  <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={150} animation={monsterAnim === 'hurt' ? 'hurt' : monsterAnim === 'attack' ? 'attack' : 'idle'} interactive={false} />
+                ) : (
+                  <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
+                )}
                 {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: -10, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite' }} />}
               </div>
-              <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Inimigo</span>
+              <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>{quest?.monsterName || 'Inimigo'}</span>
             </div>
           </div>
         )}

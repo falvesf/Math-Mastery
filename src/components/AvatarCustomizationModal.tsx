@@ -9,7 +9,9 @@ import { useDialog } from '../contexts/DialogContext';
 interface AvatarCustomizationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userData: UserData;
+  userData?: UserData;
+  initialConfig?: AvatarConfig;
+  customSaveMode?: boolean;
   onSave: (newConfig: AvatarConfig) => void;
 }
 
@@ -26,7 +28,7 @@ const HAIR_STYLES = ['short', 'long', 'spiky', 'bald', 'ponytail', 'mohawk', 'me
 const MOUTH_STYLES = ['smile', 'neutral', 'sad', 'open', 'teeth'];
 const EYE_STYLES = ['normal', 'cute', 'wink', 'tired'];
 
-export default function AvatarCustomizationModal({ isOpen, onClose, userData, onSave }: AvatarCustomizationModalProps) {
+export default function AvatarCustomizationModal({ isOpen, onClose, userData, initialConfig, customSaveMode, onSave }: AvatarCustomizationModalProps) {
   const { showAlert } = useDialog();
   const [config, setConfig] = useState<AvatarConfig>({
     gender: 'male',
@@ -41,27 +43,37 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, on
 
   useEffect(() => {
     if (isOpen) {
-      setConfig(userData.avatarConfig || {
-        gender: 'male',
-        skinColor: '#ffcc99',
-        hairColor: '#4a3000',
-        eyeColor: '#000000',
-        hairStyle: 'short',
-        mouthStyle: 'smile',
-        handedness: 'right',
-        animationState: 'idle',
-      });
+      if (initialConfig) {
+        setConfig(initialConfig);
+      } else if (userData?.avatarConfig) {
+        setConfig(userData.avatarConfig);
+      } else {
+        setConfig({
+          gender: 'male',
+          skinColor: '#ffcc99',
+          hairColor: '#4a3000',
+          eyeColor: '#000000',
+          hairStyle: 'short',
+          mouthStyle: 'smile',
+          handedness: 'right',
+          animationState: 'idle',
+        });
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, initialConfig, userData]);
 
   if (!isOpen) return null;
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: config });
+      if (!customSaveMode && userData) {
+        await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: config });
+        await showAlert('Personagem salvo com sucesso!');
+      } else {
+        await showAlert('Aparência salva na memória temporária. Não se esqueça de salvar a missão!');
+      }
       onSave(config);
-      await showAlert('Personagem salvo com sucesso!');
       onClose();
     } catch (e) {
       console.error(e);

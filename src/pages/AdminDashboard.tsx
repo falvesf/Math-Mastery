@@ -11,6 +11,8 @@ import ImageGalleryModal from '../components/ImageGalleryModal';
 import DirectUploadButton from '../components/DirectUploadButton';
 import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
+import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
+import { type AvatarConfig } from '../components/AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
 
 export interface ClassDef {
@@ -41,6 +43,8 @@ export interface QuestDef {
   allowRetries: boolean;
   xpPenaltyPerRetry: number;
   questions: QuestQuestion[];
+  monsterName?: string;
+  monsterAvatarConfig?: AvatarConfig;
   active: boolean;
 }
 
@@ -113,6 +117,10 @@ export default function AdminDashboard() {
   const [questQuestions, setQuestQuestions] = useState<QuestQuestion[]>([
     { title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }
   ]);
+  const [questMonsterName, setQuestMonsterName] = useState('');
+  const [questMonsterConfig, setQuestMonsterConfig] = useState<AvatarConfig | null>(null);
+  const [isCustomizingMonster, setIsCustomizingMonster] = useState(false);
+  
   const [galleryTarget, setGalleryTarget] = useState<string | null>(null);
   const [pixabayKey, setPixabayKey] = useState('');
 
@@ -419,12 +427,14 @@ export default function AdminDashboard() {
       allowRetries: questRetries,
       xpPenaltyPerRetry: questRetries ? (parseInt(questPenalty) || 0) : 0,
       questions: questQuestions,
+      monsterName: questMonsterName,
+      monsterAvatarConfig: questMonsterConfig || undefined,
       active: true
     };
     await setDoc(doc(db, 'quests', questId), newQuest);
     setIsCreatingQuest(false);
     setEditingQuestId(null);
-    setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0');
+    setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
     setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
     fetchQuests();
   };
@@ -438,6 +448,8 @@ export default function AdminDashboard() {
     setQuestRetries(quest.allowRetries);
     setQuestPenalty((quest.xpPenaltyPerRetry || 0).toString());
     setQuestQuestions(quest.questions);
+    setQuestMonsterName(quest.monsterName || '');
+    setQuestMonsterConfig(quest.monsterAvatarConfig || null);
     setIsCreatingQuest(true);
   };
 
@@ -878,6 +890,21 @@ export default function AdminDashboard() {
                         )}
                       </div>
 
+                    </div>
+
+                    <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--border-glass)', marginTop: '2rem' }}>
+                      <h4 style={{ color: 'var(--accent-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Swords size={20} /> Configurar Monstro / Oponente</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome do Monstro</label>
+                          <input type="text" value={questMonsterName} onChange={e => setQuestMonsterName(e.target.value)} placeholder="Ex: Golem de Pedra" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                          <button onClick={() => setIsCustomizingMonster(true)} style={{ width: '100%', padding: '1rem', background: questMonsterConfig ? 'var(--gold-primary)' : 'rgba(59, 130, 246, 0.2)', color: questMonsterConfig ? 'black' : 'var(--accent-primary)', border: `1px solid ${questMonsterConfig ? 'var(--gold-primary)' : 'var(--accent-primary)'}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            {questMonsterConfig ? 'Editar Aparência 3D do Monstro' : 'Criar Monstro 3D Personalizado'}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -1456,6 +1483,18 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
+      )}
+      
+      {isCustomizingMonster && (
+        <AvatarCustomizationModal
+          isOpen={true}
+          onClose={() => setIsCustomizingMonster(false)}
+          initialConfig={questMonsterConfig || undefined}
+          customSaveMode={true}
+          onSave={(newConfig) => {
+             setQuestMonsterConfig(newConfig);
+          }}
+        />
       )}
     </div>
   );
