@@ -782,7 +782,13 @@ export default function QuestGameplay() {
               ) : won ? (
                 <>
                   <div style={{ position: 'relative', width: '120px', height: '180px', margin: '0 auto 2rem auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation="idle" interactive={false} />
+                    <AvatarCharacter 
+                      config={userData?.avatarConfig || null} 
+                      equippedItems={playerEquippedItems} 
+                      size={100} 
+                      animation={(userData?.hearts === undefined || userData.hearts === 3) ? 'cheer' : userData.hearts === 2 ? 'idle' : 'hurt'} 
+                      interactive={false} 
+                    />
                     <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - (userData?.hearts || 3)) / 3)) } as any} />
                   </div>
                   <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
