@@ -237,19 +237,10 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
                  {item ? (
                    <>
                      <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>{item.itemTitle || 'Item Desconhecido'}</h4>
-                     <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                       {item.itemCategory === 'attack' && '⚔️ Item de Ataque'}
-                       {item.itemCategory === 'defense' && '🛡️ Item de Defesa'}
-                       {item.itemCategory === 'support' && '🌿 Item de Suporte'}
-                       {(!item.itemCategory || item.itemCategory === 'none') && 'Cosmético'}
-                     </p>
                      
                      {item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
-                       <div style={{ marginBottom: '0.5rem', padding: '0.25rem 0.5rem', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', fontSize: '0.9rem' }}>
-                         <strong>Atributo Fixo:</strong><br/>
-                         <span style={{ color: ATTRIBUTE_LABELS[item.baseAttributeType].color }}>
-                           {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
-                         </span>
+                       <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'white' }}>
+                         {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
                        </div>
                      )}
                      
