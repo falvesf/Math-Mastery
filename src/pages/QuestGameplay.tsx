@@ -47,6 +47,7 @@ export default function QuestGameplay() {
   const [powerups, setPowerups] = useState<UserItem[]>([]);
   const [playerEquippedItems, setPlayerEquippedItems] = useState<EquippedItem[]>([]);
   const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
+  const [currentHearts, setCurrentHearts] = useState<number>(3);
   const [hasShield, setHasShield] = useState(false);
   
   // RPG Battle States
@@ -112,7 +113,7 @@ export default function QuestGameplay() {
       setGameState('intro');
 
       // Fetch Powerups & Equipped Items
-      if (userData?.uid && !isStudyMode) {
+      if (userData?.uid) {
         const pQ = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
         const pSnap = await getDocs(pQ);
         const pLoaded: UserItem[] = [];
@@ -198,6 +199,7 @@ export default function QuestGameplay() {
   };
 
   const startGame = async () => {
+    setCurrentHearts(userData?.hearts ?? 3);
     if (userData?.role === 'student' && (userData?.hearts || 0) < 1 && !isStudyMode) {
       await showAlert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
       setGameState('result');
@@ -235,9 +237,13 @@ export default function QuestGameplay() {
       setHasShield(true);
     }
 
-    // Consume the item
-    await deleteDoc(doc(db, 'user_items', item.id));
+    // Consume the item locally
     setPowerups(powerups.filter(p => p.id !== item.id));
+    
+    // Consume in DB only if not in study mode
+    if (!isStudyMode) {
+      await deleteDoc(doc(db, 'user_items', item.id));
+    }
   };
 
   const handleAnswer = async (optIndex: number) => {
@@ -357,15 +363,16 @@ export default function QuestGameplay() {
         return;
       }
       
-      let newHearts = userData?.hearts || 0;
+      let newHearts = Math.max(0, currentHearts - 1);
+      setCurrentHearts(newHearts);
+
       if (userData?.role === 'student' && !isStudyMode) {
-        newHearts = Math.max(0, newHearts - 1);
         userData.hearts = newHearts;
         const userRef = doc(db, 'users', userData.uid);
         await updateDoc(userRef, { hearts: newHearts });
       }
       
-      if (newHearts === 0 && userData?.role === 'student' && !isStudyMode) {
+      if (newHearts === 0 && userData?.role === 'student') {
         setTimeout(() => {
           finishGame(false, 0, 'Você perdeu todos os seus corações (Game Over). Descanse ou use um item para tentar novamente mais tarde.');
         }, 2000);
@@ -561,9 +568,9 @@ export default function QuestGameplay() {
                   <Star size={18} color="var(--gold-primary)" />
                   <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)' }}>{currentXp} XP</span>
                 </div>
-                {!isStudyMode && userData?.role === 'student' && (
+                {userData?.role === 'student' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid #ef4444' }}>
-                    {Array.from({ length: userData.hearts || 0 }).map((_, i) => (
+                    {Array.from({ length: currentHearts }).map((_, i) => (
                       <Heart key={i} size={18} fill="#ef4444" color="#ef4444" />
                     ))}
                   </div>
@@ -589,7 +596,7 @@ export default function QuestGameplay() {
               <div style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                 <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={playerAnim as any} interactive={false} />
                 {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
-                <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - (userData?.hearts || 3)) / 3)) } as any} />
+                <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - currentHearts) / 3)) } as any} />
               </div>
               <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
             </div>
@@ -786,10 +793,10 @@ export default function QuestGameplay() {
                       config={userData?.avatarConfig || null} 
                       equippedItems={playerEquippedItems} 
                       size={100} 
-                      animation={(userData?.hearts === undefined || userData.hearts === 3) ? 'cheer' : userData.hearts === 2 ? 'idle' : 'hurt'} 
+                      animation={(currentHearts === 3) ? 'cheer' : currentHearts === 2 ? 'idle' : 'hurt'} 
                       interactive={false} 
                     />
-                    <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - (userData?.hearts || 3)) / 3)) } as any} />
+                    <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - currentHearts) / 3)) } as any} />
                   </div>
                   <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
                   <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem' }}>O monstro foi derrotado e o desafio foi superado.</p>
