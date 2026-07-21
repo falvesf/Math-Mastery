@@ -83,7 +83,9 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
         if (!config) return;
         try {
             if (config.customSkinUrl) {
-                const finalUrl = config.customSkinUrl.startsWith('http') ? config.customSkinUrl : `https://${config.customSkinUrl}`;
+                const finalUrl = (config.customSkinUrl.startsWith('http') || config.customSkinUrl.startsWith('data:')) 
+                    ? config.customSkinUrl 
+                    : `https://${config.customSkinUrl}`;
                 setSkinUrls({ normal: finalUrl, blink: finalUrl, hurt: finalUrl });
             } else {
                 const normalUrl = await generateMinecraftSkinUrl(config, false);
