@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, User as UserIcon, Upload } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { supabase } from '../lib/supabase';
 import { doc, updateDoc } from 'firebase/firestore';
 import type { UserData } from '../contexts/AuthContext';
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
