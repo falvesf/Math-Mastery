@@ -42,6 +42,9 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
 
+  // States to hold generated skin URLs
+  const [skinUrls, setSkinUrls] = useState<{ normal: string; blink: string; hurt: string } | null>(null);
+
   const bgItems = equippedItems.filter(i => i.avatarPart === 'background');
 
   useEffect(() => {
@@ -74,44 +77,60 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
         viewerRef.current.height = size * 1.8;
     }
 
-    let isMounted = true;
-    let blinkInterval: any;
-    
-    const loadSkins = async () => {
-        if (!config || !viewerRef.current) return;
+    const generateSkins = async () => {
+        if (!config) return;
         try {
             if (config.customSkinUrl) {
-                if (!isMounted) return;
-                await viewerRef.current.loadSkin(config.customSkinUrl);
+                setSkinUrls({ normal: config.customSkinUrl, blink: config.customSkinUrl, hurt: config.customSkinUrl });
             } else {
                 const normalUrl = await generateMinecraftSkinUrl(config, false);
                 const blinkUrl = await generateMinecraftSkinUrl(config, true);
-                
-                if (!isMounted) return;
-                await viewerRef.current.loadSkin(normalUrl);
-                if (!isMounted) return;
-                
-                blinkInterval = setInterval(() => {
-                    if (!viewerRef.current) return;
-                    viewerRef.current.loadSkin(blinkUrl);
-                    setTimeout(() => {
-                        if (viewerRef.current && isMounted) viewerRef.current.loadSkin(normalUrl);
-                    }, 150);
-                }, 3500 + Math.random() * 2000);
+                const hurtConfig = { ...config, mouthStyle: 'sad' };
+                const hurtUrl = await generateMinecraftSkinUrl(hurtConfig, true);
+                if (isMounted) setSkinUrls({ normal: normalUrl, blink: blinkUrl, hurt: hurtUrl });
             }
-            
         } catch (e) {
-            console.error("Error loading 3D skin", e);
+            console.error("Error generating 3D skins", e);
         }
     };
 
-    loadSkins();
+    generateSkins();
 
     return () => {
         isMounted = false;
-        if (blinkInterval) clearInterval(blinkInterval);
     };
   }, [config, size]);
+
+  // Handle Skin Application & Blinking
+  useEffect(() => {
+      if (!viewerRef.current || !skinUrls) return;
+      let isMounted = true;
+      let blinkInterval: any;
+
+      const applySkins = async () => {
+          if (animation === 'hurt') {
+              if (blinkInterval) clearInterval(blinkInterval);
+              await viewerRef.current!.loadSkin(skinUrls.hurt);
+          } else {
+              await viewerRef.current!.loadSkin(skinUrls.normal);
+              
+              blinkInterval = setInterval(() => {
+                  if (!viewerRef.current) return;
+                  viewerRef.current.loadSkin(skinUrls.blink);
+                  setTimeout(() => {
+                      if (viewerRef.current && isMounted && animation !== 'hurt') viewerRef.current.loadSkin(skinUrls.normal);
+                  }, 150);
+              }, 3500 + Math.random() * 2000);
+          }
+      };
+
+      applySkins();
+
+      return () => {
+          isMounted = false;
+          if (blinkInterval) clearInterval(blinkInterval);
+      };
+  }, [skinUrls, animation]);
 
   useEffect(() => {
     if (!viewerRef.current) return;
