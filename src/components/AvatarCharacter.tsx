@@ -148,7 +148,6 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
       player.skin.body.position.set(0, 0, 0);
       player.skin.body.rotation.set(0, 0, 0);
       
-      const isSlim = viewerRef.current?.animation?.constructor.name.includes("Slim"); 
       // Approximate reset
       player.skin.leftArm.position.set(-6, 4, 0);
       player.skin.leftArm.rotation.set(0, 0, 0);

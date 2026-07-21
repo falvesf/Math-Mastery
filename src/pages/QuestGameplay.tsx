@@ -5,7 +5,7 @@ import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, query, whe
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, ShieldAlert, Swords, Clock, Star, Shield, Heart, CheckCircle, XCircle, Package, Zap } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
-import AvatarCharacter, { type AvatarConfig, type EquippedItem } from '../components/AvatarCharacter';
+import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 
@@ -51,8 +51,8 @@ export default function QuestGameplay() {
   
   // RPG Battle States
   const [battleMessage, setBattleMessage] = useState<string>('Prepare-se para a batalha!');
-  const [playerAnim, setPlayerAnim] = useState<'idle' | 'attack' | 'hurt'>('idle');
-  const [monsterAnim, setMonsterAnim] = useState<'idle' | 'attack' | 'hurt'>('idle');
+  const [playerAnim, setPlayerAnim] = useState<string>('idle');
+  const [monsterAnim, setMonsterAnim] = useState<string>('idle');
   
   // Feedback Visual (certo/errado)
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
