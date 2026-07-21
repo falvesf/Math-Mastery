@@ -77,6 +77,8 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
         viewerRef.current.height = size * 1.8;
     }
 
+    let isMounted = true;
+
     const generateSkins = async () => {
         if (!config) return;
         try {
@@ -118,7 +120,7 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
                   if (!viewerRef.current) return;
                   viewerRef.current.loadSkin(skinUrls.blink);
                   setTimeout(() => {
-                      if (viewerRef.current && isMounted && animation !== 'hurt') viewerRef.current.loadSkin(skinUrls.normal);
+                      if (viewerRef.current && isMounted) viewerRef.current.loadSkin(skinUrls.normal);
                   }, 150);
               }, 3500 + Math.random() * 2000);
           }
