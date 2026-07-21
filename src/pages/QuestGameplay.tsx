@@ -273,51 +273,58 @@ export default function QuestGameplay() {
         ];
         setBattleMessage(msgs[Math.floor(Math.random() * msgs.length)]);
       }
-      
-      setPlayerAnim('attack');
-      setMonsterAnim('hurt');
-      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
-
-      setTimeout(() => {
-        setFeedback(null);
-        setBattleMessage('Prepare-se para o próximo round!');
-        
         if (isCritical) {
            const nextQExists = currentQIndex < quest.questions.length - 1;
            if (nextQExists) {
               setEliminatedOptions([]);
               const targetIndex = currentQIndex + 2;
               if (targetIndex >= quest.questions.length) {
-                // Fatality!
+                // Fatality (Crítico)
+                setPlayerAnim('attack-fatal');
+                setTimeout(() => {
+                  const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
+                  const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+                  setMonsterAnim(fatality);
+                  setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
+                  setTimeout(() => finishGame(true, currentXp), 3500);
+                }, 500);
+              } else {
+                setPlayerAnim('attack');
+                setMonsterAnim('hurt');
+                setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
+                setTimeout(() => setCurrentQIndex(targetIndex), 2000);
+              }
+           } else {
+              // Fatality (Crítico)
+              setPlayerAnim('attack-fatal');
+              setTimeout(() => {
                 const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
                 const fatality = deaths[Math.floor(Math.random() * deaths.length)];
                 setMonsterAnim(fatality);
                 setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
-                setTimeout(() => finishGame(true, currentXp), 4500);
-              } else {
-                setCurrentQIndex(targetIndex);
-              }
-           } else {
-              // Fatality!
-              const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
-              const fatality = deaths[Math.floor(Math.random() * deaths.length)];
-              setMonsterAnim(fatality);
-              setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
-              setTimeout(() => finishGame(true, currentXp), 4500);
+                setTimeout(() => finishGame(true, currentXp), 3500);
+              }, 500);
            }
         } else {
            const nextQExists = currentQIndex < quest.questions.length - 1;
            if (!nextQExists) {
-              const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
-              const fatality = deaths[Math.floor(Math.random() * deaths.length)];
-              setMonsterAnim(fatality);
-              setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
-              setTimeout(() => finishGame(true, currentXp), 4500);
+              // Fatality Normal
+              setPlayerAnim('attack-fatal');
+              setTimeout(() => {
+                const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
+                const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+                setMonsterAnim(fatality);
+                setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
+                setTimeout(() => finishGame(true, currentXp), 3500);
+              }, 500);
            } else {
-              nextQuestion();
+              setPlayerAnim('attack');
+              setMonsterAnim('hurt');
+              setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1000);
+              setTimeout(() => nextQuestion(), 2000);
            }
         }
-      }, 2000);
+      }, 500); // reduced delay for triggering attack visual
     } else {
       setFeedback('wrong');
       
@@ -568,12 +575,13 @@ export default function QuestGameplay() {
             
             {/* Player Side */}
             <div 
-              className={playerAnim === 'attack' ? 'teleport-player' : ''}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim === 'attack' ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
+              className={playerAnim === 'attack' ? 'teleport-player' : playerAnim === 'attack-fatal' ? 'teleport-player-fatal' : ''}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
             >
               <div style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                 <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={playerAnim as any} interactive={false} />
                 {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
+                <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - (userData?.hearts || 3)) / 3)) } as any} />
               </div>
               <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
             </div>
@@ -589,8 +597,8 @@ export default function QuestGameplay() {
 
             {/* Monster Side */}
             <div 
-              className={monsterAnim === 'attack' ? 'teleport-monster' : ''}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim === 'attack' ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
+              className={monsterAnim === 'attack' ? 'teleport-monster' : monsterAnim === 'attack-fatal' ? 'teleport-monster-fatal' : ''}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
             >
               {monsterAnim === 'death-slice' ? (
                 <div style={{ position: 'relative', width: '120px', height: '180px' }}>
@@ -612,6 +620,7 @@ export default function QuestGameplay() {
                     <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
                   )}
                   {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
+                  <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, currentQIndex / Math.max(1, quest?.questions.length || 1))) } as any} />
                 </div>
               )}
               
