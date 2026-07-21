@@ -5,7 +5,7 @@ import { Package, ShieldAlert, CheckCircle, Gift } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
-import { type ItemCategory, type AttributeType, type ItemAdd } from '../lib/gacha';
+import { ATTRIBUTE_LABELS, type ItemCategory, type AttributeType, type ItemAdd } from '../lib/gacha';
 
 interface UserItem {
   id: string;
@@ -37,6 +37,7 @@ export default function StudentInventory({ userData, onEquip }: { userData: User
   const [loading, setLoading] = useState(true);
   const [sellModalItem, setSellModalItem] = useState<UserItem | null>(null);
   const [sellPrice, setSellPrice] = useState('');
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   const currentRank = getRankForXp(userData.xp || 0);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
@@ -241,7 +242,10 @@ export default function StudentInventory({ userData, onEquip }: { userData: User
           }}>
             {slots.map((item, index) => (
               item ? (
-                <div key={item.id || index} style={{ 
+                <div key={item.id || index} 
+                  onMouseEnter={() => setHoveredItem(item.id)}
+                  onMouseLeave={() => setHoveredItem(null)}
+                  style={{ 
                   background: 'var(--bg-dark)', 
                   padding: '1rem', 
                   borderRadius: '12px', 
@@ -265,6 +269,54 @@ export default function StudentInventory({ userData, onEquip }: { userData: User
                       <Package size={48} color="var(--text-secondary)" style={{ alignSelf: 'center' }} />
                     )}
                   </div>
+                  
+                  {/* Tooltip Estilo RPG */}
+                  {hoveredItem === item.id && item.itemType === 'equippable' && (
+                     <div style={{
+                       position: 'absolute',
+                       bottom: '105%',
+                       left: '50%',
+                       transform: 'translateX(-50%)',
+                       background: 'rgba(15, 23, 42, 0.95)',
+                       border: '1px solid var(--border-glass)',
+                       borderRadius: '8px',
+                       padding: '1rem',
+                       width: 'max-content',
+                       minWidth: '200px',
+                       zIndex: 50,
+                       boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                       backdropFilter: 'blur(10px)',
+                       pointerEvents: 'none',
+                       color: 'white',
+                       textAlign: 'left'
+                     }}>
+                       <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>{item.itemTitle}</h4>
+                       
+                       {item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
+                         <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'white' }}>
+                           {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
+                         </div>
+                       )}
+                       
+                       {item.adds && item.adds.length > 0 && (
+                         <div style={{ fontSize: '0.9rem' }}>
+                           <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
+                           <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem' }}>
+                             {item.adds.map((add: ItemAdd, i: number) => {
+                               const lbl = ATTRIBUTE_LABELS[add.type];
+                               if (!lbl) return null;
+                               return (
+                                 <li key={i} style={{ color: lbl.color, marginBottom: '0.25rem' }}>
+                                   {lbl.icon} {lbl.label}: +{add.value}%
+                                 </li>
+                               );
+                             })}
+                           </ul>
+                         </div>
+                       )}
+                     </div>
+                  )}
+                  
                   
                   <div style={{ textAlign: 'center' }}>
                     <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{item.itemTitle}</h4>
