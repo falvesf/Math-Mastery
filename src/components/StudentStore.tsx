@@ -27,7 +27,7 @@ interface MarketItem {
 }
 
 export default function StudentStore({ userData }: { userData: UserData }) {
-  const { showAlert, showConfirm } = useDialog();
+  const { showAlert, showConfirm, showPrompt } = useDialog();
   const [activeTab, setActiveTab] = useState<'official' | 'market'>('official');
   const [items, setItems] = useState<StoreItem[]>([]);
   const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
@@ -301,7 +301,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   };
 
   const handleEditPrice = async (item: MarketItem) => {
-    const priceStr = window.prompt(`Digite o novo preço para "${item.itemTitle}":`, item.price.toString());
+    const priceStr = await showPrompt(`Digite o novo preço para "${item.itemTitle}":`, item.price?.toString() || '');
     if (!priceStr) return;
     
     const price = parseInt(priceStr, 10);

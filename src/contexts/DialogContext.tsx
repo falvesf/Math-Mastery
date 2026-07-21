@@ -11,14 +11,16 @@ interface DialogOptions {
 interface DialogContextType {
   showAlert: (message: string, title?: string) => Promise<void>;
   showConfirm: (message: string, title?: string) => Promise<boolean>;
+  showPrompt: (message: string, defaultValue?: string, title?: string) => Promise<string | null>;
 }
 
 const DialogContext = createContext<DialogContextType | undefined>(undefined);
 
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [type, setType] = useState<'alert' | 'confirm'>('alert');
-  const [dialogState, setDialogState] = useState<DialogOptions>({ message: '' });
+  const [type, setType] = useState<'alert' | 'confirm' | 'prompt'>('alert');
+  const [dialogState, setDialogState] = useState<DialogOptions & { defaultValue?: string }>({ message: '' });
+  const [promptValue, setPromptValue] = useState('');
   const [resolvePromise, setResolvePromise] = useState<{ resolve: (value: any) => void } | null>(null);
 
   const showAlert = useCallback((message: string, title?: string) => {
@@ -39,11 +41,23 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const showPrompt = useCallback((message: string, defaultValue: string = '', title?: string) => {
+    return new Promise<string | null>((resolve) => {
+      setType('prompt');
+      setDialogState({ message, title, defaultValue });
+      setPromptValue(defaultValue);
+      setResolvePromise({ resolve });
+      setIsOpen(true);
+    });
+  }, []);
+
   const handleClose = (result: boolean) => {
     setIsOpen(false);
     if (resolvePromise) {
       if (type === 'alert') {
         resolvePromise.resolve(undefined);
+      } else if (type === 'prompt') {
+        resolvePromise.resolve(result ? promptValue : null);
       } else {
         resolvePromise.resolve(result);
       }
@@ -51,7 +65,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <DialogContext.Provider value={{ showAlert, showConfirm }}>
+    <DialogContext.Provider value={{ showAlert, showConfirm, showPrompt }}>
       {children}
       {isOpen && createPortal(
         <div style={{
@@ -117,16 +131,37 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               </div>
               <div style={{ flex: 1, marginTop: '0.2rem' }}>
                 <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', color: 'white' }}>
-                  {dialogState.title || (type === 'alert' ? 'Aviso' : 'Confirmação')}
+                  {dialogState.title || (type === 'alert' ? 'Aviso' : type === 'confirm' ? 'Confirmação' : 'Entrada de Dados')}
                 </h3>
                 <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: '1.5', fontSize: '1.05rem' }}>
                   {dialogState.message}
                 </p>
+                {type === 'prompt' && (
+                  <input
+                    type="text"
+                    value={promptValue}
+                    onChange={(e) => setPromptValue(e.target.value)}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleClose(true);
+                    }}
+                    style={{
+                      width: '100%',
+                      marginTop: '1rem',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-glass)',
+                      background: 'rgba(0,0,0,0.3)',
+                      color: 'white',
+                      fontSize: '1rem'
+                    }}
+                  />
+                )}
               </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
-              {type === 'confirm' && (
+              {(type === 'confirm' || type === 'prompt') && (
                 <button
                   onClick={() => handleClose(false)}
                   style={{

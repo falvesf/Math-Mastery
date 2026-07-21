@@ -16,7 +16,7 @@ import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
 import { Edit3, MessageCircle } from 'lucide-react';
 
 export default function Dashboard() {
-  const { showAlert } = useDialog();
+  const { showAlert, showPrompt } = useDialog();
   const { userData } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
@@ -179,7 +179,7 @@ export default function Dashboard() {
   };
 
   const handleEditStatus = async () => {
-    const status = prompt('Digite sua mensagem de status (ex: Feliz da vida!, Cansado de matemática...):', userData?.customStatusText || '');
+    const status = await showPrompt('Digite sua mensagem de status (ex: Feliz da vida!, Cansado de matemática...):', userData?.customStatusText || '');
     if (status === null) return;
     
     if (hasProfanity(status)) {
