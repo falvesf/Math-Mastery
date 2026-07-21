@@ -781,7 +781,10 @@ export default function QuestGameplay() {
                 </>
               ) : won ? (
                 <>
-                  <CheckCircle size={80} color="var(--gold-primary)" style={{ margin: '0 auto 2rem auto' }} />
+                  <div style={{ position: 'relative', width: '120px', height: '180px', margin: '0 auto 2rem auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                    <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation="idle" interactive={false} />
+                    <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (3 - (userData?.hearts || 3)) / 3)) } as any} />
+                  </div>
                   <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
                   <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem' }}>O monstro foi derrotado e o desafio foi superado.</p>
                   <div style={{ background: 'rgba(251, 191, 36, 0.1)', padding: '2rem', borderRadius: '12px', display: 'inline-block', marginBottom: '3rem' }}>
