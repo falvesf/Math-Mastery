@@ -175,7 +175,7 @@ export default function Dashboard() {
   const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
   const top10General = allStudents.slice(0, 10);
 
-  const RankingAvatar = ({ student, size }: { student: UserData; size: number }) => {
+  const RankingAvatar = ({ student, size, animation = 'idle' }: { student: UserData; size: number; animation?: 'idle'|'walk'|'run'|'cheer' }) => {
     const [eqItems, setEqItems] = useState<any[]>([]);
 
     useEffect(() => {
@@ -198,7 +198,7 @@ export default function Dashboard() {
     return (
       <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {student.avatarConfig ? (
-          <AvatarCharacter config={student.avatarConfig} equippedItems={eqItems} size={size} interactive={false} />
+          <AvatarCharacter config={student.avatarConfig} equippedItems={eqItems} size={size} interactive={false} animation={animation} />
         ) : (
           <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
         )}
@@ -259,7 +259,7 @@ export default function Dashboard() {
                 </div>
                 
                 <div style={{ padding: '2px', borderRadius: '50%', border: `2px solid ${medalColor}`, boxShadow: rankPos === 1 ? '0 0 10px rgba(251,191,36,0.5)' : 'none' }}>
-                  <RankingAvatar student={student} size={avatarSize} />
+                  <RankingAvatar student={student} size={avatarSize} animation={rankPos === 1 ? 'cheer' : 'idle'} />
                 </div>
                 
                 <div>
