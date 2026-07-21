@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, Save, User as UserIcon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Save, User as UserIcon, Upload } from 'lucide-react';
 import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { doc, updateDoc } from 'firebase/firestore';
 import type { UserData } from '../contexts/AuthContext';
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
@@ -220,13 +221,38 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
             {customSaveMode && (
               <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-primary)', borderRadius: '8px' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL da Skin Customizada (Opcional - Ex: Nova Skin)</label>
-                <input 
-                  type="text" 
-                  value={config.customSkinUrl || ''} 
-                  onChange={e => setConfig({ ...config, customSkinUrl: e.target.value })} 
-                  placeholder="Deixe em branco para usar o gerador abaixo" 
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} 
-                />
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input 
+                    type="text" 
+                    value={config.customSkinUrl || ''} 
+                    onChange={e => setConfig({ ...config, customSkinUrl: e.target.value })} 
+                    placeholder="Cole um link terminado em .png" 
+                    style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} 
+                  />
+                  <input
+                    type="file"
+                    accept="image/png"
+                    id="skin-upload"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        if (event.target?.result) {
+                          setConfig({ ...config, customSkinUrl: event.target.result.toString() });
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                  <button
+                    onClick={() => document.getElementById('skin-upload')?.click()}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0 1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'white', cursor: 'pointer' }}
+                  >
+                    <Upload size={18} /> Upload
+                  </button>
+                </div>
                 {config.customSkinUrl && <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: 'var(--accent-primary)' }}>Skin externa ativada. As configurações visuais abaixo serão ignoradas na renderização do monstro.</p>}
               </div>
             )}
