@@ -93,7 +93,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           itemCategory: itemData.itemCategory || 'none',
           baseAttributeType: itemData.baseAttributeType || 'none',
           baseAttributeValue: itemData.baseAttributeValue || 0,
-          itemTitle: itemData.title
+          itemTitle: itemData.title,
+          itemImageUrl: itemData.imageUrl || '',
+          itemType: itemData.type || 'consumable',
+          gameEffect: itemData.gameEffect || 'none',
+          avatarPart: itemData.avatarPart || null,
+          usableInQuest: itemData.usableInQuest || false
         }));
       });
       await Promise.all(updatePromises);
