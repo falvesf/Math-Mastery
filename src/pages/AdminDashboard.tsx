@@ -12,7 +12,7 @@ import DirectUploadButton from '../components/DirectUploadButton';
 import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
-import { type AvatarConfig } from '../components/AvatarCharacter';
+import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
 
 export interface ClassDef {
@@ -713,7 +713,13 @@ export default function AdminDashboard() {
                               }}
                               style={{ width: '20px', height: '20px', cursor: 'pointer' }}
                             />
-                            <img src={student.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}` }} />
+                            {student.avatarConfig ? (
+                              <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                                <AvatarCharacter config={student.avatarConfig} equippedItems={[]} size={48} interactive={false} animation={student.avatarConfig?.animationState || 'idle'} />
+                              </div>
+                            ) : (
+                              <img src={student.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, objectFit: 'cover' }} />
+                            )}
                             <div>
                               <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 {student.name}
