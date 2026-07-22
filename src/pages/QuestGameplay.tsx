@@ -4,11 +4,13 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { RANKS } from '../lib/ranks';
 import { useAuth } from '../contexts/AuthContext';
-import { ArrowLeft, ShieldAlert, Swords, Clock, Star, Shield, Heart, CheckCircle, XCircle, Package, Zap } from 'lucide-react';
+import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircle, Package, Coins } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
+import CustomModelViewer from '../components/CustomModelViewer';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
+import { rollItemAdds } from '../lib/gacha';
 
 interface UserItem {
   id: string;
@@ -53,6 +55,11 @@ export default function QuestGameplay() {
   
   // RPG Battle States
   const [battleMessage, setBattleMessage] = useState<string>('Prepare-se para a batalha!');
+  const [chestRewards, setChestRewards] = useState<{coins: number, items: any[]}>({ coins: 0, items: [] });
+  const [showChest, setShowChest] = useState(false);
+  const [chestOpened, setChestOpened] = useState(false);
+  const [playerBubble, setPlayerBubble] = useState<string>('');
+  const [monsterBubble, setMonsterBubble] = useState<string>('');
   const [playerAnim, setPlayerAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
   
@@ -62,7 +69,45 @@ export default function QuestGameplay() {
   // Histórico de Respostas
   const [studentAnswers, setStudentAnswers] = useState<{ qIndex: number; text: string; isCorrect: boolean }[]>([]);
 
+  // Escudos e Defesa
+  const totalDefense = playerEquippedItems.reduce((acc, item) => {
+    if (item.baseAttributeType === 'defense') {
+      return acc + (item.baseAttributeValue || 0);
+    }
+    return acc;
+  }, 0);
+
+  const calculatePenalty = (basePenalty: number) => {
+    if (basePenalty <= 0) return 0;
+    const absorption = Math.min(100, totalDefense * 2.5);
+    return Math.floor(basePenalty * (1 - absorption / 100));
+  };
+
+  const [arenaWidth, setArenaWidth] = useState(800);
+  const arenaRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (arenaRef.current) {
+      setArenaWidth(arenaRef.current.offsetWidth);
+    }
+    const handleResize = () => {
+      if (arenaRef.current) setArenaWidth(arenaRef.current.offsetWidth);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [gameState]);
+
+  useEffect(() => {
+    if (battleMessage || playerBubble || monsterBubble) {
+      const t = setTimeout(() => {
+        if (!battleMessage.includes('FATALITY')) setBattleMessage('');
+        setPlayerBubble('');
+        setMonsterBubble('');
+      }, 2500);
+      return () => clearTimeout(t);
+    }
+  }, [battleMessage, playerBubble, monsterBubble]);
 
   useEffect(() => {
     const fetchQuest = async () => {
@@ -108,6 +153,34 @@ export default function QuestGameplay() {
         setGameState('result');
         return;
       }
+
+      // Apply shuffling if configured
+      let processedQuestions = [...qData.questions];
+      
+      if (qData.shuffleQuestions) {
+        processedQuestions.sort(() => Math.random() - 0.5);
+      }
+
+      if (qData.shuffleAnswers) {
+        processedQuestions = processedQuestions.map(q => {
+          const optionsWithCorrectness = q.options.map((opt, idx) => ({
+            ...opt,
+            isOriginalCorrect: idx === q.correctIndex
+          }));
+          
+          optionsWithCorrectness.sort(() => Math.random() - 0.5);
+          
+          const newCorrectIndex = optionsWithCorrectness.findIndex(o => o.isOriginalCorrect);
+          
+          return {
+            ...q,
+            options: optionsWithCorrectness.map(({ isOriginalCorrect, ...rest }) => rest),
+            correctIndex: newCorrectIndex
+          };
+        });
+      }
+      
+      qData.questions = processedQuestions;
 
       setQuest(qData);
       setCurrentXp(qData.baseXp);
@@ -160,28 +233,6 @@ export default function QuestGameplay() {
         setTimeLeft(prev => {
           if (prev <= 1) {
             clearInterval(timerRef.current!);
-            
-            // Record timeout as a wrong answer
-            setStudentAnswers(prevAns => [...prevAns, {
-              qIndex: currentQIndex,
-              text: '(Tempo Esgotado)',
-              isCorrect: false
-            }]);
-
-            const timeoutMsgs = [
-              "O monstro foi mais rápido e te acertou em cheio!",
-              "Você demorou demais para agir!",
-              "O tempo acabou e você sofreu dano!",
-              "A lentidão custou caro nesta rodada..."
-            ];
-            setBattleMessage(timeoutMsgs[Math.floor(Math.random() * timeoutMsgs.length)]);
-            setPlayerAnim('hurt');
-            setMonsterAnim('attack');
-            setTimeout(() => {
-              setPlayerAnim('idle');
-              setMonsterAnim('idle');
-            }, 1000);
-
             handleTimeOut();
             return 0;
           }
@@ -210,6 +261,35 @@ export default function QuestGameplay() {
     setCurrentQIndex(0);
     setEliminatedOptions([]);
     setHasShield(false);
+    
+    const startMsgs = [
+      "PREPARE-SE!",
+      "LUTE PELA SUA VIDA!",
+      `DERROTE ${quest?.monsterName ? quest.monsterName.toUpperCase() : 'O MONSTRO'} PARA AVANÇAR!`
+    ];
+    setBattleMessage(startMsgs[Math.floor(Math.random() * startMsgs.length)]);
+  };
+
+  const getRoundMessage = (nextQIndex: number, currentLife: number) => {
+    if (!quest) return '';
+    const totalQ = quest.questions.length;
+    const remainingQ = totalQ - nextQIndex;
+    
+    if (currentLife === 1 && remainingQ === 1) {
+      return "AGORA É UMA QUESTÃO DE VIDA OU MORTE. É TUDO OU NADA!";
+    }
+    
+    const playerHpPct = (currentLife / maxHearts) * 100;
+    const monsterHpPct = (remainingQ / totalQ) * 100;
+    if (Math.abs(playerHpPct - monsterHpPct) < 0.1) {
+      return "O DESAFIO ESTÁ EMPATADO";
+    }
+    
+    const roundNumber = nextQIndex + 1;
+    if (roundNumber === totalQ) {
+      return "ROUND FINAL";
+    }
+    return `ROUND ${roundNumber}`;
   };
 
   const usePowerup = async (item: UserItem) => {
@@ -247,17 +327,154 @@ export default function QuestGameplay() {
     }
   };
 
+  const triggerFatality = (isPlayerWinning: boolean) => {
+    const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
+    const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+    
+    let msg = '';
+    if (fatality === 'death-explode') msg = 'Agora EXPLODA!!!';
+    else if (fatality === 'death-slice') msg = 'Seja derrotado pela minha lâmina!';
+    else if (fatality === 'death-evaporate') msg = 'Vou te pulverizar!';
+    else msg = 'Caia perante mim!';
+    
+    const getVictoryMessage = () => {
+      const playerHpPercentage = (currentHearts / maxHearts) * 100;
+      const playerName = userData?.name || 'O Herói';
+      if (playerHpPercentage === 100) return 'O Desafio foi concluído de forma épica!';
+      if (playerHpPercentage >= 80) return 'Esse Desafio foi fácil!';
+      if (playerHpPercentage >= 50) return `${playerName} foi melhor e venceu!`;
+      if (playerHpPercentage >= 25) return 'Esse desafio teve uma certa disputa.';
+      return 'Esse desafio não foi nada fácil.';
+    };
+
+    const getDefeatMessage = () => {
+      const monsterName = quest?.monsterName || 'O monstro';
+      const msgs = [
+        `O/A ${monsterName} levou a melhor!`,
+        `Você não foi páreo para ${monsterName}.`,
+        'Você falhou neste desafio.'
+      ];
+      return msgs[Math.floor(Math.random() * msgs.length)];
+    };
+    
+    if (isPlayerWinning) {
+      setPlayerAnim('idle');
+      setPlayerBubble('Eu venci!');
+      
+      let monsterDefeatQuote = 'Argh!!!';
+      if (quest?.monsterDefeatQuotes) {
+        const quotes = quest.monsterDefeatQuotes.split(';').map(s => s.trim()).filter(s => s);
+        if (quotes.length > 0) monsterDefeatQuote = quotes[Math.floor(Math.random() * quotes.length)];
+      }
+
+      setTimeout(() => {
+        setPlayerAnim('attack-fatal-slow');
+        setPlayerBubble(msg);
+        setBattleMessage('Câmera lenta ativada! Golpe final épico!');
+        
+        setTimeout(() => {
+          setMonsterAnim(fatality);
+          setMonsterBubble(monsterDefeatQuote);
+          setBattleMessage(getVictoryMessage());
+          setTimeout(() => finishGame(true, currentXp), 3500);
+        }, 2500);
+      }, 3000);
+    } else {
+      setMonsterAnim('idle');
+      setMonsterBubble('Você é fraco!');
+      
+      const playerDefeatQuotes = ['NÃO!!!', 'AHHH!', 'ESSA NÃO!!!'];
+      const playerDefeatQuote = playerDefeatQuotes[Math.floor(Math.random() * playerDefeatQuotes.length)];
+
+      setTimeout(() => {
+        setMonsterAnim('attack-fatal-slow');
+        setMonsterBubble(msg);
+        setBattleMessage('GOLPE FATAL DO MONSTRO! Câmera lenta ativada...');
+        
+        setTimeout(() => {
+          setPlayerAnim('death-fall');
+          setPlayerBubble(playerDefeatQuote);
+          const gameOverMsg = isStudyMode 
+            ? 'Fim de Jogo (Modo Estudo). Suas vidas reais estão a salvo, mas a simulação terminou!' 
+            : getDefeatMessage();
+          setBattleMessage(gameOverMsg);
+          setTimeout(() => finishGame(false, 0, gameOverMsg), 3500);
+        }, 2500);
+      }, 3000);
+    }
+  };
+
+  const playerQuotesByHp = {
+    hp100_80: [
+      "Lá vou eu!",
+      "Segura essa!",
+      "Eu sou invencível!",
+      "Você não pode comigo!",
+      "Não vai chorar, heim!"
+    ],
+    hp79_50: [
+      "Você luta bem, mas eu vou vencer!",
+      "Eu estou em vantagem.",
+      "A vitória será minha!",
+      "Não vou perdoar esse ataque!"
+    ],
+    hp49_25: [
+      "Você é um adversário digno, mas eu sou melhor!",
+      "Ahhh!!!",
+      "Toma essa!",
+      "Você não vai me vencer!"
+    ],
+    hp24_0: [
+      "Eu ainda não desisti!",
+      "Arghhhhh!!",
+      "Eu vou conseguir!",
+      "Nada vai me desanimar.",
+      "Você é um adversário formidável!"
+    ]
+  };
+
+  const getDynamicQuote = (hpPercentage: number, source: 'player' | 'monster') => {
+    // 25% chance to speak
+    if (Math.random() > 0.25) return null;
+
+    let quotesArray: string[] = [];
+    
+    if (source === 'player') {
+      if (hpPercentage >= 80) quotesArray = playerQuotesByHp.hp100_80;
+      else if (hpPercentage >= 50) quotesArray = playerQuotesByHp.hp79_50;
+      else if (hpPercentage >= 25) quotesArray = playerQuotesByHp.hp49_25;
+      else quotesArray = playerQuotesByHp.hp24_0;
+    } else {
+      const custom = quest?.monsterQuotes;
+      let rawQuotes = '';
+      if (hpPercentage >= 80) rawQuotes = custom?.hp100_80 || '';
+      else if (hpPercentage >= 50) rawQuotes = custom?.hp79_50 || '';
+      else if (hpPercentage >= 25) rawQuotes = custom?.hp49_25 || '';
+      else rawQuotes = custom?.hp24_0 || '';
+
+      if (rawQuotes.trim()) {
+        quotesArray = rawQuotes.split(';').map(s => s.trim()).filter(s => s);
+      } else {
+        quotesArray = ["Grrrr!", "Roar!!!"];
+      }
+    }
+
+    if (quotesArray.length === 0) return null;
+    return quotesArray[Math.floor(Math.random() * quotesArray.length)];
+  };
+
   const handleAnswer = async (optIndex: number) => {
     if (!quest) return;
     if (timerRef.current) clearInterval(timerRef.current);
 
     const q = quest.questions[currentQIndex];
-    const isCorrect = optIndex === q.correctIndex;
+    const isTimeout = optIndex === -1;
+    const isCorrect = !isTimeout && optIndex === q.correctIndex;
     
     // Save answer
     setStudentAnswers(prev => [...prev, {
       qIndex: currentQIndex,
-      text: q.options[optIndex].text,
+      text: isTimeout ? '(Tempo Esgotado)' : q.options[optIndex].text,
       isCorrect
     }]);
 
@@ -270,16 +487,11 @@ export default function QuestGameplay() {
       
       if (isCritical) {
         setBattleMessage('DANO CRÍTICO! Você deu um golpe duplo super efetivo!');
-      } else {
-        const msgs = [
-          "Muito bem! O monstro sentiu o golpe!",
-          "Você acertou em cheio!",
-          "Incrível! Belíssimo ataque!",
-          "Excelente! Continue pressionando!",
-          "Golpe de mestre!"
-        ];
-        setBattleMessage(msgs[Math.floor(Math.random() * msgs.length)]);
       }
+
+      const playerHpPercentage = (currentHearts / maxHearts) * 100;
+      const quote = getDynamicQuote(playerHpPercentage, 'player');
+      if (quote) setPlayerBubble(quote);
 
       const nextQExists = currentQIndex < quest.questions.length - 1;
 
@@ -288,54 +500,30 @@ export default function QuestGameplay() {
             setEliminatedOptions([]);
             const targetIndex = currentQIndex + 2;
             if (targetIndex >= quest.questions.length) {
-              // Fatality (Crítico)
-              setPlayerAnim('attack-fatal');
-              setTimeout(() => {
-                const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
-                const fatality = deaths[Math.floor(Math.random() * deaths.length)];
-                setMonsterAnim(fatality);
-                setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
-                setTimeout(() => finishGame(true, currentXp), 3500);
-              }, 500);
+              triggerFatality(true);
             } else {
               setPlayerAnim('attack');
-              setTimeout(() => setMonsterAnim('hurt'), 350);
-              setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1200);
+              setTimeout(() => setMonsterAnim('hurt'), 500);
+              setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
               setTimeout(() => {
                 setFeedback(null);
-                setBattleMessage('Prepare-se para o próximo round!');
+                setBattleMessage(getRoundMessage(targetIndex, currentHearts));
                 setCurrentQIndex(targetIndex);
               }, 2000);
             }
          } else {
-            // Fatality (Crítico)
-            setPlayerAnim('attack-fatal');
-            setTimeout(() => {
-              const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
-              const fatality = deaths[Math.floor(Math.random() * deaths.length)];
-              setMonsterAnim(fatality);
-              setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
-              setTimeout(() => finishGame(true, currentXp), 3500);
-            }, 500);
+            triggerFatality(true);
          }
       } else {
          if (!nextQExists) {
-            // Fatality Normal
-            setPlayerAnim('attack-fatal');
-            setTimeout(() => {
-              const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
-              const fatality = deaths[Math.floor(Math.random() * deaths.length)];
-              setMonsterAnim(fatality);
-              setBattleMessage('FATALITY! O monstro foi destruído de forma épica!');
-              setTimeout(() => finishGame(true, currentXp), 3500);
-            }, 500);
+            triggerFatality(true);
          } else {
             setPlayerAnim('attack');
-            setTimeout(() => setMonsterAnim('hurt'), 350);
-            setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1200);
+            setTimeout(() => setMonsterAnim('hurt'), 500);
+            setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
             setTimeout(() => {
               setFeedback(null);
-              setBattleMessage('Prepare-se para o próximo round!');
+              setBattleMessage(getRoundMessage(currentQIndex + 1, currentHearts));
               nextQuestion();
             }, 2000);
          }
@@ -343,16 +531,30 @@ export default function QuestGameplay() {
     } else {
       setFeedback('wrong');
       
-      const wrongMsgs = [
-        "O monstro defendeu e te acertou!",
-        "Errou! Cuidado com o contra-ataque!",
-        "Seu golpe passou raspando... e o monstro revidou!",
-        "O inimigo é forte, tente focar mais!"
-      ];
-      setBattleMessage(wrongMsgs[Math.floor(Math.random() * wrongMsgs.length)]);
+      let newHearts = Math.max(0, currentHearts - 1);
+      const isFatalForPlayer = !hasShield && (newHearts === 0 || !quest.allowRetries);
+
+      if (isFatalForPlayer) {
+        setCurrentHearts(newHearts);
+        if (userData?.role === 'student' && !isStudyMode) {
+          userData.hearts = newHearts;
+          updateDoc(doc(db, 'users', userData.uid), { hearts: newHearts });
+        }
+        triggerFatality(false);
+        return;
+      }
+      
+      if (hasShield) {
+        setPlayerBubble("O escudo aguentou!");
+      } else {
+        const remainingQuestions = quest.questions.length - currentQIndex;
+        const monsterHpPercentage = (remainingQuestions / quest.questions.length) * 100;
+        const quote = getDynamicQuote(monsterHpPercentage, 'monster');
+        if (quote) setMonsterBubble(quote);
+      }
       setMonsterAnim('attack');
-      setTimeout(() => setPlayerAnim('hurt'), 350);
-      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1200);
+      setTimeout(() => setPlayerAnim('hurt'), 500);
+      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
       
       if (hasShield) {
         setHasShield(false);
@@ -364,7 +566,6 @@ export default function QuestGameplay() {
         return;
       }
       
-      let newHearts = Math.max(0, currentHearts - 1);
       setCurrentHearts(newHearts);
 
       if (userData?.role === 'student' && !isStudyMode) {
@@ -373,28 +574,17 @@ export default function QuestGameplay() {
         await updateDoc(userRef, { hearts: newHearts });
       }
       
-      if (newHearts === 0 && userData?.role === 'student') {
-        setTimeout(() => {
-          finishGame(false, 0, 'Você perdeu todos os seus corações (Game Over). Descanse ou use um item para tentar novamente mais tarde.');
-        }, 2000);
-        return;
-      }
-
-      if (!quest.allowRetries) {
-        // Hardcore mode: insta fail
-        setTimeout(() => {
-          finishGame(false, 0);
-        }, 2000);
-      } else {
-        // Vidas Extras: Deduct penalty but don't move to next question
-        const newXp = Math.max(0, currentXp - quest.xpPenaltyPerRetry);
-        setCurrentXp(newXp);
-        setTimeout(() => {
-          setFeedback(null);
-          setBattleMessage('Respire fundo e tente novamente!');
-          // O aluno tenta novamente a mesma pergunta
-        }, 1000);
-      }
+      // Vidas Extras: Deduct penalty but don't move to next question
+      const actualPenalty = calculatePenalty(quest.xpPenaltyPerRetry);
+      const newXp = Math.max(0, currentXp - actualPenalty);
+      setCurrentXp(newXp);
+      setTimeout(() => {
+        setFeedback(null);
+        setBattleMessage(actualPenalty < quest.xpPenaltyPerRetry 
+          ? 'Seu escudo absorveu parte do dano! Respire fundo e tente novamente!' 
+          : 'Respire fundo e tente novamente!');
+        // O aluno tenta novamente a mesma pergunta
+      }, 1000);
     }
   };
 
@@ -413,65 +603,152 @@ export default function QuestGameplay() {
     setGameState('result');
     if (customMessage) setErrorMessage(customMessage);
 
-    if (userData?.role === 'admin' || isStudyMode) return; // Admins and study mode don't get XP
+    const isStudent = userData?.role === 'student';
+    const isEligibleForXP = isStudent && !isStudyMode;
+    const isEligibleForChest = isStudent; // Baú cai em qualquer modo para alunos
     
     setSaving(true);
     
-    // Log XP if won and > 0
-    if (isWin && finalXp > 0) {
-      const userRef = doc(db, 'users', userData!.uid);
-      await updateDoc(userRef, {
-        xp: (userData?.xp || 0) + finalXp,
-        coins: (userData?.coins || 0) + finalXp
-      });
+    let actualXpGained = isEligibleForXP ? finalXp : 0;
+    let earnedCoins = actualXpGained;
+    const finalRewards = { coins: 0, items: [] as any[] };
 
-      await addDoc(collection(db, 'xp_logs'), {
-        studentId: userData!.uid,
-        evalName: `Missão: ${quest?.title}`,
-        xpGained: finalXp,
-        timestamp: serverTimestamp()
-      });
-    }
+    if (isEligibleForChest) {
+      if (isWin && quest?.chestConfig?.maxCoins && quest.chestConfig.maxCoins > 0) {
+        const dropChance = quest.chestConfig.dropChance ?? 100;
+        const shouldDropChest = (Math.random() * 100) <= dropChance;
 
-    if (userData && userData.role === 'student' && !isStudyMode) {
-      const userRef = doc(db, 'users', userData.uid);
-      const updates: any = {};
-      const now = Date.now();
-      
-      const rankIdx = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
-      const mHearts = Math.max(3, 3 + Math.floor(rankIdx / 2));
-      const hpPerc = (currentHearts / mHearts) * 100;
-      
-      if (!isWin || currentHearts === 0) {
-        updates.stunnedUntil = now + 10 * 60 * 1000;
-        updates.happyBuffUntil = null;
-        updates.happyBuffDuration = null;
-      } else if (hpPerc === 100) {
-        let newDuration = 5;
-        if (userData.happyBuffUntil && userData.happyBuffUntil > now) {
-          newDuration = (userData.happyBuffDuration || 5) * 2;
+        if (shouldDropChest) {
+          const max = quest.chestConfig.maxCoins;
+          const min = Math.max(1, Math.floor(max * 0.1));
+          finalRewards.coins = Math.floor(Math.random() * (max - min + 1)) + min;
+          earnedCoins += finalRewards.coins;
+          
+          const slots: { id: string, quantity: number }[] = [];
+          for (let i = 0; i < 4; i++) {
+            const itemId = quest.chestConfig.itemIds?.[i];
+            if (itemId && itemId.trim() !== '') {
+              slots.push({ id: itemId, quantity: quest.chestConfig.itemQuantities?.[i] || 1 });
+            }
+          }
+
+          if (slots.length > 0) {
+            const chances = [0.5, 0.25, 0.1, 0.05];
+            const wonSlots: typeof slots = [];
+            for (let i = 0; i < slots.length; i++) {
+              if (Math.random() <= chances[i]) {
+                wonSlots.push(slots[i]);
+              } else {
+                break;
+              }
+            }
+            
+            if (wonSlots.length > 0) {
+              const wonItemIds = wonSlots.map(s => s.id);
+              const q = query(collection(db, 'store_items'), where('__name__', 'in', wonItemIds));
+              const snap = await getDocs(q);
+              const storeItemsMap = new Map();
+              snap.docs.forEach(doc => storeItemsMap.set(doc.id, { id: doc.id, ...doc.data() }));
+              
+              for (const slot of wonSlots) {
+                const item = storeItemsMap.get(slot.id);
+                if (!item) continue;
+                
+                const itemData = {
+                  studentId: userData!.uid,
+                  itemId: item.id,
+                  itemTitle: item.title,
+                  itemType: item.type,
+                  itemImageUrl: item.imageUrl || '',
+                  gameEffect: item.gameEffect || 'none',
+                  usableInQuest: item.usableInQuest || false,
+                  quantity: slot.quantity,
+                  equipped: false,
+                  purchasedAt: serverTimestamp(),
+                  giftedBy: 'Baú do Desafio',
+                  avatarPart: item.avatarPart || null,
+                  itemCategory: item.itemCategory || 'none',
+                  baseAttributeType: item.baseAttributeType || 'none',
+                  baseAttributeValue: item.baseAttributeValue || 0,
+                  gameModelUrl: item.gameModelUrl || '',
+                  adds: item.type === 'equippable' ? rollItemAdds() : []
+                };
+                await addDoc(collection(db, 'user_items'), itemData);
+                finalRewards.items.push({ ...item, quantity: slot.quantity });
+              }
+            }
+          }
+          setChestRewards(finalRewards);
+          setShowChest(true);
         }
-        updates.happyBuffUntil = now + newDuration * 60 * 1000;
-        updates.happyBuffDuration = newDuration;
-        updates.stunnedUntil = null;
-      } else {
-        updates.happyBuffUntil = null;
-        updates.happyBuffDuration = null;
-        updates.stunnedUntil = null;
       }
       
-      await updateDoc(userRef, updates);
+      // Log XP and Coins if won
+      if (isWin && (actualXpGained > 0 || earnedCoins > 0)) {
+        const userRef = doc(db, 'users', userData!.uid);
+        const updates: any = {};
+        
+        if (actualXpGained > 0) {
+          updates.xp = (userData?.xp || 0) + actualXpGained;
+          await addDoc(collection(db, 'xp_logs'), {
+            studentId: userData!.uid,
+            evalName: `Missão: ${quest?.title}`,
+            xpGained: actualXpGained,
+            timestamp: serverTimestamp()
+          });
+        }
+        
+        if (earnedCoins > 0) {
+          updates.coins = (userData?.coins || 0) + earnedCoins;
+        }
+
+        await updateDoc(userRef, updates);
+      }
+
+      // Buffs and Debuffs only applied if eligible for XP
+      if (isEligibleForXP) {
+        const userRef = doc(db, 'users', userData.uid);
+        const updates: any = {};
+        const now = Date.now();
+        
+        const rankIdx = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
+        const mHearts = Math.max(3, 3 + Math.floor(rankIdx / 2));
+        const hpPerc = (currentHearts / mHearts) * 100;
+        
+        if (!isWin || currentHearts === 0) {
+          updates.stunnedUntil = now + 10 * 60 * 1000;
+          updates.happyBuffUntil = null;
+          updates.happyBuffDuration = null;
+        } else if (hpPerc === 100) {
+          let newDuration = 5;
+          if (userData.happyBuffUntil && userData.happyBuffUntil > now) {
+            newDuration = (userData.happyBuffDuration || 5) * 2;
+          }
+          updates.happyBuffUntil = now + newDuration * 60 * 1000;
+          updates.happyBuffDuration = newDuration;
+          updates.stunnedUntil = null;
+        } else {
+          updates.happyBuffUntil = null;
+          updates.happyBuffDuration = null;
+          updates.stunnedUntil = null;
+        }
+        
+        await updateDoc(userRef, updates);
+      }
     }
 
-    // Save Attempt
-    await addDoc(collection(db, 'quest_attempts'), {
-      questId: quest?.id,
-      studentId: userData!.uid,
-      status: isWin ? 'completed' : 'failed',
-      earnedXp: isWin ? finalXp : 0,
-      answers: studentAnswers,
-      timestamp: serverTimestamp()
-    });
+    // Save Attempt only for students (admins shouldn't pollute the logs)
+    if (userData?.role === 'student') {
+      await addDoc(collection(db, 'quest_attempts'), {
+        questId: quest?.id,
+        studentId: userData.uid,
+        status: isWin ? 'completed' : 'failed',
+        earnedXp: (isWin && isEligibleForXP) ? finalXp : 0,
+        answers: studentAnswers,
+        timestamp: serverTimestamp(),
+        isStudyMode: isStudyMode // Marking it so we know it was a review attempt
+      });
+    }
 
     setSaving(false);
   };
@@ -491,8 +768,9 @@ export default function QuestGameplay() {
       }
 
       const remainingQuestions = quest!.questions.length - currentQIndex;
-      const penalty = remainingQuestions * quest!.xpPenaltyPerRetry;
-      const finalXp = Math.max(0, currentXp - penalty);
+      const basePenalty = remainingQuestions * quest!.xpPenaltyPerRetry;
+      const actualPenalty = calculatePenalty(basePenalty);
+      const finalXp = Math.max(0, currentXp - actualPenalty);
       
       finishGame(true, finalXp, `Você abandonou a missão. Recebeu apenas ${finalXp} XP (penalidade aplicada).`);
     } else {
@@ -621,13 +899,13 @@ export default function QuestGameplay() {
                   <Star size={18} color="var(--gold-primary)" />
                   <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)' }}>{currentXp} XP</span>
                 </div>
-                {userData?.role === 'student' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid #ef4444' }}>
-                    {Array.from({ length: currentHearts }).map((_, i) => (
-                      <Heart key={i} size={18} fill="#ef4444" color="#ef4444" />
-                    ))}
-                  </div>
-                )}
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid #ef4444' }}>
+                  {Array.from({ length: currentHearts }).map((_, i) => (
+                    <Heart key={i} size={18} fill="#ef4444" color="#ef4444" />
+                  ))}
+                </div>
+                
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5 ? 'var(--accent-red)' : 'white' }}>
                   <Clock size={18} />
                   <span style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>{timeLeft}s</span>
@@ -639,13 +917,19 @@ export default function QuestGameplay() {
 
         {/* Battle Arena Fixed */}
         {gameState === 'playing' && (
-          <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20 }}>
+          <div ref={arenaRef} className="battle-arena-bg" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5rem 3rem 1rem 3rem', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, overflow: 'hidden' } as any}>
+            <div className="battle-arena-bg-image" />
             
             {/* Player Side */}
             <div 
-              className={playerAnim === 'attack' ? 'teleport-player' : playerAnim === 'attack-fatal' ? 'teleport-player-fatal' : ''}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
+              className={playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : ''}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: 10 }}
             >
+              {playerBubble && (
+                <div className="speech-bubble">
+                  {playerBubble}
+                </div>
+              )}
               <div style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                 <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={activePlayerAnim as any} expression={baseExp} interactive={false} />
                 {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
@@ -655,7 +939,7 @@ export default function QuestGameplay() {
             </div>
 
             {/* Battle Message */}
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 2rem' }}>
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 2rem', zIndex: 10, opacity: battleMessage ? 1 : 0, transition: 'opacity 0.3s' }}>
               <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', textAlign: 'center', minWidth: '250px', backdropFilter: 'blur(10px)', boxShadow: 'var(--shadow-glass)' }}>
                 <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'white', minHeight: '1.5em', fontStyle: 'italic', textShadow: battleMessage.includes('FATALITY') ? '0 0 10px red' : 'none' }}>
                   {battleMessage}
@@ -665,25 +949,36 @@ export default function QuestGameplay() {
 
             {/* Monster Side */}
             <div 
-              className={monsterAnim === 'attack' ? 'teleport-monster' : monsterAnim === 'attack-fatal' ? 'teleport-monster-fatal' : ''}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
+              className={monsterAnim === 'attack' ? 'teleport-monster' : (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` : ''}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: 10 }}
             >
+              {monsterBubble && (
+                <div className="speech-bubble">
+                  {monsterBubble}
+                </div>
+              )}
               {monsterAnim === 'death-slice' ? (
                 <div style={{ position: 'relative', width: '120px', height: '180px' }}>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={100} animation="idle" interactive={false} />
+                    {quest?.monsterModelUrl ? <CustomModelViewer modelUrl={quest.monsterModelUrl} size={100} animation="none" role="monster" /> : <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={100} animation="idle" interactive={false} role="monster" />}
                   </div>
                   <div className="death-slice-right" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={100} animation="idle" interactive={false} />
+                    {quest?.monsterModelUrl ? <CustomModelViewer modelUrl={quest.monsterModelUrl} size={100} animation="none" role="monster" /> : <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={100} animation="idle" interactive={false} role="monster" />}
                   </div>
                 </div>
               ) : (
                 <div 
-                  className={monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : ''}
+                  className={
+                    monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : 
+                    monsterAnim === 'death-fall' ? 'anim-death-fall' :
+                    monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
+                  }
                   style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
                 >
-                  {quest?.monsterAvatarConfig ? (
-                    <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={100} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'death-fall' || monsterAnim === 'death-explode') ? monsterAnim as any : 'idle'} interactive={false} />
+                  {quest?.monsterModelUrl ? (
+                    <CustomModelViewer modelUrl={quest.monsterModelUrl} size={100} animation={monsterAnim} role="monster" />
+                  ) : quest?.monsterAvatarConfig ? (
+                    <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={100} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" />
                   ) : (
                     <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
                   )}
@@ -872,6 +1167,51 @@ export default function QuestGameplay() {
                   {saving ? 'Salvando progresso...' : 'Retornar ao Acampamento'}
                 </button>
               </div>
+            </div>
+          )}
+
+          {showChest && (
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              {!chestOpened ? (
+                <div 
+                  className="chest-shake" 
+                  onClick={() => setChestOpened(true)}
+                  style={{ cursor: 'pointer', textAlign: 'center', padding: '2rem' }}
+                >
+                  <Package size={150} color="var(--gold-primary)" style={{ filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 0.5))', margin: '0 auto' }} />
+                  <h2 style={{ color: 'var(--gold-primary)', marginTop: '2rem', animation: 'pulse 2s infinite' }}>Clique para abrir o Baú de Recompensas!</h2>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
+                  <h2 style={{ fontSize: '3rem', color: 'var(--gold-primary)', marginBottom: '3rem', textShadow: '0 0 20px var(--gold-primary)' }}>Recompensas Adquiridas!</h2>
+                  
+                  <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '800px' }}>
+                    <div style={{ background: 'rgba(255,215,0,0.1)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--gold-primary)', minWidth: '150px', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '0.1s', opacity: 0 }}>
+                      <Coins size={48} color="var(--gold-primary)" style={{ margin: '0 auto 1rem auto' }} />
+                      <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'white' }}>+{chestRewards.coins}</div>
+                      <div style={{ color: 'var(--text-secondary)' }}>Moedas</div>
+                    </div>
+                    
+                    {chestRewards.items.map((item, idx) => (
+                      <div key={idx} style={{ background: 'rgba(255,255,255,0.05)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border-glass)', minWidth: '150px', animation: 'popInChest 0.3s ease-out forwards', animationDelay: `${0.2 + idx * 0.1}s`, opacity: 0 }}>
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt={item.title} style={{ width: '64px', height: '64px', objectFit: 'contain', margin: '0 auto 1rem auto' }} />
+                        ) : (
+                          <Package size={48} color="var(--text-secondary)" style={{ margin: '0 auto 1rem auto' }} />
+                        )}
+                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'white' }}>{item.title}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                          {item.type === 'equippable' ? 'Equipamento' : `Consumível (x${item.quantity})`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <button className="login-btn" onClick={() => setShowChest(false)} style={{ marginTop: '4rem', background: 'var(--gold-primary)', color: 'black', padding: '1rem 3rem', fontSize: '1.2rem', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '1s', opacity: 0 }}>
+                    Coletar Tudo e Continuar
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

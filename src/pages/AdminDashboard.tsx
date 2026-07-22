@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { signOut } from 'firebase/auth';
@@ -11,6 +11,7 @@ import ImageGalleryModal from '../components/ImageGalleryModal';
 import DirectUploadButton from '../components/DirectUploadButton';
 import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
+import AdminEntitiesManager from '../components/AdminEntitiesManager';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
@@ -45,10 +46,26 @@ export interface QuestDef {
   questions: QuestQuestion[];
   monsterName?: string;
   monsterAvatarConfig?: AvatarConfig;
+  monsterModelUrl?: string;
+  monsterQuotes?: {
+    hp100_80?: string;
+    hp79_50?: string;
+    hp49_25?: string;
+    hp24_0?: string;
+  };
+  monsterDefeatQuotes?: string;
+  chestConfig?: {
+    maxCoins?: number;
+    itemIds?: string[];
+    itemQuantities?: number[];
+    dropChance?: number;
+  };
   active: boolean;
   createdBy?: string;
   creatorRole?: string;
   targetClasses?: string[];
+  shuffleQuestions?: boolean;
+  shuffleAnswers?: boolean;
 }
 
 export default function AdminDashboard() {
@@ -116,12 +133,21 @@ export default function AdminDashboard() {
   const [questCover, setQuestCover] = useState('');
   const [questXp, setQuestXp] = useState('1000');
   const [questRetries, setQuestRetries] = useState(false);
+  const [questShuffleQuestions, setQuestShuffleQuestions] = useState(false);
+  const [questShuffleAnswers, setQuestShuffleAnswers] = useState(false);
   const [questPenalty, setQuestPenalty] = useState('0');
   const [questQuestions, setQuestQuestions] = useState<QuestQuestion[]>([
     { title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }
   ]);
   const [questMonsterName, setQuestMonsterName] = useState('');
   const [questMonsterConfig, setQuestMonsterConfig] = useState<AvatarConfig | null>(null);
+  const [questMonsterModelUrl, setQuestMonsterModelUrl] = useState('');
+  const [questMonsterQuotes, setQuestMonsterQuotes] = useState<{hp100_80?: string, hp79_50?: string, hp49_25?: string, hp24_0?: string}>({});
+  const [questMonsterDefeatQuotes, setQuestMonsterDefeatQuotes] = useState('');
+  const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], dropChance?: number}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+  const [available3DModels, setAvailable3DModels] = useState<any[]>([]);
+  const [availableMonsters, setAvailableMonsters] = useState<any[]>([]);
+  const [availableStoreItems, setAvailableStoreItems] = useState<any[]>([]);
   const [isCustomizingMonster, setIsCustomizingMonster] = useState(false);
   const [questCreatedBy, setQuestCreatedBy] = useState<string | null>(null);
   const [questCreatorRole, setQuestCreatorRole] = useState<string | null>(null);
@@ -165,6 +191,27 @@ export default function AdminDashboard() {
     setQuests(loaded);
   };
 
+  const fetch3DModels = async () => {
+    const snap = await getDocs(collection(db, '3d_models'));
+    const loaded: any[] = [];
+    snap.forEach(d => loaded.push({ id: d.id, ...d.data() }));
+    setAvailable3DModels(loaded);
+  };
+
+  const fetchMonsters = async () => {
+    const snap = await getDocs(collection(db, 'monsters'));
+    const loaded: any[] = [];
+    snap.forEach(d => loaded.push({ id: d.id, ...d.data() }));
+    setAvailableMonsters(loaded);
+  };
+
+  const fetchStoreItems = async () => {
+    const snap = await getDocs(query(collection(db, 'store_items'), where('active', '==', true)));
+    const loaded: any[] = [];
+    snap.forEach(d => loaded.push({ id: d.id, ...d.data() }));
+    setAvailableStoreItems(loaded);
+  };
+
   const fetchStudents = async () => {
     setLoading(true);
     const q = query(collection(db, 'users'));
@@ -193,6 +240,10 @@ export default function AdminDashboard() {
     fetchEvaluations();
     fetchClasses();
     fetchQuests();
+    fetch3DModels();
+    fetchMonsters();
+    fetchStudents();
+    fetchStoreItems();
   }, []);
 
   useEffect(() => {
@@ -422,7 +473,20 @@ export default function AdminDashboard() {
   };
 
   const handleSaveQuest = async () => {
-    if (!questTitle || questQuestions.length === 0) return;
+    if (!questTitle || !questTitle.trim() || questQuestions.length === 0) {
+      await showAlert("Preencha o título da missão e adicione perguntas!");
+      return;
+    }
+
+    if (questChestConfig?.itemIds) {
+      const ids = questChestConfig.itemIds.filter(id => id.trim() !== '');
+      const uniqueIds = new Set(ids);
+      if (ids.length !== uniqueIds.size) {
+        await showAlert("O baú não pode conter itens repetidos! Cada slot deve ter um item diferente.");
+        return;
+      }
+    }
+
     const questId = editingQuestId || Date.now().toString();
     const newQuest: QuestDef = {
       id: questId,
@@ -435,16 +499,24 @@ export default function AdminDashboard() {
       questions: questQuestions,
       monsterName: questMonsterName,
       monsterAvatarConfig: questMonsterConfig || undefined,
+      monsterModelUrl: questMonsterModelUrl,
+      monsterQuotes: questMonsterQuotes,
+      monsterDefeatQuotes: questMonsterDefeatQuotes,
+      chestConfig: questChestConfig,
       active: true,
       createdBy: questCreatedBy || userData?.uid,
       creatorRole: questCreatorRole || userData?.role,
-      targetClasses: questTargetClasses
+      targetClasses: questTargetClasses,
+      shuffleQuestions: questShuffleQuestions,
+      shuffleAnswers: questShuffleAnswers
     };
     await setDoc(doc(db, 'quests', questId), newQuest);
     setIsCreatingQuest(false);
     setEditingQuestId(null);
     setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
+    setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
     setQuestCreatedBy(null); setQuestCreatorRole(null); setQuestTargetClasses([]);
+    setQuestShuffleQuestions(false); setQuestShuffleAnswers(false);
     setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
     fetchQuests();
   };
@@ -460,9 +532,15 @@ export default function AdminDashboard() {
     setQuestQuestions(quest.questions);
     setQuestMonsterName(quest.monsterName || '');
     setQuestMonsterConfig(quest.monsterAvatarConfig || null);
+    setQuestMonsterModelUrl(quest.monsterModelUrl || '');
+    setQuestMonsterQuotes(quest.monsterQuotes || {});
+    setQuestMonsterDefeatQuotes(quest.monsterDefeatQuotes || '');
+    setQuestChestConfig(quest.chestConfig || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
     setQuestCreatedBy(quest.createdBy || null);
     setQuestCreatorRole(quest.creatorRole || null);
     setQuestTargetClasses(quest.targetClasses || []);
+    setQuestShuffleQuestions(quest.shuffleQuestions || false);
+    setQuestShuffleAnswers(quest.shuffleAnswers || false);
     setIsCreatingQuest(true);
   };
 
@@ -484,11 +562,16 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
-  const handleResetQuestAttempt = async (attemptId: string) => {
-    const confirmed = await showConfirm('Deseja realmente RESETAR o desafio para este aluno? Ele poderá fazer a missão novamente. O XP ganho anteriormente não será removido automaticamente.');
+  const handleResetQuestAttempt = async (studentId: string) => {
+    const confirmed = await showConfirm('Deseja realmente RESETAR o desafio para este aluno? Todo o histórico de tentativas dele para esta missão será apagado. Ele poderá fazer a missão novamente. O XP ganho anteriormente não será removido automaticamente.');
     if (!confirmed) return;
-    await deleteDoc(doc(db, 'quest_attempts', attemptId));
-    setQuestHistoryAttempts(prev => prev.filter(a => a.id !== attemptId));
+    
+    const attemptsToDelete = questHistoryAttempts.filter(a => a.studentId === studentId);
+    for (const attempt of attemptsToDelete) {
+      await deleteDoc(doc(db, 'quest_attempts', attempt.id));
+    }
+    
+    setQuestHistoryAttempts(prev => prev.filter(a => a.studentId !== studentId));
   };
 
   const handleToggleQuestActive = async (id: string, currentStatus: boolean) => {
@@ -566,13 +649,23 @@ export default function AdminDashboard() {
           <button className={`login-btn ${activeTab === 'ranks' ? 'active' : ''}`} onClick={() => setActiveTab('ranks')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'ranks' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'ranks' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Medal size={20} /> Patentes (Artes)
           </button>
+          <button className={`login-btn ${activeTab === 'entities' ? 'active' : ''}`} onClick={() => setActiveTab('entities')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'entities' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'entities' ? 'rgba(239, 68, 68, 0.1)' : 'transparent', marginTop: 'auto' }}>
+            <Box size={20} /> Entidades (3D)
+          </button>
         </div>
 
         {/* Content */}
         <div className="glass-panel" id="admin-content-scroll" style={{ flex: 1, padding: '2rem', overflowY: 'auto', position: 'relative' }}>
           
-          {/* Aba de Usuários */}
-          {activeTab === 'users' && (
+        {/* Aba de Entidades 3D */}
+        {activeTab === 'entities' && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+            <AdminEntitiesManager />
+          </div>
+        )}
+
+        {/* Aba de Usuários */}
+        {activeTab === 'users' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -944,20 +1037,36 @@ export default function AdminDashboard() {
                           )}
                         </div>
 
-                        <div>
-                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Modo de Jogo</label>
-                          <select value={questRetries ? 'vidas' : 'hardcore'} onChange={e => setQuestRetries(e.target.value === 'vidas')} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }}>
-                            <option value="hardcore">Tentativa Única (Errou, falhou a missão)</option>
-                            <option value="vidas">Vidas Extras (Pode tentar novamente com penalidade)</option>
-                          </select>
-                        </div>
-
-                        {questRetries && (
-                          <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid var(--accent-red)' }}>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-red)', fontWeight: 'bold' }}>Penalidade de XP por cada erro</label>
-                            <input type="number" value={questPenalty} onChange={e => setQuestPenalty(e.target.value)} placeholder="Ex: 50" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }} />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--border-glass)', marginBottom: '2rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <input type="checkbox" id="questRetries" checked={questRetries} onChange={e => setQuestRetries(e.target.checked)} style={{ width: '1.2rem', height: '1.2rem', accentColor: 'var(--accent-blue)' }} />
+                            <label htmlFor="questRetries" style={{ color: 'white', cursor: 'pointer' }}>
+                              <strong style={{ display: 'block', marginBottom: '0.25rem' }}>Modo Vidas Extras (Retries)</strong>
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Se ativado, o aluno não falha na primeira resposta errada. Ele perde corações e pode continuar.</span>
+                            </label>
                           </div>
-                        )}
+                          {questRetries && (
+                            <div style={{ marginLeft: '2.2rem' }}>
+                              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Penalidade de XP por vida perdida</label>
+                              <input type="number" value={questPenalty} onChange={e => setQuestPenalty(e.target.value)} placeholder="Ex: 50" style={{ width: '150px', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                            </div>
+                          )}
+                          <hr style={{ border: 'none', borderTop: '1px solid var(--border-glass)', margin: '0.5rem 0' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <input type="checkbox" id="questShuffleQ" checked={questShuffleQuestions} onChange={e => setQuestShuffleQuestions(e.target.checked)} style={{ width: '1.2rem', height: '1.2rem', accentColor: 'var(--accent-blue)' }} />
+                            <label htmlFor="questShuffleQ" style={{ color: 'white', cursor: 'pointer' }}>
+                              <strong style={{ display: 'block', marginBottom: '0.25rem' }}>Embaralhar Questões</strong>
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>A ordem das perguntas será aleatória para cada aluno.</span>
+                            </label>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <input type="checkbox" id="questShuffleA" checked={questShuffleAnswers} onChange={e => setQuestShuffleAnswers(e.target.checked)} style={{ width: '1.2rem', height: '1.2rem', accentColor: 'var(--accent-blue)' }} />
+                            <label htmlFor="questShuffleA" style={{ color: 'white', cursor: 'pointer' }}>
+                              <strong style={{ display: 'block', marginBottom: '0.25rem' }}>Embaralhar Respostas</strong>
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>A ordem das opções (A, B, C, D) será aleatória para cada aluno.</span>
+                            </label>
+                          </div>
+                        </div>
                       </div>
 
                     </div>
@@ -969,11 +1078,161 @@ export default function AdminDashboard() {
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome do Monstro</label>
                           <input type="text" value={questMonsterName} onChange={e => setQuestMonsterName(e.target.value)} placeholder="Ex: Golem de Pedra" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Selecionar Monstro da Galeria</label>
+                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                            <select 
+                              value={availableMonsters.find(m => m.name === questMonsterName)?.id || ''} 
+                              onChange={e => {
+                                const selected = availableMonsters.find(m => m.id === e.target.value);
+                                if (selected) {
+                                  setQuestMonsterName(selected.name);
+                                  setQuestMonsterConfig(selected.config || null);
+                                  
+                                  if (selected.config?.customModelUrl) {
+                                    setQuestMonsterModelUrl(selected.config.customModelUrl);
+                                  } else if (selected.baseModelId) {
+                                    const rawModel = available3DModels.find(m => m.id === selected.baseModelId);
+                                    if (rawModel) setQuestMonsterModelUrl(rawModel.url);
+                                    else setQuestMonsterModelUrl('');
+                                  } else {
+                                    setQuestMonsterModelUrl('');
+                                  }
+                                } else {
+                                  setQuestMonsterName('');
+                                  setQuestMonsterConfig(null);
+                                  setQuestMonsterModelUrl('');
+                                }
+                              }} 
+                              style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}
+                            >
+                              <option value="">(Personalizar um novo Monstro...)</option>
+                              {availableMonsters.map(monster => (
+                                <option key={monster.id} value={monster.id}>{monster.name}</option>
+                              ))}
+                            </select>
+
+                            <div style={{ width: '100px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                               {(questMonsterConfig || questMonsterModelUrl) ? (
+                                  <AvatarCharacter 
+                                    config={questMonsterConfig || (questMonsterModelUrl ? { customModelUrl: questMonsterModelUrl } as AvatarConfig : null)} 
+                                    size={90} 
+                                    interactive={false} 
+                                    animation="idle" 
+                                    role="monster" 
+                                  />
+                               ) : (
+                                  <Swords size={32} color="var(--text-secondary)" opacity={0.5} />
+                               )}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'flex-end', gridColumn: '1 / -1' }}>
                           <button onClick={() => setIsCustomizingMonster(true)} style={{ width: '100%', padding: '1rem', background: questMonsterConfig ? 'var(--gold-primary)' : 'rgba(59, 130, 246, 0.2)', color: questMonsterConfig ? 'black' : 'var(--accent-primary)', border: `1px solid ${questMonsterConfig ? 'var(--gold-primary)' : 'var(--accent-primary)'}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            {questMonsterConfig ? 'Editar Aparência 3D do Monstro' : 'Criar Monstro 3D Personalizado'}
+                            {questMonsterConfig ? 'Editar Aparência deste Monstro' : 'Criar Monstro 3D Personalizado'}
                           </button>
                         </div>
+                      </div>
+
+
+                      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
+                        <h5 style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1.1rem' }}>Falas do Monstro (Opcional - Separe por ; para sortear)</h5>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-green)', fontSize: '0.9rem' }}>HP 100% a 80%</label>
+                            <input type="text" value={questMonsterQuotes.hp100_80 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp100_80: e.target.value})} placeholder="Ex: Vou te esmagar!; Renda-se!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>HP 79% a 50%</label>
+                            <input type="text" value={questMonsterQuotes.hp79_50 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp79_50: e.target.value})} placeholder="Ex: Você é mais forte do que parece..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-primary)', fontSize: '0.9rem' }}>HP 49% a 25%</label>
+                            <input type="text" value={questMonsterQuotes.hp49_25 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp49_25: e.target.value})} placeholder="Ex: Isso não vai ficar assim!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-red)', fontSize: '0.9rem' }}>HP Menor que 24%</label>
+                            <input type="text" value={questMonsterQuotes.hp24_0 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp24_0: e.target.value})} placeholder="Ex: Maldição!; Como posso perder?!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: '1.5rem' }}>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 'bold' }}>Falas de Derrota (Quando o jogador der o Golpe Final)</label>
+                          <input type="text" value={questMonsterDefeatQuotes} onChange={e => setQuestMonsterDefeatQuotes(e.target.value)} placeholder="Ex: NÃO PODE SER!; Fui derrotado...; AHHH!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'rgba(255, 215, 0, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(255, 215, 0, 0.3)', marginTop: '2rem' }}>
+                      <h4 style={{ color: 'var(--gold-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Package size={20} /> Baú de Recompensas (Final da Missão)</h4>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>O jogador terá 100% de chance de receber Moedas aleatórias (entre 10% e o valor máximo). O Item 1 terá 50% de chance, Item 2 terá 25% (se o 1 vier), Item 3 terá 10% e Item 4 terá 5%.</p>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Máximo de Moedas (Obrigatório para ativar o baú)</label>
+                          <input type="number" value={questChestConfig?.maxCoins || ''} onChange={e => setQuestChestConfig({ ...questChestConfig, maxCoins: parseInt(e.target.value) || 0 })} placeholder="Ex: 100" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }} />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Chance do Baú Aparecer (%)</label>
+                          <input type="number" min="1" max="100" value={questChestConfig?.dropChance ?? 100} onChange={e => setQuestChestConfig({ ...questChestConfig, dropChance: Math.min(100, Math.max(1, parseInt(e.target.value) || 100)) })} placeholder="1 a 100" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }} />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        {[0, 1, 2, 3].map((slot) => {
+                          const selectedItem = availableStoreItems.find(i => i.id === questChestConfig?.itemIds?.[slot]);
+                          const isConsumable = selectedItem?.type === 'consumable';
+                          
+                          return (
+                            <div key={slot} style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Item {slot + 1} ({slot === 0 ? '50%' : slot === 1 ? '25%' : slot === 2 ? '10%' : '5%'} de chance)</label>
+                              <select 
+                                value={questChestConfig?.itemIds?.[slot] || ''} 
+                                onChange={e => {
+                                  const newIds = [...(questChestConfig?.itemIds || ['', '', '', ''])];
+                                  const newQuants = [...(questChestConfig?.itemQuantities || [1, 1, 1, 1])];
+                                  newIds[slot] = e.target.value;
+                                  
+                                  const newItem = availableStoreItems.find(i => i.id === e.target.value);
+                                  if (newItem?.type === 'equippable') {
+                                    newQuants[slot] = 1;
+                                  }
+                                  
+                                  setQuestChestConfig({ ...questChestConfig, itemIds: newIds, itemQuantities: newQuants });
+                                }}
+                                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', marginBottom: isConsumable ? '0.5rem' : '0' }}
+                              >
+                                <option value="">(Nenhum Item)</option>
+                                {availableStoreItems.map(item => {
+                                  const isSelectedElsewhere = (questChestConfig?.itemIds || []).some((id, idx) => id === item.id && idx !== slot);
+                                  return (
+                                    <option key={item.id} value={item.id} disabled={isSelectedElsewhere}>
+                                      {item.title} ({item.type === 'equippable' ? 'Equipamento' : 'Consumível'})
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              
+                              {isConsumable && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Quantidade:</span>
+                                  <input 
+                                    type="number"
+                                    min="1"
+                                    max="99"
+                                    value={questChestConfig?.itemQuantities?.[slot] || 1}
+                                    onChange={e => {
+                                      const newQuants = [...(questChestConfig?.itemQuantities || [1, 1, 1, 1])];
+                                      newQuants[slot] = Math.max(1, parseInt(e.target.value) || 1);
+                                      setQuestChestConfig({ ...questChestConfig, itemQuantities: newQuants });
+                                    }}
+                                    style={{ width: '60px', padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -1487,7 +1746,6 @@ export default function AdminDashboard() {
                   questHistoryAttempts.forEach(attempt => {
                     const student = students.find(s => s.uid === attempt.studentId);
                     let classIdentifier = 'unassigned';
-                    // student.classId actually stores the string NAME of the class (e.g. "6º ano A"), not the auto-generated ID
                     if (student?.classId && schoolClasses.some(c => c.name === student.classId)) {
                       classIdentifier = student.classId;
                     }
@@ -1500,6 +1758,13 @@ export default function AdminDashboard() {
                     
                     if (attemptsInClass.length === 0) return null;
 
+                    // Group attempts by student
+                    const studentGroups = new Map<string, any[]>();
+                    attemptsInClass.forEach(a => {
+                      if (!studentGroups.has(a.studentId)) studentGroups.set(a.studentId, []);
+                      studentGroups.get(a.studentId)!.push(a);
+                    });
+
                     const clsInfo = schoolClasses.find(c => c.name === clsName) || { name: 'Sem Turma / Desconhecidos', color: '#94a3b8' };
 
                     return (
@@ -1507,39 +1772,53 @@ export default function AdminDashboard() {
                         <h3 style={{ margin: '0 0 1rem 0', color: clsInfo.color, borderBottom: `1px solid ${clsInfo.color}`, paddingBottom: '0.5rem' }}>{clsInfo.name}</h3>
                         
                         <div style={{ display: 'grid', gap: '1rem' }}>
-                          {attemptsInClass.map(attempt => {
-                            const student = students.find(s => s.uid === attempt.studentId);
-                            const dateStr = attempt.timestamp ? new Date(attempt.timestamp.seconds * 1000).toLocaleString('pt-BR') : 'Data desconhecida';
+                          {Array.from(studentGroups.entries()).map(([studentId, attempts]) => {
+                            const student = students.find(s => s.uid === studentId);
+                            
+                            // Sort attempts by timestamp
+                            attempts.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+                            
+                            const completions = attempts.filter(a => a.status === 'completed');
+                            const firstCompletion = completions[0];
+                            const lastAccess = attempts[attempts.length - 1];
+                            const totalEarnedXp = attempts.reduce((acc, curr) => acc + (curr.earnedXp || 0), 0);
+                            
+                            const firstCompletionDateStr = firstCompletion && firstCompletion.timestamp ? new Date(firstCompletion.timestamp.seconds * 1000).toLocaleString('pt-BR') : '-';
+                            const lastAccessDateStr = lastAccess && lastAccess.timestamp ? new Date(lastAccess.timestamp.seconds * 1000).toLocaleString('pt-BR') : '-';
                             
                             return (
-                              <div key={attempt.id} style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px', borderLeft: `4px solid ${attempt.status === 'completed' ? 'var(--accent-green)' : 'var(--accent-red)'}` }}>
+                              <div key={studentId} style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px', borderLeft: `4px solid ${completions.length > 0 ? 'var(--accent-green)' : 'var(--accent-red)'}` }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                                  <div>
+                                  <div style={{ flex: 1 }}>
                                     <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem' }}>{student?.name || 'Aluno Desconhecido (Deletado)'}</h4>
-                                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                      <span>Data: {dateStr}</span>
-                                      <span>Status: <strong style={{ color: attempt.status === 'completed' ? 'var(--accent-green)' : 'var(--accent-red)' }}>{attempt.status === 'completed' ? 'Concluído' : 'Fracassou/Abandonou'}</strong></span>
-                                      <span>XP Ganho: <strong style={{ color: 'var(--gold-primary)' }}>{attempt.earnedXp}</strong></span>
+                                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+                                      <span>Tentativas: <strong style={{ color: 'white' }}>{attempts.length}</strong></span>
+                                      <span>Vitórias: <strong style={{ color: 'var(--accent-green)' }}>{completions.length}</strong></span>
+                                      <span>Último Acesso: <strong>{lastAccessDateStr}</strong></span>
+                                      {completions.length > 0 && (
+                                        <span>Primeira Vitória: <strong>{firstCompletionDateStr}</strong></span>
+                                      )}
+                                      <span>XP Total Ganho: <strong style={{ color: 'var(--gold-primary)' }}>{totalEarnedXp}</strong></span>
                                     </div>
                                   </div>
-                                  <button onClick={() => handleResetQuestAttempt(attempt.id)} className="login-btn" style={{ background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', padding: '0.5rem 1rem' }} title="Resetar tentativa do aluno">
+                                  <button onClick={() => handleResetQuestAttempt(studentId)} className="login-btn" style={{ background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', padding: '0.5rem 1rem', marginLeft: '1rem' }} title="Resetar histórico deste aluno">
                                     <RefreshCw size={16} style={{ marginRight: '0.5rem' }} /> Resetar
                                   </button>
                                 </div>
                                 
-                                {attempt.answers && attempt.answers.length > 0 ? (
+                                {lastAccess.answers && lastAccess.answers.length > 0 ? (
                                   <div style={{ background: 'rgba(0,0,0,0.5)', padding: '1rem', borderRadius: '8px' }}>
-                                    <h5 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)' }}>Respostas Selecionadas:</h5>
+                                    <h5 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)' }}>Respostas da Última Tentativa:</h5>
                                     <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                      {attempt.answers.map((ans: any, i: number) => (
+                                      {lastAccess.answers.map((ans: any, i: number) => (
                                         <li key={i} style={{ color: ans.isCorrect ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                                          Questão {ans.qIndex + 1}: {ans.text} {ans.isCorrect ? '✓' : '✗'}
+                                          Questão {ans.qIndex !== undefined ? (ans.qIndex + 1) : (i + 1)}: {ans.text || ans.optionText || '(Tempo Esgotado)'} {ans.isCorrect ? '✓' : '✗'}
                                         </li>
                                       ))}
                                     </ul>
                                   </div>
                                 ) : (
-                                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Nenhum detalhe de respostas salvo para esta tentativa.</p>
+                                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Nenhum detalhe de respostas salvo para a última tentativa.</p>
                                 )}
                               </div>
                             );

@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation, FunctionAnimation } from 'skinview3d';
+import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
+// Removemos import * as THREE from 'three' para evitar instanciar a versão errada.
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
 
@@ -18,6 +20,7 @@ export interface AvatarConfig {
   handedness?: 'right' | 'left';
   animationState?: 'idle' | 'walk' | 'run';
   customSkinUrl?: string;
+  customModelUrl?: string;
 }
 
 export interface EquippedItem {
@@ -28,19 +31,23 @@ export interface EquippedItem {
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
   adds?: ItemAdd[];
+  gameModelUrl?: string;
 }
 
 export interface AvatarCharacterProps {
   config: AvatarConfig | null;
   equippedItems?: EquippedItem[];
   size?: number;
-  animation?: 'none' | 'idle' | 'walk' | 'run' | 'cheer' | 'attack' | 'hurt' | 'exhausted' | 'death-fall' | 'death-explode';
-  expression?: 'normal' | 'serious' | 'sad';
   interactive?: boolean;
+  animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'cheer' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice';
+  expression?: 'normal' | 'serious' | 'sad';
+  role?: 'player' | 'monster';
   showSlots?: boolean;
 }
 
-export default function AvatarCharacter({ config, equippedItems = [], size = 120, animation = 'idle', expression = 'normal', interactive = true, showSlots = false }: AvatarCharacterProps) {
+import CustomModelViewer from './CustomModelViewer';
+
+export default React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
@@ -58,25 +65,32 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
   useEffect(() => {
     if (!canvasRef.current) return;
     
-    const viewer = new SkinViewer({
-        canvas: canvasRef.current,
-        width: size,
-        height: size * 1.8,
-        skin: "" 
-    });
-    viewer.animation = new IdleAnimation();
-
-    viewer.controls.enableZoom = interactive;
-    viewer.controls.enableRotate = interactive;
-    viewer.controls.enablePan = interactive;
-    
-    viewerRef.current = viewer;
-    
-    if (viewer.renderer) {
-        viewer.renderer.setClearColor(0x000000, 0);
+    let viewer: SkinViewer;
+    try {
+      viewer = new SkinViewer({
+          canvas: canvasRef.current,
+          width: size,
+          height: size * 1.8,
+          // Fallback para evitar erro de inicialização sem skin
+          skin: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+      });
+      viewer.animation = new IdleAnimation();
+  
+      viewer.controls.enableZoom = interactive;
+      viewer.controls.enableRotate = interactive;
+      viewer.controls.enablePan = interactive;
+      
+      viewerRef.current = viewer;
+      
+      if (viewer.renderer) {
+          viewer.renderer.setClearColor(0x000000, 0);
+      }
+      
+      viewer.camera.position.set(0, 10, 60);
+    } catch (e) {
+      console.error("Erro ao inicializar SkinViewer:", e);
+      return;
     }
-    
-    viewer.camera.position.set(0, 10, 60);
 
     return () => {
         if (viewerRef.current) {
@@ -98,7 +112,76 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
       }
   }, [size, interactive]);
 
-  // 3. Generate skins when config changes
+  // 3. Attach 3D items to the avatar based on equippedItems
+  const equippedItemsJson = JSON.stringify(equippedItems);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !viewer.playerObject) return;
+    
+    // Armazena os modelos carregados para poder removê-los depois
+    const loadedModels: { parent: THREE.Object3D, model: THREE.Object3D }[] = [];
+    const loader = new GLTFLoader();
+    
+    equippedItems.forEach(item => {
+      if (item.gameModelUrl && item.gameModelUrl.trim() !== '') {
+        const safeUrl = item.gameModelUrl.replace(/\\/g, '/');
+        console.log(`Carregando modelo 3D para o item ${item.itemTitle}:`, safeUrl);
+        
+        loader.load(
+          safeUrl, 
+          (gltf) => {
+            console.log(`Modelo ${safeUrl} carregado com sucesso!`);
+            const model = gltf.scene;
+            
+            if (item.avatarPart === 'hand') {
+              const isDefense = item.itemCategory === 'defense';
+              const isLeftHanded = config?.handedness === 'left';
+              const dominantArm = isLeftHanded ? viewer.playerObject.skin.leftArm : viewer.playerObject.skin.rightArm;
+              const nonDominantArm = isLeftHanded ? viewer.playerObject.skin.rightArm : viewer.playerObject.skin.leftArm;
+              
+              const targetArm = isDefense ? nonDominantArm : dominantArm;
+              
+              if (isDefense) {
+                const isRightArm = targetArm === viewer.playerObject.skin.rightArm;
+                model.scale.set(10, 10, 10);
+                // Posicionar no antebraço, agora na parte de fora
+                model.position.set(isRightArm ? -3.5 : 3.5, -6, 0); 
+                // Rotacionar para ficar virado para fora
+                model.rotation.set(0, isRightArm ? Math.PI / 2 : -Math.PI / 2, 0); 
+              } else {
+                model.scale.set(10, 10, 10);
+                model.position.set(0, -12, 0); 
+                model.rotation.set(Math.PI / 2, 0, 0);
+              }
+              
+              targetArm.add(model);
+              loadedModels.push({ parent: targetArm, model });
+            } else if (item.avatarPart === 'head') {
+              const head = viewer.playerObject.skin.head;
+              model.scale.set(10, 10, 10);
+              model.position.set(0, 4, 0);
+              head.add(model);
+              loadedModels.push({ parent: head, model });
+            }
+          },
+          undefined,
+          (error) => {
+            console.error(`Falha ao carregar o modelo 3D (${safeUrl}):`, error);
+          }
+        );
+      }
+    });
+    
+    return () => {
+      loadedModels.forEach(({ parent, model }) => {
+        parent.remove(model);
+      });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equippedItemsJson]);
+
+  // 4. Generate skins when config changes
   useEffect(() => {
     let isMounted = true;
 
@@ -183,7 +266,8 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
           if (blinkInterval) clearInterval(blinkInterval);
           if (blinkTimeout) clearTimeout(blinkTimeout);
       };
-  }, [skinUrls, animation, expression]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skinUrls, animation, expression, equippedItemsJson]);
 
   useEffect(() => {
     if (!viewerRef.current) return;
@@ -212,6 +296,8 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
 
     resetBones();
 
+    const targetRotation = role === 'player' ? Math.PI / 2 : -Math.PI / 2;
+
     if (animation === 'none') {
       viewerRef.current.animation = null;
     } else if (animation === 'idle') {
@@ -233,14 +319,37 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
         player.skin.leftLeg.rotation.z = -0.1;
         player.skin.rightLeg.rotation.z = 0.1;
       });
-    } else if (animation === 'attack') {
+    } else if (animation.startsWith('attack')) {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
-        // Movimento rápido de ataque com braço direito e pequeno avanço
-        player.skin.rightArm.rotation.x = Math.sin(time * 15) * 2;
-        player.position.z = Math.sin(time * 10) * 2;
+        // Encarar o oponente
+        player.rotation.y = targetRotation;
+        
+        let shouldSwing = true;
+        if (animation === 'attack-fatal-slow') {
+            shouldSwing = time > 1.125; // 45% of 2.5s
+        } else if (animation === 'attack-fatal') {
+            shouldSwing = time > 0.225; // 45% of 0.5s
+        } else if (animation === 'attack') {
+            shouldSwing = time > 0.48; // 40% of 1.2s
+        }
+
+        const isLeftHanded = config?.handedness === 'left';
+        const attackArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
+
+        if (shouldSwing) {
+            // Movimento rápido de ataque com braço da arma e pequeno avanço
+            attackArm.rotation.x = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * 15) * 2;
+            player.position.z = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * 10) * 2;
+        } else {
+            // Apenas preparando o golpe (braço erguido) enquanto teleporta
+            attackArm.rotation.x = -Math.PI / 1.5;
+            player.position.z = 0;
+        }
       });
     } else if (animation === 'hurt' || animation === 'exhausted') {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        if (animation === 'hurt') player.rotation.y = targetRotation; // Encarar o oponente quando machucado
+        
         // Jogado para trás, braços abertos
         player.skin.head.rotation.x = -0.5;
         player.skin.leftArm.rotation.x = -Math.PI / 4;
@@ -251,6 +360,8 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
       });
     } else if (animation === 'death-fall') {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        player.rotation.y = targetRotation; // Cair de lado
+        
         const fall = Math.min(time * 3, Math.PI / 2);
         player.rotation.x = -fall;
         player.position.y = -fall * 10;
@@ -317,6 +428,10 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
     { id: 'feet', label: 'Botas / Pés', pos: { bottom: '-5%', left: '50%', transform: 'translateX(-50%)' } },
     { id: 'pet', label: 'Mascote', pos: { bottom: '5%', left: '-70%' } },
   ];
+
+  if (config?.customModelUrl) {
+    return <CustomModelViewer modelUrl={config.customModelUrl} textureUrl={config.customSkinUrl} animation={animation as any} size={size} role={role} />;
+  }
 
   return (
     <div style={{
@@ -444,7 +559,7 @@ export default function AvatarCharacter({ config, equippedItems = [], size = 120
       })}
     </div>
   );
-}
+});
 
 export function AvatarFace2D({ config, size }: { config: AvatarConfig, size: number }) {
     const [faceUrl, setFaceUrl] = useState('');

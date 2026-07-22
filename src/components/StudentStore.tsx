@@ -196,6 +196,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         itemCategory: item.itemCategory || 'none',
         baseAttributeType: item.baseAttributeType || 'none',
         baseAttributeValue: item.baseAttributeValue || 0,
+        gameModelUrl: item.gameModelUrl || '',
         adds: finalAdds
       });
 

@@ -22,6 +22,7 @@ export interface StoreItem {
   usableInQuest?: boolean;
   minRankRequired: number; // Index of RANKS array
   active: boolean;
+  gameModelUrl?: string; // URL para modelo 3D (ex: .glb)
   avatarPart?: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'accessory' | 'background' | 'pet';
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
@@ -97,6 +98,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           itemImageUrl: itemData.imageUrl || '',
           itemType: itemData.type || 'consumable',
           gameEffect: itemData.gameEffect || 'none',
+          gameModelUrl: itemData.gameModelUrl || '',
           avatarPart: itemData.avatarPart || null,
           usableInQuest: itemData.usableInQuest || false
         }));
@@ -311,6 +313,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Força do Atributo Base</label>
                       <input type="number" value={formData.baseAttributeValue || 0} onChange={e => setFormData({...formData, baseAttributeValue: parseInt(e.target.value) || 0})} className="login-input" />
                     </div>
+                </div>
+                
+                <div style={{ marginTop: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL do Modelo 3D (.glb) [Opcional]</label>
+                  <input type="text" value={formData.gameModelUrl || ''} onChange={e => setFormData({...formData, gameModelUrl: e.target.value})} placeholder="/models/item.glb" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
                 </div>
               </>
             )}

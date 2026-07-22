@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { initRanks } from '../lib/ranks';
 import { auth, db } from '../lib/firebase';
 
@@ -57,21 +57,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let unsubscribeSnapshot: (() => void) | undefined;
+    let unsubscribeAuth: (() => void) | undefined;
+
     // Carrega as patentes customizadas globais primeiro
     initRanks().then(() => {
-      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
         if (user && user.email?.endsWith('@eaportal.org')) {
           setCurrentUser(user);
         
         // Buscar ou criar o documento do usuário no Firestore
         const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
         
-        let fetchedUserData: UserData;
-        
-        if (userSnap.exists()) {
-          fetchedUserData = userSnap.data() as UserData;
-        } else {
+        const unsubscribeSnapshot = onSnapshot(userRef, async (userSnap) => {
+          let fetchedUserData: UserData;
+          
+          if (userSnap.exists()) {
+            fetchedUserData = userSnap.data() as UserData;
+          } else {
           // A Mágica de Super Admin: Verifica se é o e-mail do Fabio
           const isSuperAdmin = user.email === 'fabio.feitoza@eaportal.org';
           
@@ -131,16 +134,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           await setDoc(userRef, { hearts: currentHearts, lastHeartRegen: lastRegen }, { merge: true });
         }
         
-        setUserData(fetchedUserData);
+        setUserData({
+            ...fetchedUserData,
+            hearts: currentHearts,
+            lastHeartRegen: lastRegen
+          });
+          setLoading(false);
+        }); // Fim do onSnapshot
+
+        // Retornar a função de limpeza do snapshot
+        return () => {
+          unsubscribeSnapshot();
+        };
       } else {
+        if (unsubscribeSnapshot) {
+          unsubscribeSnapshot();
+          unsubscribeSnapshot = undefined;
+        }
         setCurrentUser(null);
         setUserData(null);
+        setLoading(false);
       }
-      setLoading(false);
-      });
-
-      return () => unsubscribe();
+      }); // Fim do onAuthStateChanged
     });
+
+    return () => {
+      if (unsubscribeAuth) unsubscribeAuth();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
   }, []);
 
   return (

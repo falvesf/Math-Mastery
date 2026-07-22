@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, User as UserIcon, Upload, Dices, Settings } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
-import type { UserData } from '../contexts/AuthContext';
+import { doc, updateDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { useAuth, type UserData } from '../contexts/AuthContext';
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
@@ -15,7 +15,9 @@ interface AvatarCustomizationModalProps {
   userData?: UserData;
   initialConfig?: AvatarConfig;
   customSaveMode?: boolean;
-  onSave: (newConfig: AvatarConfig) => void;
+  onSave?: (config: AvatarConfig, name?: string) => void;
+  isAdmin?: boolean;
+  inline?: boolean;
 }
 
 export interface PresetSkin {
@@ -23,7 +25,8 @@ export interface PresetSkin {
   name: string;
   url: string;
   type: 'human' | 'monster';
-  baseModelId?: string;
+  baseModelId?: string | null;
+  config?: AvatarConfig;
 }
 
 const SKIN_COLORS = ['#ffcc99', '#f1c27d', '#e0ac69', '#8d5524', '#c68642', '#3d2c23'];
@@ -44,7 +47,8 @@ const MOUTH_STYLES = ['smile', 'neutral', 'sad', 'open', 'teeth'];
 const EYE_STYLES = ['normal', 'cute', 'wink', 'tired'];
 const FACIAL_HAIR_STYLES = ['none', 'beard', 'mustache', 'goatee'];
 
-export default function AvatarCustomizationModal({ isOpen, onClose, userData, initialConfig, customSaveMode, onSave }: AvatarCustomizationModalProps) {
+export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, isAdmin = false, inline = false }: AvatarCustomizationModalProps) {
+  const { userData } = useAuth();
   const { showAlert } = useDialog();
   const [config, setConfig] = useState<AvatarConfig>({
     gender: 'male',
@@ -57,6 +61,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
     handedness: 'right',
   });
   const [saving, setSaving] = useState(false);
+  const [monsterName, setMonsterName] = useState('');
   const [presetSkins, setPresetSkins] = useState<PresetSkin[]>([]);
   const [models3d, setModels3d] = useState<any[]>([]);
   const [showAdminManager, setShowAdminManager] = useState(false);
@@ -98,49 +103,106 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
     if (isOpen) {
       if (initialConfig) {
         setConfig(initialConfig);
-      } else if (userData?.avatarConfig) {
-        setConfig(userData.avatarConfig);
-      } else {
-        setConfig({
-          gender: 'male',
-          skinColor: '#ffcc99',
-          hairColor: '#4a3000',
-          eyeColor: '#000000',
-          hairStyle: 'short',
-          mouthStyle: 'smile',
-          facialHair: 'none',
-          handedness: 'right',
-          animationState: 'idle',
-        });
+      } else if (!inline) {
+        if (userData?.avatarConfig && !customSaveMode) {
+          setConfig(userData.avatarConfig);
+        } else {
+          setConfig({
+            gender: 'male',
+            skinColor: '#ffcc99',
+            hairColor: '#4a3000',
+            eyeColor: '#000000',
+            hairStyle: 'short',
+            mouthStyle: 'smile',
+            facialHair: 'none',
+            handedness: 'right',
+            animationState: 'idle',
+          });
+        }
       }
     }
-  }, [isOpen, initialConfig, userData]);
+  }, [isOpen, initialConfig, userData, customSaveMode, inline]);
 
   if (!isOpen) return null;
+
+  const hasRandomized = useRef(false);
+
+  useEffect(() => {
+    if (inline && !hasRandomized.current && presetSkins.length >= 0) {
+      handleRandomize();
+      hasRandomized.current = true;
+    }
+  }, [inline, presetSkins]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (!customSaveMode && userData) {
+      if (!customSaveMode && userData && !inline) {
         await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: config });
+        if (onSave) {
+          onSave(config, monsterName);
+        }
         await showAlert('Personagem salvo com sucesso!');
       } else {
-        await showAlert('Aparência salva na memória temporária. Não se esqueça de salvar a missão!');
+        if (onSave) {
+          onSave(config, monsterName);
+        }
+        
+        if ((userData?.role === 'admin' || isAdmin) && inline && monsterName.trim()) {
+          try {
+            await addDoc(collection(db, 'preset_skins'), {
+              name: monsterName.trim(),
+              url: '',
+              type: customSaveMode ? 'monster' : 'human',
+              baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null,
+              config: config
+            });
+            await showAlert(`${customSaveMode ? 'Monstro' : 'Personagem'} salvo na galeria com sucesso!`);
+          } catch (e) {
+            console.error("Erro ao salvar na galeria", e);
+          }
+        } else {
+          await showAlert('Aparência salva na memória temporária.');
+        }
       }
-      onSave(config);
-      onClose();
+      if (!inline) {
+        onClose();
+      } else {
+        setMonsterName(''); // Limpar o nome para o próximo
+      }
     } catch (e) {
       console.error(e);
-      await showAlert('Erro ao salvar personagem.');
+      await showAlert('Erro ao salvar.');
     }
     setSaving(false);
   };
 
+  useEffect(() => {
+    if (config.customSkinUrl && !config.customModelUrl && presetSkins.length > 0 && models3d.length > 0) {
+      const activePreset = presetSkins.find(s => s.url === config.customSkinUrl);
+      if (activePreset?.baseModelId && activePreset.baseModelId !== 'default') {
+        const model = models3d.find(m => m.id === activePreset.baseModelId);
+        if (model) {
+          setConfig(prev => ({ ...prev, customModelUrl: model.url }));
+        }
+      }
+    }
+  }, [config.customSkinUrl, config.customModelUrl, presetSkins, models3d, setConfig]);
+
   const handleRandomize = () => {
     const randomItem = (arr: any[]) => arr[Math.floor(Math.random() * arr.length)];
     
+    // Sugerir da galeria global
+    const relevantPresets = presetSkins.filter(s => s.type === (customSaveMode ? 'monster' : 'human') && s.config);
+    if (relevantPresets.length > 0 && Math.random() < 0.4) {
+      const selected = randomItem(relevantPresets);
+      if (selected.config) {
+        setConfig(selected.config);
+        return;
+      }
+    }
+
     if (customSaveMode) {
-      // Monstro
       setConfig({
         ...config,
         gender: randomItem(['male', 'female']),
@@ -156,7 +218,6 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
         customSkinUrl: ''
       });
     } else {
-      // Personagem Normal
       const newGender = randomItem(['male', 'female']);
       setConfig({
         ...config,
@@ -179,7 +240,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
     <div style={{ marginBottom: '1.5rem' }}>
       <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>{label}</label>
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '4px', flex: 1, scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '4px', flex: 1, scrollbarWidth: 'thin' }}>
           {colors.map(c => (
             <button
               key={c}
@@ -203,39 +264,13 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
             onChange={(e) => onChange(e.target.value)}
             style={{ width: '28px', height: '28px', padding: '0', border: 'none', borderRadius: '4px', cursor: 'pointer', background: 'transparent' }}
           />
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>RGB Livre</span>
         </div>
       </div>
     </div>
   );
 
-  const StyleSelector = ({ label, options, value, onChange }: { label: string, options: string[], value: string, onChange: (s: string) => void }) => (
-    <div style={{ marginBottom: '1.5rem' }}>
-      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>{label}</label>
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {options.map(opt => (
-          <button
-            key={opt}
-            onClick={() => onChange(opt)}
-            style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '8px',
-              backgroundColor: value === opt || (opt === options[0] && !value) ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-              border: value === opt || (opt === options[0] && !value) ? '1px solid var(--accent-primary)' : '1px solid rgba(255, 255, 255, 0.1)',
-              color: value === opt || (opt === options[0] && !value) ? 'var(--accent-primary)' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              textTransform: 'capitalize'
-            }}
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
   return (
-    <div style={{
+    <div style={inline ? { width: '100%' } : {
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
       backgroundColor: 'rgba(0, 0, 0, 0.8)',
       backdropFilter: 'blur(8px)',
@@ -243,46 +278,48 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
       zIndex: 9999,
       padding: '1rem'
     }}>
-      <div className="glass-panel" style={{
-        width: '100%', maxWidth: '800px',
+      <div className={inline ? '' : 'glass-panel'} style={{
+        width: '100%', maxWidth: inline ? '100%' : '800px',
         maxHeight: '90vh',
         overflowY: 'auto',
         position: 'relative',
         display: 'flex',
         flexDirection: 'column'
       }}>
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute', top: '1.5rem', right: '1.5rem',
-            background: 'none', border: 'none',
-            color: 'var(--text-secondary)', cursor: 'pointer',
-            padding: '0.5rem'
-          }}
-        >
-          <X size={24} />
-        </button>
+        {!inline && (
+          <button
+            onClick={onClose}
+            style={{
+              position: 'absolute', top: '1.5rem', right: '1.5rem',
+              background: 'none', border: 'none',
+              color: 'var(--text-secondary)', cursor: 'pointer',
+              padding: '0.5rem'
+            }}
+          >
+            <X size={24} />
+          </button>
+        )}
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
             <UserIcon size={32} color="var(--accent-primary)" />
             <h2 style={{ margin: 0, fontSize: '1.5rem', textTransform: 'uppercase' }}>
               {customSaveMode ? 'Personalizar Monstro' : 'Personalizar Personagem'}
             </h2>
           </div>
-          {userData?.role === 'admin' && (
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {(userData?.role === 'admin' || isAdmin) && !inline && (
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
               <button 
                 onClick={() => setShowAdminManager(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-card)', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                style={{ flex: 1, padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--bg-card)', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                <Settings size={18} /> Admin: Skins
+                <Settings size={16} /> Admin: Skins
               </button>
               <button 
                 onClick={() => setShowAdmin3dManager(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-card)', border: '1px solid #10b981', color: '#10b981', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                style={{ flex: 1, padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--bg-card)', border: '1px solid #10b981', color: '#10b981', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                <Settings size={18} /> Admin: Moldes 3D
+                <Settings size={16} /> Admin: Moldes 3D
               </button>
             </div>
           )}
@@ -306,9 +343,9 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
                 : null;
 
               if (activeModel) {
-                return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={150} />;
+                return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={250} />;
               }
-              return <AvatarCharacter config={config} size={150} animation={config.animationState || 'idle'} interactive={true} />;
+              return <AvatarCharacter config={config} size={250} animation={config.animationState || 'idle'} interactive={true} />;
             })()}
             
             <div style={{ marginTop: '1.5rem', marginBottom: '0.5rem' }}>
@@ -351,60 +388,32 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
             
             {customSaveMode && (
               <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-primary)', borderRadius: '8px' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL da Skin Customizada (Opcional - Ex: Nova Skin)</label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input 
-                    type="text" 
-                    value={config.customSkinUrl || ''} 
-                    onChange={e => setConfig({ ...config, customSkinUrl: e.target.value })} 
-                    placeholder="Cole um link terminado em .png" 
-                    style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} 
-                  />
-                  <input
-                    type="file"
-                    accept="image/png"
-                    id="skin-upload"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
-                        if (event.target?.result) {
-                          setConfig({ ...config, customSkinUrl: event.target.result.toString() });
-                        }
-                      };
-                      reader.readAsDataURL(file);
-                    }}
-                  />
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Skins de Monstro Pré-definidas</label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button
-                    onClick={() => document.getElementById('skin-upload')?.click()}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0 1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'white', cursor: 'pointer' }}
+                    onClick={() => setConfig({ ...config, customSkinUrl: '', customModelUrl: undefined })}
+                    style={{
+                       padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
+                    }}
                   >
-                    <Upload size={18} /> Upload
+                    Nenhum
                   </button>
-                </div>
-                {config.customSkinUrl && !config.customSkinUrl.startsWith('data:') && !config.customSkinUrl.toLowerCase().endsWith('.png') && !config.customSkinUrl.includes('t.novaskin.me') && (
-                  <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: 'var(--accent-red)' }}>Atenção: O link não termina em .png e parece inválido. Links de páginas como novask.in/... não funcionam, use o link da imagem.</p>
-                )}
-                {config.customSkinUrl && <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: 'var(--accent-primary)' }}>Skin externa ativada. As configurações visuais abaixo serão ignoradas na renderização do monstro.</p>}
-                
-                {/* Galeria de Skins */}
-                <div style={{ marginTop: '1.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Skins Pré-definidas</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {presetSkins.filter(s => s.type === 'monster').map(skin => (
-                      <button
-                        key={skin.id}
-                        onClick={() => setConfig({ ...config, customSkinUrl: skin.url })}
-                        style={{
-                           padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
-                        }}
-                      >
-                        {skin.name}
-                      </button>
-                    ))}
-                  </div>
+                  {presetSkins.filter(s => s.type === 'monster').map(skin => (
+                    <button
+                      key={skin.id}
+                      onClick={() => {
+                        const modelUrl = skin.baseModelId && skin.baseModelId !== 'default' 
+                          ? models3d.find(m => m.id === skin.baseModelId)?.url 
+                          : undefined;
+                        setConfig({ ...config, customSkinUrl: skin.url, customModelUrl: modelUrl });
+                      }}
+                      style={{
+                         padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
+                      }}
+                    >
+                      {skin.name}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -581,6 +590,25 @@ export default function AvatarCustomizationModal({ isOpen, onClose, userData, in
                 </div>
               )}
             </div>
+
+            {(userData?.role === 'admin' || isAdmin) && inline && (
+              <div style={{ marginBottom: '1.5rem', background: 'rgba(59, 130, 246, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--accent-primary)' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                  {customSaveMode ? 'Salvar Monstro na Galeria Global' : 'Salvar Personagem na Galeria Global'}
+                </label>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                  Ao dar um nome abaixo, este {customSaveMode ? 'monstro' : 'personagem'} será salvo para ser reutilizado ou sugerido aleatoriamente.
+                </p>
+                <input 
+                  type="text" 
+                  value={monsterName}
+                  onChange={e => setMonsterName(e.target.value)}
+                  placeholder={`Nome do ${customSaveMode ? 'Monstro' : 'Personagem'} (Ex: ${customSaveMode ? 'Golem de Gelo' : 'Herói Padrão'})`}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}
+                />
+              </div>
+            )}
+
             <button 
               className="btn-primary"
               onClick={handleSave}

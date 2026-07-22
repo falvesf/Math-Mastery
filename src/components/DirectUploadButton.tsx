@@ -8,9 +8,10 @@ interface DirectUploadButtonProps {
   onUploadComplete: (url: string) => void;
   folder?: string;
   buttonStyle?: React.CSSProperties;
+  accept?: string;
 }
 
-export default function DirectUploadButton({ onUploadComplete, folder = 'uploads', buttonStyle }: DirectUploadButtonProps) {
+export default function DirectUploadButton({ onUploadComplete, folder = 'uploads', buttonStyle, accept = 'image/*' }: DirectUploadButtonProps) {
   const { showAlert } = useDialog();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -25,8 +26,13 @@ export default function DirectUploadButton({ onUploadComplete, folder = 'uploads
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
+    if (accept === 'image/*' && !file.type.startsWith('image/')) {
       showAlert('Por favor, selecione apenas arquivos de imagem.');
+      return;
+    }
+    
+    if (accept.includes('.glb') && !file.name.toLowerCase().endsWith('.glb') && !file.name.toLowerCase().endsWith('.gltf')) {
+      showAlert('Por favor, selecione apenas arquivos de modelo 3D (.glb ou .gltf).');
       return;
     }
 
@@ -65,7 +71,7 @@ export default function DirectUploadButton({ onUploadComplete, folder = 'uploads
     <div style={{ display: 'inline-block', height: '100%' }}>
       <input
         type="file"
-        accept="image/*"
+        accept={accept}
         ref={fileInputRef}
         onChange={handleFileChange}
         style={{ display: 'none' }}

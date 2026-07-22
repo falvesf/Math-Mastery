@@ -62,9 +62,12 @@ export default function Admin3DModelsManager() {
       return;
     }
 
-    if (!url.toLowerCase().endsWith('.glb') && !url.toLowerCase().endsWith('.gltf') && !url.startsWith('data:')) {
+    const urlLower = url.toLowerCase();
+    const isGlbOrGltf = urlLower.includes('.glb') || urlLower.includes('.gltf') || url.startsWith('data:');
+
+    if (!isGlbOrGltf) {
       const confirm = await showConfirm(
-        'A URL não termina em .glb ou .gltf. Você tem certeza que é um modelo 3D válido? Deseja salvar mesmo assim?'
+        'A URL não parece conter .glb ou .gltf. Você tem certeza que é um modelo 3D válido? Deseja salvar mesmo assim?'
       );
       if (!confirm) return;
     }
@@ -147,6 +150,7 @@ export default function Admin3DModelsManager() {
                 <DirectUploadButton 
                   onUploadComplete={setUrl} 
                   folder="3d_models" 
+                  accept=".glb,.gltf"
                 />
               </div>
             </div>

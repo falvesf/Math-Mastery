@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { useGLTF, useAnimations, OrbitControls } from '@react-three/drei';
+import { useGLTF, useAnimations, OrbitControls, Bounds } from '@react-three/drei';
 import * as THREE from 'three';
 
 interface CustomModelViewerProps {
   modelUrl: string;
   textureUrl?: string;
-  animation?: 'idle' | 'walk' | 'run' | 'attack' | 'none';
+  animation?: string;
   size?: number;
+  role?: 'player' | 'monster';
 }
 
-function Model({ modelUrl, textureUrl, animationName }: { modelUrl: string, textureUrl?: string, animationName?: string }) {
+function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster' }) {
   const { scene: originalScene, animations } = useGLTF(modelUrl);
   
   // Clone to avoid mutating the cached GLTF if multiple are rendered
@@ -20,20 +21,28 @@ function Model({ modelUrl, textureUrl, animationName }: { modelUrl: string, text
   useEffect(() => {
     if (textureUrl) {
       const loader = new THREE.TextureLoader();
-      loader.crossOrigin = "anonymous";
+      loader.crossOrigin = 'anonymous';
       loader.load(textureUrl, (texture) => {
-        texture.flipY = false;
-        texture.magFilter = THREE.NearestFilter;
+        texture.flipY = false; // GLTF padrão usa flipY falso
+        texture.magFilter = THREE.NearestFilter; // Para manter o estilo pixel art
         texture.minFilter = THREE.NearestFilter;
+        
         scene.traverse((child) => {
           if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
-            // Minecraft textures use alpha test
-            mesh.material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, alphaTest: 0.1 });
+            // Preserva as propriedades originais do material (brilho, sombra), apenas troca a imagem
+            if (mesh.material) {
+              const newMat = (mesh.material as THREE.Material).clone() as any;
+              newMat.map = texture;
+              newMat.transparent = false; // Desativar transparência do alpha blending para evitar Z-fighting
+              newMat.alphaTest = 0.5; // Usar alphaTest para cutout puro (descartar pixels invisíveis)
+              newMat.needsUpdate = true;
+              mesh.material = newMat;
+            }
           }
         });
       }, undefined, (err) => {
-        console.error("Error loading texture:", err);
+        console.error('Erro ao carregar textura customizada:', err);
       });
     }
   }, [scene, textureUrl]);
@@ -56,24 +65,36 @@ function Model({ modelUrl, textureUrl, animationName }: { modelUrl: string, text
     }
 
     if (targetAction) {
-      targetAction.reset().fadeIn(0.2).play();
+      targetAction.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.2).play();
       return () => { targetAction?.fadeOut(0.2); };
     }
   }, [actions, animationName]);
 
-  return <primitive object={scene} />;
+  const targetRotation = React.useMemo(() => {
+    if (!role) return [0, Math.PI, 0];
+    const isCombatAnim = animationName?.startsWith('attack') || animationName === 'hurt' || animationName?.startsWith('death');
+    if (isCombatAnim) {
+      return role === 'player' ? [0, Math.PI / 2, 0] : [0, -Math.PI / 2, 0];
+    }
+    return [0, Math.PI, 0];
+  }, [role, animationName]);
+
+  return <primitive object={scene} rotation={targetRotation} />;
 }
 
-export default function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150 }: CustomModelViewerProps) {
+export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role }: CustomModelViewerProps) {
   return (
     <div style={{ width: size, height: size * 1.5, position: 'relative' }}>
-      <Canvas camera={{ position: [0, 5, 15], fov: 45 }}>
-        <ambientLight intensity={1} />
-        <OrbitControls enablePan={false} enableZoom={true} />
+      <Canvas camera={{ position: [0, 3, 10], fov: 45 }}>
+        <ambientLight intensity={1.5} />
+        <directionalLight position={[5, 10, 5]} intensity={0.5} />
+        <OrbitControls enablePan={false} enableZoom={true} target={[0, 1.5, 0]} />
         <React.Suspense fallback={null}>
-          <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} />
+          <group position={[0, -2.5, 0]} scale={2.8}>
+            <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} />
+          </group>
         </React.Suspense>
       </Canvas>
     </div>
   );
-}
+});
