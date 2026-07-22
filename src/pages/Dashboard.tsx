@@ -11,6 +11,7 @@ import StudentStore from '../components/StudentStore';
 import StudentInventory from '../components/StudentInventory';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
+import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
 import { Edit3, MessageCircle } from 'lucide-react';
@@ -26,6 +27,8 @@ export default function Dashboard() {
   // Rankings state
   const [allStudents, setAllStudents] = useState<UserData[]>([]);
   const [loadingRankings, setLoadingRankings] = useState(true);
+  const [rankingEquippedItems, setRankingEquippedItems] = useState<Record<string, EquippedItem[]>>({});
+  const [publicProfileUser, setPublicProfileUser] = useState<{user: UserData, rankPos: number} | null>(null);
 
   // Avatar State
   const [isCustomizingAvatar, setIsCustomizingAvatar] = useState(false);
@@ -100,6 +103,8 @@ export default function Dashboard() {
         const data = d.data();
         if (data.itemImageUrl && data.avatarPart) {
           eq.push({ 
+            docId: d.id,
+            itemId: data.itemId,
             imageUrl: data.itemImageUrl, 
             avatarPart: data.avatarPart as any,
             itemTitle: data.itemTitle,
@@ -127,6 +132,49 @@ export default function Dashboard() {
 
     return () => unsub();
   }, [userData?.classId]);
+
+  useEffect(() => {
+    const fetchRankingItems = async () => {
+      const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
+      const top10General = allStudents.slice(0, 10);
+      const studentIds = new Set<string>();
+      
+      classStudents.forEach(s => studentIds.add(s.uid));
+      top10General.forEach(s => studentIds.add(s.uid));
+      
+      if (studentIds.size === 0) return;
+      
+      try {
+        const q = query(collection(db, 'user_items'), where('equipped', '==', true));
+        const snap = await getDocs(q);
+        const newRankingItems: Record<string, EquippedItem[]> = {};
+        
+        snap.forEach(d => {
+          const data = d.data();
+          if (studentIds.has(data.studentId) && data.itemImageUrl && data.avatarPart) {
+            if (!newRankingItems[data.studentId]) newRankingItems[data.studentId] = [];
+            newRankingItems[data.studentId].push({
+              itemId: data.itemId,
+              imageUrl: data.itemImageUrl,
+              avatarPart: data.avatarPart as any,
+              itemTitle: data.itemTitle,
+              itemCategory: data.itemCategory,
+              baseAttributeType: data.baseAttributeType,
+              baseAttributeValue: data.baseAttributeValue,
+              adds: data.adds,
+              gameModelUrl: data.gameModelUrl
+            } as EquippedItem);
+          }
+        });
+        
+        setRankingEquippedItems(newRankingItems);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    
+    fetchRankingItems();
+  }, [allStudents, userData?.classId]);
 
   const recentBubblesRef = useRef<string[]>([]);
 
@@ -209,6 +257,18 @@ export default function Dashboard() {
     await signOut(auth);
   };
 
+  const handleUnequipItem = async (item: EquippedItem) => {
+    if (!userData || !item.docId) return;
+    try {
+      await updateDoc(doc(db, 'user_items', item.docId), { equipped: false });
+      // Remove do estado local para atualização instantânea (opcional, mas o inventário deve recarregar)
+      setEquippedItems(prev => prev.filter(i => i.docId !== item.docId));
+      setInventoryRefresh(prev => prev + 1);
+    } catch (e) {
+      console.error('Erro ao desequipar item:', e);
+    }
+  };
+
   const handleEditStatus = async () => {
     const status = await showPrompt('Digite sua mensagem de status (ex: Feliz da vida!, Cansado de matemática...):', userData?.customStatusText || '');
     if (status === null) return;
@@ -241,26 +301,9 @@ export default function Dashboard() {
   const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
   const top10General = allStudents.slice(0, 10);
 
-  const RankingAvatar = ({ student, size, rankPos = 1 }: { student: UserData; size: number, rankPos?: number }) => {
-    const [eqItems, setEqItems] = useState<any[]>([]);
+  const RankingAvatar = ({ student, size, rankPos = 1, onAvatarClick }: { student: UserData; size: number, rankPos?: number, onAvatarClick?: () => void }) => {
+    const eqItems = rankingEquippedItems[student.uid] || [];
     const [isHovered, setIsHovered] = useState(false);
-
-    useEffect(() => {
-      if (!student.uid) return;
-      const fetchEq = async () => {
-        const q = query(collection(db, 'user_items'), where('studentId', '==', student.uid), where('equipped', '==', true));
-        const snap = await getDocs(q);
-        const items: any[] = [];
-        snap.forEach(d => {
-          const data = d.data();
-          if (data.itemImageUrl && data.avatarPart) {
-             items.push({ imageUrl: data.itemImageUrl, avatarPart: data.avatarPart });
-          }
-        });
-        setEqItems(items);
-      };
-      fetchEq();
-    }, [student.uid]);
 
     const avatarState = getProfileAvatarState(student);
     const show3D = rankPos <= 3 || isHovered;
@@ -269,7 +312,8 @@ export default function Dashboard() {
       <div 
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: rankPos > 3 ? 'pointer' : 'default' }}
+        onClick={onAvatarClick}
+        style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
       >
         {activeBubbleId === student.uid && student.customStatusText && (
           <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', background: 'white', color: 'black', padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap', zIndex: 50, boxShadow: '0 4px 10px rgba(0,0,0,0.5)', animation: 'epicZoom 0.3s ease-out' }}>
@@ -283,7 +327,7 @@ export default function Dashboard() {
             equippedItems={eqItems} 
             size={size} 
             interactive={false} 
-            animation={show3D ? (avatarState.animation as any) : 'none'} 
+            animation={show3D ? (avatarState.animation as any) : 'idle'} 
             expression={avatarState.expression as any} 
           />
         ) : (
@@ -346,7 +390,7 @@ export default function Dashboard() {
                 </div>
                 
                 <div style={{ padding: '2px', borderRadius: '50%', border: `2px solid ${medalColor}`, boxShadow: rankPos === 1 ? '0 0 10px rgba(251,191,36,0.5)' : 'none' }}>
-                  <RankingAvatar student={student} size={avatarSize} rankPos={rankPos} />
+                  <RankingAvatar student={student} size={avatarSize} rankPos={rankPos} onAvatarClick={() => setPublicProfileUser({user: student, rankPos})} />
                 </div>
                 
                 <div>
@@ -382,11 +426,25 @@ export default function Dashboard() {
         <AvatarCustomizationModal
           isOpen={isCustomizingAvatar}
           onClose={() => setIsCustomizingAvatar(false)}
+          equippedItems={equippedItems}
           userData={userData}
           initialConfig={liveAvatarConfig || userData.avatarConfig}
           onSave={(newConfig) => {
             setLiveAvatarConfig(newConfig);
+            setIsCustomizingAvatar(false);
           }}
+        />
+      )}
+
+      {publicProfileUser && (
+        <PublicProfileModal
+          isOpen={!!publicProfileUser}
+          onClose={() => setPublicProfileUser(null)}
+          user={publicProfileUser.user}
+          rankPos={publicProfileUser.rankPos}
+          equippedItems={rankingEquippedItems[publicProfileUser.user.uid] || []}
+          rankName={getRankForXp(publicProfileUser.user.xp || 0).name}
+          rankColor={getRankForXp(publicProfileUser.user.xp || 0).color}
         />
       )}
 
@@ -560,9 +618,7 @@ export default function Dashboard() {
             {/* Perfil do Aluno (Esquerda) */}
             <div className="glass-panel" style={{ flex: '1 1 400px', padding: '3rem 2rem', textAlign: 'center' }}>
               <div 
-                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem', cursor: 'pointer', transition: 'transform 0.2s' }}
-                onClick={() => setIsCustomizingAvatar(true)}
-                title="Clique para personalizar seu personagem"
+                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem', transition: 'transform 0.2s' }}
                 onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
                 onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
               >
@@ -572,7 +628,7 @@ export default function Dashboard() {
                     <div style={{ position: 'absolute', bottom: 50, right: -10 }}>
                       {(liveAvatarConfig || userData?.avatarConfig) ? (
                         <div style={{ width: 50, height: 50, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                          <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={50} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} />
+                          <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={50} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
                         </div>
                       ) : (
                         <img src={userData?.photoURL} alt="Avatar" style={{ width: 50, height: 50, borderRadius: '50%', border: `2px solid ${currentRank.color}` }} />
@@ -585,8 +641,8 @@ export default function Dashboard() {
                 ) : (
                   <>
                     {(liveAvatarConfig || userData?.avatarConfig) ? (
-                      <div style={{ width: 120, height: 120, borderRadius: '50%', overflow: 'visible', border: `4px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: `0 0 20px ${currentRank.color}40` }}>
-                        <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={100} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} />
+                      <div style={{ width: 120, height: 120, borderRadius: '50%', overflow: 'visible', border: `4px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: `0 0 20px ${currentRank.color}40` }} title="Clique para personalizar seu personagem">
+                        <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={100} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
                       </div>
                     ) : (
                       <img src={userData?.photoURL} alt="Avatar" style={{ width: 120, height: 120, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, objectFit: 'cover' }} />
@@ -691,7 +747,7 @@ export default function Dashboard() {
 
             {/* Inventário Movido para Cá */}
             <div style={{ width: '100%', marginTop: '1rem' }}>
-              {userData && <StudentInventory userData={userData} onEquip={() => setInventoryRefresh(r => r + 1)} />}
+              {userData && <StudentInventory userData={userData} onEquip={() => setInventoryRefresh(r => r + 1)} inventoryRefresh={inventoryRefresh} />}
             </div>
           </div>
         )}

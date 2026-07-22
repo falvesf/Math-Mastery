@@ -3,7 +3,7 @@ import { X, Save, User as UserIcon, Upload, Dices, Settings } from 'lucide-react
 import { db } from '../lib/firebase';
 import { doc, updateDoc, collection, getDocs, addDoc } from 'firebase/firestore';
 import { useAuth, type UserData } from '../contexts/AuthContext';
-import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
+import AvatarCharacter, { type AvatarConfig, type EquippedItem } from './AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import Admin3DModelsManager from './Admin3DModelsManager';
@@ -13,6 +13,7 @@ interface AvatarCustomizationModalProps {
   isOpen: boolean;
   onClose: () => void;
   userData?: UserData;
+  equippedItems?: EquippedItem[];
   initialConfig?: AvatarConfig;
   customSaveMode?: boolean;
   onSave?: (config: AvatarConfig, name?: string) => void;
@@ -47,7 +48,7 @@ const MOUTH_STYLES = ['smile', 'neutral', 'sad', 'open', 'teeth'];
 const EYE_STYLES = ['normal', 'cute', 'wink', 'tired'];
 const FACIAL_HAIR_STYLES = ['none', 'beard', 'mustache', 'goatee'];
 
-export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, isAdmin = false, inline = false }: AvatarCustomizationModalProps) {
+export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
   const { userData } = useAuth();
   const { showAlert } = useDialog();
   const [config, setConfig] = useState<AvatarConfig>({
@@ -345,7 +346,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               if (activeModel) {
                 return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={250} />;
               }
-              return <AvatarCharacter config={config} size={250} animation={config.animationState || 'idle'} interactive={true} />;
+              return <AvatarCharacter config={config} equippedItems={equippedItems} size={250} animation={config.animationState || 'idle'} interactive={true} />;
             })()}
             
             <div style={{ marginTop: '1.5rem', marginBottom: '0.5rem' }}>

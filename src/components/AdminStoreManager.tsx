@@ -9,7 +9,7 @@ import { useDialog } from '../contexts/DialogContext';
 import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType } from '../lib/gacha';
 
-export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp';
+export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'gift_wrap';
 
 export interface StoreItem {
   id: string;
@@ -259,6 +259,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="add_time">Ampulheta (Adiciona +30 segundos)</option>
                       <option value="extra_life">Escudo (Protege contra erro na questão atual)</option>
                       <option value="restore_hp">Poção de Vida (Restaura todo o HP do aluno)</option>
+                      <option value="gift_wrap">Embalar para presente (Permite enviar presente da loja)</option>
                     </select>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

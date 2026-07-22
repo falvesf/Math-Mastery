@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp, where } from 'firebase/firestore';
+import { collection, query, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp, where, deleteDoc } from 'firebase/firestore';
 import { Coins, Star, ShieldAlert, Store } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
@@ -53,6 +53,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [students, setStudents] = useState<UserData[]>([]);
   const [giftingItemId, setGiftingItemId] = useState<string | null>(null);
   const [selectedGiftRecipient, setSelectedGiftRecipient] = useState<string>('');
+  const [giftWrapItemIds, setGiftWrapItemIds] = useState<string[]>([]);
 
   useEffect(() => {
     fetchStoreData();
@@ -98,15 +99,20 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       const myItemsQ = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
       const myItemsSnap = await getDocs(myItemsQ);
       let count = 0;
+      const wrapIds: string[] = [];
       myItemsSnap.forEach(doc => {
         const d = doc.data();
         if (!d.forSale && d.studentId !== 'dropped') {
           // Consumíveis seriam agrupados? Na mochila atual cada item é contado, mas se ele comprar oficial vai criar novo doc.
           // Para simplificar: checamos o total de documentos ativos.
           count++;
+          if (d.gameEffect === 'gift_wrap') {
+            wrapIds.push(doc.id);
+          }
         }
       });
       setMyInventoryCount(count);
+      setGiftWrapItemIds(wrapIds);
     }
 
     setLoading(false);
@@ -155,6 +161,18 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     setPurchasing(item.id);
 
     try {
+      if (isGift && !isStaff) {
+        if (giftWrapItemIds.length === 0) {
+          await showAlert("Você não tem nenhuma Caixa de Presente no inventário.");
+          setPurchasing(null);
+          return;
+        }
+        // Consumir a caixa de presente
+        const boxIdToConsume = giftWrapItemIds[0];
+        await deleteDoc(doc(db, 'user_items', boxIdToConsume));
+        setGiftWrapItemIds(prev => prev.slice(1));
+      }
+
       // Deduzir valor Apenas de Alunos
       let newBalance = currentBalance;
       if (!isStaff) {
@@ -431,22 +449,24 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                         >
                           {purchasing === item.id ? '...' : canAfford ? 'Comprar' : 'Sem Saldo'}
                         </button>
-                        <button 
-                          className="login-btn"
-                          disabled={!canAfford}
-                          onClick={() => setGiftingItemId(item.id)}
-                          style={{ 
-                            flex: 1,
-                            background: 'rgba(251, 191, 36, 0.1)', 
-                            color: 'var(--gold-primary)', 
-                            border: '1px solid var(--gold-primary)', 
-                            padding: '0.75rem',
-                            opacity: canAfford ? 1 : 0.5,
-                            cursor: canAfford ? 'pointer' : 'not-allowed'
-                          }}
-                        >
-                          Presente
-                        </button>
+                        {(userData.role !== 'student' || giftWrapItemIds.length > 0) && (
+                          <button 
+                            className="login-btn"
+                            disabled={!canAfford}
+                            onClick={() => setGiftingItemId(item.id)}
+                            style={{ 
+                              flex: 1,
+                              background: 'rgba(251, 191, 36, 0.1)', 
+                              color: 'var(--gold-primary)', 
+                              border: '1px solid var(--gold-primary)', 
+                              padding: '0.75rem',
+                              opacity: canAfford ? 1 : 0.5,
+                              cursor: canAfford ? 'pointer' : 'not-allowed'
+                            }}
+                          >
+                            Presente
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>

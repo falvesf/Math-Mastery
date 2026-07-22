@@ -24,8 +24,10 @@ export interface AvatarConfig {
 }
 
 export interface EquippedItem {
+  docId?: string;
+  itemId?: string;
   imageUrl: string;
-  avatarPart: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'accessory' | 'background' | 'pet';
+  avatarPart: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'rightHand' | 'leftHand' | 'accessory' | 'back' | 'background' | 'pet';
   itemTitle?: string;
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
@@ -43,11 +45,13 @@ export interface AvatarCharacterProps {
   expression?: 'normal' | 'serious' | 'sad';
   role?: 'player' | 'monster';
   showSlots?: boolean;
+  onAvatarClick?: () => void;
+  onSlotClick?: (item: EquippedItem) => void;
 }
 
 import CustomModelViewer from './CustomModelViewer';
 
-export default React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false }: AvatarCharacterProps) {
+export default React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
@@ -134,7 +138,7 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
             console.log(`Modelo ${safeUrl} carregado com sucesso!`);
             const model = gltf.scene;
             
-            if (item.avatarPart === 'hand') {
+            if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand') {
               const isDefense = item.itemCategory === 'defense';
               const isLeftHanded = config?.handedness === 'left';
               const dominantArm = isLeftHanded ? viewer.playerObject.skin.leftArm : viewer.playerObject.skin.rightArm;
@@ -399,7 +403,7 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
     }
   }, [animation]);
 
-  const handItems = equippedItems.filter(i => i.avatarPart === 'hand');
+  const handItems = equippedItems.filter(i => i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'hand');
   let leftScreenHandItem = null; // Character's right hand
   let rightScreenHandItem = null; // Character's left hand
 
@@ -462,12 +466,14 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
       {/* 3D Canvas */}
       <canvas 
         ref={canvasRef} 
+        onClick={() => onAvatarClick && onAvatarClick()}
         style={{ 
           display: 'block', 
           position: 'relative',
           zIndex: 1,
           outline: 'none',
-          pointerEvents: 'auto'
+          pointerEvents: 'auto',
+          cursor: onAvatarClick ? 'pointer' : 'default'
         }} 
       />
       {/* Slots de Equipamento Externos */}
@@ -479,6 +485,12 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
             key={slot.id} 
             onMouseEnter={() => setHoveredSlot(slot.id)}
             onMouseLeave={() => setHoveredSlot(null)}
+            onClick={(e) => {
+              if (item && onSlotClick) {
+                e.stopPropagation();
+                onSlotClick(item);
+              }
+            }}
             style={{
               position: 'absolute',
               ...slot.pos,
@@ -492,7 +504,8 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
               justifyContent: 'center',
               zIndex: 10,
               boxShadow: item ? '0 0 10px rgba(251, 191, 36, 0.4)' : 'none',
-              overflow: 'visible'
+              overflow: 'visible',
+              cursor: item && onSlotClick ? 'pointer' : 'default'
           }}>
             {/* Imagem do Item centralizada e cortada (hidden) num circulo interior para não quebrar a borda visivel caso coloquemos o tooltip por fora */}
             <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

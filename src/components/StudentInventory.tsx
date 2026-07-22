@@ -31,7 +31,7 @@ interface UserItem {
   adds?: ItemAdd[];
 }
 
-export default function StudentInventory({ userData, onEquip }: { userData: UserData, onEquip?: () => void }) {
+export default function StudentInventory({ userData, onEquip, inventoryRefresh }: { userData: UserData, onEquip?: () => void, inventoryRefresh?: number }) {
   const { showAlert, showConfirm, showConfirmWithCheckbox } = useDialog();
   const [items, setItems] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +46,7 @@ export default function StudentInventory({ userData, onEquip }: { userData: User
 
   useEffect(() => {
     fetchInventory();
-  }, [userData]);
+  }, [userData.uid, inventoryRefresh]);
 
   const fetchInventory = async () => {
     if (!userData.uid) return;

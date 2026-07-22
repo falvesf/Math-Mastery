@@ -58,6 +58,7 @@ export default function QuestGameplay() {
   const [chestRewards, setChestRewards] = useState<{coins: number, items: any[]}>({ coins: 0, items: [] });
   const [showChest, setShowChest] = useState(false);
   const [chestOpened, setChestOpened] = useState(false);
+  const [criticalHits, setCriticalHits] = useState(0);
   const [playerBubble, setPlayerBubble] = useState<string>('');
   const [monsterBubble, setMonsterBubble] = useState<string>('');
   const [playerAnim, setPlayerAnim] = useState<string>('idle');
@@ -250,24 +251,63 @@ export default function QuestGameplay() {
     handleAnswer(-1); // -1 means timeout/wrong
   };
 
+  const getMonsterSpecialChance = () => {
+    if (!quest || !quest.chestConfig) return 0;
+    const itemsConfigured = quest.chestConfig.itemIds?.filter(id => id.trim() !== '').length || 0;
+    const dropChance = quest.chestConfig.dropChance ?? 100;
+    return dropChance / Math.max(1, itemsConfigured);
+  };
+
   const startGame = async () => {
-    setCurrentHearts(userData?.hearts ?? 3);
-    if (userData?.role === 'student' && (userData?.hearts || 0) < 1 && !isStudyMode) {
+    const initialHearts = userData?.hearts ?? 3;
+    setCurrentHearts(initialHearts);
+    if (userData?.role === 'student' && initialHearts < 1 && !isStudyMode) {
       await showAlert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
       setGameState('result');
       return;
     }
-    setGameState('playing');
-    setCurrentQIndex(0);
-    setEliminatedOptions([]);
-    setHasShield(false);
     
-    const startMsgs = [
-      "PREPARE-SE!",
-      "LUTE PELA SUA VIDA!",
-      `DERROTE ${quest?.monsterName ? quest.monsterName.toUpperCase() : 'O MONSTRO'} PARA AVANÇAR!`
-    ];
-    setBattleMessage(startMsgs[Math.floor(Math.random() * startMsgs.length)]);
+    const chance = getMonsterSpecialChance();
+    const isSurpriseAttack = userData?.role === 'student' && !isStudyMode && (Math.random() * 100 < chance);
+
+    if (isSurpriseAttack) {
+      const newHearts = Math.max(0, initialHearts - 1);
+      setCurrentHearts(newHearts);
+      setGameState('playing');
+      setCurrentQIndex(0);
+      setEliminatedOptions([]);
+      setHasShield(false);
+      
+      if (newHearts === 0) {
+        if (userData?.uid) {
+            userData.hearts = newHearts;
+            updateDoc(doc(db, 'users', userData.uid), { hearts: newHearts });
+        }
+        setBattleMessage('ATAQUE SURPRESA LETAL! O monstro te emboscou e você não resistiu!');
+        triggerFatality(false);
+      } else {
+        if (userData?.uid) {
+            userData.hearts = newHearts;
+            updateDoc(doc(db, 'users', userData.uid), { hearts: newHearts });
+        }
+        setBattleMessage('ATAQUE SURPRESA! O monstro foi mais rápido e atacou primeiro!');
+        setMonsterAnim('attack');
+        setTimeout(() => setPlayerAnim('hurt'), 500);
+        setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
+      }
+    } else {
+      setGameState('playing');
+      setCurrentQIndex(0);
+      setEliminatedOptions([]);
+      setHasShield(false);
+      
+      const startMsgs = [
+        "PREPARE-SE!",
+        "LUTE PELA SUA VIDA!",
+        `DERROTE ${quest?.monsterName ? quest.monsterName.toUpperCase() : 'O MONSTRO'} PARA AVANÇAR!`
+      ];
+      setBattleMessage(startMsgs[Math.floor(Math.random() * startMsgs.length)]);
+    }
   };
 
   const getRoundMessage = (nextQIndex: number, currentLife: number) => {
@@ -487,6 +527,7 @@ export default function QuestGameplay() {
       
       if (isCritical) {
         setBattleMessage('DANO CRÍTICO! Você deu um golpe duplo super efetivo!');
+        setCriticalHits(prev => prev + 1);
       }
 
       const playerHpPercentage = (currentHearts / maxHearts) * 100;
@@ -531,7 +572,11 @@ export default function QuestGameplay() {
     } else {
       setFeedback('wrong');
       
-      let newHearts = Math.max(0, currentHearts - 1);
+      const chance = getMonsterSpecialChance();
+      const isMonsterCrit = userData?.role === 'student' && !isStudyMode && (Math.random() * 100 < chance);
+      const damage = isMonsterCrit ? 2 : 1;
+      
+      let newHearts = Math.max(0, currentHearts - damage);
       const isFatalForPlayer = !hasShield && (newHearts === 0 || !quest.allowRetries);
 
       if (isFatalForPlayer) {
@@ -539,6 +584,9 @@ export default function QuestGameplay() {
         if (userData?.role === 'student' && !isStudyMode) {
           userData.hearts = newHearts;
           updateDoc(doc(db, 'users', userData.uid), { hearts: newHearts });
+        }
+        if (isMonsterCrit) {
+          setBattleMessage('DANO CRÍTICO LETAL! O monstro te aniquilou!');
         }
         triggerFatality(false);
         return;
@@ -561,7 +609,11 @@ export default function QuestGameplay() {
         setEliminatedOptions([...eliminatedOptions, optIndex]); // eliminate the one they just clicked
         setTimeout(() => {
           setFeedback(null);
-          setBattleMessage('Seu escudo absorveu o dano do monstro! Tente novamente!');
+          if (isMonsterCrit) {
+            setBattleMessage('DANO CRÍTICO DO INIMIGO! Sorte que seu escudo segurou o impacto!');
+          } else {
+            setBattleMessage('Seu escudo absorveu o dano do monstro! Tente novamente!');
+          }
         }, 2000);
         return;
       }
@@ -580,9 +632,13 @@ export default function QuestGameplay() {
       setCurrentXp(newXp);
       setTimeout(() => {
         setFeedback(null);
-        setBattleMessage(actualPenalty < quest.xpPenaltyPerRetry 
-          ? 'Seu escudo absorveu parte do dano! Respire fundo e tente novamente!' 
-          : 'Respire fundo e tente novamente!');
+        if (isMonsterCrit) {
+          setBattleMessage('DANO CRÍTICO DO INIMIGO! Você perdeu 2 corações!');
+        } else {
+          setBattleMessage(actualPenalty < quest.xpPenaltyPerRetry 
+            ? 'Seu escudo absorveu parte do dano! Respire fundo e tente novamente!' 
+            : 'Respire fundo e tente novamente!');
+        }
         // O aluno tenta novamente a mesma pergunta
       }, 1000);
     }
@@ -615,8 +671,12 @@ export default function QuestGameplay() {
 
     if (isEligibleForChest) {
       if (isWin && quest?.chestConfig?.maxCoins && quest.chestConfig.maxCoins > 0) {
-        const dropChance = quest.chestConfig.dropChance ?? 100;
-        const shouldDropChest = (Math.random() * 100) <= dropChance;
+        const totalAttack = playerEquippedItems.reduce((acc, item) => item.baseAttributeType === 'attack' ? acc + (item.baseAttributeValue || 0) : acc, 0);
+        const chestBonus = Math.min(5, criticalHits) * totalAttack;
+        const baseDropChance = quest.chestConfig.dropChance ?? 100;
+        const finalDropChance = baseDropChance + chestBonus;
+        
+        const shouldDropChest = (Math.random() * 100) <= finalDropChance;
 
         if (shouldDropChest) {
           const max = quest.chestConfig.maxCoins;
@@ -1207,7 +1267,7 @@ export default function QuestGameplay() {
                     ))}
                   </div>
                   
-                  <button className="login-btn" onClick={() => setShowChest(false)} style={{ marginTop: '4rem', background: 'var(--gold-primary)', color: 'black', padding: '1rem 3rem', fontSize: '1.2rem', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '1s', opacity: 0 }}>
+                  <button className="login-btn" onClick={() => navigate('/dashboard')} style={{ marginTop: '4rem', background: 'var(--gold-primary)', color: 'black', padding: '1rem 3rem', fontSize: '1.2rem', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '1s', opacity: 0 }}>
                     Coletar Tudo e Continuar
                   </button>
                 </div>

@@ -24,6 +24,7 @@ export interface UserData {
   happyBuffUntil?: number | null;
   happyBuffDuration?: number | null;
   customStatusText?: string;
+  isProfilePublic?: boolean;
   avatarConfig?: {
     skinColor: string;
     hairColor: string;

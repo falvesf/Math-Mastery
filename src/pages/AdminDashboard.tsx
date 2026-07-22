@@ -1779,9 +1779,10 @@ export default function AdminDashboard() {
                             attempts.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
                             
                             const completions = attempts.filter(a => a.status === 'completed');
+                            const defeats = attempts.filter(a => a.status === 'failed');
                             const firstCompletion = completions[0];
                             const lastAccess = attempts[attempts.length - 1];
-                            const totalEarnedXp = attempts.reduce((acc, curr) => acc + (curr.earnedXp || 0), 0);
+                            const firstCompletionXp = firstCompletion ? (firstCompletion.earnedXp || 0) : 0;
                             
                             const firstCompletionDateStr = firstCompletion && firstCompletion.timestamp ? new Date(firstCompletion.timestamp.seconds * 1000).toLocaleString('pt-BR') : '-';
                             const lastAccessDateStr = lastAccess && lastAccess.timestamp ? new Date(lastAccess.timestamp.seconds * 1000).toLocaleString('pt-BR') : '-';
@@ -1794,11 +1795,12 @@ export default function AdminDashboard() {
                                     <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
                                       <span>Tentativas: <strong style={{ color: 'white' }}>{attempts.length}</strong></span>
                                       <span>Vitórias: <strong style={{ color: 'var(--accent-green)' }}>{completions.length}</strong></span>
+                                      <span>Derrotas: <strong style={{ color: 'var(--accent-red)' }}>{defeats.length}</strong></span>
                                       <span>Último Acesso: <strong>{lastAccessDateStr}</strong></span>
                                       {completions.length > 0 && (
                                         <span>Primeira Vitória: <strong>{firstCompletionDateStr}</strong></span>
                                       )}
-                                      <span>XP Total Ganho: <strong style={{ color: 'var(--gold-primary)' }}>{totalEarnedXp}</strong></span>
+                                      <span>XP Ganho: <strong style={{ color: 'var(--gold-primary)' }}>{firstCompletionXp}</strong></span>
                                     </div>
                                   </div>
                                   <button onClick={() => handleResetQuestAttempt(studentId)} className="login-btn" style={{ background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', padding: '0.5rem 1rem', marginLeft: '1rem' }} title="Resetar histórico deste aluno">
