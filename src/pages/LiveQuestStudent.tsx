@@ -489,8 +489,47 @@ export default function LiveQuestStudent() {
 
         if (session.status === 'ranking') {
     const isCorrect = me.isCorrect;
+    let earnedXp = 0;
+    if (isCorrect && quest) {
+      const baseQuestXp = quest.baseXp || 0;
+      const xpPerQuestion = Math.floor(baseQuestXp / (quest.questions?.length || 1));
+      let totalAddXP = 0;
+      me.equippedItems?.forEach((item: any) => {
+        item.adds?.forEach((add: any) => {
+          if (add.attributeType === 'xp_boost') totalAddXP += add.value;
+        });
+      });
+      earnedXp = xpPerQuestion + totalAddXP;
+    }
         return (
-        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
+        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+          {isCorrect && (
+             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 10 }}>
+                <div style={{ 
+                  color: 'var(--gold-primary)', 
+                  fontWeight: 'bold', 
+                  fontSize: '3rem', 
+                  textShadow: '0 4px 8px rgba(0,0,0,0.8)',
+                  animation: 'floatUpAndFade 2s ease-out forwards'
+                }}>
+                  +{earnedXp} XP
+                </div>
+             </div>
+          )}
+          {!isCorrect && (
+             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 10 }}>
+                <div style={{ 
+                  color: 'var(--accent-red)', 
+                  animation: 'floatUpAndFade 2s ease-out forwards',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Heart size={80} fill="var(--accent-red)" stroke="black" strokeWidth={2} style={{ clipPath: 'polygon(0 0, 50% 0, 50% 100%, 0 100%)' }} />
+                  <Heart size={80} fill="var(--accent-red)" stroke="black" strokeWidth={2} style={{ clipPath: 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%)', marginLeft: '-80px', transform: 'translate(10px, 10px) rotate(15deg)' }} />
+                </div>
+             </div>
+          )}
           <h1 style={{ color: isCorrect ? 'var(--accent-green)' : 'var(--accent-red)', fontSize: '4rem', textShadow: '0 4px 8px rgba(0,0,0,0.5)', textAlign: 'center' }}>
             {isCorrect ? 'Você Acertou!' : 'Você Errou!'}
           </h1>
@@ -500,11 +539,24 @@ export default function LiveQuestStudent() {
   }
 
         if (session.status === 'finished') {
-    if (me.wonChest) {
+    if (me.wonChest && !chestOpened) {
+      // Immediately clear wonChest from Firestore to prevent re-claiming on revisit
+      updateDoc(doc(db, 'live_quests', sessionId!), {
+        [`players.${userData!.uid}.wonChest`]: deleteField()
+      }).catch(console.error);
+
       return (
         <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
           {!chestOpened ? (
-            <ChestReveal onOpen={() => setChestOpened(true)} title={`Parabéns pelo ${me.wonChest.place}º Lugar!`} />
+            <ChestReveal onOpen={async () => {
+              // Remove wonChest from Firestore so re-entering the page doesn't show chest again
+              try {
+                await updateDoc(doc(db, 'live_quests', sessionId!), {
+                  [`players.${userData!.uid}.wonChest`]: deleteField()
+                });
+              } catch(e) { console.error(e); }
+              setChestOpened(true);
+            }} title={`Parabéns pelo ${me.wonChest.place}º Lugar!`} />
           ) : (
             <div style={{ textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
               <h2 style={{ fontSize: '3rem', color: 'var(--gold-primary)', marginBottom: '3rem', textShadow: '0 0 20px var(--gold-primary)' }}>Recompensas Adquiridas!</h2>

@@ -109,14 +109,22 @@ export default function Dashboard() {
   useEffect(() => {
     if (!userData || userData.role !== 'student') return;
     
-    const uRank = RANKS.find(r => r.name === userData.rank) || RANKS[0];
-    const maxHearts = 3 + Math.floor((RANKS.indexOf(uRank) || 0) / 2);
-    const dbHearts = userData.hearts !== undefined ? userData.hearts : maxHearts;
+    const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2);
+    const dbHearts = userData.hearts !== undefined ? Number(userData.hearts) : maxHearts;
     
     setCurrentHpVisual(dbHearts);
     
-    if (!userData.hpRecoveryStartTimestamp || dbHearts >= maxHearts) {
+    if (dbHearts < maxHearts && !userData.hpRecoveryStartTimestamp) {
+      updateDoc(doc(db, 'users', userData.uid), { hpRecoveryStartTimestamp: Date.now() }).catch(console.error);
       setNextHeartProgress(0);
+      return;
+    }
+
+    if (dbHearts >= maxHearts) {
+      setNextHeartProgress(0);
+      if (userData.hpRecoveryStartTimestamp) {
+        updateDoc(doc(db, 'users', userData.uid), { hpRecoveryStartTimestamp: null }).catch(console.error);
+      }
       return;
     }
 
@@ -775,6 +783,8 @@ export default function Dashboard() {
                       onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'} 
                       onClick={() => {
                         if (quest.mode === 'live') {
+                          // Don't navigate to a completed or inactive live quest
+                          if (isCompleted || !activeLiveQuests[quest.id]) return;
                           navigate(`/live/${quest.id}`);
                         } else {
                           navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`);
@@ -807,19 +817,20 @@ export default function Dashboard() {
                           </div>
                             <button 
                               className="login-btn" 
-                              disabled={quest.mode === 'live' && !activeLiveQuests[quest.id]}
+                              disabled={quest.mode === 'live' && (!activeLiveQuests[quest.id] || isCompleted)}
                               style={{ 
                                 background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id])) ? 'rgba(255,255,255,0.1)' : 'var(--gold-primary)', 
                                 color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id])) ? 'white' : 'black', 
                                 border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id])) ? '1px solid var(--border-glass)' : 'none', 
                                 padding: '0.5rem 1.5rem', 
                                 fontSize: '1rem',
-                                opacity: (quest.mode === 'live' && !activeLiveQuests[quest.id]) ? 0.5 : 1,
-                                cursor: (quest.mode === 'live' && !activeLiveQuests[quest.id]) ? 'not-allowed' : 'pointer'
+                                opacity: (quest.mode === 'live' && (!activeLiveQuests[quest.id] || isCompleted)) ? 0.6 : 1,
+                                cursor: (quest.mode === 'live' && (!activeLiveQuests[quest.id] || isCompleted)) ? 'not-allowed' : 'pointer'
                               }} 
                               onClick={async (e) => { 
                                 e.stopPropagation(); 
-                                if (quest.mode === 'live' && !activeLiveQuests[quest.id]) return;
+                                // Block access to completed or inactive live quests
+                                if (quest.mode === 'live' && (!activeLiveQuests[quest.id] || isCompleted)) return;
                                 if (!isCompleted && (userData?.hearts || 0) < 1 && userData?.role === 'student') {
                                   await showAlert("Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.");
                                   return;
@@ -832,7 +843,7 @@ export default function Dashboard() {
                               }}
                             >
                               {quest.mode === 'live' 
-                                 ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : 'Não Iniciada') 
+                                 ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : (isCompleted ? 'Concluída' : 'Não Iniciada')) 
                                  : (isCompleted ? 'Revisar' : 'Jogar Agora')}
                             </button>
                         </div>
@@ -934,24 +945,38 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem', marginTop: '1rem' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Vidas (HP)</span>
                   <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    {Array.from({ length: 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) }).map((_, i) => {
-                      if (i < currentHpVisual) {
-                        return <Heart key={i} size={24} fill="#ef4444" color="#ef4444" />;
-                      } else if (i === currentHpVisual) {
-                        return (
-                          <div key={i} style={{ position: 'relative', width: 24, height: 24 }}>
-                            <Heart size={24} fill="transparent" color="rgba(255,255,255,0.2)" style={{ position: 'absolute' }} />
-                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${nextHeartProgress}%`, overflow: 'hidden', transition: 'height 1s linear' }}>
-                              <div style={{ position: 'absolute', bottom: 0, left: 0, width: 24, height: 24 }}>
-                                <Heart size={24} fill="#ef4444" color="#ef4444" />
+                    {(() => {
+                      const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2);
+                      return Array.from({ length: maxHearts }).map((_, i) => {
+                        if (i < currentHpVisual) {
+                          return (
+                            <div key={i} style={{ position: 'relative', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Heart size={24} fill="#ef4444" color="#ef4444" />
+                            </div>
+                          );
+                        } else if (i === currentHpVisual && userData?.hpRecoveryStartTimestamp && currentHpVisual < maxHearts) {
+                          // Recovering heart
+                          const minsLeft = Math.ceil(((100 - nextHeartProgress) / 100) * 30);
+                          return (
+                            <div key={i} title={`Recuperando vida... ${minsLeft} min restantes`} style={{ position: 'relative', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>
+                              <Heart className="recovering-heart" size={24} fill="transparent" color="rgba(255,255,255,0.4)" style={{ position: 'absolute', top: 0, left: 0 }} />
+                              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${nextHeartProgress}%`, overflow: 'hidden', transition: 'height 1s linear' }}>
+                                <div style={{ position: 'absolute', bottom: 0, left: 0, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Heart size={24} fill="#ef4444" color="#ef4444" />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      } else {
-                        return <Heart key={i} size={24} fill="transparent" color="rgba(255,255,255,0.2)" />;
-                      }
-                    })}
+                          );
+                        } else {
+                          // Empty heart
+                          return (
+                            <div key={i} style={{ position: 'relative', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Heart size={24} fill="transparent" color="rgba(255,255,255,0.2)" />
+                            </div>
+                          );
+                        }
+                      });
+                    })()}
                   </span>
                 </div>
                 

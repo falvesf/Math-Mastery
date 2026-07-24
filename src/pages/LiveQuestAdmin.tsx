@@ -152,19 +152,16 @@ export default function LiveQuestAdmin() {
     });
   }, [session, quest]);
 
-  // Reveal to Ranking transition
+  // Reveal to Ranking transition — ALWAYS go to 'ranking' so teacher clicks
+  // 'Próxima Etapa' which runs handleNextQuestion (distributes chests + XP)
   useEffect(() => {
     if (session?.status === 'reveal' && sessionId) {
        const t = setTimeout(() => {
-          if (session.monsterHp <= 0 || session.currentQuestionIndex >= session.activeQuestions.length - 1) {
-             updateDoc(doc(db, 'live_quests', sessionId), { status: 'finished' });
-          } else {
-             updateDoc(doc(db, 'live_quests', sessionId), { status: 'ranking' });
-          }
-       }, 5000); // Wait 5s on reveal screen before showing ranking
+          updateDoc(doc(db, 'live_quests', sessionId), { status: 'ranking' });
+       }, 5000); // Wait 5s on reveal screen before showing ranking/finish button
        return () => clearTimeout(t);
     }
-  }, [session?.status, sessionId, session?.monsterHp, session?.currentQuestionIndex, session?.activeQuestions?.length]);
+  }, [session?.status, sessionId]);
 
   // Load Quest and Session
   useEffect(() => {
@@ -333,14 +330,15 @@ export default function LiveQuestAdmin() {
       try {
         const sortedPlayers = Object.values(session.players).sort((a, b) => (b.score || 0) - (a.score || 0));
         const promises: Promise<any>[] = [];
+        const sessionUpdates: any = { status: 'finished' };
 
         const processReward = async (playerUid: string, chestConfig: any, place: number) => {
           if (!chestConfig) return;
-          const updates: any = {};
+          const userUpdates: any = {};
           let itemsWon: any[] = [];
 
           if (chestConfig.maxCoins && chestConfig.maxCoins > 0) {
-             updates.coins = increment(chestConfig.maxCoins);
+             userUpdates.coins = increment(chestConfig.maxCoins);
           }
 
           if (chestConfig.itemIds && chestConfig.itemIds.length > 0) {
@@ -382,14 +380,12 @@ export default function LiveQuestAdmin() {
              }
           }
           
-          if (Object.keys(updates).length > 0) {
-             promises.push(updateDoc(doc(db, 'users', playerUid), updates));
+          if (Object.keys(userUpdates).length > 0) {
+             promises.push(updateDoc(doc(db, 'users', playerUid), userUpdates));
           }
 
           if (itemsWon.length > 0 || (chestConfig.maxCoins && chestConfig.maxCoins > 0)) {
-             promises.push(updateDoc(doc(db, 'live_quests', sessionId), {
-               [`players.${playerUid}.wonChest`]: { place, coins: chestConfig.maxCoins || 0, items: itemsWon }
-             }));
+             sessionUpdates[`players.${playerUid}.wonChest`] = { place, coins: chestConfig.maxCoins || 0, items: itemsWon };
           }
         };
 
@@ -399,19 +395,37 @@ export default function LiveQuestAdmin() {
 
         Object.keys(session.players).forEach(uid => {
           const player = session.players[uid];
-          if (player.sessionEarnedXp && player.sessionEarnedXp > 0) {
+          const earnedXp = player.sessionEarnedXp || 0;
+
+          // Always register attempt for all players who participated, so badge shows 'Concluída'
+          promises.push(
+            addDoc(collection(db, 'quest_attempts'), {
+              questId: quest.id,
+              studentId: uid,
+              status: 'completed',
+              earnedXp: earnedXp,
+              answers: [],
+              timestamp: serverTimestamp(),
+              isStudyMode: false,
+              isLiveQuest: true
+            })
+          );
+
+          if (earnedXp > 0) {
+            // Save to history log (XP already credited per question in LiveQuestStudent)
             promises.push(
               addDoc(collection(db, 'xp_logs'), {
-                userId: uid,
-                xpGained: player.sessionEarnedXp,
+                studentId: uid,
+                studentName: player.name,
+                xpGained: earnedXp,
                 evalName: `Missão: ${quest.title}`,
-                createdAt: serverTimestamp()
+                timestamp: serverTimestamp()
               })
             );
           }
         });
 
-        promises.push(updateDoc(doc(db, 'live_quests', sessionId), { status: 'finished' }));
+        promises.push(updateDoc(doc(db, 'live_quests', sessionId), sessionUpdates));
         
         await Promise.all(promises);
       } catch (err) {

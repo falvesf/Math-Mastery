@@ -58,14 +58,21 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
           transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
           background: 'radial-gradient(circle, rgba(251, 191, 36, 0.2) 0%, transparent 70%)',
           borderRadius: '50%',
-          padding: '2rem'
+          padding: '1rem',
+          width: '180px',
+          height: '180px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden'
         }}
         className={!isOpen ? 'hover-pulse' : ''}
       >
         <CustomModelViewer 
           modelUrl="/models/minecraft_chest.glb"
           animation={isOpen ? 'open' : 'none'}
-          size={200}
+          size={120}
+          style={{ maxWidth: '120px', maxHeight: '120px' }}
         />
       </div>
     </div>

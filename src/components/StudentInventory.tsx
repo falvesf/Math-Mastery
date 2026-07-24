@@ -66,7 +66,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       if (item.forSale || item.studentId === 'dropped') return;
 
       if (item.itemType === 'consumable') {
-        const key = `${item.itemId}-${item.giftedBy || 'self'}`;
+        const key = item.itemId; // group by item type only, regardless of source
         if (groupedMap.has(key)) {
           const existing = groupedMap.get(key)!;
           existing.count = (existing.count || 1) + (item.quantity || 1);
