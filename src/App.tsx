@@ -6,6 +6,8 @@ import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import QuestGameplay from './pages/QuestGameplay';
+import LiveQuestAdmin from './pages/LiveQuestAdmin';
+import LiveQuestStudent from './pages/LiveQuestStudent';
 import { Loader2 } from 'lucide-react';
 import './App.css';
 
@@ -57,6 +59,22 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <QuestGameplay />
+          </PrivateRoute>
+        } 
+      />
+      <Route 
+        path="/live-admin/:sessionId" 
+        element={
+          <PrivateRoute requiredRole="admin">
+            <LiveQuestAdmin />
+          </PrivateRoute>
+        } 
+      />
+      <Route 
+        path="/live/:sessionId" 
+        element={
+          <PrivateRoute>
+            <LiveQuestStudent />
           </PrivateRoute>
         } 
       />

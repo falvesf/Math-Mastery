@@ -252,10 +252,15 @@ export default function QuestGameplay() {
   };
 
   const getMonsterSpecialChance = () => {
-    if (!quest || !quest.chestConfig) return 0;
-    const itemsConfigured = quest.chestConfig.itemIds?.filter(id => id.trim() !== '').length || 0;
-    const dropChance = quest.chestConfig.dropChance ?? 100;
-    return dropChance / Math.max(1, itemsConfigured);
+    if (!quest) return 0;
+    const itemsConfigured = quest.chestConfig?.itemIds?.filter(id => id.trim() !== '').length || 0;
+    
+    if (itemsConfigured === 0) {
+      return 2.5;
+    }
+    
+    const dropChance = quest.chestConfig?.dropChance ?? 100;
+    return dropChance / itemsConfigured;
   };
 
   const startGame = async () => {
@@ -738,10 +743,53 @@ export default function QuestGameplay() {
               }
             }
           }
-          setChestRewards(finalRewards);
-          setShowChest(true);
         }
       }
+    
+    // Monster Drops
+    if (isWin && quest?.monsterDrops && quest.monsterDrops.length > 0) {
+      const dropItemIds = quest.monsterDrops.map(d => d.itemId);
+      if (dropItemIds.length > 0) {
+        const q = query(collection(db, 'store_items'), where('__name__', 'in', dropItemIds));
+        const snap = await getDocs(q);
+        const storeItemsMap = new Map();
+        snap.docs.forEach(doc => storeItemsMap.set(doc.id, { id: doc.id, ...doc.data() }));
+
+        for (const drop of quest.monsterDrops) {
+          if (Math.random() * 100 <= drop.dropChance) {
+            const item = storeItemsMap.get(drop.itemId);
+            if (!item) continue;
+            
+            const itemData = {
+              studentId: userData!.uid,
+              itemId: item.id,
+              itemTitle: item.title,
+              itemType: item.type,
+              itemImageUrl: item.imageUrl || '',
+              gameEffect: item.gameEffect || 'none',
+              usableInQuest: item.usableInQuest || false,
+              quantity: 1,
+              equipped: false,
+              purchasedAt: serverTimestamp(),
+              giftedBy: `Drop de Monstro (${quest.monsterName || 'Desconhecido'})`,
+              avatarPart: item.avatarPart || null,
+              itemCategory: item.itemCategory || 'none',
+              baseAttributeType: item.baseAttributeType || 'none',
+              baseAttributeValue: item.baseAttributeValue || 0,
+              gameModelUrl: item.gameModelUrl || '',
+              adds: item.type === 'equippable' ? rollItemAdds() : []
+            };
+            await addDoc(collection(db, 'user_items'), itemData);
+            finalRewards.items.push({ ...item, quantity: 1, isMonsterDrop: true });
+          }
+        }
+      }
+    }
+
+    if (finalRewards.coins > 0 || finalRewards.items.length > 0) {
+      setChestRewards(finalRewards);
+      setShowChest(true);
+    }
       
       // Log XP and Coins if won
       if (isWin && (actualXpGained > 0 || earnedCoins > 0)) {
@@ -1261,7 +1309,7 @@ export default function QuestGameplay() {
                         )}
                         <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'white' }}>{item.title}</div>
                         <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                          {item.type === 'equippable' ? 'Equipamento' : `Consumível (x${item.quantity})`}
+                          {item.isMonsterDrop ? <span style={{color: 'var(--accent-red)'}}>Drop!</span> : ''} {item.type === 'equippable' ? 'Equipamento' : `Consumível (x${item.quantity})`}
                         </div>
                       </div>
                     ))}

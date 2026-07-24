@@ -27,6 +27,7 @@ export interface EquippedItem {
   docId?: string;
   itemId?: string;
   imageUrl: string;
+  modelUrl?: string;
   avatarPart: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'rightHand' | 'leftHand' | 'accessory' | 'back' | 'background' | 'pet';
   itemTitle?: string;
   itemCategory?: ItemCategory;

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { auth, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart, Package } from 'lucide-react';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { getRankForXp, RANKS, type RankDef } from '../lib/ranks';
 import LevelUpModal from '../components/LevelUpModal';
 import StudentStore from '../components/StudentStore';
@@ -16,11 +16,17 @@ import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
 import { Edit3, MessageCircle } from 'lucide-react';
 
+export interface RankingHistory {
+  general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
+  classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
+}
+
 export default function Dashboard() {
   const { showAlert, showPrompt } = useDialog();
   const { userData } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
+  const [profileTab, setProfileTab] = useState('overview');
   const [xpHistory, setXpHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   
@@ -28,6 +34,7 @@ export default function Dashboard() {
   const [allStudents, setAllStudents] = useState<UserData[]>([]);
   const [loadingRankings, setLoadingRankings] = useState(true);
   const [rankingEquippedItems, setRankingEquippedItems] = useState<Record<string, EquippedItem[]>>({});
+  const [rankingHistory, setRankingHistory] = useState<RankingHistory | null>(null);
   const [publicProfileUser, setPublicProfileUser] = useState<{user: UserData, rankPos: number} | null>(null);
 
   // Avatar State
@@ -44,6 +51,7 @@ export default function Dashboard() {
   const [activeQuests, setActiveQuests] = useState<any[]>([]);
   const [completedQuestIds, setCompletedQuestIds] = useState<string[]>([]);
   const [loadingQuests, setLoadingQuests] = useState(true);
+  const [activeLiveQuests, setActiveLiveQuests] = useState<Record<string, boolean>>({});
 
   // Status Bubbles
   const [activeBubbleId, setActiveBubbleId] = useState<string | null>(null);
@@ -91,7 +99,7 @@ export default function Dashboard() {
       };
       fetchQuests();
     }
-  }, [userData]);
+  }, [userData?.uid, userData?.classId, userData?.role]);
 
   useEffect(() => {
     if (!userData) return;
@@ -118,11 +126,11 @@ export default function Dashboard() {
       setEquippedItems(eq);
     };
     fetchEquipped();
-  }, [userData, inventoryRefresh]);
+  }, [userData?.uid, inventoryRefresh]);
 
   useEffect(() => {
     const q = query(collection(db, 'users'), where('role', '==', 'student'));
-    const unsub = onSnapshot(q, (snap) => {
+    const unsubUsers = onSnapshot(q, (snap) => {
       const loaded: UserData[] = [];
       snap.forEach(d => loaded.push(d.data() as UserData));
       loaded.sort((a, b) => (b.xp || 0) - (a.xp || 0));
@@ -130,8 +138,92 @@ export default function Dashboard() {
       setLoadingRankings(false);
     });
 
-    return () => unsub();
+    const unsubLiveQuests = onSnapshot(collection(db, 'live_quests'), (snap) => {
+       const activeMap: Record<string, boolean> = {};
+       snap.forEach(doc => {
+         const data = doc.data();
+         if (data.status && data.status !== 'finished') {
+            activeMap[doc.id] = true;
+         }
+       });
+       setActiveLiveQuests(activeMap);
+    });
+
+    return () => {
+      unsubUsers();
+      unsubLiveQuests();
+    };
   }, [userData?.classId]);
+
+  useEffect(() => {
+    if (allStudents.length === 0) return;
+    
+    const checkAndSyncRankings = async () => {
+      try {
+        const docRef = doc(db, 'system', 'rankings');
+        const snap = await getDoc(docRef);
+        let history: RankingHistory = { general: {}, classes: {} };
+        if (snap.exists()) {
+          history = snap.data() as RankingHistory;
+        }
+        
+        let changed = false;
+        
+        // General ranks
+        allStudents.forEach((student, index) => {
+          const rank = index + 1;
+          const currentData = history.general[student.uid];
+          if (!currentData || currentData.currentRank !== rank) {
+            history.general[student.uid] = {
+              currentRank: rank,
+              previousRank: currentData ? currentData.currentRank : rank,
+              rankSince: Date.now()
+            };
+            changed = true;
+          }
+        });
+        
+        // Class ranks
+        const studentsByClass: Record<string, UserData[]> = {};
+        allStudents.forEach(s => {
+          if (s.classId) {
+            if (!studentsByClass[s.classId]) studentsByClass[s.classId] = [];
+            studentsByClass[s.classId].push(s);
+          }
+        });
+        
+        if (!history.classes) history.classes = {};
+        
+        Object.entries(studentsByClass).forEach(([classId, students]) => {
+          if (!history.classes[classId]) history.classes[classId] = {};
+          
+          students.forEach((student, index) => {
+            const rank = index + 1;
+            const currentData = history.classes[classId][student.uid];
+            if (!currentData || currentData.currentRank !== rank) {
+              history.classes[classId][student.uid] = {
+                currentRank: rank,
+                previousRank: currentData ? currentData.currentRank : rank,
+                rankSince: Date.now()
+              };
+              changed = true;
+            }
+          });
+        });
+        
+        if (changed) {
+          await setDoc(docRef, history);
+        }
+        setRankingHistory(history);
+      } catch (err) {
+        console.error("Erro ao sincronizar rankings:", err);
+      }
+    };
+    
+    // Pequeno delay para não atolar o Firestore caso vários usuários carreguem ao mesmo tempo
+    const timeoutId = setTimeout(checkAndSyncRankings, 2000);
+    return () => clearTimeout(timeoutId);
+  }, [allStudents]);
 
   useEffect(() => {
     const fetchRankingItems = async () => {
@@ -337,9 +429,48 @@ export default function Dashboard() {
     );
   };
 
-  const renderRankingList = (list: UserData[]) => {
+  const renderRankingList = (list: UserData[], type: 'general' | 'class') => {
     if (loadingRankings) return <p style={{ color: 'var(--text-secondary)' }}>Calculando as posições...</p>;
     if (list.length === 0) return <p style={{ color: 'var(--text-secondary)' }}>Nenhum aluno no ranking.</p>;
+
+    const getArrow = (student: UserData, rankPos: number) => {
+      if (!rankingHistory) return null;
+      const historyData = type === 'general' ? rankingHistory.general[student.uid] : rankingHistory.classes?.[student.classId || '']?.[student.uid];
+      if (!historyData) return null;
+      
+      const daysSince = (Date.now() - historyData.rankSince) / (1000 * 60 * 60 * 24);
+      if (daysSince > 15) return null;
+      
+      const diff = historyData.previousRank - historyData.currentRank;
+      if (diff === 0) return null;
+      
+      const isUp = diff > 0;
+      const color = isUp ? '#4CAF50' : '#F44336';
+      const arrow = isUp ? '▲' : '▼';
+      
+      let timeStr = '';
+      if (daysSince < 1) {
+         const hours = Math.floor(daysSince * 24);
+         const mins = Math.floor(daysSince * 24 * 60);
+         if (hours < 1) {
+           timeStr = mins <= 1 ? 'menos de 1 min' : `${mins} min`;
+         } else {
+           timeStr = hours === 1 ? '1 hora' : `${hours} horas`;
+         }
+      } else {
+         const d = Math.floor(daysSince);
+         timeStr = d === 1 ? '1 dia' : `${d} dias`;
+      }
+
+      return (
+        <span 
+          style={{ color, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'help', fontWeight: 'bold' }} 
+          title={`Nesta posição há ${timeStr}`}
+        >
+          {arrow} {Math.abs(diff)}
+        </span>
+      );
+    };
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -402,6 +533,11 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
+              
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                {getArrow(student, rankPos)}
+              </div>
+
               <div style={{ fontSize: fontSizeXp, fontWeight: 'bold', color: 'var(--gold-primary)' }}>
                 {student.xp || 0} XP
               </div>
@@ -557,7 +693,13 @@ export default function Dashboard() {
                       }} 
                       onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'} 
                       onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'} 
-                      onClick={() => navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`)}
+                      onClick={() => {
+                        if (quest.mode === 'live') {
+                          navigate(`/live/${quest.id}`);
+                        } else {
+                          navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`);
+                        }
+                      }}
                     >
                       <div style={{ height: '200px', width: '100%', position: 'relative' }}>
                         {quest.coverImageUrl ? (
@@ -583,26 +725,36 @@ export default function Dashboard() {
                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><ShieldAlert size={14} /> {quest.allowRetries ? 'Vidas Extras' : 'Hardcore'}</span>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Clock size={14} /> {quest.questions?.length || 0} Desafios</span>
                           </div>
-                          <button 
-                            className="login-btn" 
-                            style={{ 
-                              background: isCompleted ? 'rgba(255,255,255,0.1)' : 'var(--gold-primary)', 
-                              color: isCompleted ? 'white' : 'black', 
-                              border: isCompleted ? '1px solid var(--border-glass)' : 'none', 
-                              padding: '0.5rem 1.5rem', 
-                              fontSize: '1rem' 
-                            }} 
-                            onClick={async (e) => { 
-                              e.stopPropagation(); 
-                              if (!isCompleted && (userData?.hearts || 0) < 1 && userData?.role === 'student') {
-                                await showAlert("Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.");
-                                return;
-                              }
-                              navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`); 
-                            }}
-                          >
-                            {isCompleted ? 'Revisar' : 'Jogar Agora'}
-                          </button>
+                            <button 
+                              className="login-btn" 
+                              disabled={quest.mode === 'live' && !activeLiveQuests[quest.id]}
+                              style={{ 
+                                background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id])) ? 'rgba(255,255,255,0.1)' : 'var(--gold-primary)', 
+                                color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id])) ? 'white' : 'black', 
+                                border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id])) ? '1px solid var(--border-glass)' : 'none', 
+                                padding: '0.5rem 1.5rem', 
+                                fontSize: '1rem',
+                                opacity: (quest.mode === 'live' && !activeLiveQuests[quest.id]) ? 0.5 : 1,
+                                cursor: (quest.mode === 'live' && !activeLiveQuests[quest.id]) ? 'not-allowed' : 'pointer'
+                              }} 
+                              onClick={async (e) => { 
+                                e.stopPropagation(); 
+                                if (quest.mode === 'live' && !activeLiveQuests[quest.id]) return;
+                                if (!isCompleted && (userData?.hearts || 0) < 1 && userData?.role === 'student') {
+                                  await showAlert("Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.");
+                                  return;
+                                }
+                                if (quest.mode === 'live') {
+                                  navigate(`/live/${quest.id}`);
+                                } else {
+                                  navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`); 
+                                }
+                              }}
+                            >
+                              {quest.mode === 'live' 
+                                 ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : 'Não Iniciada') 
+                                 : (isCompleted ? 'Revisar' : 'Jogar Agora')}
+                            </button>
                         </div>
                       </div>
                     </div>
@@ -614,10 +766,29 @@ export default function Dashboard() {
         )}
 
         {activeTab === 'profile' && (
-          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', animation: 'fadeIn 0.3s ease-out' }}>
-            {/* Perfil do Aluno (Esquerda) */}
-            <div className="glass-panel" style={{ flex: '1 1 400px', padding: '3rem 2rem', textAlign: 'center' }}>
-              <div 
+          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+            <div style={{ display: 'flex', gap: '1rem', padding: '1rem 0', marginBottom: '1rem', justifyContent: 'center', position: 'sticky', top: '75px', zIndex: 95, background: 'var(--bg-dark)', backdropFilter: 'blur(12px)' }}>
+              <button 
+                onClick={() => setProfileTab('overview')}
+                className="login-btn"
+                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: profileTab === 'overview' ? 'black' : 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+              >
+                <Star size={20} /> Personagem e Histórico
+              </button>
+              <button 
+                onClick={() => setProfileTab('inventory')}
+                className="login-btn"
+                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: profileTab === 'inventory' ? 'black' : 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+              >
+                <Package size={20} /> Mochila
+              </button>
+            </div>
+
+            {profileTab === 'overview' && (
+              <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                {/* Perfil do Aluno (Esquerda) */}
+                <div className="glass-panel" style={{ flex: '1 1 400px', padding: '3rem 2rem', textAlign: 'center' }}>
+                  <div 
                 style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem', transition: 'transform 0.2s' }}
                 onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
                 onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
@@ -631,7 +802,7 @@ export default function Dashboard() {
                           <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={50} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
                         </div>
                       ) : (
-                        <img src={userData?.photoURL} alt="Avatar" style={{ width: 50, height: 50, borderRadius: '50%', border: `2px solid ${currentRank.color}` }} />
+                        <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: 50, height: 50, borderRadius: '50%', border: `2px solid ${currentRank.color}`, cursor: 'pointer' }} />
                       )}
                     </div>
                     <div style={{ background: 'var(--bg-dark)', padding: '0.25rem 1rem', borderRadius: '20px', border: `2px solid ${currentRank.color}`, color: currentRank.color, fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
@@ -645,7 +816,7 @@ export default function Dashboard() {
                         <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={100} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
                       </div>
                     ) : (
-                      <img src={userData?.photoURL} alt="Avatar" style={{ width: 120, height: 120, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, objectFit: 'cover' }} />
+                      <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: 120, height: 120, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, objectFit: 'cover', cursor: 'pointer' }} />
                     )}
                     <div style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(-50%)', background: 'var(--bg-dark)', padding: '0.25rem 1rem', borderRadius: '20px', border: `2px solid ${currentRank.color}`, color: currentRank.color, fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                       {currentRank.name}
@@ -744,12 +915,15 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
+          </div>
+          )}
 
-            {/* Inventário Movido para Cá */}
+          {profileTab === 'inventory' && (
             <div style={{ width: '100%', marginTop: '1rem' }}>
               {userData && <StudentInventory userData={userData} onEquip={() => setInventoryRefresh(r => r + 1)} inventoryRefresh={inventoryRefresh} />}
             </div>
-          </div>
+          )}
+        </div>
         )}
 
         {activeTab === 'ranking_class' && (
@@ -762,7 +936,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div style={{ padding: '2rem' }}>
-              {userData?.classId ? renderRankingList(classStudents) : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
+              {userData?.classId ? renderRankingList(classStudents, 'class') : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
             </div>
           </div>
         )}
@@ -777,7 +951,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div style={{ padding: '2rem' }}>
-              {renderRankingList(top10General)}
+              {renderRankingList(top10General, 'general')}
             </div>
           </div>
         )}

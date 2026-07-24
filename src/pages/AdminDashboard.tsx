@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { signOut } from 'firebase/auth';
@@ -60,6 +60,14 @@ export interface QuestDef {
     itemQuantities?: number[];
     dropChance?: number;
   };
+  mode?: 'classic' | 'live';
+  liveChest1stPlace?: { maxCoins?: number; itemIds?: string[]; itemQuantities?: number[]; };
+  liveChest2ndPlace?: { maxCoins?: number; itemIds?: string[]; itemQuantities?: number[]; };
+  liveChest3rdPlace?: { maxCoins?: number; itemIds?: string[]; itemQuantities?: number[]; };
+  monsterDrops?: {
+    itemId: string;
+    dropChance: number;
+  }[];
   active: boolean;
   createdBy?: string;
   creatorRole?: string;
@@ -131,6 +139,7 @@ export default function AdminDashboard() {
   const [questTitle, setQuestTitle] = useState('');
   const [questDesc, setQuestDesc] = useState('');
   const [questCover, setQuestCover] = useState('');
+  const [questMode, setQuestMode] = useState<'classic' | 'live'>('classic');
   const [questXp, setQuestXp] = useState('1000');
   const [questRetries, setQuestRetries] = useState(false);
   const [questShuffleQuestions, setQuestShuffleQuestions] = useState(false);
@@ -144,7 +153,11 @@ export default function AdminDashboard() {
   const [questMonsterModelUrl, setQuestMonsterModelUrl] = useState('');
   const [questMonsterQuotes, setQuestMonsterQuotes] = useState<{hp100_80?: string, hp79_50?: string, hp49_25?: string, hp24_0?: string}>({});
   const [questMonsterDefeatQuotes, setQuestMonsterDefeatQuotes] = useState('');
+  const [questMonsterDrops, setQuestMonsterDrops] = useState<{itemId: string, dropChance: number}[]>([]);
   const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], dropChance?: number}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+  const [questLiveChest1st, setQuestLiveChest1st] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+  const [questLiveChest2nd, setQuestLiveChest2nd] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+  const [questLiveChest3rd, setQuestLiveChest3rd] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
   const [available3DModels, setAvailable3DModels] = useState<any[]>([]);
   const [availableMonsters, setAvailableMonsters] = useState<any[]>([]);
   const [availableStoreItems, setAvailableStoreItems] = useState<any[]>([]);
@@ -456,7 +469,29 @@ export default function AdminDashboard() {
   };
 
   // Missões Handlers
-  const handleAddQuestion = () => {
+  const handleAddQuestion = async () => {
+    if (questQuestions.length > 0) {
+      const lastQ = questQuestions[questQuestions.length - 1];
+      const hasTextOrImage = lastQ.title.trim() !== '' || (lastQ.imageUrl || '').trim() !== '';
+      
+      const filledOptions = lastQ.options.map((opt, idx) => {
+        const isFilled = (opt.text || '').trim() !== '' || (opt.imageUrl || '').trim() !== '';
+        return { idx, isFilled };
+      }).filter(o => o.isFilled);
+      
+      if (!hasTextOrImage) {
+        await showAlert("Preencha o título ou adicione uma imagem na última questão antes de criar uma nova.");
+        return;
+      }
+      if (filledOptions.length < 2) {
+        await showAlert("A última questão precisa de pelo menos 2 alternativas preenchidas antes de criar uma nova.");
+        return;
+      }
+      if (!filledOptions.some(o => o.idx === lastQ.correctIndex)) {
+        await showAlert("A resposta correta da última questão aponta para uma alternativa vazia. Marque uma alternativa preenchida como correta.");
+        return;
+      }
+    }
     setQuestQuestions([...questQuestions, { title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
   };
 
@@ -476,6 +511,28 @@ export default function AdminDashboard() {
     if (!questTitle || !questTitle.trim() || questQuestions.length === 0) {
       await showAlert("Preencha o título da missão e adicione perguntas!");
       return;
+    }
+
+    for (let i = 0; i < questQuestions.length; i++) {
+      const q = questQuestions[i];
+      const hasTextOrImage = q.title.trim() !== '' || (q.imageUrl || '').trim() !== '';
+      const filledOptions = q.options.map((opt, idx) => {
+        const isFilled = (opt.text || '').trim() !== '' || (opt.imageUrl || '').trim() !== '';
+        return { idx, isFilled };
+      }).filter(o => o.isFilled);
+
+      if (!hasTextOrImage) {
+        await showAlert(`A Pergunta ${i + 1} precisa ter o título preenchido ou uma imagem.`);
+        return;
+      }
+      if (filledOptions.length < 2) {
+        await showAlert(`A Pergunta ${i + 1} precisa ter pelo menos 2 alternativas preenchidas.`);
+        return;
+      }
+      if (!filledOptions.some(o => o.idx === q.correctIndex)) {
+        await showAlert(`A resposta correta da Pergunta ${i + 1} aponta para uma alternativa vazia.`);
+        return;
+      }
     }
 
     if (questChestConfig?.itemIds) {
@@ -502,7 +559,12 @@ export default function AdminDashboard() {
       monsterModelUrl: questMonsterModelUrl,
       monsterQuotes: questMonsterQuotes,
       monsterDefeatQuotes: questMonsterDefeatQuotes,
+      monsterDrops: questMonsterDrops,
       chestConfig: questChestConfig,
+      mode: questMode,
+      liveChest1stPlace: questLiveChest1st,
+      liveChest2ndPlace: questLiveChest2nd,
+      liveChest3rdPlace: questLiveChest3rd,
       active: true,
       createdBy: questCreatedBy || userData?.uid,
       creatorRole: questCreatorRole || userData?.role,
@@ -510,15 +572,27 @@ export default function AdminDashboard() {
       shuffleQuestions: questShuffleQuestions,
       shuffleAnswers: questShuffleAnswers
     };
-    await setDoc(doc(db, 'quests', questId), newQuest);
-    setIsCreatingQuest(false);
-    setEditingQuestId(null);
-    setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-    setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
-    setQuestCreatedBy(null); setQuestCreatorRole(null); setQuestTargetClasses([]);
-    setQuestShuffleQuestions(false); setQuestShuffleAnswers(false);
-    setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
-    fetchQuests();
+
+    // Sanitize object to remove undefined values for Firestore
+    const sanitizedQuest = JSON.parse(JSON.stringify(newQuest));
+
+    try {
+      await setDoc(doc(db, 'quests', questId), sanitizedQuest);
+      setIsCreatingQuest(false);
+      setEditingQuestId(null);
+      setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
+      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+      setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+      setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+      setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+      setQuestCreatedBy(null); setQuestCreatorRole(null); setQuestTargetClasses([]);
+      setQuestShuffleQuestions(false); setQuestShuffleAnswers(false);
+      setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
+      fetchQuests();
+    } catch (e: any) {
+      console.error(e);
+      await showAlert("Erro ao salvar a missão: " + (e.message || "Erro desconhecido. Verifique se todos os campos estão preenchidos."));
+    }
   };
 
   const handleEditQuest = (quest: QuestDef) => {
@@ -535,7 +609,12 @@ export default function AdminDashboard() {
     setQuestMonsterModelUrl(quest.monsterModelUrl || '');
     setQuestMonsterQuotes(quest.monsterQuotes || {});
     setQuestMonsterDefeatQuotes(quest.monsterDefeatQuotes || '');
+    setQuestMonsterDrops(quest.monsterDrops || []);
     setQuestChestConfig(quest.chestConfig || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+    setQuestMode(quest.mode || 'classic');
+    setQuestLiveChest1st(quest.liveChest1stPlace || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+    setQuestLiveChest2nd(quest.liveChest2ndPlace || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+    setQuestLiveChest3rd(quest.liveChest3rdPlace || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
     setQuestCreatedBy(quest.createdBy || null);
     setQuestCreatorRole(quest.creatorRole || null);
     setQuestTargetClasses(quest.targetClasses || []);
@@ -600,6 +679,91 @@ export default function AdminDashboard() {
   };
 
 
+
+  const renderChestConfig = (
+    title: string,
+    desc: string,
+    chestConfig: any,
+    setChestConfig: (c: any) => void,
+    showDropChance: boolean
+  ) => {
+    return (
+      <div style={{ background: 'rgba(255, 215, 0, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(255, 215, 0, 0.3)', marginTop: '2rem' }}>
+        <h4 style={{ color: 'var(--gold-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Package size={20} /> {title}</h4>
+        {desc && <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>{desc}</p>}
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Máximo de Moedas {showDropChance && '(Obrigatório para ativar o baú)'}</label>
+            <input type="number" value={chestConfig?.maxCoins || ''} onChange={e => setChestConfig({ ...chestConfig, maxCoins: parseInt(e.target.value) || 0 })} placeholder="Ex: 100" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }} />
+          </div>
+          {showDropChance && (
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Chance do Baú Aparecer (%)</label>
+              <input type="number" min="1" max="100" value={chestConfig?.dropChance ?? 100} onChange={e => setChestConfig({ ...chestConfig, dropChance: Math.min(100, Math.max(1, parseInt(e.target.value) || 100)) })} placeholder="1 a 100" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }} />
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          {[0, 1, 2, 3].map((slot) => {
+            const selectedItem = availableStoreItems.find(i => i.id === chestConfig?.itemIds?.[slot]);
+            const isConsumable = selectedItem?.type === 'consumable';
+            
+            return (
+              <div key={slot} style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Item {slot + 1} {showDropChance ? (slot === 0 ? '(50% de chance)' : slot === 1 ? '(25% de chance)' : slot === 2 ? '(10% de chance)' : '(5% de chance)') : '(100% de chance)'}</label>
+                <select 
+                  value={chestConfig?.itemIds?.[slot] || ''} 
+                  onChange={e => {
+                    const newIds = [...(chestConfig?.itemIds || ['', '', '', ''])];
+                    const newQuants = [...(chestConfig?.itemQuantities || [1, 1, 1, 1])];
+                    newIds[slot] = e.target.value;
+                    
+                    const newItem = availableStoreItems.find(i => i.id === e.target.value);
+                    if (newItem?.type === 'equippable') {
+                      newQuants[slot] = 1;
+                    }
+                    
+                    setChestConfig({ ...chestConfig, itemIds: newIds, itemQuantities: newQuants });
+                  }}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', marginBottom: isConsumable ? '0.5rem' : '0' }}
+                >
+                  <option value="">(Nenhum Item)</option>
+                  {availableStoreItems.map(item => {
+                    const isSelectedElsewhere = (chestConfig?.itemIds || []).some((id: string, idx: number) => id === item.id && idx !== slot);
+                    return (
+                      <option key={item.id} value={item.id} disabled={isSelectedElsewhere}>
+                        {item.title} ({item.type === 'equippable' ? 'Equipamento' : 'Consumível'})
+                      </option>
+                    );
+                  })}
+                </select>
+                
+                {isConsumable && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Quantidade:</span>
+                    <input 
+                      type="number"
+                      min="1"
+                      max="99"
+                      value={chestConfig?.itemQuantities?.[slot] || 1}
+                      onChange={e => {
+                        const newQuants = [...(chestConfig?.itemQuantities || [1, 1, 1, 1])];
+                        newQuants[slot] = Math.max(1, parseInt(e.target.value) || 1);
+                        setChestConfig({ ...chestConfig, itemQuantities: newQuants });
+                      }}
+                      style={{ width: '60px', padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="app-container" style={{ maxWidth: '1400px', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1rem 2rem' }}>
@@ -937,6 +1101,11 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                          {quest.mode === 'live' && (
+                            <button onClick={() => navigate(`/live-admin/${quest.id}`)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }} title="Iniciar Sessão Ao Vivo">
+                              <Play size={18} fill="black" /> Iniciar Ao Vivo
+                            </button>
+                          )}
                           <button onClick={() => openQuestHistory(quest)} style={{ background: 'transparent', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }} title="Ver Histórico">
                             <History size={18} /> Histórico
                           </button>
@@ -973,6 +1142,20 @@ export default function AdminDashboard() {
                       
                       {/* Lado Esquerdo: Textos */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Modo de Jogo</label>
+                          <div style={{ display: 'flex', gap: '1rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                              <input type="radio" name="questMode" checked={questMode === 'classic'} onChange={() => setQuestMode('classic')} />
+                              <span style={{ color: questMode === 'classic' ? 'var(--gold-primary)' : 'white' }}>Atividade Individual</span>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                              <input type="radio" name="questMode" checked={questMode === 'live'} onChange={() => setQuestMode('live')} />
+                              <span style={{ color: questMode === 'live' ? 'var(--gold-primary)' : 'white' }}>Em Tempo Real (Kahoot RPG)</span>
+                            </label>
+                          </div>
+                        </div>
+
                         <div>
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Missão</label>
                           <input type="text" value={questTitle} onChange={e => setQuestTitle(e.target.value)} placeholder="Ex: A Masmorra das Frações" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
@@ -1161,80 +1344,95 @@ export default function AdminDashboard() {
                           <input type="text" value={questMonsterDefeatQuotes} onChange={e => setQuestMonsterDefeatQuotes(e.target.value)} placeholder="Ex: NÃO PODE SER!; Fui derrotado...; AHHH!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }} />
                         </div>
                       </div>
-                    </div>
 
-                    <div style={{ background: 'rgba(255, 215, 0, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(255, 215, 0, 0.3)', marginTop: '2rem' }}>
-                      <h4 style={{ color: 'var(--gold-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Package size={20} /> Baú de Recompensas (Final da Missão)</h4>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>O jogador terá 100% de chance de receber Moedas aleatórias (entre 10% e o valor máximo). O Item 1 terá 50% de chance, Item 2 terá 25% (se o 1 vier), Item 3 terá 10% e Item 4 terá 5%.</p>
-                      
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-                        <div>
-                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Máximo de Moedas (Obrigatório para ativar o baú)</label>
-                          <input type="number" value={questChestConfig?.maxCoins || ''} onChange={e => setQuestChestConfig({ ...questChestConfig, maxCoins: parseInt(e.target.value) || 0 })} placeholder="Ex: 100" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }} />
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Chance do Baú Aparecer (%)</label>
-                          <input type="number" min="1" max="100" value={questChestConfig?.dropChance ?? 100} onChange={e => setQuestChestConfig({ ...questChestConfig, dropChance: Math.min(100, Math.max(1, parseInt(e.target.value) || 100)) })} placeholder="1 a 100" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }} />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        {[0, 1, 2, 3].map((slot) => {
-                          const selectedItem = availableStoreItems.find(i => i.id === questChestConfig?.itemIds?.[slot]);
-                          const isConsumable = selectedItem?.type === 'consumable';
-                          
+                      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
+                        <h5 style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1.1rem' }}>Recompensas de Derrota do Monstro (Drops)</h5>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>Adicione itens que o monstro pode dropar ao ser derrotado. A chance padrão é definida pela raridade do item (Comum: 60%, Incomum: 40%, Raro: 20%, Épico: 5%, Lendário: 1%), mas você pode alterá-la.</p>
+                        
+                        {questMonsterDrops.map((drop, index) => {
                           return (
-                            <div key={slot} style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-                              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Item {slot + 1} ({slot === 0 ? '50%' : slot === 1 ? '25%' : slot === 2 ? '10%' : '5%'} de chance)</label>
+                            <div key={index} style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
                               <select 
-                                value={questChestConfig?.itemIds?.[slot] || ''} 
+                                value={drop.itemId}
                                 onChange={e => {
-                                  const newIds = [...(questChestConfig?.itemIds || ['', '', '', ''])];
-                                  const newQuants = [...(questChestConfig?.itemQuantities || [1, 1, 1, 1])];
-                                  newIds[slot] = e.target.value;
+                                  const newDrops = [...questMonsterDrops];
+                                  const selectedItem = availableStoreItems.find(i => i.id === e.target.value);
                                   
-                                  const newItem = availableStoreItems.find(i => i.id === e.target.value);
-                                  if (newItem?.type === 'equippable') {
-                                    newQuants[slot] = 1;
-                                  }
+                                  let defaultChance = 60;
+                                  if (selectedItem?.rarity === 'uncommon') defaultChance = 40;
+                                  if (selectedItem?.rarity === 'rare') defaultChance = 20;
+                                  if (selectedItem?.rarity === 'epic') defaultChance = 5;
+                                  if (selectedItem?.rarity === 'legendary') defaultChance = 1;
                                   
-                                  setQuestChestConfig({ ...questChestConfig, itemIds: newIds, itemQuantities: newQuants });
+                                  newDrops[index] = { itemId: e.target.value, dropChance: defaultChance };
+                                  setQuestMonsterDrops(newDrops);
                                 }}
-                                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', marginBottom: isConsumable ? '0.5rem' : '0' }}
+                                style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
                               >
-                                <option value="">(Nenhum Item)</option>
-                                {availableStoreItems.map(item => {
-                                  const isSelectedElsewhere = (questChestConfig?.itemIds || []).some((id, idx) => id === item.id && idx !== slot);
-                                  return (
-                                    <option key={item.id} value={item.id} disabled={isSelectedElsewhere}>
-                                      {item.title} ({item.type === 'equippable' ? 'Equipamento' : 'Consumível'})
-                                    </option>
-                                  );
-                                })}
+                                <option value="">(Selecione um Item)</option>
+                                {availableStoreItems.map(si => (
+                                  <option key={si.id} value={si.id}>{si.title} ({si.type === 'equippable' ? 'Equipamento' : 'Consumível'})</option>
+                                ))}
                               </select>
                               
-                              {isConsumable && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Quantidade:</span>
-                                  <input 
-                                    type="number"
-                                    min="1"
-                                    max="99"
-                                    value={questChestConfig?.itemQuantities?.[slot] || 1}
-                                    onChange={e => {
-                                      const newQuants = [...(questChestConfig?.itemQuantities || [1, 1, 1, 1])];
-                                      newQuants[slot] = Math.max(1, parseInt(e.target.value) || 1);
-                                      setQuestChestConfig({ ...questChestConfig, itemQuantities: newQuants });
-                                    }}
-                                    style={{ width: '60px', padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}
-                                  />
-                                </div>
-                              )}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Chance:</label>
+                                <input 
+                                  type="number" 
+                                  min="0" max="100" 
+                                  value={drop.dropChance} 
+                                  onChange={e => {
+                                    const newDrops = [...questMonsterDrops];
+                                    newDrops[index].dropChance = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                                    setQuestMonsterDrops(newDrops);
+                                  }}
+                                  style={{ width: '80px', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                                />
+                                <span style={{ color: 'var(--text-secondary)' }}>%</span>
+                              </div>
+                              
+                              <button 
+                                onClick={() => {
+                                  const newDrops = questMonsterDrops.filter((_, i) => i !== index);
+                                  setQuestMonsterDrops(newDrops);
+                                }}
+                                style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }}
+                                title="Remover Drop"
+                              >
+                                <Trash2 size={20} />
+                              </button>
                             </div>
                           );
                         })}
+                        
+                        <button 
+                          onClick={() => setQuestMonsterDrops([...questMonsterDrops, { itemId: '', dropChance: 60 }])}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-blue)', border: '1px solid var(--accent-blue)', borderRadius: '8px', cursor: 'pointer', marginTop: '1rem' }}
+                        >
+                          <Plus size={18} /> Adicionar Item de Drop
+                        </button>
                       </div>
+
                     </div>
+
+                    {questMode === 'classic' ? (
+                      renderChestConfig(
+                        'Baú de Recompensas (Final da Missão)',
+                        'O jogador terá 100% de chance de receber Moedas aleatórias (entre 10% e o valor máximo). O Item 1 terá 50% de chance, Item 2 terá 25% (se o 1 vier), Item 3 terá 10% e Item 4 terá 5%.',
+                        questChestConfig,
+                        setQuestChestConfig,
+                        true
+                      )
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '2rem' }}>
+                        <h3 style={{ fontSize: '1.5rem', color: 'var(--gold-primary)', margin: 0 }}>Baús de Recompensa (Top 3)</h3>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No modo ao vivo, as chances de itens são sempre 100%. Configure um baú para o 1º, 2º e 3º colocado.</p>
+                        
+                        {renderChestConfig('Baú do 1º Lugar', '', questLiveChest1st, setQuestLiveChest1st, false)}
+                        {renderChestConfig('Baú do 2º Lugar', '', questLiveChest2nd, setQuestLiveChest2nd, false)}
+                        {renderChestConfig('Baú do 3º Lugar', '', questLiveChest3rd, setQuestLiveChest3rd, false)}
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -1244,8 +1442,26 @@ export default function AdminDashboard() {
                   
                   {questQuestions.map((q, qIndex) => (
                     <div key={qIndex} className="glass-panel" style={{ padding: '2.5rem 2rem 2rem 2rem', marginBottom: '2rem', position: 'relative' }}>
-                      <div style={{ position: 'absolute', top: '-15px', left: '20px', background: 'var(--accent-blue)', padding: '0.2rem 1.5rem', borderRadius: '20px', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                        Pergunta {qIndex + 1}
+                      <div style={{ position: 'absolute', top: '-15px', left: '20px', background: 'var(--accent-blue)', padding: '0.2rem 1.5rem', borderRadius: '20px', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span>Pergunta {qIndex + 1}</span>
+                        {questQuestions.length > 1 && (
+                          <button
+                            onClick={async () => {
+                              const confirm = await showConfirm(`Tem certeza que deseja excluir a Pergunta ${qIndex + 1}?`);
+                              if (confirm) {
+                                const newQs = [...questQuestions];
+                                newQs.splice(qIndex, 1);
+                                setQuestQuestions(newQs);
+                              }
+                            }}
+                            title="Excluir pergunta"
+                            style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: '0 0 0 0.5rem', display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--accent-red)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.7)'}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
 
                       {/* Configurações da Pergunta: Texto, Tempo e Imagem */}

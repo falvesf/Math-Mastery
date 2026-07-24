@@ -10,6 +10,7 @@ import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType } from '../lib/gacha';
 
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'gift_wrap';
+export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 
 export interface StoreItem {
   id: string;
@@ -27,6 +28,7 @@ export interface StoreItem {
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
+  rarity?: ItemRarity;
 }
 
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
@@ -38,7 +40,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<StoreItem>>({
-    title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: ''
+    title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common'
   });
   
   const [showGallery, setShowGallery] = useState(false);
@@ -186,7 +188,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             <h2 style={{ fontSize: '1.5rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Star color="var(--gold-primary)" /> Catálogo de Itens
             </h2>
-            <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '' }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
+            <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common' }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
               <Plus size={18} /> Novo Item
             </button>
           </div>
@@ -246,6 +248,17 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
                   <option value="consumable">Consumível (Usa 1x)</option>
                   <option value="equippable">Equipável (Ex: Título)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Raridade</label>
+                <select value={formData.rarity || 'common'} onChange={e => setFormData({...formData, rarity: e.target.value as ItemRarity})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+                  <option value="common">Comum (Branco)</option>
+                  <option value="uncommon">Incomum (Verde)</option>
+                  <option value="rare">Raro (Azul)</option>
+                  <option value="epic">Épico (Roxo)</option>
+                  <option value="legendary">Lendário (Dourado)</option>
                 </select>
               </div>
 

@@ -69,10 +69,10 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         const key = `${item.itemId}-${item.giftedBy || 'self'}`;
         if (groupedMap.has(key)) {
           const existing = groupedMap.get(key)!;
-          existing.count = (existing.count || 1) + 1;
+          existing.count = (existing.count || 1) + (item.quantity || 1);
           if (existing.docIds) existing.docIds.push(item.id);
         } else {
-          groupedMap.set(key, { ...item, count: 1, docIds: [item.id] });
+          groupedMap.set(key, { ...item, count: item.quantity || 1, docIds: [item.id] });
         }
       } else {
         // Equipáveis não se agrupam
@@ -216,7 +216,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2rem', position: 'sticky', top: '150px', zIndex: 90, background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border-glass)', backdropFilter: 'blur(12px)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Package size={32} color="var(--gold-primary)" />
           <div>
@@ -283,7 +283,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                        padding: '1rem',
                        width: 'max-content',
                        minWidth: '200px',
-                       zIndex: 50,
+                       zIndex: 100,
                        boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
                        backdropFilter: 'blur(10px)',
                        pointerEvents: 'none',
