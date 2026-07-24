@@ -771,7 +771,7 @@ export default function AdminDashboard() {
         <div className="logo-container">
           <ShieldAlert className="logo-icon" color="var(--accent-red)" size={32} />
           <h1 className="title-glow" style={{ color: 'var(--accent-red)', textShadow: '0 0 15px rgba(239, 68, 68, 0.3)' }}>
-            Painel Master (Admin)
+            {userData?.role === 'admin' ? 'Painel Master (Admin)' : 'Painel do Professor'}
           </h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
@@ -804,18 +804,24 @@ export default function AdminDashboard() {
           <button className={`login-btn ${activeTab === 'store' ? 'active' : ''}`} onClick={() => setActiveTab('store')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'store' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'store' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Store size={20} /> Loja de Itens
           </button>
-          <button className={`login-btn ${activeTab === 'classes' ? 'active' : ''}`} onClick={() => setActiveTab('classes')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'classes' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'classes' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <BookOpen size={20} /> Turmas
-          </button>
-          <button className={`login-btn ${activeTab === 'config' ? 'active' : ''}`} onClick={() => setActiveTab('config')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'config' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'config' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <Settings size={20} /> Tipos de Avaliação
-          </button>
+          {userData?.role === 'admin' && (
+            <>
+              <button className={`login-btn ${activeTab === 'classes' ? 'active' : ''}`} onClick={() => setActiveTab('classes')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'classes' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'classes' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+                <BookOpen size={20} /> Turmas
+              </button>
+              <button className={`login-btn ${activeTab === 'config' ? 'active' : ''}`} onClick={() => setActiveTab('config')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'config' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'config' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+                <Settings size={20} /> Tipos de Avaliação
+              </button>
+            </>
+          )}
           <button className={`login-btn ${activeTab === 'ranks' ? 'active' : ''}`} onClick={() => setActiveTab('ranks')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'ranks' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'ranks' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Medal size={20} /> Patentes (Artes)
           </button>
-          <button className={`login-btn ${activeTab === 'entities' ? 'active' : ''}`} onClick={() => setActiveTab('entities')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'entities' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'entities' ? 'rgba(239, 68, 68, 0.1)' : 'transparent', marginTop: 'auto' }}>
-            <Box size={20} /> Entidades (3D)
-          </button>
+          {userData?.role === 'admin' && (
+            <button className={`login-btn ${activeTab === 'entities' ? 'active' : ''}`} onClick={() => setActiveTab('entities')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'entities' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'entities' ? 'rgba(239, 68, 68, 0.1)' : 'transparent', marginTop: 'auto' }}>
+              <Box size={20} /> Entidades (3D)
+            </button>
+          )}
         </div>
 
         {/* Content */}
@@ -1090,13 +1096,17 @@ export default function AdminDashboard() {
                             </div>
                           )}
                           <div>
-                            <h3 style={{ fontSize: '1.3rem', margin: '0 0 0.5rem 0' }}>{quest.title}</h3>
-                            <div style={{ display: 'flex', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                              <h3 style={{ fontSize: '1.3rem', margin: 0 }}>{quest.title}</h3>
+                              <span style={{ padding: '0.2rem 0.6rem', background: quest.mode === 'live' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: quest.mode === 'live' ? 'var(--gold-primary)' : 'var(--accent-blue)', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                {quest.mode === 'live' ? 'Tempo Real' : 'Atividade'}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                               <span>Recompensa: <strong style={{ color: 'var(--gold-primary)' }}>{quest.baseXp} XP</strong></span>
                               <span>Modo: {quest.allowRetries ? `Vidas Extras` : 'Hardcore'}</span>
                               <span>{quest.questions.length} Perguntas</span>
                               {quest.targetClasses && quest.targetClasses.length > 0 && <span style={{ color: 'var(--accent-blue)' }}>Turmas: {quest.targetClasses.join(', ')}</span>}
-                              {quest.creatorRole === 'admin' && <span style={{ padding: '0.1rem 0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', borderRadius: '12px', fontSize: '0.75rem' }}>Oficial</span>}
                             </div>
                           </div>
                         </div>

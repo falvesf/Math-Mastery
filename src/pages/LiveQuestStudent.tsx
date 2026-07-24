@@ -10,6 +10,9 @@ import AvatarPrint from '../components/AvatarPrint';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import AvatarCharacter from '../components/AvatarCharacter';
 import CustomModelViewer from '../components/CustomModelViewer';
+import ChestReveal from '../components/ChestReveal';
+import { Package, Coins } from 'lucide-react';
+import { RANKS } from '../lib/ranks';
 
 export default function LiveQuestStudent() {
   const { sessionId } = useParams();
@@ -20,6 +23,7 @@ export default function LiveQuestStudent() {
   const [quest, setQuest] = useState<QuestDef | null>(null);
   const [session, setSession] = useState<LiveSession | null>(null);
   const [error, setError] = useState('');
+  const [chestOpened, setChestOpened] = useState(false);
   const [isEditingAvatar, setIsEditingAvatar] = useState(false);
   const [studentAnim, setStudentAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
@@ -104,6 +108,7 @@ export default function LiveQuestStudent() {
             isDead: false,
             currentAnswer: null,
             xp: userData.xp || 0,
+            sessionEarnedXp: 0,
             power: totalPower
           };
 
@@ -272,6 +277,7 @@ export default function LiveQuestStudent() {
 
     const newScore = (me.score || 0) + earnedScore;
     const newXp = (me.xp || 0) + earnedXp;
+    const newSessionEarnedXp = (me.sessionEarnedXp || 0) + earnedXp;
 
     const updates: any = {
       [`players.${userData.uid}.currentAnswer`]: answerIndex,
@@ -279,12 +285,13 @@ export default function LiveQuestStudent() {
       [`players.${userData.uid}.answerTime`]: answerTime,
       [`players.${userData.uid}.score`]: newScore,
       [`players.${userData.uid}.xp`]: newXp,
+      [`players.${userData.uid}.sessionEarnedXp`]: newSessionEarnedXp,
     };
 
     if (isCorrect) {
       // Dano fixo de 1 para simplificar o cálculo global na missão ao vivo (equipe)
       const power = 1;
-      updates.monsterHp = Math.max(0, session.monsterHp - power);
+      updates.monsterHp = increment(-power);
 
       try {
         await updateDoc(doc(db, 'users', userData.uid), {
@@ -294,8 +301,30 @@ export default function LiveQuestStudent() {
         console.error("Erro ao adicionar XP ao usuário", err);
       }
     } else {
-      const currentHp = me.hp !== undefined ? me.hp : (userData?.hearts || 5);
-      updates[`players.${userData.uid}.hp`] = Math.max(0, currentHp - 1);
+      let hasShield = false;
+      me.equippedItems?.forEach((item: any) => {
+        if (item.gameEffect === 'extra_life') hasShield = true;
+      });
+
+      if (!hasShield) {
+        const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === me.rank) || 0) / 2);
+        const currentHp = me.hp !== undefined ? me.hp : (userData?.hearts || maxHearts);
+        const newHp = Math.max(0, currentHp - 1);
+        updates[`players.${userData.uid}.hp`] = newHp;
+
+        // Atualizar perfil principal
+        try {
+          const userUpdate: any = { hearts: newHp };
+          // Iniciar cooldown de recovery se estava com vida máxima
+          if (currentHp >= maxHearts && newHp < maxHearts) {
+            userUpdate.hpRecoveryStartTimestamp = Date.now();
+          }
+          await updateDoc(doc(db, 'users', userData.uid), userUpdate);
+        } catch(e) { console.error(e); }
+      } else {
+        // Has shield, just remove shield visual if you want, but for now just no HP loss
+        updates[`players.${userData.uid}.isProtected`] = true; // Optional tracking
+      }
     }
 
     await updateDoc(doc(db, 'live_quests', sessionId), updates);
@@ -471,6 +500,47 @@ export default function LiveQuestStudent() {
   }
 
         if (session.status === 'finished') {
+    if (me.wonChest) {
+      return (
+        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
+          {!chestOpened ? (
+            <ChestReveal onOpen={() => setChestOpened(true)} title={`Parabéns pelo ${me.wonChest.place}º Lugar!`} />
+          ) : (
+            <div style={{ textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
+              <h2 style={{ fontSize: '3rem', color: 'var(--gold-primary)', marginBottom: '3rem', textShadow: '0 0 20px var(--gold-primary)' }}>Recompensas Adquiridas!</h2>
+              
+              {me.wonChest.coins > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'rgba(251, 191, 36, 0.1)', border: '1px solid var(--gold-primary)', padding: '1rem 2rem', borderRadius: '12px', marginBottom: '2rem' }}>
+                  <Coins size={40} color="var(--gold-primary)" />
+                  <span style={{ fontSize: '2rem', color: 'white', fontWeight: 'bold' }}>+{me.wonChest.coins} Moedas</span>
+                </div>
+              )}
+
+              {me.wonChest.items && me.wonChest.items.length > 0 && (
+                <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '3rem' }}>
+                  {me.wonChest.items.map((item, i) => (
+                    <div key={i} style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '180px' }}>
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt="" style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: '8px', marginBottom: '1rem' }} />
+                      ) : (
+                        <Package size={80} color="var(--gold-primary)" style={{ marginBottom: '1rem' }} />
+                      )}
+                      <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem' }}>{item.title}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>Quantidade: {item.quantity || 1}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>Acompanhe o pódio na tela do professor!</p>
+              <button onClick={() => navigate('/dashboard')} style={{ marginTop: '2rem', padding: '1rem 3rem', background: 'var(--gold-primary)', color: 'var(--bg-primary)', fontSize: '1.5rem', borderRadius: '12px', fontWeight: 'bold' }}>
+                Voltar ao Início
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+    
     return (
         <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
           <h1 style={{ color: 'var(--gold-primary)', fontSize: '4rem', textShadow: '0 4px 8px rgba(0,0,0,0.5)' }}>Missão Concluída!</h1>

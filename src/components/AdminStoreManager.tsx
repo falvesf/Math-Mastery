@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
-import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search } from 'lucide-react';
+import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import { useDialog } from '../contexts/DialogContext';
@@ -44,6 +44,22 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   });
   
   const [showGallery, setShowGallery] = useState(false);
+  
+  const [layoutMode, setLayoutMode] = useState<'list' | 'grid-2' | 'grid-3' | 'small-icons' | 'large-icons'>(
+    () => (localStorage.getItem('storeLayoutMode') as any) || 'list'
+  );
+  const [sortBy, setSortBy] = useState<'name' | 'rarity' | 'type'>(
+    () => (localStorage.getItem('storeSortBy') as any) || 'name'
+  );
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(
+    () => (localStorage.getItem('storeSortOrder') as any) || 'asc'
+  );
+
+  useEffect(() => {
+    localStorage.setItem('storeLayoutMode', layoutMode);
+    localStorage.setItem('storeSortBy', sortBy);
+    localStorage.setItem('storeSortOrder', sortOrder);
+  }, [layoutMode, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchData();
@@ -192,34 +208,93 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               <Plus size={18} /> Novo Item
             </button>
           </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Ordenar por:</span>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', padding: '0.3rem 0.5rem', borderRadius: '4px', fontSize: '0.9rem' }}>
+                <option value="name">Nome</option>
+                <option value="rarity">Raridade</option>
+                <option value="type">Tipo</option>
+              </select>
+              <button onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', padding: '0.3rem', borderRadius: '4px', cursor: 'pointer', display: 'flex' }} title="Alterar Direção">
+                {sortOrder === 'asc' ? <ArrowDownAZ size={18} /> : <ArrowUpZA size={18} />}
+              </button>
+            </div>
+            
+            <div style={{ flex: 1 }} />
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '6px' }}>
+              <button onClick={() => setLayoutMode('list')} style={{ background: layoutMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', color: layoutMode === 'list' ? 'var(--gold-primary)' : 'var(--text-secondary)', padding: '0.4rem', borderRadius: '4px', cursor: 'pointer' }} title="Lista 1 Coluna"><List size={18} /></button>
+              <button onClick={() => setLayoutMode('grid-2')} style={{ background: layoutMode === 'grid-2' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', color: layoutMode === 'grid-2' ? 'var(--gold-primary)' : 'var(--text-secondary)', padding: '0.4rem', borderRadius: '4px', cursor: 'pointer' }} title="Lista 2 Colunas"><Columns size={18} /></button>
+              <button onClick={() => setLayoutMode('grid-3')} style={{ background: layoutMode === 'grid-3' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', color: layoutMode === 'grid-3' ? 'var(--gold-primary)' : 'var(--text-secondary)', padding: '0.4rem', borderRadius: '4px', cursor: 'pointer' }} title="Lista 3 Colunas"><LayoutList size={18} /></button>
+              <button onClick={() => setLayoutMode('small-icons')} style={{ background: layoutMode === 'small-icons' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', color: layoutMode === 'small-icons' ? 'var(--gold-primary)' : 'var(--text-secondary)', padding: '0.4rem', borderRadius: '4px', cursor: 'pointer' }} title="Grid Ícones Pequenos"><Grid size={18} /></button>
+              <button onClick={() => setLayoutMode('large-icons')} style={{ background: layoutMode === 'large-icons' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', color: layoutMode === 'large-icons' ? 'var(--gold-primary)' : 'var(--text-secondary)', padding: '0.4rem', borderRadius: '4px', cursor: 'pointer' }} title="Grid Ícones Grandes"><LayoutGrid size={18} /></button>
+            </div>
+          </div>
         </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {items.map(item => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.title} style={{ width: '50px', height: '50px', borderRadius: '8px', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ width: '50px', height: '50px', borderRadius: '8px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Star size={24} color="var(--text-secondary)" />
+          <div style={
+            layoutMode === 'grid-2' ? { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' } :
+            layoutMode === 'grid-3' ? { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' } :
+            layoutMode === 'small-icons' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem' } :
+            layoutMode === 'large-icons' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem' } :
+            { display: 'flex', flexDirection: 'column', gap: '1rem' }
+          }>
+            {(() => {
+              const RARITY_WEIGHTS: any = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
+              const sortedItems = [...items].sort((a, b) => {
+                let comparison = 0;
+                if (sortBy === 'name') {
+                  comparison = a.title.localeCompare(b.title);
+                } else if (sortBy === 'rarity') {
+                  const wA = RARITY_WEIGHTS[a.rarity || 'common'] || 1;
+                  const wB = RARITY_WEIGHTS[b.rarity || 'common'] || 1;
+                  comparison = wA - wB;
+                } else if (sortBy === 'type') {
+                  comparison = a.type.localeCompare(b.type);
+                }
+                return sortOrder === 'asc' ? comparison : -comparison;
+              });
+
+              return sortedItems.map(item => {
+                const isGridIcon = layoutMode === 'small-icons' || layoutMode === 'large-icons';
+                const imgSize = layoutMode === 'small-icons' ? '80px' : layoutMode === 'large-icons' ? '140px' : '50px';
+                
+                return (
+                  <div key={item.id} style={{ display: 'flex', flexDirection: isGridIcon ? 'column' : 'row', alignItems: 'center', justifyContent: isGridIcon ? 'center' : 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)', textAlign: isGridIcon ? 'center' : 'left' }}>
+                    <div style={{ display: 'flex', flexDirection: isGridIcon ? 'column' : 'row', alignItems: 'center', gap: '1rem', width: isGridIcon ? '100%' : 'auto' }}>
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt={item.title} style={{ width: imgSize, height: imgSize, borderRadius: '8px', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ width: imgSize, height: imgSize, borderRadius: '8px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Star size={isGridIcon ? 32 : 24} color="var(--text-secondary)" />
+                        </div>
+                      )}
+                      <div style={{ flex: 1, width: isGridIcon ? '100%' : 'auto' }}>
+                        <h4 style={{ margin: '0 0 0.25rem 0', fontSize: isGridIcon ? '0.95rem' : '1.1rem', whiteSpace: isGridIcon ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</h4>
+                        {!isGridIcon && (
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                            <span>Custo: <strong style={{ color: 'var(--gold-primary)' }}>{item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}</strong></span>
+                            <span>Tipo: {item.type === 'consumable' ? 'Consumível' : 'Equipável'}</span>
+                            <span>Patente Mínima: {RANKS[item.minRankRequired]?.name}</span>
+                          </div>
+                        )}
+                        {isGridIcon && (
+                          <div style={{ fontSize: '0.85rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
+                            {item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                  <div>
-                    <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem' }}>{item.title}</h4>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem' }}>
-                      <span>Custo: <strong style={{ color: 'var(--gold-primary)' }}>{item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}</strong></span>
-                      <span>Tipo: {item.type === 'consumable' ? 'Consumível' : 'Equipável'}</span>
-                      <span>Patente Mínima: {RANKS[item.minRankRequired]?.name}</span>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: isGridIcon ? '0.75rem' : '0' }}>
+                      <button onClick={() => openEdit(item)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.4rem', display: 'flex' }} title="Editar"><Edit2 size={16} /></button>
+                      <button onClick={() => handleDeleteItem(item.id)} style={{ background: 'transparent', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.4rem', display: 'flex' }} title="Excluir"><Trash2 size={16} /></button>
                     </div>
                   </div>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button onClick={() => openEdit(item)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem' }}><Edit2 size={18} /></button>
-                  <button onClick={() => handleDeleteItem(item.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }}><Trash2 size={18} /></button>
-                </div>
-              </div>
-            ))}
+                );
+              });
+            })()}
             {items.length === 0 && (
               <p style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>Nenhum item cadastrado na loja.</p>
             )}

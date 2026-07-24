@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { auth, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart, Package } from 'lucide-react';
@@ -20,6 +20,53 @@ export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
   classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
 }
+
+const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, activeBubbleId, onAvatarClick }: { 
+  student: UserData; 
+  size: number; 
+  rankPos?: number; 
+  equippedItems: EquippedItem[];
+  activeBubbleId: string | null;
+  onAvatarClick?: () => void;
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+
+  const avatarState = getProfileAvatarState(student);
+  const show3D = rankPos <= 3 || isHovered;
+  
+  let finalAnimation = show3D ? (avatarState.animation as any) : 'idle';
+  if (rankPos === 1 && show3D) {
+    finalAnimation = 'cheer';
+  }
+
+  return (
+    <div 
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={onAvatarClick}
+      style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+    >
+      {activeBubbleId === student.uid && student.customStatusText && (
+        <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', background: 'white', color: 'black', padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap', zIndex: 50, boxShadow: '0 4px 10px rgba(0,0,0,0.5)', animation: 'epicZoom 0.3s ease-out' }}>
+          {student.customStatusText}
+          <div style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%) rotate(45deg)', width: 8, height: 8, background: 'white' }} />
+        </div>
+      )}
+      {student.avatarConfig ? (
+        <AvatarCharacter 
+          config={student.avatarConfig} 
+          equippedItems={equippedItems} 
+          size={size} 
+          interactive={false} 
+          animation={finalAnimation} 
+          expression={rankPos === 1 && show3D ? 'normal' : (avatarState.expression as any)} 
+        />
+      ) : (
+        <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+      )}
+    </div>
+  );
+});
 
 export default function Dashboard() {
   const { showAlert, showPrompt } = useDialog();
@@ -55,6 +102,61 @@ export default function Dashboard() {
 
   // Status Bubbles
   const [activeBubbleId, setActiveBubbleId] = useState<string | null>(null);
+
+  const [currentHpVisual, setCurrentHpVisual] = useState(0);
+  const [nextHeartProgress, setNextHeartProgress] = useState(0);
+
+  useEffect(() => {
+    if (!userData || userData.role !== 'student') return;
+    
+    const uRank = RANKS.find(r => r.name === userData.rank) || RANKS[0];
+    const maxHearts = 3 + Math.floor((RANKS.indexOf(uRank) || 0) / 2);
+    const dbHearts = userData.hearts !== undefined ? userData.hearts : maxHearts;
+    
+    setCurrentHpVisual(dbHearts);
+    
+    if (!userData.hpRecoveryStartTimestamp || dbHearts >= maxHearts) {
+      setNextHeartProgress(0);
+      return;
+    }
+
+    const RECOVERY_TIME_MS = 30 * 60 * 1000;
+    
+    const interval = setInterval(async () => {
+      const now = Date.now();
+      const timePassed = now - userData.hpRecoveryStartTimestamp;
+      
+      if (timePassed < 0) return;
+
+      const recoveredHearts = Math.floor(timePassed / RECOVERY_TIME_MS);
+      const remainderMs = timePassed % RECOVERY_TIME_MS;
+      
+      const newHp = Math.min(maxHearts, dbHearts + recoveredHearts);
+      setCurrentHpVisual(newHp);
+      
+      if (newHp < maxHearts) {
+        setNextHeartProgress((remainderMs / RECOVERY_TIME_MS) * 100);
+      } else {
+        setNextHeartProgress(0);
+      }
+      
+      if (recoveredHearts > 0 && newHp > dbHearts) {
+        try {
+          const updates: any = { hearts: newHp };
+          if (newHp < maxHearts) {
+            updates.hpRecoveryStartTimestamp = userData.hpRecoveryStartTimestamp + (recoveredHearts * RECOVERY_TIME_MS);
+          } else {
+            updates.hpRecoveryStartTimestamp = null;
+          }
+          await updateDoc(doc(db, 'users', userData.uid), updates);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [userData]);
 
   useEffect(() => {
     if (userData?.uid) {
@@ -393,47 +495,13 @@ export default function Dashboard() {
   const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
   const top10General = allStudents.slice(0, 10);
 
-  const RankingAvatar = ({ student, size, rankPos = 1, onAvatarClick }: { student: UserData; size: number, rankPos?: number, onAvatarClick?: () => void }) => {
-    const eqItems = rankingEquippedItems[student.uid] || [];
-    const [isHovered, setIsHovered] = useState(false);
-
-    const avatarState = getProfileAvatarState(student);
-    const show3D = rankPos <= 3 || isHovered;
-
-    return (
-      <div 
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        onClick={onAvatarClick}
-        style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-      >
-        {activeBubbleId === student.uid && student.customStatusText && (
-          <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', background: 'white', color: 'black', padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap', zIndex: 50, boxShadow: '0 4px 10px rgba(0,0,0,0.5)', animation: 'epicZoom 0.3s ease-out' }}>
-            {student.customStatusText}
-            <div style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%) rotate(45deg)', width: 8, height: 8, background: 'white' }} />
-          </div>
-        )}
-        {student.avatarConfig ? (
-          <AvatarCharacter 
-            config={student.avatarConfig} 
-            equippedItems={eqItems} 
-            size={size} 
-            interactive={false} 
-            animation={show3D ? (avatarState.animation as any) : 'idle'} 
-            expression={avatarState.expression as any} 
-          />
-        ) : (
-          <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-        )}
-      </div>
-    );
-  };
+  // Moved outside to prevent remounting
 
   const renderRankingList = (list: UserData[], type: 'general' | 'class') => {
     if (loadingRankings) return <p style={{ color: 'var(--text-secondary)' }}>Calculando as posições...</p>;
     if (list.length === 0) return <p style={{ color: 'var(--text-secondary)' }}>Nenhum aluno no ranking.</p>;
 
-    const getArrow = (student: UserData, rankPos: number) => {
+    const getArrow = (student: UserData) => {
       if (!rankingHistory) return null;
       const historyData = type === 'general' ? rankingHistory.general[student.uid] : rankingHistory.classes?.[student.classId || '']?.[student.uid];
       if (!historyData) return null;
@@ -521,7 +589,19 @@ export default function Dashboard() {
                 </div>
                 
                 <div style={{ padding: '2px', borderRadius: '50%', border: `2px solid ${medalColor}`, boxShadow: rankPos === 1 ? '0 0 10px rgba(251,191,36,0.5)' : 'none' }}>
-                  <RankingAvatar student={student} size={avatarSize} rankPos={rankPos} onAvatarClick={() => setPublicProfileUser({user: student, rankPos})} />
+                      <RankingAvatar 
+                        student={student} 
+                        size={avatarSize} 
+                        rankPos={rankPos} 
+                        activeBubbleId={activeBubbleId}
+                        equippedItems={rankingEquippedItems[student.uid] || []}
+                        onAvatarClick={() => {
+                          if (student.customStatusText) {
+                            setActiveBubbleId(student.uid);
+                            setTimeout(() => setActiveBubbleId(null), 3000);
+                          }
+                        }}
+                      />
                 </div>
                 
                 <div>
@@ -535,7 +615,7 @@ export default function Dashboard() {
               </div>
               
               <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-                {getArrow(student, rankPos)}
+                  {getArrow(student)}
               </div>
 
               <div style={{ fontSize: fontSizeXp, fontWeight: 'bold', color: 'var(--gold-primary)' }}>
@@ -591,14 +671,14 @@ export default function Dashboard() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
           
-          {userData?.role === 'admin' && (
+          {(userData?.role === 'admin' || userData?.role === 'teacher') && (
             <button 
               className="login-btn" 
               onClick={() => navigate('/admin')}
               style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)' }}
             >
               <Settings size={18} color="var(--gold-primary)" />
-              <span style={{ color: 'var(--gold-primary)' }}>Painel Master</span>
+              <span style={{ color: 'var(--gold-primary)' }}>{userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}</span>
             </button>
           )}
 
@@ -854,9 +934,24 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem', marginTop: '1rem' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Vidas (HP)</span>
                   <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    {Array.from({ length: 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) }).map((_, i) => (
-                      <Heart key={i} size={24} fill={i < (userData?.hearts || 0) ? '#ef4444' : 'transparent'} color={i < (userData?.hearts || 0) ? '#ef4444' : 'rgba(255,255,255,0.2)'} />
-                    ))}
+                    {Array.from({ length: 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) }).map((_, i) => {
+                      if (i < currentHpVisual) {
+                        return <Heart key={i} size={24} fill="#ef4444" color="#ef4444" />;
+                      } else if (i === currentHpVisual) {
+                        return (
+                          <div key={i} style={{ position: 'relative', width: 24, height: 24 }}>
+                            <Heart size={24} fill="transparent" color="rgba(255,255,255,0.2)" style={{ position: 'absolute' }} />
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${nextHeartProgress}%`, overflow: 'hidden', transition: 'height 1s linear' }}>
+                              <div style={{ position: 'absolute', bottom: 0, left: 0, width: 24, height: 24 }}>
+                                <Heart size={24} fill="#ef4444" color="#ef4444" />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      } else {
+                        return <Heart key={i} size={24} fill="transparent" color="rgba(255,255,255,0.2)" />;
+                      }
+                    })}
                   </span>
                 </div>
                 

@@ -49,7 +49,7 @@ function AppRoutes() {
       <Route 
         path="/admin" 
         element={
-          <PrivateRoute requiredRole="admin">
+          <PrivateRoute requiredRole="teacher">
             <AdminDashboard />
           </PrivateRoute>
         } 
@@ -65,7 +65,7 @@ function AppRoutes() {
       <Route 
         path="/live-admin/:sessionId" 
         element={
-          <PrivateRoute requiredRole="admin">
+          <PrivateRoute requiredRole="teacher">
             <LiveQuestAdmin />
           </PrivateRoute>
         } 

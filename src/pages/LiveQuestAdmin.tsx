@@ -1,14 +1,15 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, setDoc, onSnapshot, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, query, where, getDocs, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Loader2, Play, CheckCircle, ChevronRight, Swords, Crown, Skull } from 'lucide-react';
+import { Loader2, Play, CheckCircle, ChevronRight, Swords, Crown, Skull, Package } from 'lucide-react';
 import type { QuestDef } from './AdminDashboard';
 import AvatarPrint from '../components/AvatarPrint';
 import CustomModelViewer from '../components/CustomModelViewer';
 import AvatarCharacter from '../components/AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
+import { rollItemAdds } from '../lib/gacha';
 
 export interface LivePlayer {
   uid: string;
@@ -23,8 +24,11 @@ export interface LivePlayer {
   currentAnswer?: number | null;
   isCorrect?: boolean | null;
   answerTime?: number | null;
+  sessionEarnedXp?: number;
   xp?: number;
   power?: number;
+  wonChest?: { place: number; coins: number; items: any[] };
+  rank?: string;
 }
 
 export interface LiveSession {
@@ -99,7 +103,7 @@ export default function LiveQuestAdmin() {
   }, [session, quest, sessionId]);
 
   const activePlayers = session ? Object.values(session.players).filter(p => p.hp === undefined || p.hp > 0) : [];
-  const totalPlayers = session ? Object.keys(session.players).length : 0;
+
   const activePlayersCount = activePlayers.length;
   const answersCount = activePlayers.filter(p => p.currentAnswer !== null && p.currentAnswer !== undefined).length;
 
@@ -195,10 +199,11 @@ export default function LiveQuestAdmin() {
         // If resuming a session but no players are present, force reset to lobby
         const data = sDoc.data() as LiveSession;
         const playersCount = Object.keys(data.players || {}).length;
-        if (data.status !== 'lobby' && playersCount === 0) {
+        if ((data.status as string) === 'lobby' || ((data.status as string) !== 'lobby' && playersCount === 0)) {
           await updateDoc(sessionRef, {
             status: 'lobby',
             currentQuestionIndex: 0,
+            activeQuestions: qData.questions.map((_, i) => i),
             monsterHp: 0,
             maxMonsterHp: 0
           });
@@ -325,9 +330,93 @@ export default function LiveQuestAdmin() {
     if (!sessionId) return;
     if (session.currentQuestionIndex + 1 >= session.activeQuestions.length || session.monsterHp <= 0) {
       // End game
-      await updateDoc(doc(db, 'live_quests', sessionId), {
-        status: 'finished'
-      });
+      try {
+        const sortedPlayers = Object.values(session.players).sort((a, b) => (b.score || 0) - (a.score || 0));
+        const promises: Promise<any>[] = [];
+
+        const processReward = async (playerUid: string, chestConfig: any, place: number) => {
+          if (!chestConfig) return;
+          const updates: any = {};
+          let itemsWon: any[] = [];
+
+          if (chestConfig.maxCoins && chestConfig.maxCoins > 0) {
+             updates.coins = increment(chestConfig.maxCoins);
+          }
+
+          if (chestConfig.itemIds && chestConfig.itemIds.length > 0) {
+             const validIds = chestConfig.itemIds.filter((id: string) => id.trim() !== '');
+             if (validIds.length > 0) {
+               const q = query(collection(db, 'store_items'), where('__name__', 'in', validIds));
+               const snap = await getDocs(q);
+               const storeItemsMap = new Map();
+               snap.docs.forEach(d => storeItemsMap.set(d.id, { id: d.id, ...d.data() }));
+
+               for (let i = 0; i < chestConfig.itemIds.length; i++) {
+                 const itemId = chestConfig.itemIds[i];
+                 const qty = chestConfig.itemQuantities ? chestConfig.itemQuantities[i] || 1 : 1;
+                 const item = storeItemsMap.get(itemId);
+                 if (item) {
+                   itemsWon.push({ ...item, quantity: qty });
+                   const itemData = {
+                      studentId: playerUid,
+                      itemId: item.id,
+                      itemTitle: item.title,
+                      itemType: item.type,
+                      itemImageUrl: item.imageUrl || '',
+                      gameEffect: item.gameEffect || 'none',
+                      usableInQuest: item.usableInQuest || false,
+                      quantity: qty,
+                      equipped: false,
+                      purchasedAt: serverTimestamp(),
+                      giftedBy: `Recompensa ${place}º Lugar`,
+                      avatarPart: item.avatarPart || null,
+                      itemCategory: item.itemCategory || 'none',
+                      baseAttributeType: item.baseAttributeType || 'none',
+                      baseAttributeValue: item.baseAttributeValue || 0,
+                      gameModelUrl: item.gameModelUrl || '',
+                      adds: item.type === 'equippable' ? rollItemAdds() : []
+                   };
+                   promises.push(addDoc(collection(db, 'user_items'), itemData));
+                 }
+               }
+             }
+          }
+          
+          if (Object.keys(updates).length > 0) {
+             promises.push(updateDoc(doc(db, 'users', playerUid), updates));
+          }
+
+          if (itemsWon.length > 0 || (chestConfig.maxCoins && chestConfig.maxCoins > 0)) {
+             promises.push(updateDoc(doc(db, 'live_quests', sessionId), {
+               [`players.${playerUid}.wonChest`]: { place, coins: chestConfig.maxCoins || 0, items: itemsWon }
+             }));
+          }
+        };
+
+        if (sortedPlayers.length > 0) await processReward(sortedPlayers[0].uid, quest.liveChest1stPlace, 1);
+        if (sortedPlayers.length > 1) await processReward(sortedPlayers[1].uid, quest.liveChest2ndPlace, 2);
+        if (sortedPlayers.length > 2) await processReward(sortedPlayers[2].uid, quest.liveChest3rdPlace, 3);
+
+        Object.keys(session.players).forEach(uid => {
+          const player = session.players[uid];
+          if (player.sessionEarnedXp && player.sessionEarnedXp > 0) {
+            promises.push(
+              addDoc(collection(db, 'xp_logs'), {
+                userId: uid,
+                xpGained: player.sessionEarnedXp,
+                evalName: `Missão: ${quest.title}`,
+                createdAt: serverTimestamp()
+              })
+            );
+          }
+        });
+
+        promises.push(updateDoc(doc(db, 'live_quests', sessionId), { status: 'finished' }));
+        
+        await Promise.all(promises);
+      } catch (err) {
+        console.error("Erro ao registrar recompensas/historico da missão ao vivo:", err);
+      }
     } else {
       // Reset player answers
       const updates: any = {
@@ -545,6 +634,11 @@ export default function LiveQuestAdmin() {
                  {/* 2nd Place */}
                  {sortedPlayers[1] && (
                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                     {sortedPlayers[1].wonChest && (
+                        <div style={{ marginBottom: '0.5rem', animation: 'bounce 2s infinite' }}>
+                           <Package size={32} color="silver" style={{ filter: 'drop-shadow(0 0 10px rgba(192,192,192,0.8))' }} />
+                        </div>
+                     )}
                      <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>{sortedPlayers[1].name}</div>
                      <div style={{ width: '120px', height: '120px', background: 'silver', borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '1rem', color: 'black', fontWeight: 'bold', fontSize: '1.5rem', boxShadow: 'inset 0 4px 10px rgba(255,255,255,0.5)' }}>
                        2º
@@ -555,6 +649,11 @@ export default function LiveQuestAdmin() {
                  {/* 1st Place */}
                  {sortedPlayers[0] && (
                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                     {sortedPlayers[0].wonChest && (
+                        <div style={{ marginBottom: '0.5rem', animation: 'bounce 2s infinite', animationDelay: '0.2s' }}>
+                           <Package size={48} color="var(--gold-primary)" style={{ filter: 'drop-shadow(0 0 15px rgba(255,215,0,0.8))' }} />
+                        </div>
+                     )}
                      <Crown size={48} color="var(--gold-primary)" style={{ marginBottom: '0.5rem' }} />
                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginBottom: '0.5rem' }}>{sortedPlayers[0].name}</div>
                      <div style={{ width: '140px', height: '160px', background: 'var(--gold-primary)', borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '1rem', color: 'black', fontWeight: 'bold', fontSize: '2rem', boxShadow: 'inset 0 4px 10px rgba(255,255,255,0.5)' }}>
@@ -566,6 +665,11 @@ export default function LiveQuestAdmin() {
                  {/* 3rd Place */}
                  {sortedPlayers[2] && (
                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                     {sortedPlayers[2].wonChest && (
+                        <div style={{ marginBottom: '0.5rem', animation: 'bounce 2s infinite', animationDelay: '0.4s' }}>
+                           <Package size={24} color="#cd7f32" style={{ filter: 'drop-shadow(0 0 10px rgba(205,127,50,0.8))' }} />
+                        </div>
+                     )}
                      <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>{sortedPlayers[2].name}</div>
                      <div style={{ width: '120px', height: '100px', background: '#cd7f32', borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '1rem', color: 'black', fontWeight: 'bold', fontSize: '1.5rem', boxShadow: 'inset 0 4px 10px rgba(255,255,255,0.5)' }}>
                        3º

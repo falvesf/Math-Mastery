@@ -8,6 +8,7 @@ import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircl
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
 import CustomModelViewer from '../components/CustomModelViewer';
+import ChestReveal from '../components/ChestReveal';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { rollItemAdds } from '../lib/gacha';
@@ -263,6 +264,18 @@ export default function QuestGameplay() {
     return dropChance / itemsConfigured;
   };
 
+  const updateUserHearts = async (newHearts: number) => {
+    if (!userData?.uid) return;
+    const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === userData.rank) || 0) / 2);
+    const updates: any = { hearts: newHearts };
+    const currentHp = userData.hearts !== undefined ? userData.hearts : maxHearts;
+    if (currentHp >= maxHearts && newHearts < maxHearts) {
+      updates.hpRecoveryStartTimestamp = Date.now();
+    }
+    userData.hearts = newHearts;
+    await updateDoc(doc(db, 'users', userData.uid), updates);
+  };
+
   const startGame = async () => {
     const initialHearts = userData?.hearts ?? 3;
     setCurrentHearts(initialHearts);
@@ -285,15 +298,13 @@ export default function QuestGameplay() {
       
       if (newHearts === 0) {
         if (userData?.uid) {
-            userData.hearts = newHearts;
-            updateDoc(doc(db, 'users', userData.uid), { hearts: newHearts });
+            updateUserHearts(newHearts);
         }
         setBattleMessage('ATAQUE SURPRESA LETAL! O monstro te emboscou e você não resistiu!');
         triggerFatality(false);
       } else {
         if (userData?.uid) {
-            userData.hearts = newHearts;
-            updateDoc(doc(db, 'users', userData.uid), { hearts: newHearts });
+            updateUserHearts(newHearts);
         }
         setBattleMessage('ATAQUE SURPRESA! O monstro foi mais rápido e atacou primeiro!');
         setMonsterAnim('attack');
@@ -587,8 +598,7 @@ export default function QuestGameplay() {
       if (isFatalForPlayer) {
         setCurrentHearts(newHearts);
         if (userData?.role === 'student' && !isStudyMode) {
-          userData.hearts = newHearts;
-          updateDoc(doc(db, 'users', userData.uid), { hearts: newHearts });
+          updateUserHearts(newHearts);
         }
         if (isMonsterCrit) {
           setBattleMessage('DANO CRÍTICO LETAL! O monstro te aniquilou!');
@@ -626,9 +636,7 @@ export default function QuestGameplay() {
       setCurrentHearts(newHearts);
 
       if (userData?.role === 'student' && !isStudyMode) {
-        userData.hearts = newHearts;
-        const userRef = doc(db, 'users', userData.uid);
-        await updateDoc(userRef, { hearts: newHearts });
+        updateUserHearts(newHearts);
       }
       
       // Vidas Extras: Deduct penalty but don't move to next question
@@ -871,8 +879,7 @@ export default function QuestGameplay() {
       let newHearts = userData.hearts || 0;
       if (newHearts > 0) {
         newHearts -= 1;
-        userData.hearts = newHearts;
-        await updateDoc(doc(db, 'users', userData.uid), { hearts: newHearts });
+        await updateUserHearts(newHearts);
       }
 
       const remainingQuestions = quest!.questions.length - currentQIndex;
@@ -1281,14 +1288,7 @@ export default function QuestGameplay() {
           {showChest && (
             <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               {!chestOpened ? (
-                <div 
-                  className="chest-shake" 
-                  onClick={() => setChestOpened(true)}
-                  style={{ cursor: 'pointer', textAlign: 'center', padding: '2rem' }}
-                >
-                  <Package size={150} color="var(--gold-primary)" style={{ filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 0.5))', margin: '0 auto' }} />
-                  <h2 style={{ color: 'var(--gold-primary)', marginTop: '2rem', animation: 'pulse 2s infinite' }}>Clique para abrir o Baú de Recompensas!</h2>
-                </div>
+                <ChestReveal onOpen={() => setChestOpened(true)} />
               ) : (
                 <div style={{ textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
                   <h2 style={{ fontSize: '3rem', color: 'var(--gold-primary)', marginBottom: '3rem', textShadow: '0 0 20px var(--gold-primary)' }}>Recompensas Adquiridas!</h2>

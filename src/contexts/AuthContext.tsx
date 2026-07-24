@@ -18,7 +18,9 @@ export interface UserData {
   coins?: number;
   lastSeenRank?: string;
   hearts?: number;
+  hpRecoveryStartTimestamp?: number | null;
   lastHeartRegen?: number; // timestamp in milliseconds
+  rank?: string;
   extraInventorySpace?: number; // espaços extras na mochila
   stunnedUntil?: number | null;
   happyBuffUntil?: number | null;
