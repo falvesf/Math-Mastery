@@ -8,6 +8,7 @@ import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import Admin3DModelsManager from './Admin3DModelsManager';
 import CustomModelViewer from './CustomModelViewer';
+import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 
 interface AvatarCustomizationModalProps {
   isOpen: boolean;
@@ -61,6 +62,10 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     facialHair: 'none',
     handedness: 'right',
   });
+  const [showEquippedItems, setShowEquippedItems] = useState(() => {
+    const saved = localStorage.getItem('avatarCustomizer_showEquippedItems');
+    return saved ? JSON.parse(saved) : false;
+  });
   const [saving, setSaving] = useState(false);
   const [monsterName, setMonsterName] = useState('');
   const [presetSkins, setPresetSkins] = useState<PresetSkin[]>([]);
@@ -68,13 +73,19 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   const [showAdminManager, setShowAdminManager] = useState(false);
   const [showAdmin3dManager, setShowAdmin3dManager] = useState(false);
 
-  const fetchPresetSkins = async () => {
+  const fetchPresetSkins = async (forceRefresh = false) => {
     try {
+      const cacheKey = CACHE_KEYS.presetSkins();
+      if (!forceRefresh) {
+        const cached = sessionCache.get<PresetSkin[]>(cacheKey);
+        if (cached) { setPresetSkins(cached); return; }
+      }
       const snap = await getDocs(collection(db, 'preset_skins'));
       const fetched: PresetSkin[] = [];
       snap.forEach(d => {
         fetched.push({ id: d.id, ...d.data() } as PresetSkin);
       });
+      sessionCache.set(cacheKey, fetched, CACHE_TTL.PRESET_SKINS);
       setPresetSkins(fetched);
     } catch (e) {
       console.error(e);
@@ -82,13 +93,19 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     }
   };
 
-  const fetchModels3d = async () => {
+  const fetchModels3d = async (forceRefresh = false) => {
     try {
+      const cacheKey = CACHE_KEYS.models3d();
+      if (!forceRefresh) {
+        const cached = sessionCache.get<any[]>(cacheKey);
+        if (cached) { setModels3d(cached); return; }
+      }
       const snap = await getDocs(collection(db, '3d_models'));
       const fetched: any[] = [];
       snap.forEach(d => {
         fetched.push({ id: d.id, ...d.data() });
       });
+      sessionCache.set(cacheKey, fetched, CACHE_TTL.MODELS_3D);
       setModels3d(fetched);
     } catch (e) {
       console.error('Erro ao buscar modelos 3D', e);
@@ -99,6 +116,10 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     fetchPresetSkins();
     fetchModels3d();
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('avatarCustomizer_showEquippedItems', JSON.stringify(showEquippedItems));
+  }, [showEquippedItems]);
 
   useEffect(() => {
     if (isOpen) {
@@ -346,7 +367,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               if (activeModel) {
                 return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={250} />;
               }
-              return <AvatarCharacter config={config} equippedItems={equippedItems} size={250} animation={config.animationState || 'idle'} interactive={true} />;
+              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={250} animation={config.animationState || 'idle'} interactive={true} />;
             })()}
             
             <div style={{ marginTop: '1.5rem', marginBottom: '0.5rem' }}>
@@ -374,6 +395,16 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             </div>
             
             <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>Pré-visualização</p>
+            
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
+              <input 
+                type="checkbox" 
+                checked={showEquippedItems} 
+                onChange={(e) => setShowEquippedItems(e.target.checked)} 
+                style={{ width: '1.2rem', height: '1.2rem', cursor: 'pointer', accentColor: 'var(--gold-primary)' }}
+              />
+              Mostrar Itens Equipados
+            </label>
 
             <button 
               onClick={handleRandomize}

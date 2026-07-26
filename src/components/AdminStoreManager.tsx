@@ -29,6 +29,7 @@ export interface StoreItem {
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
   rarity?: ItemRarity;
+  minSalePrice?: number; // Preço mínimo que jogadores podem usar para revender no bazar
 }
 
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
@@ -97,7 +98,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     const itemData = {
       ...formData,
       cost: Number(formData.cost),
-      minRankRequired: Number(formData.minRankRequired)
+      minRankRequired: Number(formData.minRankRequired),
+      minSalePrice: formData.minSalePrice ? Number(formData.minSalePrice) : 0,
     };
 
     if (editingId) {
@@ -204,7 +206,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             <h2 style={{ fontSize: '1.5rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Star color="var(--gold-primary)" /> Catálogo de Itens
             </h2>
-            <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common' }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
+            <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
               <Plus size={18} /> Novo Item
             </button>
           </div>
@@ -304,26 +306,45 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       {/* Modal Novo/Editar Item */}
       {isEditing && createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="glass-panel" style={{ width: '600px', maxWidth: '95vw', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+          <div className="glass-panel" style={{ width: '750px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
             <h3 style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingId ? 'Editar Item' : 'Criar Novo Item'}</h3>
             
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+            {/* Linha 1: Nome e Tipo */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome do Item</label>
                 <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Ex: Voucher +1 Ponto" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
               </div>
               
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Custo ({economyType === 'coins' ? 'Moedas' : 'XP'})</label>
-                <input type="number" value={formData.cost} onChange={e => setFormData({...formData, cost: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
-              </div>
-
-              <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo de Item</label>
                 <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
                   <option value="consumable">Consumível (Usa 1x)</option>
                   <option value="equippable">Equipável (Ex: Título)</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Linha 2: Valores e Raridade */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Custo ({economyType === 'coins' ? 'Moedas' : 'XP'})</label>
+                <input type="number" value={formData.cost} onChange={e => setFormData({...formData, cost: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Preço Mín. de Revenda (Bazar)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={formData.minSalePrice ?? 0}
+                  onChange={e => setFormData({...formData, minSalePrice: Number(e.target.value)})}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(251,191,36,0.4)', color: 'white' }}
+                  placeholder="0 = sem restrição"
+                />
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  0 = Venda livre
+                </p>
               </div>
 
               <div>
@@ -336,13 +357,25 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <option value="legendary">Lendário (Dourado)</option>
                 </select>
               </div>
+            </div>
+
+            {/* Linha 3: Requisitos e Efeitos */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem', alignItems: 'flex-start' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Patente Mínima Exigida</label>
+                <select value={formData.minRankRequired} onChange={e => setFormData({...formData, minRankRequired: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+                  {RANKS.map((r, i) => (
+                    <option key={r.name} value={i}>{r.name} ({r.minXp} XP)</option>
+                  ))}
+                </select>
+              </div>
 
               {formData.type === 'consumable' && (
-                <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Poder no Jogo (Gameplay)</label>
                     <select value={formData.gameEffect || 'none'} onChange={e => setFormData({...formData, gameEffect: e.target.value as GameEffectType})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
-                      <option value="none">Nenhum (Efeito Personalizado do Professor / Vida Real)</option>
+                      <option value="none">Nenhum (Efeito Personalizado)</option>
                       <option value="remove_wrong">Amuleto (Elimina 1 alternativa errada)</option>
                       <option value="add_time">Ampulheta (Adiciona +30 segundos)</option>
                       <option value="extra_life">Escudo (Protege contra erro na questão atual)</option>
@@ -350,16 +383,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="gift_wrap">Embalar para presente (Permite enviar presente da loja)</option>
                     </select>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
                     <input type="checkbox" checked={formData.usableInQuest || false} onChange={e => setFormData({...formData, usableInQuest: e.target.checked})} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
-                    <label style={{ color: 'var(--text-secondary)' }}>Pode ser utilizado DENTRO dos desafios?</label>
+                    <label style={{ color: 'white', cursor: 'pointer', margin: 0 }}>Pode usar DENTRO dos desafios?</label>
                   </div>
-                </>
+                </div>
               )}
 
               {formData.type === 'equippable' && (
-                <>
-                  <div>
+                <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Parte do Avatar (Para Equipamentos Visuais)</label>
                   <select value={formData.avatarPart || ''} onChange={e => setFormData({...formData, avatarPart: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
                     <option value="">Nenhuma (Apenas Título/Inventário)</option>
@@ -374,52 +406,51 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                     <option value="pet">Mascote (Acompanhante)</option>
                   </select>
                 </div>
+              )}
+            </div>
+
+            {/* Linha 4: Atributos e 3D (Se Equipável) */}
+            {formData.type === 'equippable' && (
+              <div style={{ background: 'rgba(0,0,0,0.15)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <h4 style={{ margin: '0 0 1rem 0', color: 'var(--gold-primary)', fontSize: '1.1rem' }}>Configurações de Equipamento</h4>
                 
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Categoria do Item</label>
-                      <select value={formData.itemCategory || 'none'} onChange={e => setFormData({...formData, itemCategory: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
-                        <option value="none">Cosmético (Nenhuma)</option>
-                        <option value="attack">Ataque</option>
-                        <option value="defense">Defesa</option>
-                        <option value="support">Suporte</option>
-                      </select>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo de Atributo Base</label>
-                      <select value={formData.baseAttributeType || 'none'} onChange={e => setFormData({...formData, baseAttributeType: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
-                        <option value="none">Nenhum</option>
-                        <option value="attack">Poder de Ataque (+X)</option>
-                        <option value="defense">Poder de Defesa (+X)</option>
-                        <option value="xp">Bônus de XP (+X%)</option>
-                        <option value="coins">Bônus de Moedas (+X%)</option>
-                        <option value="vitality">Vitalidade (+X%)</option>
-                        <option value="fortitude">Fortitude (+X%)</option>
-                        <option value="persuasion">Persuasão (+X%)</option>
-                      </select>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Força do Atributo Base</label>
-                      <input type="number" value={formData.baseAttributeValue || 0} onChange={e => setFormData({...formData, baseAttributeValue: parseInt(e.target.value) || 0})} className="login-input" />
-                    </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.5rem', marginBottom: '1.25rem' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Categoria do Item</label>
+                    <select value={formData.itemCategory || 'none'} onChange={e => setFormData({...formData, itemCategory: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+                      <option value="none">Cosmético (Nenhuma)</option>
+                      <option value="attack">Ataque</option>
+                      <option value="defense">Defesa</option>
+                      <option value="support">Suporte</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo de Atributo Base</label>
+                    <select value={formData.baseAttributeType || 'none'} onChange={e => setFormData({...formData, baseAttributeType: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+                      <option value="none">Nenhum</option>
+                      <option value="attack">Poder de Ataque (+X)</option>
+                      <option value="defense">Poder de Defesa (+X)</option>
+                      <option value="xp">Bônus de XP (+X%)</option>
+                      <option value="coins">Bônus de Moedas (+X%)</option>
+                      <option value="vitality">Vitalidade (+X%)</option>
+                      <option value="fortitude">Fortitude (+X%)</option>
+                      <option value="persuasion">Persuasão (+X%)</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Força do Atributo Base</label>
+                    <input type="number" value={formData.baseAttributeValue || 0} onChange={e => setFormData({...formData, baseAttributeValue: parseInt(e.target.value) || 0})} className="login-input" style={{ width: '100%' }} />
+                  </div>
                 </div>
                 
-                <div style={{ marginTop: '1rem' }}>
+                <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL do Modelo 3D (.glb) [Opcional]</label>
                   <input type="text" value={formData.gameModelUrl || ''} onChange={e => setFormData({...formData, gameModelUrl: e.target.value})} placeholder="/models/item.glb" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
                 </div>
-              </>
-            )}
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Patente Mínima Exigida</label>
-                <select value={formData.minRankRequired} onChange={e => setFormData({...formData, minRankRequired: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
-                  {RANKS.map((r, i) => (
-                    <option key={r.name} value={i}>{r.name} ({r.minXp} XP)</option>
-                  ))}
-                </select>
               </div>
-            </div>
+            )}
 
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Descrição (Lore do Item)</label>

@@ -130,7 +130,13 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
     
     equippedItems.forEach(item => {
       if (item.gameModelUrl && item.gameModelUrl.trim() !== '') {
-        const safeUrl = item.gameModelUrl.replace(/\\/g, '/');
+        let safeUrl = item.gameModelUrl.replace(/\\/g, '/');
+        if (!safeUrl.startsWith('http') && !safeUrl.startsWith('/')) {
+          if (!safeUrl.startsWith('models/')) safeUrl = `models/${safeUrl}`;
+          safeUrl = `/${safeUrl}`;
+        } else if (safeUrl.startsWith('/') && !safeUrl.startsWith('/models/')) {
+          safeUrl = `/models${safeUrl}`;
+        }
         console.log(`Carregando modelo 3D para o item ${item.itemTitle}:`, safeUrl);
         
         loader.load(
@@ -164,10 +170,21 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
               loadedModels.push({ parent: targetArm, model });
             } else if (item.avatarPart === 'head') {
               const head = viewer.playerObject.skin.head;
-              model.scale.set(10, 10, 10);
-              model.position.set(0, 4, 0);
+              // Os itens do Blockbench para Minecraft geralmente vêm na escala de 1 unidade = 16 pixels.
+              // A cabeça tem 8x8x8 pixels. Multiplicando a escala por 16, os tamanhos batem perfeitamente.
+              model.scale.set(16, 16, 16);
+              model.position.set(0, 0, 0);
+              model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
               head.add(model);
               loadedModels.push({ parent: head, model });
+            } else if (item.avatarPart === 'body') {
+              const body = viewer.playerObject.skin.body;
+              model.scale.set(16, 16, 16);
+              // O grupo "body" no skinview3d tem seu eixo deslocado. Precisamos descer o modelo em -6 para alinhar com o peitoral.
+              model.position.set(0, -6, 0);
+              model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
+              body.add(model);
+              loadedModels.push({ parent: body, model });
             }
           },
           undefined,
@@ -503,7 +520,7 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              zIndex: 10,
+              zIndex: hoveredSlot === slot.id ? 100 : 10,
               boxShadow: item ? '0 0 10px rgba(251, 191, 36, 0.4)' : 'none',
               overflow: 'visible',
               cursor: item && onSlotClick ? 'pointer' : 'default'

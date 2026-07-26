@@ -60,7 +60,13 @@ async function processQueue() {
             res();
             return;
           }
-          const safeUrl = item.gameModelUrl.replace(/\\/g, '/');
+          let safeUrl = item.gameModelUrl.replace(/\\/g, '/');
+          if (!safeUrl.startsWith('http') && !safeUrl.startsWith('/')) {
+            if (!safeUrl.startsWith('models/')) safeUrl = `models/${safeUrl}`;
+            safeUrl = `/${safeUrl}`;
+          } else if (safeUrl.startsWith('/') && !safeUrl.startsWith('/models/')) {
+            safeUrl = `/models${safeUrl}`;
+          }
           loader.load(safeUrl, (gltf) => {
             const model = gltf.scene;
             model.userData.isItem = true;
@@ -87,8 +93,9 @@ async function processQueue() {
               targetArm.add(model);
             } else if (item.avatarPart === 'head') {
               const head = player.skin.head;
-              model.scale.set(10, 10, 10);
-              model.position.set(0, 4, 0);
+              model.scale.set(16, 16, 16);
+              model.position.set(0, 0, 0);
+              model.rotation.set(0, Math.PI, 0);
               head.add(model);
             }
             res();

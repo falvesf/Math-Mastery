@@ -12,6 +12,7 @@ import ChestReveal from '../components/ChestReveal';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { rollItemAdds } from '../lib/gacha';
+import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 interface UserItem {
   id: string;
@@ -744,7 +745,8 @@ export default function QuestGameplay() {
                   baseAttributeType: item.baseAttributeType || 'none',
                   baseAttributeValue: item.baseAttributeValue || 0,
                   gameModelUrl: item.gameModelUrl || '',
-                  adds: item.type === 'equippable' ? rollItemAdds() : []
+                  adds: item.type === 'equippable' ? rollItemAdds() : [],
+                  minSalePrice: item.minSalePrice || 0  // Propaga o preço mínimo de revenda
                 };
                 await addDoc(collection(db, 'user_items'), itemData);
                 finalRewards.items.push({ ...item, quantity: slot.quantity });
@@ -812,6 +814,8 @@ export default function QuestGameplay() {
             xpGained: actualXpGained,
             timestamp: serverTimestamp()
           });
+          // Invalida o cache de histórico para que o Dashboard mostre a nova entrada
+          sessionCache.invalidate(CACHE_KEYS.xpHistory(userData!.uid));
         }
         
         if (earnedCoins > 0) {
@@ -864,6 +868,8 @@ export default function QuestGameplay() {
         timestamp: serverTimestamp(),
         isStudyMode: isStudyMode // Marking it so we know it was a review attempt
       });
+      // Invalida o cache de tentativas para que o Dashboard atualize os botões de missão
+      if (isWin) sessionCache.invalidate(CACHE_KEYS.questAttempts(userData.uid));
     }
 
     setSaving(false);

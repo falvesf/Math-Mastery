@@ -29,6 +29,7 @@ interface UserItem {
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
   adds?: ItemAdd[];
+  minSalePrice?: number; // Preço mínimo definido pelo admin
 }
 
 export default function StudentInventory({ userData, onEquip, inventoryRefresh }: { userData: UserData, onEquip?: () => void, inventoryRefresh?: number }) {
@@ -193,7 +194,13 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (!sellModalItem) return;
     const price = parseInt(sellPrice, 10);
     if (isNaN(price) || price <= 0) {
-      await showAlert("Digite um valor válido maior que zero!");
+      await showAlert('Digite um valor válido maior que zero!');
+      return;
+    }
+
+    const minSalePrice = sellModalItem.minSalePrice || 0;
+    if (minSalePrice > 0 && price < minSalePrice) {
+      await showAlert(`Este item tem um preço mínimo de revenda de ${minSalePrice} moedas. Você não pode colocar à venda por menos que isso.`);
       return;
     }
     
@@ -207,7 +214,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     setSellModalItem(null);
     setSellPrice('');
     fetchInventory();
-    await showAlert("Item colocado à venda com sucesso!");
+    await showAlert('Item colocado à venda com sucesso!');
   };
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Carregando Mochila...</div>;
@@ -382,15 +389,24 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               </div>
             </div>
             
+            {(sellModalItem.minSalePrice ?? 0) > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '1rem' }}>
+                <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+                <span style={{ fontSize: '0.85rem', color: 'var(--gold-primary)' }}>
+                  Preço mínimo de revenda: <strong>{sellModalItem.minSalePrice} moedas</strong>
+                </span>
+              </div>
+            )}
+
             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Preço de Venda</label>
             <input 
               type="number" 
               value={sellPrice} 
               onChange={e => setSellPrice(e.target.value)}
               className="login-input" 
-              placeholder="Ex: 500"
+              placeholder={`Mínimo: ${sellModalItem.minSalePrice || 1}`}
               autoFocus
-              min={1}
+              min={sellModalItem.minSalePrice || 1}
             />
             
             <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>

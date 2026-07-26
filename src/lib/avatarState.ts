@@ -1,7 +1,8 @@
-import { RANKS } from './ranks';
+import { RANKS, getRankForXp } from './ranks';
 import type { UserData } from '../contexts/AuthContext';
+import type { AvatarConfig } from '../components/AvatarCharacter';
 
-export function getProfileAvatarState(userData: Partial<UserData> | null) {
+export function getProfileAvatarState(userData: Partial<UserData> | null, customConfig?: AvatarConfig) {
   if (!userData) {
     return {
       animation: 'idle',
@@ -11,13 +12,16 @@ export function getProfileAvatarState(userData: Partial<UserData> | null) {
   }
 
   const now = Date.now();
-  const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
+  const currentRank = getRankForXp(userData.xp || 0);
+  const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRank.name));
   const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2));
-  const currentHearts = userData.hearts ?? maxHearts;
+  const isAdminOrTeacher = userData.role === 'admin' || userData.role === 'teacher';
+  const currentHearts = isAdminOrTeacher ? maxHearts : (userData.hearts ?? maxHearts);
   const hpPercentage = (currentHearts / maxHearts) * 100;
   const damageOpacity = Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts));
 
-  let profileAnim = (userData.avatarConfig?.animationState as any) || 'idle';
+  const configToUse = customConfig || userData.avatarConfig;
+  let profileAnim = (configToUse?.animationState as any) || 'idle';
   let profileExp = 'normal';
 
   if (userData.stunnedUntil && userData.stunnedUntil > now) {
@@ -29,21 +33,20 @@ export function getProfileAvatarState(userData: Partial<UserData> | null) {
     profileAnim = 'cheer';
     profileExp = 'normal';
   } else {
-    // Base logic on HP
-    if (hpPercentage >= 75) {
-      // Keep customized animation if 100% or healthy
-      profileAnim = userData.avatarConfig?.animationState || 'idle';
-      profileExp = 'normal';
-    } else if (hpPercentage >= 50) {
-      profileAnim = 'idle';
-      profileExp = 'serious';
-    } else if (hpPercentage >= 25) {
-      profileAnim = 'exhausted';
-      profileExp = 'serious';
-    } else {
-      profileAnim = 'exhausted';
-      profileExp = 'sad';
-    }
+  // Base logic on HP
+  if (hpPercentage >= 50) {
+    // Keep customized animation, face is normal or serious based on HP
+    profileAnim = configToUse?.animationState || 'idle';
+    profileExp = hpPercentage >= 75 ? 'normal' : 'serious';
+  } else if (hpPercentage > 0) {
+    // Below 50% but alive: still keep customized animation, but look sad
+    profileAnim = configToUse?.animationState || 'idle';
+    profileExp = 'sad';
+  } else {
+    // Dead (0 HP): Force exhausted/stopped
+    profileAnim = 'exhausted';
+    profileExp = 'sad';
+  }
   }
 
   return {

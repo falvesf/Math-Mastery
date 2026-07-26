@@ -256,7 +256,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         baseAttributeType: item.baseAttributeType || 'none',
         baseAttributeValue: item.baseAttributeValue || 0,
         gameModelUrl: item.gameModelUrl || '',
-        adds: finalAdds
+        adds: finalAdds,
+        minSalePrice: item.minSalePrice || 0  // Propaga o preço mínimo de revenda definido pelo admin
       });
 
       await showAlert(isGift ? 'Presente enviado com sucesso!' : 'Item comprado com sucesso! Acesse seu Inventário.');

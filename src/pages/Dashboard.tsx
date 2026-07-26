@@ -15,6 +15,7 @@ import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
 import { Edit3, MessageCircle } from 'lucide-react';
+import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
@@ -169,10 +170,19 @@ export default function Dashboard() {
   useEffect(() => {
     if (userData?.uid) {
       const fetchHistory = async () => {
+        // Verifica o cache primeiro — histórico raramente muda durante a sessão
+        const cacheKey = CACHE_KEYS.xpHistory(userData.uid);
+        const cached = sessionCache.get<any[]>(cacheKey);
+        if (cached) {
+          setXpHistory(cached);
+          setLoadingHistory(false);
+          return;
+        }
         const q = query(collection(db, 'xp_logs'), where('studentId', '==', userData.uid));
         const snap = await getDocs(q);
         const logs = snap.docs.map(d => d.data());
         logs.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+        sessionCache.set(cacheKey, logs, CACHE_TTL.XP_HISTORY);
         setXpHistory(logs);
         setLoadingHistory(false);
       };
@@ -181,19 +191,28 @@ export default function Dashboard() {
       const fetchQuests = async () => {
         setLoadingQuests(true);
         
-        // Buscar tentativas concluídas
-        const attemptQ = query(collection(db, 'quest_attempts'), where('studentId', '==', userData.uid), where('status', '==', 'completed'));
-        const attemptSnap = await getDocs(attemptQ);
-        const completedIds: string[] = [];
-        attemptSnap.forEach(doc => {
-          if (doc.data().questId) completedIds.push(doc.data().questId);
-        });
+        // Buscar tentativas concluídas (com cache)
+        const attemptsCacheKey = CACHE_KEYS.questAttempts(userData.uid);
+        let completedIds: string[] = sessionCache.get<string[]>(attemptsCacheKey) || [];
+        if (completedIds.length === 0) {
+          const attemptQ = query(collection(db, 'quest_attempts'), where('studentId', '==', userData.uid), where('status', '==', 'completed'));
+          const attemptSnap = await getDocs(attemptQ);
+          attemptSnap.forEach(doc => {
+            if (doc.data().questId) completedIds.push(doc.data().questId);
+          });
+          sessionCache.set(attemptsCacheKey, completedIds, CACHE_TTL.QUEST_ATTEMPTS);
+        }
         setCompletedQuestIds(completedIds);
 
-        // Buscar missões ativas
-        const q = query(collection(db, 'quests'), where('active', '==', true));
-        const snap = await getDocs(q);
-        const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Buscar missões ativas (com cache por turma)
+        const questsCacheKey = CACHE_KEYS.quests(userData.classId || 'all');
+        let fetched: any[] = sessionCache.get<any[]>(questsCacheKey) || [];
+        if (fetched.length === 0) {
+          const q = query(collection(db, 'quests'), where('active', '==', true));
+          const snap = await getDocs(q);
+          fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          sessionCache.set(questsCacheKey, fetched, CACHE_TTL.QUESTS);
+        }
         
         // Filtrar por turmas alvo
         const filteredQuests = fetched.filter((quest: any) => {
@@ -229,7 +248,8 @@ export default function Dashboard() {
             itemCategory: data.itemCategory,
             baseAttributeType: data.baseAttributeType,
             baseAttributeValue: data.baseAttributeValue,
-            adds: data.adds
+            adds: data.adds,
+            gameModelUrl: data.gameModelUrl
           });
         }
       });
@@ -345,6 +365,14 @@ export default function Dashboard() {
       top10General.forEach(s => studentIds.add(s.uid));
       
       if (studentIds.size === 0) return;
+
+      // Verifica o cache — itens do ranking mudam raramente
+      const cacheKey = CACHE_KEYS.rankingItems();
+      const cached = sessionCache.get<Record<string, EquippedItem[]>>(cacheKey);
+      if (cached) {
+        setRankingEquippedItems(cached);
+        return;
+      }
       
       try {
         const q = query(collection(db, 'user_items'), where('equipped', '==', true));
@@ -369,6 +397,7 @@ export default function Dashboard() {
           }
         });
         
+        sessionCache.set(cacheKey, newRankingItems, CACHE_TTL.RANKING_ITEMS);
         setRankingEquippedItems(newRankingItems);
       } catch (e) {
         console.error(e);
@@ -890,7 +919,7 @@ export default function Dashboard() {
                     <div style={{ position: 'absolute', bottom: 50, right: -10 }}>
                       {(liveAvatarConfig || userData?.avatarConfig) ? (
                         <div style={{ width: 50, height: 50, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                          <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={50} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
+                          <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={50} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
                         </div>
                       ) : (
                         <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: 50, height: 50, borderRadius: '50%', border: `2px solid ${currentRank.color}`, cursor: 'pointer' }} />
@@ -904,7 +933,7 @@ export default function Dashboard() {
                   <>
                     {(liveAvatarConfig || userData?.avatarConfig) ? (
                       <div style={{ width: 120, height: 120, borderRadius: '50%', overflow: 'visible', border: `4px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: `0 0 20px ${currentRank.color}40` }} title="Clique para personalizar seu personagem">
-                        <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={100} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData).animation as any} expression={getProfileAvatarState(userData).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
+                        <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={100} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
                       </div>
                     ) : (
                       <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: 120, height: 120, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, objectFit: 'cover', cursor: 'pointer' }} />
@@ -947,14 +976,15 @@ export default function Dashboard() {
                   <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     {(() => {
                       const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2);
+                      const displayHp = userData?.role === 'admin' || userData?.role === 'teacher' ? maxHearts : currentHpVisual;
                       return Array.from({ length: maxHearts }).map((_, i) => {
-                        if (i < currentHpVisual) {
+                        if (i < displayHp) {
                           return (
                             <div key={i} style={{ position: 'relative', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Heart size={24} fill="#ef4444" color="#ef4444" />
                             </div>
                           );
-                        } else if (i === currentHpVisual && userData?.hpRecoveryStartTimestamp && currentHpVisual < maxHearts) {
+                        } else if (i === displayHp && userData?.hpRecoveryStartTimestamp && displayHp < maxHearts) {
                           // Recovering heart
                           const minsLeft = Math.ceil(((100 - nextHeartProgress) / 100) * 30);
                           return (
