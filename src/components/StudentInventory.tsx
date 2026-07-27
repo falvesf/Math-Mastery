@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Package, ShieldAlert, CheckCircle, Gift } from 'lucide-react';
+import { Package } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
-import { ATTRIBUTE_LABELS, type ItemCategory, type AttributeType, type ItemAdd } from '../lib/gacha';
+import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd } from '../lib/gacha';
 
 interface UserItem {
   id: string;
@@ -33,12 +33,13 @@ interface UserItem {
 }
 
 export default function StudentInventory({ userData, onEquip, inventoryRefresh }: { userData: UserData, onEquip?: () => void, inventoryRefresh?: number }) {
-  const { showAlert, showConfirm, showConfirmWithCheckbox } = useDialog();
+  const { showAlert, showConfirm, showConfirmWithCheckbox, showToast } = useDialog();
   const [items, setItems] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sellModalItem, setSellModalItem] = useState<UserItem | null>(null);
   const [sellPrice, setSellPrice] = useState('');
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [draggedItem, setDraggedItem] = useState<UserItem | null>(null);
 
   const currentRank = getRankForXp(userData.xp || 0);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
@@ -59,7 +60,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       loaded.push({ id: d.id, ...d.data() } as UserItem);
     });
 
-    const groupedMap = new Map<string, UserItem>();
+    const consumableGroups = new Map<string, { baseItem: UserItem, totalQuantity: number }>();
     const finalItems: UserItem[] = [];
 
     loaded.forEach(item => {
@@ -68,12 +69,11 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
       if (item.itemType === 'consumable') {
         const key = item.itemId; // group by item type only, regardless of source
-        if (groupedMap.has(key)) {
-          const existing = groupedMap.get(key)!;
-          existing.count = (existing.count || 1) + (item.quantity || 1);
-          if (existing.docIds) existing.docIds.push(item.id);
+        if (consumableGroups.has(key)) {
+          const existing = consumableGroups.get(key)!;
+          existing.totalQuantity += (item.quantity || 1);
         } else {
-          groupedMap.set(key, { ...item, count: item.quantity || 1, docIds: [item.id] });
+          consumableGroups.set(key, { baseItem: item, totalQuantity: item.quantity || 1 });
         }
       } else {
         // Equipáveis não se agrupam
@@ -81,8 +81,47 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       }
     });
 
-    setItems([...Array.from(groupedMap.values()), ...finalItems]);
+    let virtualIdCounter = 0;
+    consumableGroups.forEach((group, key) => {
+      let remaining = group.totalQuantity;
+      
+      while (remaining > 0) {
+        const chunkQuantity = Math.min(remaining, 99);
+        
+        finalItems.push({
+          ...group.baseItem,
+          id: `${group.baseItem.id}_${virtualIdCounter++}`,
+          count: chunkQuantity
+        });
+        
+        remaining -= chunkQuantity;
+      }
+    });
+
+    setItems(finalItems);
     setLoading(false);
+  };
+
+  const consumeItemQuantity = async (itemId: string, amount: number = 1) => {
+    if (!userData.uid) return;
+    const q = query(collection(db, 'user_items'), where('studentId', '==', userData.uid), where('itemId', '==', itemId), where('forSale', '==', false));
+    const snap = await getDocs(q);
+    let remainingToRemove = amount;
+    
+    for (const d of snap.docs) {
+      if (remainingToRemove <= 0) break;
+      const data = d.data() as UserItem;
+      if (data.itemType !== 'consumable') continue;
+      
+      const qty = data.quantity || 1;
+      if (qty <= remainingToRemove) {
+        await deleteDoc(d.ref);
+        remainingToRemove -= qty;
+      } else {
+        await updateDoc(d.ref, { quantity: qty - remainingToRemove });
+        remainingToRemove = 0;
+      }
+    }
   };
 
   const handleEquip = async (item: UserItem) => {
@@ -93,9 +132,24 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (newState && item.avatarPart) {
       if (item.avatarPart === 'hand') {
         const equippedHands = items.filter(i => i.equipped && i.avatarPart === 'hand' && i.id !== item.id);
+        const equippedTwoHanded = items.filter(i => i.equipped && i.avatarPart === 'two_handed' && i.id !== item.id);
+        
+        // Unequip two-handed weapons if we are equipping a one-handed weapon
+        for (const th of equippedTwoHanded) {
+          const docId = th.docIds ? th.docIds[0] : th.id;
+          await updateDoc(doc(db, 'user_items', docId), { equipped: false });
+        }
+        
         if (equippedHands.length >= 2) {
           const otherDoc = equippedHands[0].docIds ? equippedHands[0].docIds[0] : equippedHands[0].id;
           await updateDoc(doc(db, 'user_items', otherDoc), { equipped: false });
+        }
+      } else if (item.avatarPart === 'two_handed') {
+        // Unequip all one-handed and two-handed weapons
+        const equippedWeapons = items.filter(i => i.equipped && (i.avatarPart === 'hand' || i.avatarPart === 'two_handed') && i.id !== item.id);
+        for (const w of equippedWeapons) {
+          const docId = w.docIds ? w.docIds[0] : w.id;
+          await updateDoc(doc(db, 'user_items', docId), { equipped: false });
         }
       } else {
         const alreadyEquipped = items.find(i => i.equipped && i.avatarPart === item.avatarPart && i.id !== item.id);
@@ -132,14 +186,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       });
       userData.hearts = maxHearts;
 
-      const docToDelete = item.docIds ? item.docIds[0] : item.id;
-      await deleteDoc(doc(db, 'user_items', docToDelete));
-      
-      if ((item.count || 1) > 1) {
-        setItems(items.map(i => i.id === item.id ? { ...i, count: (i.count || 2) - 1, docIds: i.docIds?.slice(1) } : i));
-      } else {
-        setItems(items.filter(i => i.id !== item.id));
-      }
+      await consumeItemQuantity(item.itemId, 1);
+      fetchInventory();
       await showAlert("HP restaurado completamente!");
       return;
     }
@@ -152,41 +200,112 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     const confirmed = await showConfirm(`Tem certeza que deseja consumir "${item.itemTitle}" agora? O professor precisará validar a ação na vida real.`);
     if (!confirmed) return;
     
-    const docToDelete = item.docIds ? item.docIds[0] : item.id;
-    await deleteDoc(doc(db, 'user_items', docToDelete));
-    
-    if ((item.count || 1) > 1) {
-      setItems(items.map(i => i.id === item.id ? { ...i, count: (i.count || 2) - 1, docIds: i.docIds?.slice(1) } : i));
-    } else {
-      setItems(items.filter(i => i.id !== item.id));
-    }
+    await consumeItemQuantity(item.itemId, 1);
+    fetchInventory();
     await showAlert(`Você utilizou o item: ${item.itemTitle}! Avise seu professor para que ele valide o efeito.`);
   };
 
-  const handleDrop = async (item: UserItem) => {
+  const handleDropItemToTrash = async (item: UserItem) => {
     if (item.equipped) {
       await showAlert("Desequipe o item antes de jogá-lo fora!");
       return;
     }
     const result = await showConfirmWithCheckbox(
-      `Tem certeza que deseja DESCARTAR "${item.itemTitle}"? Ele ficará perdido e poderá ser encontrado por outros jogadores em missões.`,
+      `Tem certeza que deseja DESCARTAR 1x "${item.itemTitle}"? Ele ficará perdido e poderá ser encontrado por outros jogadores em missões.`,
       "Destruir item permanentemente (ninguém poderá encontrar)"
     );
     if (!result || !result.confirmed) return;
     
-    const docToUpdate = item.docIds ? item.docIds[0] : item.id;
-    
-    if (result.checked) {
-      await deleteDoc(doc(db, 'user_items', docToUpdate));
-      fetchInventory();
-      await showAlert("Item destruído permanentemente!");
+    if (item.itemType === 'consumable') {
+      await consumeItemQuantity(item.itemId, 1);
+      if (!result.checked) {
+        const { id, count, docIds, ...itemDataToDrop } = item;
+        await addDoc(collection(db, 'user_items'), {
+          ...itemDataToDrop,
+          studentId: 'dropped',
+          droppedBy: userData.uid,
+          quantity: 1
+        });
+      }
     } else {
-      await updateDoc(doc(db, 'user_items', docToUpdate), {
-        studentId: 'dropped',
-        droppedBy: userData.uid
-      });
+      const docToUpdate = item.docIds ? item.docIds[0] : item.id;
+      if (result.checked) {
+        await deleteDoc(doc(db, 'user_items', docToUpdate));
+      } else {
+        await updateDoc(doc(db, 'user_items', docToUpdate), {
+          studentId: 'dropped',
+          droppedBy: userData.uid
+        });
+      }
+    }
+    
+    fetchInventory();
+    await showAlert(result.checked ? "Item destruído permanentemente!" : "Item jogado fora!");
+  };
+
+  const handleItemDrop = async (dragItem: UserItem, targetItem: UserItem) => {
+    if (!dragItem || dragItem.id === targetItem.id) return;
+
+    if (dragItem.gameEffect === 'add_attribute') {
+      if (targetItem.itemType !== 'equippable') {
+        showToast("Você só pode usar este pergaminho em itens equipáveis!", 'error');
+        return;
+      }
+      const currentAddsCount = targetItem.adds ? targetItem.adds.length : 0;
+      if (currentAddsCount >= 2) {
+        showToast("Este item já possui o limite máximo de atributos extras (2)!", 'error');
+        return;
+      }
+
+      const confirmed = await showConfirm(`Deseja usar o "Pergaminho do Novo Atributo" no item "${targetItem.itemTitle}"? Há 70% de chance de sucesso e o pergaminho será consumido.`);
+      if (!confirmed) return;
+
+      await consumeItemQuantity(dragItem.itemId, 1);
+
+      const isSuccess = Math.random() < 0.70;
+      if (!isSuccess) {
+        showToast("O pergaminho falhou e foi destruído... Mais sorte na próxima vez!", 'error');
+        fetchInventory();
+        return;
+      }
+
+      let amountToGenerate = 1;
+      if (currentAddsCount === 0) {
+        amountToGenerate = Math.random() > 0.5 ? 1 : 2;
+      }
+      
+      const newAdds = rollExactAttributes(amountToGenerate);
+      const finalAdds = [...(targetItem.adds || []), ...newAdds].slice(0, 2);
+
+      const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
+      await updateDoc(doc(db, 'user_items', targetDocId), { adds: finalAdds });
+      
+      showToast("SUCESSO! O poder do pergaminho fluiu para o equipamento e gerou novos atributos!", 'success');
       fetchInventory();
-      await showAlert("Item jogado fora!");
+    }
+    else if (dragItem.gameEffect === 'reroll_attributes') {
+      if (targetItem.itemType !== 'equippable') {
+        showToast("Você só pode usar este pergaminho em itens equipáveis!", 'error');
+        return;
+      }
+      const currentAddsCount = targetItem.adds ? targetItem.adds.length : 0;
+      if (currentAddsCount === 0) {
+        showToast("Este pergaminho só pode ser usado em itens que já possuem atributos extras!", 'error');
+        return;
+      }
+
+      const confirmed = await showConfirm(`Deseja usar o "Pergaminho do Aprimoramento" no item "${targetItem.itemTitle}"? Ele sorteará novos atributos substituindo os antigos.`);
+      if (!confirmed) return;
+
+      await consumeItemQuantity(dragItem.itemId, 1);
+
+      const newAdds = rollExactAttributes(currentAddsCount);
+      
+      const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
+      await updateDoc(doc(db, 'user_items', targetDocId), { adds: newAdds });
+      
+      showToast("SUCESSO! O equipamento brilhou e seus atributos foram completamente renovados!", 'success');
+      fetchInventory();
     }
   };
 
@@ -252,6 +371,23 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                 <div key={item.id || index} 
                   onMouseEnter={() => setHoveredItem(item.id)}
                   onMouseLeave={() => setHoveredItem(null)}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedItem(item);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragEnd={() => setDraggedItem(null)}
+                  onDragOver={(e) => {
+                    if (draggedItem && draggedItem.id !== item.id) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggedItem) {
+                      handleItemDrop(draggedItem, item);
+                    }
+                  }}
                   style={{ 
                   background: 'var(--bg-dark)', 
                   padding: '1rem', 
@@ -261,7 +397,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   gap: '0.5rem', 
                   border: item.equipped ? '2px solid var(--accent-green)' : '2px solid rgba(255,255,255,0.1)',
                   position: 'relative',
-                  boxShadow: item.equipped ? '0 0 15px rgba(16, 185, 129, 0.2)' : 'none'
+                  cursor: 'grab',
+                  boxShadow: item.equipped ? '0 0 15px rgba(16, 185, 129, 0.2)' : (draggedItem?.id === item.id ? '0 0 15px rgba(251,191,36,0.5)' : 'none'),
+                  opacity: draggedItem?.id === item.id ? 0.5 : 1
                 }}>
                   {item.count && item.count > 1 && (
                     <div style={{ position: 'absolute', top: '-10px', right: '-10px', background: 'var(--gold-primary)', color: 'black', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', border: '2px solid var(--bg-dark)', zIndex: 2 }}>
@@ -350,7 +488,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                       }} style={{ flex: 1, background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '0.4rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem' }}>
                         Vender
                       </button>
-                      <button onClick={() => handleDrop(item)} style={{ flex: 1, background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.4rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                      <button onClick={() => handleDropItemToTrash(item)} style={{ flex: 1, background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.4rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem' }}>
                         Jogar Fora
                       </button>
                     </div>

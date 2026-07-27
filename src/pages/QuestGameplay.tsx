@@ -349,6 +349,7 @@ export default function QuestGameplay() {
     return `ROUND ${roundNumber}`;
   };
 
+/*
   const usePowerup = async (item: UserItem) => {
     if (feedback) return; // don't use during transition
     if (item.gameEffect === 'extra_life' && hasShield) {
@@ -383,6 +384,7 @@ export default function QuestGameplay() {
       await deleteDoc(doc(db, 'user_items', item.id));
     }
   };
+*/
 
   const triggerFatality = (isPlayerWinning: boolean) => {
     const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
@@ -745,6 +747,7 @@ export default function QuestGameplay() {
                   baseAttributeType: item.baseAttributeType || 'none',
                   baseAttributeValue: item.baseAttributeValue || 0,
                   gameModelUrl: item.gameModelUrl || '',
+                  modelTransforms: item.modelTransforms || null,
                   adds: item.type === 'equippable' ? rollItemAdds() : [],
                   minSalePrice: item.minSalePrice || 0  // Propaga o preço mínimo de revenda
                 };
@@ -787,6 +790,7 @@ export default function QuestGameplay() {
               baseAttributeType: item.baseAttributeType || 'none',
               baseAttributeValue: item.baseAttributeValue || 0,
               gameModelUrl: item.gameModelUrl || '',
+              modelTransforms: item.modelTransforms || null,
               adds: item.type === 'equippable' ? rollItemAdds() : []
             };
             await addDoc(collection(db, 'user_items'), itemData);
@@ -922,8 +926,38 @@ export default function QuestGameplay() {
     } else if (item.gameEffect === 'add_time') {
       setTimeLeft(prev => prev + 30);
       
-    } else if (item.gameEffect === 'extra_life' || item.gameEffect === 'restore_hp') {
+    } else if (item.gameEffect === 'extra_life') {
       setHasShield(true);
+      
+    } else if (item.gameEffect === 'restore_hp') {
+      const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
+      const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2));
+      
+      if (currentHearts >= maxHearts) {
+         await showAlert("Sua vida já está cheia!");
+         return;
+      }
+      
+      setCurrentHearts(maxHearts);
+      
+      if (userData?.role === 'student' && !isStudyMode) {
+        updateUserHearts(maxHearts);
+      }
+    } else if (item.gameEffect === 'heal_1_hp') {
+      const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
+      const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2));
+      
+      if (currentHearts >= maxHearts) {
+         await showAlert("Sua vida já está cheia!");
+         return;
+      }
+      
+      const newHearts = Math.min(maxHearts, currentHearts + 1);
+      setCurrentHearts(newHearts);
+      
+      if (userData?.role === 'student' && !isStudyMode) {
+        updateUserHearts(newHearts);
+      }
     }
     
     await deleteDoc(doc(db, 'user_items', item.id));
@@ -985,7 +1019,7 @@ export default function QuestGameplay() {
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             {gameState === 'playing' && powerups.length > 0 && (
-              <div style={{ display: 'flex', gap: '0.5rem', marginRight: '1rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginRight: '1rem', overflowX: 'auto', maxWidth: '300px', paddingBottom: '0.2rem', scrollbarWidth: 'thin' }}>
                 {powerups.map(p => (
                   <button
                     key={p.id}
@@ -1201,48 +1235,7 @@ export default function QuestGameplay() {
                 })}
               </div>
 
-              {/* Power-ups Section */}
-              {powerups.length > 0 && (
-                <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(0,0,0,0.4)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-                  <h4 style={{ margin: '0 0 1rem 0', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Zap size={18} /> Seus Poderes
-                  </h4>
-                  <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
-                    {powerups.map((p, i) => (
-                      <button
-                        key={i}
-                        onClick={() => usePowerup(p)}
-                        disabled={feedback !== null}
-                        style={{
-                          background: 'rgba(255,255,255,0.05)',
-                          border: '1px solid var(--gold-primary)',
-                          borderRadius: '8px',
-                          padding: '0.5rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          color: 'white',
-                          cursor: feedback ? 'not-allowed' : 'pointer',
-                          opacity: feedback ? 0.5 : 1,
-                          flexShrink: 0
-                        }}
-                      >
-                        {p.itemImageUrl ? (
-                          <img src={p.itemImageUrl} alt="" style={{ width: 30, height: 30, borderRadius: '4px', objectFit: 'cover' }} />
-                        ) : (
-                          <Package size={20} color="var(--gold-primary)" />
-                        )}
-                        <div style={{ textAlign: 'left' }}>
-                          <div style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{p.itemTitle}</div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                            {p.gameEffect === 'remove_wrong' ? 'Eliminar 1' : p.gameEffect === 'add_time' ? '+30s Tempo' : p.gameEffect === 'extra_life' ? 'Escudo' : ''}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+
             </div>
           )}
 

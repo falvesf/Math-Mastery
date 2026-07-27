@@ -13,6 +13,7 @@ interface DialogContextType {
   showConfirm: (message: string, title?: string) => Promise<boolean>;
   showConfirmWithCheckbox: (message: string, checkboxLabel: string, title?: string) => Promise<{ confirmed: boolean, checked: boolean } | null>;
   showPrompt: (message: string, defaultValue?: string, title?: string) => Promise<string | null>;
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const DialogContext = createContext<DialogContextType | undefined>(undefined);
@@ -24,6 +25,16 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [promptValue, setPromptValue] = useState('');
   const [checkboxState, setCheckboxState] = useState<{ label: string, checked: boolean } | null>(null);
   const [resolvePromise, setResolvePromise] = useState<{ resolve: (value: any) => void } | null>(null);
+  
+  const [toasts, setToasts] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info' }[]>([]);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3000);
+  }, []);
 
   const showAlert = useCallback((message: string, title?: string) => {
     return new Promise<void>((resolve) => {
@@ -79,7 +90,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <DialogContext.Provider value={{ showAlert, showConfirm, showConfirmWithCheckbox, showPrompt }}>
+    <DialogContext.Provider value={{ showAlert, showConfirm, showConfirmWithCheckbox, showPrompt, showToast }}>
       {children}
       {isOpen && createPortal(
         <div style={{
@@ -227,6 +238,38 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               </button>
             </div>
           </div>
+        </div>,
+        document.body
+      )}
+
+      {createPortal(
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          zIndex: 999999,
+          pointerEvents: 'none'
+        }}>
+          {toasts.map(toast => (
+            <div key={toast.id} style={{
+              background: toast.type === 'success' ? 'rgba(16, 185, 129, 0.9)' : toast.type === 'error' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(59, 130, 246, 0.9)',
+              color: 'white',
+              padding: '1rem 1.5rem',
+              borderRadius: '8px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              backdropFilter: 'blur(4px)',
+              animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontWeight: 'bold'
+            }}>
+              {toast.message}
+            </div>
+          ))}
         </div>,
         document.body
       )}

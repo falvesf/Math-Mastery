@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, setDoc, onSnapshot, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, query, where, getDocs, increment } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, updateDoc, addDoc, collection, serverTimestamp, query, where, getDocs, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Loader2, Play, CheckCircle, ChevronRight, Swords, Crown, Skull, Package } from 'lucide-react';
 import type { QuestDef } from './AdminDashboard';
@@ -249,7 +249,7 @@ export default function LiveQuestAdmin() {
     if (!sessionId) return;
     const confirmed = await showConfirm("Tem certeza que deseja encerrar esta sessão ao vivo? Todos os alunos serão desconectados.");
     if (confirmed) {
-      await deleteDoc(doc(db, 'live_quests', sessionId));
+      await updateDoc(doc(db, 'live_quests', sessionId), { status: 'finished' });
       navigate('/admin');
     }
   };
@@ -372,6 +372,7 @@ export default function LiveQuestAdmin() {
                       baseAttributeType: item.baseAttributeType || 'none',
                       baseAttributeValue: item.baseAttributeValue || 0,
                       gameModelUrl: item.gameModelUrl || '',
+                      modelTransforms: item.modelTransforms || null,
                       adds: item.type === 'equippable' ? rollItemAdds() : []
                    };
                    promises.push(addDoc(collection(db, 'user_items'), itemData));
@@ -397,19 +398,23 @@ export default function LiveQuestAdmin() {
           const player = session.players[uid];
           const earnedXp = player.sessionEarnedXp || 0;
 
-          // Always register attempt for all players who participated, so badge shows 'Concluída'
-          promises.push(
-            addDoc(collection(db, 'quest_attempts'), {
-              questId: quest.id,
-              studentId: uid,
-              status: 'completed',
-              earnedXp: earnedXp,
-              answers: [],
-              timestamp: serverTimestamp(),
-              isStudyMode: false,
-              isLiveQuest: true
-            })
-          );
+          const survived = player.hp === undefined || player.hp > 0;
+
+          // Somente jogadores que sobreviveram ganham o status 'completed' e podem revisar depois
+          if (survived) {
+            promises.push(
+              addDoc(collection(db, 'quest_attempts'), {
+                questId: quest.id,
+                studentId: uid,
+                status: 'completed',
+                earnedXp: earnedXp,
+                answers: [],
+                timestamp: serverTimestamp(),
+                isStudyMode: false,
+                isLiveQuest: true
+              })
+            );
+          }
 
           if (earnedXp > 0) {
             // Save to history log (XP already credited per question in LiveQuestStudent)

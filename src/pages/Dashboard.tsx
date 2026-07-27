@@ -249,7 +249,8 @@ export default function Dashboard() {
             baseAttributeType: data.baseAttributeType,
             baseAttributeValue: data.baseAttributeValue,
             adds: data.adds,
-            gameModelUrl: data.gameModelUrl
+            gameModelUrl: data.gameModelUrl,
+            modelTransforms: data.modelTransforms
           });
         }
       });
@@ -392,7 +393,8 @@ export default function Dashboard() {
               baseAttributeType: data.baseAttributeType,
               baseAttributeValue: data.baseAttributeValue,
               adds: data.adds,
-              gameModelUrl: data.gameModelUrl
+              gameModelUrl: data.gameModelUrl,
+              modelTransforms: data.modelTransforms
             } as EquippedItem);
           }
         });
@@ -846,33 +848,33 @@ export default function Dashboard() {
                           </div>
                             <button 
                               className="login-btn" 
-                              disabled={quest.mode === 'live' && (!activeLiveQuests[quest.id] || isCompleted)}
+                              disabled={quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)}
                               style={{ 
-                                background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id])) ? 'rgba(255,255,255,0.1)' : 'var(--gold-primary)', 
-                                color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id])) ? 'white' : 'black', 
-                                border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id])) ? '1px solid var(--border-glass)' : 'none', 
+                                background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'rgba(255,255,255,0.1)' : 'var(--gold-primary)', 
+                                color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'white' : 'black', 
+                                border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? '1px solid var(--border-glass)' : 'none', 
                                 padding: '0.5rem 1.5rem', 
                                 fontSize: '1rem',
-                                opacity: (quest.mode === 'live' && (!activeLiveQuests[quest.id] || isCompleted)) ? 0.6 : 1,
-                                cursor: (quest.mode === 'live' && (!activeLiveQuests[quest.id] || isCompleted)) ? 'not-allowed' : 'pointer'
+                                opacity: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 0.6 : 1,
+                                cursor: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 'not-allowed' : 'pointer'
                               }} 
                               onClick={async (e) => { 
                                 e.stopPropagation(); 
-                                // Block access to completed or inactive live quests
-                                if (quest.mode === 'live' && (!activeLiveQuests[quest.id] || isCompleted)) return;
+                                // Block access to inactive live quests if NOT completed
+                                if (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) return;
                                 if (!isCompleted && (userData?.hearts || 0) < 1 && userData?.role === 'student') {
                                   await showAlert("Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.");
                                   return;
                                 }
-                                if (quest.mode === 'live') {
+                                if (quest.mode === 'live' && !isCompleted) {
                                   navigate(`/live/${quest.id}`);
                                 } else {
                                   navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`); 
                                 }
                               }}
                             >
-                              {quest.mode === 'live' 
-                                 ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : (isCompleted ? 'Concluída' : 'Não Iniciada')) 
+                              {quest.mode === 'live' && !isCompleted
+                                 ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : 'Não Iniciada') 
                                  : (isCompleted ? 'Revisar' : 'Jogar Agora')}
                             </button>
                         </div>

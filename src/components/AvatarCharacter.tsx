@@ -18,7 +18,7 @@ export interface AvatarConfig {
   clothingStyle?: 'dress' | 'pants-shirt' | 't-shirt' | 'tank-top';
   facialHair?: 'none' | 'beard' | 'mustache' | 'goatee';
   handedness?: 'right' | 'left';
-  animationState?: 'idle' | 'walk' | 'run';
+  animationState?: 'idle' | 'walk' | 'run' | 'attack';
   customSkinUrl?: string;
   customModelUrl?: string;
 }
@@ -28,13 +28,29 @@ export interface EquippedItem {
   itemId?: string;
   imageUrl: string;
   modelUrl?: string;
-  avatarPart: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'rightHand' | 'leftHand' | 'accessory' | 'back' | 'background' | 'pet';
+  avatarPart: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'two_handed' | 'rightHand' | 'leftHand' | 'accessory' | 'back' | 'background' | 'pet';
   itemTitle?: string;
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
   adds?: ItemAdd[];
   gameModelUrl?: string;
+  modelTransforms?: ModelTransformsConfig;
+}
+
+export interface ModelTransform {
+  posX: number;
+  posY: number;
+  posZ: number;
+  rotX: number;
+  rotY: number;
+  rotZ: number;
+  slide: number;
+}
+
+export interface ModelTransformsConfig {
+  common?: ModelTransform;
+  battle?: ModelTransform;
 }
 
 export interface AvatarCharacterProps {
@@ -48,11 +64,13 @@ export interface AvatarCharacterProps {
   showSlots?: boolean;
   onAvatarClick?: () => void;
   onSlotClick?: (item: EquippedItem) => void;
+  debugItemTransform?: ModelTransform | null;
+  debugItemId?: string | null;
 }
 
 import CustomModelViewer from './CustomModelViewer';
 
-export default React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick }: AvatarCharacterProps) {
+export default React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick, debugItemTransform, debugItemId }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
@@ -119,11 +137,14 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
 
   // 3. Attach 3D items to the avatar based on equippedItems
   const equippedItemsJson = JSON.stringify(equippedItems);
+  const debugTransformJson = JSON.stringify(debugItemTransform);
+  const loadedModelsRef = useRef<{itemId?: string, avatarPart: string, model: THREE.Object3D, item: EquippedItem}[]>([]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !viewer.playerObject) return;
     
+    let isCancelled = false;
     // Armazena os modelos carregados para poder removê-los depois
     const loadedModels: { parent: THREE.Object3D, model: THREE.Object3D }[] = [];
     const loader = new GLTFLoader();
@@ -142,10 +163,11 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
         loader.load(
           safeUrl, 
           (gltf) => {
+            if (isCancelled) return;
             console.log(`Modelo ${safeUrl} carregado com sucesso!`);
             const model = gltf.scene;
             
-            if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand') {
+            if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
               const isDefense = item.itemCategory === 'defense';
               const isLeftHanded = config?.handedness === 'left';
               const dominantArm = isLeftHanded ? viewer.playerObject.skin.leftArm : viewer.playerObject.skin.rightArm;
@@ -153,21 +175,45 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
               
               const targetArm = isDefense ? nonDominantArm : dominantArm;
               
-              if (isDefense) {
-                const isRightArm = targetArm === viewer.playerObject.skin.rightArm;
+              if (item.avatarPart === 'two_handed' || item.avatarPart === 'hand' || item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand') {
                 model.scale.set(10, 10, 10);
-                // Posicionar no antebraço, agora na parte de fora
-                model.position.set(isRightArm ? -3.5 : 3.5, -6, 0); 
-                // Rotacionar para ficar virado para fora
-                model.rotation.set(0, isRightArm ? Math.PI / 2 : -Math.PI / 2, 0); 
-              } else {
-                model.scale.set(10, 10, 10);
-                model.position.set(0, -12, 0); 
-                model.rotation.set(Math.PI / 2, 0, 0);
+                let appliedTransform = false;
+                
+                if (debugItemTransform) {
+                  model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+                  model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+                  model.translateY(debugItemTransform.slide);
+                  appliedTransform = true;
+                } else if (item.modelTransforms) {
+                  const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
+                  const transform = isBattle && item.modelTransforms.battle ? item.modelTransforms.battle : item.modelTransforms.common;
+                  if (transform) {
+                    model.position.set(transform.posX, transform.posY, transform.posZ);
+                    model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+                    model.translateY(transform.slide);
+                    appliedTransform = true;
+                  }
+                }
+                
+                if (!appliedTransform) {
+                  if (isDefense) {
+                    const isRightArm = targetArm === viewer.playerObject.skin.rightArm;
+                    model.position.set(isRightArm ? -3.5 : 3.5, -6, 0); 
+                    model.rotation.set(0, isRightArm ? Math.PI / 2 : -Math.PI / 2, 0); 
+                  } else if (item.avatarPart === 'two_handed') {
+                    model.position.set(0, -11, 0); 
+                    model.rotation.set(Math.PI / 2.2, 0, isLeftHanded ? Math.PI / 20 : -Math.PI / 20);
+                    model.translateY(-18);
+                  } else {
+                    model.position.set(0, -12, 0); 
+                    model.rotation.set(Math.PI / 2, 0, 0);
+                  }
+                }
               }
               
               targetArm.add(model);
               loadedModels.push({ parent: targetArm, model });
+              loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
             } else if (item.avatarPart === 'head') {
               const head = viewer.playerObject.skin.head;
               // Os itens do Blockbench para Minecraft geralmente vêm na escala de 1 unidade = 16 pixels.
@@ -177,6 +223,7 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
               model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
               head.add(model);
               loadedModels.push({ parent: head, model });
+              loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
             } else if (item.avatarPart === 'body') {
               const body = viewer.playerObject.skin.body;
               model.scale.set(16, 16, 16);
@@ -185,6 +232,7 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
               model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
               body.add(model);
               loadedModels.push({ parent: body, model });
+              loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
             }
           },
           undefined,
@@ -196,12 +244,70 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
     });
     
     return () => {
+      isCancelled = true;
       loadedModels.forEach(({ parent, model }) => {
         parent.remove(model);
       });
+      loadedModelsRef.current = [];
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [equippedItemsJson]);
+
+  // 3b. Apply transformations dynamically to avoid reloading models (flicker)
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !viewer.playerObject) return;
+    
+    loadedModelsRef.current.forEach(({ item, model, avatarPart, itemId }) => {
+      if (avatarPart === 'two_handed' || avatarPart === 'hand' || avatarPart === 'rightHand' || avatarPart === 'leftHand') {
+        const isDefense = item.itemCategory === 'defense';
+        const isLeftHanded = config?.handedness === 'left';
+        const dominantArm = isLeftHanded ? viewer.playerObject.skin.leftArm : viewer.playerObject.skin.rightArm;
+        const nonDominantArm = isLeftHanded ? viewer.playerObject.skin.rightArm : viewer.playerObject.skin.leftArm;
+        const targetArm = isDefense ? nonDominantArm : dominantArm;
+        
+        let appliedTransform = false;
+        
+        // Only apply debug transform to the specifically selected item (or first weapon if no ID is passed for backward compatibility)
+        const isTargetDebugItem = debugItemId ? (itemId === debugItemId) : true;
+
+        if (debugItemTransform && isTargetDebugItem) {
+          model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+          model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+          model.position.y += debugItemTransform.slide; // Using local translation workaround or simple position addition. Wait, translateY applies to local coords.
+          // Reset position Y, then translate
+          model.position.y = debugItemTransform.posY;
+          model.translateY(debugItemTransform.slide);
+          appliedTransform = true;
+        } else if (item.modelTransforms) {
+          const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
+          const transform = isBattle && item.modelTransforms.battle ? item.modelTransforms.battle : item.modelTransforms.common;
+          if (transform) {
+            model.position.set(transform.posX, transform.posY, transform.posZ);
+            model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+            model.position.y = transform.posY;
+            model.translateY(transform.slide);
+            appliedTransform = true;
+          }
+        }
+        
+        if (!appliedTransform) {
+          if (isDefense) {
+            const isRightArm = targetArm === viewer.playerObject.skin.rightArm;
+            model.position.set(isRightArm ? -3.5 : 3.5, -6, 0); 
+            model.rotation.set(0, isRightArm ? Math.PI / 2 : -Math.PI / 2, 0); 
+          } else if (avatarPart === 'two_handed') {
+            model.position.set(0, -11, 0); 
+            model.rotation.set(Math.PI / 2.2, 0, isLeftHanded ? Math.PI / 20 : -Math.PI / 20);
+            model.translateY(-18);
+          } else {
+            model.position.set(0, -12, 0); 
+            model.rotation.set(Math.PI / 2, 0, 0);
+          }
+        }
+      }
+    });
+  }, [debugTransformJson, debugItemId, animation]);
 
   // 4. Generate skins when config changes
   useEffect(() => {
@@ -319,15 +425,54 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
     resetBones();
 
     const targetRotation = role === 'player' ? Math.PI / 2 : -Math.PI / 2;
+    const hasTwoHanded = equippedItems.some(i => i.avatarPart === 'two_handed');
+
+    const applyTwoHandedPose = (player: any, time: number) => {
+      const safeTime = (typeof time === 'number' && !isNaN(time)) ? time : 0;
+      const isLeftHanded = config?.handedness === 'left';
+      const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
+      const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
+      
+      // Ambas as mãos esticadas para frente para segurar a lança com as duas mãos!
+      // Mão dominante (Segurando a base/meio da lança)
+      dominantArm.rotation.x = -Math.PI / 2.2 + Math.sin(safeTime) * 0.02; 
+      dominantArm.rotation.y = (isLeftHanded ? Math.PI / 6 : -Math.PI / 6) + Math.cos(safeTime * 0.5) * 0.02;
+      dominantArm.rotation.z = (isLeftHanded ? Math.PI / 12 : -Math.PI / 12);
+      
+      // Mão não dominante (Segurando mais na ponta, guiando a lança)
+      nonDominantArm.rotation.x = -Math.PI / 2.4 + Math.sin(safeTime) * 0.02;
+      nonDominantArm.rotation.y = (isLeftHanded ? -Math.PI / 3 : Math.PI / 3) + Math.cos(safeTime * 0.5) * 0.02;
+      nonDominantArm.rotation.z = (isLeftHanded ? -Math.PI / 8 : Math.PI / 8);
+    };
 
     if (animation === 'none') {
       viewerRef.current.animation = null;
     } else if (animation === 'idle') {
-      viewerRef.current.animation = new IdleAnimation();
+      const idle = new IdleAnimation();
+      viewerRef.current.animation = new FunctionAnimation((player: any, progress: number, delta: number) => {
+        idle.update(player, (typeof delta === 'number' && !isNaN(delta)) ? delta : 0.016);
+        if (hasTwoHanded) {
+          applyTwoHandedPose(player, progress);
+        }
+      });
     } else if (animation === 'walk') {
-      viewerRef.current.animation = new WalkingAnimation();
+      const walk = new WalkingAnimation();
+      if (hasTwoHanded) {
+        viewerRef.current.animation = new FunctionAnimation((player: any, progress: number, delta: number) => {
+          walk.update(player, (typeof delta === 'number' && !isNaN(delta)) ? delta : 0.016);
+          applyTwoHandedPose(player, progress);
+        });
+      } else {
+        viewerRef.current.animation = walk;
+      }
     } else if (animation === 'run') {
-      viewerRef.current.animation = new RunningAnimation();
+      const run = new RunningAnimation();
+      viewerRef.current.animation = new FunctionAnimation((player: any, progress: number, delta: number) => {
+        run.update(player, (typeof delta === 'number' && !isNaN(delta)) ? delta : 0.016);
+        if (hasTwoHanded) {
+          applyTwoHandedPose(player, progress);
+        }
+      });
     } else if (animation === 'cheer') {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
         player.position.y = Math.abs(Math.sin(time * 5)) * 6;
@@ -341,7 +486,7 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
         player.skin.leftLeg.rotation.z = -0.1;
         player.skin.rightLeg.rotation.z = 0.1;
       });
-    } else if (animation.startsWith('attack')) {
+    } else if (animation?.startsWith('attack')) {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
         // Encarar o oponente
         player.rotation.y = targetRotation;
@@ -357,14 +502,32 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
 
         const isLeftHanded = config?.handedness === 'left';
         const attackArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
+        const nonAttackArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
 
         if (shouldSwing) {
             // Movimento rápido de ataque com braço da arma e pequeno avanço
-            attackArm.rotation.x = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * 15) * 2;
+            const swingValue = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * 15) * 2;
+            attackArm.rotation.x = swingValue;
+            if (hasTwoHanded) {
+                nonAttackArm.rotation.x = swingValue;
+                // Mantém o grip (ângulo da pose de duas mãos) durante o golpe
+                attackArm.rotation.y = (isLeftHanded ? Math.PI / 6 : -Math.PI / 6);
+                attackArm.rotation.z = (isLeftHanded ? Math.PI / 12 : -Math.PI / 12);
+                nonAttackArm.rotation.y = (isLeftHanded ? -Math.PI / 3 : Math.PI / 3);
+                nonAttackArm.rotation.z = (isLeftHanded ? -Math.PI / 8 : Math.PI / 8);
+            }
             player.position.z = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * 10) * 2;
         } else {
             // Apenas preparando o golpe (braço erguido) enquanto teleporta
             attackArm.rotation.x = -Math.PI / 1.5;
+            if (hasTwoHanded) {
+                nonAttackArm.rotation.x = -Math.PI / 1.5;
+                // Mantém o grip na preparação
+                attackArm.rotation.y = (isLeftHanded ? Math.PI / 6 : -Math.PI / 6);
+                attackArm.rotation.z = (isLeftHanded ? Math.PI / 12 : -Math.PI / 12);
+                nonAttackArm.rotation.y = (isLeftHanded ? -Math.PI / 3 : Math.PI / 3);
+                nonAttackArm.rotation.z = (isLeftHanded ? -Math.PI / 8 : Math.PI / 8);
+            }
             player.position.z = 0;
         }
       });
@@ -417,11 +580,18 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
         player.skin.body.rotation.x = time * 3;
       });
     } else {
-      viewerRef.current.animation = new IdleAnimation();
+      const idle = new IdleAnimation();
+      viewerRef.current.animation = new FunctionAnimation((player: any, progress: number, delta: number) => {
+        idle.update(player, (typeof delta === 'number' && !isNaN(delta)) ? delta : 0.016);
+        if (hasTwoHanded) {
+          applyTwoHandedPose(player, progress);
+        }
+      });
     }
-  }, [animation]);
+  }, [animation, config?.handedness, equippedItemsJson]);
 
   const handItems = equippedItems.filter(i => i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'hand');
+  const twoHandedItem = equippedItems.find(i => i.avatarPart === 'two_handed');
   let leftScreenHandItem = null; // Character's right hand
   let rightScreenHandItem = null; // Character's left hand
 
@@ -434,8 +604,8 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
   }
 
   const getEquippedForSlot = (slotId: string) => {
-    if (slotId === 'hand1') return rightScreenHandItem;
-    if (slotId === 'hand2') return leftScreenHandItem;
+    if (slotId === 'hand1') return twoHandedItem ? null : rightScreenHandItem;
+    if (slotId === 'hand2') return twoHandedItem || leftScreenHandItem;
     return equippedItems.find(i => i.avatarPart === slotId);
   };
 

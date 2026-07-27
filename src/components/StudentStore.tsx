@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp, where, deleteDoc } from 'firebase/firestore';
-import { Coins, Star, ShieldAlert, Store, Search, Filter, LayoutGrid, Grid, List as ListIcon } from 'lucide-react';
+import { Coins, Star, ShieldAlert, Store, Search, LayoutGrid, Grid, List as ListIcon } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
@@ -52,7 +52,7 @@ const getRarityColor = (rarity?: string) => {
 };
 
 export default function StudentStore({ userData }: { userData: UserData }) {
-  const { showAlert, showConfirm, showPrompt } = useDialog();
+  const { showAlert, showConfirm, showPrompt, showToast } = useDialog();
   const [activeTab, setActiveTab] = useState<'official' | 'market'>('official');
   const [items, setItems] = useState<StoreItem[]>([]);
   const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
@@ -60,6 +60,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
   
   // Presente (Gifting)
   const [students, setStudents] = useState<UserData[]>([]);
@@ -160,25 +161,27 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
     const recipientId = isGift ? selectedGiftRecipient : userData.uid;
     if (isGift && !recipientId) {
-      await showAlert("Por favor, selecione um aluno para presentear.");
+      showToast("Por favor, selecione um aluno para presentear.", 'error');
       return;
     }
 
     const isStaff = userData.role !== 'student';
     const method = paymentMethod || economyType;
-    const finalCost = (economyType === 'xp' && method === 'coins') ? item.cost * 10 : item.cost;
+    const quantityToBuy = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
+    const unitCost = (economyType === 'xp' && method === 'coins') ? item.cost * 10 : item.cost;
+    const finalCost = unitCost * quantityToBuy;
     const balanceToCheck = method === 'xp' ? (userData.xp || 0) : (userData.coins || 0);
     
     if (!isStaff && balanceToCheck < finalCost) {
-      await showAlert(`Você não tem ${method === 'xp' ? 'XP' : 'Moedas'} suficiente.`);
+      showToast(`Você não tem ${method === 'xp' ? 'XP' : 'Moedas'} suficiente para comprar ${quantityToBuy}x.`, 'error');
       return;
     }
 
     if (!isStaff) {
       const currentRank = getRankForXp(userData.xp || 0);
-    const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
+      const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
       if (currentRankIndex < item.minRankRequired) {
-        await showAlert(`Sua patente é muito baixa! Você precisa ser no mínimo ${RANKS[item.minRankRequired].name} para comprar este item.`);
+        showToast(`Sua patente é muito baixa! Você precisa ser no mínimo ${RANKS[item.minRankRequired].name} para comprar este item.`, 'error');
         return;
       }
     }
@@ -187,15 +190,10 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
     const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0);
 
-    if (!isStaff && !isGift && myInventoryCount >= maxInventorySpace) {
-      await showAlert("Sua mochila está cheia! Jogue fora ou venda alguns itens antes de comprar novos.");
+    if (!isStaff && !isGift && myInventoryCount + (item.type === 'equippable' ? quantityToBuy : (myInventoryCount === 0 && item.type === 'consumable' ? 1 : 0)) > maxInventorySpace) {
+      showToast("Sua mochila ficará cheia! Jogue fora ou venda alguns itens antes de comprar.", 'error');
       return;
     }
-
-    const actionText = isGift ? 'presentear' : 'comprar';
-    const costText = isStaff ? 'gratuitamente (Staff)' : `por ${finalCost} ${method === 'xp' ? 'XP' : 'Moedas'}`;
-    const confirmed = await showConfirm(`Confirmar ${actionText} "${item.title}" ${costText}?`);
-    if (!confirmed) return;
 
     setPurchasing(item.id);
 
@@ -247,7 +245,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         itemImageUrl: item.imageUrl || '',
         gameEffect: item.gameEffect || 'none',
         usableInQuest: item.usableInQuest || false,
-        quantity: 1,
+        quantity: quantityToBuy,
         equipped: false,
         purchasedAt: serverTimestamp(),
         giftedBy: isGift ? userData.name : null,
@@ -256,19 +254,20 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         baseAttributeType: item.baseAttributeType || 'none',
         baseAttributeValue: item.baseAttributeValue || 0,
         gameModelUrl: item.gameModelUrl || '',
+        modelTransforms: item.modelTransforms || null,
         adds: finalAdds,
         minSalePrice: item.minSalePrice || 0  // Propaga o preço mínimo de revenda definido pelo admin
       });
 
-      await showAlert(isGift ? 'Presente enviado com sucesso!' : 'Item comprado com sucesso! Acesse seu Inventário.');
-
+      showToast(isGift ? "Presente enviado com sucesso!" : `Compra realizada: ${quantityToBuy}x ${item.title}!`, 'success');
+      
       setGiftingItemId(null);
       setSelectedGiftRecipient('');
       
       // Atualiza o limite de mochila e balance
       fetchStoreData();
     } catch (err) {
-      await showAlert('Erro ao processar a compra.');
+      showToast('Erro ao processar o pagamento.', 'error');
     }
     setPurchasing(null);
   };
@@ -540,7 +539,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       <div style={getGridStyle()}>
         {processedItems.map(item => {
           const isStaff = userData.role !== 'student';
-          const canAfford = isStaff || currentBalance >= item.cost;
+          const itemQty = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
+          const totalCost = item.cost * itemQty;
+          const totalCostCoins = item.cost * 10 * itemQty;
+          
+          const canAfford = isStaff || currentBalance >= totalCost;
           const currentRank = getRankForXp(userData.xp || 0);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
           const meetsRank = isStaff || currentRankIndex >= item.minRankRequired;
@@ -561,7 +564,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 )}
                 {!isList && (
                   <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                     {isStaff ? 'Grátis' : `${item.cost} ${economyType === 'xp' ? 'XP' : 'M'}`}
+                     {isStaff ? 'Grátis' : `${totalCost} ${economyType === 'xp' ? 'XP' : 'M'}`}
                   </div>
                 )}
               </div>
@@ -570,7 +573,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0, color: rarityColor }}>{item.title}</h3>
                   {isList && (
                     <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                       {isStaff ? 'Grátis' : `${item.cost} ${economyType === 'xp' ? 'XP' : 'M'}`}
+                       {isStaff ? 'Grátis' : `${totalCost} ${economyType === 'xp' ? 'XP' : 'M'}`}
                     </div>
                   )}
                 </div>
@@ -585,7 +588,23 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 ) : (
                   <>
                     {!isGiftingThis ? (
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', flexDirection: viewMode === 'grid-small' ? 'column' : 'row' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', flexDirection: viewMode === 'grid-small' ? 'column' : 'column' }}>
+                        
+                        {item.type === 'consumable' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', alignSelf: 'flex-start' }}>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Qtd:</span>
+                            <input 
+                              type="number" 
+                              min="1" 
+                              max="99" 
+                              value={quantities[item.id] || 1} 
+                              onChange={(e) => setQuantities({...quantities, [item.id]: Math.max(1, Math.min(99, parseInt(e.target.value) || 1))})}
+                              style={{ width: '60px', padding: '0.4rem', borderRadius: '8px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)' }}
+                            />
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%', flexWrap: 'wrap', flexDirection: viewMode === 'grid-small' ? 'column' : 'row' }}>
                         {economyType === 'xp' ? (
                            <>
                             <button 
@@ -600,27 +619,45 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                                 padding: viewMode === 'grid-small' ? '0.4rem' : '0.5rem', 
                                 fontSize: viewMode === 'grid-small' ? '0.75rem' : '0.9rem',
                                 opacity: canAfford ? 1 : 0.5,
-                                cursor: canAfford ? 'pointer' : 'not-allowed'
+                                cursor: canAfford ? 'pointer' : 'not-allowed',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center'
                               }}
                             >
-                              {purchasing === item.id ? '...' : canAfford ? `Comprar (${item.cost} XP)` : 'Sem XP'}
+                              {purchasing === item.id ? '...' : (
+                                <>
+                                  <span>Comprar ({totalCost} XP)</span>
+                                  {!canAfford && <span style={{ fontSize: '0.75em', marginTop: '2px', color: 'var(--accent-red)' }}>Sem XP</span>}
+                                </>
+                              )}
                             </button>
                             <button 
                               className="login-btn" 
-                              disabled={(isStaff ? false : ((userData.coins || 0) < item.cost * 10)) || purchasing === item.id}
+                              disabled={(isStaff ? false : ((userData.coins || 0) < totalCostCoins)) || purchasing === item.id}
                               onClick={() => handlePurchase(item, false, 'coins')}
                               style={{ 
                                 flex: 1,
-                                background: (isStaff ? true : ((userData.coins || 0) >= item.cost * 10)) ? '#fbbf24' : 'rgba(255,255,255,0.1)', 
-                                color: (isStaff ? true : ((userData.coins || 0) >= item.cost * 10)) ? 'black' : 'var(--text-secondary)', 
+                                background: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? '#fbbf24' : 'rgba(255,255,255,0.1)', 
+                                color: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'black' : 'var(--text-secondary)', 
                                 border: 'none', 
                                 padding: viewMode === 'grid-small' ? '0.4rem' : '0.5rem', 
                                 fontSize: viewMode === 'grid-small' ? '0.75rem' : '0.9rem',
-                                opacity: (isStaff ? true : ((userData.coins || 0) >= item.cost * 10)) ? 1 : 0.5,
-                                cursor: (isStaff ? true : ((userData.coins || 0) >= item.cost * 10)) ? 'pointer' : 'not-allowed'
+                                opacity: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 1 : 0.5,
+                                cursor: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'pointer' : 'not-allowed',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center'
                               }}
                             >
-                              {purchasing === item.id ? '...' : (isStaff ? true : ((userData.coins || 0) >= item.cost * 10)) ? `Comprar (${item.cost * 10} Moedas)` : 'Sem Moedas'}
+                              {purchasing === item.id ? '...' : (
+                                <>
+                                  <span>Comprar ({totalCostCoins} Moedas)</span>
+                                  {!(isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) && <span style={{ fontSize: '0.75em', marginTop: '2px', color: 'var(--accent-red)' }}>Sem Moedas</span>}
+                                </>
+                              )}
                             </button>
                            </>
                         ) : (
@@ -636,12 +673,22 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', 
                               fontSize: viewMode === 'grid-small' ? '0.85rem' : '1rem',
                               opacity: canAfford ? 1 : 0.5,
-                              cursor: canAfford ? 'pointer' : 'not-allowed'
+                              cursor: canAfford ? 'pointer' : 'not-allowed',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center'
                             }}
                           >
-                            {purchasing === item.id ? '...' : canAfford ? 'Comprar' : 'Sem Saldo'}
+                            {purchasing === item.id ? '...' : (
+                                <>
+                                  <span>Comprar</span>
+                                  {!canAfford && <span style={{ fontSize: '0.75em', marginTop: '2px', color: 'var(--accent-red)' }}>Sem Saldo</span>}
+                                </>
+                              )}
                           </button>
                         )}
+                        </div>
                         
                         {(userData.role !== 'student' || giftWrapItemIds.length > 0) && (
                           <button 

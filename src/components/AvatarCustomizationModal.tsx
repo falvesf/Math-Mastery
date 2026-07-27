@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, User as UserIcon, Upload, Dices, Settings } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Save, User as UserIcon, Dices, Settings } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, updateDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, getDocs, addDoc, setDoc, query, where } from 'firebase/firestore';
 import { useAuth, type UserData } from '../contexts/AuthContext';
-import AvatarCharacter, { type AvatarConfig, type EquippedItem } from './AvatarCharacter';
+import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform } from './AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import Admin3DModelsManager from './Admin3DModelsManager';
@@ -46,7 +46,6 @@ const MONSTER_HAIR_COLORS = ['#ffffff', '#000000', '#ff0000', '#800080', '#00ff0
 
 const HAIR_STYLES = ['short', 'long', 'spiky', 'bald', 'ponytail', 'mohawk', 'messy'];
 const MOUTH_STYLES = ['smile', 'neutral', 'sad', 'open', 'teeth'];
-const EYE_STYLES = ['normal', 'cute', 'wink', 'tired'];
 const FACIAL_HAIR_STYLES = ['none', 'beard', 'mustache', 'goatee'];
 
 export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
@@ -72,6 +71,13 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   const [models3d, setModels3d] = useState<any[]>([]);
   const [showAdminManager, setShowAdminManager] = useState(false);
   const [showAdmin3dManager, setShowAdmin3dManager] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugItemId, setDebugItemId] = useState<string | null>(null);
+  const [debugTransform, setDebugTransform] = useState<ModelTransform>({
+    posX: 0, posY: -11, posZ: 0,
+    rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
+    slide: -18
+  });
 
   const fetchPresetSkins = async (forceRefresh = false) => {
     try {
@@ -330,7 +336,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             </h2>
           </div>
           {(userData?.role === 'admin' || isAdmin) && !inline && (
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
               <button 
                 onClick={() => setShowAdminManager(true)}
                 style={{ flex: 1, padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--bg-card)', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
@@ -343,6 +349,110 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               >
                 <Settings size={16} /> Admin: Moldes 3D
               </button>
+              <button 
+                onClick={() => setDebugMode(!debugMode)}
+                style={{ flex: 1, padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: debugMode ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card)', border: debugMode ? '2px solid #f59e0b' : '1px solid #f59e0b', color: '#f59e0b', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                🔧 Debug 3D
+              </button>
+            </div>
+          )}
+          {debugMode && (
+            <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(245, 158, 11, 0.1)', border: '2px solid #f59e0b', borderRadius: '8px', fontSize: '0.8rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <p style={{ margin: 0, color: '#f59e0b', fontWeight: 'bold' }}>🔧 Debug Transform</p>
+                <select 
+                  value={debugItemId || ''} 
+                  onChange={(e) => setDebugItemId(e.target.value)}
+                  style={{ background: 'rgba(0,0,0,0.5)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', padding: '0.25rem', maxWidth: '200px' }}
+                >
+                  <option value="">Selecione um item...</option>
+                  {equippedItems.filter(i => i.gameModelUrl).map(item => (
+                    <option key={item.itemId || item.docId} value={item.itemId || item.docId}>{item.itemTitle}</option>
+                  ))}
+                </select>
+              </div>
+              {[
+                { label: 'Pos X', key: 'posX' as const, min: -30, max: 30, step: 0.5 },
+                { label: 'Pos Y', key: 'posY' as const, min: -30, max: 10, step: 0.5 },
+                { label: 'Pos Z', key: 'posZ' as const, min: -30, max: 30, step: 0.5 },
+                { label: 'Rot X', key: 'rotX' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
+                { label: 'Rot Y', key: 'rotY' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
+                { label: 'Rot Z', key: 'rotZ' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
+                { label: 'Slide', key: 'slide' as const, min: -40, max: 20, step: 1 },
+              ].map(({ label, key, min, max, step }) => (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <span style={{ width: '42px', color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold' }}>{label}</span>
+                  <input 
+                    type="range" 
+                    min={min} max={max} step={step}
+                    value={debugTransform[key]} 
+                    onChange={(e) => setDebugTransform(prev => ({ ...prev, [key]: parseFloat(e.target.value) }))}
+                    style={{ flex: 1, accentColor: '#f59e0b' }}
+                  />
+                  <span style={{ width: '55px', textAlign: 'right', color: '#fbbf24', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}>{debugTransform[key].toFixed(2)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button
+                  onClick={() => {
+                    const code = `posX: ${debugTransform.posX}, posY: ${debugTransform.posY}, posZ: ${debugTransform.posZ}, rotX: ${debugTransform.rotX.toFixed(4)}, rotY: ${debugTransform.rotY.toFixed(4)}, rotZ: ${debugTransform.rotZ.toFixed(4)}, slide: ${debugTransform.slide}`;
+                    navigator.clipboard.writeText(code);
+                    showAlert('Valores copiados para a área de transferência!');
+                  }}
+                  style={{ flex: 1, padding: '0.5rem', background: 'var(--bg-card)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                >
+                  📋 Copiar Valores
+                </button>
+                <button
+                  onClick={async () => {
+                    let targetItem = null;
+                    if (debugItemId) {
+                      targetItem = equippedItems.find(i => (i.itemId === debugItemId || i.docId === debugItemId));
+                    } else {
+                      targetItem = equippedItems.find(i => i.avatarPart === 'two_handed' || i.avatarPart === 'hand' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand');
+                    }
+                    
+                    if (!targetItem || !targetItem.itemId) {
+                      showAlert('Nenhum item válido selecionado para salvar a configuração!');
+                      return;
+                    }
+                    try {
+                      const isBattle = config.animationState === 'attack';
+                      const transformKey = isBattle ? 'battle' : 'common';
+                      
+                      // 1. Save to store_items
+                      const itemRef = doc(db, 'store_items', targetItem.itemId);
+                      await setDoc(itemRef, {
+                        modelTransforms: {
+                          [transformKey]: debugTransform
+                        }
+                      }, { merge: true });
+                      
+                      // 2. Cascade to user_items
+                      const qUserItems = query(collection(db, 'user_items'), where('itemId', '==', targetItem.itemId));
+                      const snapUserItems = await getDocs(qUserItems);
+                      const updatePromises: Promise<void>[] = [];
+                      snapUserItems.forEach(d => {
+                        updatePromises.push(setDoc(doc(db, 'user_items', d.id), {
+                          modelTransforms: {
+                            [transformKey]: debugTransform
+                          }
+                        }, { merge: true }));
+                      });
+                      await Promise.all(updatePromises);
+                      
+                      showAlert(`Configuração de transformação (${transformKey}) salva com sucesso em todos os inventários!`);
+                    } catch (e) {
+                      console.error(e);
+                      showAlert('Erro ao salvar no banco de dados.');
+                    }
+                  }}
+                  style={{ flex: 1, padding: '0.5rem', background: '#f59e0b', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                >
+                  💾 Salvar no BD
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -351,11 +461,13 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
           
           <div style={{
             flex: '1 1 250px',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
             background: 'var(--bg-dark)',
             borderRadius: '16px',
             padding: '2rem',
             minHeight: '300px',
+            maxHeight: '80vh',
+            overflowY: 'auto',
             border: '2px solid var(--border-color)'
           }}>
             {(() => {
@@ -367,7 +479,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               if (activeModel) {
                 return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={250} />;
               }
-              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={250} animation={config.animationState || 'idle'} interactive={true} />;
+              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={250} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} />;
             })()}
             
             <div style={{ marginTop: '1.5rem', marginBottom: '0.5rem' }}>
@@ -388,10 +500,11 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               </div>
             </div>
 
-            <div style={{ marginTop: '2rem', display: 'flex', gap: '0.5rem' }}>
-              <button onClick={() => setConfig({ ...config, animationState: 'idle' })} style={{ padding: '0.5rem 1rem', background: (!config.animationState || config.animationState === 'idle') ? 'var(--gold-primary)' : 'var(--bg-card)', color: (!config.animationState || config.animationState === 'idle') ? '#000' : '#fff', border: '1px solid var(--border-color)', borderRadius: '20px', cursor: 'pointer' }}>Parado</button>
-              <button onClick={() => setConfig({ ...config, animationState: 'walk' })} style={{ padding: '0.5rem 1rem', background: config.animationState === 'walk' ? 'var(--gold-primary)' : 'var(--bg-card)', color: config.animationState === 'walk' ? '#000' : '#fff', border: '1px solid var(--border-color)', borderRadius: '20px', cursor: 'pointer' }}>Andando</button>
-              <button onClick={() => setConfig({ ...config, animationState: 'run' })} style={{ padding: '0.5rem 1rem', background: config.animationState === 'run' ? 'var(--gold-primary)' : 'var(--bg-card)', color: config.animationState === 'run' ? '#000' : '#fff', border: '1px solid var(--border-color)', borderRadius: '20px', cursor: 'pointer' }}>Correndo</button>
+            <div style={{ marginTop: '2rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button onClick={() => setConfig({ ...config, animationState: 'idle' })} style={{ padding: '0.5rem 0.75rem', background: (!config.animationState || config.animationState === 'idle') ? 'var(--gold-primary)' : 'var(--bg-card)', color: (!config.animationState || config.animationState === 'idle') ? '#000' : '#fff', border: '1px solid var(--border-color)', borderRadius: '20px', cursor: 'pointer', flex: 1 }}>Parado</button>
+              <button onClick={() => setConfig({ ...config, animationState: 'walk' })} style={{ padding: '0.5rem 0.75rem', background: config.animationState === 'walk' ? 'var(--gold-primary)' : 'var(--bg-card)', color: config.animationState === 'walk' ? '#000' : '#fff', border: '1px solid var(--border-color)', borderRadius: '20px', cursor: 'pointer', flex: 1 }}>Andando</button>
+              <button onClick={() => setConfig({ ...config, animationState: 'run' })} style={{ padding: '0.5rem 0.75rem', background: config.animationState === 'run' ? 'var(--gold-primary)' : 'var(--bg-card)', color: config.animationState === 'run' ? '#000' : '#fff', border: '1px solid var(--border-color)', borderRadius: '20px', cursor: 'pointer', flex: 1 }}>Correndo</button>
+              <button onClick={() => setConfig({ ...config, animationState: 'attack' })} style={{ padding: '0.5rem 0.75rem', background: config.animationState === 'attack' ? 'var(--accent-red)' : 'var(--bg-card)', color: config.animationState === 'attack' ? '#fff' : '#fff', border: config.animationState === 'attack' ? 'none' : '1px solid var(--border-color)', borderRadius: '20px', cursor: 'pointer', flex: 1 }}>Batalha</button>
             </div>
             
             <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>Pré-visualização</p>
@@ -405,7 +518,6 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               />
               Mostrar Itens Equipados
             </label>
-
             <button 
               onClick={handleRandomize}
               className="hover-brightness"
@@ -413,6 +525,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             >
               <Dices size={20} /> Aleatorizar
             </button>
+
           </div>
 
           {/* Controls */}

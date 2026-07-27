@@ -8,8 +8,9 @@ import DirectUploadButton from './DirectUploadButton';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType } from '../lib/gacha';
+import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
 
-export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'gift_wrap';
+export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 
 export interface StoreItem {
@@ -24,12 +25,13 @@ export interface StoreItem {
   minRankRequired: number; // Index of RANKS array
   active: boolean;
   gameModelUrl?: string; // URL para modelo 3D (ex: .glb)
-  avatarPart?: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'accessory' | 'background' | 'pet';
+  avatarPart?: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'two_handed' | 'accessory' | 'background' | 'pet';
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
   rarity?: ItemRarity;
   minSalePrice?: number; // Preço mínimo que jogadores podem usar para revender no bazar
+  modelTransforms?: ModelTransformsConfig;
 }
 
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
@@ -45,6 +47,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   });
   
   const [showGallery, setShowGallery] = useState(false);
+  const [showTransformModal, setShowTransformModal] = useState(false);
+  const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
   
   const [layoutMode, setLayoutMode] = useState<'list' | 'grid-2' | 'grid-3' | 'small-icons' | 'large-icons'>(
     () => (localStorage.getItem('storeLayoutMode') as any) || 'list'
@@ -120,7 +124,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           gameEffect: itemData.gameEffect || 'none',
           gameModelUrl: itemData.gameModelUrl || '',
           avatarPart: itemData.avatarPart || null,
-          usableInQuest: itemData.usableInQuest || false
+          usableInQuest: itemData.usableInQuest || false,
+          modelTransforms: itemData.modelTransforms || null
         }));
       });
       await Promise.all(updatePromises);
@@ -379,7 +384,10 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="remove_wrong">Amuleto (Elimina 1 alternativa errada)</option>
                       <option value="add_time">Ampulheta (Adiciona +30 segundos)</option>
                       <option value="extra_life">Escudo (Protege contra erro na questão atual)</option>
-                      <option value="restore_hp">Poção de Vida (Restaura todo o HP do aluno)</option>
+                      <option value="restore_hp">Elixir da Vida (Recupera todo HP do jogador)</option>
+                      <option value="heal_1_hp">Poção de Vida (Recupera 1 HP do jogador)</option>
+                      <option value="add_attribute">Pergaminho do Novo Atributo (Adiciona até 2 atributos a um item base, 70% chance)</option>
+                      <option value="reroll_attributes">Pergaminho do Aprimoramento (Sorteia novos atributos para um item que já possui)</option>
                       <option value="gift_wrap">Embalar para presente (Permite enviar presente da loja)</option>
                     </select>
                   </div>
@@ -401,7 +409,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                     <option value="body">Corpo (Armaduras/Camisas)</option>
                     <option value="legs">Pernas (Calças/Grevas)</option>
                     <option value="feet">Pés (Botas/Sapatos)</option>
-                    <option value="hand">Mãos (Armas/Escudos)</option>
+                    <option value="hand">Mãos (Armas Simples/Escudos)</option>
+                    <option value="two_handed">Arma de Duas Mãos (Lanças/Machados Grandes)</option>
                     <option value="accessory">Acessórios (Luvas/Cintos/Amuletos)</option>
                     <option value="pet">Mascote (Acompanhante)</option>
                   </select>
@@ -447,7 +456,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL do Modelo 3D (.glb) [Opcional]</label>
-                  <input type="text" value={formData.gameModelUrl || ''} onChange={e => setFormData({...formData, gameModelUrl: e.target.value})} placeholder="/models/item.glb" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                  <input type="text" value={formData.gameModelUrl || ''} onChange={e => setFormData({...formData, gameModelUrl: e.target.value})} placeholder="/models/item.glb" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', marginBottom: '0.5rem' }} />
+                  {formData.gameModelUrl && formData.gameModelUrl.trim() !== '' && (
+                    <button 
+                      onClick={() => setShowTransformModal(true)}
+                      style={{ padding: '0.5rem', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                    >
+                      ⚙️ Configurar Posição 3D
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -476,6 +493,75 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
               <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
               <button onClick={handleSaveItem} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>Salvar Item</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showTransformModal && createPortal(
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--bg-dark)', width: '90%', maxWidth: '500px', borderRadius: '16px', border: '1px solid var(--gold-primary)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>⚙️ Configurar Transformação 3D</h3>
+              <button onClick={() => setShowTransformModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>✖</button>
+            </div>
+            
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-glass)' }}>
+              <button onClick={() => setTransformActiveTab('common')} style={{ flex: 1, padding: '0.75rem', background: transformActiveTab === 'common' ? 'rgba(245, 158, 11, 0.2)' : 'transparent', border: 'none', borderBottom: transformActiveTab === 'common' ? '2px solid #f59e0b' : '2px solid transparent', color: transformActiveTab === 'common' ? '#f59e0b' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 'bold' }}>Parado / Andar / Correr (Comum)</button>
+              <button onClick={() => setTransformActiveTab('battle')} style={{ flex: 1, padding: '0.75rem', background: transformActiveTab === 'battle' ? 'rgba(239, 68, 68, 0.2)' : 'transparent', border: 'none', borderBottom: transformActiveTab === 'battle' ? '2px solid var(--accent-red)' : '2px solid transparent', color: transformActiveTab === 'battle' ? 'var(--accent-red)' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 'bold' }}>Animação de Batalha</button>
+            </div>
+
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {(() => {
+                const currentTransforms = formData.modelTransforms || {};
+                const activeTransform = currentTransforms[transformActiveTab] || { posX: 0, posY: -11, posZ: 0, rotX: 1.428, rotY: 0, rotZ: -0.157, slide: -18 };
+                
+                const handleTransformChange = (key: keyof ModelTransform, value: number) => {
+                  setFormData({
+                    ...formData,
+                    modelTransforms: {
+                      ...currentTransforms,
+                      [transformActiveTab]: {
+                        ...activeTransform,
+                        [key]: value
+                      }
+                    }
+                  });
+                };
+
+                return (
+                  <>
+                    <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      Dica: Use a tela "Personalizar Personagem" (com o Debug 3D ativado) para ajustar os valores visualmente e depois salve os valores lá ou copie para cá!
+                    </p>
+                    {[
+                      { label: 'Pos X', key: 'posX' as const, step: 0.5 },
+                      { label: 'Pos Y', key: 'posY' as const, step: 0.5 },
+                      { label: 'Pos Z', key: 'posZ' as const, step: 0.5 },
+                      { label: 'Rot X (Radianos)', key: 'rotX' as const, step: 0.05 },
+                      { label: 'Rot Y (Radianos)', key: 'rotY' as const, step: 0.05 },
+                      { label: 'Rot Z (Radianos)', key: 'rotZ' as const, step: 0.05 },
+                      { label: 'Slide (Translação Y)', key: 'slide' as const, step: 1 },
+                    ].map(({ label, key, step }) => (
+                      <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <span style={{ width: '130px', color: 'white', fontSize: '0.9rem' }}>{label}</span>
+                        <input 
+                          type="number" 
+                          step={step}
+                          value={activeTransform[key]} 
+                          onChange={(e) => handleTransformChange(key, parseFloat(e.target.value) || 0)}
+                          style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', color: 'white' }}
+                        />
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
+            </div>
+
+            <div style={{ padding: '1rem', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowTransformModal(false)} style={{ padding: '0.75rem 2rem', background: 'var(--gold-primary)', color: 'black', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Confirmar Posições</button>
             </div>
           </div>
         </div>,

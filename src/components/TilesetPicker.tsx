@@ -35,13 +35,33 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
   });
   const offsetY = parseInt(offsetYInput) || 0;
 
+  const [gapXInput, setGapXInput] = useState(() => {
+    const saved = localStorage.getItem(getStorageKey());
+    return saved ? (JSON.parse(saved).gapX || '0') : '0';
+  });
+  const gapX = parseInt(gapXInput) || 0;
+
+  const [gapYInput, setGapYInput] = useState(() => {
+    const saved = localStorage.getItem(getStorageKey());
+    return saved ? (JSON.parse(saved).gapY || '0') : '0';
+  });
+  const gapY = parseInt(gapYInput) || 0;
+
+  const [gridColor, setGridColor] = useState<'white' | 'black'>(() => {
+    const saved = localStorage.getItem(getStorageKey());
+    return saved ? (JSON.parse(saved).gridColor || 'white') : 'white';
+  });
+
   useEffect(() => {
     localStorage.setItem(getStorageKey(), JSON.stringify({
       gridSize: gridSizeInput,
       offsetX: offsetXInput,
-      offsetY: offsetYInput
+      offsetY: offsetYInput,
+      gapX: gapXInput,
+      gapY: gapYInput,
+      gridColor: gridColor
     }));
-  }, [gridSizeInput, offsetXInput, offsetYInput, tilesetUrl]);
+  }, [gridSizeInput, offsetXInput, offsetYInput, gapXInput, gapYInput, gridColor, tilesetUrl]);
 
   // Carregar do Banco de Dados ao abrir
   useEffect(() => {
@@ -54,6 +74,9 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
           if (data.gridSize) setGridSizeInput(data.gridSize);
           if (data.offsetX) setOffsetXInput(data.offsetX);
           if (data.offsetY) setOffsetYInput(data.offsetY);
+          if (data.gapX) setGapXInput(data.gapX);
+          if (data.gapY) setGapYInput(data.gapY);
+          if (data.gridColor) setGridColor(data.gridColor);
         }
       } catch (err) {
         console.error("Erro ao carregar config do BD:", err);
@@ -87,7 +110,7 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
     if (imageRef.current) {
       drawCanvas(imageRef.current);
     }
-  }, [gridSize, offsetX, offsetY, selectedCell]);
+  }, [gridSize, offsetX, offsetY, gapX, gapY, gridColor, selectedCell]);
 
   const drawCanvas = (img: HTMLImageElement) => {
     const canvas = canvasRef.current;
@@ -104,25 +127,43 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
     ctx.drawImage(img, 0, 0);
 
     // Draw grid lines
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.strokeStyle = gridColor === 'black' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.4)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    const startX = ((offsetX % gridSize) + gridSize) % gridSize;
-    for (let x = startX; x <= img.width; x += gridSize) {
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, img.height);
+    
+    const stepX = gridSize + gapX;
+    const startCellX = Math.floor(-offsetX / stepX);
+    const endCellX = Math.ceil((img.width - offsetX) / stepX);
+    
+    for (let i = startCellX; i <= endCellX; i++) {
+       const x = offsetX + i * stepX;
+       ctx.moveTo(x, 0);
+       ctx.lineTo(x, img.height);
+       if (gapX > 0) {
+          ctx.moveTo(x + gridSize, 0);
+          ctx.lineTo(x + gridSize, img.height);
+       }
     }
-    const startY = ((offsetY % gridSize) + gridSize) % gridSize;
-    for (let y = startY; y <= img.height; y += gridSize) {
-      ctx.moveTo(0, y);
-      ctx.lineTo(img.width, y);
+    
+    const stepY = gridSize + gapY;
+    const startCellY = Math.floor(-offsetY / stepY);
+    const endCellY = Math.ceil((img.height - offsetY) / stepY);
+    
+    for (let i = startCellY; i <= endCellY; i++) {
+       const y = offsetY + i * stepY;
+       ctx.moveTo(0, y);
+       ctx.lineTo(img.width, y);
+       if (gapY > 0) {
+          ctx.moveTo(0, y + gridSize);
+          ctx.lineTo(img.width, y + gridSize);
+       }
     }
     ctx.stroke();
 
     // Draw highlight on selected cell
     if (selectedCell) {
-      const cellLeft = selectedCell.x * gridSize + offsetX;
-      const cellTop = selectedCell.y * gridSize + offsetY;
+      const cellLeft = selectedCell.x * stepX + offsetX;
+      const cellTop = selectedCell.y * stepY + offsetY;
       
       ctx.fillStyle = 'rgba(251, 191, 36, 0.4)'; // Gold with opacity
       ctx.fillRect(cellLeft, cellTop, gridSize, gridSize);
@@ -146,8 +187,10 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
     const y = (e.clientY - rect.top) * scaleY;
 
     // Calculate grid cell taking offset into account
-    const cellX = Math.floor((x - offsetX) / gridSize);
-    const cellY = Math.floor((y - offsetY) / gridSize);
+    const stepX = gridSize + gapX;
+    const stepY = gridSize + gapY;
+    const cellX = Math.floor((x - offsetX) / stepX);
+    const cellY = Math.floor((y - offsetY) / stepY);
 
     setSelectedCell({ x: cellX, y: cellY });
   };
@@ -196,10 +239,12 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
       if (!ctx) throw new Error("Could not get 2D context");
 
       // Draw just the selected portion
+      const stepX = gridSize + gapX;
+      const stepY = gridSize + gapY;
       ctx.drawImage(
         imageRef.current,
-        selectedCell.x * gridSize + offsetX,
-        selectedCell.y * gridSize + offsetY,
+        selectedCell.x * stepX + offsetX,
+        selectedCell.y * stepY + offsetY,
         gridSize,
         gridSize,
         0,
@@ -234,6 +279,9 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
               gridSize: gridSizeInput,
               offsetX: offsetXInput,
               offsetY: offsetYInput,
+              gapX: gapXInput,
+              gapY: gapYInput,
+              gridColor: gridColor,
               updatedAt: new Date().toISOString()
             }, { merge: true });
           } catch (dbErr) {
@@ -293,6 +341,35 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
                 onChange={(e) => setOffsetYInput(e.target.value)}
                 style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', color: 'white', width: '90px' }}
               />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Gap X</label>
+              <input 
+                type="number" 
+                value={gapXInput} 
+                onChange={(e) => setGapXInput(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', color: 'white', width: '80px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Gap Y</label>
+              <input 
+                type="number" 
+                value={gapYInput} 
+                onChange={(e) => setGapYInput(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', color: 'white', width: '80px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Cor da Grade</label>
+              <select 
+                value={gridColor} 
+                onChange={(e) => setGridColor(e.target.value as 'white' | 'black')}
+                style={{ padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', color: 'white' }}
+              >
+                <option value="white">Branca</option>
+                <option value="black">Preta</option>
+              </select>
             </div>
           </div>
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>

@@ -69,6 +69,21 @@ export function rollItemAdds(): ItemAdd[] {
   return adds;
 }
 
+export function rollExactAttributes(count: number): ItemAdd[] {
+  let adds: ItemAdd[] = [];
+  let safety = 0;
+  while (adds.length < count && safety < 1000) {
+    const rolled = rollItemAdds();
+    for (const r of rolled) {
+      if (adds.length < count) {
+        adds.push(r);
+      }
+    }
+    safety++;
+  }
+  return adds;
+}
+
 export const ATTRIBUTE_LABELS: Record<AttributeType, { label: string, icon: string, color: string }> = {
   attack: { label: 'Poder de Ataque', icon: '⚔️', color: '#EF4444' },
   defense: { label: 'Poder de Defesa', icon: '🛡️', color: '#3B82F6' },

@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, onSnapshot, updateDoc, deleteField, collection, query, where, getDocs, increment } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, updateDoc, deleteField, collection, query, where, getDocs, increment, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Loader2, ArrowLeft, Pen, Heart, Skull } from 'lucide-react';
+import { Loader2, ArrowLeft, Pen, Heart, Skull, Zap } from 'lucide-react';
 import type { QuestDef } from './AdminDashboard';
 import type { LiveSession, LivePlayer } from './LiveQuestAdmin';
 import AvatarPrint from '../components/AvatarPrint';
@@ -13,6 +13,22 @@ import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
 import { Package, Coins } from 'lucide-react';
 import { RANKS } from '../lib/ranks';
+import { useDialog } from '../contexts/DialogContext';
+import type { GameEffectType } from '../components/AdminStoreManager';
+
+interface UserItem {
+  id: string;
+  itemId: string;
+  itemTitle: string;
+  itemImageUrl: string;
+  gameEffect?: GameEffectType;
+  usableInQuest?: boolean;
+  itemType: 'consumable' | 'equippable';
+  equipped: boolean;
+  count?: number;
+  docIds?: string[];
+}
+
 
 export default function LiveQuestStudent() {
   const { sessionId } = useParams();
@@ -23,10 +39,14 @@ export default function LiveQuestStudent() {
   const [quest, setQuest] = useState<QuestDef | null>(null);
   const [session, setSession] = useState<LiveSession | null>(null);
   const [error, setError] = useState('');
+  const [powerups, setPowerups] = useState<UserItem[]>([]);
+  const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
+  const { showAlert } = useDialog();
   const [chestOpened, setChestOpened] = useState(false);
   const [isEditingAvatar, setIsEditingAvatar] = useState(false);
   const [studentAnim, setStudentAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
+  const [hasShield, setHasShield] = useState(false);
   
   const arenaRef = useRef<HTMLDivElement>(null);
   const [arenaWidth, setArenaWidth] = useState(0);
@@ -80,11 +100,36 @@ export default function LiveQuestStudent() {
         if (!currentSession.players[userData.uid]) {
           // Fetch equipped items
           let equippedItems: any[] = [];
+          let loadedPowerups: UserItem[] = [];
           try {
             const invRef = collection(db, 'user_items');
-            const q = query(invRef, where('studentId', '==', userData.uid), where('equipped', '==', true));
+            const q = query(invRef, where('studentId', '==', userData.uid));
             const invSnap = await getDocs(q);
-            equippedItems = invSnap.docs.map(d => ({ docId: d.id, ...d.data() }));
+            
+            const pLoaded: any[] = [];
+            invSnap.docs.forEach(d => {
+              const item = d.data() as UserItem;
+              if (item.equipped) {
+                equippedItems.push({ docId: d.id, ...item });
+              }
+              if (item.itemType === 'consumable' && item.usableInQuest && item.gameEffect !== 'add_time') {
+                pLoaded.push({ ...item, id: d.id });
+              }
+            });
+
+            const groupedMap = new Map<string, UserItem>();
+            pLoaded.forEach(item => {
+              const key = `${item.itemId}`;
+              if (groupedMap.has(key)) {
+                const existing = groupedMap.get(key)!;
+                existing.count = (existing.count || 1) + 1;
+                existing.docIds = [...(existing.docIds || [existing.id]), item.id];
+              } else {
+                groupedMap.set(key, { ...item, count: 1, docIds: [item.id] });
+              }
+            });
+            loadedPowerups = Array.from(groupedMap.values());
+            setPowerups(loadedPowerups);
           } catch (e) {
             console.error("Erro ao carregar itens equipados", e);
           }
@@ -301,12 +346,12 @@ export default function LiveQuestStudent() {
         console.error("Erro ao adicionar XP ao usuário", err);
       }
     } else {
-      let hasShield = false;
+      let hasEquippedShield = false;
       me.equippedItems?.forEach((item: any) => {
-        if (item.gameEffect === 'extra_life') hasShield = true;
+        if (item.gameEffect === 'extra_life') hasEquippedShield = true;
       });
 
-      if (!hasShield) {
+      if (!hasEquippedShield && !hasShield) {
         const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === me.rank) || 0) / 2);
         const currentHp = me.hp !== undefined ? me.hp : (userData?.hearts || maxHearts);
         const newHp = Math.max(0, currentHp - 1);
@@ -322,7 +367,7 @@ export default function LiveQuestStudent() {
           await updateDoc(doc(db, 'users', userData.uid), userUpdate);
         } catch(e) { console.error(e); }
       } else {
-        // Has shield, just remove shield visual if you want, but for now just no HP loss
+        if (hasShield) setHasShield(false); // remove the consumable shield
         updates[`players.${userData.uid}.isProtected`] = true; // Optional tracking
       }
     }
@@ -348,11 +393,94 @@ export default function LiveQuestStudent() {
 
   const OPTION_COLORS = ['#e21b3c', '#1368ce', '#d89e00', '#26890c']; // Red, Blue, Yellow, Green
 
+  const usePowerup = async (item: UserItem) => {
+    if (!sessionId || !userData || !session || !quest) return;
+    
+    if (item.gameEffect === 'remove_wrong') {
+      const q = quest.questions[session.activeQuestions[session.currentQuestionIndex]];
+      const wrongIndices = [0, 1, 2, 3].filter(i => i !== q.correctIndex && !eliminatedOptions.includes(i));
+      
+      if (wrongIndices.length === 0) {
+        await showAlert('Não há mais opções erradas para eliminar!');
+        return;
+      }
+      const toEliminate = wrongIndices[Math.floor(Math.random() * wrongIndices.length)];
+      setEliminatedOptions([...eliminatedOptions, toEliminate]);
+    } else if (item.gameEffect === 'extra_life') {
+      setHasShield(true);
+      
+    } else if (item.gameEffect === 'restore_hp') {
+      const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === me.rank));
+      const maxHearts = 3 + Math.floor(rankIndex / 2);
+      const currentHp = me.hp !== undefined ? me.hp : (userData.hearts || maxHearts);
+      
+      if (currentHp >= maxHearts) {
+         await showAlert('Sua vida já está no máximo!');
+         return;
+      }
+      
+      await updateDoc(doc(db, 'live_quests', sessionId), {
+        [`players.${userData.uid}.hp`]: maxHearts
+      });
+      try {
+         await updateDoc(doc(db, 'users', userData.uid), { hearts: maxHearts });
+      } catch (e) {}
+    } else if (item.gameEffect === 'heal_1_hp') {
+      const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === me.rank));
+      const maxHearts = 3 + Math.floor(rankIndex / 2);
+      const currentHp = me.hp !== undefined ? me.hp : (userData.hearts || maxHearts);
+      
+      if (currentHp >= maxHearts) {
+         await showAlert('Sua vida já está no máximo!');
+         return;
+      }
+      const newHp = Math.min(maxHearts, currentHp + 1);
+      
+      await updateDoc(doc(db, 'live_quests', sessionId), {
+        [`players.${userData.uid}.hp`]: newHp
+      });
+      try {
+         await updateDoc(doc(db, 'users', userData.uid), { hearts: newHp });
+      } catch (e) {}
+    }
+
+    setPowerups(powerups.filter(p => p.id !== item.id));
+    await deleteDoc(doc(db, 'user_items', item.id));
+  };
+
   if (session.status === 'question' || session.status === 'reveal') {
     const hasAnswered = me.currentAnswer !== null && me.currentAnswer !== undefined;
 
     return (
       <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+        
+        {/* Header com Consumíveis */}
+        <div style={{ padding: '0.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 10 }}>
+          <div style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>Desafio Ao Vivo</div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', overflowX: 'auto', maxWidth: '300px', scrollbarWidth: 'thin' }}>
+            {powerups.map((p, i) => (
+              <button
+                key={i}
+                onClick={() => usePowerup(p)}
+                disabled={hasAnswered || me.hp <= 0}
+                title={`Usar: ${p.itemTitle}`}
+                style={{
+                  position: 'relative', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: (hasAnswered || me.hp <= 0) ? 'not-allowed' : 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: (hasAnswered || me.hp <= 0) ? 0.5 : 1, flexShrink: 0
+                }}
+              >
+                {p.itemImageUrl ? (
+                  <img src={p.itemImageUrl} alt={p.itemTitle} style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'cover' }} />
+                ) : (
+                  <Zap size={24} color="var(--gold-primary)" style={{ padding: '4px' }} />
+                )}
+                {p.count && p.count > 1 && (
+                  <span style={{ position: 'absolute', top: -5, right: -5, background: 'var(--accent-red)', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', zIndex: 2 }}>{p.count}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* BATTLE SCENE 3D */}
         <div style={{ flex: '1 1 50%', position: 'relative', background: 'var(--bg-primary)', overflow: 'hidden', borderBottom: '2px solid var(--border-glass)' } as any}>
@@ -458,28 +586,31 @@ export default function LiveQuestStudent() {
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '1rem', height: '100%', padding: '1rem' }}>
-                {[0, 1, 2, 3].map((idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleAnswerSubmit(idx)}
-                    disabled={(me.hp !== undefined && me.hp <= 0)}
-                    style={{
-                      background: OPTION_COLORS[idx],
-                      border: 'none',
-                      borderRadius: '16px',
-                      color: 'white',
-                      fontSize: '4rem',
-                      fontWeight: 'bold',
-                      cursor: (me.hp !== undefined && me.hp <= 0) ? 'not-allowed' : 'pointer',
-                      boxShadow: '0 8px 0 rgba(0,0,0,0.3)',
-                      transition: 'transform 0.1s',
-                    }}
-                    onMouseDown={(e) => { if (me.hp === undefined || me.hp > 0) e.currentTarget.style.transform = 'translateY(4px)'; }}
-                    onMouseUp={(e) => { if (me.hp === undefined || me.hp > 0) e.currentTarget.style.transform = 'none'; }}
-                  >
-                    {['A', 'B', 'C', 'D'][idx]}
-                  </button>
-                ))}
+                {[0, 1, 2, 3].map((idx) => {
+                  const isEliminated = eliminatedOptions.includes(idx);
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => !isEliminated && handleAnswerSubmit(idx)}
+                      disabled={(me.hp !== undefined && me.hp <= 0) || isEliminated}
+                      style={{
+                        background: isEliminated ? 'rgba(0,0,0,0.5)' : OPTION_COLORS[idx],
+                        border: isEliminated ? '1px solid var(--border-glass)' : 'none',
+                        borderRadius: '16px',
+                        color: isEliminated ? 'rgba(255,255,255,0.2)' : 'white',
+                        fontSize: '4rem',
+                        fontWeight: 'bold',
+                        cursor: ((me.hp !== undefined && me.hp <= 0) || isEliminated) ? 'not-allowed' : 'pointer',
+                        boxShadow: isEliminated ? 'none' : '0 8px 0 rgba(0,0,0,0.3)',
+                        transition: 'transform 0.1s',
+                      }}
+                      onMouseDown={(e) => { if ((me.hp === undefined || me.hp > 0) && !isEliminated) e.currentTarget.style.transform = 'translateY(4px)'; }}
+                      onMouseUp={(e) => { if ((me.hp === undefined || me.hp > 0) && !isEliminated) e.currentTarget.style.transform = 'none'; }}
+                    >
+                      {['A', 'B', 'C', 'D'][idx]}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

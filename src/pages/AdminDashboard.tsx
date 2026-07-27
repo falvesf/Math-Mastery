@@ -1425,18 +1425,18 @@ export default function AdminDashboard() {
 
                     </div>
 
-                    {questMode === 'classic' ? (
-                      renderChestConfig(
-                        'Baú de Recompensas (Final da Missão)',
-                        'O jogador terá 100% de chance de receber Moedas aleatórias (entre 10% e o valor máximo). O Item 1 terá 50% de chance, Item 2 terá 25% (se o 1 vier), Item 3 terá 10% e Item 4 terá 5%.',
-                        questChestConfig,
-                        setQuestChestConfig,
-                        true
-                      )
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '2rem' }}>
-                        <h3 style={{ fontSize: '1.5rem', color: 'var(--gold-primary)', margin: 0 }}>Baús de Recompensa (Top 3)</h3>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No modo ao vivo, as chances de itens são sempre 100%. Configure um baú para o 1º, 2º e 3º colocado.</p>
+                    {renderChestConfig(
+                      questMode === 'classic' ? 'Baú de Recompensas (Final da Missão)' : 'Baú de Revisão (Final da Missão Normal)',
+                      'O jogador terá 100% de chance de receber Moedas aleatórias (entre 10% e o valor máximo). O Item 1 terá 50% de chance, Item 2 terá 25% (se o 1 vier), Item 3 terá 10% e Item 4 terá 5%.',
+                      questChestConfig,
+                      setQuestChestConfig,
+                      true
+                    )}
+                    
+                    {questMode === 'live' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '2rem', padding: '1.5rem', border: '1px solid var(--gold-primary)', borderRadius: '12px', background: 'rgba(251, 191, 36, 0.05)' }}>
+                        <h3 style={{ fontSize: '1.5rem', color: 'var(--gold-primary)', margin: 0 }}>Baús de Recompensa (Pódio Ao Vivo)</h3>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No modo ao vivo, as chances de itens são sempre 100%. Configure um baú para o 1º, 2º e 3º colocado (que será entregue imediatamente no encerramento da batalha).</p>
                         
                         {renderChestConfig('Baú do 1º Lugar', '', questLiveChest1st, setQuestLiveChest1st, false)}
                         {renderChestConfig('Baú do 2º Lugar', '', questLiveChest2nd, setQuestLiveChest2nd, false)}
