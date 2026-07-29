@@ -18,6 +18,7 @@ interface AvatarCustomizationModalProps {
   initialConfig?: AvatarConfig;
   customSaveMode?: boolean;
   onSave?: (config: AvatarConfig, name?: string) => void;
+  onPositionsSaved?: () => void;
   isAdmin?: boolean;
   inline?: boolean;
 }
@@ -48,7 +49,7 @@ const HAIR_STYLES = ['short', 'long', 'spiky', 'bald', 'ponytail', 'mohawk', 'me
 const MOUTH_STYLES = ['smile', 'neutral', 'sad', 'open', 'teeth'];
 const FACIAL_HAIR_STYLES = ['none', 'beard', 'mustache', 'goatee'];
 
-export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
+export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, onPositionsSaved, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
   const { userData } = useAuth();
   const { showAlert } = useDialog();
   const [config, setConfig] = useState<AvatarConfig>({
@@ -441,6 +442,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         }, { merge: true }));
                       });
                       await Promise.all(updatePromises);
+                      if (onPositionsSaved) onPositionsSaved();
                       
                       showAlert(`Configuração de transformação (${transformKey}) salva com sucesso em todos os inventários!`);
                     } catch (e) {

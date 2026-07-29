@@ -36,6 +36,7 @@ export interface EquippedItem {
   adds?: ItemAdd[];
   gameModelUrl?: string;
   modelTransforms?: ModelTransformsConfig;
+  rarity?: string;
 }
 
 export interface ModelTransform {
@@ -621,6 +622,16 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
     { id: 'pet', label: 'Mascote', pos: { bottom: '5%', left: '-70%' } },
   ];
 
+  const getRarityStyle = (rarity?: string) => {
+    switch (rarity) {
+      case 'uncommon': return { border: '2px solid #10b981', boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)' };
+      case 'rare': return { border: '3px solid #3b82f6', boxShadow: '0 0 15px rgba(59, 130, 246, 0.5)' };
+      case 'epic': return { border: '4px solid #8b5cf6', boxShadow: '0 0 20px rgba(139, 92, 246, 0.6)' };
+      case 'legendary': return { border: '5px solid #f59e0b', boxShadow: '0 0 25px rgba(245, 158, 11, 0.7)' };
+      default: return { border: '2px solid rgba(255,255,255,0.2)', boxShadow: 'none' };
+    }
+  };
+
   if (config?.customModelUrl) {
     return <CustomModelViewer modelUrl={config.customModelUrl} textureUrl={config.customSkinUrl} animation={animation as any} size={size} role={role} />;
   }
@@ -686,12 +697,12 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
               height: slotSize,
               borderRadius: '50%',
               background: item ? 'var(--bg-dark)' : 'rgba(255,255,255,0.03)',
-              border: item ? '2px solid var(--gold-primary)' : '1px dashed rgba(255,255,255,0.15)',
+              border: item ? getRarityStyle(item.rarity).border : '1px dashed rgba(255,255,255,0.15)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: hoveredSlot === slot.id ? 100 : 10,
-              boxShadow: item ? '0 0 10px rgba(251, 191, 36, 0.4)' : 'none',
+              boxShadow: item ? getRarityStyle(item.rarity).boxShadow : 'none',
               overflow: 'visible',
               cursor: item && onSlotClick ? 'pointer' : 'default'
           }}>

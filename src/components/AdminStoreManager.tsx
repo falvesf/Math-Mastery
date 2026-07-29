@@ -5,9 +5,10 @@ import { collection, query, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, del
 import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
+import GachaConfigModal from './GachaConfigModal';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS } from '../lib/ranks';
-import { type ItemCategory, type AttributeType } from '../lib/gacha';
+import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
 
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap';
@@ -32,6 +33,9 @@ export interface StoreItem {
   rarity?: ItemRarity;
   minSalePrice?: number; // Preço mínimo que jogadores podem usar para revender no bazar
   modelTransforms?: ModelTransformsConfig;
+  gachaConfig?: GachaConfig;
+  fixedAttributes?: ItemAdd[];
+  useGlobalGacha?: boolean;
 }
 
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
@@ -39,6 +43,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [items, setItems] = useState<StoreItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
+  const [globalGachaConfig, setGlobalGachaConfig] = useState<GachaConfig | null>(null);
   
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -48,6 +53,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   
   const [showGallery, setShowGallery] = useState(false);
   const [showTransformModal, setShowTransformModal] = useState(false);
+  const [showGachaModal, setShowGachaModal] = useState(false);
   const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
   
   const [layoutMode, setLayoutMode] = useState<'list' | 'grid-2' | 'grid-3' | 'small-icons' | 'large-icons'>(
@@ -87,6 +93,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     const loaded: StoreItem[] = [];
     snap.forEach(d => loaded.push({ id: d.id, ...d.data() } as StoreItem));
     setItems(loaded);
+    
+    try {
+      const gachaSnap = await getDoc(doc(db, 'settings', 'gacha'));
+      if (gachaSnap.exists()) {
+        setGlobalGachaConfig(gachaSnap.data() as GachaConfig);
+      }
+    } catch (e) { console.error(e); }
+    
     setLoading(false);
   };
 
@@ -125,7 +139,10 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           gameModelUrl: itemData.gameModelUrl || '',
           avatarPart: itemData.avatarPart || null,
           usableInQuest: itemData.usableInQuest || false,
-          modelTransforms: itemData.modelTransforms || null
+          modelTransforms: itemData.modelTransforms || null,
+          gachaConfig: itemData.gachaConfig || null,
+          fixedAttributes: itemData.fixedAttributes || null,
+          useGlobalGacha: itemData.useGlobalGacha ?? true
         }));
       });
       await Promise.all(updatePromises);
@@ -421,7 +438,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             {/* Linha 4: Atributos e 3D (Se Equipável) */}
             {formData.type === 'equippable' && (
               <div style={{ background: 'rgba(0,0,0,0.15)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <h4 style={{ margin: '0 0 1rem 0', color: 'var(--gold-primary)', fontSize: '1.1rem' }}>Configurações de Equipamento</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h4 style={{ margin: '0', color: 'var(--gold-primary)', fontSize: '1.1rem' }}>Configurações de Equipamento</h4>
+                  <button 
+                    onClick={() => setShowGachaModal(true)}
+                    style={{ padding: '0.5rem 1rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.5)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}
+                  >
+                    ⚙️ Atributos Adicionais (Gacha / Fixos)
+                  </button>
+                </div>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.5rem', marginBottom: '1.25rem' }}>
                   <div>
@@ -566,6 +591,29 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           </div>
         </div>,
         document.body
+      )}
+
+      {showGachaModal && (
+        <GachaConfigModal
+          itemData={{
+            title: formData.title || '',
+            description: formData.description || '',
+            imageUrl: formData.imageUrl
+          }}
+          initialConfig={formData.gachaConfig}
+          initialFixed={formData.fixedAttributes}
+          initialUseGlobal={formData.useGlobalGacha ?? true}
+          globalConfig={globalGachaConfig}
+          onSave={async (config, fixed, newGlobalConfig, useGlobal) => {
+            setFormData({ ...formData, gachaConfig: config, fixedAttributes: fixed, useGlobalGacha: useGlobal });
+            if (newGlobalConfig) {
+              setGlobalGachaConfig(newGlobalConfig);
+              await setDoc(doc(db, 'settings', 'gacha'), newGlobalConfig);
+            }
+            setShowGachaModal(false);
+          }}
+          onClose={() => setShowGachaModal(false)}
+        />
       )}
     </div>
   );

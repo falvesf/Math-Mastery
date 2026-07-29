@@ -5,7 +5,7 @@ import { Coins, Star, ShieldAlert, Store, Search, LayoutGrid, Grid, List as List
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
-import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds } from '../lib/gacha';
+import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
 import type { StoreItem } from './AdminStoreManager';
 
 interface MarketItem {
@@ -57,6 +57,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [items, setItems] = useState<StoreItem[]>([]);
   const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
   const [myInventoryCount, setMyInventoryCount] = useState(0);
+  const [totalEquippedStats, setTotalEquippedStats] = useState(calculateTotalStats([]));
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
@@ -67,6 +68,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [giftingItemId, setGiftingItemId] = useState<string | null>(null);
   const [selectedGiftRecipient, setSelectedGiftRecipient] = useState<string>('');
   const [giftWrapItemIds, setGiftWrapItemIds] = useState<string[]>([]);
+  
+  // Market Buy Modal
+  const [marketBuyModalItem, setMarketBuyModalItem] = useState<MarketItem | null>(null);
+  const [marketBuyQuantity, setMarketBuyQuantity] = useState(1);
+  const [marketBuyPaymentMethod, setMarketBuyPaymentMethod] = useState<'xp' | 'coins'>('xp');
 
   // Filtros e View
   const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(
@@ -130,18 +136,22 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       let count = 0;
       const wrapIds: string[] = [];
       const groupedConsumables = new Set<string>();
+      const equippedItemsForStats: any[] = [];
 
       myItemsSnap.forEach(doc => {
         const d = doc.data();
         if (!d.forSale && d.studentId !== 'dropped') {
+          if (d.equipped) {
+            equippedItemsForStats.push(d);
+          }
           if (d.itemType === 'consumable') {
             const key = `${d.itemId}-${d.giftedBy || 'self'}`;
             if (!groupedConsumables.has(key)) {
               groupedConsumables.add(key);
-              count++;
+              if (!d.equipped) count++;
             }
           } else {
-            count++;
+            if (!d.equipped) count++;
           }
 
           if (d.gameEffect === 'gift_wrap') {
@@ -151,6 +161,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       });
       setMyInventoryCount(count);
       setGiftWrapItemIds(wrapIds);
+      setTotalEquippedStats(calculateTotalStats(equippedItemsForStats));
     }
 
     setLoading(false);
@@ -168,7 +179,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     const isStaff = userData.role !== 'student';
     const method = paymentMethod || economyType;
     const quantityToBuy = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
-    const unitCost = (economyType === 'xp' && method === 'coins') ? item.cost * 10 : item.cost;
+    
+    // Apply Persuasion discount (max 50%)
+    const discountMultiplier = Math.max(0.5, 1 - (totalEquippedStats.persuasion / 100));
+    
+    const unitCost = Math.floor((economyType === 'xp' && method === 'coins') ? item.cost * 10 * discountMultiplier : item.cost * discountMultiplier);
     const finalCost = unitCost * quantityToBuy;
     const balanceToCheck = method === 'xp' ? (userData.xp || 0) : (userData.coins || 0);
     
@@ -188,7 +203,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
     const currentRank = getRankForXp(userData.xp || 0);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-    const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0);
+    
+    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+    const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
 
     if (!isStaff && !isGift && myInventoryCount + (item.type === 'equippable' ? quantityToBuy : (myInventoryCount === 0 && item.type === 'consumable' ? 1 : 0)) > maxInventorySpace) {
       showToast("Sua mochila ficará cheia! Jogue fora ou venda alguns itens antes de comprar.", 'error');
@@ -234,13 +251,15 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       // Adicionar novo doc
       let finalAdds: ItemAdd[] = [];
       if (item.type === 'equippable') {
-        finalAdds = rollItemAdds();
+        const globalGachaConfig = await fetchGlobalGachaConfig();
+        finalAdds = rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined);
       }
       
       await addDoc(collection(db, 'user_items'), {
         studentId: recipientId,
         itemId: item.id,
         itemTitle: item.title,
+        itemDescription: item.description || '',
         itemType: item.type,
         itemImageUrl: item.imageUrl || '',
         gameEffect: item.gameEffect || 'none',
@@ -256,7 +275,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         gameModelUrl: item.gameModelUrl || '',
         modelTransforms: item.modelTransforms || null,
         adds: finalAdds,
-        minSalePrice: item.minSalePrice || 0  // Propaga o preço mínimo de revenda definido pelo admin
+        minSalePrice: item.minSalePrice || 0, // Propaga o preço mínimo de revenda definido pelo admin
+        rarity: item.rarity || 'common'
       });
 
       showToast(isGift ? "Presente enviado com sucesso!" : `Compra realizada: ${quantityToBuy}x ${item.title}!`, 'success');
@@ -272,69 +292,112 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     setPurchasing(null);
   };
 
-  const handleBuyFromMarket = async (item: MarketItem) => {
-    if (!userData.uid) return;
+  const submitMarketBuy = async () => {
+    if (!userData.uid || !marketBuyModalItem) return;
     
     const isStaff = userData.role !== 'student';
-    const currentBalance = economyType === 'xp' ? (userData.xp || 0) : (userData.coins || 0);
+    const currentBalance = economyType === 'xp' 
+      ? (marketBuyPaymentMethod === 'xp' ? (userData.xp || 0) : (userData.coins || 0)) 
+      : (userData.coins || 0);
+      
+    // Calcule o preço total
+    // O preço base é marketBuyModalItem.price.
+    // Se pagar em moedas num sistema XP, é 10x mais caro.
+    let basePrice = marketBuyModalItem.price || 0;
+    let unitCost = basePrice;
+    if (economyType === 'xp' && marketBuyPaymentMethod === 'coins') {
+      unitCost = basePrice * 10;
+    }
+    const totalCost = unitCost * marketBuyQuantity;
     
-    if (!isStaff && currentBalance < item.price) {
+    if (!isStaff && currentBalance < totalCost) {
       await showAlert(`Você não tem saldo suficiente para comprar este item.`);
       return;
     }
 
     const currentRank = getRankForXp(userData.xp || 0);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-    const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0);
+    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+    const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
     if (!isStaff && myInventoryCount >= maxInventorySpace) {
       await showAlert("Sua mochila está cheia!");
       return;
     }
 
-    const confirmed = await showConfirm(`Comprar "${item.itemTitle}" de ${item.sellerName} por ${item.price}?`);
-    if (!confirmed) return;
-
-    setPurchasing(item.id);
+    setPurchasing(marketBuyModalItem.id);
 
     try {
-      let newBalance = currentBalance;
       if (!isStaff) {
-        newBalance = currentBalance - item.price;
+        const newBalance = currentBalance - totalCost;
         const userRef = doc(db, 'users', userData.uid);
         if (economyType === 'xp') {
-          await updateDoc(userRef, { xp: newBalance });
+          if (marketBuyPaymentMethod === 'xp') {
+            await updateDoc(userRef, { xp: newBalance });
+            userData.xp = newBalance;
+          } else {
+            await updateDoc(userRef, { coins: newBalance });
+            userData.coins = newBalance;
+          }
         } else {
           await updateDoc(userRef, { coins: newBalance });
+          userData.coins = newBalance;
         }
-        if (economyType === 'xp') userData.xp = newBalance;
-        else userData.coins = newBalance;
       }
 
       // Transferir pagamento para o vendedor (Descontando 10% de taxa)
-      const sellerRef = doc(db, 'users', item.studentId);
+      // O vendedor escolheu preferredCurrency (se disponível), senão cai no padrão do sistema
+      const sellerRef = doc(db, 'users', marketBuyModalItem.studentId);
       const sellerSnap = await getDoc(sellerRef);
       if (sellerSnap.exists()) {
-        const netValue = Math.floor(item.price * 0.90); // 10% tax
-        if (economyType === 'xp') {
-          const sellerXp = (sellerSnap.data().xp || 0) + netValue;
+        const sellerPref = (marketBuyModalItem as any).preferredCurrency || economyType;
+        const persuasionBonus = (marketBuyModalItem as any).sellerPersuasion ? (basePrice * ((marketBuyModalItem as any).sellerPersuasion / 100)) : 0;
+        
+        let sellerUnitReceive = basePrice;
+        if (sellerPref === 'coins' && economyType === 'xp') {
+          sellerUnitReceive = basePrice * 10; // converte XP pra moedas pro vendedor se ele escolheu Moedas
+        }
+        const netValuePerUnit = Math.floor((sellerUnitReceive * 0.90) + persuasionBonus);
+        const totalNetValue = netValuePerUnit * marketBuyQuantity;
+
+        if (sellerPref === 'xp') {
+          const sellerXp = (sellerSnap.data().xp || 0) + totalNetValue;
           await updateDoc(sellerRef, { xp: sellerXp });
         } else {
-          const sellerCoins = (sellerSnap.data().coins || 0) + netValue;
+          const sellerCoins = (sellerSnap.data().coins || 0) + totalNetValue;
           await updateDoc(sellerRef, { coins: sellerCoins });
         }
       }
 
-      // Alterar dono do item
-      await updateDoc(doc(db, 'user_items', item.id), {
-        studentId: userData.uid,
-        forSale: false,
-        price: null,
-        sellerName: null,
-        equipped: false,
-        purchasedAt: serverTimestamp()
-      });
+      if (marketBuyQuantity < (marketBuyModalItem.quantity || 1)) {
+        // Comprou parcial: Deduz a quantidade do vendedor, cria um novo item para o comprador
+        await updateDoc(doc(db, 'user_items', marketBuyModalItem.id), {
+          quantity: (marketBuyModalItem.quantity || 1) - marketBuyQuantity
+        });
+        
+        const { id, docIds, count, forSale, price, sellerName, sellerPersuasion, preferredCurrency, ...itemDataToDuplicate } = marketBuyModalItem as any;
+        await addDoc(collection(db, 'user_items'), {
+          ...itemDataToDuplicate,
+          studentId: userData.uid,
+          quantity: marketBuyQuantity,
+          equipped: false,
+          purchasedAt: serverTimestamp()
+        });
+      } else {
+        // Comprou tudo: Alterar dono do item
+        await updateDoc(doc(db, 'user_items', marketBuyModalItem.id), {
+          studentId: userData.uid,
+          forSale: false,
+          price: null,
+          sellerName: null,
+          sellerPersuasion: null,
+          preferredCurrency: null,
+          equipped: false,
+          purchasedAt: serverTimestamp()
+        });
+      }
 
       await showAlert("Compra no Mercado realizada com sucesso!");
+      setMarketBuyModalItem(null);
       fetchStoreData(); // Recarrega loja
 
     } catch (err) {
@@ -347,7 +410,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     const isStaff = userData.role !== 'student';
     const currentRank = getRankForXp(userData.xp || 0);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-    const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0);
+    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+    const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
 
     if (!isStaff && myInventoryCount >= maxInventorySpace) {
       await showAlert("Sua mochila está cheia! Você não pode cancelar a venda enquanto não tiver espaço para receber o item de volta.");
@@ -394,7 +458,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const currentBalance = economyType === 'xp' ? (userData.xp || 0) : (userData.coins || 0);
   const currentRank = getRankForXp(userData.xp || 0);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-  const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0);
+  
+  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+  const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
 
   const getProcessedItems = () => {
     let result = [...items];
@@ -540,12 +606,13 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         {processedItems.map(item => {
           const isStaff = userData.role !== 'student';
           const itemQty = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
-          const totalCost = item.cost * itemQty;
-          const totalCostCoins = item.cost * 10 * itemQty;
+          const discountMultiplier = Math.max(0.5, 1 - (totalEquippedStats.persuasion / 100));
+          const totalCost = Math.floor(item.cost * discountMultiplier) * itemQty;
+          const totalCostCoins = Math.floor(item.cost * 10 * discountMultiplier) * itemQty;
           
-          const canAfford = isStaff || currentBalance >= totalCost;
+          const canAfford = isStaff || currentBalance >= (economyType === 'xp' ? totalCost : totalCostCoins);
           const currentRank = getRankForXp(userData.xp || 0);
-    const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
+          const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
           const meetsRank = isStaff || currentRankIndex >= item.minRankRequired;
           const isGiftingThis = giftingItemId === item.id;
 
@@ -564,7 +631,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 )}
                 {!isList && (
                   <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                     {isStaff ? 'Grátis' : `${totalCost} ${economyType === 'xp' ? 'XP' : 'M'}`}
+                     {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
                   </div>
                 )}
               </div>
@@ -573,7 +640,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0, color: rarityColor }}>{item.title}</h3>
                   {isList && (
                     <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                       {isStaff ? 'Grátis' : `${totalCost} ${economyType === 'xp' ? 'XP' : 'M'}`}
+                       {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
                     </div>
                   )}
                 </div>
@@ -849,7 +916,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   <button 
                     className="login-btn" 
                     disabled={!canAfford || purchasing === item.id}
-                    onClick={() => handleBuyFromMarket(item)}
+                    onClick={() => {
+                      setMarketBuyModalItem(item);
+                      setMarketBuyQuantity(1);
+                      setMarketBuyPaymentMethod('xp');
+                    }}
                     style={{ 
                       background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
                       color: canAfford ? 'black' : 'var(--text-secondary)', 
@@ -868,6 +939,61 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           );
         })}
       </div>
+      )}
+
+      {marketBuyModalItem && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div className="glass-panel" style={{ padding: '2rem', maxWidth: '400px', width: '100%' }}>
+            <h3 style={{ marginTop: 0, color: 'var(--gold-primary)', fontSize: '1.5rem' }}>Confirmar Compra</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
+              <img src={marketBuyModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+              <div>
+                <strong>{marketBuyModalItem.itemTitle}</strong>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Vendido por: {marketBuyModalItem.sellerName}</div>
+              </div>
+            </div>
+
+            {marketBuyModalItem.itemType === 'consumable' && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Quantidade (Máx: {marketBuyModalItem.quantity || 1}):</label>
+                <input 
+                  type="number" 
+                  min="1" 
+                  max={marketBuyModalItem.quantity || 1}
+                  value={marketBuyQuantity}
+                  onChange={(e) => setMarketBuyQuantity(Math.min(marketBuyModalItem.quantity || 1, Math.max(1, parseInt(e.target.value) || 1)))}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.5)', color: 'white' }}
+                />
+              </div>
+            )}
+            {marketBuyModalItem.itemType !== 'consumable' && (
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Quantidade: 1</div>
+            )}
+
+            {economyType === 'xp' ? (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Forma de Pagamento:</label>
+                <select 
+                  value={marketBuyPaymentMethod} 
+                  onChange={(e) => setMarketBuyPaymentMethod(e.target.value as 'xp' | 'coins')}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                >
+                  <option value="xp">Pagar com XP ({(marketBuyModalItem.price || 0) * marketBuyQuantity} XP)</option>
+                  <option value="coins">Pagar com Moedas ({(marketBuyModalItem.price || 0) * 10 * marketBuyQuantity} Moedas)</option>
+                </select>
+              </div>
+            ) : (
+              <div style={{ marginBottom: '1.5rem', fontSize: '1.1rem' }}>
+                Total: <strong style={{ color: 'var(--gold-primary)' }}>{(marketBuyModalItem.price || 0) * marketBuyQuantity} Moedas</strong>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+              <button onClick={() => setMarketBuyModalItem(null)} className="login-btn" style={{ flex: 1, background: 'var(--bg-dark)', color: 'white' }}>Cancelar</button>
+              <button onClick={submitMarketBuy} className="login-btn" disabled={purchasing === marketBuyModalItem.id} style={{ flex: 1, background: 'var(--gold-primary)', color: 'black' }}>Confirmar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

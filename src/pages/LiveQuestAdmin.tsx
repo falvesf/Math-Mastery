@@ -9,7 +9,7 @@ import AvatarPrint from '../components/AvatarPrint';
 import CustomModelViewer from '../components/CustomModelViewer';
 import AvatarCharacter from '../components/AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
-import { rollItemAdds } from '../lib/gacha';
+import { rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 
 export interface LivePlayer {
   uid: string;
@@ -373,7 +373,7 @@ export default function LiveQuestAdmin() {
                       baseAttributeValue: item.baseAttributeValue || 0,
                       gameModelUrl: item.gameModelUrl || '',
                       modelTransforms: item.modelTransforms || null,
-                      adds: item.type === 'equippable' ? rollItemAdds() : []
+                      adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : []
                    };
                    promises.push(addDoc(collection(db, 'user_items'), itemData));
                  }
@@ -389,6 +389,8 @@ export default function LiveQuestAdmin() {
              sessionUpdates[`players.${playerUid}.wonChest`] = { place, coins: chestConfig.maxCoins || 0, items: itemsWon };
           }
         };
+
+        const globalGachaConfig = await fetchGlobalGachaConfig();
 
         if (sortedPlayers.length > 0) await processReward(sortedPlayers[0].uid, quest.liveChest1stPlace, 1);
         if (sortedPlayers.length > 1) await processReward(sortedPlayers[1].uid, quest.liveChest2ndPlace, 2);

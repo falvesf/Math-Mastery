@@ -639,6 +639,7 @@ export default function Dashboard() {
                             setActiveBubbleId(student.uid);
                             setTimeout(() => setActiveBubbleId(null), 3000);
                           }
+                          setPublicProfileUser({ user: student, rankPos });
                         }}
                       />
                 </div>
@@ -688,6 +689,7 @@ export default function Dashboard() {
             setLiveAvatarConfig(newConfig);
             setIsCustomizingAvatar(false);
           }}
+          onPositionsSaved={() => setInventoryRefresh(prev => prev + 1)}
         />
       )}
 
@@ -906,10 +908,9 @@ export default function Dashboard() {
               </button>
             </div>
 
-            {profileTab === 'overview' && (
-              <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-                {/* Perfil do Aluno (Esquerda) */}
-                <div className="glass-panel" style={{ flex: '1 1 400px', padding: '3rem 2rem', textAlign: 'center' }}>
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+              {/* Perfil do Aluno (Esquerda) */}
+              <div className="glass-panel" style={{ flex: '1 1 400px', padding: '3rem 2rem', textAlign: 'center' }}>
                   <div 
                 style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem', transition: 'transform 0.2s' }}
                 onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
@@ -1030,9 +1031,10 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Histórico do Aluno (Direita) */}
-            <div className="glass-panel" style={{ flex: '2 1 500px', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '1rem' }}>
+            {/* Coluna Direita Alternável (Histórico ou Mochila) */}
+            {profileTab === 'overview' ? (
+              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '1rem' }}>
                 <History size={24} color="var(--gold-primary)" />
                 <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Histórico de Conquistas</h3>
               </div>
@@ -1066,16 +1068,14 @@ export default function Dashboard() {
                   ))
                 )}
               </div>
+              </div>
+            ) : (
+              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+                {userData && <StudentInventory userData={userData} onEquip={() => setInventoryRefresh(r => r + 1)} inventoryRefresh={inventoryRefresh} />}
+              </div>
+            )}
             </div>
           </div>
-          )}
-
-          {profileTab === 'inventory' && (
-            <div style={{ width: '100%', marginTop: '1rem' }}>
-              {userData && <StudentInventory userData={userData} onEquip={() => setInventoryRefresh(r => r + 1)} inventoryRefresh={inventoryRefresh} />}
-            </div>
-          )}
-        </div>
         )}
 
         {activeTab === 'ranking_class' && (

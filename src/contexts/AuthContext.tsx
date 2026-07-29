@@ -27,6 +27,12 @@ export interface UserData {
   happyBuffDuration?: number | null;
   customStatusText?: string;
   isProfilePublic?: boolean;
+  inventoryPreferences?: {
+    viewMode: string;
+    filterType: string;
+    filterRarity: string;
+    sortBy: string;
+  };
   avatarConfig?: {
     skinColor: string;
     hairColor: string;

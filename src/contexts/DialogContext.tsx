@@ -245,27 +245,30 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {createPortal(
         <div style={{
           position: 'fixed',
-          top: '20px',
-          right: '20px',
+          bottom: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
           display: 'flex',
           flexDirection: 'column',
           gap: '10px',
           zIndex: 999999,
-          pointerEvents: 'none'
+          pointerEvents: 'none',
+          alignItems: 'center'
         }}>
           {toasts.map(toast => (
             <div key={toast.id} style={{
               background: toast.type === 'success' ? 'rgba(16, 185, 129, 0.9)' : toast.type === 'error' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(59, 130, 246, 0.9)',
               color: 'white',
-              padding: '1rem 1.5rem',
+              padding: '0.75rem 1.25rem',
               borderRadius: '8px',
               boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
               backdropFilter: 'blur(4px)',
-              animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+              animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
-              fontWeight: 'bold'
+              fontWeight: 'bold',
+              fontSize: '0.85rem'
             }}>
               {toast.message}
             </div>

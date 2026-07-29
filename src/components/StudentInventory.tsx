@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../lib/firebase';
-import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Package } from 'lucide-react';
+import { collection, query, getDocs, getDoc, where, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Shield, Coins, Trash2, Zap, Hand } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
-import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd } from '../lib/gacha';
-
+import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
 interface UserItem {
   id: string;
   itemId: string;
@@ -30,6 +30,9 @@ interface UserItem {
   baseAttributeValue?: number;
   adds?: ItemAdd[];
   minSalePrice?: number; // Preço mínimo definido pelo admin
+  preferredCurrency?: 'xp' | 'coins';
+  itemDescription?: string;
+  rarity?: string;
 }
 
 export default function StudentInventory({ userData, onEquip, inventoryRefresh }: { userData: UserData, onEquip?: () => void, inventoryRefresh?: number }) {
@@ -38,13 +41,42 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const [loading, setLoading] = useState(true);
   const [sellModalItem, setSellModalItem] = useState<UserItem | null>(null);
   const [sellPrice, setSellPrice] = useState('');
+  const [sellQuantity, setSellQuantity] = useState(1);
+  const [trashModalItem, setTrashModalItem] = useState<UserItem | null>(null);
+  const [trashQuantity, setTrashQuantity] = useState(1);
+  const [preferredCurrency, setPreferredCurrency] = useState<'xp' | 'coins'>('xp');
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [draggedItem, setDraggedItem] = useState<UserItem | null>(null);
+  const [economyType, setEconomyType] = useState<'xp'|'coins'>('coins');
+
+  const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(userData.inventoryPreferences?.viewMode as any || 'grid-large');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<string>(userData.inventoryPreferences?.filterType || 'all');
+  const [filterRarity, setFilterRarity] = useState<string>(userData.inventoryPreferences?.filterRarity || 'all');
+  
+  // Custom slot mapping
+  const [slotMap, setSlotMap] = useState<Record<string, number>>((userData.inventoryPreferences as any)?.slotMap || {});
+
+  useEffect(() => {
+    if (!userData.uid) return;
+    const savePreferences = async () => {
+      try {
+        await updateDoc(doc(db, 'users', userData.uid), {
+          inventoryPreferences: { viewMode, filterType, filterRarity }
+        });
+      } catch (err) {}
+    };
+    const t = setTimeout(savePreferences, 1000);
+    return () => clearTimeout(t);
+  }, [viewMode, filterType, filterRarity, userData.uid]);
 
   const currentRank = getRankForXp(userData.xp || 0);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-  const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0);
-  const currentSpaceOccupied = items.length;
+  const totalEquippedStats = calculateTotalStats(items.filter(i => i.equipped));
+  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+  const maxInventorySpace = 6 + currentRankIndex + (userData?.extraInventorySpace || 0) + extraSlotsFromFortitude;
+  const currentSpaceOccupied = items.filter(i => !i.equipped).length;
 
   useEffect(() => {
     fetchInventory();
@@ -53,6 +85,13 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const fetchInventory = async () => {
     if (!userData.uid) return;
     setLoading(true);
+
+    const econRef = doc(db, 'settings', 'economy');
+    const econSnap = await getDoc(econRef);
+    if (econSnap.exists()) {
+      setEconomyType(econSnap.data().currencyType || 'coins');
+    }
+
     const q = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
     const snap = await getDocs(q);
     const loaded: UserItem[] = [];
@@ -82,7 +121,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     });
 
     let virtualIdCounter = 0;
-    consumableGroups.forEach((group, key) => {
+    consumableGroups.forEach((group) => {
       let remaining = group.totalQuantity;
       
       while (remaining > 0) {
@@ -104,14 +143,14 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
   const consumeItemQuantity = async (itemId: string, amount: number = 1) => {
     if (!userData.uid) return;
-    const q = query(collection(db, 'user_items'), where('studentId', '==', userData.uid), where('itemId', '==', itemId), where('forSale', '==', false));
+    const q = query(collection(db, 'user_items'), where('studentId', '==', userData.uid), where('itemId', '==', itemId));
     const snap = await getDocs(q);
     let remainingToRemove = amount;
     
     for (const d of snap.docs) {
       if (remainingToRemove <= 0) break;
       const data = d.data() as UserItem;
-      if (data.itemType !== 'consumable') continue;
+      if (data.itemType !== 'consumable' || data.forSale) continue;
       
       const qty = data.quantity || 1;
       if (qty <= remainingToRemove) {
@@ -210,6 +249,13 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       await showAlert("Desequipe o item antes de jogá-lo fora!");
       return;
     }
+
+    if (item.itemType === 'consumable' && item.count && item.count > 1) {
+      setTrashModalItem(item);
+      setTrashQuantity(1);
+      return;
+    }
+
     const result = await showConfirmWithCheckbox(
       `Tem certeza que deseja DESCARTAR 1x "${item.itemTitle}"? Ele ficará perdido e poderá ser encontrado por outros jogadores em missões.`,
       "Destruir item permanentemente (ninguém poderá encontrar)"
@@ -243,6 +289,32 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     await showAlert(result.checked ? "Item destruído permanentemente!" : "Item jogado fora!");
   };
 
+  const submitTrash = async (permanent: boolean) => {
+    if (!trashModalItem) return;
+    
+    if (trashQuantity < 1 || trashQuantity > (trashModalItem.count || 1)) {
+      await showAlert('Quantidade inválida!');
+      return;
+    }
+
+    await consumeItemQuantity(trashModalItem.itemId, trashQuantity);
+    
+    if (!permanent) {
+      const { id, count, docIds, ...itemDataToDrop } = trashModalItem;
+      await addDoc(collection(db, 'user_items'), {
+        ...itemDataToDrop,
+        studentId: 'dropped',
+        droppedBy: userData.uid,
+        quantity: trashQuantity
+      });
+    }
+    
+    setTrashModalItem(null);
+    setTrashQuantity(1);
+    fetchInventory();
+    await showAlert(permanent ? "Itens destruídos permanentemente!" : "Itens jogados fora!");
+  };
+
   const handleItemDrop = async (dragItem: UserItem, targetItem: UserItem) => {
     if (!dragItem || dragItem.id === targetItem.id) return;
 
@@ -257,9 +329,6 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return;
       }
 
-      const confirmed = await showConfirm(`Deseja usar o "Pergaminho do Novo Atributo" no item "${targetItem.itemTitle}"? Há 70% de chance de sucesso e o pergaminho será consumido.`);
-      if (!confirmed) return;
-
       await consumeItemQuantity(dragItem.itemId, 1);
 
       const isSuccess = Math.random() < 0.70;
@@ -269,13 +338,21 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return;
       }
 
-      let amountToGenerate = 1;
-      if (currentAddsCount === 0) {
-        amountToGenerate = Math.random() > 0.5 ? 1 : 2;
-      }
+      const amountToGenerate = 1;
       
-      const newAdds = rollExactAttributes(amountToGenerate);
-      const finalAdds = [...(targetItem.adds || []), ...newAdds].slice(0, 2);
+      const storeItemSnap = await getDoc(doc(db, 'store_items', targetItem.itemId));
+      const storeItemData = storeItemSnap.data();
+      const globalGachaConfig = await fetchGlobalGachaConfig();
+
+      const existingTypes = targetItem.adds ? targetItem.adds.map((a: any) => a.type as AttributeType) : [];
+      const newAdds = rollExactAttributes(
+        amountToGenerate, 
+        existingTypes, 
+        storeItemData?.gachaConfig, 
+        storeItemData?.fixedAttributes, 
+        (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined
+      );
+      const finalAdds = [...(targetItem.adds || []), ...newAdds].slice(0, 4);
 
       const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
       await updateDoc(doc(db, 'user_items', targetDocId), { adds: finalAdds });
@@ -290,16 +367,23 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       }
       const currentAddsCount = targetItem.adds ? targetItem.adds.length : 0;
       if (currentAddsCount === 0) {
-        showToast("Este pergaminho só pode ser usado em itens que já possuem atributos extras!", 'error');
+        showToast("Este item não possui atributos extras para rerolar!", 'error');
         return;
       }
 
-      const confirmed = await showConfirm(`Deseja usar o "Pergaminho do Aprimoramento" no item "${targetItem.itemTitle}"? Ele sorteará novos atributos substituindo os antigos.`);
-      if (!confirmed) return;
-
       await consumeItemQuantity(dragItem.itemId, 1);
 
-      const newAdds = rollExactAttributes(currentAddsCount);
+      const storeItemSnap = await getDoc(doc(db, 'store_items', targetItem.itemId));
+      const storeItemData = storeItemSnap.data();
+      const globalGachaConfig = await fetchGlobalGachaConfig();
+
+      const newAdds = rollExactAttributes(
+        currentAddsCount, 
+        [], 
+        storeItemData?.gachaConfig, 
+        storeItemData?.fixedAttributes, 
+        (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined
+      );
       
       const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
       await updateDoc(doc(db, 'user_items', targetDocId), { adds: newAdds });
@@ -323,199 +407,380 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
     
-    const docToUpdate = sellModalItem.docIds ? sellModalItem.docIds[0] : sellModalItem.id;
-    await updateDoc(doc(db, 'user_items', docToUpdate), {
-      forSale: true,
-      price: price,
-      sellerName: userData.name
-    });
+    if (sellModalItem.itemType === 'consumable') {
+      if (sellQuantity < 1 || sellQuantity > (sellModalItem.count || 1)) {
+        await showAlert('Quantidade inválida!');
+        return;
+      }
+      
+      await consumeItemQuantity(sellModalItem.itemId, sellQuantity);
+      
+      const { id, count, docIds, ...itemDataToSell } = sellModalItem;
+      await addDoc(collection(db, 'user_items'), {
+        ...itemDataToSell,
+        quantity: sellQuantity,
+        forSale: true,
+        price: price,
+        preferredCurrency: preferredCurrency,
+        sellerName: userData.name,
+        sellerPersuasion: totalEquippedStats.persuasion
+      });
+    } else {
+      const docToUpdate = sellModalItem.docIds ? sellModalItem.docIds[0] : sellModalItem.id;
+      await updateDoc(doc(db, 'user_items', docToUpdate), {
+        forSale: true,
+        price: price,
+        preferredCurrency: preferredCurrency,
+        sellerName: userData.name,
+        sellerPersuasion: totalEquippedStats.persuasion
+      });
+    }
     
     setSellModalItem(null);
     setSellPrice('');
+    setSellQuantity(1);
+    setPreferredCurrency('xp');
     fetchInventory();
     await showAlert('Item colocado à venda com sucesso!');
   };
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Carregando Mochila...</div>;
 
-  const slots = Array.from({ length: maxInventorySpace }, (_, i) => items[i] || null);
+  let bagItems = items.filter(i => !i.equipped);
+  
+  if (searchQuery) bagItems = bagItems.filter(i => i.itemTitle.toLowerCase().includes(searchQuery.toLowerCase()));
+  if (filterType !== 'all') bagItems = bagItems.filter(i => i.itemType === filterType);
+  if (filterRarity !== 'all') bagItems = bagItems.filter(i => (i.rarity || 'common') === filterRarity);
+  
+  bagItems.sort((a, b) => a.itemTitle.localeCompare(b.itemTitle));
+
+  const totalSlotsToRender = Math.max(maxInventorySpace, bagItems.length);
+  const slots: (UserItem | null)[] = Array(totalSlotsToRender).fill(null);
+  const unplacedItems: UserItem[] = [];
+
+  bagItems.forEach(item => {
+    const idx = slotMap[item.id];
+    if (idx !== undefined && idx >= 0 && idx < totalSlotsToRender && slots[idx] === null) {
+      slots[idx] = item;
+    } else {
+      unplacedItems.push(item);
+    }
+  });
+
+  unplacedItems.forEach(item => {
+    const emptyIdx = slots.indexOf(null);
+    if (emptyIdx !== -1) {
+      slots[emptyIdx] = item;
+    } else {
+      slots.push(item);
+    }
+  });
+
+  const handleGridSwap = async (draggedItem: UserItem, targetIndex: number, targetItem: UserItem | null) => {
+    if (draggedItem.id === targetItem?.id) return;
+    
+    // If dropping a scroll onto a valid item, use the scroll instead of swapping!
+    if (targetItem && ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(draggedItem.gameEffect || '')) {
+      handleItemDrop(draggedItem, targetItem);
+      return;
+    }
+
+    const newMap = { ...slotMap };
+    const draggedOldIndex = slots.findIndex(s => s?.id === draggedItem.id);
+    
+    newMap[draggedItem.id] = targetIndex;
+    if (targetItem) {
+      newMap[targetItem.id] = draggedOldIndex;
+    } else if (draggedOldIndex !== -1) {
+      // It moved to an empty slot, clear its old slot mapping if we were tracking it
+      // Wait, if it swaps with null, targetItem is null. The old slot becomes empty.
+      // We just don't map anything to draggedOldIndex.
+    }
+
+    setSlotMap(newMap);
+    await updateDoc(doc(db, 'users', userData.uid), { 'inventoryPreferences.slotMap': newMap });
+  };
+
+  const getGridItemStyle = () => {
+    return { width: '100%', minHeight: viewMode === 'list' ? '60px' : 'auto' };
+  };
+
+  const getRarityStyle = (rarity: string) => {
+    switch (rarity) {
+      case 'uncommon': return { border: '2px solid #10b981', boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)' };
+      case 'rare': return { border: '3px solid #3b82f6', boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)' };
+      case 'epic': return { border: '4px solid #8b5cf6', boxShadow: '0 0 20px rgba(139, 92, 246, 0.5)' };
+      case 'legendary': return { border: '5px solid #f59e0b', boxShadow: '0 0 25px rgba(245, 158, 11, 0.6)' };
+      default: return { border: '2px solid rgba(255,255,255,0.1)', boxShadow: 'none' };
+    }
+  };
 
   return (
-    <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2rem', position: 'sticky', top: '150px', zIndex: 90, background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border-glass)', backdropFilter: 'blur(12px)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Package size={32} color="var(--gold-primary)" />
-          <div>
-            <h2 style={{ fontSize: '2rem', margin: 0 }}>Minha Mochila</h2>
-            <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Seus itens. Arraste ou clique para ações.</p>
+    <div style={{ animation: 'fadeIn 0.3s ease-out', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 300px)' }}>
+      <style>{`
+        .inventory-item-card {
+          transition: transform 0.2s;
+        }
+        .inventory-item-card:hover {
+          transform: translateY(-5px);
+        }
+        @media (max-width: 850px) {
+          .inventory-layout {
+            flex-direction: column !important;
+          }
+          .inventory-avatar-col {
+            position: relative !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin-bottom: 2rem;
+          }
+        }
+      `}</style>
+
+      <div style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-glass)', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Package size={24} color="var(--gold-primary)" />
+            <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Minha Mochila</h3>
+          </div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '1rem', background: 'rgba(0,0,0,0.3)', padding: '0.5rem 1rem', borderRadius: '12px' }}>
+            Espaço: <strong style={{ color: currentSpaceOccupied >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{currentSpaceOccupied}</strong> / {maxInventorySpace}
           </div>
         </div>
-        <div style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', background: 'rgba(0,0,0,0.3)', padding: '0.5rem 1rem', borderRadius: '12px' }}>
-          Espaço: <strong style={{ color: currentSpaceOccupied >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{currentSpaceOccupied}</strong> / {maxInventorySpace}
+
+        {/* Barra de Filtros */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: '150px', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.5rem' }}>
+            <Search size={16} color="var(--text-secondary)" />
+            <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.5rem', background: 'transparent', border: 'none', color: 'white', outline: 'none', fontSize: '0.9rem' }} />
+          </div>
+          <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '0.9rem' }}>
+            <option value="all">Tipos</option>
+            <option value="consumable">Consumível</option>
+            <option value="equippable">Equipável</option>
+          </select>
+          <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '0.9rem' }}>
+            <option value="all">Raridades</option>
+            <option value="common">Comum</option>
+            <option value="uncommon">Incomum</option>
+            <option value="rare">Raro</option>
+            <option value="epic">Épico</option>
+            <option value="legendary">Lendário</option>
+          </select>
+          
+          <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.3)', padding: '0.25rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+            <button onClick={() => setViewMode('grid-large')} style={{ padding: '0.25rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large' ? 'white' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={16} /></button>
+            <button onClick={() => setViewMode('grid-small')} style={{ padding: '0.25rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small' ? 'white' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={16} /></button>
+            <button onClick={() => setViewMode('list')} style={{ padding: '0.25rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list' ? 'white' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={16} /></button>
+          </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-        <div style={{ flex: '2 1 400px' }}>
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
-            gap: '1rem',
-            background: 'rgba(0,0,0,0.2)',
-            padding: '1.5rem',
-            borderRadius: '16px',
-            border: '2px solid rgba(255,255,255,0.05)'
-          }}>
-            {slots.map((item, index) => (
-              item ? (
+      <div className="inventory-items-col" style={{ 
+        flex: 1, 
+        overflowY: 'auto', 
+        paddingRight: '0.5rem',
+        display: 'grid', 
+        gridTemplateColumns: viewMode === 'list' ? '1fr' : (viewMode === 'grid-small' ? 'repeat(auto-fill, minmax(75px, 1fr))' : 'repeat(auto-fill, minmax(100px, 1fr))'), 
+        gap: '1rem',
+        alignContent: 'start'
+      }}>
+          {slots.map((item, index) => {
+            const isOverflow = index >= maxInventorySpace;
+            
+            if (item) {
+              const isDragged = draggedItem?.id === item.id;
+              const isFullyDragged = isDragged && (!item.count || item.count <= 1);
+              const isPartiallyDragged = isDragged && (item.count && item.count > 1);
+              const displayCount = isPartiallyDragged ? (item.count! - 1) : item.count;
+
+              return (
                 <div key={item.id || index} 
-                  onMouseEnter={() => setHoveredItem(item.id)}
+                  className="inventory-item-card"
+                  onMouseEnter={(e) => {
+                    if (!isOverflow) {
+                      setHoveredItem(item.id);
+                      setMousePos({ x: e.clientX, y: e.clientY });
+                    }
+                  }}
                   onMouseLeave={() => setHoveredItem(null)}
-                  draggable
+                  onMouseMove={(e) => {
+                    if (hoveredItem === item.id) {
+                      setMousePos({ x: e.clientX, y: e.clientY });
+                    }
+                  }}
+                  draggable={!isOverflow}
                   onDragStart={(e) => {
-                    setDraggedItem(item);
+                    if (isOverflow) {
+                      e.preventDefault();
+                      return;
+                    }
+                    const imgEl = e.currentTarget.querySelector('img');
+                    if (imgEl) {
+                      e.dataTransfer.setDragImage(imgEl, imgEl.width / 2, imgEl.height / 2);
+                    }
+                    setTimeout(() => setDraggedItem(item), 0);
                     e.dataTransfer.effectAllowed = "move";
                   }}
-                  onDragEnd={() => setDraggedItem(null)}
+                  onDragEnd={(e) => {
+                    if (e.dataTransfer.dropEffect === 'none') {
+                      handleDropItemToTrash(item);
+                    }
+                    setDraggedItem(null);
+                  }}
                   onDragOver={(e) => {
-                    if (draggedItem && draggedItem.id !== item.id) {
+                    if (!isOverflow && draggedItem && draggedItem.id !== item.id) {
                       e.preventDefault();
                     }
                   }}
                   onDrop={(e) => {
                     e.preventDefault();
-                    if (draggedItem) {
-                      handleItemDrop(draggedItem, item);
+                    if (!isOverflow && draggedItem) {
+                      handleGridSwap(draggedItem, index, item);
                     }
                   }}
                   style={{ 
-                  background: 'var(--bg-dark)', 
-                  padding: '1rem', 
-                  borderRadius: '12px', 
+                    ...getGridItemStyle(),
+                  background: isFullyDragged ? 'rgba(255,255,255,0.03)' : 'var(--bg-dark)', 
+                  padding: viewMode === 'list' ? '0.5rem 1rem' : (viewMode === 'grid-small' ? '0.35rem' : '0.5rem'), 
+                  borderRadius: '8px', 
                   display: 'flex', 
-                  flexDirection: 'column', 
-                  gap: '0.5rem', 
-                  border: item.equipped ? '2px solid var(--accent-green)' : '2px solid rgba(255,255,255,0.1)',
+                  flexDirection: viewMode === 'list' ? 'row' : 'column', 
+                  alignItems: viewMode === 'list' ? 'center' : 'stretch',
+                  gap: viewMode === 'list' ? '1rem' : '0.25rem', 
+                  border: isFullyDragged ? '2px dashed rgba(255,255,255,0.1)' : getRarityStyle(item.rarity || 'common').border,
                   position: 'relative',
-                  cursor: 'grab',
-                  boxShadow: item.equipped ? '0 0 15px rgba(16, 185, 129, 0.2)' : (draggedItem?.id === item.id ? '0 0 15px rgba(251,191,36,0.5)' : 'none'),
-                  opacity: draggedItem?.id === item.id ? 0.5 : 1
+                  zIndex: hoveredItem === item.id ? 100 : 1,
+                  cursor: isOverflow ? 'not-allowed' : 'grab',
+                  boxShadow: isFullyDragged ? 'none' : getRarityStyle(item.rarity || 'common').boxShadow,
+                  filter: isOverflow ? 'grayscale(100%)' : (isPartiallyDragged ? 'brightness(0.8)' : 'none')
                 }}>
-                  {item.count && item.count > 1 && (
-                    <div style={{ position: 'absolute', top: '-10px', right: '-10px', background: 'var(--gold-primary)', color: 'black', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', border: '2px solid var(--bg-dark)', zIndex: 2 }}>
-                      {item.count}
-                    </div>
-                  )}
-                  
-                  <div style={{ display: 'flex', justifyContent: 'center', height: '80px' }}>
-                    {item.itemImageUrl ? (
-                      <img src={item.itemImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.5))' }} />
-                    ) : (
-                      <Package size={48} color="var(--text-secondary)" style={{ alignSelf: 'center' }} />
-                    )}
-                  </div>
-                  
-                  {/* Tooltip Estilo RPG */}
-                  {hoveredItem === item.id && item.itemType === 'equippable' && (
-                     <div style={{
-                       position: 'absolute',
-                       bottom: '105%',
-                       left: '50%',
-                       transform: 'translateX(-50%)',
-                       background: 'rgba(15, 23, 42, 0.95)',
-                       border: '1px solid var(--border-glass)',
-                       borderRadius: '8px',
-                       padding: '1rem',
-                       width: 'max-content',
-                       minWidth: '200px',
-                       zIndex: 100,
-                       boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-                       backdropFilter: 'blur(10px)',
-                       pointerEvents: 'none',
-                       color: 'white',
-                       textAlign: 'left'
-                     }}>
-                       <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>{item.itemTitle}</h4>
-                       
-                       {item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
-                         <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'white' }}>
-                           {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
-                         </div>
-                       )}
-                       
-                       {item.adds && item.adds.length > 0 && (
-                         <div style={{ fontSize: '0.9rem' }}>
-                           <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
-                           <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem' }}>
-                             {item.adds.map((add: ItemAdd, i: number) => {
-                               const lbl = ATTRIBUTE_LABELS[add.type];
-                               if (!lbl) return null;
-                               return (
-                                 <li key={i} style={{ color: lbl.color, marginBottom: '0.25rem' }}>
-                                   {lbl.icon} {lbl.label}: +{add.value}%
-                                 </li>
-                               );
-                             })}
-                           </ul>
-                         </div>
-                       )}
-                     </div>
-                  )}
-                  
-                  
-                  <div style={{ textAlign: 'center' }}>
-                    <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{item.itemTitle}</h4>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: 'auto' }}>
-                    {item.itemType === 'equippable' ? (
-                      <button onClick={() => handleEquip(item)} style={{ background: item.equipped ? 'rgba(16, 185, 129, 0.2)' : 'var(--bg-card)', color: item.equipped ? 'var(--accent-green)' : 'white', border: item.equipped ? '1px solid var(--accent-green)' : '1px solid var(--border-glass)', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.85rem' }}>
-                        {item.equipped ? '✔ Equipado' : 'Equipar'}
-                      </button>
-                    ) : (
-                      <button onClick={() => handleUseConsumable(item)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                        Usar
-                      </button>
+                    {!isFullyDragged && (
+                      <React.Fragment>
+                    {isOverflow && (
+                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, background: 'rgba(0,0,0,0.5)', borderRadius: '10px' }}>
+                        <Lock size={32} color="var(--accent-red)" />
+                      </div>
                     )}
                     
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      <button onClick={() => {
+                  <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', height: viewMode === 'grid-small' ? '36px' : '48px', width: viewMode === 'list' ? '48px' : 'auto', flexShrink: 0 }}>
+                    {item.itemImageUrl ? (
+                      <img src={item.itemImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
+                    ) : (
+                      <Package size={viewMode === 'grid-small' ? 24 : 32} color="var(--text-secondary)" style={{ alignSelf: 'center' }} />
+                    )}
+
+                    {displayCount && displayCount > 1 && (
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '0',
+                        right: '0',
+                        color: 'white',
+                        textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
+                        fontSize: viewMode === 'grid-small' ? '0.65rem' : '0.75rem',
+                        fontWeight: 'normal',
+                        zIndex: 2,
+                        pointerEvents: 'none',
+                        lineHeight: 1
+                      }}>
+                        {displayCount}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {viewMode === 'list' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+                      <h4 style={{ margin: 0, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{item.itemTitle}</h4>
+                      <span style={{ color: 'var(--border-glass)' }}>|</span>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                        {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
+                      </span>
+                      <span style={{ color: 'var(--border-glass)', marginLeft: 'auto', marginRight: '0.5rem' }}>|</span>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center' }}>
+                      <h4 style={{ margin: '0 0 0.15rem 0', fontSize: viewMode === 'grid-small' ? '0.6rem' : '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{item.itemTitle}</h4>
+                      <span style={{ fontSize: viewMode === 'grid-small' ? '0.55rem' : '0.7rem', color: 'var(--text-secondary)' }}>
+                        {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
+                      </span>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '0.25rem', marginTop: viewMode === 'list' ? '0' : 'auto', justifyContent: 'center', flexShrink: 0 }}>
+                    {item.itemType === 'equippable' ? (
+                      <button 
+                        title={item.equipped ? '✔ Equipado' : 'Equipar'}
+                        onClick={() => handleEquip(item)} 
+                        style={{ flex: 1, background: item.equipped ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)', color: item.equipped ? 'var(--accent-green)' : 'white', border: item.equipped ? '1px solid var(--accent-green)' : '1px solid var(--border-glass)', padding: viewMode === 'grid-small' ? '0.25rem' : '0.4rem', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Shield size={viewMode === 'grid-small' ? 14 : 16} />
+                      </button>
+                    ) : (
+                      ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(item.gameEffect || '') ? (
+                        <div title="Arraste para usar" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', padding: viewMode === 'grid-small' ? '0.25rem' : '0.4rem', borderRadius: '6px', border: '1px dashed rgba(255,255,255,0.2)', cursor: 'grab' }}>
+                          <Hand size={viewMode === 'grid-small' ? 14 : 16} />
+                        </div>
+                      ) : (
+                        <button 
+                          title="Usar Item"
+                          onClick={() => handleUseConsumable(item)} 
+                          style={{ flex: 1, background: 'rgba(251, 191, 36, 0.2)', color: 'var(--gold-primary)', border: '1px solid rgba(251, 191, 36, 0.3)', padding: viewMode === 'grid-small' ? '0.25rem' : '0.4rem', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Zap size={viewMode === 'grid-small' ? 14 : 16} />
+                        </button>
+                      )
+                    )}
+                    
+                    <button 
+                      title="Vender"
+                      disabled={isOverflow}
+                      onClick={() => {
                         if (item.equipped) { showAlert("Desequipe antes de vender."); return; }
                         setSellModalItem(item);
-                      }} style={{ flex: 1, background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '0.4rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem' }}>
-                        Vender
-                      </button>
-                      <button onClick={() => handleDropItemToTrash(item)} style={{ flex: 1, background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.4rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem' }}>
-                        Jogar Fora
-                      </button>
-                    </div>
+                      }} 
+                      style={{ flex: 1, background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: viewMode === 'grid-small' ? '0.25rem' : '0.4rem', borderRadius: '6px', cursor: isOverflow ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isOverflow ? 0.5 : 1 }}>
+                      <Coins size={viewMode === 'grid-small' ? 14 : 16} />
+                    </button>
+                    <button 
+                      title="Jogar Fora"
+                      disabled={isOverflow}
+                      onClick={() => handleDropItemToTrash(item)} 
+                      style={{ flex: 1, background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: viewMode === 'grid-small' ? '0.25rem' : '0.4rem', borderRadius: '6px', cursor: isOverflow ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isOverflow ? 0.5 : 1 }}>
+                      <Trash2 size={viewMode === 'grid-small' ? 14 : 16} />
+                    </button>
                   </div>
-                </div>
-              ) : (
-                <div key={`empty-${index}`} style={{ 
-                  height: '240px', 
+                  </React.Fragment>
+                )}
+              </div>
+            );
+            } else {
+              return (
+                <div key={`empty-${index}`} 
+                  className="inventory-item-card"
+                  onDragOver={(e) => { e.preventDefault(); }}
+                  onDrop={(e) => { 
+                    e.preventDefault(); 
+                    if (draggedItem) handleGridSwap(draggedItem, index, null); 
+                  }}
+                  style={{ 
+                    ...getGridItemStyle(),
                   background: 'rgba(255,255,255,0.03)', 
-                  borderRadius: '12px', 
+                  borderRadius: '8px', 
                   border: '2px dashed rgba(255,255,255,0.1)', 
                   display: 'flex', 
                   justifyContent: 'center', 
-                  alignItems: 'center' 
+                  alignItems: 'center',
+                  minHeight: viewMode === 'list' ? '60px' : '100px'
                 }}>
-                   <div style={{ width: '40px', height: '40px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }} />
+                   <div style={{ width: viewMode === 'grid-small' ? '24px' : '32px', height: viewMode === 'grid-small' ? '24px' : '32px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }} />
                 </div>
-              )
-            ))}
-          </div>
+              );
+            }
+          })}
         </div>
-      </div>
 
       {sellModalItem && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
           <div className="glass-panel" style={{ padding: '2rem', maxWidth: '400px', width: '100%' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--gold-primary)', fontSize: '1.5rem' }}>Vender no Mercado Livre</h3>
+            <h3 style={{ marginTop: 0, color: 'var(--gold-primary)', fontSize: '1.5rem' }}>Vender no Bazar do Jogador</h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
               Ao colocar este item à venda, ele sairá da sua mochila. Uma taxa de 10% será descontada se outro jogador comprar.
             </p>
@@ -523,9 +788,39 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               <img src={sellModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
               <div>
                 <strong>{sellModalItem.itemTitle}</strong>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Quantidade a vender: 1</div>
+                {sellModalItem.itemType === 'consumable' && (
+                  <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Quantidade:</label>
+                    <input 
+                      type="number" 
+                      min={1} 
+                      max={sellModalItem.count || 1} 
+                      value={sellQuantity}
+                      onChange={e => setSellQuantity(Math.min(Math.max(1, parseInt(e.target.value) || 1), sellModalItem.count || 1))}
+                      style={{ width: '60px', padding: '0.3rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', borderRadius: '4px' }}
+                    />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>/ {sellModalItem.count || 1}</span>
+                  </div>
+                )}
+                {sellModalItem.itemType !== 'consumable' && (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Quantidade a vender: 1</div>
+                )}
               </div>
             </div>
+            
+            {economyType === 'xp' && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Moeda de Recebimento:</label>
+                <select 
+                  value={preferredCurrency} 
+                  onChange={(e) => setPreferredCurrency(e.target.value as 'xp' | 'coins')}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                >
+                  <option value="xp">Receber em XP (Padrão)</option>
+                  <option value="coins">Receber em Moedas</option>
+                </select>
+              </div>
+            )}
             
             {(sellModalItem.minSalePrice ?? 0) > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '1rem' }}>
@@ -554,6 +849,128 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
           </div>
         </div>
       )}
+
+      {trashModalItem && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div className="glass-panel" style={{ padding: '2rem', maxWidth: '400px', width: '100%' }}>
+            <h3 style={{ marginTop: 0, color: 'var(--accent-red)', fontSize: '1.5rem' }}>Jogar Item Fora</h3>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+              Selecione a quantidade que deseja descartar. Itens não destruídos poderão ser encontrados por outros jogadores em missões.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
+              <img src={trashModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+              <div>
+                <strong>{trashModalItem.itemTitle}</strong>
+                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Quantidade:</label>
+                  <input 
+                    type="range" 
+                    min={1} 
+                    max={trashModalItem.count || 1} 
+                    value={trashQuantity}
+                    onChange={e => setTrashQuantity(parseInt(e.target.value) || 1)}
+                    style={{ width: '100px', accentColor: 'var(--accent-red)' }}
+                  />
+                  <input 
+                    type="number" 
+                    min={1} 
+                    max={trashModalItem.count || 1} 
+                    value={trashQuantity}
+                    onChange={e => setTrashQuantity(Math.min(Math.max(1, parseInt(e.target.value) || 1), trashModalItem.count || 1))}
+                    style={{ width: '50px', padding: '0.2rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', borderRadius: '4px', textAlign: 'center' }}
+                  />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>/ {trashModalItem.count || 1}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '2rem' }}>
+              <button onClick={() => setTrashModalItem(null)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>
+                Cancelar
+              </button>
+              <button onClick={() => submitTrash(false)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', background: 'var(--gold-primary)', color: 'black', cursor: 'pointer', fontWeight: 'bold' }}>
+                Jogar Fora
+              </button>
+              <button onClick={() => submitTrash(true)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', background: 'var(--accent-red)', color: 'white', cursor: 'pointer', fontWeight: 'bold' }} title="Destruir Permanentemente">
+                Destruir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Tooltip Portal */}
+      {hoveredItem && (() => {
+        const item = items.find(i => i.id === hoveredItem);
+        if (!item) return null;
+        return createPortal(
+          <div style={{
+            position: 'fixed',
+            top: mousePos.y + 15,
+            left: mousePos.x + 15,
+            background: 'rgba(15, 23, 42, 0.95)',
+            border: '1px solid var(--border-glass)',
+            borderRadius: '8px',
+            padding: '1rem',
+            width: 'max-content',
+            minWidth: '200px',
+            zIndex: 999999,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(10px)',
+            pointerEvents: 'none',
+            color: 'white',
+            textAlign: 'left'
+          }}>
+            <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>{item.itemTitle}</h4>
+            
+            {item.itemDescription ? (
+              <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', maxWidth: '250px', whiteSpace: 'normal' }}>
+                "{item.itemDescription}"
+              </div>
+            ) : (
+              item.itemType === 'consumable' && (
+                <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', maxWidth: '250px', whiteSpace: 'normal' }}>
+                  {item.gameEffect === 'restore_hp' ? '"Restaura todos os pontos de vida."' :
+                   item.gameEffect === 'add_attribute' ? '"Adiciona um novo atributo aleatório a um equipamento."' :
+                   item.gameEffect === 'remove_attribute' ? '"Remove um atributo negativo de um equipamento."' :
+                   item.gameEffect === 'reroll_attributes' ? '"Sorteia novamente todos os atributos extras de um equipamento."' :
+                   item.gameEffect === 'none' ? '"Um item comum sem efeitos mágicos."' :
+                   '"Item consumível."'}
+                </div>
+              )
+            )}
+            
+            {item.itemType === 'consumable' && ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(item.gameEffect || '') && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#60A5FA', fontWeight: 'bold' }}>
+                🖐️ Arraste sobre um equipamento para usar.
+              </div>
+            )}
+            
+            {item.itemType === 'equippable' && item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
+              <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'white' }}>
+                {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
+              </div>
+            )}
+            
+            {item.itemType === 'equippable' && item.adds && item.adds.length > 0 && (
+              <div style={{ fontSize: '0.9rem' }}>
+                <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
+                <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.25rem', color: 'var(--text-secondary)' }}>
+                  {item.adds.map((add, i) => {
+                    const lbl = ATTRIBUTE_LABELS[add.type];
+                    if (!lbl) return null;
+                    return (
+                      <li key={i} style={{ color: add.value > 0 ? '#60A5FA' : '#F87171' }}>
+                        {lbl.icon} {lbl.label}: +{add.value}%
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>,
+          document.body
+        );
+      })()}
     </div>
   );
 }

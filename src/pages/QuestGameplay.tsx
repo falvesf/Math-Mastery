@@ -11,7 +11,7 @@ import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
-import { rollItemAdds } from '../lib/gacha';
+import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 interface UserItem {
@@ -55,9 +55,13 @@ export default function QuestGameplay() {
   const [currentHearts, setCurrentHearts] = useState<number>(3);
   const [hasShield, setHasShield] = useState(false);
   
-  // RPG Battle States
   const [battleMessage, setBattleMessage] = useState<string>('Prepare-se para a batalha!');
   const [chestRewards, setChestRewards] = useState<{coins: number, items: any[]}>({ coins: 0, items: [] });
+
+  const totalEquippedStats = calculateTotalStats(playerEquippedItems);
+  const xpMultiplier = 1 + (totalEquippedStats.xp / 100);
+  const coinsMultiplier = 1 + (totalEquippedStats.coins / 100);
+
   const [showChest, setShowChest] = useState(false);
   const [chestOpened, setChestOpened] = useState(false);
   const [criticalHits, setCriticalHits] = useState(0);
@@ -73,12 +77,7 @@ export default function QuestGameplay() {
   const [studentAnswers, setStudentAnswers] = useState<{ qIndex: number; text: string; isCorrect: boolean }[]>([]);
 
   // Escudos e Defesa
-  const totalDefense = playerEquippedItems.reduce((acc, item) => {
-    if (item.baseAttributeType === 'defense') {
-      return acc + (item.baseAttributeValue || 0);
-    }
-    return acc;
-  }, 0);
+  const totalDefense = totalEquippedStats.defense;
 
   const calculatePenalty = (basePenalty: number) => {
     if (basePenalty <= 0) return 0;
@@ -681,9 +680,10 @@ export default function QuestGameplay() {
     
     setSaving(true);
     
-    let actualXpGained = isEligibleForXP ? finalXp : 0;
-    let earnedCoins = actualXpGained;
+    let actualXpGained = isEligibleForXP ? Math.floor(finalXp * xpMultiplier) : 0;
+    let earnedCoins = Math.floor(actualXpGained * coinsMultiplier);
     const finalRewards = { coins: 0, items: [] as any[] };
+    const globalGachaConfig = await fetchGlobalGachaConfig();
 
     if (isEligibleForChest) {
       if (isWin && quest?.chestConfig?.maxCoins && quest.chestConfig.maxCoins > 0) {
@@ -748,7 +748,7 @@ export default function QuestGameplay() {
                   baseAttributeValue: item.baseAttributeValue || 0,
                   gameModelUrl: item.gameModelUrl || '',
                   modelTransforms: item.modelTransforms || null,
-                  adds: item.type === 'equippable' ? rollItemAdds() : [],
+                  adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : [],
                   minSalePrice: item.minSalePrice || 0  // Propaga o preço mínimo de revenda
                 };
                 await addDoc(collection(db, 'user_items'), itemData);
@@ -791,7 +791,7 @@ export default function QuestGameplay() {
               baseAttributeValue: item.baseAttributeValue || 0,
               gameModelUrl: item.gameModelUrl || '',
               modelTransforms: item.modelTransforms || null,
-              adds: item.type === 'equippable' ? rollItemAdds() : []
+              adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : []
             };
             await addDoc(collection(db, 'user_items'), itemData);
             finalRewards.items.push({ ...item, quantity: 1, isMonsterDrop: true });
@@ -836,7 +836,9 @@ export default function QuestGameplay() {
         const now = Date.now();
         
         const rankIdx = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
-        const mHearts = Math.max(3, 3 + Math.floor(rankIdx / 2));
+        const baseHearts = Math.max(3, 3 + Math.floor(rankIdx / 2));
+        const bonusHearts = Math.floor(stats.vitality / 30);
+        const mHearts = baseHearts + bonusHearts;
         const hpPerc = (currentHearts / mHearts) * 100;
         
         if (!isWin || currentHearts === 0) {
@@ -931,7 +933,8 @@ export default function QuestGameplay() {
       
     } else if (item.gameEffect === 'restore_hp') {
       const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
-      const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2));
+      const stats = calculateTotalStats(playerEquippedItems);
+      const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
       
       if (currentHearts >= maxHearts) {
          await showAlert("Sua vida já está cheia!");
@@ -945,7 +948,8 @@ export default function QuestGameplay() {
       }
     } else if (item.gameEffect === 'heal_1_hp') {
       const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
-      const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2));
+      const stats = calculateTotalStats(playerEquippedItems);
+      const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
       
       if (currentHearts >= maxHearts) {
          await showAlert("Sua vida já está cheia!");
@@ -970,7 +974,8 @@ export default function QuestGameplay() {
   }
 
   const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
-  const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2));
+  const stats = calculateTotalStats(playerEquippedItems);
+  const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
   const hpPercentage = (currentHearts / maxHearts) * 100;
 
   let baseAnim: 'idle' | 'exhausted' = 'idle';
@@ -1167,8 +1172,8 @@ export default function QuestGameplay() {
               <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '4rem' }}>
                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem 2rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
                   <h4 style={{ color: 'var(--text-secondary)', margin: '0 0 0.5rem 0' }}>Recompensa</h4>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                    <Star size={24} /> {isStudyMode ? '0 XP (Estudo)' : `${quest.baseXp} XP`}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gold-primary)', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                    <Star size={24} /> {isStudyMode ? '0 XP (Estudo)' : `${Math.floor(quest.baseXp * (1 + (stats.xp / 100)))} XP`}
                   </div>
                 </div>
                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem 2rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
@@ -1264,8 +1269,10 @@ export default function QuestGameplay() {
                   <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
                   <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem' }}>O monstro foi derrotado e o desafio foi superado.</p>
                   <div style={{ background: 'rgba(251, 191, 36, 0.1)', padding: '2rem', borderRadius: '12px', display: 'inline-block', marginBottom: '3rem' }}>
-                    <div style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>Recompensa Adquirida</div>
-                    <div style={{ fontSize: '3rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>+{isStudyMode ? 0 : currentXp} XP</div>
+                    <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center' }}>
+                      <div style={{ fontSize: '3rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>+{isStudyMode ? 0 : Math.floor(currentXp * xpMultiplier)} XP</div>
+                      <div style={{ fontSize: '3rem', fontWeight: 'bold', color: 'var(--gold-secondary)' }}>+{isStudyMode ? 0 : Math.floor(currentXp * coinsMultiplier)} <Coins size={32} style={{ display: 'inline' }}/></div>
+                    </div>
                   </div>
                 </>
               ) : (

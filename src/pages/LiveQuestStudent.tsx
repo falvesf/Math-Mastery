@@ -14,6 +14,7 @@ import ChestReveal from '../components/ChestReveal';
 import { Package, Coins } from 'lucide-react';
 import { RANKS } from '../lib/ranks';
 import { useDialog } from '../contexts/DialogContext';
+import { calculateTotalStats } from '../lib/gacha';
 import type { GameEffectType } from '../components/AdminStoreManager';
 
 interface UserItem {
@@ -134,18 +135,15 @@ export default function LiveQuestStudent() {
             console.error("Erro ao carregar itens equipados", e);
           }
 
-          let totalPower = userData.xp || 0;
-          equippedItems.forEach(item => {
-            if (item.baseAttributeValue) {
-              totalPower += item.baseAttributeValue;
-            }
-          });
+          const stats = calculateTotalStats(equippedItems);
+          const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
+          const maxHp = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
 
           const newPlayer: LivePlayer = {
             uid: userData.uid,
             name: userData.name || 'Jogador',
-            hp: userData.hearts || 5,
-            maxHp: userData.hearts || 5,
+            hp: maxHp,
+            maxHp: maxHp,
             attack: (userData as any).attack || 1,
             avatarConfig: userData.avatarConfig || null,
             equippedItems: equippedItems,
@@ -154,7 +152,7 @@ export default function LiveQuestStudent() {
             currentAnswer: null,
             xp: userData.xp || 0,
             sessionEarnedXp: 0,
-            power: totalPower
+            power: (userData.xp || 0) + stats.attack
           };
 
           const sanitizedPlayer = JSON.parse(JSON.stringify(newPlayer));
@@ -224,6 +222,10 @@ export default function LiveQuestStudent() {
   if (!session || !quest || !userData) return null;
 
   const me = session.players[userData.uid];
+  const totalEquippedStats = me?.equippedItems ? calculateTotalStats(me.equippedItems) : { attack: 0, defense: 0, xp: 0, coins: 0, vitality: 0, fortitude: 0, persuasion: 0 };
+  const totalDefense = totalEquippedStats.defense;
+  const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
+  const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(totalEquippedStats.vitality / 30);
 
   if (session.status === 'lobby') {
     return (
@@ -309,15 +311,10 @@ export default function LiveQuestStudent() {
       const baseQuestXp = quest.baseXp || 0;
       const xpPerQuestion = Math.floor(baseQuestXp / quest.questions.length);
 
-      let totalAddXP = 0;
-      me.equippedItems?.forEach((item: any) => {
-        item.adds?.forEach((add: any) => {
-          if (add.attributeType === 'xp_boost') {
-            totalAddXP += add.value;
-          }
-        });
-      });
-      earnedXp = xpPerQuestion + totalAddXP;
+      earnedXp = xpPerQuestion;
+
+      const xpMultiplier = 1 + (totalEquippedStats.xp / 100);
+      earnedXp = Math.floor(earnedXp * xpMultiplier);
     }
 
     const newScore = (me.score || 0) + earnedScore;
@@ -334,7 +331,6 @@ export default function LiveQuestStudent() {
     };
 
     if (isCorrect) {
-      // Dano fixo de 1 para simplificar o cálculo global na missão ao vivo (equipe)
       const power = 1;
       updates.monsterHp = increment(-power);
 
@@ -352,23 +348,20 @@ export default function LiveQuestStudent() {
       });
 
       if (!hasEquippedShield && !hasShield) {
-        const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === me.rank) || 0) / 2);
-        const currentHp = me.hp !== undefined ? me.hp : (userData?.hearts || maxHearts);
+        const currentHp = me.hp !== undefined ? me.hp : maxHearts;
         const newHp = Math.max(0, currentHp - 1);
         updates[`players.${userData.uid}.hp`] = newHp;
 
-        // Atualizar perfil principal
         try {
           const userUpdate: any = { hearts: newHp };
-          // Iniciar cooldown de recovery se estava com vida máxima
           if (currentHp >= maxHearts && newHp < maxHearts) {
             userUpdate.hpRecoveryStartTimestamp = Date.now();
           }
           await updateDoc(doc(db, 'users', userData.uid), userUpdate);
         } catch(e) { console.error(e); }
       } else {
-        if (hasShield) setHasShield(false); // remove the consumable shield
-        updates[`players.${userData.uid}.isProtected`] = true; // Optional tracking
+        if (hasShield) setHasShield(false);
+        updates[`players.${userData.uid}.isProtected`] = true;
       }
     }
 
@@ -391,7 +384,7 @@ export default function LiveQuestStudent() {
     }
   };
 
-  const OPTION_COLORS = ['#e21b3c', '#1368ce', '#d89e00', '#26890c']; // Red, Blue, Yellow, Green
+  const OPTION_COLORS = ['#e21b3c', '#1368ce', '#d89e00', '#26890c'];
 
   const usePowerup = async (item: UserItem) => {
     if (!sessionId || !userData || !session || !quest) return;
@@ -410,9 +403,7 @@ export default function LiveQuestStudent() {
       setHasShield(true);
       
     } else if (item.gameEffect === 'restore_hp') {
-      const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === me.rank));
-      const maxHearts = 3 + Math.floor(rankIndex / 2);
-      const currentHp = me.hp !== undefined ? me.hp : (userData.hearts || maxHearts);
+      const currentHp = me.hp !== undefined ? me.hp : maxHearts;
       
       if (currentHp >= maxHearts) {
          await showAlert('Sua vida já está no máximo!');
@@ -624,13 +615,8 @@ export default function LiveQuestStudent() {
     if (isCorrect && quest) {
       const baseQuestXp = quest.baseXp || 0;
       const xpPerQuestion = Math.floor(baseQuestXp / (quest.questions?.length || 1));
-      let totalAddXP = 0;
-      me.equippedItems?.forEach((item: any) => {
-        item.adds?.forEach((add: any) => {
-          if (add.attributeType === 'xp_boost') totalAddXP += add.value;
-        });
-      });
-      earnedXp = xpPerQuestion + totalAddXP;
+      const xpMultiplier = 1 + (totalEquippedStats.xp / 100);
+      earnedXp = Math.floor(xpPerQuestion * xpMultiplier);
     }
         return (
         <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>

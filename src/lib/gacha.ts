@@ -1,3 +1,6 @@
+import { db } from './firebase';
+import { doc, getDoc } from 'firebase/firestore';
+
 export type ItemCategory = 'attack' | 'defense' | 'support' | 'none';
 export type AttributeType = 'attack' | 'defense' | 'xp' | 'coins' | 'vitality' | 'fortitude' | 'persuasion' | 'none';
 
@@ -16,67 +19,114 @@ export function rollValue(weights: { value: number, weight: number }[]): number 
   return weights[0].value;
 }
 
-const XP_WEIGHTS = [
-  { value: 1, weight: 80 },
-  { value: 2, weight: 15 },
-  { value: 3, weight: 3 },
-  { value: 4, weight: 1.5 },
-  { value: 5, weight: 0.5 },
-];
+export interface GachaConfig {
+  chances: {
+    xp: number;
+    persuasion: number;
+    coins: number;
+    vitality: number;
+    fortitude: number;
+  };
+  weights: {
+    xp: { value: number; weight: number }[];
+    coins: { value: number; weight: number }[];
+    vitality: { value: number; weight: number }[];
+    fortitude: { value: number; weight: number }[];
+    persuasion: { value: number; weight: number }[];
+  };
+}
 
-const COINS_WEIGHTS = [
-  { value: 2, weight: 50 },
-  { value: 4, weight: 30 },
-  { value: 6, weight: 12 },
-  { value: 8, weight: 6 },
-  { value: 10, weight: 2 },
-];
+export const DEFAULT_GACHA_CONFIG: GachaConfig = {
+  chances: {
+    xp: 0.0025,
+    persuasion: 0.02,
+    coins: 0.05,
+    vitality: 0.08,
+    fortitude: 0.08
+  },
+  weights: {
+    xp: [
+      { value: 1, weight: 80 },
+      { value: 2, weight: 15 },
+      { value: 3, weight: 3 },
+      { value: 4, weight: 1.5 },
+      { value: 5, weight: 0.5 },
+    ],
+    coins: [
+      { value: 2, weight: 50 },
+      { value: 4, weight: 30 },
+      { value: 6, weight: 12 },
+      { value: 8, weight: 6 },
+      { value: 10, weight: 2 },
+    ],
+    vitality: [
+      { value: 5, weight: 60 },
+      { value: 8, weight: 25 },
+      { value: 10, weight: 10 },
+      { value: 12, weight: 4 },
+      { value: 15, weight: 1 },
+    ],
+    fortitude: [
+      { value: 5, weight: 60 },
+      { value: 8, weight: 25 },
+      { value: 10, weight: 10 },
+      { value: 12, weight: 4 },
+      { value: 15, weight: 1 },
+    ],
+    persuasion: [
+      { value: 1, weight: 60 },
+      { value: 2, weight: 25 },
+      { value: 3, weight: 10 },
+      { value: 4, weight: 4 },
+      { value: 5, weight: 1 },
+    ]
+  }
+};
 
-const VITALITY_FORTITUDE_WEIGHTS = [
-  { value: 5, weight: 60 },
-  { value: 8, weight: 25 },
-  { value: 10, weight: 10 },
-  { value: 12, weight: 4 },
-  { value: 15, weight: 1 },
-];
+export async function fetchGlobalGachaConfig(): Promise<GachaConfig> {
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'gacha'));
+    if (snap.exists()) {
+      return snap.data() as GachaConfig;
+    }
+  } catch (err) {
+    console.error("Error fetching global gacha config:", err);
+  }
+  return DEFAULT_GACHA_CONFIG;
+}
 
-const PERSUASION_WEIGHTS = [
-  { value: 1, weight: 60 },
-  { value: 2, weight: 25 },
-  { value: 3, weight: 10 },
-  { value: 4, weight: 4 },
-  { value: 5, weight: 1 },
-];
+export function rollItemAdds(config?: GachaConfig, fixedAttributes?: ItemAdd[], globalConfig?: GachaConfig): ItemAdd[] {
+  if (fixedAttributes && fixedAttributes.length > 0) {
+    return [...fixedAttributes].slice(0, 4);
+  }
 
-export function rollItemAdds(): ItemAdd[] {
+  const cfg = config || globalConfig || DEFAULT_GACHA_CONFIG;
   const adds: ItemAdd[] = [];
   
-  // XP Roll (0.25% chance)
-  if (Math.random() < 0.0025) adds.push({ type: 'xp', value: rollValue(XP_WEIGHTS) });
-  
-  // Persuasion Roll (2% chance)
-  if (adds.length < 2 && Math.random() < 0.02) adds.push({ type: 'persuasion', value: rollValue(PERSUASION_WEIGHTS) });
-  
-  // Coins Roll (5% chance)
-  if (adds.length < 2 && Math.random() < 0.05) adds.push({ type: 'coins', value: rollValue(COINS_WEIGHTS) });
-  
-  // Vitality Roll (8% chance)
-  if (adds.length < 2 && Math.random() < 0.08) adds.push({ type: 'vitality', value: rollValue(VITALITY_FORTITUDE_WEIGHTS) });
-  
-  // Fortitude Roll (8% chance)
-  if (adds.length < 2 && Math.random() < 0.08) adds.push({ type: 'fortitude', value: rollValue(VITALITY_FORTITUDE_WEIGHTS) });
+  if (Math.random() < cfg.chances.xp) adds.push({ type: 'xp', value: rollValue(cfg.weights.xp) });
+  if (adds.length < 2 && Math.random() < cfg.chances.persuasion) adds.push({ type: 'persuasion', value: rollValue(cfg.weights.persuasion) });
+  if (adds.length < 2 && Math.random() < cfg.chances.coins) adds.push({ type: 'coins', value: rollValue(cfg.weights.coins) });
+  if (adds.length < 2 && Math.random() < cfg.chances.vitality) adds.push({ type: 'vitality', value: rollValue(cfg.weights.vitality) });
+  if (adds.length < 2 && Math.random() < cfg.chances.fortitude) adds.push({ type: 'fortitude', value: rollValue(cfg.weights.fortitude) });
   
   return adds;
 }
 
-export function rollExactAttributes(count: number): ItemAdd[] {
+export function rollExactAttributes(count: number, existingTypes: AttributeType[] = [], config?: GachaConfig, fixedAttributes?: ItemAdd[], globalConfig?: GachaConfig): ItemAdd[] {
+  if (fixedAttributes && fixedAttributes.length > 0) {
+    return [...fixedAttributes].slice(0, 4);
+  }
+
   let adds: ItemAdd[] = [];
   let safety = 0;
+  const excludedTypes = new Set<AttributeType>(existingTypes);
+
   while (adds.length < count && safety < 1000) {
-    const rolled = rollItemAdds();
+    const rolled = rollItemAdds(config, undefined, globalConfig);
     for (const r of rolled) {
-      if (adds.length < count) {
+      if (adds.length < count && !excludedTypes.has(r.type)) {
         adds.push(r);
+        excludedTypes.add(r.type);
       }
     }
     safety++;
@@ -94,3 +144,36 @@ export const ATTRIBUTE_LABELS: Record<AttributeType, { label: string, icon: stri
   persuasion: { label: 'Persuasão', icon: '🗣️', color: '#10B981' },
   none: { label: 'Nenhum', icon: '', color: '#9CA3AF' }
 };
+
+export function calculateTotalStats(equippedItems: any[]) {
+  const stats = {
+    attack: 0,
+    defense: 0,
+    xp: 0,
+    coins: 0,
+    vitality: 0,
+    fortitude: 0,
+    persuasion: 0
+  };
+
+  equippedItems.forEach(item => {
+    // Base Attributes
+    if (item.baseAttributeType === 'attack') stats.attack += (item.baseAttributeValue || 0);
+    if (item.baseAttributeType === 'defense') stats.defense += (item.baseAttributeValue || 0);
+
+    // Extra Adds
+    if (item.adds && Array.isArray(item.adds)) {
+      item.adds.forEach((add: ItemAdd) => {
+        if (add.type === 'attack') stats.attack += add.value;
+        if (add.type === 'defense') stats.defense += add.value;
+        if (add.type === 'xp') stats.xp += add.value;
+        if (add.type === 'coins') stats.coins += add.value;
+        if (add.type === 'vitality') stats.vitality += add.value;
+        if (add.type === 'fortitude') stats.fortitude += add.value;
+        if (add.type === 'persuasion') stats.persuasion += add.value;
+      });
+    }
+  });
+
+  return stats;
+}
