@@ -51,7 +51,7 @@ self.addEventListener('fetch', (event) => {
 
   // Só cacheia GET de imagens (não API calls do Firestore ou Firebase Storage List API)
   if (event.request.method !== 'GET') return;
-  
+
   // GARANTIA CRÍTICA: Só cachear se for um download de arquivo de mídia (alt=media).
   // A API listAll() e requisições de metadados NÃO têm alt=media e NUNCA devem ser cacheadas
   // pois senão o banco de imagens ficaria congelado no tempo!
