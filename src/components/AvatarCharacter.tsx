@@ -162,6 +162,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         } else if (safeUrl.startsWith('/') && !safeUrl.startsWith('/models/')) {
           safeUrl = `/models${safeUrl}`;
         }
+        if (safeUrl.startsWith('/')) {
+          safeUrl = import.meta.env.BASE_URL + safeUrl.substring(1);
+        }
         console.log(`Carregando modelo 3D para o item ${item.itemTitle}:`, safeUrl);
         
         loader.load(

@@ -67,6 +67,9 @@ async function processQueue() {
           } else if (safeUrl.startsWith('/') && !safeUrl.startsWith('/models/')) {
             safeUrl = `/models${safeUrl}`;
           }
+          if (safeUrl.startsWith('/')) {
+            safeUrl = import.meta.env.BASE_URL + safeUrl.substring(1);
+          }
           loader.load(safeUrl, (gltf) => {
             const model = gltf.scene;
             model.userData.isItem = true;

@@ -12,7 +12,10 @@ interface CustomModelViewerProps {
 }
 
 function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster' }) {
-  const { scene: originalScene, animations } = useGLTF(modelUrl);
+  const safeModelUrl = modelUrl.startsWith('/') && !modelUrl.startsWith('http') 
+    ? import.meta.env.BASE_URL + modelUrl.substring(1) 
+    : modelUrl;
+  const { scene: originalScene, animations } = useGLTF(safeModelUrl);
   
   // Clone to avoid mutating the cached GLTF if multiple are rendered
   const scene = useMemo(() => originalScene.clone(), [originalScene]);
