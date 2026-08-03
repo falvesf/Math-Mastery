@@ -83,6 +83,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [filterType, setFilterType] = useState<string>(localStorage.getItem('store_filterType') || 'all');
   const [filterRarity, setFilterRarity] = useState<string>(localStorage.getItem('store_filterRarity') || 'all');
   const [sortBy, setSortBy] = useState<string>(localStorage.getItem('store_sortBy') || 'name-asc');
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('store_viewMode', viewMode);
@@ -552,9 +553,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const processedMarketItems = getProcessedMarketItems();
 
   const getGridStyle = () => {
-    if (viewMode === 'grid-small') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' };
-    if (viewMode === 'list') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1rem' };
-    return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.5rem' };
+    if (viewMode === 'grid-small') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem' };
+    if (viewMode === 'list') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' };
+    return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1.5rem' };
   };
 
   return (
@@ -610,7 +611,10 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         </div>
 
         {/* Barra de Filtros */}
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <button className="retractable-toggle-btn" onClick={() => setIsFiltersOpen(!isFiltersOpen)}>
+          {isFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+        </button>
+        <div className={`compact-filters retractable-content ${isFiltersOpen ? 'open' : ''}`} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.75rem' }}>
             <Search size={18} color="var(--text-secondary)" />
             <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.75rem', background: 'transparent', border: 'none', color: 'white', outline: 'none' }} />
@@ -647,7 +651,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
       {activeTab === 'official' && (
         <>
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+          <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
             <button 
               onClick={() => setOfficialCategoryTab('all')}
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'all' ? 'black' : 'white', fontWeight: 'bold' }}

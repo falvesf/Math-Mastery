@@ -151,6 +151,7 @@ export default function AdminDashboard() {
 
   // Sidebar Mobile State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isUserFiltersOpen, setIsUserFiltersOpen] = useState(false);
   const [questMonsterName, setQuestMonsterName] = useState('');
   const [questMonsterConfig, setQuestMonsterConfig] = useState<AvatarConfig | null>(null);
   const [questMonsterModelUrl, setQuestMonsterModelUrl] = useState('');
@@ -913,9 +914,9 @@ export default function AdminDashboard() {
         {activeTab === 'users' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div className="compact-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Gerenciamento de Usuários</h2>
+                  <h2>Gerenciamento de Usuários</h2>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Controle de alunos, turmas e equipe escolar.</p>
                 </div>
                 
@@ -940,7 +941,10 @@ export default function AdminDashboard() {
               </div>
 
               {/* Filtros e Busca */}
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexDirection: 'column' }}>
+              <button className="retractable-toggle-btn" onClick={() => setIsUserFiltersOpen(!isUserFiltersOpen)}>
+                {isUserFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros e Turmas'}
+              </button>
+              <div className={`compact-filters retractable-content ${isUserFiltersOpen ? 'open' : ''}`} style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                   <div style={{ position: 'relative', flex: '1 1 300px' }}>
                     <Search size={20} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
@@ -971,7 +975,7 @@ export default function AdminDashboard() {
                   </select>
                 </div>
                 
-                <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
                   <button 
                     onClick={() => setSelectedClassTab('all')}
                     style={{ padding: '0.5rem 1.5rem', borderRadius: '20px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'all' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'all' ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold' }}
@@ -1800,7 +1804,7 @@ export default function AdminDashboard() {
       {/* Modal de Gerenciar XP e Histórico */}
       {selectedStudent && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="glass-panel" style={{ width: '800px', maxWidth: '95vw', padding: '2rem', animation: 'slideUp 0.3s ease-out', display: 'flex', gap: '2rem' }}>
+          <div className="glass-panel xp-modal-content" style={{ width: '800px', maxWidth: '95vw', padding: '2rem', animation: 'slideUp 0.3s ease-out', display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
             
             {/* Lado Esquerdo: Formulário */}
             <div style={{ flex: 1 }}>

@@ -741,7 +741,7 @@ export default function Dashboard() {
         />
       )}
 
-      <nav className="navbar glass-panel">
+      <nav className="navbar glass-panel compact-nav">
         <div className="logo-container">
           <Trophy className="logo-icon" color="var(--gold-primary)" size={32} />
           <h1 className="title-glow">Painel do Aluno</h1>
@@ -776,7 +776,7 @@ export default function Dashboard() {
       </nav>
 
       {/* Navegação de Abas do Aluno */}
-      <div style={{ display: 'flex', gap: '1rem', padding: '1rem', flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 100, background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '2rem', margin: '0 -2rem 2rem -2rem' }}>
+      <div className="scrollable-menu-container" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.05)', margin: '0 -2rem 2rem -2rem', padding: '1rem 2rem' }}>
         <button 
           onClick={() => setActiveTab('quests')}
           style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'quests' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
@@ -813,10 +813,10 @@ export default function Dashboard() {
         
         {activeTab === 'quests' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+            <div className="compact-header" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <Swords size={32} color="var(--gold-primary)" />
               <div>
-                <h2 style={{ fontSize: '2rem', margin: 0 }}>Central de Missões</h2>
+                <h2>Central de Missões</h2>
                 <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Enfrente os desafios do seu professor para ganhar XP e subir de patente.</p>
               </div>
             </div>

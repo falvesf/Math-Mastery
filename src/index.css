@@ -581,6 +581,98 @@ h3 {
     height: 100px; /* Reduce the invisible bounding box vertical space */
     margin: 0 auto 1rem auto;
   }
+}
+
+/* Phase 2: Compact UI & Responsiveness */
+.compact-nav {
+  padding: 0.5rem 1.5rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.scrollable-menu-container {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  /* Hide scrollbar for a cleaner touch look */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollable-menu-container::-webkit-scrollbar {
+  display: none;
+}
+.scrollable-menu-container > button {
+  white-space: nowrap;
+  flex: 0 0 auto; /* Prevent buttons from shrinking */
+}
+
+/* Compact Filters & Headers */
+.compact-header {
+  margin-bottom: 0.5rem !important;
+}
+.compact-header h2 {
+  font-size: 1.5rem !important;
+  margin: 0 !important;
+}
+
+.compact-filters {
+  padding: 1rem !important;
+  margin-bottom: 1rem !important;
+}
+.compact-filters select, .compact-filters input {
+  padding: 0.5rem !important;
+}
+
+.compact-tab-row {
+  margin-bottom: 0 !important;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+/* Modal Height Limit */
+.xp-modal-content {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* Retractable Filters on Mobile */
+.retractable-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.retractable-toggle-btn {
+  display: none;
+  width: 100%;
+  background: rgba(255,255,255,0.1);
+  color: white;
+  border: 1px solid var(--border-glass);
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .retractable-content {
+    display: none;
+  }
+  .retractable-content.open {
+    display: flex;
+  }
+  .retractable-toggle-btn {
+    display: block;
+  }
+  
+  /* Make navbar text one line on mobile */
+  .title-glow {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
 
   .quest-victory-panel {
     padding: 2rem;

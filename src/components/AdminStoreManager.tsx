@@ -56,6 +56,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [loading, setLoading] = useState(true);
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [globalGachaConfig, setGlobalGachaConfig] = useState<GachaConfig | null>(null);
+  const [isEconomyOpen, setIsEconomyOpen] = useState(false);
   
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -216,7 +217,10 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             </div>
           </div>
           
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+          <button className="retractable-toggle-btn" onClick={() => setIsEconomyOpen(!isEconomyOpen)}>
+            {isEconomyOpen ? 'Ocultar Configuração' : 'Alterar Economia'}
+          </button>
+          <div className={`retractable-content ${isEconomyOpen ? 'open' : ''}`} style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
             <div 
               onClick={() => handleSaveEconomy('coins')}
               style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', border: economyType === 'coins' ? '2px solid var(--gold-primary)' : '1px solid var(--border-glass)', background: economyType === 'coins' ? 'rgba(251, 191, 36, 0.1)' : 'rgba(0,0,0,0.2)' }}
