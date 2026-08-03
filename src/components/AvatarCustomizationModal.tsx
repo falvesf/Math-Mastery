@@ -218,6 +218,31 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     }
   }, [config.customSkinUrl, config.customModelUrl, presetSkins, models3d, setConfig]);
 
+  useEffect(() => {
+    if (debugItemId && debugMode) {
+      const item = equippedItems.find(i => (i.itemId || i.docId) === debugItemId);
+      if (!item) return;
+      
+      const isLeftHanded = config.handedness === 'left';
+      const isBattle = config.animationState === 'attack';
+      
+      let loadedTransform = null;
+      if (isLeftHanded) {
+         if (isBattle && item.modelTransforms?.battle_left) loadedTransform = item.modelTransforms.battle_left;
+         else if (isBattle && item.modelTransforms?.battle) loadedTransform = item.modelTransforms.battle;
+         else if (item.modelTransforms?.common_left) loadedTransform = item.modelTransforms.common_left;
+         else loadedTransform = item.modelTransforms?.common;
+      } else {
+         if (isBattle && item.modelTransforms?.battle) loadedTransform = item.modelTransforms.battle;
+         else loadedTransform = item.modelTransforms?.common;
+      }
+      
+      if (loadedTransform) {
+        setDebugTransform(loadedTransform);
+      }
+    }
+  }, [config.handedness, config.animationState, debugItemId, debugMode, equippedItems]);
+
   const handleRandomize = () => {
     const randomItem = (arr: any[]) => arr[Math.floor(Math.random() * arr.length)];
     
@@ -364,7 +389,31 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                 <p style={{ margin: 0, color: '#f59e0b', fontWeight: 'bold' }}>🔧 Debug Transform</p>
                 <select 
                   value={debugItemId || ''} 
-                  onChange={(e) => setDebugItemId(e.target.value)}
+                  onChange={(e) => {
+                    const newId = e.target.value;
+                    setDebugItemId(newId);
+                    if (newId) {
+                      const item = equippedItems.find(i => (i.itemId || i.docId) === newId);
+                      const isLeftHanded = config.handedness === 'left';
+                      const isBattle = config.animationState === 'attack';
+                      const loadKey = isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common');
+                      
+                      let loadedTransform = item?.modelTransforms?.[loadKey];
+                      if (!loadedTransform && isLeftHanded) {
+                        loadedTransform = item?.modelTransforms?.[isBattle ? 'battle' : 'common'];
+                      }
+                      
+                      if (loadedTransform) {
+                        setDebugTransform(loadedTransform);
+                      } else {
+                        setDebugTransform({
+                          posX: 0, posY: -11, posZ: 0,
+                          rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
+                          slide: -18
+                        });
+                      }
+                    }
+                  }}
                   style={{ background: 'rgba(0,0,0,0.5)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', padding: '0.25rem', maxWidth: '200px' }}
                 >
                   <option value="">Selecione um item...</option>
@@ -420,7 +469,8 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                     }
                     try {
                       const isBattle = config.animationState === 'attack';
-                      const transformKey = isBattle ? 'battle' : 'common';
+                      const isLeftHanded = config.handedness === 'left';
+                      const transformKey = isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common');
                       
                       // 1. Save to store_items
                       const itemRef = doc(db, 'store_items', targetItem.itemId);
@@ -450,6 +500,8 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                       showAlert('Erro ao salvar no banco de dados.');
                     }
                   }}
+                    
+
                   style={{ flex: 1, padding: '0.5rem', background: '#f59e0b', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
                 >
                   💾 Salvar no BD

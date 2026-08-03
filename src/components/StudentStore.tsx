@@ -39,15 +39,14 @@ const getAttributeName = (type: string) => {
     default: return type;
   }
 };
-
-const getRarityColor = (rarity?: string) => {
+const getRarityLabel = (rarity?: string) => {
   switch (rarity) {
-    case 'legendary': return 'var(--gold-primary)'; // Or 'orange'
-    case 'epic': return '#A855F7'; // Roxo
-    case 'rare': return '#3B82F6'; // Azul
-    case 'uncommon': return '#22C55E'; // Verde
+    case 'legendary': return 'Lendário';
+    case 'epic': return 'Épico';
+    case 'rare': return 'Raro';
+    case 'uncommon': return 'Incomum';
     case 'common':
-    default: return 'var(--text-primary)'; // Branca/transparente
+    default: return 'Comum';
   }
 };
 
@@ -57,6 +56,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [items, setItems] = useState<StoreItem[]>([]);
   const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
   const [myInventoryCount, setMyInventoryCount] = useState(0);
+  const [myConsumableQuantities, setMyConsumableQuantities] = useState<Record<string, number>>({});
   const [totalEquippedStats, setTotalEquippedStats] = useState(calculateTotalStats([]));
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [loading, setLoading] = useState(true);
@@ -110,7 +110,47 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       if (data.active) loaded.push({ ...data, id: d.id });
     });
     setItems(loaded);
-    
+
+    // Carregar inventário do aluno
+    if (userData.uid) {
+      const myItemsQ = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
+      const myItemsSnap = await getDocs(myItemsQ);
+      let count = 0;
+      const wrapIds: string[] = [];
+      const consumableQuantities: Record<string, number> = {};
+      const equippedItemsForStats: any[] = [];
+
+      myItemsSnap.forEach(doc => {
+        const d = doc.data();
+        if (!d.forSale && d.studentId !== 'dropped') {
+          if (d.equipped) {
+            equippedItemsForStats.push(d);
+          }
+          if (d.itemType === 'consumable') {
+            const key = d.itemId;
+            if (!d.equipped) {
+              consumableQuantities[key] = (consumableQuantities[key] || 0) + (d.quantity || 1);
+            }
+          } else {
+            if (!d.equipped) count++;
+          }
+
+          if (d.gameEffect === 'gift_wrap') {
+            wrapIds.push(doc.id);
+          }
+        }
+      });
+      
+      Object.values(consumableQuantities).forEach((qty) => {
+         count += Math.ceil(qty / 99);
+      });
+      
+      setMyConsumableQuantities(consumableQuantities);
+      setMyInventoryCount(count);
+      setGiftWrapItemIds(wrapIds);
+      setTotalEquippedStats(calculateTotalStats(equippedItemsForStats));
+    }
+
     // Buscar lista de alunos para presente
     const userQ = query(collection(db, 'users'), where('role', '==', 'student'));
     const userSnap = await getDocs(userQ);
@@ -125,44 +165,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     const loadedMarket: MarketItem[] = [];
     marketSnap.forEach(d => {
       const data = d.data() as MarketItem;
-      loadedMarket.push({ ...data, id: d.id });
+      const originalStoreItem = loaded.find(si => si.id === data.itemId);
+      const patchedRarity = data.rarity || originalStoreItem?.rarity || 'common';
+      loadedMarket.push({ ...data, id: d.id, rarity: patchedRarity });
     });
     setMarketItems(loadedMarket);
-
-    // Buscar quantidade de itens do usuário para calcular capacidade da mochila
-    if (userData.uid) {
-      const myItemsQ = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
-      const myItemsSnap = await getDocs(myItemsQ);
-      let count = 0;
-      const wrapIds: string[] = [];
-      const groupedConsumables = new Set<string>();
-      const equippedItemsForStats: any[] = [];
-
-      myItemsSnap.forEach(doc => {
-        const d = doc.data();
-        if (!d.forSale && d.studentId !== 'dropped') {
-          if (d.equipped) {
-            equippedItemsForStats.push(d);
-          }
-          if (d.itemType === 'consumable') {
-            const key = `${d.itemId}-${d.giftedBy || 'self'}`;
-            if (!groupedConsumables.has(key)) {
-              groupedConsumables.add(key);
-              if (!d.equipped) count++;
-            }
-          } else {
-            if (!d.equipped) count++;
-          }
-
-          if (d.gameEffect === 'gift_wrap') {
-            wrapIds.push(doc.id);
-          }
-        }
-      });
-      setMyInventoryCount(count);
-      setGiftWrapItemIds(wrapIds);
-      setTotalEquippedStats(calculateTotalStats(equippedItemsForStats));
-    }
 
     setLoading(false);
   };
@@ -178,8 +185,44 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
     const isStaff = userData.role !== 'student';
     const method = paymentMethod || economyType;
-    const quantityToBuy = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
+    let quantityToBuy = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
+    let wasCapped = false;
     
+    if (!isStaff) {
+      const currentRank = getRankForXp(userData.xp || 0);
+      const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
+      if (currentRankIndex < item.minRankRequired) {
+        showToast(`Sua patente é muito baixa! Você precisa ser no mínimo ${RANKS[item.minRankRequired].name} para comprar este item.`, 'error');
+        return;
+      }
+
+      if (!isGift) {
+        const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+        const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
+        const availableSlots = Math.max(0, maxInventorySpace - myInventoryCount);
+
+        let maxQuantityAllowed = 0;
+        if (item.type === 'equippable') {
+          maxQuantityAllowed = availableSlots > 0 ? 1 : 0;
+        } else {
+          const currentQuantity = myConsumableQuantities[item.id] || 0;
+          const capacityInLastSlot = currentQuantity === 0 ? 0 : (currentQuantity % 99 === 0 ? 0 : 99 - (currentQuantity % 99));
+          const capacityFromNewSlots = availableSlots * 99;
+          maxQuantityAllowed = capacityInLastSlot + capacityFromNewSlots;
+        }
+
+        if (maxQuantityAllowed === 0) {
+          showToast("Sua mochila ficará cheia! Jogue fora ou venda alguns itens antes de comprar.", 'error');
+          return;
+        }
+
+        if (quantityToBuy > maxQuantityAllowed) {
+          quantityToBuy = maxQuantityAllowed;
+          wasCapped = true;
+        }
+      }
+    }
+
     // Apply Persuasion discount (max 50%)
     const discountMultiplier = Math.max(0.5, 1 - (totalEquippedStats.persuasion / 100));
     
@@ -189,26 +232,6 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     
     if (!isStaff && balanceToCheck < finalCost) {
       showToast(`Você não tem ${method === 'xp' ? 'XP' : 'Moedas'} suficiente para comprar ${quantityToBuy}x.`, 'error');
-      return;
-    }
-
-    if (!isStaff) {
-      const currentRank = getRankForXp(userData.xp || 0);
-      const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-      if (currentRankIndex < item.minRankRequired) {
-        showToast(`Sua patente é muito baixa! Você precisa ser no mínimo ${RANKS[item.minRankRequired].name} para comprar este item.`, 'error');
-        return;
-      }
-    }
-
-    const currentRank = getRankForXp(userData.xp || 0);
-    const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-    
-    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
-    const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
-
-    if (!isStaff && !isGift && myInventoryCount + (item.type === 'equippable' ? quantityToBuy : (myInventoryCount === 0 && item.type === 'consumable' ? 1 : 0)) > maxInventorySpace) {
-      showToast("Sua mochila ficará cheia! Jogue fora ou venda alguns itens antes de comprar.", 'error');
       return;
     }
 
@@ -255,31 +278,40 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         finalAdds = rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined);
       }
       
-      await addDoc(collection(db, 'user_items'), {
-        studentId: recipientId,
-        itemId: item.id,
-        itemTitle: item.title,
-        itemDescription: item.description || '',
-        itemType: item.type,
-        itemImageUrl: item.imageUrl || '',
-        gameEffect: item.gameEffect || 'none',
-        usableInQuest: item.usableInQuest || false,
-        quantity: quantityToBuy,
-        equipped: false,
-        purchasedAt: serverTimestamp(),
-        giftedBy: isGift ? userData.name : null,
-        avatarPart: item.avatarPart || null,
-        itemCategory: item.itemCategory || 'none',
-        baseAttributeType: item.baseAttributeType || 'none',
-        baseAttributeValue: item.baseAttributeValue || 0,
-        gameModelUrl: item.gameModelUrl || '',
-        modelTransforms: item.modelTransforms || null,
-        adds: finalAdds,
-        minSalePrice: item.minSalePrice || 0, // Propaga o preço mínimo de revenda definido pelo admin
-        rarity: item.rarity || 'common'
-      });
+      let remainingToBuy = quantityToBuy;
+      while (remainingToBuy > 0) {
+        const qty = Math.min(remainingToBuy, 99);
+        await addDoc(collection(db, 'user_items'), {
+          studentId: recipientId,
+          itemId: item.id,
+          itemTitle: item.title,
+          itemDescription: item.description || '',
+          itemType: item.type,
+          itemImageUrl: item.imageUrl || '',
+          gameEffect: item.gameEffect || 'none',
+          usableInQuest: item.usableInQuest || false,
+          quantity: qty,
+          equipped: false,
+          purchasedAt: serverTimestamp(),
+          giftedBy: isGift ? userData.name : null,
+          avatarPart: item.avatarPart || null,
+          itemCategory: item.itemCategory || 'none',
+          baseAttributeType: item.baseAttributeType || 'none',
+          baseAttributeValue: item.baseAttributeValue || 0,
+          gameModelUrl: item.gameModelUrl || '',
+          modelTransforms: item.modelTransforms || null,
+          adds: finalAdds,
+          minSalePrice: item.minSalePrice || 0,
+          rarity: item.rarity || 'common'
+        });
+        remainingToBuy -= qty;
+      }
 
-      showToast(isGift ? "Presente enviado com sucesso!" : `Compra realizada: ${quantityToBuy}x ${item.title}!`, 'success');
+      if (wasCapped) {
+        showToast(`Espaço insuficiente na mochila! A compra foi ajustada para ${quantityToBuy}x ${item.title}.`, 'success');
+      } else {
+        showToast(isGift ? "Presente enviado com sucesso!" : `Compra realizada: ${quantityToBuy}x ${item.title}!`, 'success');
+      }
       
       setGiftingItemId(null);
       setSelectedGiftRecipient('');
@@ -617,10 +649,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           const isGiftingThis = giftingItemId === item.id;
 
           const isList = viewMode === 'list';
-          const rarityColor = getRarityColor(item.rarity);
 
           return (
-            <div key={item.id} className="glass-panel" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column', border: `1px solid ${rarityColor}` }}>
+            <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
               <div style={{ height: isList ? '100%' : (viewMode === 'grid-small' ? '100px' : '150px'), width: isList ? '120px' : '100%', position: 'relative', background: 'var(--bg-dark)', flexShrink: 0 }}>
                 {item.imageUrl ? (
                   <img src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -629,6 +660,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     <Store size={isList || viewMode === 'grid-small' ? 32 : 48} color="var(--text-secondary)" />
                   </div>
                 )}
+                <div className={`rarity-badge ${item.rarity || 'common'}`}>
+                  {getRarityLabel(item.rarity)}
+                </div>
                 {!isList && (
                   <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
                      {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
@@ -637,7 +671,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               </div>
               <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0, color: rarityColor }}>{item.title}</h3>
+                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0 }}>{item.title}</h3>
                   {isList && (
                     <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
                        {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
@@ -663,9 +697,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                             <input 
                               type="number" 
                               min="1" 
-                              max="99" 
+                              max="999" 
                               value={quantities[item.id] || 1} 
-                              onChange={(e) => setQuantities({...quantities, [item.id]: Math.max(1, Math.min(99, parseInt(e.target.value) || 1))})}
+                              onChange={(e) => setQuantities({...quantities, [item.id]: Math.max(1, Math.min(999, parseInt(e.target.value) || 1))})}
                               style={{ width: '60px', padding: '0.4rem', borderRadius: '8px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)' }}
                             />
                           </div>
@@ -845,10 +879,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           const isStaff = userData.role !== 'student';
           const canAfford = isStaff || currentBalance >= (item.price || 0);
           const isList = viewMode === 'list';
-          const rarityColor = getRarityColor(item.rarity);
           
           return (
-            <div key={item.id} className="glass-panel" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column', border: `1px solid ${rarityColor}` }}>
+            <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
               <div style={{ height: isList ? '100%' : (viewMode === 'grid-small' ? '100px' : '150px'), width: isList ? '120px' : '100%', position: 'relative', background: 'var(--bg-dark)', flexShrink: 0 }}>
                 {item.itemImageUrl ? (
                   <img src={item.itemImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -857,6 +890,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     <Store size={isList || viewMode === 'grid-small' ? 32 : 48} color="var(--text-secondary)" />
                   </div>
                 )}
+                <div className={`rarity-badge ${item.rarity || 'common'}`}>
+                  {getRarityLabel(item.rarity)}
+                </div>
                 {!isList && (
                   <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
                     {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}
@@ -865,7 +901,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               </div>
               <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0, color: rarityColor }}>{item.itemTitle}</h3>
+                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0 }}>{item.itemTitle}</h3>
                   {isList && (
                     <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
                       {item.price || 0} {economyType === 'xp' ? 'XP' : 'M'}

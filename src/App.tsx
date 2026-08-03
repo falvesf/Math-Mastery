@@ -81,7 +81,6 @@ function AppRoutes() {
     </Routes>
   );
 }
-
 function App() {
   return (
     <AuthProvider>

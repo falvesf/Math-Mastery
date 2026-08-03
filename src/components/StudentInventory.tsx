@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, getDoc, where, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
@@ -35,6 +35,18 @@ interface UserItem {
   rarity?: string;
 }
 
+const getRarityLabel = (rarity?: string) => {
+  switch (rarity) {
+    case 'legendary': return 'Lendário';
+    case 'epic': return 'Épico';
+    case 'rare': return 'Raro';
+    case 'uncommon': return 'Incomum';
+    case 'common':
+    default: return 'Comum';
+  }
+};
+
+
 export default function StudentInventory({ userData, onEquip, inventoryRefresh }: { userData: UserData, onEquip?: () => void, inventoryRefresh?: number }) {
   const { showAlert, showConfirm, showConfirmWithCheckbox, showToast } = useDialog();
   const [items, setItems] = useState<UserItem[]>([]);
@@ -57,6 +69,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   
   // Custom slot mapping
   const [slotMap, setSlotMap] = useState<Record<string, number>>((userData.inventoryPreferences as any)?.slotMap || {});
+  
+  const inventoryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!userData.uid) return;
@@ -92,62 +106,88 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       setEconomyType(econSnap.data().currencyType || 'coins');
     }
 
+    const storeQ = query(collection(db, 'store_items'));
+    const storeSnap = await getDocs(storeQ);
+    const storeRarities = new Map<string, string>();
+    storeSnap.forEach(d => {
+      storeRarities.set(d.id, d.data().rarity || 'common');
+    });
+
     const q = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
     const snap = await getDocs(q);
     const loaded: UserItem[] = [];
     snap.forEach(d => {
-      loaded.push({ id: d.id, ...d.data() } as UserItem);
+      const data = d.data();
+      loaded.push({ id: d.id, ...data, rarity: data.rarity || storeRarities.get(data.itemId) || 'common' } as UserItem);
     });
 
-    const consumableGroups = new Map<string, { baseItem: UserItem, totalQuantity: number }>();
     const finalItems: UserItem[] = [];
 
-    loaded.forEach(item => {
+    for (const item of loaded) {
       // Ocultar itens que foram dropados ou que estão à venda
-      if (item.forSale || item.studentId === 'dropped') return;
-
-      if (item.itemType === 'consumable') {
-        const key = item.itemId; // group by item type only, regardless of source
-        if (consumableGroups.has(key)) {
-          const existing = consumableGroups.get(key)!;
-          existing.totalQuantity += (item.quantity || 1);
-        } else {
-          consumableGroups.set(key, { baseItem: item, totalQuantity: item.quantity || 1 });
-        }
-      } else {
-        // Equipáveis não se agrupam
-        finalItems.push(item);
-      }
-    });
-
-    let virtualIdCounter = 0;
-    consumableGroups.forEach((group) => {
-      let remaining = group.totalQuantity;
+      if (item.forSale || item.studentId === 'dropped') continue;
       
-      while (remaining > 0) {
-        const chunkQuantity = Math.min(remaining, 99);
-        
-        finalItems.push({
-          ...group.baseItem,
-          id: `${group.baseItem.id}_${virtualIdCounter++}`,
-          count: chunkQuantity
-        });
-        
-        remaining -= chunkQuantity;
+      if (item.itemType === 'consumable') {
+        const qty = item.quantity || 1;
+        if (qty > 99) {
+          const excess = qty - 99;
+          item.count = 99;
+          
+          if (!(window as any)[`migrating_${item.id}`]) {
+            (window as any)[`migrating_${item.id}`] = true;
+            
+            const { id, docIds, count, rarity, ...itemDataToDuplicate } = item as any;
+            Promise.all([
+              updateDoc(doc(db, 'user_items', item.id), { quantity: 99 }),
+              addDoc(collection(db, 'user_items'), {
+                ...itemDataToDuplicate,
+                quantity: excess
+              })
+            ]).finally(() => {
+              setTimeout(() => { (window as any)[`migrating_${item.id}`] = false; }, 2000);
+            });
+          }
+        } else {
+          item.count = qty;
+        }
       }
-    });
+      
+      finalItems.push(item);
+    }
 
     setItems(finalItems);
     setLoading(false);
   };
 
-  const consumeItemQuantity = async (itemId: string, amount: number = 1) => {
+  const consumeItemQuantity = async (itemId: string, amount: number = 1, specificDocId?: string) => {
     if (!userData.uid) return;
+    let remainingToRemove = amount;
+
+    if (specificDocId) {
+      const specificDocRef = doc(db, 'user_items', specificDocId);
+      const specificDocSnap = await getDoc(specificDocRef);
+      if (specificDocSnap.exists()) {
+        const data = specificDocSnap.data() as UserItem;
+        if (data.itemType === 'consumable' && !data.forSale && data.studentId === userData.uid) {
+          const qty = data.quantity || 1;
+          if (qty <= remainingToRemove) {
+            await deleteDoc(specificDocRef);
+            remainingToRemove -= qty;
+          } else {
+            await updateDoc(specificDocRef, { quantity: qty - remainingToRemove });
+            remainingToRemove = 0;
+          }
+        }
+      }
+    }
+
+    if (remainingToRemove <= 0) return;
+
     const q = query(collection(db, 'user_items'), where('studentId', '==', userData.uid), where('itemId', '==', itemId));
     const snap = await getDocs(q);
-    let remainingToRemove = amount;
     
     for (const d of snap.docs) {
+      if (d.id === specificDocId) continue;
       if (remainingToRemove <= 0) break;
       const data = d.data() as UserItem;
       if (data.itemType !== 'consumable' || data.forSale) continue;
@@ -177,6 +217,14 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         for (const th of equippedTwoHanded) {
           const docId = th.docIds ? th.docIds[0] : th.id;
           await updateDoc(doc(db, 'user_items', docId), { equipped: false });
+        }
+        
+        // Não permitir duas armas de ataque ou dois escudos. Desequipa o item da mesma categoria
+        const sameCategoryEquipped = equippedHands.find(i => i.itemCategory === item.itemCategory);
+        if (sameCategoryEquipped) {
+          const docId = sameCategoryEquipped.docIds ? sameCategoryEquipped.docIds[0] : sameCategoryEquipped.id;
+          await updateDoc(doc(db, 'user_items', docId), { equipped: false });
+          equippedHands.splice(equippedHands.indexOf(sameCategoryEquipped), 1);
         }
         
         if (equippedHands.length >= 2) {
@@ -225,7 +273,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       });
       userData.hearts = maxHearts;
 
-      await consumeItemQuantity(item.itemId, 1);
+      await consumeItemQuantity(item.itemId, 1, item.id);
       fetchInventory();
       await showAlert("HP restaurado completamente!");
       return;
@@ -239,7 +287,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     const confirmed = await showConfirm(`Tem certeza que deseja consumir "${item.itemTitle}" agora? O professor precisará validar a ação na vida real.`);
     if (!confirmed) return;
     
-    await consumeItemQuantity(item.itemId, 1);
+    await consumeItemQuantity(item.itemId, 1, item.id);
     fetchInventory();
     await showAlert(`Você utilizou o item: ${item.itemTitle}! Avise seu professor para que ele valide o efeito.`);
   };
@@ -263,7 +311,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (!result || !result.confirmed) return;
     
     if (item.itemType === 'consumable') {
-      await consumeItemQuantity(item.itemId, 1);
+      await consumeItemQuantity(item.itemId, 1, item.id);
       if (!result.checked) {
         const { id, count, docIds, ...itemDataToDrop } = item;
         await addDoc(collection(db, 'user_items'), {
@@ -297,7 +345,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
 
-    await consumeItemQuantity(trashModalItem.itemId, trashQuantity);
+    await consumeItemQuantity(trashModalItem.itemId, trashQuantity, trashModalItem.id);
     
     if (!permanent) {
       const { id, count, docIds, ...itemDataToDrop } = trashModalItem;
@@ -329,7 +377,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return;
       }
 
-      await consumeItemQuantity(dragItem.itemId, 1);
+      await consumeItemQuantity(dragItem.itemId, 1, dragItem.id);
 
       const isSuccess = Math.random() < 0.70;
       if (!isSuccess) {
@@ -371,19 +419,29 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return;
       }
 
-      await consumeItemQuantity(dragItem.itemId, 1);
+      await consumeItemQuantity(dragItem.itemId, 1, dragItem.id);
 
       const storeItemSnap = await getDoc(doc(db, 'store_items', targetItem.itemId));
       const storeItemData = storeItemSnap.data();
       const globalGachaConfig = await fetchGlobalGachaConfig();
 
-      const newAdds = rollExactAttributes(
-        currentAddsCount, 
-        [], 
-        storeItemData?.gachaConfig, 
-        storeItemData?.fixedAttributes, 
-        (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined
-      );
+      const areAddsEqual = (addsA: ItemAdd[], addsB: ItemAdd[]) => {
+        if (addsA.length !== addsB.length) return false;
+        return addsA.every((a, i) => a.type === addsB[i].type && a.value === addsB[i].value);
+      };
+
+      let newAdds: ItemAdd[] = [];
+      let attempts = 0;
+      do {
+        newAdds = rollExactAttributes(
+          currentAddsCount, 
+          [], 
+          storeItemData?.gachaConfig, 
+          storeItemData?.fixedAttributes, 
+          (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined
+        );
+        attempts++;
+      } while (areAddsEqual(newAdds, targetItem.adds || []) && attempts < 10);
       
       const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
       await updateDoc(doc(db, 'user_items', targetDocId), { adds: newAdds });
@@ -413,7 +471,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return;
       }
       
-      await consumeItemQuantity(sellModalItem.itemId, sellQuantity);
+      await consumeItemQuantity(sellModalItem.itemId, sellQuantity, sellModalItem.id);
       
       const { id, count, docIds, ...itemDataToSell } = sellModalItem;
       await addDoc(collection(db, 'user_items'), {
@@ -479,9 +537,35 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const handleGridSwap = async (draggedItem: UserItem, targetIndex: number, targetItem: UserItem | null) => {
     if (draggedItem.id === targetItem?.id) return;
     
+    // Combinar pilhas de itens consumíveis iguais
+    if (targetItem && draggedItem.itemId === targetItem.itemId && draggedItem.itemType === 'consumable' && targetItem.itemType === 'consumable') {
+      const draggedQty = draggedItem.count || 1;
+      const targetQty = targetItem.count || 1;
+      
+      if (targetQty < 99) {
+        const spaceLeft = 99 - targetQty;
+        const transferAmount = Math.min(spaceLeft, draggedQty);
+        
+        const draggedRef = doc(db, 'user_items', draggedItem.id);
+        const targetRef = doc(db, 'user_items', targetItem.id);
+        
+        if (transferAmount === draggedQty) {
+          await deleteDoc(draggedRef);
+        } else {
+          await updateDoc(draggedRef, { quantity: draggedQty - transferAmount });
+        }
+        await updateDoc(targetRef, { quantity: targetQty + transferAmount });
+        
+        setDraggedItem(null);
+        fetchInventory();
+        return;
+      }
+    }
+
     // If dropping a scroll onto a valid item, use the scroll instead of swapping!
     if (targetItem && ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(draggedItem.gameEffect || '')) {
       handleItemDrop(draggedItem, targetItem);
+      setDraggedItem(null);
       return;
     }
 
@@ -498,6 +582,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     }
 
     setSlotMap(newMap);
+    setDraggedItem(null);
     await updateDoc(doc(db, 'users', userData.uid), { 'inventoryPreferences.slotMap': newMap });
   };
 
@@ -505,18 +590,13 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     return { width: '100%', minHeight: viewMode === 'list' ? '60px' : 'auto' };
   };
 
-  const getRarityStyle = (rarity: string) => {
-    switch (rarity) {
-      case 'uncommon': return { border: '2px solid #10b981', boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)' };
-      case 'rare': return { border: '3px solid #3b82f6', boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)' };
-      case 'epic': return { border: '4px solid #8b5cf6', boxShadow: '0 0 20px rgba(139, 92, 246, 0.5)' };
-      case 'legendary': return { border: '5px solid #f59e0b', boxShadow: '0 0 25px rgba(245, 158, 11, 0.6)' };
-      default: return { border: '2px solid rgba(255,255,255,0.1)', boxShadow: 'none' };
-    }
-  };
-
   return (
-    <div style={{ animation: 'fadeIn 0.3s ease-out', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 300px)' }}>
+    <div 
+      ref={inventoryRef}
+      style={{ animation: 'fadeIn 0.3s ease-out', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 300px)' }}
+      onDragOver={(e) => { e.preventDefault(); }}
+      onDrop={(e) => { e.preventDefault(); }}
+    >
       <style>{`
         .inventory-item-card {
           transition: transform 0.2s;
@@ -596,7 +676,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
               return (
                 <div key={item.id || index} 
-                  className="inventory-item-card"
+                  className={`inventory-item-card ${isFullyDragged ? '' : `rarity-${item.rarity || 'common'}`}`}
                   onMouseEnter={(e) => {
                     if (!isOverflow) {
                       setHoveredItem(item.id);
@@ -615,18 +695,27 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                       e.preventDefault();
                       return;
                     }
-                    const imgEl = e.currentTarget.querySelector('img');
-                    if (imgEl) {
-                      e.dataTransfer.setDragImage(imgEl, imgEl.width / 2, imgEl.height / 2);
+                    if (!isOverflow) {
+                      const imgEl = e.currentTarget.querySelector('img');
+                      if (imgEl) {
+                        e.dataTransfer.setDragImage(imgEl, imgEl.width / 2, imgEl.height / 2);
+                      }
+                      e.dataTransfer.setData('text/plain', item.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      setDraggedItem(item);
+                    } else {
+                      e.preventDefault();
                     }
-                    setTimeout(() => setDraggedItem(item), 0);
-                    e.dataTransfer.effectAllowed = "move";
                   }}
                   onDragEnd={(e) => {
-                    if (e.dataTransfer.dropEffect === 'none') {
-                      handleDropItemToTrash(item);
-                    }
                     setDraggedItem(null);
+                    if (inventoryRef.current) {
+                      const rect = inventoryRef.current.getBoundingClientRect();
+                      const isOutside = e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
+                      if (isOutside) {
+                        handleDropItemToTrash(item);
+                      }
+                    }
                   }}
                   onDragOver={(e) => {
                     if (!isOverflow && draggedItem && draggedItem.id !== item.id) {
@@ -648,20 +737,23 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   flexDirection: viewMode === 'list' ? 'row' : 'column', 
                   alignItems: viewMode === 'list' ? 'center' : 'stretch',
                   gap: viewMode === 'list' ? '1rem' : '0.25rem', 
-                  border: isFullyDragged ? '2px dashed rgba(255,255,255,0.1)' : getRarityStyle(item.rarity || 'common').border,
+                  border: isFullyDragged ? '2px dashed rgba(255,255,255,0.3)' : undefined,
                   position: 'relative',
                   zIndex: hoveredItem === item.id ? 100 : 1,
                   cursor: isOverflow ? 'not-allowed' : 'grab',
-                  boxShadow: isFullyDragged ? 'none' : getRarityStyle(item.rarity || 'common').boxShadow,
+                  boxShadow: isFullyDragged ? 'none' : undefined,
+                  opacity: isFullyDragged ? 0.5 : 1,
                   filter: isOverflow ? 'grayscale(100%)' : (isPartiallyDragged ? 'brightness(0.8)' : 'none')
                 }}>
-                    {!isFullyDragged && (
-                      <React.Fragment>
                     {isOverflow && (
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, background: 'rgba(0,0,0,0.5)', borderRadius: '10px' }}>
                         <Lock size={32} color="var(--accent-red)" />
                       </div>
                     )}
+                    
+                  <div className={`rarity-badge ${item.rarity || 'common'}`}>
+                    {getRarityLabel(item.rarity)}
+                  </div>
                     
                   <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', height: viewMode === 'grid-small' ? '36px' : '48px', width: viewMode === 'list' ? '48px' : 'auto', flexShrink: 0 }}>
                     {item.itemImageUrl ? (
@@ -747,8 +839,6 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                       <Trash2 size={viewMode === 'grid-small' ? 14 : 16} />
                     </button>
                   </div>
-                  </React.Fragment>
-                )}
               </div>
             );
             } else {

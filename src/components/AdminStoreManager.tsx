@@ -26,6 +26,7 @@ export interface StoreItem {
   minRankRequired: number; // Index of RANKS array
   active: boolean;
   gameModelUrl?: string; // URL para modelo 3D (ex: .glb)
+  gameImage2dUrl?: string; // Imagem em lona completa (ex: 512x512) para o paper doll 2D
   avatarPart?: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'two_handed' | 'accessory' | 'background' | 'pet';
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
@@ -37,6 +38,17 @@ export interface StoreItem {
   fixedAttributes?: ItemAdd[];
   useGlobalGacha?: boolean;
 }
+
+const getRarityLabel = (rarity?: string) => {
+  switch (rarity) {
+    case 'legendary': return 'Lendário';
+    case 'epic': return 'Épico';
+    case 'rare': return 'Raro';
+    case 'uncommon': return 'Incomum';
+    case 'common':
+    default: return 'Comum';
+  }
+};
 
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
   const { showAlert, showConfirm } = useDialog();
@@ -286,17 +298,22 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 const imgSize = layoutMode === 'small-icons' ? '80px' : layoutMode === 'large-icons' ? '140px' : '50px';
                 
                 return (
-                  <div key={item.id} style={{ display: 'flex', flexDirection: isGridIcon ? 'column' : 'row', alignItems: 'center', justifyContent: isGridIcon ? 'center' : 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)', textAlign: isGridIcon ? 'center' : 'left' }}>
-                    <div style={{ display: 'flex', flexDirection: isGridIcon ? 'column' : 'row', alignItems: 'center', gap: '1rem', width: isGridIcon ? '100%' : 'auto' }}>
+                  <div key={item.id} 
+                    className={`rarity-${item.rarity || 'common'}`}
+                    style={{ position: 'relative', display: 'flex', flexDirection: isGridIcon ? 'column' : 'row', alignItems: 'center', justifyContent: isGridIcon ? 'center' : 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: isGridIcon ? 'center' : 'left' }}>
+                    <div style={{ display: 'flex', flexDirection: isGridIcon ? 'column' : 'row', alignItems: 'center', gap: '1rem', width: isGridIcon ? '100%' : 'auto', position: 'relative' }}>
+                      <div className={`rarity-badge ${item.rarity || 'common'}`}>
+                        {getRarityLabel(item.rarity)}
+                      </div>
                       {item.imageUrl ? (
-                        <img src={item.imageUrl} alt={item.title} style={{ width: imgSize, height: imgSize, borderRadius: '8px', objectFit: 'cover' }} />
+                        <img src={item.imageUrl} alt={item.title} style={{ width: imgSize, height: imgSize, borderRadius: '8px', objectFit: 'contain' }} />
                       ) : (
                         <div style={{ width: imgSize, height: imgSize, borderRadius: '8px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <Star size={isGridIcon ? 32 : 24} color="var(--text-secondary)" />
                         </div>
                       )}
                       <div style={{ flex: 1, width: isGridIcon ? '100%' : 'auto' }}>
-                        <h4 style={{ margin: '0 0 0.25rem 0', fontSize: isGridIcon ? '0.95rem' : '1.1rem', whiteSpace: isGridIcon ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</h4>
+                        <h4 style={{ margin: '0 0 0.25rem 0', fontSize: isGridIcon ? '0.95rem' : '1.1rem', whiteSpace: isGridIcon ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis', color: `var(--rarity-${item.rarity || 'common'})` }}>{item.title}</h4>
                         {!isGridIcon && (
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                             <span>Custo: <strong style={{ color: 'var(--gold-primary)' }}>{item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}</strong></span>

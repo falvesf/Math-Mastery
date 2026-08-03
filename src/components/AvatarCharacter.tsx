@@ -52,6 +52,8 @@ export interface ModelTransform {
 export interface ModelTransformsConfig {
   common?: ModelTransform;
   battle?: ModelTransform;
+  common_left?: ModelTransform;
+  battle_left?: ModelTransform;
 }
 
 export interface AvatarCharacterProps {
@@ -71,10 +73,11 @@ export interface AvatarCharacterProps {
 
 import CustomModelViewer from './CustomModelViewer';
 
-export default React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick, debugItemTransform, debugItemId }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick, debugItemTransform, debugItemId }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
+  const [modelsLoadedCount, setModelsLoadedCount] = useState(0);
 
   // States to hold generated skin URLs
   const [skinUrls, setSkinUrls] = useState<{
@@ -180,17 +183,25 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
                 model.scale.set(10, 10, 10);
                 let appliedTransform = false;
                 
-                if (debugItemTransform) {
-                  model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
-                  model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+                const itemId = item.itemId || item.docId;
+                const isTargetDebugItem = debugItemId === itemId;
+                
+                const inv = isLeftHanded ? -1 : 1;
+                
+                if (debugItemTransform && isTargetDebugItem) {
+                  model.position.set(debugItemTransform.posX * inv, debugItemTransform.posY, debugItemTransform.posZ);
+                  model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY * inv, debugItemTransform.rotZ * inv);
                   model.translateY(debugItemTransform.slide);
                   appliedTransform = true;
                 } else if (item.modelTransforms) {
                   const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
-                  const transform = isBattle && item.modelTransforms.battle ? item.modelTransforms.battle : item.modelTransforms.common;
+                  let transform = isLeftHanded && isBattle && item.modelTransforms.battle_left ? item.modelTransforms.battle_left 
+                                : isLeftHanded && !isBattle && item.modelTransforms.common_left ? item.modelTransforms.common_left 
+                                : isBattle && item.modelTransforms.battle ? item.modelTransforms.battle 
+                                : item.modelTransforms.common;
                   if (transform) {
-                    model.position.set(transform.posX, transform.posY, transform.posZ);
-                    model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+                    model.position.set(transform.posX * inv, transform.posY, transform.posZ);
+                    model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
                     model.translateY(transform.slide);
                     appliedTransform = true;
                   }
@@ -235,6 +246,9 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
               loadedModels.push({ parent: body, model });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
             }
+            if (!isCancelled) {
+              setModelsLoadedCount(prev => prev + 1);
+            }
           },
           undefined,
           (error) => {
@@ -252,14 +266,23 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
       loadedModelsRef.current = [];
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equippedItemsJson]);
+  }, [equippedItemsJson, config?.handedness]);
 
   // 3b. Apply transformations dynamically to avoid reloading models (flicker)
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !viewer.playerObject) return;
     
-    loadedModelsRef.current.forEach(({ item, model, avatarPart, itemId }) => {
+    // Use the latest parsed equippedItems array to ensure we have the most up-to-date transforms
+    let parsedItems = [];
+    try {
+      parsedItems = JSON.parse(equippedItemsJson);
+    } catch(e) {}
+    
+    loadedModelsRef.current.forEach(({ model, avatarPart, itemId, item: cachedItem }) => {
+      // Find the latest item data in case it was updated in the DB
+      const item = parsedItems.find((i: any) => (i.itemId || i.docId) === itemId) || cachedItem;
+      
       if (avatarPart === 'two_handed' || avatarPart === 'hand' || avatarPart === 'rightHand' || avatarPart === 'leftHand') {
         const isDefense = item.itemCategory === 'defense';
         const isLeftHanded = config?.handedness === 'left';
@@ -269,23 +292,35 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
         
         let appliedTransform = false;
         
-        // Only apply debug transform to the specifically selected item (or first weapon if no ID is passed for backward compatibility)
-        const isTargetDebugItem = debugItemId ? (itemId === debugItemId) : true;
+        // Only apply debug transform to the specifically selected item
+        const isTargetDebugItem = debugItemId === itemId;
+
+        const inv = isLeftHanded ? -1 : 1;
 
         if (debugItemTransform && isTargetDebugItem) {
-          model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
-          model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
-          model.position.y += debugItemTransform.slide; // Using local translation workaround or simple position addition. Wait, translateY applies to local coords.
+          model.position.set(debugItemTransform.posX * inv, debugItemTransform.posY, debugItemTransform.posZ);
+          model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY * inv, debugItemTransform.rotZ * inv);
           // Reset position Y, then translate
           model.position.y = debugItemTransform.posY;
           model.translateY(debugItemTransform.slide);
           appliedTransform = true;
         } else if (item.modelTransforms) {
           const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
-          const transform = isBattle && item.modelTransforms.battle ? item.modelTransforms.battle : item.modelTransforms.common;
+          
+          let transform = null;
+          if (isLeftHanded) {
+             if (isBattle && item.modelTransforms.battle_left) transform = item.modelTransforms.battle_left;
+             else if (isBattle && item.modelTransforms.battle) transform = item.modelTransforms.battle;
+             else if (item.modelTransforms.common_left) transform = item.modelTransforms.common_left;
+             else transform = item.modelTransforms.common;
+          } else {
+             if (isBattle && item.modelTransforms.battle) transform = item.modelTransforms.battle;
+             else transform = item.modelTransforms.common;
+          }
+          
           if (transform) {
-            model.position.set(transform.posX, transform.posY, transform.posZ);
-            model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+            model.position.set(transform.posX * inv, transform.posY, transform.posZ);
+            model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
             model.position.y = transform.posY;
             model.translateY(transform.slide);
             appliedTransform = true;
@@ -308,7 +343,7 @@ export default React.memo(function AvatarCharacter({ config, equippedItems = [],
         }
       }
     });
-  }, [debugTransformJson, debugItemId, animation]);
+  }, [debugTransformJson, debugItemId, animation, config?.handedness, modelsLoadedCount, equippedItemsJson]);
 
   // 4. Generate skins when config changes
   useEffect(() => {
@@ -803,3 +838,5 @@ export function AvatarFace2D({ config, size }: { config: AvatarConfig, size: num
     if (!faceUrl) return <div style={{ width: size, height: size, background: 'transparent' }} />;
     return <img src={faceUrl} style={{ width: size, height: size, imageRendering: 'pixelated', objectFit: 'cover' }} alt="Face" />;
 }
+
+export default AvatarCharacter;
