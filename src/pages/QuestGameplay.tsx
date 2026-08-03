@@ -12,6 +12,7 @@ import ChestReveal from '../components/ChestReveal';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
+import { getSafeUrl } from '../lib/utils';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 interface UserItem {
@@ -1002,7 +1003,7 @@ export default function QuestGameplay() {
       position: 'relative', 
       height: '100vh',
       overflow: 'hidden',
-      background: quest?.coverImageUrl ? `url(${quest.coverImageUrl}) center/cover no-repeat` : 'var(--bg-dark)'
+      background: quest?.coverImageUrl ? `url(${getSafeUrl(quest.coverImageUrl)}) center/cover no-repeat` : 'var(--bg-dark)'
     }}>
       {/* Dark overlay for readability */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)' }} />
@@ -1033,7 +1034,7 @@ export default function QuestGameplay() {
                     style={{ position: 'relative', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
                     {p.itemImageUrl ? (
-                      <img src={p.itemImageUrl} alt={p.itemTitle} style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'cover' }} />
+                      <img src={getSafeUrl(p.itemImageUrl)} alt={p.itemTitle} style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'cover' }} />
                     ) : (
                       <Zap size={24} color="var(--gold-primary)" style={{ padding: '4px' }} />
                     )}
@@ -1197,7 +1198,7 @@ export default function QuestGameplay() {
               <div className="glass-panel" style={{ padding: '3rem', position: 'relative', border: feedback === 'correct' ? '2px solid var(--accent-green)' : feedback === 'wrong' ? '2px solid var(--accent-red)' : '1px solid var(--border-glass)' }}>
                 {quest.questions[currentQIndex].imageUrl && (
                   <div style={{ width: '100%', height: '300px', marginBottom: '2rem', borderRadius: '12px', overflow: 'hidden', background: 'rgba(0,0,0,0.5)' }}>
-                    <img src={quest.questions[currentQIndex].imageUrl} alt="Quest" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    <img src={getSafeUrl(quest.questions[currentQIndex].imageUrl)} alt="Quest" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   </div>
                 )}
                 <h2 style={{ fontSize: '2rem', margin: 0, textAlign: 'center' }}>{quest.questions[currentQIndex].title}</h2>
@@ -1233,7 +1234,7 @@ export default function QuestGameplay() {
                       <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: 'var(--gold-primary)', flexShrink: 0 }}>
                         {String.fromCharCode(65 + i)}
                       </div>
-                      {opt.imageUrl && <img src={opt.imageUrl} alt="" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />}
+                      {opt.imageUrl && <img src={getSafeUrl(opt.imageUrl)} alt="" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />}
                       <span style={{ textDecoration: isEliminated ? 'line-through' : 'none' }}>{opt.text}</span>
                     </button>
                   )
