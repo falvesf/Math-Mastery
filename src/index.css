@@ -673,7 +673,7 @@ h3 {
     text-overflow: ellipsis;
   }
 }
-
+@media (max-height: 850px) {
   .quest-victory-panel {
     padding: 2rem;
   }
