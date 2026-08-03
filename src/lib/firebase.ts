@@ -26,4 +26,5 @@ export const googleProvider = new GoogleAuthProvider();
 // Suggests the domain to Google login window
 googleProvider.setCustomParameters({
   hd: 'eaportal.org', 
+  prompt: 'select_account'
 });
