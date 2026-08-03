@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp, where, deleteDoc } from 'firebase/firestore';
-import { Coins, Star, ShieldAlert, Store, Search, LayoutGrid, Grid, List as ListIcon } from 'lucide-react';
+import { Coins, Star, ShieldAlert, Store, Search, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
@@ -53,6 +53,7 @@ const getRarityLabel = (rarity?: string) => {
 export default function StudentStore({ userData }: { userData: UserData }) {
   const { showAlert, showConfirm, showPrompt, showToast } = useDialog();
   const [activeTab, setActiveTab] = useState<'official' | 'market'>('official');
+  const [officialCategoryTab, setOfficialCategoryTab] = useState<'all' | 'consumable' | 'attack' | 'defense' | 'other'>('all');
   const [items, setItems] = useState<StoreItem[]>([]);
   const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
   const [myInventoryCount, setMyInventoryCount] = useState(0);
@@ -499,6 +500,17 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     if (searchQuery) {
       result = result.filter(i => i.title.toLowerCase().includes(searchQuery.toLowerCase()) || i.description.toLowerCase().includes(searchQuery.toLowerCase()));
     }
+    
+    if (officialCategoryTab === 'consumable') {
+      result = result.filter(i => i.type === 'consumable');
+    } else if (officialCategoryTab === 'attack') {
+      result = result.filter(i => i.type === 'equippable' && i.itemCategory === 'attack');
+    } else if (officialCategoryTab === 'defense') {
+      result = result.filter(i => i.type === 'equippable' && i.itemCategory === 'defense');
+    } else if (officialCategoryTab === 'other') {
+      result = result.filter(i => i.type === 'equippable' && i.itemCategory !== 'attack' && i.itemCategory !== 'defense');
+    }
+
     if (filterType !== 'all') result = result.filter(i => i.type === filterType);
     if (filterRarity !== 'all') result = result.filter(i => (i.rarity || 'common') === filterRarity);
     
@@ -634,7 +646,40 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       </div>
 
       {activeTab === 'official' && (
-      <div style={getGridStyle()}>
+        <>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+            <button 
+              onClick={() => setOfficialCategoryTab('all')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'all' ? 'black' : 'white', fontWeight: 'bold' }}
+            >
+              <Sparkles size={18} /> Todos
+            </button>
+            <button 
+              onClick={() => setOfficialCategoryTab('consumable')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'consumable' ? 'black' : 'white', fontWeight: 'bold' }}
+            >
+              <FlaskConical size={18} /> Consumíveis
+            </button>
+            <button 
+              onClick={() => setOfficialCategoryTab('attack')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'attack' ? 'black' : 'white', fontWeight: 'bold' }}
+            >
+              <Sword size={18} /> Ataque
+            </button>
+            <button 
+              onClick={() => setOfficialCategoryTab('defense')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'defense' ? 'black' : 'white', fontWeight: 'bold' }}
+            >
+              <Shield size={18} /> Defesa
+            </button>
+            <button 
+              onClick={() => setOfficialCategoryTab('other')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'other' ? 'black' : 'white', fontWeight: 'bold' }}
+            >
+              <Package size={18} /> Outros
+            </button>
+          </div>
+          <div style={getGridStyle()}>
         {processedItems.map(item => {
           const isStaff = userData.role !== 'student';
           const itemQty = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
@@ -866,6 +911,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           </div>
         )}
       </div>
+      </>
       )}
 
       {activeTab === 'market' && (
