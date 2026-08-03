@@ -1245,7 +1245,7 @@ export default function QuestGameplay() {
           )}
 
           {gameState === 'result' && (
-            <div className="glass-panel" style={{ width: '100%', maxWidth: '600px', padding: '4rem', textAlign: 'center', animation: 'epicZoom 0.5s ease-out', border: won ? '2px solid var(--gold-primary)' : '2px solid var(--accent-red)' }}>
+            <div className="glass-panel" style={{ margin: 'auto', width: '100%', maxWidth: '600px', padding: '4rem', textAlign: 'center', animation: 'epicZoom 0.5s ease-out', border: won ? '2px solid var(--gold-primary)' : '2px solid var(--accent-red)' }}>
               
               {errorMessage ? (
                 <>
