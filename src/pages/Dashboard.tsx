@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { auth, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart, Package } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart, Package, Eye, EyeOff } from 'lucide-react';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, updateDoc, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
@@ -23,18 +23,20 @@ export interface RankingHistory {
   classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
 }
 
-const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, activeBubbleId, onAvatarClick }: { 
+const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, activeBubbleId, onAvatarClick, showAvatars = false }: { 
   student: UserData; 
   size: number; 
   rankPos?: number; 
   equippedItems: EquippedItem[];
   activeBubbleId: string | null;
   onAvatarClick?: () => void;
+  showAvatars?: boolean;
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const avatarState = getProfileAvatarState(student);
   const show3D = rankPos <= 3 || isHovered;
+  const rank = getRankForXp(student.xp || 0);
   
   let finalAnimation = show3D ? (avatarState.animation as any) : 'idle';
   if (rankPos === 1 && show3D) {
@@ -46,25 +48,38 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={onAvatarClick}
-      style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+      style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
     >
-      {activeBubbleId === student.uid && student.customStatusText && (
+      {showAvatars && activeBubbleId === student.uid && student.customStatusText && (
         <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', background: 'white', color: 'black', padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap', zIndex: 50, boxShadow: '0 4px 10px rgba(0,0,0,0.5)', animation: 'epicZoom 0.3s ease-out' }}>
           {student.customStatusText}
           <div style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%) rotate(45deg)', width: 8, height: 8, background: 'white' }} />
         </div>
       )}
-      {student.avatarConfig ? (
-        <AvatarCharacter 
-          config={student.avatarConfig} 
-          equippedItems={equippedItems} 
-          size={size} 
-          interactive={false} 
-          animation={finalAnimation} 
-          expression={rankPos === 1 && show3D ? 'normal' : (avatarState.expression as any)} 
-        />
+
+      {/* Imagem da Patente (Sempre visível no fundo) */}
+      {rank.imageUrl ? (
+        <img src={rank.imageUrl} alt={rank.name} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%', mixBlendMode: 'multiply', filter: `drop-shadow(0 0 10px ${rank.color}80)`, opacity: showAvatars ? 0.6 : 1, zIndex: 0 }} />
       ) : (
-        <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: rank.color, textAlign: 'center', fontSize: size > 60 ? '0.9rem' : '0.7rem', zIndex: 0 }}>{rank.name}</div>
+      )}
+
+      {/* Avatar (Visível apenas se showAvatars for true) */}
+      {showAvatars && (
+        <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%' }}>
+          {student.avatarConfig ? (
+            <AvatarCharacter 
+              config={student.avatarConfig} 
+              equippedItems={equippedItems} 
+              size={size} 
+              interactive={false} 
+              animation={finalAnimation} 
+              expression={rankPos === 1 && show3D ? 'normal' : (avatarState.expression as any)} 
+            />
+          ) : (
+            <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+          )}
+        </div>
       )}
     </div>
   );
@@ -81,6 +96,7 @@ export default function Dashboard() {
   const [loadingHistory, setLoadingHistory] = useState(true);
   
   // Rankings state
+  const [showRankingAvatars, setShowRankingAvatars] = useState(false);
   const [allStudents, setAllStudents] = useState<UserData[]>([]);
   const [loadingRankings, setLoadingRankings] = useState(true);
   const [rankingEquippedItems, setRankingEquippedItems] = useState<Record<string, EquippedItem[]>>({});
@@ -640,6 +656,7 @@ export default function Dashboard() {
                         rankPos={rankPos} 
                         activeBubbleId={activeBubbleId}
                         equippedItems={rankingEquippedItems[student.uid] || []}
+                        showAvatars={showRankingAvatars}
                         onAvatarClick={() => {
                           if (student.customStatusText) {
                             setActiveBubbleId(student.uid);
@@ -776,7 +793,7 @@ export default function Dashboard() {
       </nav>
 
       {/* Navegação de Abas do Aluno */}
-      <div className="scrollable-menu-container" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.05)', margin: '0 -2rem 2rem -2rem', padding: '1rem 2rem' }}>
+      <div className="scrollable-menu-container" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.05)', margin: '0 -2rem 0 -2rem', padding: '0.5rem 2rem' }}>
         <button 
           onClick={() => setActiveTab('quests')}
           style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'quests' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
@@ -933,7 +950,7 @@ export default function Dashboard() {
 
         {activeTab === 'profile' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', gap: '1rem', padding: '1rem 0', marginBottom: '1rem', justifyContent: 'center', position: 'sticky', top: '75px', zIndex: 95, background: 'var(--bg-dark)', backdropFilter: 'blur(12px)' }}>
+            <div style={{ display: 'flex', gap: '1rem', padding: '0.5rem 0', marginBottom: '0.5rem', justifyContent: 'center', position: 'sticky', top: '60px', zIndex: 95, background: 'var(--bg-dark)', backdropFilter: 'blur(12px)' }}>
               <button 
                 onClick={() => setProfileTab('overview')}
                 className="login-btn"
@@ -952,15 +969,15 @@ export default function Dashboard() {
 
             <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
               {/* Perfil do Aluno (Esquerda) */}
-              <div className="glass-panel" style={{ flex: '1 1 400px', padding: '3rem 2rem', textAlign: 'center' }}>
+              <div className="glass-panel" style={{ flex: '1 1 400px', padding: '1.5rem 2rem', textAlign: 'center' }}>
                   <div 
-                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem', transition: 'transform 0.2s' }}
+                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '1.5rem', marginBottom: '2.5rem', transition: 'transform 0.2s' }}
                 onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
                 onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
               >
                 {currentRank.imageUrl ? (
                   <>
-                    <img src={currentRank.imageUrl} alt={currentRank.name} style={{ width: 140, height: 140, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, marginBottom: '1rem', animation: 'epicZoom 1s ease-out' }} />
+                    <img src={currentRank.imageUrl} alt={currentRank.name} style={{ width: 110, height: 110, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, marginBottom: '0', animation: 'epicZoom 1s ease-out' }} />
                     <div style={{ position: 'absolute', bottom: 50, right: -10 }}>
                       {(liveAvatarConfig || userData?.avatarConfig) ? (
                         <div style={{ width: 50, height: 50, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -970,74 +987,74 @@ export default function Dashboard() {
                         <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: 50, height: 50, borderRadius: '50%', border: `2px solid ${currentRank.color}`, cursor: 'pointer' }} />
                       )}
                     </div>
-                    <div style={{ background: 'var(--bg-dark)', padding: '0.25rem 1rem', borderRadius: '20px', border: `2px solid ${currentRank.color}`, color: currentRank.color, fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+                    <div style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80` }}>
                       {currentRank.name}
                     </div>
                   </>
                 ) : (
                   <>
                     {(liveAvatarConfig || userData?.avatarConfig) ? (
-                      <div style={{ width: 120, height: 120, borderRadius: '50%', overflow: 'visible', border: `4px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: `0 0 20px ${currentRank.color}40` }} title="Clique para personalizar seu personagem">
-                        <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={100} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
+                      <div style={{ width: 100, height: 100, borderRadius: '50%', overflow: 'visible', border: `4px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: `0 0 20px ${currentRank.color}40` }} title="Clique para personalizar seu personagem">
+                        <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={80} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
                       </div>
                     ) : (
-                      <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: 120, height: 120, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, objectFit: 'cover', cursor: 'pointer' }} />
+                      <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: 100, height: 100, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, objectFit: 'cover', cursor: 'pointer' }} />
                     )}
-                    <div style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(-50%)', background: 'var(--bg-dark)', padding: '0.25rem 1rem', borderRadius: '20px', border: `2px solid ${currentRank.color}`, color: currentRank.color, fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+                    <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
                       {currentRank.name}
                     </div>
                   </>
                 )}
               </div>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <h2 style={{ fontSize: '2rem', color: 'var(--text-primary)' }}>{userData?.name}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0' }}>
+                <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)' }}>{userData?.name}</h2>
               </div>
               
               {userData?.customStatusText && (
-                <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.5rem 1rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.25rem 1rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
                   <MessageCircle size={16} /> <i>"{userData.customStatusText}"</i>
                 </div>
               )}
               
-              <button onClick={handleEditStatus} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.9rem', marginBottom: '1.5rem', opacity: 0.8 }} className="hover-brightness">
+              <button onClick={handleEditStatus} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.9rem', marginBottom: '0.5rem', opacity: 0.8 }} className="hover-brightness">
                 <Edit3 size={14} /> Editar Status
               </button>
 
-              <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '2rem' }}>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
                 Turma: {userData?.classId || 'Não definida'}
               </p>
 
-              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Experiência Total</span>
-                  <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Star size={20} /> {userData?.xp || 0} XP
+              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Experiência Total</span>
+                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Star size={16} /> {userData?.xp || 0} XP
                   </span>
                 </div>
                 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem', marginTop: '1rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Vidas (HP)</span>
-                  <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0', marginTop: '0.5rem' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Vidas (HP)</span>
+                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     {(() => {
                       const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2);
                       const displayHp = userData?.role === 'admin' || userData?.role === 'teacher' ? maxHearts : currentHpVisual;
                       return Array.from({ length: maxHearts }).map((_, i) => {
                         if (i < displayHp) {
                           return (
-                            <div key={i} style={{ position: 'relative', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Heart size={24} fill="#ef4444" color="#ef4444" />
+                            <div key={i} style={{ position: 'relative', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Heart size={20} fill="#ef4444" color="#ef4444" />
                             </div>
                           );
                         } else if (i === displayHp && userData?.hpRecoveryStartTimestamp && displayHp < maxHearts) {
                           // Recovering heart
                           const minsLeft = Math.ceil(((100 - nextHeartProgress) / 100) * 30);
                           return (
-                            <div key={i} title={`Recuperando vida... ${minsLeft} min restantes`} style={{ position: 'relative', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>
-                              <Heart className="recovering-heart" size={24} fill="transparent" color="rgba(255,255,255,0.4)" style={{ position: 'absolute', top: 0, left: 0 }} />
+                            <div key={i} title={`Recuperando vida... ${minsLeft} min restantes`} style={{ position: 'relative', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>
+                              <Heart className="recovering-heart" size={20} fill="transparent" color="rgba(255,255,255,0.4)" style={{ position: 'absolute', top: 0, left: 0 }} />
                               <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${nextHeartProgress}%`, overflow: 'hidden', transition: 'height 1s linear' }}>
-                                <div style={{ position: 'absolute', bottom: 0, left: 0, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <Heart size={24} fill="#ef4444" color="#ef4444" />
+                                <div style={{ position: 'absolute', bottom: 0, left: 0, width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Heart size={20} fill="#ef4444" color="#ef4444" />
                                 </div>
                               </div>
                             </div>
@@ -1045,8 +1062,8 @@ export default function Dashboard() {
                         } else {
                           // Empty heart
                           return (
-                            <div key={i} style={{ position: 'relative', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Heart size={24} fill="transparent" color="rgba(255,255,255,0.2)" />
+                            <div key={i} style={{ position: 'relative', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Heart size={20} fill="transparent" color="rgba(255,255,255,0.2)" />
                             </div>
                           );
                         }
@@ -1057,16 +1074,16 @@ export default function Dashboard() {
                 
                 {nextRank ? (
                   <>
-                    <div style={{ width: '100%', height: '8px', background: 'var(--bg-dark)', borderRadius: '4px', overflow: 'hidden', marginTop: '1rem', marginBottom: '0.5rem' }}>
-                      <div style={{ height: '100%', width: `${progressPercentage}%`, background: `linear-gradient(90deg, ${currentRank.color}, ${nextRank.color})`, borderRadius: '4px', transition: 'width 1s ease-in-out' }}></div>
+                    <div style={{ width: '100%', height: '6px', background: 'var(--bg-dark)', borderRadius: '3px', overflow: 'hidden', marginTop: '0.75rem', marginBottom: '0.25rem' }}>
+                      <div style={{ height: '100%', width: `${progressPercentage}%`, background: `linear-gradient(90deg, ${currentRank.color}, ${nextRank.color})`, borderRadius: '3px', transition: 'width 1s ease-in-out' }}></div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                       <span>{currentRank.name}</span>
                       <span>Faltam {nextRank.minXp - (userData?.xp || 0)} XP para {nextRank.name}</span>
                     </div>
                   </>
                 ) : (
-                  <div style={{ marginTop: '1rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
+                  <div style={{ marginTop: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '0.9rem' }}>
                     Patente Máxima Alcançada!
                   </div>
                 )}
@@ -1075,8 +1092,8 @@ export default function Dashboard() {
 
             {/* Coluna Direita Alternável (Histórico ou Mochila) */}
             {profileTab === 'overview' ? (
-              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '1rem' }}>
+              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
                 <History size={24} color="var(--gold-primary)" />
                 <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Histórico de Conquistas</h3>
               </div>
@@ -1124,10 +1141,19 @@ export default function Dashboard() {
           <div className="glass-panel" style={{ padding: '0', animation: 'fadeIn 0.3s ease-out' }}>
             <div style={{ padding: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
               <Users size={32} color="var(--gold-primary)" />
-              <div>
+              <div style={{ flex: 1 }}>
                 <h2 style={{ fontSize: '2rem', margin: 0 }}>Top 10 da Turma</h2>
                 <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Sua sala: {userData?.classId || 'Não definida'}</p>
               </div>
+              <button 
+                onClick={() => setShowRankingAvatars(!showRankingAvatars)}
+                className="login-btn"
+                style={{ background: 'transparent', border: '1px solid var(--gold-primary)', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+                title={showRankingAvatars ? "Ocultar Avatares" : "Mostrar Avatares"}
+              >
+                {showRankingAvatars ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar Avatares'}
+              </button>
             </div>
             <div style={{ padding: '2rem' }}>
               {userData?.classId ? renderRankingList(classStudents, 'class') : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
@@ -1139,10 +1165,19 @@ export default function Dashboard() {
           <div className="glass-panel" style={{ padding: '0', animation: 'fadeIn 0.3s ease-out' }}>
             <div style={{ padding: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
               <Trophy size={32} color="var(--gold-primary)" />
-              <div>
+              <div style={{ flex: 1 }}>
                 <h2 style={{ fontSize: '2rem', margin: 0 }}>Top 10 Geral</h2>
                 <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Os maiores pontuadores de toda a escola.</p>
               </div>
+              <button 
+                onClick={() => setShowRankingAvatars(!showRankingAvatars)}
+                className="login-btn"
+                style={{ background: 'transparent', border: '1px solid var(--gold-primary)', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+                title={showRankingAvatars ? "Ocultar Avatares" : "Mostrar Avatares"}
+              >
+                {showRankingAvatars ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar Avatares'}
+              </button>
             </div>
             <div style={{ padding: '2rem' }}>
               {renderRankingList(top10General, 'general')}

@@ -87,6 +87,11 @@ function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string
 
 export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role }: CustomModelViewerProps) {
   const isChest = modelUrl.includes('chest');
+  
+  // Aumentar a escala para monstros para que fiquem do tamanho do avatar
+  const modelScale = isChest ? 2.8 : 5.5;
+  const modelPosY = isChest ? -2.5 : -4.5;
+
   return (
     <div style={{ width: size, height: size, position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
       <Canvas camera={{ position: [0, 3, 10], fov: 45 }} style={{ width: '100%', height: '100%' }}>
@@ -94,7 +99,7 @@ export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, ani
         <directionalLight position={[5, 10, 5]} intensity={0.5} />
         <OrbitControls enablePan={false} enableZoom={!isChest} enableRotate={!isChest} target={[0, 1.5, 0]} />
         <React.Suspense fallback={null}>
-          <group position={[0, -2.5, 0]} scale={2.8}>
+          <group position={[0, modelPosY, 0]} scale={modelScale}>
             <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} />
           </group>
         </React.Suspense>

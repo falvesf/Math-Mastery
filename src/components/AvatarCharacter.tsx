@@ -657,7 +657,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     { id: 'body', label: 'Armadura / Corpo', pos: { bottom: '20%', right: '-40%' } },
     { id: 'legs', label: 'Calças / Pernas', pos: { bottom: '20%', left: '-40%' } },
     { id: 'feet', label: 'Botas / Pés', pos: { bottom: '-5%', left: '50%', transform: 'translateX(-50%)' } },
-    { id: 'pet', label: 'Mascote', pos: { bottom: '5%', left: '-70%' } },
+    { id: 'pet', label: 'Mascote', pos: { top: '40%', left: '-120%', transform: 'translateY(-50%)' } },
   ];
 
   const getRarityStyle = (rarity?: string) => {
@@ -716,7 +716,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       {/* Slots de Equipamento Externos */}
       {showSlots && ALL_SLOTS.map(slot => {
         const item = getEquippedForSlot(slot.id);
-        const slotSize = size * 0.40; // 40% da largura do canvas
+        const slotSize = slot.id === 'pet' ? size * 0.80 : size * 0.40;
         return (
           <div 
             key={slot.id} 

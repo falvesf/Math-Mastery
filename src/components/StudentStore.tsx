@@ -647,11 +647,10 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             <button onClick={() => setViewMode('list')} style={{ padding: '0.5rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list' ? 'white' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={20} /></button>
           </div>
         </div>
-      </div>
 
-      {activeTab === 'official' && (
-        <>
-          <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+        {/* Abas de Categoria da Loja Oficial movidas para dentro do cabeçalho fixo */}
+        {activeTab === 'official' && (
+          <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingTop: '1rem', paddingBottom: '0.5rem' }}>
             <button 
               onClick={() => setOfficialCategoryTab('all')}
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'all' ? 'black' : 'white', fontWeight: 'bold' }}
@@ -683,7 +682,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               <Package size={18} /> Outros
             </button>
           </div>
-          <div style={getGridStyle()}>
+        )}
+      </div>
+
+      {activeTab === 'official' && (
+        <div style={getGridStyle()}>
         {processedItems.map(item => {
           const isStaff = userData.role !== 'student';
           const itemQty = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
@@ -915,7 +918,6 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           </div>
         )}
       </div>
-      </>
       )}
 
       {activeTab === 'market' && (
