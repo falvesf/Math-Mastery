@@ -881,8 +881,14 @@ export default function Dashboard() {
                         
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)' }}>
                           <div style={{ display: 'flex', gap: '1rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><ShieldAlert size={14} /> {quest.allowRetries ? 'Vidas Extras' : 'Hardcore'}</span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Clock size={14} /> {quest.questions?.length || 0} Desafios</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <ShieldAlert size={14} style={{ flexShrink: 0 }} /> 
+                              <span style={{ lineHeight: 1.1 }}>{quest.allowRetries ? <>Vidas<br/>Extras</> : 'Hardcore'}</span>
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <Clock size={14} style={{ flexShrink: 0 }} /> 
+                              <span style={{ lineHeight: 1.1 }}>{quest.questions?.length || 0}<br/>Desafios</span>
+                            </span>
                           </div>
                             <button 
                               className="login-btn" 
