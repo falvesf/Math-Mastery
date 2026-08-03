@@ -85,7 +85,7 @@ function App() {
   return (
     <AuthProvider>
       <DialogProvider>
-        <Router>
+        <Router basename="/Math-Mastery/">
           <AppRoutes />
         </Router>
       </DialogProvider>
