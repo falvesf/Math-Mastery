@@ -1092,7 +1092,7 @@ export default function QuestGameplay() {
                 </div>
               )}
               <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={activePlayerAnim as any} expression={baseExp} interactive={false} />
+                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} />
                 {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
                 <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
               </div>
@@ -1121,10 +1121,10 @@ export default function QuestGameplay() {
               {monsterAnim === 'death-slice' ? (
                 <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', height: '180px' }}>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {quest?.monsterModelUrl ? <CustomModelViewer modelUrl={quest.monsterModelUrl} size={100} animation="none" role="monster" /> : <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={100} animation="idle" interactive={false} role="monster" />}
+                    {quest?.monsterModelUrl ? <CustomModelViewer modelUrl={quest.monsterModelUrl} size={160} animation="none" role="monster" /> : <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" />}
                   </div>
                   <div className="death-slice-right" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {quest?.monsterModelUrl ? <CustomModelViewer modelUrl={quest.monsterModelUrl} size={100} animation="none" role="monster" /> : <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={100} animation="idle" interactive={false} role="monster" />}
+                    {quest?.monsterModelUrl ? <CustomModelViewer modelUrl={quest.monsterModelUrl} size={160} animation="none" role="monster" /> : <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" />}
                   </div>
                 </div>
               ) : (
@@ -1137,9 +1137,9 @@ export default function QuestGameplay() {
                   style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
                 >
                   {quest?.monsterModelUrl ? (
-                    <CustomModelViewer modelUrl={quest.monsterModelUrl} size={100} animation={monsterAnim} role="monster" />
+                    <CustomModelViewer modelUrl={quest.monsterModelUrl} size={160} animation={monsterAnim} role="monster" />
                   ) : quest?.monsterAvatarConfig ? (
-                    <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={100} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" />
+                    <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" />
                   ) : (
                     <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
                   )}

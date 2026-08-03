@@ -530,7 +530,7 @@ h3 {
 
 /* Admin Sidebar Responsive */
 .mobile-menu-btn {
-  display: none;
+  display: none !important;
 }
 
 .admin-sidebar {

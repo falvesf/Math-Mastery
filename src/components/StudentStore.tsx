@@ -945,6 +945,22 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <div className={`rarity-badge ${item.rarity || 'common'}`}>
                   {getRarityLabel(item.rarity)}
                 </div>
+                {item.quantity && item.quantity > 1 && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '5px',
+                    right: '5px',
+                    color: 'white',
+                    textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
+                    fontSize: '1.1rem',
+                    fontWeight: 'bold',
+                    zIndex: 2,
+                    pointerEvents: 'none',
+                    lineHeight: 1
+                  }}>
+                    {item.quantity}
+                  </div>
+                )}
                 {!isList && (
                   <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
                     {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}

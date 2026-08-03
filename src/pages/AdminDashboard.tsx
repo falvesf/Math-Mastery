@@ -82,6 +82,7 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('users');
   const [students, setStudents] = useState<UserData[]>([]);
+  const [allUserItems, setAllUserItems] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(false);
   const [evaluations, setEvaluations] = useState<EvaluationType[]>([]);
   const [schoolClasses, setSchoolClasses] = useState<ClassDef[]>([]);
@@ -89,6 +90,7 @@ export default function AdminDashboard() {
 
   // Modal de Lançar Nota States
   const [selectedStudent, setSelectedStudent] = useState<UserData | null>(null);
+  const [selectedStudentItems, setSelectedStudentItems] = useState<any[]>([]);
   const [modalMode, setModalMode] = useState('add');
   const [grade, setGrade] = useState('');
   const [gradeType, setGradeType] = useState('');
@@ -239,6 +241,29 @@ export default function AdminDashboard() {
     });
     // Sort by name
     loadedStudents.sort((a, b) => a.name.localeCompare(b.name));
+    
+    // Buscar todos os itens equipados
+    const itemsQ = query(collection(db, 'user_items'), where('equipped', '==', true));
+    const itemsSnap = await getDocs(itemsQ);
+    const itemsMap: Record<string, any[]> = {};
+    itemsSnap.forEach(d => {
+      const data = d.data();
+      if (!itemsMap[data.studentId]) itemsMap[data.studentId] = [];
+      itemsMap[data.studentId].push({
+        itemId: data.itemId,
+        imageUrl: data.itemImageUrl,
+        avatarPart: data.avatarPart,
+        itemTitle: data.itemTitle,
+        itemCategory: data.itemCategory,
+        baseAttributeType: data.baseAttributeType,
+        baseAttributeValue: data.baseAttributeValue,
+        adds: data.adds,
+        gameModelUrl: data.gameModelUrl,
+        modelTransforms: data.modelTransforms
+      });
+    });
+    setAllUserItems(itemsMap);
+    
     setStudents(loadedStudents);
     setLoading(false);
   };
@@ -250,6 +275,27 @@ export default function AdminDashboard() {
     const logs = snap.docs.map(d => ({ logId: d.id, ...(d.data() as any) }));
     logs.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
     setXpHistory(logs);
+
+    // Fetch equipped items for the selected student
+    const itemsQ = query(collection(db, 'user_items'), where('studentId', '==', studentUid), where('equipped', '==', true));
+    const itemsSnap = await getDocs(itemsQ);
+    const eqItems = itemsSnap.docs.map(d => {
+      const data = d.data();
+      return {
+        itemId: data.itemId,
+        imageUrl: data.itemImageUrl,
+        avatarPart: data.avatarPart,
+        itemTitle: data.itemTitle,
+        itemCategory: data.itemCategory,
+        baseAttributeType: data.baseAttributeType,
+        baseAttributeValue: data.baseAttributeValue,
+        adds: data.adds,
+        gameModelUrl: data.gameModelUrl,
+        modelTransforms: data.modelTransforms
+      };
+    });
+    setSelectedStudentItems(eqItems);
+
     setLoadingHistory(false);
   };
 
@@ -771,7 +817,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="app-container" style={{ maxWidth: '1400px', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1rem 2rem' }}>
-      <nav className="navbar glass-panel" style={{ marginBottom: '1rem', flexShrink: 0 }}>
+      <nav className="navbar glass-panel compact-nav" style={{ marginBottom: '1rem', flexShrink: 0 }}>
         <div className="logo-container">
           <ShieldAlert className="logo-icon" color="var(--accent-red)" size={32} />
           <h1 className="title-glow" style={{ color: 'var(--accent-red)', textShadow: '0 0 15px rgba(239, 68, 68, 0.3)' }}>
@@ -945,21 +991,21 @@ export default function AdminDashboard() {
                 {isUserFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros e Turmas'}
               </button>
               <div className={`compact-filters retractable-content ${isUserFiltersOpen ? 'open' : ''}`} style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                  <div style={{ position: 'relative', flex: '1 1 300px' }}>
-                    <Search size={20} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ position: 'relative', flex: '1 1 300px', display: 'flex', alignItems: 'center' }}>
+                    <Search size={20} style={{ position: 'absolute', right: '1rem', color: 'var(--text-secondary)' }} />
                     <input 
                       type="text" 
                       placeholder="Buscar por nome..." 
                       value={studentSearch}
                       onChange={(e) => setStudentSearch(e.target.value)}
-                      style={{ width: '100%', padding: '1rem 1rem 1rem 3rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '1.1rem' }}
+                      style={{ width: '100%', padding: '0 3rem 0 1.5rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '1rem', height: '48px' }}
                     />
                   </div>
                   <select 
                     value={studentSortBy} 
                     onChange={e => setStudentSortBy(e.target.value as any)}
-                    style={{ padding: '0 1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                    style={{ padding: '0 1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', height: '48px' }}
                   >
                     <option value="xp">Por XP</option>
                     <option value="name">Por Nome</option>
@@ -968,7 +1014,7 @@ export default function AdminDashboard() {
                   <select 
                     value={studentSortOrder} 
                     onChange={e => setStudentSortOrder(e.target.value as any)}
-                    style={{ padding: '0 1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                    style={{ padding: '0 1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', height: '48px' }}
                   >
                     <option value="desc">Descendente</option>
                     <option value="asc">Ascendente</option>
@@ -1074,7 +1120,7 @@ export default function AdminDashboard() {
                             />
                             {student.avatarConfig ? (
                               <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                                <AvatarCharacter config={student.avatarConfig} equippedItems={[]} size={48} interactive={false} animation={student.avatarConfig?.animationState || 'idle'} />
+                                <AvatarCharacter config={student.avatarConfig} equippedItems={allUserItems[student.uid] || []} size={48} interactive={false} animation={student.avatarConfig?.animationState as any || 'idle'} />
                               </div>
                             ) : (
                               <img src={student.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, objectFit: 'cover' }} />
@@ -1804,7 +1850,7 @@ export default function AdminDashboard() {
       {/* Modal de Gerenciar XP e Histórico */}
       {selectedStudent && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="glass-panel xp-modal-content" style={{ width: '800px', maxWidth: '95vw', padding: '2rem', animation: 'slideUp 0.3s ease-out', display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
+          <div className="glass-panel xp-modal-content" style={{ width: '800px', maxWidth: '95vw', maxHeight: '95vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out', display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
             
             {/* Lado Esquerdo: Formulário */}
             <div style={{ flex: 1 }}>
@@ -1813,7 +1859,13 @@ export default function AdminDashboard() {
               </div>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                 <img src={selectedStudent.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%' }} />
+                 {selectedStudent.avatarConfig ? (
+                   <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                     <AvatarCharacter config={selectedStudent.avatarConfig} equippedItems={selectedStudentItems} size={48} interactive={false} animation={selectedStudent.avatarConfig.animationState as any || 'idle'} />
+                   </div>
+                 ) : (
+                   <img src={selectedStudent.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
+                 )}
                  <div>
                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{selectedStudent.name}</div>
                    <div style={{ fontSize: '0.9rem', color: 'var(--gold-primary)', marginTop: '0.2rem' }}>XP Atual: {selectedStudent.xp || 0}</div>
@@ -1871,7 +1923,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Lado Direito: Histórico */}
-            <div style={{ flex: 1, borderLeft: '1px solid var(--border-glass)', paddingLeft: '2rem', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minWidth: '300px', borderLeft: '1px solid var(--border-glass)', paddingLeft: '2rem', display: 'flex', flexDirection: 'column', maxHeight: '550px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <History size={18} /> Histórico de XP

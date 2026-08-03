@@ -755,9 +755,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                     {getRarityLabel(item.rarity)}
                   </div>
                     
-                  <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', height: viewMode === 'grid-small' ? '36px' : '48px', width: viewMode === 'list' ? '48px' : 'auto', flexShrink: 0 }}>
+                  <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', height: viewMode === 'grid-small' ? '36px' : '48px', width: viewMode === 'list' ? '48px' : 'fit-content', margin: viewMode === 'list' ? '0' : '0 auto', flexShrink: 0 }}>
                     {item.itemImageUrl ? (
-                      <img src={item.itemImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
+                      <img src={item.itemImageUrl} alt="" style={{ height: '100%', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
                     ) : (
                       <Package size={viewMode === 'grid-small' ? 24 : 32} color="var(--text-secondary)" style={{ alignSelf: 'center' }} />
                     )}
@@ -766,11 +766,11 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                       <div style={{
                         position: 'absolute',
                         bottom: '0',
-                        right: '0',
+                        right: '-4px',
                         color: 'white',
                         textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
-                        fontSize: viewMode === 'grid-small' ? '0.65rem' : '0.75rem',
-                        fontWeight: 'normal',
+                        fontSize: viewMode === 'grid-small' ? '0.75rem' : '0.85rem',
+                        fontWeight: 'bold',
                         zIndex: 2,
                         pointerEvents: 'none',
                         lineHeight: 1
