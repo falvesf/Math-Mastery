@@ -1078,7 +1078,7 @@ export default function QuestGameplay() {
 
         {/* Battle Arena Fixed */}
         {gameState === 'playing' && (
-          <div ref={arenaRef} className="battle-arena-bg" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5rem 3rem 1rem 3rem', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, overflow: 'hidden' } as any}>
+          <div ref={arenaRef} className="battle-arena-bg quest-arena" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, overflow: 'hidden' } as any}>
             <div className="battle-arena-bg-image" />
             
             {/* Player Side */}
@@ -1091,7 +1091,7 @@ export default function QuestGameplay() {
                   {playerBubble}
                 </div>
               )}
-              <div style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                 <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={100} animation={activePlayerAnim as any} expression={baseExp} interactive={false} />
                 {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
                 <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
@@ -1119,7 +1119,7 @@ export default function QuestGameplay() {
                 </div>
               )}
               {monsterAnim === 'death-slice' ? (
-                <div style={{ position: 'relative', width: '120px', height: '180px' }}>
+                <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', height: '180px' }}>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                     {quest?.monsterModelUrl ? <CustomModelViewer modelUrl={quest.monsterModelUrl} size={100} animation="none" role="monster" /> : <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={100} animation="idle" interactive={false} role="monster" />}
                   </div>
@@ -1129,11 +1129,11 @@ export default function QuestGameplay() {
                 </div>
               ) : (
                 <div 
-                  className={
+                  className={`quest-arena-avatars ${
                     monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : 
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
-                  }
+                  }`}
                   style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
                 >
                   {quest?.monsterModelUrl ? (
@@ -1161,11 +1161,11 @@ export default function QuestGameplay() {
         )}
 
         {/* Content Area */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', padding: '2rem', overflowY: 'auto' }}>
+        <div className="quest-content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: 'auto' }}>
 
           
           {gameState === 'intro' && quest && (
-            <div className="glass-panel" style={{ width: '100%', maxWidth: '800px', padding: '4rem', textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
+            <div className="glass-panel quest-victory-panel" style={{ width: '100%', maxWidth: '800px', textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
               <Swords size={64} color="var(--gold-primary)" style={{ margin: '0 auto 2rem auto' }} />
               <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem' }}>{quest.title}</h1>
               <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '3rem', lineHeight: 1.6 }}>{quest.description}</p>
@@ -1195,9 +1195,9 @@ export default function QuestGameplay() {
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '2rem', animation: 'fadeIn 0.3s ease-out' }}>
               
               {/* Question Card */}
-              <div className="glass-panel" style={{ padding: '3rem', position: 'relative', border: feedback === 'correct' ? '2px solid var(--accent-green)' : feedback === 'wrong' ? '2px solid var(--accent-red)' : '1px solid var(--border-glass)' }}>
+              <div className="glass-panel quest-question-card" style={{ position: 'relative', border: feedback === 'correct' ? '2px solid var(--accent-green)' : feedback === 'wrong' ? '2px solid var(--accent-red)' : '1px solid var(--border-glass)' }}>
                 {quest.questions[currentQIndex].imageUrl && (
-                  <div style={{ width: '100%', height: '300px', marginBottom: '2rem', borderRadius: '12px', overflow: 'hidden', background: 'rgba(0,0,0,0.5)' }}>
+                  <div className="quest-image-box" style={{ width: '100%', marginBottom: '2rem', borderRadius: '12px', overflow: 'hidden', background: 'rgba(0,0,0,0.5)' }}>
                     <img src={getSafeUrl(quest.questions[currentQIndex].imageUrl)} alt="Quest" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   </div>
                 )}
@@ -1205,7 +1205,7 @@ export default function QuestGameplay() {
               </div>
 
               {/* Options Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <div className="quest-options-grid" style={{ display: 'grid', gap: '1.5rem' }}>
                 {quest.questions[currentQIndex].options.map((opt, i) => {
                   const isEliminated = eliminatedOptions.includes(i);
                   return (
@@ -1246,7 +1246,7 @@ export default function QuestGameplay() {
           )}
 
           {gameState === 'result' && (
-            <div className="glass-panel" style={{ margin: 'auto', width: '100%', maxWidth: '600px', padding: '4rem', textAlign: 'center', animation: 'epicZoom 0.5s ease-out', border: won ? '2px solid var(--gold-primary)' : '2px solid var(--accent-red)' }}>
+            <div className="glass-panel quest-victory-panel" style={{ margin: 'auto', width: '100%', maxWidth: '600px', textAlign: 'center', animation: 'epicZoom 0.5s ease-out', border: won ? '2px solid var(--gold-primary)' : '2px solid var(--accent-red)' }}>
               
               {errorMessage ? (
                 <>
@@ -1267,19 +1267,19 @@ export default function QuestGameplay() {
                     />
                     <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
                   </div>
-                  <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
+                  <h1 className="title-glow quest-victory-title" style={{ marginBottom: '1rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
                   <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem' }}>O monstro foi derrotado e o desafio foi superado.</p>
                   <div style={{ background: 'rgba(251, 191, 36, 0.1)', padding: '2rem', borderRadius: '12px', display: 'inline-block', marginBottom: '3rem' }}>
                     <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center' }}>
-                      <div style={{ fontSize: '3rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>+{isStudyMode ? 0 : Math.floor(currentXp * xpMultiplier)} XP</div>
-                      <div style={{ fontSize: '3rem', fontWeight: 'bold', color: 'var(--gold-secondary)' }}>+{isStudyMode ? 0 : Math.floor(currentXp * coinsMultiplier)} <Coins size={32} style={{ display: 'inline' }}/></div>
+                      <div className="quest-victory-xp" style={{ fontWeight: 'bold', color: 'var(--gold-primary)' }}>+{isStudyMode ? 0 : Math.floor(currentXp * xpMultiplier)} XP</div>
+                      <div className="quest-victory-xp" style={{ fontWeight: 'bold', color: 'var(--gold-secondary)' }}>+{isStudyMode ? 0 : Math.floor(currentXp * coinsMultiplier)} <Coins size={32} style={{ display: 'inline' }}/></div>
                     </div>
                   </div>
                 </>
               ) : (
                 <>
                   <XCircle size={80} color="var(--accent-red)" style={{ margin: '0 auto 2rem auto' }} />
-                  <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--accent-red)' }}>FALHA</h1>
+                  <h1 className="title-glow quest-victory-title" style={{ marginBottom: '1rem', color: 'var(--accent-red)' }}>FALHA</h1>
                   <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '3rem' }}>Você foi derrotado. O tempo acabou ou você errou o ataque fatal.</p>
                 </>
               )}

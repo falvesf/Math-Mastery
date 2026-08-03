@@ -447,3 +447,132 @@ h1, h2, h3, h4, h5, h6 {
   75% { opacity: 1; transform: translate(40px, -20px) scale(1.2) rotate(135deg); }
   100% { opacity: 0; transform: translate(50px, -10px) scale(0.8) rotate(180deg); }
 }
+
+/* ========================================================================= */
+/* Responsive Quest Gameplay Styles                                          */
+/* ========================================================================= */
+
+.quest-arena {
+  padding: 5rem 3rem 1rem 3rem;
+}
+
+.quest-arena-avatars {
+  transform: scale(1);
+}
+
+.quest-content-area {
+  padding: 2rem;
+}
+
+.quest-question-card {
+  padding: 3rem;
+}
+
+.quest-image-box {
+  height: 300px;
+}
+
+.quest-options-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.quest-victory-panel {
+  padding: 4rem;
+}
+
+.quest-victory-title {
+  font-size: 3rem;
+}
+
+.quest-victory-xp {
+  font-size: 3rem;
+}
+
+.quest-victory-icon {
+  font-size: 3rem;
+}
+
+/* Notebooks & Chromebooks (Shorter Screens) */
+@media (max-height: 850px) {
+  .quest-arena {
+    padding: 2rem 2rem 0.5rem 2rem;
+  }
+  
+  .quest-arena-avatars {
+    transform: scale(0.8);
+    transform-origin: bottom center;
+  }
+
+  .quest-content-area {
+    padding: 1rem;
+  }
+
+  .quest-question-card {
+    padding: 1.5rem;
+  }
+
+  .quest-image-box {
+    height: 180px;
+  }
+
+  .quest-victory-panel {
+    padding: 2rem;
+  }
+
+  .quest-victory-title {
+    font-size: 2.2rem;
+  }
+
+  .quest-victory-xp {
+    font-size: 2.2rem;
+  }
+
+  .quest-victory-icon {
+    font-size: 2.2rem;
+  }
+}
+
+/* Mobile & Tablets (Narrow Screens) */
+@media (max-width: 768px) {
+  .quest-arena {
+    padding: 1.5rem 1rem 0.5rem 1rem;
+  }
+  
+  .quest-arena-avatars {
+    transform: scale(0.65);
+    transform-origin: bottom center;
+  }
+
+  .quest-options-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .quest-content-area {
+    padding: 0.5rem;
+  }
+  
+  .quest-question-card {
+    padding: 1rem;
+  }
+
+  .quest-image-box {
+    height: 150px;
+  }
+
+  .quest-victory-panel {
+    padding: 1.5rem;
+  }
+
+  .quest-victory-title {
+    font-size: 1.8rem;
+  }
+
+  .quest-victory-xp {
+    font-size: 1.8rem;
+  }
+
+  .quest-victory-icon {
+    font-size: 1.8rem;
+  }
+}
