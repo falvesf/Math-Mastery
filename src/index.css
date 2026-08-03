@@ -45,6 +45,18 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0;
 }
 
+h1 {
+  font-size: clamp(1.75rem, 4vw, 3rem);
+}
+
+h2 {
+  font-size: clamp(1.25rem, 3vw, 2rem);
+}
+
+h3 {
+  font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+}
+
 /* Glassmorphism Utilities */
 .glass-panel {
   background: var(--bg-card);
@@ -512,7 +524,62 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .quest-image-box {
-    height: 180px;
+    height: 140px !important;
+  }
+}
+
+/* Admin Sidebar Responsive */
+.mobile-menu-btn {
+  display: none;
+}
+
+.admin-sidebar {
+  transition: transform 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: flex !important;
+  }
+  .admin-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 1000;
+    transform: translateX(-100%);
+    background: var(--bg-dark) !important;
+  }
+  .admin-sidebar.open {
+    transform: translateX(0);
+  }
+  .admin-sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.7);
+    z-index: 999;
+    animation: fadeIn 0.3s;
+  }
+}
+
+/* Quest Victory Avatar Fix */
+.quest-victory-avatar {
+  position: relative;
+  width: 120px;
+  height: 180px;
+  margin: 0 auto 2rem auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+@media (max-height: 850px) {
+  .quest-victory-avatar {
+    height: 100px; /* Reduce the invisible bounding box vertical space */
+    margin: 0 auto 1rem auto;
   }
 
   .quest-victory-panel {

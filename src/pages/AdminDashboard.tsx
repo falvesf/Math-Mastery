@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { signOut } from 'firebase/auth';
@@ -148,6 +148,9 @@ export default function AdminDashboard() {
   const [questQuestions, setQuestQuestions] = useState<QuestQuestion[]>([
     { title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }
   ]);
+
+  // Sidebar Mobile State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [questMonsterName, setQuestMonsterName] = useState('');
   const [questMonsterConfig, setQuestMonsterConfig] = useState<AvatarConfig | null>(null);
   const [questMonsterModelUrl, setQuestMonsterModelUrl] = useState('');
@@ -775,6 +778,9 @@ export default function AdminDashboard() {
           </h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <button className="login-btn mobile-menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Menu">
+            <Menu size={20} />
+          </button>
           <button className="login-btn" onClick={() => navigate('/dashboard')} style={{ padding: '0.5rem 1rem' }}>
             <ArrowLeft size={18} style={{ marginRight: '0.5rem' }} /> Voltar
           </button>
@@ -793,8 +799,13 @@ export default function AdminDashboard() {
       </nav>
 
       <div style={{ display: 'flex', gap: '1.5rem', flex: 1, overflow: 'hidden' }}>
+        {/* Overlay for Mobile */}
+        {isSidebarOpen && (
+          <div className="admin-sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>
+        )}
+        
         {/* Sidebar */}
-        <div className="glass-panel" style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', flexShrink: 0 }}>
+        <div className={`glass-panel admin-sidebar ${isSidebarOpen ? 'open' : ''}`} style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', flexShrink: 0 }}>
           <button className={`login-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'users' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Users size={20} /> Alunos & Notas
           </button>

@@ -223,8 +223,12 @@ export default function Dashboard() {
           return quest.targetClasses.includes(userData.classId);
         });
 
-        // Ordenar as mais novas primeiro
-        filteredQuests.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        // Ordenar as mais novas primeiro (pelo ID caso não haja createdAt)
+        filteredQuests.sort((a: any, b: any) => {
+          const timeA = a.createdAt?.seconds || parseInt(a.id) || 0;
+          const timeB = b.createdAt?.seconds || parseInt(b.id) || 0;
+          return timeB - timeA;
+        });
         setActiveQuests(filteredQuests);
         setLoadingQuests(false);
       };
@@ -826,7 +830,7 @@ export default function Dashboard() {
                 <p style={{ color: 'var(--text-secondary)' }}>O professor ainda não publicou nenhuma missão, ou você já completou todas. Volte mais tarde!</p>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '2rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1.5rem' }}>
                 {activeQuests.map(quest => {
                   const isCompleted = completedQuestIds.includes(quest.id);
                   
@@ -856,7 +860,7 @@ export default function Dashboard() {
                         }
                       }}
                     >
-                      <div style={{ height: '200px', width: '100%', position: 'relative' }}>
+                      <div style={{ height: '140px', width: '100%', position: 'relative' }}>
                         {quest.coverImageUrl ? (
                           <img src={quest.coverImageUrl} alt={quest.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (

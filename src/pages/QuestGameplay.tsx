@@ -1256,7 +1256,7 @@ export default function QuestGameplay() {
                 </>
               ) : won ? (
                 <>
-                  <div style={{ position: 'relative', width: '120px', height: '180px', margin: '0 auto 2rem auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                  <div className="quest-victory-avatar">
                     <AvatarCharacter 
                       config={userData?.avatarConfig || null} 
                       equippedItems={playerEquippedItems} 
