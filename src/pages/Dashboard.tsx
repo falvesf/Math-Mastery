@@ -16,6 +16,7 @@ import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
 import { Edit3, MessageCircle } from 'lucide-react';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
+import OnboardingModal from '../components/OnboardingModal';
 
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
@@ -72,6 +73,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 export default function Dashboard() {
   const { showAlert, showPrompt } = useDialog();
   const { userData } = useAuth();
+  if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
   const [profileTab, setProfileTab] = useState('overview');
@@ -667,6 +669,36 @@ export default function Dashboard() {
       </div>
     );
   };
+
+  const handleSelectClass = async (className: string) => {
+    if (!userData) return;
+    await updateDoc(doc(db, 'users', userData.uid), { classId: className });
+  };
+
+  const handleSelectTeacher = async () => {
+    if (!userData) return;
+    await updateDoc(doc(db, 'users', userData.uid), { role: 'pending_teacher' });
+  };
+
+  if (userData?.role === 'pending_teacher') {
+    return (
+      <div className="app-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', textAlign: 'center', gap: '2rem' }}>
+        <ShieldAlert size={64} color="var(--gold-primary)" />
+        <h2 style={{ fontSize: '2rem', margin: 0 }}>Aguardando Aprovação</h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', maxWidth: '500px' }}>
+          Sua solicitação de acesso como Professor / Coordenador está em análise pelo Administrador do sistema.
+          Por favor, aguarde a liberação.
+        </p>
+        <button className="login-btn" onClick={() => signOut(auth)} style={{ padding: '0.75rem 2rem', fontSize: '1.1rem' }}>
+          Sair
+        </button>
+      </div>
+    );
+  }
+
+  if (userData?.role === 'student' && !userData?.classId) {
+    return <OnboardingModal userName={userData.name} onSelectClass={handleSelectClass} onSelectTeacher={handleSelectTeacher} />;
+  }
 
   return (
     <div className="app-container">

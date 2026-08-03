@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { signOut } from 'firebase/auth';
@@ -781,7 +781,7 @@ export default function AdminDashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
             {userData && (
               <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)', border: '2px solid var(--accent-red)' }}>
-                <AvatarCharacter config={userData.avatarConfig} size={36} interactive={false} animation="none" />
+                <AvatarCharacter config={userData.avatarConfig || undefined} size={36} interactive={false} animation="none" />
               </div>
             )}
             <span style={{ fontWeight: 600 }}>{userData?.name?.split(' ')[0]}</span>
@@ -809,6 +809,9 @@ export default function AdminDashboard() {
               <button className={`login-btn ${activeTab === 'classes' ? 'active' : ''}`} onClick={() => setActiveTab('classes')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'classes' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'classes' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
                 <BookOpen size={20} /> Turmas
               </button>
+              <button className={`login-btn ${activeTab === 'approvals' ? 'active' : ''}`} onClick={() => setActiveTab('approvals')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'approvals' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'approvals' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+                <UserCheck size={20} /> Solicitações
+              </button>
               <button className={`login-btn ${activeTab === 'config' ? 'active' : ''}`} onClick={() => setActiveTab('config')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'config' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'config' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
                 <Settings size={20} /> Tipos de Avaliação
               </button>
@@ -827,6 +830,67 @@ export default function AdminDashboard() {
         {/* Content */}
         <div className="glass-panel" id="admin-content-scroll" style={{ flex: 1, padding: '2rem', overflowY: 'auto', position: 'relative' }}>
           
+        {/* Aba de Solicitações (Approvals) */}
+        {activeTab === 'approvals' && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+            <div style={{ marginBottom: '2rem' }}>
+              <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <UserCheck size={28} color="var(--gold-primary)" />
+                Solicitações de Acesso
+              </h2>
+              <p style={{ color: 'var(--text-secondary)' }}>Aprove ou rejeite contas que solicitaram acesso como Professor / Coordenador.</p>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+              {students.filter(s => s.role === 'pending_teacher').length === 0 ? (
+                <div style={{ gridColumn: '1 / -1', padding: '3rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--border-glass)' }}>
+                  <ShieldAlert size={48} color="var(--text-secondary)" style={{ opacity: 0.5, margin: '0 auto 1rem auto' }} />
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>Nenhuma solicitação pendente no momento.</p>
+                </div>
+              ) : (
+                students.filter(s => s.role === 'pending_teacher').map(reqUser => (
+                  <div key={reqUser.uid} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', border: '1px solid var(--gold-primary)', background: 'rgba(251, 191, 36, 0.05)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <img src={reqUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(reqUser.name)}`} alt="" style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
+                      <div style={{ overflow: 'hidden' }}>
+                        <h4 style={{ margin: 0, fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reqUser.name}</h4>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{reqUser.email}</span>
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
+                      <button 
+                        onClick={async () => {
+                          if (await showConfirm('Rejeitar Solicitação', `Deseja negar o acesso de professor para ${reqUser.name}? Ele voltará a ser um Aluno comum.`)) {
+                            await updateDoc(doc(db, 'users', reqUser.uid), { role: 'student' });
+                            fetchStudents();
+                          }
+                        }}
+                        className="login-btn" 
+                        style={{ flex: 1, padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }}
+                      >
+                        Rejeitar
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          if (await showConfirm('Aprovar Professor', `Confirmar ${reqUser.name} como Professor?`)) {
+                            await updateDoc(doc(db, 'users', reqUser.uid), { role: 'teacher' });
+                            fetchStudents();
+                          }
+                        }}
+                        className="login-btn" 
+                        style={{ flex: 1, padding: '0.5rem', background: 'var(--accent-green)', color: 'white', border: 'none' }}
+                      >
+                        Aprovar
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Aba de Entidades 3D */}
         {activeTab === 'entities' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>

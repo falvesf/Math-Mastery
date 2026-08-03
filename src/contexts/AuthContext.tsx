@@ -5,7 +5,7 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { initRanks } from '../lib/ranks';
 import { auth, db } from '../lib/firebase';
 
-export type UserRole = 'student' | 'teacher' | 'coordinator' | 'admin';
+export type UserRole = 'student' | 'teacher' | 'coordinator' | 'admin' | 'pending_teacher';
 
 export interface UserData {
   uid: string;
