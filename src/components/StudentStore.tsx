@@ -201,7 +201,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     let wasCapped = false;
     
     if (!isStaff) {
-      const currentRank = getRankForXp(userData.xp || 0);
+      const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
       const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
       if (currentRankIndex < item.minRankRequired) {
         showToast(`Sua patente é muito baixa! Você precisa ser no mínimo ${RANKS[item.minRankRequired].name} para comprar este item.`, 'error');
@@ -363,7 +363,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       return;
     }
 
-    const currentRank = getRankForXp(userData.xp || 0);
+    const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
     const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
     const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
@@ -456,7 +456,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   const handleCancelSale = async (item: MarketItem) => {
     const isStaff = userData.role !== 'student';
-    const currentRank = getRankForXp(userData.xp || 0);
+    const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
     const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
     const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
@@ -504,7 +504,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Carregando a loja...</div>;
 
   const currentBalance = economyType === 'xp' ? (userData.xp || 0) : (userData.coins || 0);
-  const currentRank = getRankForXp(userData.xp || 0);
+  const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
   
   const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
@@ -759,7 +759,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           const totalCostCoins = Math.floor(item.cost * 10 * discountMultiplier) * itemQty;
           
           const canAfford = isStaff || currentBalance >= (economyType === 'xp' ? totalCost : totalCostCoins);
-          const currentRank = getRankForXp(userData.xp || 0);
+          const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
           const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
           const meetsRank = isStaff || currentRankIndex >= item.minRankRequired;
           const isGiftingThis = giftingItemId === item.id;

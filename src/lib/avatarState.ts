@@ -12,7 +12,7 @@ export function getProfileAvatarState(userData: Partial<UserData> | null, custom
   }
 
   const now = Date.now();
-  const currentRank = getRankForXp(userData.xp || 0);
+  const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRank.name));
   const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2));
   const isAdminOrTeacher = userData.role === 'admin' || userData.role === 'teacher';

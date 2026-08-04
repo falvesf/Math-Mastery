@@ -1,11 +1,17 @@
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 
+export interface RankVariant {
+  classIds: string[];
+  imageUrl: string;
+}
+
 export interface RankDef {
   name: string;
   minXp: number;
   color: string;
   imageUrl?: string;
+  variants?: RankVariant[];
 }
 
 export const RANKS: RankDef[] = [
@@ -26,7 +32,7 @@ export const RANKS: RankDef[] = [
   { name: 'Lendário', minXp: 10000, color: '#a855f7' },
 ];
 
-export function getRankForXp(xp: number): RankDef {
+export function getRankForXp(xp: number, classId?: string): RankDef {
   let currentRank = RANKS[0];
   for (const rank of RANKS) {
     if (xp >= rank.minXp) {
@@ -35,6 +41,16 @@ export function getRankForXp(xp: number): RankDef {
       break;
     }
   }
+
+  // If a classId is provided, check if the current rank has a specific variant for this class
+  if (classId && currentRank.variants && currentRank.variants.length > 0) {
+    const variant = currentRank.variants.find(v => v.classIds.includes(classId));
+    if (variant && variant.imageUrl) {
+      // Return a copy of the rank with the overridden image
+      return { ...currentRank, imageUrl: variant.imageUrl };
+    }
+  }
+
   return currentRank;
 }
 

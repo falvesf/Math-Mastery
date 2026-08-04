@@ -87,7 +87,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     return () => clearTimeout(t);
   }, [viewMode, filterType, filterRarity, userData.uid]);
 
-  const currentRank = getRankForXp(userData.xp || 0);
+  const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
   const totalEquippedStats = calculateTotalStats(items.filter(i => i.equipped));
   const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);

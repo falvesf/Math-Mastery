@@ -131,6 +131,10 @@ export default function AdminDashboard() {
   // Turmas States
   const [newClassName, setNewClassName] = useState('');
   const [newClassColor, setNewClassColor] = useState('#3b82f6');
+  const [editingClassId, setEditingClassId] = useState<string | null>(null);
+  const [editClassName, setEditClassName] = useState('');
+  const [editClassColor, setEditClassColor] = useState('#3b82f6');
+  const [isClassModalOpen, setIsClassModalOpen] = useState(false);
 
   // Missões States
   const [isCreatingQuest, setIsCreatingQuest] = useState(false);
@@ -433,6 +437,15 @@ export default function AdminDashboard() {
     const newClass = { id: classId, name: newClassName, color: newClassColor };
     await setDoc(doc(db, 'classes', classId), newClass);
     setNewClassName('');
+    fetchClasses();
+  };
+
+  const handleEditClassSubmit = async () => {
+    if (!editingClassId || !editClassName) return;
+    const classRef = doc(db, 'classes', editingClassId);
+    await updateDoc(classRef, { name: editClassName, color: editClassColor });
+    setEditingClassId(null);
+    setIsClassModalOpen(false);
     fetchClasses();
   };
 
@@ -837,8 +850,10 @@ export default function AdminDashboard() {
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
             {userData && (
-              <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)', border: '2px solid var(--accent-red)' }}>
-                <AvatarCharacter config={userData.avatarConfig || undefined} size={36} interactive={false} animation="none" />
+              <div style={{ position: 'relative', width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-dark)', border: '2px solid var(--accent-red)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ position: 'absolute', width: 48, height: 48, bottom: 10, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
+                  <AvatarCharacter config={userData.avatarConfig || undefined} size={48} interactive={false} animation="none" />
+                </div>
               </div>
             )}
             <span style={{ fontWeight: 600 }}>{userData?.name?.split(' ')[0]}</span>
@@ -963,15 +978,15 @@ export default function AdminDashboard() {
         {/* Aba de Usuários */}
         {activeTab === 'users' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
-                <div className="compact-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '0.5rem 2rem', margin: '-2rem -2rem 0.5rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+                <div className="compact-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <div>
-                  <h2>Gerenciamento de Usuários</h2>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Gerenciamento de Usuários</h2>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Controle de alunos, turmas e equipe escolar.</p>
                 </div>
                 
                 {selectedStudentIds.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(251, 191, 36, 0.1)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--gold-primary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(251, 191, 36, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '8px', border: '1px solid var(--gold-primary)' }}>
                     <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>{selectedStudentIds.length} selecionados</span>
                     <button 
                       className="login-btn" 
@@ -994,22 +1009,22 @@ export default function AdminDashboard() {
               <button className="retractable-toggle-btn" onClick={() => setIsUserFiltersOpen(!isUserFiltersOpen)}>
                 {isUserFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros e Turmas'}
               </button>
-              <div className={`compact-filters retractable-content ${isUserFiltersOpen ? 'open' : ''}`} style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div className={`compact-filters retractable-content ${isUserFiltersOpen ? 'open' : ''}`} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   <div style={{ position: 'relative', flex: '1 1 300px', display: 'flex', alignItems: 'center' }}>
-                    <Search size={20} style={{ position: 'absolute', right: '1rem', color: 'var(--text-secondary)' }} />
+                    <Search size={16} style={{ position: 'absolute', right: '0.75rem', color: 'var(--text-secondary)' }} />
                     <input 
                       type="text" 
                       placeholder="Buscar por nome..." 
                       value={studentSearch}
                       onChange={(e) => setStudentSearch(e.target.value)}
-                      style={{ width: '100%', padding: '0 3rem 0 1.5rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '1rem', height: '48px' }}
+                      style={{ width: '100%', padding: '0 2rem 0 1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '0.9rem', height: '36px' }}
                     />
                   </div>
                   <select 
                     value={studentSortBy} 
                     onChange={e => setStudentSortBy(e.target.value as any)}
-                    style={{ padding: '0 1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', height: '48px' }}
+                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', height: '36px', fontSize: '0.9rem' }}
                   >
                     <option value="xp">Por XP</option>
                     <option value="name">Por Nome</option>
@@ -1018,23 +1033,23 @@ export default function AdminDashboard() {
                   <select 
                     value={studentSortOrder} 
                     onChange={e => setStudentSortOrder(e.target.value as any)}
-                    style={{ padding: '0 1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', height: '48px' }}
+                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', height: '36px', fontSize: '0.9rem' }}
                   >
                     <option value="desc">Descendente</option>
                     <option value="asc">Ascendente</option>
                   </select>
                 </div>
                 
-                <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
                   <button 
                     onClick={() => setSelectedClassTab('all')}
-                    style={{ padding: '0.5rem 1.5rem', borderRadius: '20px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'all' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'all' ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'all' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'all' ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
                   >
                     Todos
                   </button>
                   <button 
                     onClick={() => setSelectedClassTab('staff')}
-                    style={{ padding: '0.5rem 1.5rem', borderRadius: '20px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'staff' ? 'var(--accent-red)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'staff' ? 'white' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'staff' ? 'var(--accent-red)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'staff' ? 'white' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
                   >
                     Equipe (Prof/Admin)
                   </button>
@@ -1042,14 +1057,14 @@ export default function AdminDashboard() {
                     <button 
                       key={cls.id}
                       onClick={() => setSelectedClassTab(cls.name)}
-                      style={{ padding: '0.5rem 1.5rem', borderRadius: '20px', border: `1px solid ${cls.color}`, background: selectedClassTab === cls.name ? cls.color : 'rgba(255,255,255,0.05)', color: selectedClassTab === cls.name ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+                      style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: `1px solid ${cls.color}`, background: selectedClassTab === cls.name ? cls.color : 'rgba(255,255,255,0.05)', color: selectedClassTab === cls.name ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
                     >
                       {cls.name}
                     </button>
                   ))}
                   <button 
                     onClick={() => setSelectedClassTab('unassigned')}
-                    style={{ padding: '0.5rem 1.5rem', borderRadius: '20px', border: '1px solid var(--text-secondary)', background: selectedClassTab === 'unassigned' ? 'var(--text-secondary)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'unassigned' ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--text-secondary)', background: selectedClassTab === 'unassigned' ? 'var(--text-secondary)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'unassigned' ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
                   >
                     Sem Turma
                   </button>
@@ -1105,7 +1120,7 @@ export default function AdminDashboard() {
                 return (
                   <div style={{ display: 'grid', gap: '1rem' }}>
                     {filteredStudents.map(student => {
-                      const currentRank = getRankForXp(student.xp || 0);
+                      const currentRank = getRankForXp(student.xp || 0, student.classId);
                       const sClass = schoolClasses.find(c => c.name === student.classId);
                       const classColor = sClass ? sClass.color : 'var(--text-secondary)';
                       const isSelected = selectedStudentIds.includes(student.uid);
@@ -1740,9 +1755,14 @@ export default function AdminDashboard() {
                       <h4 style={{ fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <BookOpen size={20} color={cls.color} /> {cls.name}
                       </h4>
-                      <button onClick={() => handleRemoveClass(cls.id)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Turma">
-                        <Trash2 size={20} />
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={() => { setEditingClassId(cls.id); setEditClassName(cls.name); setEditClassColor(cls.color); setIsClassModalOpen(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Turma">
+                          <Edit2 size={20} />
+                        </button>
+                        <button onClick={() => handleRemoveClass(cls.id)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Turma">
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -1864,8 +1884,10 @@ export default function AdminDashboard() {
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
                  {selectedStudent.avatarConfig ? (
-                   <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                     <AvatarCharacter config={selectedStudent.avatarConfig} equippedItems={selectedStudentItems} size={48} interactive={false} animation={selectedStudent.avatarConfig.animationState as any || 'idle'} />
+                   <div style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', background: 'var(--bg-dark)', border: '2px solid var(--accent-blue)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                     <div style={{ position: 'absolute', width: 64, height: 64, bottom: -6, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
+                       <AvatarCharacter config={selectedStudent.avatarConfig} equippedItems={selectedStudentItems} size={64} interactive={false} animation={selectedStudent.avatarConfig.animationState as any || 'idle'} />
+                     </div>
                    </div>
                  ) : (
                    <img src={selectedStudent.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
@@ -2207,6 +2229,33 @@ export default function AdminDashboard() {
              setQuestMonsterConfig(newConfig);
           }}
         />
+      )}
+
+      {isClassModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="glass-panel" style={{ width: '400px', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>Editar Turma</h3>
+              <button onClick={() => { setIsClassModalOpen(false); setEditingClassId(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Turma</label>
+              <input type="text" value={editClassName} onChange={e => setEditClassName(e.target.value)} placeholder="Ex: 6º ano A" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+            </div>
+
+            <div style={{ marginBottom: '2rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Cor da Turma</label>
+              <input type="color" value={editClassColor} onChange={e => setEditClassColor(e.target.value)} style={{ width: '100%', height: '45px', padding: '0', borderRadius: '8px', background: 'transparent', border: 'none', cursor: 'pointer' }} />
+            </div>
+
+            <button className="login-btn" onClick={handleEditClassSubmit} style={{ width: '100%', justifyContent: 'center', background: 'var(--accent-blue)', color: 'white', border: 'none' }}>
+              Salvar Alterações
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

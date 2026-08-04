@@ -620,16 +620,15 @@ h3 {
 
 /* Compact Filters & Headers */
 .compact-header {
-  margin-bottom: 0.5rem !important;
+  margin-bottom: 0 !important;
 }
 .compact-header h2 {
-  font-size: 1.5rem !important;
   margin: 0 !important;
 }
 
 .compact-filters {
-  padding: 1rem !important;
-  margin-bottom: 1rem !important;
+  padding: 0 !important;
+  margin-bottom: 0.25rem !important;
 }
 .compact-filters select, .compact-filters input {
   padding: 0.5rem !important;
@@ -650,7 +649,7 @@ h3 {
 .retractable-content {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.25rem;
 }
 .retractable-toggle-btn {
   display: none;

@@ -36,7 +36,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 
   const avatarState = getProfileAvatarState(student);
   const show3D = rankPos <= 3 || isHovered;
-  const rank = getRankForXp(student.xp || 0);
+  const rank = getRankForXp(student.xp || 0, student.classId);
   
   let finalAnimation = show3D ? (avatarState.animation as any) : 'idle';
   if (rankPos === 1 && show3D) {
@@ -472,7 +472,7 @@ export default function Dashboard() {
     return () => clearTimeout(timeoutId);
   }, [allStudents]);
 
-  const currentRank = getRankForXp(userData?.xp || 0);
+  const currentRank = getRankForXp(userData?.xp || 0, userData?.classId);
 
   // Verificar se subiu de patente
   useEffect(() => {
@@ -609,7 +609,7 @@ export default function Dashboard() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {list.map((student, index) => {
           const rankPos = index + 1;
-          const sRank = getRankForXp(student.xp || 0);
+          const sRank = getRankForXp(student.xp || 0, student.classId);
           
           let medalColor = 'var(--text-secondary)';
           let bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.02)';
@@ -757,8 +757,8 @@ export default function Dashboard() {
           user={publicProfileUser.user}
           rankPos={publicProfileUser.rankPos}
           equippedItems={rankingEquippedItems[publicProfileUser.user.uid] || []}
-          rankName={getRankForXp(publicProfileUser.user.xp || 0).name}
-          rankColor={getRankForXp(publicProfileUser.user.xp || 0).color}
+          rankName={getRankForXp(publicProfileUser.user.xp || 0, publicProfileUser.user.classId).name}
+          rankColor={getRankForXp(publicProfileUser.user.xp || 0, publicProfileUser.user.classId).color}
         />
       )}
 

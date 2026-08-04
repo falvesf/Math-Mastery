@@ -7,11 +7,35 @@ import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS } from '../lib/ranks';
-import type { RankDef } from '../lib/ranks';
+import type { RankDef, RankVariant } from '../lib/ranks';
+import type { ClassDef } from '../pages/AdminDashboard';
+
+const AnimatedRankIcon = ({ rank }: { rank: RankDef }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  
+  const allImages = [rank.imageUrl, ...(rank.variants || []).map(v => v.imageUrl)].filter(Boolean) as string[];
+
+  useEffect(() => {
+    if (allImages.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentIndex(prev => (prev + 1) % allImages.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [allImages.length]);
+
+  if (allImages.length === 0) {
+    return <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: rank.color, border: '2px solid rgba(255,255,255,0.5)' }}></div>;
+  }
+
+  return (
+    <img key={currentIndex} src={allImages[currentIndex]} alt={rank.name} style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${rank.color}`, boxShadow: `0 0 10px ${rank.color}80`, animation: 'fadeIn 0.5s ease-in-out' }} />
+  );
+};
 
 export default function AdminRankManager({ pixabayKey }: { pixabayKey: string }) {
   const { showConfirm } = useDialog();
   const [ranks, setRanks] = useState<RankDef[]>([...RANKS]);
+  const [classes, setClasses] = useState<ClassDef[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [isEditing, setIsEditing] = useState(false);
@@ -20,11 +44,23 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     name: '', minXp: 0, color: '#fbbf24', imageUrl: ''
   });
   
-  const [showGallery, setShowGallery] = useState(false);
+  const [galleryTarget, setGalleryTarget] = useState<'main' | number | null>(null);
 
   useEffect(() => {
     fetchRanks();
+    fetchClasses();
   }, []);
+
+  const fetchClasses = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'classes'));
+      if (!snap.empty) {
+        setClasses(snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassDef)));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchRanks = async () => {
     setLoading(true);
@@ -95,13 +131,13 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   };
 
   const openEdit = (rank: RankDef, index: number) => {
-    setFormData(rank);
+    setFormData({ ...rank, variants: rank.variants || [] });
     setEditingIndex(index);
     setIsEditing(true);
   };
 
   const openNew = () => {
-    setFormData({ name: '', minXp: ranks.length > 0 ? ranks[ranks.length-1].minXp + 500 : 0, color: '#fbbf24', imageUrl: '' });
+    setFormData({ name: '', minXp: ranks.length > 0 ? ranks[ranks.length-1].minXp + 500 : 0, color: '#fbbf24', imageUrl: '', variants: [] });
     setEditingIndex(null);
     setIsEditing(true);
   };
@@ -111,13 +147,19 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
       
-      {showGallery && createPortal(
+      {galleryTarget !== null && createPortal(
         <ImageGalleryModal 
           apiKey={pixabayKey}
-          onClose={() => setShowGallery(false)}
+          onClose={() => setGalleryTarget(null)}
           onSelectImage={(url) => {
-            setFormData({ ...formData, imageUrl: url });
-            setShowGallery(false);
+            if (galleryTarget === 'main') {
+              setFormData({ ...formData, imageUrl: url });
+            } else if (typeof galleryTarget === 'number') {
+              const newVariants = [...(formData.variants || [])];
+              newVariants[galleryTarget].imageUrl = url;
+              setFormData({ ...formData, variants: newVariants });
+            }
+            setGalleryTarget(null);
           }}
         />,
         document.body
@@ -165,7 +207,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                   <div style={{ display: 'flex', gap: '1rem' }}>
                     <input type="text" value={formData.imageUrl || ''} onChange={e => setFormData({...formData, imageUrl: e.target.value})} placeholder="Ex: https://..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
                     <DirectUploadButton folder="ranks" onUploadComplete={(url) => setFormData({...formData, imageUrl: url})} buttonStyle={{ minHeight: '100%' }} />
-                    <button onClick={() => setShowGallery(true)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
+                    <button onClick={() => setGalleryTarget('main')} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                       <Search size={20} />
                     </button>
                   </div>
@@ -177,7 +219,92 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
+              {/* Variações por Turma */}
+              <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <label style={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>Variações de Arte (Por Turma)</label>
+                  <button onClick={() => setFormData({...formData, variants: [...(formData.variants || []), { classIds: [], imageUrl: '' }]})} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    + Adicionar Variação
+                  </button>
+                </div>
+                
+                {(formData.variants || []).length === 0 ? (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic' }}>Nenhuma variação específica. Todas as turmas usarão a arte padrão.</p>
+                ) : (
+                  <div style={{ display: 'grid', gap: '1rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                    {(formData.variants || []).map((variant, vIdx) => (
+                      <div key={vIdx} style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>Variação {vIdx + 1}</span>
+                          <button onClick={() => {
+                            const newV = [...(formData.variants || [])];
+                            newV.splice(vIdx, 1);
+                            setFormData({...formData, variants: newV});
+                          }} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                        </div>
+                        
+                        <div style={{ marginBottom: '1rem' }}>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Turmas vinculadas:</label>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            {classes.map(c => {
+                              const isSelected = variant.classIds.includes(c.id);
+                              return (
+                                <button
+                                  key={c.id}
+                                  onClick={() => {
+                                    const newV = [...(formData.variants || [])];
+                                    if (isSelected) {
+                                      newV[vIdx].classIds = newV[vIdx].classIds.filter(id => id !== c.id);
+                                    } else {
+                                      newV[vIdx].classIds.push(c.id);
+                                    }
+                                    setFormData({...formData, variants: newV});
+                                  }}
+                                  style={{
+                                    padding: '0.25rem 0.5rem', fontSize: '0.8rem', borderRadius: '4px', cursor: 'pointer',
+                                    background: isSelected ? c.color : 'rgba(255,255,255,0.05)',
+                                    color: isSelected ? 'black' : 'var(--text-secondary)',
+                                    border: `1px solid ${isSelected ? c.color : 'var(--border-glass)'}`,
+                                    fontWeight: isSelected ? 'bold' : 'normal'
+                                  }}
+                                >
+                                  {c.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Imagem da Variação</label>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <input type="text" value={variant.imageUrl} onChange={e => {
+                              const newV = [...(formData.variants || [])];
+                              newV[vIdx].imageUrl = e.target.value;
+                              setFormData({...formData, variants: newV});
+                            }} placeholder="URL..." style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '0.85rem' }} />
+                            
+                            <DirectUploadButton folder="ranks" onUploadComplete={(url) => {
+                              const newV = [...(formData.variants || [])];
+                              newV[vIdx].imageUrl = url;
+                              setFormData({...formData, variants: newV});
+                            }} buttonStyle={{ minHeight: '100%', padding: '0 0.5rem' }} />
+                            
+                            <button onClick={() => setGalleryTarget(vIdx)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 0.75rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                              <Search size={16} />
+                            </button>
+                          </div>
+                          {variant.imageUrl && (
+                            <div style={{ marginTop: '0.5rem', width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden', border: `2px solid ${formData.color}` }}>
+                              <img src={variant.imageUrl} alt="Variant Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
                 <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
                 <button onClick={handleSaveRank} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>Salvar Patente</button>
               </div>
@@ -190,11 +317,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
           {ranks.map((rank, idx) => (
             <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                {rank.imageUrl ? (
-                  <img src={rank.imageUrl} alt={rank.name} style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${rank.color}`, boxShadow: `0 0 10px ${rank.color}80` }} />
-                ) : (
-                  <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: rank.color, border: '2px solid rgba(255,255,255,0.5)' }}></div>
-                )}
+                <AnimatedRankIcon rank={rank} />
                 <div>
                   <h3 style={{ margin: 0, color: rank.color, fontSize: '1.2rem', textShadow: `0 0 5px ${rank.color}80` }}>{rank.name}</h3>
                   <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>A partir de {rank.minXp} XP</p>
