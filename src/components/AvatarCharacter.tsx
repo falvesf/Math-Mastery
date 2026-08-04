@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation, FunctionAnimation } from 'skinview3d';
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
-// Removemos import * as THREE from 'three' para evitar instanciar a versão errada.
+// Importando THREE diretamente de dentro da dependência do skinview3d para evitar mismatch
+import * as THREE from 'skinview3d/node_modules/three';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
 
@@ -35,6 +36,8 @@ export interface EquippedItem {
   baseAttributeValue?: number;
   adds?: ItemAdd[];
   gameModelUrl?: string;
+  modelTextureUrl?: string;
+  minecraftHeadValue?: string;
   modelTransforms?: ModelTransformsConfig;
   rarity?: string;
 }
@@ -47,6 +50,7 @@ export interface ModelTransform {
   rotY: number;
   rotZ: number;
   slide: number;
+  scale?: number;
 }
 
 export interface ModelTransformsConfig {
@@ -173,6 +177,49 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             if (isCancelled) return;
             console.log(`Modelo ${safeUrl} carregado com sucesso!`);
             const model = gltf.scene;
+
+            if (item.modelTextureUrl) {
+              const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(item.modelTextureUrl)}`;
+              const texLoader = new THREE.TextureLoader();
+              texLoader.setCrossOrigin('anonymous');
+              
+              const loadTex = (url: string, fallbackUrl?: string) => {
+                texLoader.load(
+                  url,
+                  (texture) => {
+                    texture.flipY = false;
+                    texture.colorSpace = THREE.SRGBColorSpace;
+                    texture.magFilter = THREE.NearestFilter;
+                    texture.minFilter = THREE.NearestFilter;
+                    model.traverse((child) => {
+                      if ((child as THREE.Mesh).isMesh) {
+                        const mesh = child as THREE.Mesh;
+                        if (mesh.material) {
+                          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                          materials.forEach(mat => {
+                            const stdMat = mat as THREE.MeshStandardMaterial;
+                            stdMat.map = texture;
+                            stdMat.color = new THREE.Color(0xffffff);
+                            stdMat.transparent = true;
+                            stdMat.alphaTest = 0.5;
+                            stdMat.needsUpdate = true;
+                          });
+                        }
+                      }
+                    });
+                  },
+                  undefined,
+                  (err) => {
+                    console.error(`Erro ao carregar texture do modelo via proxy ${url}:`, err);
+                    if (fallbackUrl) {
+                      loadTex(fallbackUrl);
+                    }
+                  }
+                );
+              };
+              const fallbackUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(item.modelTextureUrl)}`;
+              loadTex(proxyUrl, fallbackUrl);
+            }
             
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
               const isDefense = item.itemCategory === 'defense';
@@ -192,6 +239,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 const inv = isLeftHanded ? -1 : 1;
                 
                 if (debugItemTransform && isTargetDebugItem) {
+                  model.scale.set(debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10);
                   model.position.set(debugItemTransform.posX * inv, debugItemTransform.posY, debugItemTransform.posZ);
                   model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY * inv, debugItemTransform.rotZ * inv);
                   model.translateY(debugItemTransform.slide);
@@ -203,6 +251,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                                 : isBattle && item.modelTransforms.battle ? item.modelTransforms.battle 
                                 : item.modelTransforms.common;
                   if (transform) {
+                    model.scale.set(transform.scale ?? 10, transform.scale ?? 10, transform.scale ?? 10);
                     model.position.set(transform.posX * inv, transform.posY, transform.posZ);
                     model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
                     model.translateY(transform.slide);
@@ -234,8 +283,28 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               // Os itens do Blockbench para Minecraft geralmente vêm na escala de 1 unidade = 16 pixels.
               // A cabeça tem 8x8x8 pixels. Multiplicando a escala por 16, os tamanhos batem perfeitamente.
               model.scale.set(16, 16, 16);
-              model.position.set(0, 0, 0);
-              model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
+              
+              let appliedTransform = false;
+              const itemId = item.itemId || item.docId;
+              if (debugItemTransform && debugItemId === itemId) {
+                model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16);
+                model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+                model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+                model.translateY(debugItemTransform.slide);
+                appliedTransform = true;
+              } else if (item.modelTransforms && item.modelTransforms.common) {
+                const t = item.modelTransforms.common;
+                model.scale.set(t.scale ?? 16, t.scale ?? 16, t.scale ?? 16);
+                model.position.set(t.posX, t.posY, t.posZ);
+                model.rotation.set(t.rotX, t.rotY, t.rotZ);
+                model.translateY(t.slide);
+                appliedTransform = true;
+              }
+              
+              if (!appliedTransform) {
+                model.position.set(0, 0, 0);
+                model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
+              }
               head.add(model);
               loadedModels.push({ parent: head, model });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
@@ -243,9 +312,32 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               const body = viewer.playerObject.skin.body;
               model.scale.set(16, 16, 16);
               // O grupo "body" no skinview3d tem seu eixo deslocado. Precisamos descer o modelo em -6 para alinhar com o peitoral.
-              model.position.set(0, -6, 0);
-              model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
+              let appliedTransform = false;
+              const itemId = item.itemId || item.docId;
+              if (debugItemTransform && debugItemId === itemId) {
+                model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16);
+                model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+                model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+                model.translateY(debugItemTransform.slide);
+                appliedTransform = true;
+              } else if (item.modelTransforms && item.modelTransforms.common) {
+                const t = item.modelTransforms.common;
+                model.scale.set(t.scale ?? 16, t.scale ?? 16, t.scale ?? 16);
+                model.position.set(t.posX, t.posY, t.posZ);
+                model.rotation.set(t.rotX, t.rotY, t.rotZ);
+                model.translateY(t.slide);
+                appliedTransform = true;
+              }
+              
+              if (!appliedTransform) {
+                model.position.set(0, -6, 0);
+                model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
+              }
               body.add(model);
+              if (debugItemId === itemId) {
+                const helper = new THREE.BoxHelper(model, 0xff0000);
+                body.add(helper);
+              }
               loadedModels.push({ parent: body, model });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
             }
@@ -258,6 +350,142 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             console.error(`Falha ao carregar o modelo 3D (${safeUrl}):`, error);
           }
         );
+      } else if (item.minecraftHeadValue && item.minecraftHeadValue.trim() !== '' && item.avatarPart === 'head') {
+        let textureUrl = item.minecraftHeadValue.trim();
+        // Decode Base64 from Mojang format if it doesn't look like an HTTP URL
+        if (!textureUrl.startsWith('http')) {
+          try {
+            const decoded = JSON.parse(atob(textureUrl));
+            if (decoded.textures && decoded.textures.SKIN && decoded.textures.SKIN.url) {
+              textureUrl = decoded.textures.SKIN.url;
+            }
+          } catch (e) {
+            console.error(`Erro ao decodificar Base64 de cabeça Minecraft: ${textureUrl}`);
+            return; // Skip if invalid
+          }
+        }
+        
+        // Pass through CORS proxy to ensure we can load textures from textures.minecraft.net
+        // Using mc-heads.net for native mojang textures as it has no CORS issues and is lightning fast
+        let proxyUrl = textureUrl;
+        if (textureUrl.includes('textures.minecraft.net/texture/')) {
+          const hash = textureUrl.substring(textureUrl.lastIndexOf('/') + 1);
+          proxyUrl = `https://mc-heads.net/skin/${hash}`;
+        } else {
+          proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(textureUrl)}`;
+        }
+        
+        const loader = new THREE.TextureLoader();
+        loader.setCrossOrigin('anonymous'); // CRITICAL for WebGL to accept the cross-origin image
+        
+        const loadTexture = (url: string, fallbackUrl?: string) => {
+          loader.load(
+            url, 
+            (texture) => {
+              if (isCancelled) return;
+              texture.magFilter = THREE.NearestFilter;
+              texture.minFilter = THREE.NearestFilter;
+          texture.colorSpace = THREE.SRGBColorSpace; // Optional but recommended for colors
+          
+          // Minecraft head texture maps (64x64)
+          // We need to map 6 faces of the head.
+          // Faces: Right, Left, Top, Bottom, Front, Back
+          // BoxGeometry standard order is Right(0), Left(1), Top(2), Bottom(3), Front(4), Back(5).
+          const materials = [
+            // Right (Minecraft right side of head is [0, 8] to [8, 16])
+            new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+            // Left (Minecraft left side is [16, 8] to [24, 16])
+            new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+            // Top (Minecraft top is [8, 0] to [16, 8])
+            new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+            // Bottom (Minecraft bottom is [16, 0] to [24, 8])
+            new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+            // Front (Minecraft front is [8, 8] to [16, 16])
+            new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+            // Back (Minecraft back is [24, 8] to [32, 16])
+            new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+          ];
+          
+          // Manually define UVs for a 1x1x1 Box
+          const geometry = new THREE.BoxGeometry(1, 1, 1);
+          const uvAttribute = geometry.attributes.uv;
+          const uvs = uvAttribute.array as Float32Array;
+          
+          const setUV = (faceIndex: number, tx: number, ty: number, tw: number, th: number) => {
+             const x0 = tx / 64;
+             const x1 = (tx + tw) / 64;
+             // Three.js Y is bottom-up, Minecraft is top-down (0 is top)
+             const y1 = 1.0 - (ty / 64);
+             const y0 = 1.0 - ((ty + th) / 64);
+             
+             // Each face has 4 vertices, 2 values each (U, V)
+             const offset = faceIndex * 8;
+             uvs[offset + 0] = x0; uvs[offset + 1] = y1;
+             uvs[offset + 2] = x1; uvs[offset + 3] = y1;
+             uvs[offset + 4] = x0; uvs[offset + 5] = y0;
+             uvs[offset + 6] = x1; uvs[offset + 7] = y0;
+          };
+          
+          setUV(0, 0, 8, 8, 8);    // Right (left side in image)
+          setUV(1, 16, 8, 8, 8);   // Left (right side in image)
+          setUV(2, 8, 0, 8, 8);    // Top
+          setUV(3, 16, 0, 8, 8);   // Bottom
+          setUV(4, 8, 8, 8, 8);    // Front
+          setUV(5, 24, 8, 8, 8);   // Back
+          
+          uvAttribute.needsUpdate = true;
+          
+          const mesh = new THREE.Mesh(geometry, materials);
+          const head = viewer.playerObject.skin.head;
+          
+          // The base skinview3d head size is 8 units. The outer layer (hair) is about 9 units.
+          // Let's make it 9.2 so it completely covers the hair and fits like a proper helmet.
+          mesh.scale.set(9.2, 9.2, 9.2); 
+          // Center it on the head
+          // skinview3d head pivot is at the neck (bottom of head, Y=0). Center of head is Y=4.
+          
+          let appliedTransform = false;
+          const itemId = item.itemId || item.docId;
+          if (debugItemTransform && debugItemId === itemId) {
+            mesh.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+            mesh.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+            mesh.translateY(debugItemTransform.slide);
+            appliedTransform = true;
+          } else if (item.modelTransforms && item.modelTransforms.common) {
+            const t = item.modelTransforms.common;
+            mesh.position.set(t.posX, t.posY, t.posZ);
+            mesh.rotation.set(t.rotX, t.rotY, t.rotZ);
+            mesh.translateY(t.slide);
+            appliedTransform = true;
+          }
+          
+          if (!appliedTransform) {
+            mesh.position.set(0, 4, 0);
+          }
+          
+          // Notice: BoxGeometry front might not align perfectly with skinview3d head orientation.
+          // By testing, we might need a 180 flip if the face points backward.
+          // skinview3d usually rotates the head by default or maps it differently.
+          // Let's add it and let it rotate correctly!
+          head.add(mesh);
+          loadedModels.push({ parent: head, model: mesh });
+          loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model: mesh, item });
+            },
+            undefined,
+            (err) => {
+              console.error(`Erro ao carregar textura via proxy ${url}:`, err);
+              if (fallbackUrl) {
+                console.log(`Tentando URL de fallback: ${fallbackUrl}`);
+                loadTexture(fallbackUrl);
+              }
+            }
+          );
+        };
+        
+        const fallbackProxyUrl = textureUrl.includes('textures.minecraft.net') ? 
+            `https://mineskin.eu/skin/${textureUrl.substring(textureUrl.lastIndexOf('/') + 1)}` : 
+            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(textureUrl)}`;
+        loadTexture(proxyUrl, fallbackProxyUrl);
       }
     });
     
@@ -301,6 +529,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         const inv = isLeftHanded ? -1 : 1;
 
         if (debugItemTransform && isTargetDebugItem) {
+          model.scale.set(debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10);
           model.position.set(debugItemTransform.posX * inv, debugItemTransform.posY, debugItemTransform.posZ);
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY * inv, debugItemTransform.rotZ * inv);
           // Reset position Y, then translate
@@ -322,6 +551,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           }
           
           if (transform) {
+            model.scale.set(transform.scale ?? 10, transform.scale ?? 10, transform.scale ?? 10);
             model.position.set(transform.posX * inv, transform.posY, transform.posZ);
             model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
             model.position.y = transform.posY;
@@ -343,6 +573,59 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             model.position.set(0, -12, 0); 
             model.rotation.set(Math.PI / 2, 0, 0);
           }
+        }
+      } else if (avatarPart === 'head') {
+        let appliedTransform = false;
+        const isTargetDebugItem = debugItemId === itemId;
+        const defaultHeadScale = item.minecraftHeadValue ? 9.2 : 16;
+        if (debugItemTransform && isTargetDebugItem) {
+          model.scale.set(debugItemTransform.scale ?? defaultHeadScale, debugItemTransform.scale ?? defaultHeadScale, debugItemTransform.scale ?? defaultHeadScale);
+          model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+          model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+          // For head, we might want to respect the slide, similar to hands
+          model.position.y = debugItemTransform.posY;
+          model.translateY(debugItemTransform.slide);
+          appliedTransform = true;
+        } else if (item.modelTransforms && item.modelTransforms.common) {
+          const t = item.modelTransforms.common;
+          model.scale.set(t.scale ?? defaultHeadScale, t.scale ?? defaultHeadScale, t.scale ?? defaultHeadScale);
+          model.position.set(t.posX, t.posY, t.posZ);
+          model.rotation.set(t.rotX, t.rotY, t.rotZ);
+          model.position.y = t.posY;
+          model.translateY(t.slide);
+          appliedTransform = true;
+        }
+        
+        if (!appliedTransform) {
+          if (item.minecraftHeadValue) {
+            model.position.set(0, 4, 0); // Minecraft texture boxes sit at Y=4
+          } else {
+            model.position.set(0, 0, 0); // GLB heads sit at Y=0
+            model.rotation.set(0, Math.PI, 0); // GLB heads need 180 flip
+          }
+        }
+      } else if (avatarPart === 'body') {
+        let appliedTransform = false;
+        const isTargetDebugItem = debugItemId === itemId;
+        if (debugItemTransform && isTargetDebugItem) {
+          model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16);
+          model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+          model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+          model.position.y = debugItemTransform.posY;
+          model.translateY(debugItemTransform.slide);
+          appliedTransform = true;
+        } else if (item.modelTransforms && item.modelTransforms.common) {
+          const t = item.modelTransforms.common;
+          model.position.set(t.posX, t.posY, t.posZ);
+          model.rotation.set(t.rotX, t.rotY, t.rotZ);
+          model.position.y = t.posY;
+          model.translateY(t.slide);
+          appliedTransform = true;
+        }
+        
+        if (!appliedTransform) {
+          model.position.set(0, -6, 0);
+          model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
         }
       }
     });

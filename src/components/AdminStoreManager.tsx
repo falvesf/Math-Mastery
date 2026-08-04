@@ -26,6 +26,8 @@ export interface StoreItem {
   minRankRequired: number; // Index of RANKS array
   active: boolean;
   gameModelUrl?: string; // URL para modelo 3D (ex: .glb)
+  modelTextureUrl?: string; // URL da skin (textura) aplicada ao modelo .glb
+  minecraftHeadValue?: string; // Base64 ou URL da textura do capacete Minecraft
   gameImage2dUrl?: string; // Imagem em lona completa (ex: 512x512) para o paper doll 2D
   avatarPart?: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'two_handed' | 'accessory' | 'background' | 'pet';
   itemCategory?: ItemCategory;
@@ -57,6 +59,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [globalGachaConfig, setGlobalGachaConfig] = useState<GachaConfig | null>(null);
   const [isEconomyOpen, setIsEconomyOpen] = useState(false);
+  const [presetSkins, setPresetSkins] = useState<{id: string, name: string, url: string}[]>([]);
   
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -114,6 +117,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       }
     } catch (e) { console.error(e); }
     
+    try {
+      const skinsSnap = await getDocs(collection(db, 'preset_skins'));
+      const loadedSkins: {id: string, name: string, url: string}[] = [];
+      skinsSnap.forEach(d => loadedSkins.push({ id: d.id, ...d.data() } as any));
+      setPresetSkins(loadedSkins);
+    } catch (e) { console.error(e); }
+    
     setLoading(false);
   };
 
@@ -150,6 +160,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           itemType: itemData.type || 'consumable',
           gameEffect: itemData.gameEffect || 'none',
           gameModelUrl: itemData.gameModelUrl || '',
+          modelTextureUrl: itemData.modelTextureUrl || '',
+          minecraftHeadValue: itemData.minecraftHeadValue || '',
           avatarPart: itemData.avatarPart || null,
           usableInQuest: itemData.usableInQuest || false,
           modelTransforms: itemData.modelTransforms || null,
@@ -504,6 +516,29 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL do Modelo 3D (.glb) [Opcional]</label>
                   <input type="text" value={formData.gameModelUrl || ''} onChange={e => setFormData({...formData, gameModelUrl: e.target.value})} placeholder="/models/item.glb" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', marginBottom: '0.5rem' }} />
                   {formData.gameModelUrl && formData.gameModelUrl.trim() !== '' && (
+                    <button 
+                      onClick={() => setShowTransformModal(true)}
+                      style={{ padding: '0.5rem', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}
+                    >
+                      ⚙️ Configurar Posição 3D
+                    </button>
+                  )}
+                </div>
+                
+                <div style={{ marginTop: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.9rem', color: '#9ca3af', marginBottom: '0.25rem' }}>Skin (Textura) para o Modelo 3D</label>
+                  <select value={formData.modelTextureUrl || ''} onChange={e => setFormData({...formData, modelTextureUrl: e.target.value})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', marginBottom: '0.5rem' }}>
+                    <option value="">Nenhuma (Usar cor/textura original do .glb)</option>
+                    {presetSkins.map(s => (
+                      <option key={s.id} value={s.url}>{s.name}</option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '1.5rem', marginTop: '-0.25rem' }}>Selecione uma skin previamente enviada na tela de Gerenciar Skins para colorir o modelo .glb.</p>
+
+                  <label style={{ display: 'block', fontSize: '0.9rem', color: '#9ca3af', marginBottom: '0.25rem' }}>Textura Minecraft Head (Base64 ou URL)</label>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Use isso se não quiser usar um .glb para criar um capacete-cabeça. Cole aqui a Base64 ou a Minecraft URL.</div>
+                  <input type="text" value={formData.minecraftHeadValue || ''} onChange={e => setFormData({...formData, minecraftHeadValue: e.target.value})} placeholder="eyJ0ZXh0dXJlcyI..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', marginBottom: '0.5rem' }} />
+                  {formData.minecraftHeadValue && formData.minecraftHeadValue.trim() !== '' && (
                     <button 
                       onClick={() => setShowTransformModal(true)}
                       style={{ padding: '0.5rem', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}

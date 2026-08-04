@@ -77,7 +77,8 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   const [debugTransform, setDebugTransform] = useState<ModelTransform>({
     posX: 0, posY: -11, posZ: 0,
     rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
-    slide: -18
+    slide: -18,
+    scale: 16
   });
 
   const fetchPresetSkins = async (forceRefresh = false) => {
@@ -409,7 +410,8 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         setDebugTransform({
                           posX: 0, posY: -11, posZ: 0,
                           rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
-                          slide: -18
+                          slide: -18,
+                          scale: 16
                         });
                       }
                     }
@@ -417,7 +419,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                   style={{ background: 'rgba(0,0,0,0.5)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', padding: '0.25rem', maxWidth: '200px' }}
                 >
                   <option value="">Selecione um item...</option>
-                  {equippedItems.filter(i => i.gameModelUrl).map(item => (
+                  {equippedItems.filter(i => i.gameModelUrl || i.minecraftHeadValue).map(item => (
                     <option key={item.itemId || item.docId} value={item.itemId || item.docId}>{item.itemTitle}</option>
                   ))}
                 </select>
@@ -430,17 +432,18 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                 { label: 'Rot Y', key: 'rotY' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
                 { label: 'Rot Z', key: 'rotZ' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
                 { label: 'Slide', key: 'slide' as const, min: -40, max: 20, step: 1 },
+                { label: 'Scale', key: 'scale' as const, min: 0.1, max: 100, step: 0.1 },
               ].map(({ label, key, min, max, step }) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                   <span style={{ width: '42px', color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold' }}>{label}</span>
                   <input 
                     type="range" 
                     min={min} max={max} step={step}
-                    value={debugTransform[key]} 
+                    value={debugTransform[key] ?? 16} 
                     onChange={(e) => setDebugTransform(prev => ({ ...prev, [key]: parseFloat(e.target.value) }))}
                     style={{ flex: 1, accentColor: '#f59e0b' }}
                   />
-                  <span style={{ width: '55px', textAlign: 'right', color: '#fbbf24', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}>{debugTransform[key].toFixed(2)}</span>
+                  <span style={{ width: '55px', textAlign: 'right', color: '#fbbf24', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}>{(debugTransform[key] ?? (key === 'scale' ? 16 : 0)).toFixed(2)}</span>
                 </div>
               ))}
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>

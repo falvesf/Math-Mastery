@@ -301,6 +301,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           baseAttributeType: item.baseAttributeType || 'none',
           baseAttributeValue: item.baseAttributeValue || 0,
           gameModelUrl: item.gameModelUrl || '',
+          modelTextureUrl: item.modelTextureUrl || '',
+          minecraftHeadValue: item.minecraftHeadValue || '',
           modelTransforms: item.modelTransforms || null,
           adds: finalAdds,
           minSalePrice: item.minSalePrice || 0,

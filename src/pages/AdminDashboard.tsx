@@ -259,6 +259,8 @@ export default function AdminDashboard() {
         baseAttributeValue: data.baseAttributeValue,
         adds: data.adds,
         gameModelUrl: data.gameModelUrl,
+        modelTextureUrl: data.modelTextureUrl,
+        minecraftHeadValue: data.minecraftHeadValue,
         modelTransforms: data.modelTransforms
       });
     });
@@ -291,6 +293,8 @@ export default function AdminDashboard() {
         baseAttributeValue: data.baseAttributeValue,
         adds: data.adds,
         gameModelUrl: data.gameModelUrl,
+        modelTextureUrl: data.modelTextureUrl,
+        minecraftHeadValue: data.minecraftHeadValue,
         modelTransforms: data.modelTransforms
       };
     });

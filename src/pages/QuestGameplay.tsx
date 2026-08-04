@@ -739,6 +739,9 @@ export default function QuestGameplay() {
                   itemImageUrl: item.imageUrl || '',
                   gameEffect: item.gameEffect || 'none',
                   usableInQuest: item.usableInQuest || false,
+                  gameModelUrl: item.gameModelUrl || '',
+                  modelTextureUrl: item.modelTextureUrl || '',
+                  minecraftHeadValue: item.minecraftHeadValue || '',
                   quantity: slot.quantity,
                   equipped: false,
                   purchasedAt: serverTimestamp(),
@@ -747,7 +750,6 @@ export default function QuestGameplay() {
                   itemCategory: item.itemCategory || 'none',
                   baseAttributeType: item.baseAttributeType || 'none',
                   baseAttributeValue: item.baseAttributeValue || 0,
-                  gameModelUrl: item.gameModelUrl || '',
                   modelTransforms: item.modelTransforms || null,
                   adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : [],
                   minSalePrice: item.minSalePrice || 0  // Propaga o preço mínimo de revenda
@@ -782,6 +784,9 @@ export default function QuestGameplay() {
               itemImageUrl: item.imageUrl || '',
               gameEffect: item.gameEffect || 'none',
               usableInQuest: item.usableInQuest || false,
+              gameModelUrl: item.gameModelUrl || '',
+              modelTextureUrl: item.modelTextureUrl || '',
+              minecraftHeadValue: item.minecraftHeadValue || '',
               quantity: 1,
               equipped: false,
               purchasedAt: serverTimestamp(),
@@ -790,7 +795,6 @@ export default function QuestGameplay() {
               itemCategory: item.itemCategory || 'none',
               baseAttributeType: item.baseAttributeType || 'none',
               baseAttributeValue: item.baseAttributeValue || 0,
-              gameModelUrl: item.gameModelUrl || '',
               modelTransforms: item.modelTransforms || null,
               adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : []
             };
