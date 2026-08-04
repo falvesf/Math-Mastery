@@ -932,15 +932,15 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   };
 
   const ALL_SLOTS = [
-    { id: 'head', label: 'Elmo / Cabeça', pos: { top: '-15%', left: '50%', transform: 'translateX(-50%)' } },
+    { id: 'head', label: 'Elmo / Cabeça', pos: { top: '-5%', left: '50%', transform: 'translateX(-50%)' } },
     { id: 'face', label: 'Rosto / Óculos', pos: { top: '5%', right: '-35%' } },
     { id: 'accessory', label: 'Acessório', pos: { top: '5%', left: '-35%' } },
     { id: 'hand1', label: 'Mão (Esquerda do Personagem)', pos: { top: '40%', right: '-50%', transform: 'translateY(-50%)' } },
     { id: 'hand2', label: 'Mão (Direita do Personagem)', pos: { top: '40%', left: '-50%', transform: 'translateY(-50%)' } },
     { id: 'body', label: 'Armadura / Corpo', pos: { bottom: '20%', right: '-40%' } },
     { id: 'legs', label: 'Calças / Pernas', pos: { bottom: '20%', left: '-40%' } },
-    { id: 'feet', label: 'Botas / Pés', pos: { bottom: '-5%', left: '50%', transform: 'translateX(-50%)' } },
-    { id: 'pet', label: 'Mascote', pos: { top: '40%', left: '-120%', transform: 'translateY(-50%)' } },
+    { id: 'feet', label: 'Botas / Pés', pos: { bottom: '-15%', left: '50%', transform: 'translateX(-50%)' } },
+    { id: 'pet', label: 'Mascote', pos: { top: '40%', left: '-150%', transform: 'translateY(-50%)' } },
   ];
 
   const getRarityStyle = (rarity?: string) => {
@@ -1009,6 +1009,17 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               if (item && onSlotClick) {
                 e.stopPropagation();
                 onSlotClick(item);
+              }
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const itemId = e.dataTransfer.getData('text/plain');
+              if (itemId) {
+                window.dispatchEvent(new CustomEvent('equip-item', { detail: { itemId, targetSlot: slot.id } }));
               }
             }}
             style={{

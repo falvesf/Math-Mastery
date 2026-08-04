@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp, where, deleteDoc } from 'firebase/firestore';
-import { Coins, Star, ShieldAlert, Store, Search, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles } from 'lucide-react';
+import { Coins, Star, ShieldAlert, Store, Search, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Filter } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
 import type { StoreItem } from './AdminStoreManager';
+import AvatarCharacter from './AvatarCharacter';
+import { X, ExternalLink } from 'lucide-react';
 
 interface MarketItem {
   id: string;
@@ -25,6 +27,11 @@ interface MarketItem {
   gameEffect?: string;
   avatarPart?: string;
   rarity?: string;
+  gameModelUrl?: string;
+  modelTextureUrl?: string;
+  minecraftHeadValue?: string;
+  modelTransforms?: any;
+  unlockedSkinId?: string;
 }
 
 const getAttributeName = (type: string) => {
@@ -74,6 +81,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [marketBuyModalItem, setMarketBuyModalItem] = useState<MarketItem | null>(null);
   const [marketBuyQuantity, setMarketBuyQuantity] = useState(1);
   const [marketBuyPaymentMethod, setMarketBuyPaymentMethod] = useState<'xp' | 'coins'>('xp');
+
+  // Preview Modal
+  const [previewItem, setPreviewItem] = useState<StoreItem | MarketItem | null>(null);
 
   // Filtros e View
   const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(
@@ -306,7 +316,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           modelTransforms: item.modelTransforms || null,
           adds: finalAdds,
           minSalePrice: item.minSalePrice || 0,
-          rarity: item.rarity || 'common'
+          rarity: item.rarity || 'common',
+          unlockedSkinId: item.unlockedSkinId || '',
+          buffDurationDays: item.buffDurationDays || 7
         });
         remainingToBuy -= qty;
       }
@@ -555,38 +567,82 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const processedMarketItems = getProcessedMarketItems();
 
   const getGridStyle = () => {
-    if (viewMode === 'grid-small') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem' };
-    if (viewMode === 'list') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' };
-    return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1.5rem' };
+    if (viewMode === 'grid-small') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' };
+    if (viewMode === 'list') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' };
+    return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' };
   };
 
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-      <div style={{ position: 'sticky', top: '75px', zIndex: 10, background: 'var(--bg-dark)', paddingBottom: '1rem', paddingTop: '1rem', borderBottom: '1px solid var(--border-glass)', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Store color="var(--gold-primary)" /> Lojas do Acampamento
+      {previewItem && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="glass-panel" style={{ width: '400px', maxWidth: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--bg-dark)', border: '2px solid var(--border-color)', borderRadius: '16px', padding: '1.5rem' }}>
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
+                Prévia: {(previewItem as StoreItem).title || (previewItem as MarketItem).itemTitle}
+              </h3>
+              <button onClick={() => setPreviewItem(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div style={{ height: '350px', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-card)', borderRadius: '12px', overflow: 'hidden' }}>
+              {(() => {
+                let previewConfig: any = { ...(userData.avatarConfig || { gender: 'male' as any, skinColor: '#ffcc99', hairColor: '#4a3000', eyeColor: '#000000', hairStyle: 'short', mouthStyle: 'smile', facialHair: 'none' as any, handedness: 'right' as any, animationState: 'idle' as any }) };
+                let previewEquipped = [];
+                
+                const type = (previewItem as StoreItem).type || (previewItem as MarketItem).itemType;
+                if (previewItem.gameEffect === 'unlock_skin') {
+                  previewConfig.customSkinUrl = previewItem.unlockedSkinId || '';
+                } else if (type === 'equippable') {
+                  previewEquipped.push({
+                    itemId: previewItem.id,
+                    itemTitle: (previewItem as any).itemTitle || (previewItem as any).title,
+                    itemCategory: previewItem.itemCategory,
+                    imageUrl: (previewItem as any).imageUrl || (previewItem as any).itemImageUrl || '',
+                    avatarPart: previewItem.avatarPart as any,
+                    gameModelUrl: previewItem.gameModelUrl,
+                    modelTextureUrl: previewItem.modelTextureUrl,
+                    minecraftHeadValue: previewItem.minecraftHeadValue,
+                    modelTransforms: previewItem.modelTransforms
+                  });
+                }
+                
+                return <AvatarCharacter config={previewConfig} equippedItems={previewEquipped} size={300} animation="idle" />;
+              })()}
+            </div>
+            <p style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontSize: '0.85rem', textAlign: 'center' }}>
+              Arraste para girar. O item já está pré-visualizado em seu personagem!
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div style={{ position: 'sticky', top: '75px', zIndex: 10, background: 'var(--bg-dark)', paddingBottom: '0.5rem', paddingTop: '0.5rem', borderBottom: '1px solid var(--border-glass)', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <h2 style={{ fontSize: '1.5rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Store size={28} color="var(--gold-primary)" /> Lojas do Acampamento
           </h2>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <div style={{ color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: '12px' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <div style={{ color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.75rem', borderRadius: '12px', fontSize: '0.9rem' }}>
                Mochila: <strong style={{ color: myInventoryCount >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{myInventoryCount}</strong> / {maxInventorySpace}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.5)', padding: '0.75rem 1.5rem', borderRadius: '20px', border: '1px solid var(--gold-primary)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--gold-primary)' }}>
               {economyType === 'xp' ? (
                 <>
-                  <Star color="var(--gold-primary)" />
-                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginRight: '1rem' }}>
+                  <Star size={18} color="var(--gold-primary)" />
+                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginRight: '1rem' }}>
                     {userData.role !== 'student' ? 'Infinito (Staff)' : `${userData.xp || 0} XP`}
                   </span>
-                  <Coins color="var(--gold-primary)" />
-                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                  <Coins size={18} color="var(--gold-primary)" />
+                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
                     {userData.role !== 'student' ? '' : `${userData.coins || 0} Moedas`}
                   </span>
                 </>
               ) : (
                 <>
-                  <Coins color="var(--gold-primary)" />
-                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                  <Coins size={18} color="var(--gold-primary)" />
+                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
                     {userData.role !== 'student' ? 'Infinito (Staff)' : `${userData.coins || 0} Moedas`}
                   </span>
                 </>
@@ -595,91 +651,97 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.5rem' }}>
           <button 
             onClick={() => setActiveTab('official')}
             className="login-btn"
-            style={{ flex: 1, background: activeTab === 'official' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'official' ? 'black' : 'white', fontWeight: 'bold' }}
+            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'official' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'official' ? 'black' : 'white', fontWeight: 'bold' }}
           >
             Loja Oficial
           </button>
           <button 
             onClick={() => setActiveTab('market')}
             className="login-btn"
-            style={{ flex: 1, background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'black' : 'white', fontWeight: 'bold' }}
+            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'black' : 'white', fontWeight: 'bold' }}
           >
             Bazar de Jogadores
+          </button>
+          <button
+            onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: isFiltersOpen ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)', color: 'white', borderRadius: '8px', border: '1px solid var(--border-glass)', cursor: 'pointer', transition: 'all 0.2s' }}
+            title="Mostrar / Ocultar Filtros"
+          >
+            <Filter size={18} />
           </button>
         </div>
 
         {/* Barra de Filtros */}
-        <button className="retractable-toggle-btn" onClick={() => setIsFiltersOpen(!isFiltersOpen)}>
-          {isFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros'}
-        </button>
-        <div className={`compact-filters retractable-content ${isFiltersOpen ? 'open' : ''}`} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.75rem' }}>
-            <Search size={18} color="var(--text-secondary)" />
-            <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.75rem', background: 'transparent', border: 'none', color: 'white', outline: 'none' }} />
+        {isFiltersOpen && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.5rem' }}>
+              <Search size={16} color="var(--text-secondary)" />
+              <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem', background: 'transparent', border: 'none', color: 'white', outline: 'none' }} />
+            </div>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+              <option value="all">Todos os Tipos</option>
+              <option value="consumable">Consumível</option>
+              <option value="equippable">Equipável</option>
+            </select>
+            <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+              <option value="all">Qualquer Raridade</option>
+              <option value="common">Comum</option>
+              <option value="uncommon">Incomum</option>
+              <option value="rare">Raro</option>
+              <option value="epic">Épico</option>
+              <option value="legendary">Lendário</option>
+            </select>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+              <option value="name-asc">A-Z</option>
+              <option value="name-desc">Z-A</option>
+              <option value="price-asc">Menor Preço</option>
+              <option value="price-desc">Maior Preço</option>
+              <option value="rarity-desc">Raridade (Maior)</option>
+              <option value="rarity-asc">Raridade (Menor)</option>
+            </select>
+            
+            <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.3)', padding: '0.25rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+              <button onClick={() => setViewMode('grid-large')} style={{ padding: '0.5rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large' ? 'white' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={20} /></button>
+              <button onClick={() => setViewMode('grid-small')} style={{ padding: '0.5rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small' ? 'white' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={20} /></button>
+              <button onClick={() => setViewMode('list')} style={{ padding: '0.5rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list' ? 'white' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={20} /></button>
+            </div>
           </div>
-          <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
-            <option value="all">Todos os Tipos</option>
-            <option value="consumable">Consumível</option>
-            <option value="equippable">Equipável</option>
-          </select>
-          <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
-            <option value="all">Qualquer Raridade</option>
-            <option value="common">Comum</option>
-            <option value="uncommon">Incomum</option>
-            <option value="rare">Raro</option>
-            <option value="epic">Épico</option>
-            <option value="legendary">Lendário</option>
-          </select>
-          <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
-            <option value="name-asc">A-Z</option>
-            <option value="name-desc">Z-A</option>
-            <option value="price-asc">Menor Preço</option>
-            <option value="price-desc">Maior Preço</option>
-            <option value="rarity-desc">Raridade (Maior)</option>
-            <option value="rarity-asc">Raridade (Menor)</option>
-          </select>
-          
-          <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.3)', padding: '0.25rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-            <button onClick={() => setViewMode('grid-large')} style={{ padding: '0.5rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large' ? 'white' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={20} /></button>
-            <button onClick={() => setViewMode('grid-small')} style={{ padding: '0.5rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small' ? 'white' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={20} /></button>
-            <button onClick={() => setViewMode('list')} style={{ padding: '0.5rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list' ? 'white' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={20} /></button>
-          </div>
-        </div>
+        )}
 
         {/* Abas de Categoria da Loja Oficial movidas para dentro do cabeçalho fixo */}
         {activeTab === 'official' && (
-          <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingTop: '1rem', paddingBottom: '0.5rem' }}>
+          <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingTop: '0.5rem', paddingBottom: '0.25rem' }}>
             <button 
               onClick={() => setOfficialCategoryTab('all')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'all' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'all' ? 'black' : 'white', fontWeight: 'bold' }}
             >
               <Sparkles size={18} /> Todos
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('consumable')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'consumable' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'consumable' ? 'black' : 'white', fontWeight: 'bold' }}
             >
               <FlaskConical size={18} /> Consumíveis
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('attack')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'attack' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'attack' ? 'black' : 'white', fontWeight: 'bold' }}
             >
               <Sword size={18} /> Ataque
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('defense')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'defense' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'defense' ? 'black' : 'white', fontWeight: 'bold' }}
             >
               <Shield size={18} /> Defesa
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('other')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'other' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'other' ? 'black' : 'white', fontWeight: 'bold' }}
             >
               <Package size={18} /> Outros
             </button>
@@ -706,7 +768,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
           return (
             <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
-              <div style={{ height: isList ? '100%' : (viewMode === 'grid-small' ? '100px' : '150px'), width: isList ? '120px' : '100%', position: 'relative', background: 'var(--bg-dark)', flexShrink: 0 }}>
+              <div style={{ height: isList ? '100%' : (viewMode === 'grid-small' ? '100px' : '160px'), width: isList ? '130px' : '100%', position: 'relative', background: 'var(--bg-dark)', flexShrink: 0 }}>
                 {item.imageUrl ? (
                   <img src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
@@ -810,7 +872,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               {purchasing === item.id ? '...' : (
                                 <>
                                   <span>Comprar ({totalCostCoins} Moedas)</span>
-                                  {!(isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) && <span style={{ fontSize: '0.75em', marginTop: '2px', color: 'var(--accent-red)' }}>Sem Moedas</span>}
+                                  {!isStaff && (userData.coins || 0) < totalCostCoins && <span style={{ fontSize: '0.75em', marginTop: '2px', color: 'var(--accent-red)' }}>Sem Moedas</span>}
                                 </>
                               )}
                             </button>
@@ -843,6 +905,28 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               )}
                           </button>
                         )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%', marginTop: '0.25rem' }}>
+                          {(item.type === 'equippable' || item.gameEffect === 'unlock_skin') && (
+                            <button
+                              className="login-btn hover-brightness"
+                              onClick={() => setPreviewItem(item)}
+                              style={{
+                                flex: 1,
+                                background: 'rgba(255,255,255,0.05)',
+                                color: 'var(--text-primary)',
+                                border: '1px solid var(--border-glass)',
+                                padding: '0.4rem',
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem'
+                              }}
+                            >
+                              <ExternalLink size={16} /> Ver no Personagem
+                            </button>
+                          )}
                         </div>
                         
                         {(userData.role !== 'student' || giftWrapItemIds.length > 0) && (
@@ -936,7 +1020,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           
           return (
             <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
-              <div style={{ height: isList ? '100%' : (viewMode === 'grid-small' ? '100px' : '150px'), width: isList ? '120px' : '100%', position: 'relative', background: 'var(--bg-dark)', flexShrink: 0 }}>
+              <div style={{ height: isList ? '100%' : (viewMode === 'grid-small' ? '100px' : '160px'), width: isList ? '120px' : '100%', position: 'relative', background: 'var(--bg-dark)', flexShrink: 0 }}>
                 {item.itemImageUrl ? (
                   <img src={item.itemImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
@@ -1001,45 +1085,69 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   )}
                 </div>
                 
-                {item.studentId === userData.uid ? (
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', flexDirection: viewMode === 'grid-small' ? 'column' : 'row' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', width: '100%', flexWrap: 'wrap', flexDirection: viewMode === 'grid-small' ? 'column' : 'row', marginTop: 'auto' }}>
+                  {item.studentId === userData.uid ? (
+                    <div style={{ display: 'flex', gap: '0.5rem', flex: 1, flexDirection: viewMode === 'grid-small' ? 'column' : 'row' }}>
+                      <button 
+                        className="login-btn" 
+                        onClick={() => handleEditPrice(item)}
+                        style={{ flex: 1, background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', fontSize: viewMode === 'grid-small' ? '0.8rem' : '0.9rem' }}
+                      >
+                        Editar Preço
+                      </button>
+                      <button 
+                        className="login-btn" 
+                        onClick={() => handleCancelSale(item)}
+                        style={{ flex: 1, background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', fontSize: viewMode === 'grid-small' ? '0.8rem' : '0.9rem' }}
+                      >
+                        Cancelar Venda
+                      </button>
+                    </div>
+                  ) : (
                     <button 
                       className="login-btn" 
-                      onClick={() => handleEditPrice(item)}
-                      style={{ flex: 1, background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', fontSize: viewMode === 'grid-small' ? '0.8rem' : '0.9rem' }}
+                      disabled={!canAfford || purchasing === item.id}
+                      onClick={() => {
+                        setMarketBuyModalItem(item);
+                        setMarketBuyQuantity(1);
+                        setMarketBuyPaymentMethod('xp');
+                      }}
+                      style={{ 
+                        flex: 1,
+                        background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
+                        color: canAfford ? 'black' : 'var(--text-secondary)', 
+                        border: 'none', 
+                        padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', 
+                        fontSize: viewMode === 'grid-small' ? '0.85rem' : '1rem',
+                        opacity: canAfford ? 1 : 0.5,
+                        cursor: canAfford ? 'pointer' : 'not-allowed'
+                      }}
                     >
-                      Editar Preço
+                      {purchasing === item.id ? '...' : canAfford ? 'Comprar' : 'Sem Saldo'}
                     </button>
-                    <button 
-                      className="login-btn" 
-                      onClick={() => handleCancelSale(item)}
-                      style={{ flex: 1, background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', fontSize: viewMode === 'grid-small' ? '0.8rem' : '0.9rem' }}
+                  )}
+                  
+                  {(item.itemType === 'equippable' || item.gameEffect === 'unlock_skin') && (
+                    <button
+                      className="login-btn hover-brightness"
+                      onClick={() => setPreviewItem(item)}
+                      style={{
+                        flex: 1,
+                        background: 'rgba(255,255,255,0.05)',
+                        color: 'var(--text-primary)',
+                        border: '1px solid var(--border-glass)',
+                        padding: viewMode === 'grid-small' ? '0.4rem' : '0.5rem',
+                        fontSize: viewMode === 'grid-small' ? '0.85rem' : '0.9rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                      }}
                     >
-                      Cancelar Venda
+                      <ExternalLink size={16} /> Ver no Personagem
                     </button>
-                  </div>
-                ) : (
-                  <button 
-                    className="login-btn" 
-                    disabled={!canAfford || purchasing === item.id}
-                    onClick={() => {
-                      setMarketBuyModalItem(item);
-                      setMarketBuyQuantity(1);
-                      setMarketBuyPaymentMethod('xp');
-                    }}
-                    style={{ 
-                      background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
-                      color: canAfford ? 'black' : 'var(--text-secondary)', 
-                      border: 'none', 
-                      padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', 
-                      fontSize: viewMode === 'grid-small' ? '0.85rem' : '1rem',
-                      opacity: canAfford ? 1 : 0.5,
-                      cursor: canAfford ? 'pointer' : 'not-allowed'
-                    }}
-                  >
-                    {purchasing === item.id ? '...' : canAfford ? 'Comprar' : 'Sem Saldo'}
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           );

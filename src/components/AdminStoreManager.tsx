@@ -11,7 +11,7 @@ import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
 
-export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap';
+export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 
 export interface StoreItem {
@@ -39,6 +39,8 @@ export interface StoreItem {
   gachaConfig?: GachaConfig;
   fixedAttributes?: ItemAdd[];
   useGlobalGacha?: boolean;
+  unlockedSkinId?: string;
+  buffDurationDays?: number;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -59,7 +61,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [globalGachaConfig, setGlobalGachaConfig] = useState<GachaConfig | null>(null);
   const [isEconomyOpen, setIsEconomyOpen] = useState(false);
-  const [presetSkins, setPresetSkins] = useState<{id: string, name: string, url: string}[]>([]);
+  const [presetSkins, setPresetSkins] = useState<{id: string, name: string, url: string, type?: string}[]>([]);
   
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -119,7 +121,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     
     try {
       const skinsSnap = await getDocs(collection(db, 'preset_skins'));
-      const loadedSkins: {id: string, name: string, url: string}[] = [];
+      const loadedSkins: {id: string, name: string, url: string, type?: string}[] = [];
       skinsSnap.forEach(d => loadedSkins.push({ id: d.id, ...d.data() } as any));
       setPresetSkins(loadedSkins);
     } catch (e) { console.error(e); }
@@ -167,7 +169,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           modelTransforms: itemData.modelTransforms || null,
           gachaConfig: itemData.gachaConfig || null,
           fixedAttributes: itemData.fixedAttributes || null,
-          useGlobalGacha: itemData.useGlobalGacha ?? true
+          useGlobalGacha: itemData.useGlobalGacha ?? true,
+          unlockedSkinId: itemData.unlockedSkinId || '',
+          buffDurationDays: itemData.buffDurationDays || 7
         }));
       });
       await Promise.all(updatePromises);
@@ -439,8 +443,30 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="add_attribute">Pergaminho do Novo Atributo (Adiciona até 2 atributos a um item base, 70% chance)</option>
                       <option value="reroll_attributes">Pergaminho do Aprimoramento (Sorteia novos atributos para um item que já possui)</option>
                       <option value="gift_wrap">Embalar para presente (Permite enviar presente da loja)</option>
+                      <option value="unlock_skin">Liberar Skin Temporária (Buff)</option>
                     </select>
                   </div>
+                  {formData.gameEffect === 'unlock_skin' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Skin a ser Liberada</label>
+                        <select value={formData.unlockedSkinId || ''} onChange={e => setFormData({...formData, unlockedSkinId: e.target.value})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+                          <option value="">Selecione uma skin...</option>
+                          {presetSkins.filter(s => s.type === 'human').map(s => (
+                            <option key={s.id} value={s.url}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Duração do Buff</label>
+                        <select value={formData.buffDurationDays || 7} onChange={e => setFormData({...formData, buffDurationDays: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+                          <option value={7}>7 Dias</option>
+                          <option value={15}>15 Dias</option>
+                          <option value={30}>30 Dias</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
                     <input type="checkbox" checked={formData.usableInQuest || false} onChange={e => setFormData({...formData, usableInQuest: e.target.checked})} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
                     <label style={{ color: 'white', cursor: 'pointer', margin: 0 }}>Pode usar DENTRO dos desafios?</label>
@@ -529,7 +555,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <label style={{ display: 'block', fontSize: '0.9rem', color: '#9ca3af', marginBottom: '0.25rem' }}>Skin (Textura) para o Modelo 3D</label>
                   <select value={formData.modelTextureUrl || ''} onChange={e => setFormData({...formData, modelTextureUrl: e.target.value})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', marginBottom: '0.5rem' }}>
                     <option value="">Nenhuma (Usar cor/textura original do .glb)</option>
-                    {presetSkins.map(s => (
+                    {presetSkins.filter(s => s.type === 'equipment').map(s => (
                       <option key={s.id} value={s.url}>{s.name}</option>
                     ))}
                   </select>

@@ -27,6 +27,7 @@ export interface UserData {
   happyBuffDuration?: number | null;
   customStatusText?: string;
   isProfilePublic?: boolean;
+  unlockedSkins?: Record<string, number>;
   inventoryPreferences?: {
     viewMode: string;
     filterType: string;
@@ -43,6 +44,8 @@ export interface UserData {
     pantsColor?: string;
     handedness?: 'right' | 'left';
     animationState?: 'idle' | 'walk' | 'run';
+    customSkinUrl?: string;
+    customModelUrl?: string;
   };
 }
 
@@ -78,7 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Buscar ou criar o documento do usuário no Firestore
         const userRef = doc(db, 'users', user.uid);
         
-        const unsubscribeSnapshot = onSnapshot(userRef, async (userSnap) => {
+        unsubscribeSnapshot = onSnapshot(userRef, async (userSnap) => {
           let fetchedUserData: UserData;
           
           if (userSnap.exists()) {
@@ -105,6 +108,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           fetchedUserData.xp = 50000;
           fetchedUserData.coins = 50000;
           await setDoc(userRef, { xp: 50000, coins: 50000 }, { merge: true });
+        }
+        
+        // Verifica se a skin do aluno expirou e remove
+        if (fetchedUserData.role === 'student' && fetchedUserData.avatarConfig?.customSkinUrl) {
+          const skinUrl = fetchedUserData.avatarConfig.customSkinUrl;
+          const expiry = fetchedUserData.unlockedSkins?.[skinUrl];
+          if (!expiry || expiry <= Date.now()) {
+            fetchedUserData.avatarConfig.customSkinUrl = '';
+            await setDoc(userRef, { avatarConfig: { ...fetchedUserData.avatarConfig, customSkinUrl: '' } }, { merge: true });
+          }
         }
 
         // Passar os dados exatamente como vieram do banco

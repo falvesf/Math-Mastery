@@ -5,6 +5,7 @@ import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import type { PresetSkin } from './AvatarCustomizationModal';
 import DirectUploadButton from './DirectUploadButton';
+import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 export default function AdminPresetSkinsManager() {
   const { showAlert, showConfirm } = useDialog();
@@ -14,9 +15,11 @@ export default function AdminPresetSkinsManager() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
+  const [activeTab, setActiveTab] = useState<'human' | 'monster' | 'equipment'>('human');
+  
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
-  const [type, setType] = useState<'human' | 'monster'>('human');
+  const [type, setType] = useState<'human' | 'monster' | 'equipment'>('human');
   const [baseModelId, setBaseModelId] = useState<string>('default');
 
   const [models3d, setModels3d] = useState<any[]>([]);
@@ -60,13 +63,13 @@ export default function AdminPresetSkinsManager() {
       setEditingId(skin.id);
       setName(skin.name);
       setUrl(skin.url);
-      setType(skin.type);
+      setType(skin.type || activeTab);
       setBaseModelId(skin.baseModelId || 'default');
     } else {
       setEditingId(null);
       setName('');
       setUrl('');
-      setType('human');
+      setType(activeTab); // Initialize with the active tab
       setBaseModelId('default');
     }
     setIsModalOpen(true);
@@ -96,6 +99,7 @@ export default function AdminPresetSkinsManager() {
         await addDoc(collection(db, 'preset_skins'), data);
         showAlert('Skin adicionada com sucesso!');
       }
+      sessionCache.invalidate(CACHE_KEYS.presetSkins());
       setIsModalOpen(false);
       fetchSkins();
     } catch (e) {
@@ -108,6 +112,7 @@ export default function AdminPresetSkinsManager() {
     if (await showConfirm('Deseja realmente excluir esta skin pré-definida?')) {
       try {
         await deleteDoc(doc(db, 'preset_skins', id));
+        sessionCache.invalidate(CACHE_KEYS.presetSkins());
         showAlert('Skin excluída com sucesso!');
         fetchSkins();
       } catch (e) {
@@ -124,10 +129,35 @@ export default function AdminPresetSkinsManager() {
           <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Skins Pré-definidas</h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Gerencie as skins disponíveis para alunos e monstros (Ex: Nova Skin).</p>
         </div>
-        <button onClick={() => handleOpenModal()} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Plus size={18} /> Nova Skin
-        </button>
+        {!isModalOpen && (
+          <button onClick={() => handleOpenModal()} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Plus size={18} /> Nova Skin
+          </button>
+        )}
       </div>
+
+      {!isModalOpen && (
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-glass)' }}>
+          <button 
+            onClick={() => setActiveTab('human')} 
+            style={{ padding: '0.5rem 1rem', background: 'transparent', color: activeTab === 'human' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', borderBottom: activeTab === 'human' ? '2px solid var(--gold-primary)' : '2px solid transparent', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            Alunos / Humanos
+          </button>
+          <button 
+            onClick={() => setActiveTab('monster')} 
+            style={{ padding: '0.5rem 1rem', background: 'transparent', color: activeTab === 'monster' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', borderBottom: activeTab === 'monster' ? '2px solid var(--gold-primary)' : '2px solid transparent', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            Monstros
+          </button>
+          <button 
+            onClick={() => setActiveTab('equipment')} 
+            style={{ padding: '0.5rem 1rem', background: 'transparent', color: activeTab === 'equipment' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', borderBottom: activeTab === 'equipment' ? '2px solid var(--gold-primary)' : '2px solid transparent', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            Equipamentos
+          </button>
+        </div>
+      )}
 
       {isModalOpen ? (
         <div style={{ background: 'var(--bg-main)', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', marginTop: '1rem' }}>
@@ -169,7 +199,7 @@ export default function AdminPresetSkinsManager() {
 
             <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem' }}>
               <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo</label>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Categoria da Skin</label>
                 <select 
                   value={type} 
                   onChange={e => setType(e.target.value as any)} 
@@ -177,6 +207,7 @@ export default function AdminPresetSkinsManager() {
                 >
                   <option value="human">Aluno / Humanoide</option>
                   <option value="monster">Monstro</option>
+                  <option value="equipment">Equipamento</option>
                 </select>
               </div>
               <div style={{ flex: 1 }}>
@@ -207,32 +238,40 @@ export default function AdminPresetSkinsManager() {
         <>
           {loading ? (
             <p style={{ color: 'var(--text-secondary)' }}>Carregando skins...</p>
-          ) : skins.length === 0 ? (
-            <div style={{ padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px dashed var(--border-color)' }}>
-              <p style={{ color: 'var(--text-secondary)' }}>Nenhuma skin cadastrada no momento.</p>
-            </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-              {skins.map(skin => (
-                <div key={skin.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: 'var(--bg-card)', border: '1px solid var(--border-glass)', overflow: 'hidden', flexShrink: 0, backgroundImage: `url(${skin.url})`, backgroundSize: 'cover', backgroundPosition: 'top center' }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <h4 style={{ fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: '0 0 0.25rem 0' }}>{skin.name}</h4>
-                    <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: skin.type === 'human' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: skin.type === 'human' ? '#60a5fa' : '#f87171', borderRadius: '1rem' }}>
-                      {skin.type === 'human' ? 'Humano' : 'Monstro'}
-                    </span>
+            (() => {
+              const filteredSkins = skins.filter(s => (s.type || 'human') === activeTab);
+              if (filteredSkins.length === 0) {
+                return (
+                  <div style={{ padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px dashed var(--border-color)' }}>
+                    <p style={{ color: 'var(--text-secondary)' }}>Nenhuma skin encontrada nesta categoria.</p>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button onClick={() => handleOpenModal(skin)} style={{ padding: '0.5rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>
-                      <Edit2 size={16} />
-                    </button>
-                    <button onClick={() => handleDelete(skin.id)} style={{ padding: '0.5rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                );
+              }
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+                  {filteredSkins.map(skin => (
+                    <div key={skin.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: 'var(--bg-card)', border: '1px solid var(--border-glass)', overflow: 'hidden', flexShrink: 0, backgroundImage: `url(${skin.url})`, backgroundSize: 'cover', backgroundPosition: 'top center' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h4 style={{ fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: '0 0 0.25rem 0' }}>{skin.name}</h4>
+                        <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: skin.type === 'monster' ? 'rgba(239, 68, 68, 0.2)' : skin.type === 'equipment' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: skin.type === 'monster' ? '#f87171' : skin.type === 'equipment' ? '#f59e0b' : '#60a5fa', borderRadius: '1rem' }}>
+                          {skin.type === 'monster' ? 'Monstro' : skin.type === 'equipment' ? 'Equipamento' : 'Humano'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={() => handleOpenModal(skin)} style={{ padding: '0.5rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>
+                          <Edit2 size={16} />
+                        </button>
+                        <button onClick={() => handleDelete(skin.id)} style={{ padding: '0.5rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })()
           )}
         </>
       )}

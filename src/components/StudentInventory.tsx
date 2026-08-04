@@ -33,6 +33,8 @@ interface UserItem {
   preferredCurrency?: 'xp' | 'coins';
   itemDescription?: string;
   rarity?: string;
+  unlockedSkinId?: string;
+  buffDurationDays?: number;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -95,6 +97,29 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   useEffect(() => {
     fetchInventory();
   }, [userData.uid, inventoryRefresh]);
+
+  useEffect(() => {
+    const handleEquipEvent = (e: any) => {
+      const { itemId, targetSlot } = e.detail;
+      const itemToEquip = items.find(i => i.id === itemId);
+      if (!itemToEquip) return;
+      
+      let compatible = false;
+      if (itemToEquip.avatarPart === targetSlot) compatible = true;
+      if (itemToEquip.avatarPart === 'hand' && (targetSlot === 'hand1' || targetSlot === 'hand2')) compatible = true;
+      if (itemToEquip.avatarPart === 'two_handed' && (targetSlot === 'hand1' || targetSlot === 'hand2')) compatible = true;
+      if (itemToEquip.avatarPart === 'rightHand' && targetSlot === 'hand1') compatible = true;
+      if (itemToEquip.avatarPart === 'leftHand' && targetSlot === 'hand2') compatible = true;
+
+      if (compatible && !itemToEquip.equipped) {
+        handleEquip(itemToEquip);
+      } else if (!compatible) {
+         showAlert('Este item não pode ser equipado neste slot!');
+      }
+    };
+    window.addEventListener('equip-item', handleEquipEvent);
+    return () => window.removeEventListener('equip-item', handleEquipEvent);
+  }, [items]);
 
   const fetchInventory = async () => {
     if (!userData.uid) return;
@@ -279,7 +304,37 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
 
-    if (item.gameEffect && item.gameEffect !== 'none' && item.gameEffect !== 'restore_hp') {
+    if (item.gameEffect === 'unlock_skin') {
+      const skinId = item.unlockedSkinId;
+      if (!skinId) {
+        await showAlert('Este buff não possui uma skin configurada corretamente.');
+        return;
+      }
+      
+      const confirmed = await showConfirm(`Deseja usar este item para liberar a skin por ${item.buffDurationDays || 7} dias?`);
+      if (!confirmed) return;
+      
+      const durationMs = (item.buffDurationDays || 7) * 24 * 60 * 60 * 1000;
+      const currentExpiry = (userData.unlockedSkins || {})[skinId] || 0;
+      const now = Date.now();
+      
+      const newExpiry = currentExpiry > now ? currentExpiry + durationMs : now + durationMs;
+      
+      const userRef = doc(db, 'users', userData.uid);
+      await updateDoc(userRef, {
+        [`unlockedSkins.${skinId}`]: newExpiry
+      });
+      
+      if (!userData.unlockedSkins) userData.unlockedSkins = {};
+      userData.unlockedSkins[skinId] = newExpiry;
+
+      await consumeItemQuantity(item.itemId, 1, item.id);
+      fetchInventory();
+      await showAlert(`A skin foi ativada/estendida com sucesso e está disponível em "Personalizar Personagem"!`);
+      return;
+    }
+
+    if (item.gameEffect && item.gameEffect !== 'none' && item.gameEffect !== 'restore_hp' && item.gameEffect !== 'unlock_skin') {
       await showAlert(`O item "${item.itemTitle}" é um Poder de Jogo! Você só pode utilizá-lo de dentro de uma Missão/Desafio ativo.`);
       return;
     }
@@ -712,7 +767,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                     if (inventoryRef.current) {
                       const rect = inventoryRef.current.getBoundingClientRect();
                       const isOutside = e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
-                      if (isOutside) {
+                      if (isOutside && e.dataTransfer.dropEffect === 'none') {
                         handleDropItemToTrash(item);
                       }
                     }

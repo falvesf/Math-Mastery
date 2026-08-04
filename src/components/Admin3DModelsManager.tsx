@@ -4,6 +4,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase
 import { Plus, Trash2, Edit2, Save, X, Box } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import DirectUploadButton from './DirectUploadButton';
+import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 export interface Model3D {
   id: string;
@@ -81,6 +82,7 @@ export default function Admin3DModelsManager() {
         await addDoc(collection(db, '3d_models'), data);
         showAlert('Modelo adicionado com sucesso!');
       }
+      sessionCache.invalidate(CACHE_KEYS.models3d());
       setIsModalOpen(false);
       fetchModels();
     } catch (e) {
@@ -93,6 +95,7 @@ export default function Admin3DModelsManager() {
     if (await showConfirm('Deseja realmente excluir este modelo 3D? Ele deixará de funcionar nas skins que o utilizam.')) {
       try {
         await deleteDoc(doc(db, '3d_models', id));
+        sessionCache.invalidate(CACHE_KEYS.models3d());
         showAlert('Modelo excluído com sucesso!');
         fetchModels();
       } catch (e) {

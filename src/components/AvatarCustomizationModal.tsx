@@ -27,7 +27,7 @@ export interface PresetSkin {
   id: string;
   name: string;
   url: string;
-  type: 'human' | 'monster';
+  type: 'human' | 'monster' | 'equipment';
   baseModelId?: string | null;
   config?: AvatarConfig;
 }
@@ -64,7 +64,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   });
   const [showEquippedItems, setShowEquippedItems] = useState(() => {
     const saved = localStorage.getItem('avatarCustomizer_showEquippedItems');
-    return saved ? JSON.parse(saved) : false;
+    return saved ? JSON.parse(saved) : true;
   });
   const [saving, setSaving] = useState(false);
   const [monsterName, setMonsterName] = useState('');
@@ -135,7 +135,15 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         setConfig(initialConfig);
       } else if (!inline) {
         if (userData?.avatarConfig && !customSaveMode) {
-          setConfig(userData.avatarConfig);
+          let loadedConfig = { ...userData.avatarConfig };
+          if (loadedConfig.customSkinUrl) {
+            const isStaff = userData.role !== 'student' || isAdmin;
+            const expiry = userData.unlockedSkins?.[loadedConfig.customSkinUrl];
+            if (!isStaff && (!expiry || expiry <= Date.now())) {
+              loadedConfig.customSkinUrl = '';
+            }
+          }
+          setConfig(loadedConfig);
         } else {
           setConfig({
             gender: 'male',
@@ -620,32 +628,50 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               </div>
             )}
             
-            {!customSaveMode && (
-              <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Skins Pré-definidas (Nova Skin)</label>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => setConfig({ ...config, customSkinUrl: '' })}
-                    style={{
-                       padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
-                    }}
-                  >
-                    Nenhuma (Usar peças)
-                  </button>
-                  {presetSkins.filter(s => s.type === 'human').map(skin => (
+            {!customSaveMode && (() => {
+              const availableSkins = presetSkins.filter(s => {
+                if ((s.type || 'human') !== 'human') return false;
+                const isStaff = userData?.role !== 'student' || isAdmin;
+                if (isStaff) return true;
+                const expiry = userData?.unlockedSkins?.[s.url];
+                return expiry && expiry > Date.now();
+              });
+
+              if (availableSkins.length === 0) return null;
+
+              return (
+                <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Skins Pré-definidas (Nova Skin)</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button
-                      key={skin.id}
-                      onClick={() => setConfig({ ...config, customSkinUrl: skin.url })}
+                      onClick={() => setConfig({ ...config, customSkinUrl: '' })}
                       style={{
-                         padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
+                         padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
                       }}
                     >
-                      {skin.name}
+                      Nenhuma (Usar peças)
                     </button>
-                  ))}
+                    {availableSkins.map(skin => {
+                      const expiry = userData?.unlockedSkins?.[skin.url];
+                      const daysLeft = expiry ? Math.ceil((expiry - Date.now()) / (1000 * 60 * 60 * 24)) : 0;
+                      return (
+                      <button
+                        key={skin.id}
+                        onClick={() => setConfig({ ...config, customSkinUrl: skin.url })}
+                        style={{
+                           padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem'
+                        }}
+                      >
+                        <span>{skin.name}</span>
+                        {(!isAdmin && userData?.role === 'student' && daysLeft > 0) && (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--accent-primary)' }}>{daysLeft} {daysLeft === 1 ? 'dia' : 'dias'} rest.</span>
+                        )}
+                      </button>
+                    )})}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
             
             <div style={{ marginBottom: '1.5rem', opacity: config.customSkinUrl ? 0.5 : 1, pointerEvents: config.customSkinUrl ? 'none' : 'auto' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Modelo Base (Gênero)</label>
