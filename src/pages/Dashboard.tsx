@@ -87,7 +87,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 });
 
 export default function Dashboard() {
-  const { showAlert, showPrompt } = useDialog();
+  const { showAlert } = useDialog();
   const { userData } = useAuth();
   if (!userData) return null;
   const navigate = useNavigate();
@@ -127,6 +127,9 @@ export default function Dashboard() {
 
   // Status Bubbles
   const [activeBubbleId, setActiveBubbleId] = useState<string | null>(null);
+  
+  const [isEditingStatus, setIsEditingStatus] = useState(false);
+  const [statusInputValue, setStatusInputValue] = useState('');
 
   const [currentHpVisual, setCurrentHpVisual] = useState(0);
   const [nextHeartProgress, setNextHeartProgress] = useState(0);
@@ -238,7 +241,7 @@ export default function Dashboard() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [userData]);
+  }, [userData, equippedItemsLoaded, inventoryRefresh]);
 
   useEffect(() => {
     if (userData?.uid) {
@@ -325,31 +328,40 @@ export default function Dashboard() {
   useEffect(() => {
     if (!userData) return;
     const fetchEquipped = async () => {
-      const qEquip = query(collection(db, 'user_items'), where('studentId', '==', userData.uid), where('equipped', '==', true));
-      const snapEquip = await getDocs(qEquip);
-      const eq: EquippedItem[] = [];
-      snapEquip.forEach(d => {
-        const data = d.data();
-        if (data.itemImageUrl && data.avatarPart) {
-          eq.push({ 
-            docId: d.id,
-            itemId: data.itemId,
-            imageUrl: data.itemImageUrl, 
-            avatarPart: data.avatarPart as any,
-            itemTitle: data.itemTitle,
-            itemCategory: data.itemCategory,
-            baseAttributeType: data.baseAttributeType,
-            baseAttributeValue: data.baseAttributeValue,
-            adds: data.adds,
-            gameModelUrl: data.gameModelUrl,
-            modelTextureUrl: data.modelTextureUrl,
-            minecraftHeadValue: data.minecraftHeadValue,
-            modelTransforms: data.modelTransforms
-          });
-        }
-      });
-      setEquippedItems(eq);
-      setEquippedItemsLoaded(true);
+      try {
+        const qEquip = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
+        const snapEquip = await getDocs(qEquip);
+        const eq: EquippedItem[] = [];
+        snapEquip.forEach(d => {
+          const data = d.data();
+          if (data.equipped === true && data.itemImageUrl && data.avatarPart) {
+            let parsedAdds = [];
+            if (data.adds) {
+              try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch(e){}
+            }
+            eq.push({ 
+              docId: d.id,
+              itemId: data.itemId,
+              imageUrl: data.itemImageUrl, 
+              avatarPart: data.avatarPart as any,
+              itemTitle: data.itemTitle,
+              itemCategory: data.itemCategory,
+              baseAttributeType: data.baseAttributeType,
+              baseAttributeValue: data.baseAttributeValue,
+              adds: parsedAdds,
+              gameModelUrl: data.gameModelUrl,
+              modelTextureUrl: data.modelTextureUrl,
+              minecraftHeadValue: data.minecraftHeadValue,
+              modelTransforms: data.modelTransforms
+            });
+          }
+        });
+        setEquippedItems(eq);
+      } catch (err) {
+        console.error("Error fetching equipped items:", err);
+      } finally {
+        setEquippedItemsLoaded(true);
+      }
     };
     fetchEquipped();
   }, [userData?.uid, inventoryRefresh]);
@@ -599,9 +611,8 @@ export default function Dashboard() {
     }
   };
 
-  const handleEditStatus = async () => {
-    const status = await showPrompt('Digite sua mensagem de status (ex: Feliz da vida!, Cansado de matemática...):', userData?.customStatusText || '');
-    if (status === null) return;
+  const handleUpdateStatus = async (status: string) => {
+    if (status === userData?.customStatusText) return;
     
     if (hasProfanity(status)) {
       await showAlert('Sua mensagem contém palavras inadequadas e não foi salva.');
@@ -1056,7 +1067,7 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
               {/* Perfil do Aluno (Esquerda) */}
               <div className="glass-panel" style={{ flex: '1 1 400px', padding: '1.5rem 2rem', textAlign: 'center' }}>
               <div 
@@ -1132,15 +1143,39 @@ export default function Dashboard() {
                 <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)' }}>{userData?.name}</h2>
               </div>
               
-              {userData?.customStatusText && (
-                <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.25rem 1rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-                  <MessageCircle size={16} /> <i>"{userData.customStatusText}"</i>
+              {isEditingStatus ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', padding: '0.25rem 1rem', borderRadius: '20px' }}>
+                  <MessageCircle size={16} color="var(--text-secondary)" />
+                  <input 
+                    autoFocus
+                    value={statusInputValue}
+                    onChange={e => setStatusInputValue(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        await handleUpdateStatus(statusInputValue);
+                        setIsEditingStatus(false);
+                      }
+                      if (e.key === 'Escape') {
+                        setIsEditingStatus(false);
+                      }
+                    }}
+                    onBlur={async () => {
+                      await handleUpdateStatus(statusInputValue);
+                      setIsEditingStatus(false);
+                    }}
+                    placeholder="Escreva seu status..."
+                    style={{ background: 'transparent', border: 'none', color: 'white', flex: 1, outline: 'none', fontStyle: 'italic', width: '100%' }}
+                  />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', padding: '0.25rem 1rem', borderRadius: '20px', color: 'var(--text-secondary)', minHeight: '36px' }}>
+                  <MessageCircle size={16} />
+                  <span style={{ fontStyle: 'italic', flex: 1 }}>{userData?.customStatusText ? `"${userData.customStatusText}"` : "Escreva seu status..."}</span>
+                  <button onClick={() => { setStatusInputValue(userData?.customStatusText || ''); setIsEditingStatus(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0 0.25rem', display: 'flex' }} className="hover-brightness" title="Editar Status">
+                    <Edit3 size={14} />
+                  </button>
                 </div>
               )}
-              
-              <button onClick={handleEditStatus} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.9rem', marginBottom: '0.5rem', opacity: 0.8 }} className="hover-brightness">
-                <Edit3 size={14} /> Editar Status
-              </button>
 
               <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
                 Turma: {userData?.classId || 'Não definida'}
@@ -1214,7 +1249,7 @@ export default function Dashboard() {
 
             {/* Coluna Direita Alternável (Histórico ou Mochila) */}
             {profileTab === 'overview' ? (
-              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column' }}>
+              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 140px)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
                 <History size={24} color="var(--gold-primary)" />
                 <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Histórico de Conquistas</h3>
@@ -1251,7 +1286,7 @@ export default function Dashboard() {
               </div>
               </div>
             ) : (
-              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '2rem', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' }}>
                 {userData && <StudentInventory userData={userData} onEquip={() => setInventoryRefresh(r => r + 1)} inventoryRefresh={inventoryRefresh} />}
               </div>
             )}
