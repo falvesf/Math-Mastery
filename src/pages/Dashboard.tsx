@@ -899,13 +899,13 @@ export default function Dashboard() {
           onClick={() => setActiveTab('ranking_class')}
           style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'ranking_class' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
-          <Users size={20} /> Ranking da Turma (Top 10)
+          <Users size={20} /> Ranking da Turma
         </button>
         <button 
           onClick={() => setActiveTab('ranking_general')}
           style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'ranking_general' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
-          <TrendingUp size={20} /> Ranking Geral (Top 10)
+          <TrendingUp size={20} /> Ranking Geral
         </button>
         <button 
           onClick={() => setActiveTab('store')}
