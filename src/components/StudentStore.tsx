@@ -512,6 +512,13 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   const getProcessedItems = () => {
     let result = [...items];
+    const isStaff = userData.role !== 'student';
+    
+    // Esconde os itens se a patente do aluno for menor que a exigida
+    if (!isStaff) {
+      result = result.filter(i => (i.minRankRequired || 0) <= currentRankIndex);
+    }
+
     if (searchQuery) {
       result = result.filter(i => i.title.toLowerCase().includes(searchQuery.toLowerCase()) || i.description.toLowerCase().includes(searchQuery.toLowerCase()));
     }
@@ -549,6 +556,18 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   const getProcessedMarketItems = () => {
     let result = [...marketItems];
+    const isStaff = userData.role !== 'student';
+    
+    // Esconde itens do mercado se a patente do aluno for menor que a exigida
+    if (!isStaff) {
+      result = result.filter(i => {
+        // Encontrar o item original para checar a patente mínima (já que o marketItem pode não ter)
+        const originalItem = items.find(storeI => storeI.id === i.itemId);
+        const minRank = originalItem ? (originalItem.minRankRequired || 0) : 0;
+        return minRank <= currentRankIndex;
+      });
+    }
+
     if (searchQuery) result = result.filter(i => i.itemTitle.toLowerCase().includes(searchQuery.toLowerCase()));
     if (filterType !== 'all') result = result.filter(i => i.itemType === filterType);
     if (filterRarity !== 'all') result = result.filter(i => (i.rarity || 'common') === filterRarity);

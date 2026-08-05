@@ -98,6 +98,9 @@ export default function Dashboard() {
   // Rankings state
   const [showRankingAvatars, setShowRankingAvatars] = useState(false);
   const [allStudents, setAllStudents] = useState<UserData[]>([]);
+  const [cubeRotation, setCubeRotation] = useState(0);
+  const [isIdle, setIsIdle] = useState(false);
+  const lastInteractionTime = useRef(Date.now());
   const [loadingRankings, setLoadingRankings] = useState(true);
   const [rankingEquippedItems, setRankingEquippedItems] = useState<Record<string, EquippedItem[]>>({});
   const [rankingHistory, setRankingHistory] = useState<RankingHistory | null>(null);
@@ -124,6 +127,42 @@ export default function Dashboard() {
 
   const [currentHpVisual, setCurrentHpVisual] = useState(0);
   const [nextHeartProgress, setNextHeartProgress] = useState(0);
+
+  // Detector de inatividade para girar o cubo
+  useEffect(() => {
+    const handleInteraction = () => {
+      lastInteractionTime.current = Date.now();
+      if (isIdle) setIsIdle(false);
+    };
+
+    window.addEventListener('mousemove', handleInteraction);
+    window.addEventListener('keydown', handleInteraction);
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('scroll', handleInteraction);
+
+    const idleInterval = setInterval(() => {
+      if (Date.now() - lastInteractionTime.current > 60000) { // 1 minuto
+        if (!isIdle) setIsIdle(true);
+      }
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('mousemove', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('scroll', handleInteraction);
+      clearInterval(idleInterval);
+    };
+  }, [isIdle]);
+
+  // Giro automático do cubo quando ocioso
+  useEffect(() => {
+    if (!isIdle) return;
+    const rotateInterval = setInterval(() => {
+      setCubeRotation(prev => prev - 90);
+    }, 5000); // Gira a cada 5 segundos
+    return () => clearInterval(rotateInterval);
+  }, [isIdle]);
 
   useEffect(() => {
     if (!userData || userData.role !== 'student') return;
@@ -732,6 +771,9 @@ export default function Dashboard() {
           oldRank={levelUpData.oldRank} 
           newRank={levelUpData.newRank} 
           onClose={handleCloseLevelUp} 
+          isMaxRank={levelUpData.newRank.minXp === Math.max(...RANKS.map(r => r.minXp))}
+          avatarConfig={liveAvatarConfig || userData.avatarConfig}
+          equippedItems={equippedItems}
         />
       )}
 
@@ -974,41 +1016,73 @@ export default function Dashboard() {
             <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
               {/* Perfil do Aluno (Esquerda) */}
               <div className="glass-panel" style={{ flex: '1 1 400px', padding: '1.5rem 2rem', textAlign: 'center' }}>
-                  <div 
-                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '1.5rem', marginBottom: '2.5rem', transition: 'transform 0.2s' }}
-                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              <div 
+                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '1.5rem', marginBottom: '2.5rem', perspective: '1000px' }}
               >
-                {currentRank.imageUrl ? (
-                  <>
-                    <img src={currentRank.imageUrl} alt={currentRank.name} style={{ width: 110, height: 110, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, marginBottom: '0', animation: 'epicZoom 1s ease-out' }} />
-                    <div style={{ position: 'absolute', bottom: 50, right: -10 }}>
-                      {(liveAvatarConfig || userData?.avatarConfig) ? (
-                        <div style={{ width: 50, height: 50, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                          <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={50} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 10 }}>
+                    {'<'}
+                  </button>
+                  
+                  <div className="cube-container">
+                    <div className="cube" style={{ transform: `rotateY(${cubeRotation}deg)` }}>
+                      {/* Frente: Avatar */}
+                      <div className="cube-face cube-face-front" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column' }} title="Clique para personalizar seu personagem">
+                        {(liveAvatarConfig || userData?.avatarConfig) ? (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative' }} onClick={() => setIsCustomizingAvatar(true)}>
+                            <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={90} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
+                          </div>
+                        ) : (
+                          <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px', cursor: 'pointer' }} />
+                        )}
+                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                          Personagem
                         </div>
-                      ) : (
-                        <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: 50, height: 50, borderRadius: '50%', border: `2px solid ${currentRank.color}`, cursor: 'pointer' }} />
-                      )}
-                    </div>
-                    <div style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80` }}>
-                      {currentRank.name}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {(liveAvatarConfig || userData?.avatarConfig) ? (
-                      <div style={{ width: 100, height: 100, borderRadius: '50%', overflow: 'visible', border: `4px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: `0 0 20px ${currentRank.color}40` }} title="Clique para personalizar seu personagem">
-                        <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={80} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
                       </div>
-                    ) : (
-                      <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: 100, height: 100, borderRadius: '50%', border: `4px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, objectFit: 'cover', cursor: 'pointer' }} />
-                    )}
-                    <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
-                      {currentRank.name}
+
+                      {/* Trás: Patente */}
+                      <div className="cube-face cube-face-back" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column' }}>
+                        {currentRank.imageUrl ? (
+                          <img src={currentRank.imageUrl} alt={currentRank.name} style={{ width: 110, height: 110, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
+                        ) : (
+                          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: currentRank.color }}>{currentRank.name}</div>
+                        )}
+                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                          {currentRank.name}
+                        </div>
+                      </div>
+
+                      {/* Direita: Pet */}
+                      <div className="cube-face cube-face-right" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column' }}>
+                        {(() => {
+                          const equippedPet = equippedItems.find(item => item.avatarPart === 'pet');
+                          return equippedPet ? (
+                            <img src={equippedPet.imageUrl} alt="Pet" style={{ width: 80, height: 80, objectFit: 'contain', animation: 'float 3s ease-in-out infinite' }} />
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: 0.5 }}>
+                              <div style={{ width: 60, height: 60, border: '2px dashed var(--border-glass)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.5rem' }}>
+                                <span style={{ fontSize: '1.5rem' }}>🐾</span>
+                              </div>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Nenhum Pet</span>
+                            </div>
+                          );
+                        })()}
+                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                          Companheiro
+                        </div>
+                      </div>
+
+                      {/* Esquerda: Placeholder (Em Breve) */}
+                      <div className="cube-face cube-face-left" style={{ border: `1px dashed var(--border-glass)` }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Em Breve</span>
+                      </div>
                     </div>
-                  </>
-                )}
+                  </div>
+
+                  <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 10 }}>
+                    {'>'}
+                  </button>
+                </div>
               </div>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0' }}>

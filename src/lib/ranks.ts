@@ -11,6 +11,7 @@ export interface RankDef {
   minXp: number;
   color: string;
   imageUrl?: string;
+  audioUrl?: string;
   variants?: RankVariant[];
 }
 

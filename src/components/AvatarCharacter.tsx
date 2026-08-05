@@ -940,7 +940,6 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     { id: 'body', label: 'Armadura / Corpo', pos: { bottom: '20%', right: '-40%' } },
     { id: 'legs', label: 'Calças / Pernas', pos: { bottom: '20%', left: '-40%' } },
     { id: 'feet', label: 'Botas / Pés', pos: { bottom: '-15%', left: '50%', transform: 'translateX(-50%)' } },
-    { id: 'pet', label: 'Mascote', pos: { top: '40%', left: '-150%', transform: 'translateY(-50%)' } },
   ];
 
   const getRarityStyle = (rarity?: string) => {

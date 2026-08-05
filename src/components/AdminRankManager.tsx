@@ -7,7 +7,7 @@ import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS } from '../lib/ranks';
-import type { RankDef, RankVariant } from '../lib/ranks';
+import type { RankDef } from '../lib/ranks';
 import type { ClassDef } from '../pages/AdminDashboard';
 
 const AnimatedRankIcon = ({ rank }: { rank: RankDef }) => {
@@ -217,6 +217,17 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                     </div>
                   )}
                 </div>
+
+                <div style={{ marginTop: '1.5rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Música de Comemoração (Opcional - MP3/WAV)</label>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <input type="text" value={formData.audioUrl || ''} onChange={e => setFormData({...formData, audioUrl: e.target.value})} placeholder="URL do áudio..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={(url) => setFormData({...formData, audioUrl: url})} buttonStyle={{ minHeight: '100%' }} />
+                  </div>
+                  {formData.audioUrl && (
+                    <audio controls src={formData.audioUrl} style={{ marginTop: '1rem', width: '100%', height: '40px' }} />
+                  )}
+                </div>
               </div>
 
               {/* Variações por Turma */}
@@ -247,16 +258,16 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                           <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Turmas vinculadas:</label>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                             {classes.map(c => {
-                              const isSelected = variant.classIds.includes(c.id);
+                              const isSelected = variant.classIds.includes(c.name);
                               return (
                                 <button
                                   key={c.id}
                                   onClick={() => {
                                     const newV = [...(formData.variants || [])];
                                     if (isSelected) {
-                                      newV[vIdx].classIds = newV[vIdx].classIds.filter(id => id !== c.id);
+                                      newV[vIdx].classIds = newV[vIdx].classIds.filter(name => name !== c.name);
                                     } else {
-                                      newV[vIdx].classIds.push(c.id);
+                                      newV[vIdx].classIds.push(c.name);
                                     }
                                     setFormData({...formData, variants: newV});
                                   }}
