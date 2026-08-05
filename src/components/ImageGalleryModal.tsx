@@ -357,7 +357,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Ex: rpg monster, wizard, math..."
-                        style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}
+                        style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
                       />
                       <button type="submit" className="login-btn" disabled={loading} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
                         {loading ? 'Buscando...' : 'Pesquisar'}

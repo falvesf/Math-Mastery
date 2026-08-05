@@ -307,7 +307,7 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
         <h3 style={{ color: 'var(--gold-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Crop size={24} /> Seletor de Tile
         </h3>
-        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
           <X size={28} />
         </button>
       </div>

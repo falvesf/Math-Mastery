@@ -320,7 +320,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             />
           ))}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.05)', padding: '0.25rem 0.5rem', borderRadius: '8px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--btn-bg)', padding: '0.25rem 0.5rem', borderRadius: '8px', flexShrink: 0 }}>
           <input
             type="color"
             value={value}
@@ -603,7 +603,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                   <button
                     onClick={() => setConfig({ ...config, customSkinUrl: '', customModelUrl: undefined })}
                     style={{
-                       padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
+                       padding: '0.5rem', background: 'var(--btn-bg)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
                     }}
                   >
                     Nenhum
@@ -618,7 +618,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         setConfig({ ...config, customSkinUrl: skin.url, customModelUrl: modelUrl });
                       }}
                       style={{
-                         padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
+                         padding: '0.5rem', background: 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
                       }}
                     >
                       {skin.name}
@@ -646,7 +646,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                     <button
                       onClick={() => setConfig({ ...config, customSkinUrl: '' })}
                       style={{
-                         padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
+                         padding: '0.5rem', background: 'var(--btn-bg)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
                       }}
                     >
                       Nenhuma (Usar peças)
@@ -659,7 +659,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         key={skin.id}
                         onClick={() => setConfig({ ...config, customSkinUrl: skin.url })}
                         style={{
-                           padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem'
+                           padding: '0.5rem', background: 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem'
                         }}
                       >
                         <span>{skin.name}</span>

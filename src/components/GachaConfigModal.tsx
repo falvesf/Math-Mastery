@@ -61,7 +61,7 @@ export default function GachaConfigModal({ itemData, initialConfig, initialFixed
             ? "Ajuste as chances do atributo padrão. Isso afeta TODOS os itens novos ou itens configurados para usar o RNG Global."
             : "Ajuste as chances de drop APENAS para este item específico."}
         </p>
-        <button onClick={() => handleRestoreDefault(isGlobalTab)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
+        <button onClick={() => handleRestoreDefault(isGlobalTab)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: 'var(--btn-bg)', color: 'white', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
           <RotateCcw size={16} /> Restaurar Padrões
         </button>
       </div>
@@ -100,7 +100,7 @@ export default function GachaConfigModal({ itemData, initialConfig, initialFixed
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Forças Possíveis (Pesos de probabilidade para os valores):</div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {cfg.weights[key].map((w, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(255,255,255,0.05)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem' }}>
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'var(--btn-bg)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem' }}>
                       <span>+{w.value}</span>
                       <span style={{ color: 'var(--text-secondary)' }}>|</span>
                       <input 
@@ -130,7 +130,7 @@ export default function GachaConfigModal({ itemData, initialConfig, initialFixed
         
         {/* Header (Item Info) */}
         <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-glass)', display: 'flex', gap: '1rem', alignItems: 'center', background: 'rgba(0,0,0,0.3)' }}>
-          <div style={{ width: '60px', height: '60px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-glass)' }}>
+          <div style={{ width: '60px', height: '60px', borderRadius: '8px', background: 'var(--btn-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-glass)' }}>
             {itemData.imageUrl ? <img src={itemData.imageUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : '📦'}
           </div>
           <div style={{ flex: 1 }}>
@@ -204,7 +204,7 @@ export default function GachaConfigModal({ itemData, initialConfig, initialFixed
 
         {/* Footer */}
         <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', background: 'rgba(0,0,0,0.3)' }}>
-          <button onClick={onClose} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+          <button onClick={onClose} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
           <button onClick={() => onSave(config, fixedAttributes, globalCfg, useGlobal)} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>Salvar Configurações</button>
         </div>
       </div>

@@ -674,20 +674,20 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           <button 
             onClick={() => setActiveTab('official')}
             className="login-btn"
-            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'official' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'official' ? 'black' : 'white', fontWeight: 'bold' }}
+            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'official' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'official' ? 'black' : 'var(--text-primary)', fontWeight: 'bold' }}
           >
             Loja Oficial
           </button>
           <button 
             onClick={() => setActiveTab('market')}
             className="login-btn"
-            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'black' : 'white', fontWeight: 'bold' }}
+            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'black' : 'var(--text-primary)', fontWeight: 'bold' }}
           >
             Bazar de Jogadores
           </button>
           <button
             onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: isFiltersOpen ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)', color: 'white', borderRadius: '8px', border: '1px solid var(--border-glass)', cursor: 'pointer', transition: 'all 0.2s' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: isFiltersOpen ? 'var(--btn-hover)' : 'var(--btn-bg)', color: 'var(--text-primary)', borderRadius: '8px', border: '1px solid var(--border-glass)', cursor: 'pointer', transition: 'all 0.2s' }}
             title="Mostrar / Ocultar Filtros"
           >
             <Filter size={18} />
@@ -699,14 +699,14 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.5rem' }}>
             <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.5rem' }}>
               <Search size={16} color="var(--text-secondary)" />
-              <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem', background: 'transparent', border: 'none', color: 'white', outline: 'none' }} />
+              <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none' }} />
             </div>
-            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
               <option value="all">Todos os Tipos</option>
               <option value="consumable">Consumível</option>
               <option value="equippable">Equipável</option>
             </select>
-            <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+            <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
               <option value="all">Qualquer Raridade</option>
               <option value="common">Comum</option>
               <option value="uncommon">Incomum</option>
@@ -714,7 +714,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               <option value="epic">Épico</option>
               <option value="legendary">Lendário</option>
             </select>
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
               <option value="name-asc">A-Z</option>
               <option value="name-desc">Z-A</option>
               <option value="price-asc">Menor Preço</option>
@@ -724,9 +724,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             </select>
             
             <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.3)', padding: '0.25rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-              <button onClick={() => setViewMode('grid-large')} style={{ padding: '0.5rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large' ? 'white' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={20} /></button>
-              <button onClick={() => setViewMode('grid-small')} style={{ padding: '0.5rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small' ? 'white' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={20} /></button>
-              <button onClick={() => setViewMode('list')} style={{ padding: '0.5rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list' ? 'white' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={20} /></button>
+              <button onClick={() => setViewMode('grid-large')} style={{ padding: '0.5rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={20} /></button>
+              <button onClick={() => setViewMode('grid-small')} style={{ padding: '0.5rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={20} /></button>
+              <button onClick={() => setViewMode('list')} style={{ padding: '0.5rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={20} /></button>
             </div>
           </div>
         )}
@@ -736,31 +736,31 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingTop: '0.5rem', paddingBottom: '0.25rem' }}>
             <button 
               onClick={() => setOfficialCategoryTab('all')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'all' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'all' ? 'black' : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <Sparkles size={18} /> Todos
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('consumable')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'consumable' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'consumable' ? 'black' : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <FlaskConical size={18} /> Consumíveis
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('attack')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'attack' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'attack'  ? 'black'  : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <Sword size={18} /> Ataque
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('defense')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'defense' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'defense'  ? 'black'  : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <Shield size={18} /> Defesa
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('other')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'rgba(0,0,0,0.3)', color: officialCategoryTab === 'other' ? 'black' : 'white', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'other'  ? 'black'  : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <Package size={18} /> Outros
             </button>
@@ -799,7 +799,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   {getRarityLabel(item.rarity)}
                 </div>
                 {!isList && (
-                  <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                  <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
                      {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
                   </div>
                 )}
@@ -808,7 +808,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0 }}>{item.title}</h3>
                   {isList && (
-                    <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                    <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
                        {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
                     </div>
                   )}
@@ -932,7 +932,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               onClick={() => setPreviewItem(item)}
                               style={{
                                 flex: 1,
-                                background: 'rgba(255,255,255,0.05)',
+                                background: 'var(--btn-bg)',
                                 color: 'var(--text-primary)',
                                 border: '1px solid var(--border-glass)',
                                 padding: '0.4rem',
@@ -972,7 +972,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                         <select 
                           value={selectedGiftRecipient} 
                           onChange={(e) => setSelectedGiftRecipient(e.target.value)}
-                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
                         >
                           <option value="">Selecione o Aluno...</option>
                           {students.filter(s => s.uid !== userData.uid).map(s => (
@@ -980,7 +980,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                           ))}
                         </select>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button onClick={() => { setGiftingItemId(null); setSelectedGiftRecipient(''); }} style={{ flex: 1, background: 'transparent', border: '1px solid var(--border-glass)', color: 'white', borderRadius: '8px', padding: '0.5rem' }}>Cancelar</button>
+                          <button onClick={() => { setGiftingItemId(null); setSelectedGiftRecipient(''); }} style={{ flex: 1, background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', borderRadius: '8px', padding: '0.5rem' }}>Cancelar</button>
                           {economyType === 'xp' ? (
                             <>
                               <button 
@@ -1067,7 +1067,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   </div>
                 )}
                 {!isList && (
-                  <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                  <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
                     {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}
                   </div>
                 )}
@@ -1076,7 +1076,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0 }}>{item.itemTitle}</h3>
                   {isList && (
-                    <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford ? 'var(--gold-primary)' : 'white', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                    <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
                       {item.price || 0} {economyType === 'xp' ? 'XP' : 'M'}
                     </div>
                   )}
@@ -1084,6 +1084,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
                   Vendido por: <strong style={{ color: 'var(--gold-primary)' }}>{item.sellerName}</strong>
                 </p>
+                {viewMode !== 'grid-small' && items.find(si => si.id === item.itemId)?.description && (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0 0 0.5rem 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {items.find(si => si.id === item.itemId)?.description}
+                  </p>
+                )}
                 <div style={{ flex: 1, marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <div>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
@@ -1152,7 +1157,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                       onClick={() => setPreviewItem(item)}
                       style={{
                         flex: 1,
-                        background: 'rgba(255,255,255,0.05)',
+                        background: 'var(--btn-bg)',
                         color: 'var(--text-primary)',
                         border: '1px solid var(--border-glass)',
                         padding: viewMode === 'grid-small' ? '0.4rem' : '0.5rem',
@@ -1209,7 +1214,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <select 
                   value={marketBuyPaymentMethod} 
                   onChange={(e) => setMarketBuyPaymentMethod(e.target.value as 'xp' | 'coins')}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
                 >
                   <option value="xp">Pagar com XP ({(marketBuyModalItem.price || 0) * marketBuyQuantity} XP)</option>
                   <option value="coins">Pagar com Moedas ({(marketBuyModalItem.price || 0) * 10 * marketBuyQuantity} Moedas)</option>

@@ -73,7 +73,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(5px)', padding: '1rem' }}>
       <div className="glass-panel" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', padding: '0', display: 'flex', flexDirection: 'column' }}>
         
-        <button onClick={onClose} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+        <button onClick={onClose} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'var(--btn-bg)', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
           <X size={24} />
         </button>
 
@@ -93,7 +93,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
               <img src={user.photoURL} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             )}
             
-            <div style={{ position: 'absolute', bottom: -15, background: 'var(--bg-dark)', padding: '0.4rem 1.5rem', borderRadius: '20px', border: `2px solid ${rankColor}`, color: rankColor, fontWeight: 'bold', fontSize: '1.1rem', whiteSpace: 'nowrap', zIndex: 10 }}>
+            <div style={{ position: 'absolute', bottom: -15, background: 'var(--bg-dark)', padding: '0.4rem 1.5rem', borderRadius: '20px', border: `2px solid ${rankColor}`, color: rankColor, fontWeight: 'bold', fontSize: '1.1rem', whiteSpace: 'nowrap', zIndex: 10, textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
               {rankName}
             </div>
           </div>
@@ -102,7 +102,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
             {user.name}
           </h2>
           {user.customStatusText && (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', fontStyle: 'italic', marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', padding: '0.5rem 1.5rem', borderRadius: '20px' }}>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', fontStyle: 'italic', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1.5rem', borderRadius: '20px' }}>
               "{user.customStatusText}"
             </p>
           )}

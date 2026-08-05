@@ -1010,12 +1010,12 @@ export default function QuestGameplay() {
       background: quest?.coverImageUrl ? `url(${getSafeUrl(quest.coverImageUrl)}) center/cover no-repeat` : 'var(--bg-dark)'
     }}>
       {/* Dark overlay for readability */}
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)' }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(8px)' }} />
 
       <div style={{ position: 'relative', zIndex: 10, width: '100%', maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
         
         {/* Header */}
-        <div style={{ padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
+        <div style={{ padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
             <button onClick={handleAbandon} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <ArrowLeft /> Abandonar
@@ -1071,7 +1071,7 @@ export default function QuestGameplay() {
                   ))}
                 </div>
                 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5 ? 'var(--accent-red)' : 'white' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5  ? 'var(--accent-red)'  : 'var(--text-primary)' }}>
                   <Clock size={18} />
                   <span style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>{timeLeft}s</span>
                 </div>
@@ -1106,7 +1106,7 @@ export default function QuestGameplay() {
             {/* Battle Message */}
             <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 2rem', zIndex: 10, opacity: battleMessage ? 1 : 0, transition: 'opacity 0.3s' }}>
               <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', textAlign: 'center', minWidth: '250px', backdropFilter: 'blur(10px)', boxShadow: 'var(--shadow-glass)' }}>
-                <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'white', minHeight: '1.5em', fontStyle: 'italic', textShadow: battleMessage.includes('FATALITY') ? '0 0 10px red' : 'none' }}>
+                <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)', minHeight: '1.5em', fontStyle: 'italic', textShadow: battleMessage.includes('FATALITY') ? '0 0 10px red' : 'none' }}>
                   {battleMessage}
                 </p>
               </div>
@@ -1220,7 +1220,7 @@ export default function QuestGameplay() {
                       style={{ 
                         padding: '1.5rem', 
                         borderRadius: '12px', 
-                        background: isEliminated ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.05)', 
+                        background: isEliminated ? 'rgba(0,0,0,0.2)' : 'var(--btn-bg)', 
                         border: isEliminated ? '1px solid transparent' : '1px solid var(--border-glass)', 
                         color: isEliminated ? 'rgba(255,255,255,0.2)' : 'var(--text-primary)', 
                         cursor: isEliminated ? 'not-allowed' : 'pointer', 
@@ -1289,7 +1289,7 @@ export default function QuestGameplay() {
               )}
 
               <div>
-                <button className="login-btn" onClick={() => navigate('/dashboard')} disabled={saving} style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid var(--border-glass)', padding: '1rem 3rem', fontSize: '1.2rem' }}>
+                <button className="login-btn" onClick={() => navigate('/dashboard')} disabled={saving} style={{ background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)', padding: '1rem 3rem', fontSize: '1.2rem' }}>
                   {saving ? 'Salvando progresso...' : 'Retornar ao Acampamento'}
                 </button>
               </div>
@@ -1312,7 +1312,7 @@ export default function QuestGameplay() {
                     </div>
                     
                     {chestRewards.items.map((item, idx) => (
-                      <div key={idx} style={{ background: 'rgba(255,255,255,0.05)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border-glass)', minWidth: '150px', animation: 'popInChest 0.3s ease-out forwards', animationDelay: `${0.2 + idx * 0.1}s`, opacity: 0 }}>
+                      <div key={idx} style={{ background: 'var(--btn-bg)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border-glass)', minWidth: '150px', animation: 'popInChest 0.3s ease-out forwards', animationDelay: `${0.2 + idx * 0.1}s`, opacity: 0 }}>
                         {item.imageUrl ? (
                           <img src={item.imageUrl} alt={item.title} style={{ width: '64px', height: '64px', objectFit: 'contain', margin: '0 auto 1rem auto' }} />
                         ) : (

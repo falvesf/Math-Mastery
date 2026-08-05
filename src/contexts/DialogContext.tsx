@@ -204,7 +204,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                     padding: '0.75rem 1.5rem',
                     borderRadius: '8px',
                     border: '1px solid var(--border-glass)',
-                    background: 'rgba(255,255,255,0.05)',
+                    background: 'var(--btn-bg)',
                     color: 'white',
                     fontWeight: 'bold',
                     cursor: 'pointer',
@@ -212,7 +212,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                     fontSize: '1rem'
                   }}
                   onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--btn-bg)'}
                 >
                   Cancelar
                 </button>
@@ -224,7 +224,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                   borderRadius: '8px',
                   border: 'none',
                   background: type === 'alert' ? 'var(--accent-blue)' : 'var(--gold-primary)',
-                  color: type === 'alert' ? 'white' : 'black',
+                  color: type === 'alert'  ? 'var(--text-primary)' : 'black',
                   fontWeight: 'bold',
                   cursor: 'pointer',
                   transition: 'all 0.2s',

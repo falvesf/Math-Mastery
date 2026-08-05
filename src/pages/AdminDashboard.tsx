@@ -794,7 +794,7 @@ export default function AdminDashboard() {
                     
                     setChestConfig({ ...chestConfig, itemIds: newIds, itemQuantities: newQuants });
                   }}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', marginBottom: isConsumable ? '0.5rem' : '0' }}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', marginBottom: isConsumable ? '0.5rem' : '0' }}
                 >
                   <option value="">(Nenhum Item)</option>
                   {availableStoreItems.map(item => {
@@ -820,7 +820,7 @@ export default function AdminDashboard() {
                         newQuants[slot] = Math.max(1, parseInt(e.target.value) || 1);
                         setChestConfig({ ...chestConfig, itemQuantities: newQuants });
                       }}
-                      style={{ width: '60px', padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}
+                      style={{ width: '60px', padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
                     />
                   </div>
                 )}
@@ -833,11 +833,11 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="app-container" style={{ maxWidth: '1400px', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1rem 2rem' }}>
-      <nav className="navbar glass-panel compact-nav" style={{ marginBottom: '1rem', flexShrink: 0 }}>
+    <div className="app-container">
+      <nav className="navbar glass-panel compact-nav">
         <div className="logo-container">
-          <ShieldAlert className="logo-icon" color="var(--accent-red)" size={32} />
-          <h1 className="title-glow" style={{ color: 'var(--accent-red)', textShadow: '0 0 15px rgba(239, 68, 68, 0.3)' }}>
+          <ShieldAlert className="logo-icon" color="var(--gold-primary)" size={32} />
+          <h1 className="title-glow">
             {userData?.role === 'admin' ? 'Painel Master (Admin)' : 'Painel do Professor'}
           </h1>
         </div>
@@ -849,14 +849,14 @@ export default function AdminDashboard() {
             <ArrowLeft size={18} style={{ marginRight: '0.5rem' }} /> Voltar
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
-            {userData && (
-              <div style={{ position: 'relative', width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-dark)', border: '2px solid var(--accent-red)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ position: 'absolute', width: 48, height: 48, bottom: 10, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
-                  <AvatarCharacter config={userData.avatarConfig || undefined} size={48} interactive={false} animation="none" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+              {userData && (
+                <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
+                  <AvatarCharacter config={userData.avatarConfig || undefined} size={36} interactive={false} animation="none" />
                 </div>
-              </div>
-            )}
-            <span style={{ fontWeight: 600 }}>{userData?.name?.split(' ')[0]}</span>
+              )}
+              <span style={{ fontWeight: 'bold' }}>{userData?.name?.split(' ')[0]}</span>
+            </div>
           </div>
           <button className="login-btn" onClick={() => signOut(auth)} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
             <LogOut size={20} />
@@ -978,7 +978,7 @@ export default function AdminDashboard() {
         {/* Aba de Usuários */}
         {activeTab === 'users' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '0.5rem 2rem', margin: '-2rem -2rem 0.5rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '0.5rem 2rem', margin: '-2rem -2rem 0.5rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div className="compact-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <div>
                   <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Gerenciamento de Usuários</h2>
@@ -1018,13 +1018,13 @@ export default function AdminDashboard() {
                       placeholder="Buscar por nome..." 
                       value={studentSearch}
                       onChange={(e) => setStudentSearch(e.target.value)}
-                      style={{ width: '100%', padding: '0 2rem 0 1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '0.9rem', height: '36px' }}
+                      style={{ width: '100%', padding: '0 2rem 0 1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.9rem', height: '36px' }}
                     />
                   </div>
                   <select 
                     value={studentSortBy} 
                     onChange={e => setStudentSortBy(e.target.value as any)}
-                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', height: '36px', fontSize: '0.9rem' }}
+                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', height: '36px', fontSize: '0.9rem' }}
                   >
                     <option value="xp">Por XP</option>
                     <option value="name">Por Nome</option>
@@ -1033,7 +1033,7 @@ export default function AdminDashboard() {
                   <select 
                     value={studentSortOrder} 
                     onChange={e => setStudentSortOrder(e.target.value as any)}
-                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', height: '36px', fontSize: '0.9rem' }}
+                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', height: '36px', fontSize: '0.9rem' }}
                   >
                     <option value="desc">Descendente</option>
                     <option value="asc">Ascendente</option>
@@ -1043,13 +1043,13 @@ export default function AdminDashboard() {
                 <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
                   <button 
                     onClick={() => setSelectedClassTab('all')}
-                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'all' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'all' ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
+                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'all' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: selectedClassTab === 'all'  ? 'black'  : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
                   >
                     Todos
                   </button>
                   <button 
                     onClick={() => setSelectedClassTab('staff')}
-                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'staff' ? 'var(--accent-red)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'staff' ? 'white' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
+                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'staff' ? 'var(--accent-red)' : 'var(--btn-bg)', color: selectedClassTab === 'staff'  ? 'var(--text-primary)' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
                   >
                     Equipe (Prof/Admin)
                   </button>
@@ -1057,14 +1057,14 @@ export default function AdminDashboard() {
                     <button 
                       key={cls.id}
                       onClick={() => setSelectedClassTab(cls.name)}
-                      style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: `1px solid ${cls.color}`, background: selectedClassTab === cls.name ? cls.color : 'rgba(255,255,255,0.05)', color: selectedClassTab === cls.name ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
+                      style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: `1px solid ${cls.color}`, background: selectedClassTab === cls.name ? cls.color : 'var(--btn-bg)', color: selectedClassTab === cls.name ? 'black' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
                     >
                       {cls.name}
                     </button>
                   ))}
                   <button 
                     onClick={() => setSelectedClassTab('unassigned')}
-                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--text-secondary)', background: selectedClassTab === 'unassigned' ? 'var(--text-secondary)' : 'rgba(255,255,255,0.05)', color: selectedClassTab === 'unassigned' ? 'black' : 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
+                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--text-secondary)', background: selectedClassTab === 'unassigned' ? 'var(--text-secondary)' : 'var(--btn-bg)', color: selectedClassTab === 'unassigned' ? 'black' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
                   >
                     Sem Turma
                   </button>
@@ -1159,7 +1159,7 @@ export default function AdminDashboard() {
                                     <BookOpen size={14} /> {student.classId || 'Sem Turma'}
                                   </span>
                                 )}
-                                <span style={{ color: currentRank.color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><ShieldAlert size={14} /> {currentRank.name}</span>
+                                <span style={{ color: currentRank.color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}><ShieldAlert size={14} /> {currentRank.name}</span>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--gold-primary)' }}><Star size={14} /> {student.xp || 0} XP</span>
                               </div>
                             </div>
@@ -1168,7 +1168,7 @@ export default function AdminDashboard() {
                             <button 
                               className="login-btn" 
                               onClick={() => openEditModal(student)}
-                              style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderColor: 'transparent' }}
+                              style={{ padding: '0.5rem', background: 'var(--btn-bg)', borderColor: 'transparent' }}
                               title="Editar/Promover Usuário"
                             >
                               <Edit2 size={18} />
@@ -1206,7 +1206,7 @@ export default function AdminDashboard() {
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               {!isCreatingQuest ? (
                 <>
-                  <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Central de Missões</h2>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Crie desafios ao estilo Kahoot para os alunos faturarem XP.</p>
@@ -1268,7 +1268,7 @@ export default function AdminDashboard() {
                               <button onClick={() => handleEditQuest(quest)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Missão">
                                 <Edit2 size={20} />
                               </button>
-                              <button onClick={() => handleToggleQuestActive(quest.id, quest.active)} style={{ background: quest.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.1)', color: quest.active ? 'var(--accent-green)' : 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                              <button onClick={() => handleToggleQuestActive(quest.id, quest.active)} style={{ background: quest.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.1)', color: quest.active  ? 'var(--accent-green)'  : 'var(--text-primary)', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
                                 {quest.active ? 'Ativa (Visível)' : 'Rascunho (Oculta)'}
                               </button>
                               <button onClick={() => handleDeleteQuest(quest.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Missão">
@@ -1301,23 +1301,23 @@ export default function AdminDashboard() {
                           <div style={{ display: 'flex', gap: '1rem' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                               <input type="radio" name="questMode" checked={questMode === 'classic'} onChange={() => setQuestMode('classic')} />
-                              <span style={{ color: questMode === 'classic' ? 'var(--gold-primary)' : 'white' }}>Atividade Individual</span>
+                              <span style={{ color: questMode === 'classic'  ? 'var(--gold-primary)'  : 'var(--text-primary)' }}>Atividade Individual</span>
                             </label>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                               <input type="radio" name="questMode" checked={questMode === 'live'} onChange={() => setQuestMode('live')} />
-                              <span style={{ color: questMode === 'live' ? 'var(--gold-primary)' : 'white' }}>Em Tempo Real (Kahoot RPG)</span>
+                              <span style={{ color: questMode === 'live'  ? 'var(--gold-primary)'  : 'var(--text-primary)' }}>Em Tempo Real (Kahoot RPG)</span>
                             </label>
                           </div>
                         </div>
 
                         <div>
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Missão</label>
-                          <input type="text" value={questTitle} onChange={e => setQuestTitle(e.target.value)} placeholder="Ex: A Masmorra das Frações" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+                          <input type="text" value={questTitle} onChange={e => setQuestTitle(e.target.value)} placeholder="Ex: A Masmorra das Frações" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '1.2rem' }} />
                         </div>
                         
                         <div>
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Descrição (Lore da Missão)</label>
-                          <textarea value={questDesc} onChange={e => setQuestDesc(e.target.value)} rows={3} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} placeholder="Um monstro apareceu! Resolva os problemas para derrotá-lo..."></textarea>
+                          <textarea value={questDesc} onChange={e => setQuestDesc(e.target.value)} rows={3} style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} placeholder="Um monstro apareceu! Resolva os problemas para derrotá-lo..."></textarea>
                         </div>
 
                         <div>
@@ -1342,8 +1342,8 @@ export default function AdminDashboard() {
                                   padding: '0.5rem 1rem',
                                   borderRadius: '20px',
                                   border: `1px solid ${cls.color}`,
-                                  background: questTargetClasses.includes(cls.name) ? cls.color : 'rgba(255,255,255,0.05)',
-                                  color: questTargetClasses.includes(cls.name) ? 'black' : 'white',
+                                  background: questTargetClasses.includes(cls.name) ? cls.color : 'var(--btn-bg)',
+                                  color: questTargetClasses.includes(cls.name)  ? 'black'  : 'var(--text-primary)',
                                   cursor: 'pointer',
                                   fontWeight: 'bold',
                                   fontSize: '0.9rem'
@@ -1361,7 +1361,7 @@ export default function AdminDashboard() {
                         <div>
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Imagem de Capa (Opcional - Cole uma URL de imagem)</label>
                           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                            <input type="text" value={questCover} onChange={e => setQuestCover(e.target.value)} placeholder="URL ou Galeria ->" style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                            <input type="text" value={questCover} onChange={e => setQuestCover(e.target.value)} placeholder="URL ou Galeria ->" style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                             <DirectUploadButton folder="quests" onUploadComplete={setQuestCover} buttonStyle={{ minHeight: '100%' }} />
                             <button onClick={() => setGalleryTarget('cover')} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                               <Search size={20} />
@@ -1385,7 +1385,7 @@ export default function AdminDashboard() {
                           {questRetries && (
                             <div style={{ marginLeft: '2.2rem' }}>
                               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Penalidade de XP por vida perdida</label>
-                              <input type="number" value={questPenalty} onChange={e => setQuestPenalty(e.target.value)} placeholder="Ex: 50" style={{ width: '150px', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                              <input type="number" value={questPenalty} onChange={e => setQuestPenalty(e.target.value)} placeholder="Ex: 50" style={{ width: '150px', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                             </div>
                           )}
                           <hr style={{ border: 'none', borderTop: '1px solid var(--border-glass)', margin: '0.5rem 0' }} />
@@ -1413,7 +1413,7 @@ export default function AdminDashboard() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                         <div>
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome do Monstro</label>
-                          <input type="text" value={questMonsterName} onChange={e => setQuestMonsterName(e.target.value)} placeholder="Ex: Golem de Pedra" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                          <input type="text" value={questMonsterName} onChange={e => setQuestMonsterName(e.target.value)} placeholder="Ex: Golem de Pedra" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                         </div>
                         <div style={{ gridColumn: '1 / -1' }}>
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Selecionar Monstro da Galeria</label>
@@ -1441,7 +1441,7 @@ export default function AdminDashboard() {
                                   setQuestMonsterModelUrl('');
                                 }
                               }} 
-                              style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}
+                              style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
                             >
                               <option value="">(Personalizar um novo Monstro...)</option>
                               {availableMonsters.map(monster => (
@@ -1477,19 +1477,19 @@ export default function AdminDashboard() {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                           <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-green)', fontSize: '0.9rem' }}>HP 100% a 80%</label>
-                            <input type="text" value={questMonsterQuotes.hp100_80 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp100_80: e.target.value})} placeholder="Ex: Vou te esmagar!; Renda-se!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                            <input type="text" value={questMonsterQuotes.hp100_80 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp100_80: e.target.value})} placeholder="Ex: Vou te esmagar!; Renda-se!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                           </div>
                           <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>HP 79% a 50%</label>
-                            <input type="text" value={questMonsterQuotes.hp79_50 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp79_50: e.target.value})} placeholder="Ex: Você é mais forte do que parece..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                            <input type="text" value={questMonsterQuotes.hp79_50 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp79_50: e.target.value})} placeholder="Ex: Você é mais forte do que parece..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                           </div>
                           <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-primary)', fontSize: '0.9rem' }}>HP 49% a 25%</label>
-                            <input type="text" value={questMonsterQuotes.hp49_25 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp49_25: e.target.value})} placeholder="Ex: Isso não vai ficar assim!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                            <input type="text" value={questMonsterQuotes.hp49_25 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp49_25: e.target.value})} placeholder="Ex: Isso não vai ficar assim!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                           </div>
                           <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-red)', fontSize: '0.9rem' }}>HP Menor que 24%</label>
-                            <input type="text" value={questMonsterQuotes.hp24_0 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp24_0: e.target.value})} placeholder="Ex: Maldição!; Como posso perder?!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                            <input type="text" value={questMonsterQuotes.hp24_0 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp24_0: e.target.value})} placeholder="Ex: Maldição!; Como posso perder?!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                           </div>
                         </div>
 
@@ -1521,7 +1521,7 @@ export default function AdminDashboard() {
                                   newDrops[index] = { itemId: e.target.value, dropChance: defaultChance };
                                   setQuestMonsterDrops(newDrops);
                                 }}
-                                style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                                style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
                               >
                                 <option value="">(Selecione um Item)</option>
                                 {availableStoreItems.map(si => (
@@ -1540,7 +1540,7 @@ export default function AdminDashboard() {
                                     newDrops[index].dropChance = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
                                     setQuestMonsterDrops(newDrops);
                                   }}
-                                  style={{ width: '80px', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                                  style={{ width: '80px', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
                                 />
                                 <span style={{ color: 'var(--text-secondary)' }}>%</span>
                               </div>
@@ -1681,7 +1681,7 @@ export default function AdminDashboard() {
                                 value={opt.text} 
                                 onChange={e => handleUpdateOption(qIndex, optIndex, 'text', e.target.value)}
                                 placeholder={`Texto da Opção ${['A', 'B', 'C', 'D'][optIndex]} (Deixe vazio p/ ocultar)`}
-                                style={{ flex: 1, padding: '0.75rem', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontFamily: 'inherit' }}
+                                style={{ flex: 1, padding: '0.75rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
                               />
                             </div>
                             <div style={{ display: 'flex', gap: '1rem', paddingLeft: '2.5rem' }}>
@@ -1724,7 +1724,7 @@ export default function AdminDashboard() {
           {/* Aba de Turmas */}
           {activeTab === 'classes' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Gerenciamento de Turmas</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem', marginTop: 0 }}>Crie turmas para agrupar os alunos e gerar Rankings exclusivos.</p>
               
@@ -1733,7 +1733,7 @@ export default function AdminDashboard() {
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
                   <div style={{ flex: 2 }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Nome da Turma</label>
-                    <input type="text" value={newClassName} onChange={e => setNewClassName(e.target.value)} placeholder="Ex: 6º ano A" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                    <input type="text" value={newClassName} onChange={e => setNewClassName(e.target.value)} placeholder="Ex: 6º ano A" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Cor da Turma</label>
@@ -1773,7 +1773,7 @@ export default function AdminDashboard() {
           {/* Aba de Configurações */}
           {activeTab === 'config' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <div>
                   <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Configurações do Sistema</h2>
@@ -1839,12 +1839,12 @@ export default function AdminDashboard() {
             
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome Completo</label>
-              <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+              <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
             </div>
 
             <div style={{ marginBottom: '2rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Turma Oficial</label>
-              <select value={editClass} onChange={e => setEditClass(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', marginBottom: '1rem' }}>
+              <select value={editClass} onChange={e => setEditClass(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', marginBottom: '1rem' }}>
                 <option value="">Sem Turma</option>
                 {schoolClasses.map(cls => (
                   <option key={cls.id} value={cls.name}>{cls.name}</option>
@@ -1900,7 +1900,7 @@ export default function AdminDashboard() {
 
               {/* Toggles Adicionar/Remover */}
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
-                <button onClick={() => setModalMode('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: modalMode === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: modalMode === 'add' ? 'white' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: modalMode === 'add' ? 'bold' : 'normal' }}>
+                <button onClick={() => setModalMode('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: modalMode === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: modalMode === 'add'  ? 'var(--text-primary)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: modalMode === 'add' ? 'bold' : 'normal' }}>
                   Dar XP
                 </button>
                 <button onClick={() => setModalMode('remove')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: modalMode === 'remove' ? 'rgba(239, 68, 68, 0.2)' : 'transparent', color: modalMode === 'remove' ? 'var(--accent-red)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: modalMode === 'remove' ? 'bold' : 'normal' }}>
@@ -1912,7 +1912,7 @@ export default function AdminDashboard() {
                 <>
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo de Avaliação</label>
-                    <select value={gradeType} onChange={e => setGradeType(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }}>
+                    <select value={gradeType} onChange={e => setGradeType(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}>
                       {evaluations.map(ev => (
                         <option key={ev.id} value={ev.id}>{ev.name} (Peso x{ev.weight})</option>
                       ))}
@@ -1920,7 +1920,7 @@ export default function AdminDashboard() {
                   </div>
                   <div style={{ marginBottom: '2rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nota (0 a 10)</label>
-                    <input type="number" step="0.1" min="0" max="10" value={grade} onChange={e => setGrade(e.target.value)} placeholder="Ex: 8.5" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+                    <input type="number" step="0.1" min="0" max="10" value={grade} onChange={e => setGrade(e.target.value)} placeholder="Ex: 8.5" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '1.2rem' }} />
                     {grade && !isNaN(parseFloat(grade.replace(',', '.'))) && (
                       <div style={{ marginTop: '0.5rem', color: 'var(--gold-primary)', fontSize: '0.9rem', fontWeight: 600 }}>
                         Resultado: +{parseFloat(grade.replace(',', '.')) * (evaluations.find(e => e.id === gradeType)?.weight || 100)} XP
@@ -1935,11 +1935,11 @@ export default function AdminDashboard() {
                 <>
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Quantidade de XP a Retirar</label>
-                    <input type="number" value={removeAmount} onChange={e => setRemoveAmount(e.target.value)} placeholder="Ex: 50" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+                    <input type="number" value={removeAmount} onChange={e => setRemoveAmount(e.target.value)} placeholder="Ex: 50" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '1.2rem' }} />
                   </div>
                   <div style={{ marginBottom: '2rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Justificativa (Motivo)</label>
-                    <input type="text" value={removeReason} onChange={e => setRemoveReason(e.target.value)} placeholder="Ex: Lançamento incorreto, punição, etc." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+                    <input type="text" value={removeReason} onChange={e => setRemoveReason(e.target.value)} placeholder="Ex: Lançamento incorreto, punição, etc." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                   </div>
                   <button className="login-btn" onClick={handleRemoveXp} style={{ width: '100%', justifyContent: 'center', background: 'var(--accent-red)', color: 'white', border: 'none' }}>
                     Confirmar Remoção de XP
@@ -2015,7 +2015,7 @@ export default function AdminDashboard() {
               Atenção: Esta ação apagará permanentemente o XP, itens, moedas e histórico deste usuário. Essa ação <strong>não</strong> pode ser desfeita. Deseja continuar?
             </p>
             <div style={{ display: 'flex', gap: '1rem' }}>
-              <button onClick={() => setDeletingStudent(null)} style={{ flex: 1, padding: '0.75rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>
+              <button onClick={() => setDeletingStudent(null)} style={{ flex: 1, padding: '0.75rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-primary)', cursor: 'pointer' }}>
                 Cancelar
               </button>
               <button onClick={handleDeleteStudent} style={{ flex: 1, padding: '0.75rem', background: 'var(--accent-red)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>
@@ -2044,7 +2044,7 @@ export default function AdminDashboard() {
             </p>
 
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
-              <button onClick={() => setBulkXpAction('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: bulkXpAction === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: bulkXpAction === 'add' ? 'white' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: bulkXpAction === 'add' ? 'bold' : 'normal' }}>
+              <button onClick={() => setBulkXpAction('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: bulkXpAction === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: bulkXpAction === 'add'  ? 'var(--text-primary)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: bulkXpAction === 'add' ? 'bold' : 'normal' }}>
                 Adicionar XP
               </button>
               <button onClick={() => setBulkXpAction('remove')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: bulkXpAction === 'remove' ? 'rgba(239, 68, 68, 0.2)' : 'transparent', color: bulkXpAction === 'remove' ? 'var(--accent-red)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: bulkXpAction === 'remove' ? 'bold' : 'normal' }}>
@@ -2054,15 +2054,15 @@ export default function AdminDashboard() {
 
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Quantidade de XP</label>
-              <input type="number" value={bulkXpAmount} onChange={e => setBulkXpAmount(e.target.value)} placeholder="Ex: 500" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+              <input type="number" value={bulkXpAmount} onChange={e => setBulkXpAmount(e.target.value)} placeholder="Ex: 500" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '1.2rem' }} />
             </div>
 
             <div style={{ marginBottom: '2rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Justificativa (Aparecerá no histórico de todos)</label>
-              <input type="text" value={bulkXpReason} onChange={e => setBulkXpReason(e.target.value)} placeholder="Ex: Vitória no Desafio das Frações" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+              <input type="text" value={bulkXpReason} onChange={e => setBulkXpReason(e.target.value)} placeholder="Ex: Vitória no Desafio das Frações" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
             </div>
 
-            <button className="login-btn" onClick={handleBulkXp} style={{ width: '100%', justifyContent: 'center', background: bulkXpAction === 'add' ? 'var(--gold-primary)' : 'var(--accent-red)', color: bulkXpAction === 'add' ? 'black' : 'white', border: 'none' }}>
+            <button className="login-btn" onClick={handleBulkXp} style={{ width: '100%', justifyContent: 'center', background: bulkXpAction === 'add' ? 'var(--gold-primary)' : 'var(--accent-red)', color: bulkXpAction === 'add'  ? 'black'  : 'var(--text-primary)', border: 'none' }}>
               Confirmar para {selectedStudentIds.length} Alunos
             </button>
           </div>
@@ -2088,12 +2088,12 @@ export default function AdminDashboard() {
             
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Atividade</label>
-              <input type="text" value={newEvalName} onChange={e => setNewEvalName(e.target.value)} placeholder="Ex: Tarefa de Casa" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+              <input type="text" value={newEvalName} onChange={e => setNewEvalName(e.target.value)} placeholder="Ex: Tarefa de Casa" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
             </div>
 
             <div style={{ marginBottom: '2rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Multiplicador (Peso)</label>
-              <input type="number" value={newEvalWeight} onChange={e => setNewEvalWeight(e.target.value)} placeholder="Ex: 50" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+              <input type="number" value={newEvalWeight} onChange={e => setNewEvalWeight(e.target.value)} placeholder="Ex: 50" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
             </div>
 
             <button className="login-btn" onClick={() => { handleAddEvaluation(); setIsEvalModalOpen(false); }} style={{ width: '100%', justifyContent: 'center', background: 'var(--gold-primary)', color: 'var(--bg-dark)', border: 'none' }}>
@@ -2171,7 +2171,7 @@ export default function AdminDashboard() {
                             const lastAccessDateStr = lastAccess && lastAccess.timestamp ? new Date(lastAccess.timestamp.seconds * 1000).toLocaleString('pt-BR') : '-';
                             
                             return (
-                              <div key={studentId} style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px', borderLeft: `4px solid ${completions.length > 0 ? 'var(--accent-green)' : 'var(--accent-red)'}` }}>
+                              <div key={studentId} style={{ background: 'var(--btn-bg)', padding: '1rem', borderRadius: '8px', borderLeft: `4px solid ${completions.length > 0 ? 'var(--accent-green)' : 'var(--accent-red)'}` }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                                   <div style={{ flex: 1 }}>
                                     <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem' }}>{student?.name || 'Aluno Desconhecido (Deletado)'}</h4>
@@ -2243,7 +2243,7 @@ export default function AdminDashboard() {
             
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Turma</label>
-              <input type="text" value={editClassName} onChange={e => setEditClassName(e.target.value)} placeholder="Ex: 6º ano A" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} />
+              <input type="text" value={editClassName} onChange={e => setEditClassName(e.target.value)} placeholder="Ex: 6º ano A" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
             </div>
 
             <div style={{ marginBottom: '2rem' }}>

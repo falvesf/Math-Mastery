@@ -687,14 +687,14 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flex: 1, minWidth: '150px', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.5rem' }}>
             <Search size={16} color="var(--text-secondary)" />
-            <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.5rem', background: 'transparent', border: 'none', color: 'white', outline: 'none', fontSize: '0.9rem' }} />
+            <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.5rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem' }} />
           </div>
-          <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '0.9rem' }}>
+          <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
             <option value="all">Tipos</option>
             <option value="consumable">Consumível</option>
             <option value="equippable">Equipável</option>
           </select>
-          <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '0.9rem' }}>
+          <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
             <option value="all">Raridades</option>
             <option value="common">Comum</option>
             <option value="uncommon">Incomum</option>
@@ -704,9 +704,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
           </select>
           
           <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.3)', padding: '0.25rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-            <button onClick={() => setViewMode('grid-large')} style={{ padding: '0.25rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large' ? 'white' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={16} /></button>
-            <button onClick={() => setViewMode('grid-small')} style={{ padding: '0.25rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small' ? 'white' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={16} /></button>
-            <button onClick={() => setViewMode('list')} style={{ padding: '0.25rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list' ? 'white' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={16} /></button>
+            <button onClick={() => setViewMode('grid-large')} style={{ padding: '0.25rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={16} /></button>
+            <button onClick={() => setViewMode('grid-small')} style={{ padding: '0.25rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={16} /></button>
+            <button onClick={() => setViewMode('list')} style={{ padding: '0.25rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={16} /></button>
           </div>
         </div>
       </div>
@@ -785,7 +785,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   }}
                   style={{ 
                     ...getGridItemStyle(),
-                  background: isFullyDragged ? 'rgba(255,255,255,0.03)' : 'var(--bg-dark)', 
+                  background: isFullyDragged ? 'var(--btn-bg)' : 'var(--bg-card)', 
                   padding: viewMode === 'list' ? '0.5rem 1rem' : (viewMode === 'grid-small' ? '0.35rem' : '0.5rem'), 
                   borderRadius: '8px', 
                   display: 'flex', 
@@ -858,12 +858,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                       <button 
                         title={item.equipped ? '✔ Equipado' : 'Equipar'}
                         onClick={() => handleEquip(item)} 
-                        style={{ flex: 1, background: item.equipped ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)', color: item.equipped ? 'var(--accent-green)' : 'white', border: item.equipped ? '1px solid var(--accent-green)' : '1px solid var(--border-glass)', padding: viewMode === 'grid-small' ? '0.25rem' : '0.4rem', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        style={{ flex: 1, background: item.equipped ? 'rgba(16, 185, 129, 0.2)' : 'var(--btn-bg)', color: item.equipped  ? 'var(--accent-green)'  : 'var(--text-primary)', border: item.equipped ? '1px solid var(--accent-green)' : '1px solid var(--border-glass)', padding: viewMode === 'grid-small' ? '0.25rem' : '0.4rem', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Shield size={viewMode === 'grid-small' ? 14 : 16} />
                       </button>
                     ) : (
                       ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(item.gameEffect || '') ? (
-                        <div title="Arraste para usar" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', padding: viewMode === 'grid-small' ? '0.25rem' : '0.4rem', borderRadius: '6px', border: '1px dashed rgba(255,255,255,0.2)', cursor: 'grab' }}>
+                        <div title="Arraste para usar" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--btn-bg)', color: 'var(--text-secondary)', padding: viewMode === 'grid-small' ? '0.25rem' : '0.4rem', borderRadius: '6px', border: '1px dashed rgba(255,255,255,0.2)', cursor: 'grab' }}>
                           <Hand size={viewMode === 'grid-small' ? 14 : 16} />
                         </div>
                       ) : (
@@ -907,15 +907,15 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   }}
                   style={{ 
                     ...getGridItemStyle(),
-                  background: 'rgba(255,255,255,0.03)', 
+                  background: 'var(--btn-bg)', 
                   borderRadius: '8px', 
-                  border: '2px dashed rgba(255,255,255,0.1)', 
+                  border: '2px dashed var(--border-glass)', 
                   display: 'flex', 
                   justifyContent: 'center', 
                   alignItems: 'center',
                   minHeight: viewMode === 'list' ? '60px' : '100px'
                 }}>
-                   <div style={{ width: viewMode === 'grid-small' ? '24px' : '32px', height: viewMode === 'grid-small' ? '24px' : '32px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }} />
+                   <div style={{ width: viewMode === 'grid-small' ? '24px' : '32px', height: viewMode === 'grid-small' ? '24px' : '32px', background: 'var(--btn-bg)', borderRadius: '50%' }} />
                 </div>
               );
             }
@@ -942,7 +942,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                       max={sellModalItem.count || 1} 
                       value={sellQuantity}
                       onChange={e => setSellQuantity(Math.min(Math.max(1, parseInt(e.target.value) || 1), sellModalItem.count || 1))}
-                      style={{ width: '60px', padding: '0.3rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', borderRadius: '4px' }}
+                      style={{ width: '60px', padding: '0.3rem', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', borderRadius: '4px' }}
                     />
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>/ {sellModalItem.count || 1}</span>
                   </div>
@@ -959,7 +959,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                 <select 
                   value={preferredCurrency} 
                   onChange={(e) => setPreferredCurrency(e.target.value as 'xp' | 'coins')}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
                 >
                   <option value="xp">Receber em XP (Padrão)</option>
                   <option value="coins">Receber em Moedas</option>
@@ -1022,7 +1022,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                     max={trashModalItem.count || 1} 
                     value={trashQuantity}
                     onChange={e => setTrashQuantity(Math.min(Math.max(1, parseInt(e.target.value) || 1), trashModalItem.count || 1))}
-                    style={{ width: '50px', padding: '0.2rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', borderRadius: '4px', textAlign: 'center' }}
+                    style={{ width: '50px', padding: '0.2rem', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', borderRadius: '4px', textAlign: 'center' }}
                   />
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>/ {trashModalItem.count || 1}</span>
                 </div>
@@ -1052,7 +1052,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             position: 'fixed',
             top: mousePos.y + 15,
             left: mousePos.x + 15,
-            background: 'rgba(15, 23, 42, 0.95)',
+            background: 'var(--bg-card)',
             border: '1px solid var(--border-glass)',
             borderRadius: '8px',
             padding: '1rem',
@@ -1062,7 +1062,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
             backdropFilter: 'blur(10px)',
             pointerEvents: 'none',
-            color: 'white',
+            color: 'var(--text-primary)',
             textAlign: 'left'
           }}>
             <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>{item.itemTitle}</h4>
@@ -1091,7 +1091,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             )}
             
             {item.itemType === 'equippable' && item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
-              <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'white' }}>
+              <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                 {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
               </div>
             )}

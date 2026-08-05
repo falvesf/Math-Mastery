@@ -1027,8 +1027,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               width: slotSize,
               height: slotSize,
               borderRadius: '50%',
-              background: item ? 'var(--bg-dark)' : 'rgba(255,255,255,0.03)',
-              border: item ? getRarityStyle(item.rarity).border : '1px dashed rgba(255,255,255,0.15)',
+              background: item ? 'var(--bg-card)' : 'var(--btn-bg)',
+              border: item ? getRarityStyle(item.rarity).border : '1px dashed var(--border-glass)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1049,7 +1049,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                  top: '110%',
                  left: '50%',
                  transform: 'translateX(-50%)',
-                 background: 'rgba(15, 23, 42, 0.95)',
+                 background: 'var(--bg-card)',
                  border: '1px solid var(--border-glass)',
                  borderRadius: '8px',
                  padding: '1rem',
@@ -1059,7 +1059,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                  boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
                  backdropFilter: 'blur(10px)',
                  pointerEvents: 'none',
-                 color: 'white',
+                 color: 'var(--text-primary)',
                  textAlign: 'left'
                }}>
                  {item ? (
@@ -1067,7 +1067,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                      <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>{item.itemTitle || 'Item Desconhecido'}</h4>
                      
                      {item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
-                       <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'white' }}>
+                       <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                          {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
                        </div>
                      )}

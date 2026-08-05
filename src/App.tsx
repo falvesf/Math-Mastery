@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import type React from 'react';
+import React from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DialogProvider } from './contexts/DialogContext';
 import LandingPage from './pages/LandingPage';
@@ -82,6 +82,11 @@ function AppRoutes() {
   );
 }
 function App() {
+  React.useEffect(() => {
+    const theme = localStorage.getItem('appTheme') || 'default';
+    document.body.setAttribute('data-theme', theme);
+  }, []);
+
   return (
     <AuthProvider>
       <DialogProvider>

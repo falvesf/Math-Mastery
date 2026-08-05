@@ -482,7 +482,7 @@ export default function LiveQuestAdmin() {
           {session.status === 'question' && (
             <div style={{ textAlign: 'center', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1.5rem', borderRadius: '12px', border: `2px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--gold-primary)'}` }}>
               <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Tempo Restante</span>
-              <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: timeLeft <= 5 ? 'var(--accent-red)' : 'white' }}>{timeLeft}s</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: timeLeft <= 5  ? 'var(--accent-red)'  : 'var(--text-primary)' }}>{timeLeft}s</span>
             </div>
           )}
           {session.status === 'ranking' && (
@@ -580,7 +580,7 @@ export default function LiveQuestAdmin() {
                  {sortedPlayers.slice(0, 5).map((p, index) => (
                    <div key={p.uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}>
                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: index === 0 ? 'var(--gold-primary)' : 'white' }}>#{index + 1}</span>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: index === 0  ? 'var(--gold-primary)'  : 'var(--text-primary)' }}>#{index + 1}</span>
                         <span style={{ fontSize: '1.2rem' }}>{p.name}</span>
                      </div>
                      <span style={{ fontWeight: 'bold', color: 'var(--accent-blue)', fontSize: '1.2rem' }}>{p.score} pts</span>

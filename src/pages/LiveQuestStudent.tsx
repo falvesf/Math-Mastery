@@ -446,7 +446,7 @@ export default function LiveQuestStudent() {
       <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         
         {/* Header com Consumíveis */}
-        <div style={{ padding: '0.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 10 }}>
+        <div style={{ padding: '0.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 10 }}>
           <div style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>Desafio Ao Vivo</div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', overflowX: 'auto', maxWidth: '300px', scrollbarWidth: 'thin' }}>
@@ -588,7 +588,7 @@ export default function LiveQuestStudent() {
                         background: isEliminated ? 'rgba(0,0,0,0.5)' : OPTION_COLORS[idx],
                         border: isEliminated ? '1px solid var(--border-glass)' : 'none',
                         borderRadius: '16px',
-                        color: isEliminated ? 'rgba(255,255,255,0.2)' : 'white',
+                        color: isEliminated  ? 'rgba(255,255,255,0.2)'  : 'var(--text-primary)',
                         fontSize: '4rem',
                         fontWeight: 'bold',
                         cursor: ((me.hp !== undefined && me.hp <= 0) || isEliminated) ? 'not-allowed' : 'pointer',

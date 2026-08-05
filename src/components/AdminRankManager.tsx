@@ -166,7 +166,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       )}
 
       <div className="glass-panel" style={{ padding: '2rem' }}>
-        <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'rgba(30, 41, 59, 0.95)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Medal color="var(--gold-primary)" /> Patentes e Artes
@@ -188,13 +188,13 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Patente</label>
-                  <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: Guerreiro de Prata" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                  <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: Guerreiro de Prata" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                 </div>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>XP Mínimo</label>
-                    <input type="number" value={formData.minXp} onChange={e => setFormData({...formData, minXp: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    <input type="number" value={formData.minXp} onChange={e => setFormData({...formData, minXp: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Cor do Brilho/Borda</label>
@@ -205,7 +205,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Arte da Patente (URL da Imagem)</label>
                   <div style={{ display: 'flex', gap: '1rem' }}>
-                    <input type="text" value={formData.imageUrl || ''} onChange={e => setFormData({...formData, imageUrl: e.target.value})} placeholder="Ex: https://..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    <input type="text" value={formData.imageUrl || ''} onChange={e => setFormData({...formData, imageUrl: e.target.value})} placeholder="Ex: https://..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                     <DirectUploadButton folder="ranks" onUploadComplete={(url) => setFormData({...formData, imageUrl: url})} buttonStyle={{ minHeight: '100%' }} />
                     <button onClick={() => setGalleryTarget('main')} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                       <Search size={20} />
@@ -221,7 +221,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                 <div style={{ marginTop: '1.5rem' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Música de Comemoração (Opcional - MP3/WAV)</label>
                   <div style={{ display: 'flex', gap: '1rem' }}>
-                    <input type="text" value={formData.audioUrl || ''} onChange={e => setFormData({...formData, audioUrl: e.target.value})} placeholder="URL do áudio..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    <input type="text" value={formData.audioUrl || ''} onChange={e => setFormData({...formData, audioUrl: e.target.value})} placeholder="URL do áudio..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                     <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={(url) => setFormData({...formData, audioUrl: url})} buttonStyle={{ minHeight: '100%' }} />
                   </div>
                   {formData.audioUrl && (
@@ -234,7 +234,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
               <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <label style={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>Variações de Arte (Por Turma)</label>
-                  <button onClick={() => setFormData({...formData, variants: [...(formData.variants || []), { classIds: [], imageUrl: '' }]})} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <button onClick={() => setFormData({...formData, variants: [...(formData.variants || []), { classIds: [], imageUrl: '' }]})} style={{ background: 'var(--btn-bg)', border: 'none', color: 'var(--text-primary)', padding: '0.25rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
                     + Adicionar Variação
                   </button>
                 </div>
@@ -273,7 +273,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                                   }}
                                   style={{
                                     padding: '0.25rem 0.5rem', fontSize: '0.8rem', borderRadius: '4px', cursor: 'pointer',
-                                    background: isSelected ? c.color : 'rgba(255,255,255,0.05)',
+                                    background: isSelected ? c.color : 'var(--btn-bg)',
                                     color: isSelected ? 'black' : 'var(--text-secondary)',
                                     border: `1px solid ${isSelected ? c.color : 'var(--border-glass)'}`,
                                     fontWeight: isSelected ? 'bold' : 'normal'
@@ -293,7 +293,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                               const newV = [...(formData.variants || [])];
                               newV[vIdx].imageUrl = e.target.value;
                               setFormData({...formData, variants: newV});
-                            }} placeholder="URL..." style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', fontSize: '0.85rem' }} />
+                            }} placeholder="URL..." style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
                             
                             <DirectUploadButton folder="ranks" onUploadComplete={(url) => {
                               const newV = [...(formData.variants || [])];
@@ -316,7 +316,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                   </div>
                 )}
               </div>              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
-                <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
                 <button onClick={handleSaveRank} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>Salvar Patente</button>
               </div>
             </div>

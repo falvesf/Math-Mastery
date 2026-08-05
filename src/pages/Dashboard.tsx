@@ -15,7 +15,7 @@ import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacte
 import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
-import { Edit3, MessageCircle } from 'lucide-react';
+import { Edit3, MessageCircle, X, Box, Palette } from 'lucide-react';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import OnboardingModal from '../components/OnboardingModal';
 
@@ -60,9 +60,9 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 
       {/* Imagem da Patente (Sempre visível no fundo) */}
       {rank.imageUrl ? (
-        <img src={rank.imageUrl} alt={rank.name} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%', mixBlendMode: 'multiply', filter: `drop-shadow(0 0 10px ${rank.color}80)`, opacity: showAvatars ? 0.6 : 1, zIndex: 0 }} />
+        <img src={rank.imageUrl} alt={rank.name} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%', filter: `drop-shadow(0 0 10px ${rank.color}80)`, opacity: showAvatars ? 0.6 : 1, zIndex: 0 }} />
       ) : (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: rank.color, textAlign: 'center', fontSize: size > 60 ? '0.9rem' : '0.7rem', zIndex: 0 }}>{rank.name}</div>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: rank.color, textAlign: 'center', fontSize: size > 60 ? '0.9rem' : '0.7rem', zIndex: 0, textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>{rank.name}</div>
       )}
 
       {/* Avatar (Visível apenas se showAvatars for true) */}
@@ -100,6 +100,7 @@ export default function Dashboard() {
   const [showRankingAvatars, setShowRankingAvatars] = useState(false);
   const [allStudents, setAllStudents] = useState<UserData[]>([]);
   const [cubeRotation, setCubeRotation] = useState(0);
+  const [rankImageIndex, setRankImageIndex] = useState(0);
   const [isIdle, setIsIdle] = useState(false);
   const lastInteractionTime = useRef(Date.now());
   const [loadingRankings, setLoadingRankings] = useState(true);
@@ -134,6 +135,29 @@ export default function Dashboard() {
   const [currentHpVisual, setCurrentHpVisual] = useState(0);
   const [nextHeartProgress, setNextHeartProgress] = useState(0);
 
+  // Configurações do Sistema
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'cube' | 'theme'>('cube');
+  const [appTheme, setAppTheme] = useState(() => localStorage.getItem('appTheme') || 'default');
+  const [cubeAutoRotate, setCubeAutoRotate] = useState(() => {
+    const saved = localStorage.getItem('cubeAutoRotate');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [cubeRotateInterval, setCubeRotateInterval] = useState(() => {
+    const saved = localStorage.getItem('cubeRotateInterval');
+    return saved !== null ? parseInt(saved, 10) : 5;
+  });
+  const [cubeIdleTime, setCubeIdleTime] = useState(() => {
+    const saved = localStorage.getItem('cubeIdleTime');
+    return saved !== null ? parseInt(saved, 10) : 60;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('cubeAutoRotate', String(cubeAutoRotate));
+    localStorage.setItem('cubeRotateInterval', String(cubeRotateInterval));
+    localStorage.setItem('cubeIdleTime', String(cubeIdleTime));
+  }, [cubeAutoRotate, cubeRotateInterval, cubeIdleTime]);
+
   // Detector de inatividade para girar o cubo
   useEffect(() => {
     const handleInteraction = () => {
@@ -147,7 +171,7 @@ export default function Dashboard() {
     window.addEventListener('scroll', handleInteraction);
 
     const idleInterval = setInterval(() => {
-      if (Date.now() - lastInteractionTime.current > 60000) { // 1 minuto
+      if (Date.now() - lastInteractionTime.current > cubeIdleTime * 1000) {
         if (!isIdle) setIsIdle(true);
       }
     }, 5000);
@@ -159,16 +183,16 @@ export default function Dashboard() {
       window.removeEventListener('scroll', handleInteraction);
       clearInterval(idleInterval);
     };
-  }, [isIdle]);
+  }, [isIdle, cubeIdleTime]);
 
   // Giro automático do cubo quando ocioso
   useEffect(() => {
-    if (!isIdle) return;
+    if (!cubeAutoRotate || !isIdle) return;
     const rotateInterval = setInterval(() => {
       setCubeRotation(prev => prev - 90);
-    }, 5000); // Gira a cada 5 segundos
+    }, cubeRotateInterval * 1000); // Gira a cada X segundos
     return () => clearInterval(rotateInterval);
-  }, [isIdle]);
+  }, [isIdle, cubeAutoRotate, cubeRotateInterval]);
 
   useEffect(() => {
     if (!userData || userData.role !== 'student' || !equippedItemsLoaded) return;
@@ -557,6 +581,31 @@ export default function Dashboard() {
 
   const currentRank = getRankForXp(userData?.xp || 0, userData?.classId);
 
+  // Transition rank images for admins and teachers
+  useEffect(() => {
+    if (!userData || (userData.role !== 'admin' && userData.role !== 'teacher')) return;
+    
+    const originalRank = RANKS.find(r => r.name === currentRank.name) || currentRank;
+    const allImages = [originalRank.imageUrl, ...(originalRank.variants?.map(v => v.imageUrl) || [])].filter(Boolean) as string[];
+
+    if (allImages.length <= 1) return;
+
+    const intervalId = setInterval(() => {
+      setRankImageIndex(prev => (prev + 1) % allImages.length);
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [userData, currentRank.name]);
+
+  const originalRank = RANKS.find(r => r.name === currentRank.name) || currentRank;
+  const allRankImages = [originalRank.imageUrl, ...(originalRank.variants?.map(v => v.imageUrl) || [])].filter(Boolean) as string[];
+  const isAdminOrTeacher = userData?.role === 'admin' || userData?.role === 'teacher';
+  
+  let currentDisplayImage = currentRank.imageUrl;
+  if (isAdminOrTeacher && allRankImages.length > 1) {
+    currentDisplayImage = allRankImages[rankImageIndex % allRankImages.length] || currentRank.imageUrl;
+  }
+
   // Verificar se subiu de patente
   useEffect(() => {
     if (!userData || userData.role !== 'student') return;
@@ -754,11 +803,11 @@ export default function Dashboard() {
                 </div>
                 
                 <div>
-                  <h4 style={{ margin: 0, fontSize: fontSizeTitle, display: 'flex', alignItems: 'center', gap: '0.5rem', color: rankPos === 1 ? '#fbbf24' : 'white' }}>
+                  <h4 style={{ margin: 0, fontSize: fontSizeTitle, display: 'flex', alignItems: 'center', gap: '0.5rem', color: rankPos === 1 ? '#fbbf24' : 'var(--text-primary)' }}>
                     {student.name} {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'black', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
                   </h4>
-                  <div style={{ fontSize: '0.85rem', color: sRank.color, fontWeight: 'bold' }}>
-                    {sRank.name} {student.classId && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal' }}>| {student.classId}</span>}
+                  <div style={{ fontSize: '0.85rem', color: sRank.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+                    {sRank.name} {student.classId && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', textShadow: 'none' }}>| {student.classId}</span>}
                   </div>
                 </div>
               </div>
@@ -820,6 +869,134 @@ export default function Dashboard() {
         />
       )}
 
+      {/* Modal de Configuração do Sistema */}
+      {isSettingsModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div className="glass-panel" style={{ width: '600px', maxWidth: '95vw', display: 'flex', overflow: 'hidden', animation: 'slideUp 0.3s ease-out', position: 'relative', minHeight: '400px', padding: 0 }}>
+            {/* Sidebar do Modal */}
+            <div style={{ width: '200px', background: 'rgba(0,0,0,0.2)', borderRight: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '1.5rem 1rem', borderBottom: '1px solid var(--border-glass)' }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Settings size={20} color="var(--gold-primary)" /> Ajustes
+                </h3>
+              </div>
+              <div style={{ padding: '1rem 0', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <button 
+                  onClick={() => setSettingsTab('cube')}
+                  style={{ background: settingsTab === 'cube' ? 'rgba(251, 191, 36, 0.1)' : 'transparent', color: settingsTab === 'cube' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', padding: '1rem', textAlign: 'left', cursor: 'pointer', borderLeft: settingsTab === 'cube' ? '3px solid var(--gold-primary)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: settingsTab === 'cube' ? 'bold' : 'normal' }}
+                >
+                  <Box size={18} /> Cubo 3D
+                </button>
+                <button 
+                  onClick={() => setSettingsTab('theme')}
+                  style={{ background: settingsTab === 'theme' ? 'rgba(251, 191, 36, 0.1)' : 'transparent', color: settingsTab === 'theme' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', padding: '1rem', textAlign: 'left', cursor: 'pointer', borderLeft: settingsTab === 'theme' ? '3px solid var(--gold-primary)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: settingsTab === 'theme' ? 'bold' : 'normal' }}
+                >
+                  <Palette size={18} /> Temas
+                </button>
+              </div>
+            </div>
+
+            {/* Conteúdo Principal do Modal */}
+            <div style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+              <button onClick={() => setIsSettingsModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }} className="hover-brightness">
+                <X size={24} />
+              </button>
+
+              {settingsTab === 'cube' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left', flex: 1 }}>
+                  <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>Configurações do Cubo</h4>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'space-between' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-primary)', display: 'block', fontWeight: 'bold' }}>Giro Automático</span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Girar quando estiver ocioso</span>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={cubeAutoRotate} onChange={e => {
+                          setCubeAutoRotate(e.target.checked);
+                          localStorage.setItem('cubeAutoRotate', JSON.stringify(e.target.checked));
+                      }} style={{ display: 'none' }} />
+                      <div style={{ width: '40px', height: '20px', background: cubeAutoRotate ? 'var(--gold-primary)' : 'rgba(255,255,255,0.2)', borderRadius: '10px', position: 'relative', transition: '0.3s' }}>
+                        <div style={{ position: 'absolute', top: '2px', left: cubeAutoRotate ? '22px' : '2px', width: '16px', height: '16px', background: cubeAutoRotate ? 'black' : 'white', borderRadius: '50%', transition: '0.3s' }} />
+                      </div>
+                    </label>
+                  </div>
+
+                  {cubeAutoRotate && (
+                    <>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tempo de Ociosidade (segundos)</label>
+                        <input 
+                          type="number" 
+                          min="5" 
+                          max="300"
+                          value={cubeIdleTime}
+                          onChange={e => {
+                              const val = Math.max(5, parseInt(e.target.value) || 60);
+                              setCubeIdleTime(val);
+                              localStorage.setItem('cubeIdleTime', val.toString());
+                          }}
+                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Intervalo de Giro (segundos)</label>
+                        <input 
+                          type="number" 
+                          min="1" 
+                          max="60"
+                          value={cubeRotateInterval}
+                          onChange={e => {
+                              const val = Math.max(1, parseInt(e.target.value) || 5);
+                              setCubeRotateInterval(val);
+                              localStorage.setItem('cubeRotateInterval', val.toString());
+                          }}
+                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {settingsTab === 'theme' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left', flex: 1 }}>
+                  <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>Temas do Sistema</h4>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+                    {[
+                      { id: 'default', name: 'Padrão (Dark RPG)', color: '#0f172a' },
+                      { id: 'light', name: 'Amanhecer (Claro)', color: '#f8fafc' },
+                      { id: 'fantasy', name: 'Fantasia (Colorido)', color: '#0c4a6e' }
+                    ].map(t => (
+                      <div 
+                        key={t.id} 
+                        onClick={() => {
+                          setAppTheme(t.id);
+                          localStorage.setItem('appTheme', t.id);
+                          document.body.setAttribute('data-theme', t.id);
+                        }}
+                        style={{ padding: '1rem', border: appTheme === t.id ? '2px solid var(--gold-primary)' : '2px solid transparent', background: 'var(--bg-card)', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', transition: '0.2s' }}
+                        className="hover-brightness"
+                      >
+                        <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: t.color, border: '2px solid var(--border-glass)' }} />
+                        <span style={{ fontWeight: appTheme === t.id ? 'bold' : 'normal', color: appTheme === t.id ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{t.name}</span>
+                        {appTheme === t.id && <CheckCircle size={18} color="var(--gold-primary)" style={{ marginLeft: 'auto' }} />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 'auto', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-glass)' }}>
+                <button onClick={() => setIsSettingsModalOpen(false)} className="login-btn" style={{ padding: '0.5rem 1.5rem', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
+                  Concluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {userData && isCustomizingAvatar && (
         <AvatarCustomizationModal
           isOpen={isCustomizingAvatar}
@@ -860,10 +1037,19 @@ export default function Dashboard() {
               onClick={() => navigate('/admin')}
               style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)' }}
             >
-              <Settings size={18} color="var(--gold-primary)" />
+              <ShieldAlert size={18} color="var(--gold-primary)" />
               <span style={{ color: 'var(--gold-primary)' }}>{userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}</span>
             </button>
           )}
+
+          <button 
+            onClick={() => setIsSettingsModalOpen(true)}
+            style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.5rem' }}
+            className="hover-brightness"
+            title="Configurações do Sistema"
+          >
+            <Settings size={24} />
+          </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
@@ -882,34 +1068,34 @@ export default function Dashboard() {
       </nav>
 
       {/* Navegação de Abas do Aluno */}
-      <div className="scrollable-menu-container" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.05)', margin: '0 -2rem 0 -2rem', padding: '0.5rem 2rem' }}>
+      <div className="scrollable-menu-container" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'transparent', margin: '0 -2rem 0 -2rem', padding: '0.5rem 2rem' }}>
         <button 
           onClick={() => setActiveTab('quests')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'quests' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <Swords size={20} /> Central de Missões
         </button>
         <button 
           onClick={() => setActiveTab('profile')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'profile' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'profile' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <Star size={20} /> Meu Perfil
         </button>
         <button 
           onClick={() => setActiveTab('ranking_class')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'ranking_class' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_class' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <Users size={20} /> Ranking da Turma
         </button>
         <button 
           onClick={() => setActiveTab('ranking_general')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'ranking_general' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_general' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <TrendingUp size={20} /> Ranking Geral
         </button>
         <button 
           onClick={() => setActiveTab('store')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'store' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <Store size={20} /> Mercado
         </button>
@@ -1011,8 +1197,8 @@ export default function Dashboard() {
                               className="login-btn" 
                               disabled={quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)}
                               style={{ 
-                                background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'rgba(255,255,255,0.1)' : 'var(--gold-primary)', 
-                                color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'white' : 'black', 
+                                background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--btn-bg)' : 'var(--gold-primary)', 
+                                color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--text-primary)' : 'black', 
                                 border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? '1px solid var(--border-glass)' : 'none', 
                                 padding: '0.5rem 1.5rem', 
                                 fontSize: '1rem',
@@ -1054,14 +1240,14 @@ export default function Dashboard() {
               <button 
                 onClick={() => setProfileTab('overview')}
                 className="login-btn"
-                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: profileTab === 'overview' ? 'black' : 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'overview'  ? 'black'  : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
               >
                 <Star size={20} /> Personagem e Histórico
               </button>
               <button 
                 onClick={() => setProfileTab('inventory')}
                 className="login-btn"
-                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'rgba(255,255,255,0.05)', color: profileTab === 'inventory' ? 'black' : 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'inventory'  ? 'black'  : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
               >
                 <Package size={20} /> Mochila
               </button>
@@ -1069,12 +1255,12 @@ export default function Dashboard() {
 
             <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
               {/* Perfil do Aluno (Esquerda) */}
-              <div className="glass-panel" style={{ flex: '1 1 400px', padding: '1.5rem 2rem', textAlign: 'center' }}>
+              <div className="glass-panel" style={{ flex: '1 1 400px', padding: '1.5rem 2rem', textAlign: 'center', position: 'relative' }}>
               <div 
                 style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '1.5rem', marginBottom: '2.5rem', perspective: '1000px' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 10 }}>
+                  <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 10 }}>
                     {'<'}
                   </button>
                   
@@ -1096,8 +1282,8 @@ export default function Dashboard() {
 
                       {/* Trás: Patente */}
                       <div className="cube-face cube-face-back" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column' }}>
-                        {currentRank.imageUrl ? (
-                          <img src={currentRank.imageUrl} alt={currentRank.name} style={{ width: 110, height: 110, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
+                        {currentDisplayImage ? (
+                          <img key={currentDisplayImage} src={currentDisplayImage} alt={currentRank.name} style={{ width: 110, height: 110, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
                         ) : (
                           <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: currentRank.color }}>{currentRank.name}</div>
                         )}
@@ -1133,7 +1319,7 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 10 }}>
+                  <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 10 }}>
                     {'>'}
                   </button>
                 </div>
@@ -1144,7 +1330,7 @@ export default function Dashboard() {
               </div>
               
               {isEditingStatus ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', padding: '0.25rem 1rem', borderRadius: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.25rem 1rem', borderRadius: '20px' }}>
                   <MessageCircle size={16} color="var(--text-secondary)" />
                   <input 
                     autoFocus
@@ -1164,11 +1350,11 @@ export default function Dashboard() {
                       setIsEditingStatus(false);
                     }}
                     placeholder="Escreva seu status..."
-                    style={{ background: 'transparent', border: 'none', color: 'white', flex: 1, outline: 'none', fontStyle: 'italic', width: '100%' }}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', flex: 1, outline: 'none', fontStyle: 'italic', width: '100%' }}
                   />
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', padding: '0.25rem 1rem', borderRadius: '20px', color: 'var(--text-secondary)', minHeight: '36px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.25rem 1rem', borderRadius: '20px', color: 'var(--text-secondary)', minHeight: '36px' }}>
                   <MessageCircle size={16} />
                   <span style={{ fontStyle: 'italic', flex: 1 }}>{userData?.customStatusText ? `"${userData.customStatusText}"` : "Escreva seu status..."}</span>
                   <button onClick={() => { setStatusInputValue(userData?.customStatusText || ''); setIsEditingStatus(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0 0.25rem', display: 'flex' }} className="hover-brightness" title="Editar Status">

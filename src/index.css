@@ -5,6 +5,8 @@
   --bg-dark: #0f172a;
   --bg-panel: #1e293b;
   --bg-card: rgba(30, 41, 59, 0.7);
+  --btn-bg: rgba(255, 255, 255, 0.05);
+  --btn-hover: rgba(255, 255, 255, 0.1);
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   
@@ -38,6 +40,48 @@ body {
   background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;
+}
+
+body[data-theme="light"] {
+  --bg-dark: #f8fafc;
+  --bg-panel: #ffffff;
+  --bg-card: rgba(255, 255, 255, 0.8);
+  --btn-bg: rgba(0, 0, 0, 0.05);
+  --btn-hover: rgba(0, 0, 0, 0.1);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  
+  --gold-primary: #d97706;
+  --gold-glow: rgba(217, 119, 6, 0.3);
+  
+  --border-glass: rgba(0, 0, 0, 0.1);
+  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  
+  color-scheme: light;
+  
+  background-image: 
+    linear-gradient(rgba(248, 250, 252, 0.7), rgba(248, 250, 252, 0.9)),
+    url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=2000&auto=format&fit=crop'); 
+}
+
+body[data-theme="fantasy"] {
+  --bg-dark: #0c4a6e;
+  --bg-panel: #0284c7;
+  --bg-card: rgba(2, 132, 199, 0.7);
+  --btn-bg: rgba(255, 255, 255, 0.1);
+  --btn-hover: rgba(255, 255, 255, 0.2);
+  --text-primary: #f0f9ff;
+  --text-secondary: #bae6fd;
+  
+  --gold-primary: #7dd3fc;
+  --gold-glow: rgba(125, 211, 252, 0.3);
+  
+  --border-glass: rgba(255, 255, 255, 0.15);
+  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  
+  background-image: 
+    linear-gradient(rgba(12, 74, 110, 0.7), rgba(12, 74, 110, 0.9)),
+    url('https://images.unsplash.com/photo-1514809280145-2e118944a956?q=80&w=2000&auto=format&fit=crop'); 
 }
 
 h1, h2, h3, h4, h5, h6 {
