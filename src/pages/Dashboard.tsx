@@ -6,6 +6,7 @@ import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, updateDoc, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { getRankForXp, RANKS, type RankDef } from '../lib/ranks';
+import { calculateTotalStats } from '../lib/gacha';
 import LevelUpModal from '../components/LevelUpModal';
 import StudentStore from '../components/StudentStore';
 import StudentInventory from '../components/StudentInventory';
@@ -109,6 +110,7 @@ export default function Dashboard() {
   // Avatar State
   const [isCustomizingAvatar, setIsCustomizingAvatar] = useState(false);
   const [equippedItems, setEquippedItems] = useState<EquippedItem[]>([]);
+  const [equippedItemsLoaded, setEquippedItemsLoaded] = useState(false);
   const [liveAvatarConfig, setLiveAvatarConfig] = useState<any>(null);
   const [inventoryRefresh, setInventoryRefresh] = useState(0);
 
@@ -119,6 +121,7 @@ export default function Dashboard() {
   // Quests State
   const [activeQuests, setActiveQuests] = useState<any[]>([]);
   const [completedQuestIds, setCompletedQuestIds] = useState<string[]>([]);
+  const [completedQuestDates, setCompletedQuestDates] = useState<Record<string, number>>({});
   const [loadingQuests, setLoadingQuests] = useState(true);
   const [activeLiveQuests, setActiveLiveQuests] = useState<Record<string, boolean>>({});
 
@@ -165,24 +168,37 @@ export default function Dashboard() {
   }, [isIdle]);
 
   useEffect(() => {
-    if (!userData || userData.role !== 'student') return;
+    if (!userData || userData.role !== 'student' || !equippedItemsLoaded) return;
     
-    const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2);
+    const stats = calculateTotalStats(equippedItems);
+    const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
     const dbHearts = userData.hearts !== undefined ? Number(userData.hearts) : maxHearts;
     
-    setCurrentHpVisual(dbHearts);
+    // A UI visual nunca deve mostrar mais do que o max atual
+    setCurrentHpVisual(Math.min(dbHearts, maxHearts));
     
-    if (dbHearts < maxHearts && !userData.hpRecoveryStartTimestamp) {
-      updateDoc(doc(db, 'users', userData.uid), { hpRecoveryStartTimestamp: Date.now() }).catch(console.error);
+    // Se o jogador tem mais corações do que o máximo permitido (ex: perdeu XP/patente)
+    if (dbHearts > maxHearts) {
+      updateDoc(doc(db, 'users', userData.uid), { 
+        hearts: maxHearts,
+        hpRecoveryStartTimestamp: null 
+      }).catch(console.error);
       setNextHeartProgress(0);
       return;
     }
 
-    if (dbHearts >= maxHearts) {
+    // Se está com vida cheia, zera qualquer timer
+    if (dbHearts === maxHearts) {
       setNextHeartProgress(0);
       if (userData.hpRecoveryStartTimestamp) {
         updateDoc(doc(db, 'users', userData.uid), { hpRecoveryStartTimestamp: null }).catch(console.error);
       }
+      return;
+    }
+
+    if (dbHearts < maxHearts && !userData.hpRecoveryStartTimestamp) {
+      updateDoc(doc(db, 'users', userData.uid), { hpRecoveryStartTimestamp: Date.now() }).catch(console.error);
+      setNextHeartProgress(0);
       return;
     }
 
@@ -249,17 +265,32 @@ export default function Dashboard() {
         setLoadingQuests(true);
         
         // Buscar tentativas concluídas (com cache)
-        const attemptsCacheKey = CACHE_KEYS.questAttempts(userData.uid);
-        let completedIds: string[] = sessionCache.get<string[]>(attemptsCacheKey) || [];
-        if (completedIds.length === 0) {
+        const attemptsCacheKey = `questAttemptsV2_${userData.uid}`;
+        let completedIds: string[] = [];
+        let completedDates: Record<string, number> = {};
+        
+        const cachedAttempts = sessionCache.get<{ids: string[], dates: Record<string, number>}>(attemptsCacheKey);
+        
+        if (cachedAttempts && cachedAttempts.ids) {
+          completedIds = cachedAttempts.ids;
+          completedDates = cachedAttempts.dates;
+        } else {
           const attemptQ = query(collection(db, 'quest_attempts'), where('studentId', '==', userData.uid), where('status', '==', 'completed'));
           const attemptSnap = await getDocs(attemptQ);
           attemptSnap.forEach(doc => {
-            if (doc.data().questId) completedIds.push(doc.data().questId);
+            const data = doc.data();
+            if (data.questId) {
+              completedIds.push(data.questId);
+              // O campo correto no banco de dados se chama 'timestamp'
+              completedDates[data.questId] = data.timestamp?.seconds 
+                ? data.timestamp.seconds * 1000 
+                : Date.now();
+            }
           });
-          sessionCache.set(attemptsCacheKey, completedIds, CACHE_TTL.QUEST_ATTEMPTS);
+          sessionCache.set(attemptsCacheKey, { ids: completedIds, dates: completedDates }, CACHE_TTL.QUEST_ATTEMPTS);
         }
         setCompletedQuestIds(completedIds);
+        setCompletedQuestDates(completedDates);
 
         // Buscar missões ativas (com cache por turma)
         const questsCacheKey = CACHE_KEYS.quests(userData.classId || 'all');
@@ -318,6 +349,7 @@ export default function Dashboard() {
         }
       });
       setEquippedItems(eq);
+      setEquippedItemsLoaded(true);
     };
     fetchEquipped();
   }, [userData?.uid, inventoryRefresh]);
@@ -933,7 +965,18 @@ export default function Dashboard() {
                         )}
                         <div style={{ position: 'absolute', top: '10px', right: '10px', background: isCompleted ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${isCompleted ? 'var(--accent-green)' : 'var(--gold-primary)'}`, color: isCompleted ? 'black' : 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {isCompleted ? <CheckCircle size={16} /> : <Star size={16} />} 
-                          {isCompleted ? 'Concluída' : `${quest.baseXp} XP`}
+                          {isCompleted ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.1 }}>
+                              <span>Concluída</span>
+                              {completedQuestDates[quest.id] && (
+                                <span style={{ fontSize: '0.65rem', fontWeight: 'normal', opacity: 0.8 }}>
+                                  em {new Date(completedQuestDates[quest.id]).toLocaleDateString('pt-BR')}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span>{quest.baseXp} XP</span>
+                          )}
                         </div>
                       </div>
                       <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
@@ -1115,7 +1158,8 @@ export default function Dashboard() {
                   <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Vidas (HP)</span>
                   <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     {(() => {
-                      const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2);
+                      const stats = calculateTotalStats(equippedItems);
+                      const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
                       const displayHp = userData?.role === 'admin' || userData?.role === 'teacher' ? maxHearts : currentHpVisual;
                       return Array.from({ length: maxHearts }).map((_, i) => {
                         if (i < displayHp) {
