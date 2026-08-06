@@ -1179,7 +1179,7 @@ export default function Dashboard() {
         />
       )}
 
-      <div style={{ position: 'sticky', top: 0, zIndex: 100, margin: '-1rem -2rem 0 -2rem', padding: '1rem 2rem 0.5rem 2rem', background: 'var(--bg-dark)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, margin: '-1rem -2rem 0 -2rem', padding: '1rem 2rem 0.5rem 2rem', background: 'transparent', backdropFilter: 'blur(12px)' }}>
       <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '1rem' }}>
         <div className="logo-container">
           <Trophy className="logo-icon" color="var(--gold-primary)" size={32} />
@@ -1317,7 +1317,7 @@ export default function Dashboard() {
                             <Swords size={64} color="rgba(255,255,255,0.2)" />
                           </div>
                         )}
-                        <div style={{ position: 'absolute', top: '10px', right: '10px', background: isCompleted ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${isCompleted ? 'var(--accent-green)' : 'var(--gold-primary)'}`, color: isCompleted ? 'var(--text-on-gold, #000000)' : 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ position: 'absolute', top: '10px', right: '10px', background: isCompleted ? 'rgba(16, 185, 129, 0.9)' : 'var(--bg-badge)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${isCompleted ? 'var(--accent-green)' : 'var(--gold-primary)'}`, color: isCompleted ? 'var(--text-on-gold, #000000)' : 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {isCompleted ? <CheckCircle size={16} /> : <Star size={16} />} 
                           {isCompleted ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.1 }}>
@@ -1393,7 +1393,7 @@ export default function Dashboard() {
 
         {activeTab === 'profile' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', gap: '1rem', padding: '0.5rem 0', marginBottom: '0.5rem', justifyContent: 'center', position: 'sticky', top: '60px', zIndex: 95, background: 'var(--bg-dark)', backdropFilter: 'blur(12px)' }}>
+            <div style={{ display: 'flex', gap: '1rem', padding: '0.5rem 0', marginBottom: '0.5rem', justifyContent: 'center', position: 'sticky', top: '60px', zIndex: 95, background: 'transparent', backdropFilter: 'blur(12px)' }}>
               <button 
                 onClick={() => setProfileTab('overview')}
                 className="login-btn"

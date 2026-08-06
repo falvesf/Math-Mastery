@@ -5,7 +5,7 @@ export const applyCustomTheme = (theme: CustomTheme | null) => {
     // Limpar variáveis customizadas para voltar aos temas padrões do CSS
     const vars = [
       '--bg-dark', '--bg-panel', '--bg-card', '--btn-bg', '--btn-hover', 
-      '--text-primary', '--text-secondary', '--text-on-gold', '--gold-primary', '--gold-glow', 
+      '--text-primary', '--text-secondary', '--text-on-gold', '--bg-badge', '--gold-primary', '--gold-glow', 
       '--border-glass', '--shadow-glass'
     ];
     vars.forEach(v => document.body.style.removeProperty(v));
@@ -38,6 +38,7 @@ export const applyCustomTheme = (theme: CustomTheme | null) => {
   document.body.style.setProperty('--text-primary', hexToRgba(colors.textPrimary, colors.textPrimaryOpacity !== undefined ? colors.textPrimaryOpacity : 1));
   document.body.style.setProperty('--text-secondary', hexToRgba(colors.textSecondary, colors.textSecondaryOpacity !== undefined ? colors.textSecondaryOpacity : 1));
   document.body.style.setProperty('--text-on-gold', hexToRgba(colors.textOnGold || '#000000', colors.textOnGoldOpacity !== undefined ? colors.textOnGoldOpacity : 1));
+  document.body.style.setProperty('--bg-badge', hexToRgba(colors.bgBadge || '#000000', colors.bgBadgeOpacity !== undefined ? colors.bgBadgeOpacity : 0.5));
   document.body.style.setProperty('--gold-primary', hexToRgba(colors.goldPrimary, colors.goldPrimaryOpacity !== undefined ? colors.goldPrimaryOpacity : 1));
   document.body.style.setProperty('--gold-glow', hexToRgba(colors.goldGlow, colors.goldGlowOpacity));
   document.body.style.setProperty('--border-glass', hexToRgba(colors.borderGlass, colors.borderGlassOpacity));

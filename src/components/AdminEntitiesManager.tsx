@@ -10,7 +10,7 @@ export default function AdminEntitiesManager() {
   return (
     <div>
       {/* Sticky Header Area */}
-      <div style={{ position: 'sticky', top: '-2rem', zIndex: 10, background: 'var(--bg-panel)', margin: '-2rem -2rem 2rem -2rem', padding: '2rem 2rem 0 2rem', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+      <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
         <h2 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>Gerenciar Entidades 3D</h2>
 
         {/* Tabs */}

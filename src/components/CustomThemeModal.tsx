@@ -23,6 +23,8 @@ export interface CustomTheme {
     textSecondaryOpacity?: number;
     textOnGold?: string;
     textOnGoldOpacity?: number;
+    bgBadge?: string;
+    bgBadgeOpacity?: number;
     goldPrimary: string;
     goldPrimaryOpacity?: number;
     goldGlow: string;
@@ -56,6 +58,8 @@ export const DEFAULT_FANTASY_THEME: CustomTheme = {
     textSecondaryOpacity: 1,
     textOnGold: '#000000',
     textOnGoldOpacity: 1,
+    bgBadge: '#000000',
+    bgBadgeOpacity: 0.5,
     goldPrimary: '#7dd3fc',
     goldPrimaryOpacity: 1,
     goldGlow: '#7dd3fc',
@@ -184,6 +188,7 @@ export default function CustomThemeModal({ initialTheme, isAdmin, onSave, onClos
             <h3 style={{ fontSize: '1.1rem', margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>Elementos Translúcidos</h3>
             {renderColorInput("Cartões", "bgCard", "bgCardOpacity")}
             {renderColorInput("Fundo de Botões/Campos", "btnBg", "btnBgOpacity")}
+            {renderColorInput("Fundo de Tags/Emblemas", "bgBadge", "bgBadgeOpacity")}
             {renderColorInput("Hover de Botões/Campos", "btnHover", "btnHoverOpacity")}
             {renderColorInput("Brilho de Destaque", "goldGlow", "goldGlowOpacity")}
             {renderColorInput("Bordas de Vidro", "borderGlass", "borderGlassOpacity")}
