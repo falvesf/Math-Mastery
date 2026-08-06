@@ -130,7 +130,7 @@ export default function AdminEconomySettings() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
         {activeTab === 'coins' ? (
           <>
-            <h3 style={{ margin: 0, color: 'white' }}>Configurações de Moedas nos Combates</h3>
+            <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Configurações de Moedas nos Combates</h3>
             <p style={{ color: 'var(--text-secondary)', margin: 0, marginBottom: '1rem', fontSize: '0.9rem' }}>
               Defina como as moedas se comportarão dentro dos desafios quando a economia do jogo for baseada nelas.
             </p>
@@ -143,7 +143,7 @@ export default function AdminEconomySettings() {
                 style={{ width: '20px', height: '20px', marginTop: '2px' }}
               />
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <strong style={{ color: 'white' }}>Moedas visíveis nos desafios</strong>
+                <strong style={{ color: 'var(--text-primary)' }}>Moedas visíveis nos desafios</strong>
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
                   A cada golpe com acerto no monstro, haverá chance de cair moedas na tela (cálculo = Patente x Dano). Se for golpe crítico, o drop é dobrado.
                 </span>
@@ -158,7 +158,7 @@ export default function AdminEconomySettings() {
                 style={{ width: '20px', height: '20px', marginTop: '2px' }}
               />
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <strong style={{ color: 'white' }}>Moedas podem ser perdidas</strong>
+                <strong style={{ color: 'var(--text-primary)' }}>Moedas podem ser perdidas</strong>
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
                   Quando o jogador erra e leva dano, ele tem chance de perder uma quantidade aleatória de moedas (cálculo = Patente x HP restante do monstro).
                 </span>
@@ -167,7 +167,7 @@ export default function AdminEconomySettings() {
           </>
         ) : (
           <>
-            <h3 style={{ margin: 0, color: 'white' }}>Configurações de Conversão de XP</h3>
+            <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Configurações de Conversão de XP</h3>
             <p style={{ color: 'var(--text-secondary)', margin: 0, marginBottom: '1rem', fontSize: '0.9rem' }}>
               Quando a economia "Gasto de XP" estiver ativa na loja, você pode controlar se as moedas também serão aceitas como forma de pagamento alternativo.
             </p>
@@ -180,7 +180,7 @@ export default function AdminEconomySettings() {
                 style={{ width: '20px', height: '20px', marginTop: '2px' }}
               />
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <strong style={{ color: 'white' }}>Moedas podem ser usadas para comprar itens</strong>
+                <strong style={{ color: 'var(--text-primary)' }}>Moedas podem ser usadas para comprar itens</strong>
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
                   Ativa o botão de comprar com Moedas na Loja de Itens e Bazar, mesmo se a economia for Gasto de XP.
                 </span>
@@ -189,7 +189,7 @@ export default function AdminEconomySettings() {
 
             {coinsCanBuyItems && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem', paddingLeft: '2.5rem' }}>
-                <label style={{ color: 'white', fontWeight: 'bold' }}>Valor da Moeda em relação ao XP</label>
+                <label style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>Valor da Moeda em relação ao XP</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Preço = Custo em XP ×</span>
                   <input 
@@ -197,7 +197,7 @@ export default function AdminEconomySettings() {
                     min="1"
                     value={coinToXPRatio}
                     onChange={(e) => setCoinToXPRatio(Number(e.target.value))}
-                    style={{ width: '100px', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'white' }}
+                    style={{ width: '100px', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'var(--btn-bg)', color: 'var(--text-primary)' }}
                   />
                 </div>
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
