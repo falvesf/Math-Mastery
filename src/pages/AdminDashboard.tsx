@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { signOut } from 'firebase/auth';
@@ -12,6 +12,7 @@ import DirectUploadButton from '../components/DirectUploadButton';
 import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
 import AdminEntitiesManager from '../components/AdminEntitiesManager';
+import AdminEconomySettings from '../components/AdminEconomySettings';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
@@ -833,7 +834,7 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-container" style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
       <nav className="navbar glass-panel compact-nav">
         <div className="logo-container">
           <ShieldAlert className="logo-icon" color="var(--gold-primary)" size={32} />
@@ -871,7 +872,7 @@ export default function AdminDashboard() {
         )}
         
         {/* Sidebar */}
-        <div className={`glass-panel admin-sidebar ${isSidebarOpen ? 'open' : ''}`} style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', flexShrink: 0 }}>
+        <div className={`glass-panel admin-sidebar ${isSidebarOpen ? 'open' : ''}`} style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', flexShrink: 0, alignSelf: 'flex-start', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)' }}>
           <button className={`login-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'users' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Users size={20} /> Alunos & Notas
           </button>
@@ -880,6 +881,9 @@ export default function AdminDashboard() {
           </button>
           <button className={`login-btn ${activeTab === 'store' ? 'active' : ''}`} onClick={() => setActiveTab('store')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'store' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'store' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Store size={20} /> Loja de Itens
+          </button>
+          <button className={`login-btn ${activeTab === 'economy' ? 'active' : ''}`} onClick={() => setActiveTab('economy')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'economy' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'economy' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+            <CircleDollarSign size={20} /> Economia (Ajustes)
           </button>
           {userData?.role === 'admin' && (
             <>
@@ -972,6 +976,17 @@ export default function AdminDashboard() {
         {activeTab === 'entities' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             <AdminEntitiesManager />
+          </div>
+        )}
+
+        {/* Aba de Economia */}
+        {activeTab === 'economy' && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+            <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+              <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Ajustes da Economia</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Configure taxas, quedas de moedas e regras do comércio.</p>
+            </div>
+            <AdminEconomySettings />
           </div>
         )}
 

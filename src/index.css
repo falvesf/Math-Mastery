@@ -21,7 +21,10 @@
   --border-glass: rgba(255, 255, 255, 0.1);
   --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
   
-  font-family: 'Outfit', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-heading: 'Cinzel', serif;
+  --font-body: 'Outfit', system-ui, sans-serif;
+  
+  font-family: var(--font-body);
   color-scheme: dark;
   background-color: var(--bg-dark);
   color: var(--text-primary);
@@ -30,7 +33,7 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   background-color: var(--bg-dark);
   background-image: 
     linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.95)),
@@ -85,7 +88,7 @@ body[data-theme="fantasy"] {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Cinzel', serif;
+  font-family: var(--font-heading);
   margin: 0;
 }
 

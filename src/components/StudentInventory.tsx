@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, getDoc, where, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
@@ -63,6 +63,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [draggedItem, setDraggedItem] = useState<UserItem | null>(null);
   const [economyType, setEconomyType] = useState<'xp'|'coins'>('coins');
+  const [economySettings, setEconomySettings] = useState<any>(null);
 
   const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(userData.inventoryPreferences?.viewMode as any || 'grid-large');
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,7 +129,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     const econRef = doc(db, 'settings', 'economy');
     const econSnap = await getDoc(econRef);
     if (econSnap.exists()) {
-      setEconomyType(econSnap.data().currencyType || 'coins');
+      const eData = econSnap.data();
+      setEconomyType(eData.currencyType || 'coins');
+      setEconomySettings(eData);
     }
 
     const storeQ = query(collection(db, 'store_items'));
@@ -514,9 +517,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
 
-    const minSalePrice = sellModalItem.minSalePrice || 0;
+    const minSalePriceCoins = sellModalItem.minSalePrice || 0;
+    const isXp = preferredCurrency === 'xp';
+    const minSalePrice = isXp ? Math.max(1, Math.floor(minSalePriceCoins / (economySettings?.coinToXPRatio || 10))) : minSalePriceCoins;
+    
     if (minSalePrice > 0 && price < minSalePrice) {
-      await showAlert(`Este item tem um preço mínimo de revenda de ${minSalePrice} moedas. Você não pode colocar à venda por menos que isso.`);
+      await showAlert(`Este item tem um preço mínimo de revenda de ${minSalePrice} ${isXp ? 'XP' : 'moedas'}. Você não pode colocar à venda por menos que isso.`);
       return;
     }
     
@@ -529,6 +535,16 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       await consumeItemQuantity(sellModalItem.itemId, sellQuantity, sellModalItem.id);
       
       const { id, count, docIds, ...itemDataToSell } = sellModalItem;
+      let sellerClassName = '';
+      let sellerClassColor = '';
+      if (userData.classId) {
+        const classDoc = await getDoc(doc(db, 'classes', userData.classId));
+        if (classDoc.exists()) {
+          sellerClassName = classDoc.data().name || '';
+          sellerClassColor = classDoc.data().color || '';
+        }
+      }
+
       await addDoc(collection(db, 'user_items'), {
         ...itemDataToSell,
         quantity: sellQuantity,
@@ -536,15 +552,29 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         price: price,
         preferredCurrency: preferredCurrency,
         sellerName: userData.name,
+        sellerClassName,
+        sellerClassColor,
         sellerPersuasion: totalEquippedStats.persuasion
       });
     } else {
+      let sellerClassName = '';
+      let sellerClassColor = '';
+      if (userData.classId) {
+        const classDoc = await getDoc(doc(db, 'classes', userData.classId));
+        if (classDoc.exists()) {
+          sellerClassName = classDoc.data().name || '';
+          sellerClassColor = classDoc.data().color || '';
+        }
+      }
+
       const docToUpdate = sellModalItem.docIds ? sellModalItem.docIds[0] : sellModalItem.id;
       await updateDoc(doc(db, 'user_items', docToUpdate), {
         forSale: true,
         price: price,
         preferredCurrency: preferredCurrency,
         sellerName: userData.name,
+        sellerClassName,
+        sellerClassColor,
         sellerPersuasion: totalEquippedStats.persuasion
       });
     }
@@ -836,13 +866,20 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   </div>
                   
                   {viewMode === 'list' ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1, minWidth: 0, justifyContent: 'center' }}>
                       <h4 style={{ margin: 0, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{item.itemTitle}</h4>
-                      <span style={{ color: 'var(--border-glass)' }}>|</span>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                        {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
-                      </span>
-                      <span style={{ color: 'var(--border-glass)', marginLeft: 'auto', marginRight: '0.5rem' }}>|</span>
+                      <div style={{ display: 'flex' }}>
+                        <span style={{ 
+                          fontSize: '0.65rem', 
+                          color: 'var(--text-secondary)', 
+                          background: 'rgba(255,255,255,0.05)',
+                          padding: '0.15rem 0.4rem',
+                          borderRadius: '4px',
+                          border: '1px solid var(--border-glass)'
+                        }}>
+                          {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
+                        </span>
+                      </div>
                     </div>
                   ) : (
                     <div style={{ textAlign: 'center' }}>
@@ -971,7 +1008,11 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '1rem' }}>
                 <span style={{ fontSize: '1.1rem' }}>⚠️</span>
                 <span style={{ fontSize: '0.85rem', color: 'var(--gold-primary)' }}>
-                  Preço mínimo de revenda: <strong>{sellModalItem.minSalePrice} moedas</strong>
+                  Preço mínimo de revenda: <strong>
+                    {preferredCurrency === 'xp' 
+                      ? Math.max(1, Math.floor((sellModalItem.minSalePrice || 0) / (economySettings?.coinToXPRatio || 10))) + ' XP'
+                      : (sellModalItem.minSalePrice || 0) + ' moedas'}
+                  </strong>
                 </span>
               </div>
             )}
@@ -982,9 +1023,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               value={sellPrice} 
               onChange={e => setSellPrice(e.target.value)}
               className="login-input" 
-              placeholder={`Mínimo: ${sellModalItem.minSalePrice || 1}`}
+              placeholder={`Mínimo: ${preferredCurrency === 'xp' ? Math.max(1, Math.floor((sellModalItem.minSalePrice || 0) / (economySettings?.coinToXPRatio || 10))) : (sellModalItem.minSalePrice || 1)}`}
               autoFocus
-              min={sellModalItem.minSalePrice || 1}
+              min={preferredCurrency === 'xp' ? Math.max(1, Math.floor((sellModalItem.minSalePrice || 0) / (economySettings?.coinToXPRatio || 10))) : (sellModalItem.minSalePrice || 1)}
             />
             
             <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>

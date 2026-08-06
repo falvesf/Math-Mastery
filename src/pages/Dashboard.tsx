@@ -139,6 +139,22 @@ export default function Dashboard() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'cube' | 'theme'>('cube');
   const [appTheme, setAppTheme] = useState(() => localStorage.getItem('appTheme') || 'default');
+  const [appFonts, setAppFonts] = useState(() => localStorage.getItem('appFonts') || 'default');
+
+  useEffect(() => {
+    const fonts: Record<string, { heading: string, body: string }> = {
+      'default': { heading: "'Cinzel', serif", body: "'Outfit', system-ui, sans-serif" },
+      'classic': { heading: "'Playfair Display', serif", body: "'Lora', serif" },
+      'scifi': { heading: "'Orbitron', sans-serif", body: "'Roboto', sans-serif" },
+      'casual': { heading: "'Fredoka', sans-serif", body: "'Nunito', sans-serif" },
+      'retro': { heading: "'Press Start 2P', cursive", body: "'VT323', monospace" },
+      'clean': { heading: "'Oswald', sans-serif", body: "'Open Sans', sans-serif" }
+    };
+    
+    const selected = fonts[appFonts] || fonts['default'];
+    document.documentElement.style.setProperty('--font-heading', selected.heading);
+    document.documentElement.style.setProperty('--font-body', selected.body);
+  }, [appFonts]);
   const [cubeAutoRotate, setCubeAutoRotate] = useState(() => {
     const saved = localStorage.getItem('cubeAutoRotate');
     return saved !== null ? saved === 'true' : true;
@@ -984,6 +1000,34 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
+
+                  <h4 style={{ margin: '1.5rem 0 1rem 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>Estilo de Fonte</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }} className="custom-scrollbar">
+                    {[
+                      { id: 'default', name: 'Padrão (Épico)', desc: 'Cinzel & Outfit' },
+                      { id: 'classic', name: 'Clássico (Medieval)', desc: 'Playfair & Lora' },
+                      { id: 'scifi', name: 'Ficção (Moderno)', desc: 'Orbitron & Roboto' },
+                      { id: 'casual', name: 'Casual (Divertido)', desc: 'Fredoka & Nunito' },
+                      { id: 'retro', name: 'Retrô (Pixel Art)', desc: 'Press Start 2P & VT323' },
+                      { id: 'clean', name: 'Limpo (Corporativo)', desc: 'Oswald & Open Sans' }
+                    ].map(f => (
+                      <div 
+                        key={f.id} 
+                        onClick={() => {
+                          setAppFonts(f.id);
+                          localStorage.setItem('appFonts', f.id);
+                        }}
+                        style={{ padding: '0.75rem 1rem', border: appFonts === f.id ? '2px solid var(--gold-primary)' : '2px solid transparent', background: 'var(--bg-card)', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', transition: '0.2s' }}
+                        className="hover-brightness"
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                          <span style={{ fontWeight: appFonts === f.id ? 'bold' : 'normal', color: appFonts === f.id ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{f.name}</span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{f.desc}</span>
+                        </div>
+                        {appFonts === f.id && <CheckCircle size={18} color="var(--gold-primary)" />}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -1024,7 +1068,8 @@ export default function Dashboard() {
         />
       )}
 
-      <nav className="navbar glass-panel compact-nav">
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, margin: '-1rem -2rem 0 -2rem', padding: '1rem 2rem 0.5rem 2rem', background: 'var(--bg-dark)' }}>
+      <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '1rem' }}>
         <div className="logo-container">
           <Trophy className="logo-icon" color="var(--gold-primary)" size={32} />
           <h1 className="title-glow">Painel do Aluno</h1>
@@ -1068,7 +1113,7 @@ export default function Dashboard() {
       </nav>
 
       {/* Navegação de Abas do Aluno */}
-      <div className="scrollable-menu-container" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'transparent', margin: '0 -2rem 0 -2rem', padding: '0.5rem 2rem' }}>
+      <div className="scrollable-menu-container" style={{ background: 'transparent', margin: '0 -2rem 0 -2rem', padding: '0.5rem 2rem' }}>
         <button 
           onClick={() => setActiveTab('quests')}
           style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
@@ -1099,6 +1144,7 @@ export default function Dashboard() {
         >
           <Store size={20} /> Mercado
         </button>
+      </div>
       </div>
 
       <main className="main-content">

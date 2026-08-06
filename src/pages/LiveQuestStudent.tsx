@@ -12,7 +12,7 @@ import AvatarCharacter from '../components/AvatarCharacter';
 import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
 import { Package, Coins } from 'lucide-react';
-import { RANKS } from '../lib/ranks';
+import { RANKS, getRankForXp } from '../lib/ranks';
 import { useDialog } from '../contexts/DialogContext';
 import { calculateTotalStats } from '../lib/gacha';
 import type { GameEffectType } from '../components/AdminStoreManager';
@@ -49,6 +49,10 @@ export default function LiveQuestStudent() {
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
   const [hasShield, setHasShield] = useState(false);
   
+  const [economySettings, setEconomySettings] = useState<any>(null);
+  const [coinsToRescue, setCoinsToRescue] = useState<number>(0);
+  const [lostCoinsDisplay, setLostCoinsDisplay] = useState<number>(0);
+
   const arenaRef = useRef<HTMLDivElement>(null);
   const [arenaWidth, setArenaWidth] = useState(0);
 
@@ -84,6 +88,12 @@ export default function LiveQuestStudent() {
           setError('O professor ainda não abriu a sala para esta missão.');
           setLoading(false);
           return;
+        }
+
+        // Fetch Economy
+        const econSnap = await getDoc(doc(db, 'settings', 'economy'));
+        if (econSnap.exists()) {
+          setEconomySettings(econSnap.data());
         }
 
         const currentSession = sDoc.data() as LiveSession;
@@ -333,6 +343,15 @@ export default function LiveQuestStudent() {
     if (isCorrect) {
       const power = 1;
       updates.monsterHp = increment(-power);
+      
+      if (economySettings?.coinsDropInCombat) {
+        const dmg = 1;
+        const rankObj = getRankForXp(userData?.xp || 0);
+        const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+        const maxCoins = rankIndex * dmg;
+        const dropped = Math.floor(Math.random() * maxCoins) + 1;
+        setCoinsToRescue(dropped);
+      }
 
       try {
         await updateDoc(doc(db, 'users', userData.uid), {
@@ -348,6 +367,18 @@ export default function LiveQuestStudent() {
       });
 
       if (!hasEquippedShield && !hasShield) {
+        if (economySettings?.coinsLostInCombat) {
+          const rankObj = getRankForXp(userData?.xp || 0);
+          const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+          const maxLost = rankIndex * 1;
+          const lost = Math.floor(Math.random() * maxLost) + 1;
+          setLostCoinsDisplay(lost);
+          try {
+             const currentCoins = userData.coins || 0;
+             await updateDoc(doc(db, 'users', userData.uid), { coins: Math.max(0, currentCoins - lost) });
+          } catch(e){}
+        }
+
         const currentHp = me.hp !== undefined ? me.hp : maxHearts;
         const newHp = Math.max(0, currentHp - 1);
         updates[`players.${userData.uid}.hp`] = newHp;
@@ -542,6 +573,60 @@ export default function LiveQuestStudent() {
                   )}
                 </div>
                 {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
+                
+                {coinsToRescue > 0 && (
+                  <div 
+                    onClick={() => {
+                      if (userData?.uid) {
+                        const currentCoins = userData.coins || 0;
+                        updateDoc(doc(db, 'users', userData.uid), { coins: currentCoins + coinsToRescue }).catch(console.error);
+                      }
+                      setCoinsToRescue(0);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      zIndex: 100,
+                      animation: 'bounce 1s infinite',
+                      cursor: 'pointer',
+                      background: 'rgba(0,0,0,0.8)',
+                      padding: '1rem',
+                      borderRadius: '16px',
+                      border: '2px solid var(--gold-primary)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 0 20px rgba(251, 191, 36, 0.5)'
+                    }}
+                  >
+                    <Coins size={40} color="var(--gold-primary)" />
+                    <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1.2rem' }}>+{coinsToRescue}</span>
+                    <span style={{ fontSize: '0.8rem', color: 'white' }}>Pegar!</span>
+                  </div>
+                )}
+                
+                {lostCoinsDisplay > 0 && (
+                  <div 
+                    style={{
+                      position: 'absolute',
+                      top: '30%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      zIndex: 100,
+                      animation: 'slideUpFade 2s forwards',
+                      color: 'var(--accent-red)',
+                      fontWeight: 'bold',
+                      fontSize: '1.5rem',
+                      textShadow: '0 2px 4px rgba(0,0,0,0.8)'
+                    }}
+                    onAnimationEnd={() => setLostCoinsDisplay(0)}
+                  >
+                    -{lostCoinsDisplay} Moedas!
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '1rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px' }}>
                 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold', marginRight: '0.5rem', fontSize: '0.9rem' }}>{quest?.monsterName?.toUpperCase() || 'MONSTRO'}</span>

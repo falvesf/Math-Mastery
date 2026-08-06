@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore';
-import { RANKS } from '../lib/ranks';
+import { RANKS, getRankForXp } from '../lib/ranks';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircle, Package, Coins } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
@@ -76,6 +76,11 @@ export default function QuestGameplay() {
 
   // Histórico de Respostas
   const [studentAnswers, setStudentAnswers] = useState<{ qIndex: number; text: string; isCorrect: boolean }[]>([]);
+
+  // Economia Dinâmica
+  const [economySettings, setEconomySettings] = useState<any>(null);
+  const [coinsToRescue, setCoinsToRescue] = useState<number>(0);
+  const [lostCoinsDisplay, setLostCoinsDisplay] = useState<number>(0);
 
   // Escudos e Defesa
   const totalDefense = totalEquippedStats.defense;
@@ -155,6 +160,12 @@ export default function QuestGameplay() {
         setErrorMessage('Você falhou nesta missão e ela não permite novas tentativas (Hardcore).');
         setGameState('result');
         return;
+      }
+
+      // Economy Config
+      const econSnap = await getDoc(doc(db, 'settings', 'economy'));
+      if (econSnap.exists()) {
+        setEconomySettings(econSnap.data());
       }
 
       // Apply shuffling if configured
@@ -549,6 +560,15 @@ export default function QuestGameplay() {
         setCriticalHits(prev => prev + 1);
       }
 
+      if (economySettings?.coinsDropInCombat && !isStudyMode) {
+        let dmg = isCritical ? 2 : 1;
+        const rankObj = getRankForXp(userData?.xp || 0);
+        const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+        const maxCoins = rankIndex * dmg;
+        const dropped = Math.floor(Math.random() * maxCoins) + 1;
+        setCoinsToRescue(dropped);
+      }
+
       const playerHpPercentage = (currentHearts / maxHearts) * 100;
       const quote = getDynamicQuote(playerHpPercentage, 'player');
       if (quote) setPlayerBubble(quote);
@@ -597,6 +617,23 @@ export default function QuestGameplay() {
       
       let newHearts = Math.max(0, currentHearts - damage);
       const isFatalForPlayer = !hasShield && (newHearts === 0 || !quest.allowRetries);
+
+      if (economySettings?.coinsLostInCombat && !isStudyMode && !hasShield) {
+        const rankObj = getRankForXp(userData?.xp || 0);
+        const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+        const monsterHpPercentage = quest.questions.length > 0 ? ((quest.questions.length - currentQIndex) / quest.questions.length) * 100 : 100;
+        const hpMultiplier = Math.max(1, Math.ceil(monsterHpPercentage / 10));
+        const maxLost = rankIndex * hpMultiplier;
+        const lost = Math.floor(Math.random() * maxLost) + 1;
+        
+        setLostCoinsDisplay(lost);
+        
+        if (userData?.uid) {
+           const currentCoins = userData.coins || 0;
+           const newCoins = Math.max(0, currentCoins - lost);
+           updateDoc(doc(db, 'users', userData.uid), { coins: newCoins }).catch(e => console.error(e));
+        }
+      }
 
       if (isFatalForPlayer) {
         setCurrentHearts(newHearts);

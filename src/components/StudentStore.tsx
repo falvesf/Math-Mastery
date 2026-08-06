@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp, where, deleteDoc } from 'firebase/firestore';
-import { Coins, Star, ShieldAlert, Store, Search, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Filter } from 'lucide-react';
+import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
-import { X, ExternalLink } from 'lucide-react';
 
 interface MarketItem {
   id: string;
@@ -19,6 +18,8 @@ interface MarketItem {
   quantity: number;
   price?: number;
   sellerName?: string;
+  sellerClassName?: string;
+  sellerClassColor?: string;
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
@@ -67,6 +68,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [myConsumableQuantities, setMyConsumableQuantities] = useState<Record<string, number>>({});
   const [totalEquippedStats, setTotalEquippedStats] = useState(calculateTotalStats([]));
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
+  const [economySettings, setEconomySettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -111,7 +113,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     const econRef = doc(db, 'settings', 'economy');
     const econSnap = await getDoc(econRef);
     if (econSnap.exists()) {
-      setEconomyType(econSnap.data().currencyType || 'coins');
+      const eData = econSnap.data();
+      setEconomyType(eData.currencyType || 'coins');
+      setEconomySettings(eData);
     }
 
     const q = query(collection(db, 'store_items'));
@@ -354,7 +358,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     let basePrice = marketBuyModalItem.price || 0;
     let unitCost = basePrice;
     if (economyType === 'xp' && marketBuyPaymentMethod === 'coins') {
-      unitCost = basePrice * 10;
+      unitCost = basePrice * (economySettings?.coinToXPRatio || 10);
     }
     const totalCost = unitCost * marketBuyQuantity;
     
@@ -402,7 +406,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         
         let sellerUnitReceive = basePrice;
         if (sellerPref === 'coins' && economyType === 'xp') {
-          sellerUnitReceive = basePrice * 10; // converte XP pra moedas pro vendedor se ele escolheu Moedas
+          sellerUnitReceive = basePrice * (economySettings?.coinToXPRatio || 10); // converte XP pra moedas pro vendedor se ele escolheu Moedas
         }
         const netValuePerUnit = Math.floor((sellerUnitReceive * 0.90) + persuasionBonus);
         const totalNetValue = netValuePerUnit * marketBuyQuantity;
@@ -775,7 +779,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           const itemQty = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
           const discountMultiplier = Math.max(0.5, 1 - (totalEquippedStats.persuasion / 100));
           const totalCost = Math.floor(item.cost * discountMultiplier) * itemQty;
-          const totalCostCoins = Math.floor(item.cost * 10 * discountMultiplier) * itemQty;
+          const ratio = economySettings?.coinToXPRatio || 10;
+          const totalCostCoins = Math.floor(item.cost * ratio * discountMultiplier) * itemQty;
           
           const canAfford = isStaff || currentBalance >= (economyType === 'xp' ? totalCost : totalCostCoins);
           const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
@@ -804,11 +809,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   </div>
                 )}
               </div>
-              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0 }}>{item.title}</h3>
+              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.5rem', minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0, wordBreak: 'break-word', flex: 1 }}>{item.title}</h3>
                   {isList && (
-                    <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                    <div style={{ flexShrink: 0, background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
                        {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
                     </div>
                   )}
@@ -840,37 +845,68 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                           </div>
                         )}
 
-                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%', flexWrap: 'wrap', flexDirection: viewMode === 'grid-small' ? 'column' : 'row' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%', flexWrap: 'wrap', marginTop: 'auto' }}>
                         {economyType === 'xp' ? (
                            <>
                             <button 
-                              className="login-btn" 
+                              className="login-btn hover-brightness" 
                               disabled={!canAfford || purchasing === item.id}
+                              title={canAfford ? 'Comprar com XP' : 'Sem XP'}
                               onClick={() => handlePurchase(item, false, 'xp')}
                               style={{ 
                                 flex: 1,
                                 background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
                                 color: canAfford ? 'black' : 'var(--text-secondary)', 
                                 border: 'none', 
-                                padding: viewMode === 'grid-small' ? '0.4rem' : '0.5rem', 
-                                fontSize: viewMode === 'grid-small' ? '0.75rem' : '0.9rem',
+                                padding: '0.5rem',
                                 opacity: canAfford ? 1 : 0.5,
                                 cursor: canAfford ? 'pointer' : 'not-allowed',
                                 display: 'flex',
-                                flexDirection: 'column',
                                 alignItems: 'center',
-                                justifyContent: 'center'
+                                justifyContent: 'center',
+                                gap: '0.4rem'
                               }}
                             >
-                              {purchasing === item.id ? '...' : (
+                              {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : (
                                 <>
-                                  <span>Comprar ({totalCost} XP)</span>
-                                  {!canAfford && <span style={{ fontSize: '0.75em', marginTop: '2px', color: 'var(--accent-red)' }}>Sem XP</span>}
+                                  <Star size={18} fill="currentColor" />
+                                  <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{totalCost}</span>
                                 </>
                               )}
                             </button>
+                            {economySettings?.coinsCanBuyItems && (
+                              <button 
+                                className="login-btn hover-brightness" 
+                                title={(isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'Comprar com Moedas' : 'Sem Moedas'}
+                                disabled={(isStaff ? false : ((userData.coins || 0) < totalCostCoins)) || purchasing === item.id}
+                                onClick={() => handlePurchase(item, false, 'coins')}
+                                style={{ 
+                                  flex: 1,
+                                  background: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? '#fbbf24' : 'rgba(255,255,255,0.1)', 
+                                  color: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'black' : 'var(--text-secondary)', 
+                                  border: 'none', 
+                                  padding: '0.5rem',
+                                  opacity: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 1 : 0.5,
+                                  cursor: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'pointer' : 'not-allowed',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '0.4rem'
+                                }}
+                              >
+                                {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : (
+                                  <>
+                                    <Coins size={18} fill="currentColor" />
+                                    <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{totalCostCoins}</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                           </>
+                        ) : economyType === 'coins' ? (
                             <button 
-                              className="login-btn" 
+                              className="login-btn hover-brightness" 
+                              title={(isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'Comprar com Moedas' : 'Sem Moedas'}
                               disabled={(isStaff ? false : ((userData.coins || 0) < totalCostCoins)) || purchasing === item.id}
                               onClick={() => handlePurchase(item, false, 'coins')}
                               style={{ 
@@ -878,94 +914,93 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                                 background: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? '#fbbf24' : 'rgba(255,255,255,0.1)', 
                                 color: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'black' : 'var(--text-secondary)', 
                                 border: 'none', 
-                                padding: viewMode === 'grid-small' ? '0.4rem' : '0.5rem', 
-                                fontSize: viewMode === 'grid-small' ? '0.75rem' : '0.9rem',
+                                padding: '0.5rem',
                                 opacity: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 1 : 0.5,
                                 cursor: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'pointer' : 'not-allowed',
                                 display: 'flex',
-                                flexDirection: 'column',
                                 alignItems: 'center',
-                                justifyContent: 'center'
+                                justifyContent: 'center',
+                                gap: '0.4rem'
                               }}
                             >
-                              {purchasing === item.id ? '...' : (
+                              {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : (
                                 <>
-                                  <span>Comprar ({totalCostCoins} Moedas)</span>
-                                  {!isStaff && (userData.coins || 0) < totalCostCoins && <span style={{ fontSize: '0.75em', marginTop: '2px', color: 'var(--accent-red)' }}>Sem Moedas</span>}
+                                  <Coins size={18} fill="currentColor" />
+                                  <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{totalCostCoins}</span>
                                 </>
                               )}
                             </button>
-                           </>
                         ) : (
                           <button 
-                            className="login-btn" 
+                            className="login-btn hover-brightness" 
+                            title={canAfford ? 'Comprar' : 'Sem Saldo'}
                             disabled={!canAfford || purchasing === item.id}
                             onClick={() => handlePurchase(item, false)}
                             style={{ 
-                              flex: 2,
+                              flex: 1,
                               background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
                               color: canAfford ? 'black' : 'var(--text-secondary)', 
                               border: 'none', 
-                              padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', 
-                              fontSize: viewMode === 'grid-small' ? '0.85rem' : '1rem',
+                              padding: '0.5rem',
                               opacity: canAfford ? 1 : 0.5,
                               cursor: canAfford ? 'pointer' : 'not-allowed',
                               display: 'flex',
-                              flexDirection: 'column',
                               alignItems: 'center',
-                              justifyContent: 'center'
+                              justifyContent: 'center',
+                              gap: '0.4rem'
                             }}
                           >
-                            {purchasing === item.id ? '...' : (
+                            {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : (
                                 <>
-                                  <span>Comprar</span>
-                                  {!canAfford && <span style={{ fontSize: '0.75em', marginTop: '2px', color: 'var(--accent-red)' }}>Sem Saldo</span>}
+                                  <ShoppingCart size={18} />
+                                  <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Comprar</span>
                                 </>
                               )}
                           </button>
                         )}
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%', marginTop: '0.25rem' }}>
                           {(item.type === 'equippable' || item.gameEffect === 'unlock_skin') && (
                             <button
                               className="login-btn hover-brightness"
                               onClick={() => setPreviewItem(item)}
+                              title="Ver no Personagem"
                               style={{
                                 flex: 1,
+                                maxWidth: '60px',
                                 background: 'var(--btn-bg)',
                                 color: 'var(--text-primary)',
                                 border: '1px solid var(--border-glass)',
-                                padding: '0.4rem',
-                                fontSize: '0.85rem',
+                                padding: '0.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              <Eye size={18} />
+                            </button>
+                          )}
+                          {(userData.role !== 'student' || giftWrapItemIds.length > 0) && (
+                            <button 
+                              className="login-btn hover-brightness"
+                              disabled={false} // Gift button just opens the sub-menu, so keep it enabled if they want to choose gift
+                              title="Dar de Presente"
+                              onClick={() => setGiftingItemId(item.id)}
+                              style={{ 
+                                flex: 1,
+                                maxWidth: '60px',
+                                background: 'rgba(251, 191, 36, 0.1)', 
+                                color: 'var(--gold-primary)', 
+                                border: '1px solid var(--gold-primary)', 
+                                padding: '0.5rem',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '0.5rem'
+                                cursor: 'pointer'
                               }}
                             >
-                              <ExternalLink size={16} /> Ver no Personagem
+                              <Gift size={18} />
                             </button>
                           )}
                         </div>
-                        
-                        {(userData.role !== 'student' || giftWrapItemIds.length > 0) && (
-                          <button 
-                            className="login-btn"
-                            disabled={false} // Gift button just opens the sub-menu, so keep it enabled if they want to choose gift
-                            onClick={() => setGiftingItemId(item.id)}
-                            style={{ 
-                              flex: 1,
-                              background: 'rgba(251, 191, 36, 0.1)', 
-                              color: 'var(--gold-primary)', 
-                              border: '1px solid var(--gold-primary)', 
-                              padding: viewMode === 'grid-small' ? '0.4rem' : '0.75rem',
-                              fontSize: viewMode === 'grid-small' ? '0.8rem' : '1rem',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Presente
-                          </button>
-                        )}
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -990,13 +1025,15 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               >
                                 Enviar ({item.cost} XP)
                               </button>
-                              <button 
-                                disabled={!selectedGiftRecipient || (!isStaff && (userData.coins || 0) < item.cost * 10) || purchasing === item.id} 
-                                onClick={() => handlePurchase(item, true, 'coins')} 
-                                style={{ flex: 1, background: '#fbbf24', border: 'none', color: 'black', borderRadius: '8px', padding: '0.5rem', fontWeight: 'bold' }}
-                              >
-                                Enviar ({item.cost * 10} Moedas)
-                              </button>
+                              {economySettings?.coinsCanBuyItems && (
+                                <button 
+                                  disabled={!selectedGiftRecipient || (!isStaff && (userData.coins || 0) < totalCostCoins) || purchasing === item.id} 
+                                  onClick={() => handlePurchase(item, true, 'coins')} 
+                                  style={{ flex: 1, background: '#fbbf24', border: 'none', color: 'black', borderRadius: '8px', padding: '0.5rem', fontWeight: 'bold' }}
+                                >
+                                  Enviar ({totalCostCoins} Moedas)
+                                </button>
+                              )}
                             </>
                           ) : (
                             <button 
@@ -1072,17 +1109,20 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   </div>
                 )}
               </div>
-              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0 }}>{item.itemTitle}</h3>
+              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.5rem', minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0, wordBreak: 'break-word', flex: 1 }}>{item.itemTitle}</h3>
                   {isList && (
-                    <div style={{ background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                    <div style={{ flexShrink: 0, background: canAfford ? 'rgba(0,0,0,0.8)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
                       {item.price || 0} {economyType === 'xp' ? 'XP' : 'M'}
                     </div>
                   )}
                 </div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-                  Vendido por: <strong style={{ color: 'var(--gold-primary)' }}>{item.sellerName}</strong>
+                  Vendido por: <strong style={{ color: 'var(--gold-primary)' }}>
+                    {item.sellerName?.split(' ')[0]} 
+                    {item.sellerClassName && <span style={{ color: item.sellerClassColor || 'inherit' }}> | {item.sellerClassName}</span>}
+                  </strong>
                 </p>
                 {viewMode !== 'grid-small' && items.find(si => si.id === item.itemId)?.description && (
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0 0 0.5rem 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -1096,58 +1136,62 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     </span>
                   </div>
                   {item.itemType === 'equippable' && item.baseAttributeType && item.baseAttributeType !== 'none' && (
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <div style={{ color: 'var(--text-primary)' }}>
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem' }}>
+                      <div style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                         <strong style={{ color: 'var(--gold-primary)' }}>+{item.baseAttributeValue}</strong> {getAttributeName(item.baseAttributeType)}
                       </div>
                       {item.adds && item.adds.length > 0 && item.adds.map((add, idx) => (
-                        <div key={idx} style={{ color: 'var(--text-secondary)' }}>
-                          <strong style={{ color: '#60A5FA' }}>+{add.value}</strong> {getAttributeName(add.type)}
+                        <div key={idx} style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ color: 'var(--border-glass)' }}>|</span>
+                          <span><strong style={{ color: '#60A5FA' }}>+{add.value}</strong> {getAttributeName(add.type)}</span>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
                 
-                <div style={{ display: 'flex', gap: '0.5rem', width: '100%', flexWrap: 'wrap', flexDirection: viewMode === 'grid-small' ? 'column' : 'row', marginTop: 'auto' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', width: '100%', marginTop: 'auto', flexWrap: 'wrap' }}>
                   {item.studentId === userData.uid ? (
-                    <div style={{ display: 'flex', gap: '0.5rem', flex: 1, flexDirection: viewMode === 'grid-small' ? 'column' : 'row' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
                       <button 
-                        className="login-btn" 
+                        className="login-btn hover-brightness" 
                         onClick={() => handleEditPrice(item)}
-                        style={{ flex: 1, background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', fontSize: viewMode === 'grid-small' ? '0.8rem' : '0.9rem' }}
+                        title="Editar Preço"
+                        style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '0.5rem' }}
                       >
-                        Editar Preço
+                        <Edit3 size={18} />
                       </button>
                       <button 
-                        className="login-btn" 
+                        className="login-btn hover-brightness" 
                         onClick={() => handleCancelSale(item)}
-                        style={{ flex: 1, background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', fontSize: viewMode === 'grid-small' ? '0.8rem' : '0.9rem' }}
+                        title="Cancelar Venda"
+                        style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.5rem' }}
                       >
-                        Cancelar Venda
+                        <Trash2 size={18} />
                       </button>
                     </div>
                   ) : (
                     <button 
-                      className="login-btn" 
+                      className="login-btn hover-brightness" 
                       disabled={!canAfford || purchasing === item.id}
                       onClick={() => {
                         setMarketBuyModalItem(item);
                         setMarketBuyQuantity(1);
                         setMarketBuyPaymentMethod('xp');
                       }}
+                      title={canAfford ? 'Comprar' : 'Sem Saldo'}
                       style={{ 
                         flex: 1,
+                        display: 'flex', justifyContent: 'center', alignItems: 'center',
                         background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
                         color: canAfford ? 'black' : 'var(--text-secondary)', 
                         border: 'none', 
-                        padding: viewMode === 'grid-small' ? '0.5rem' : '0.75rem', 
-                        fontSize: viewMode === 'grid-small' ? '0.85rem' : '1rem',
+                        padding: '0.5rem',
                         opacity: canAfford ? 1 : 0.5,
                         cursor: canAfford ? 'pointer' : 'not-allowed'
                       }}
                     >
-                      {purchasing === item.id ? '...' : canAfford ? 'Comprar' : 'Sem Saldo'}
+                      {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : <ShoppingCart size={18} />}
                     </button>
                   )}
                   
@@ -1155,20 +1199,19 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     <button
                       className="login-btn hover-brightness"
                       onClick={() => setPreviewItem(item)}
+                      title="Ver no Personagem"
                       style={{
                         flex: 1,
                         background: 'var(--btn-bg)',
                         color: 'var(--text-primary)',
                         border: '1px solid var(--border-glass)',
-                        padding: viewMode === 'grid-small' ? '0.4rem' : '0.5rem',
-                        fontSize: viewMode === 'grid-small' ? '0.85rem' : '0.9rem',
+                        padding: '0.5rem',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.5rem',
+                        justifyContent: 'center'
                       }}
                     >
-                      <ExternalLink size={16} /> Ver no Personagem
+                      <Eye size={18} />
                     </button>
                   )}
                 </div>
@@ -1211,14 +1254,20 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             {economyType === 'xp' ? (
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Forma de Pagamento:</label>
-                <select 
-                  value={marketBuyPaymentMethod} 
-                  onChange={(e) => setMarketBuyPaymentMethod(e.target.value as 'xp' | 'coins')}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
-                >
-                  <option value="xp">Pagar com XP ({(marketBuyModalItem.price || 0) * marketBuyQuantity} XP)</option>
-                  <option value="coins">Pagar com Moedas ({(marketBuyModalItem.price || 0) * 10 * marketBuyQuantity} Moedas)</option>
-                </select>
+                {economySettings?.coinsCanBuyItems ? (
+                  <select 
+                    value={marketBuyPaymentMethod} 
+                    onChange={(e) => setMarketBuyPaymentMethod(e.target.value as 'xp' | 'coins')}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="xp">Pagar com XP ({(marketBuyModalItem.price || 0) * marketBuyQuantity} XP)</option>
+                    <option value="coins">Pagar com Moedas ({(marketBuyModalItem.price || 0) * (economySettings?.coinToXPRatio || 10) * marketBuyQuantity} Moedas)</option>
+                  </select>
+                ) : (
+                  <div style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                    Pagar com XP ({(marketBuyModalItem.price || 0) * marketBuyQuantity} XP)
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ marginBottom: '1.5rem', fontSize: '1.1rem' }}>

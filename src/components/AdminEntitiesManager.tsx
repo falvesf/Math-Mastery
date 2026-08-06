@@ -8,36 +8,38 @@ export default function AdminEntitiesManager() {
   const [activeTab, setActiveTab] = useState<'players' | 'monsters' | 'pets' | 'skins' | 'models'>('players');
 
   return (
-    <div style={{ padding: '1rem' }}>
-      <h2 style={{ marginBottom: '2rem' }}>Gerenciar Entidades 3D</h2>
+    <div>
+      {/* Sticky Header Area */}
+      <div style={{ position: 'sticky', top: '-2rem', zIndex: 10, background: 'var(--bg-panel)', margin: '-2rem -2rem 2rem -2rem', padding: '2rem 2rem 0 2rem', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+        <h2 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>Gerenciar Entidades 3D</h2>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '1rem', marginBottom: '2rem' }}>
-        <button
-          onClick={() => setActiveTab('players')}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: '0.75rem 1.5rem', borderRadius: '8px',
-            color: activeTab === 'players' ? 'var(--accent-primary)' : 'var(--text-secondary)',
-            backgroundColor: activeTab === 'players' ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-            fontWeight: activeTab === 'players' ? 'bold' : 'normal',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            transition: 'all 0.2s'
-          }}
-        >
-          <User size={18} /> Jogadores
-        </button>
-        <button
-          onClick={() => setActiveTab('monsters')}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: '0.75rem 1.5rem', borderRadius: '8px',
-            color: activeTab === 'monsters' ? 'var(--accent-red)' : 'var(--text-secondary)',
-            backgroundColor: activeTab === 'monsters' ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
-            fontWeight: activeTab === 'monsters' ? 'bold' : 'normal',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            transition: 'all 0.2s'
-          }}
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '1rem' }}>
+          <button
+            onClick={() => setActiveTab('players')}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '0.75rem 1.5rem', borderRadius: '8px',
+              color: activeTab === 'players' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+              backgroundColor: activeTab === 'players' ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+              fontWeight: activeTab === 'players' ? 'bold' : 'normal',
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            <User size={18} /> Jogadores
+          </button>
+          <button
+            onClick={() => setActiveTab('monsters')}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '0.75rem 1.5rem', borderRadius: '8px',
+              color: activeTab === 'monsters' ? 'var(--accent-red)' : 'var(--text-secondary)',
+              backgroundColor: activeTab === 'monsters' ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
+              fontWeight: activeTab === 'monsters' ? 'bold' : 'normal',
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              transition: 'all 0.2s'
+            }}
         >
           <Swords size={18} /> Monstros
         </button>
@@ -83,6 +85,7 @@ export default function AdminEntitiesManager() {
         >
           <Settings size={18} /> Moldes 3D
         </button>
+        </div>
       </div>
 
       {/* Content */}
