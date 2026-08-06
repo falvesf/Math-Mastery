@@ -100,6 +100,7 @@ export default function Dashboard() {
   // Rankings state
   const [showRankingAvatars, setShowRankingAvatars] = useState(false);
   const [allStudents, setAllStudents] = useState<UserData[]>([]);
+  const [selectedClassForRanking, setSelectedClassForRanking] = useState<string>('');
   const [cubeRotation, setCubeRotation] = useState(0);
   const [rankImageIndex, setRankImageIndex] = useState(0);
   const [isIdle, setIsIdle] = useState(false);
@@ -719,7 +720,9 @@ export default function Dashboard() {
   }
 
   // Filtragem de Rankings (Top 10)
-  const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
+  const uniqueClasses = Array.from(new Set(allStudents.map(s => s.classId).filter(Boolean))) as string[];
+  const targetClassRanking = isAdminOrTeacher ? (selectedClassForRanking || userData?.classId || uniqueClasses[0] || '') : userData?.classId;
+  const classStudents = allStudents.filter(s => s.classId === targetClassRanking).slice(0, 10);
   const top10General = allStudents.slice(0, 10);
 
   // Moved outside to prevent remounting
@@ -1643,7 +1646,26 @@ export default function Dashboard() {
               <Users size={32} color="var(--gold-primary)" />
               <div style={{ flex: 1 }}>
                 <h2 style={{ fontSize: '2rem', margin: 0 }}>Top 10 da Turma</h2>
-                <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Sua sala: {userData?.classId || 'Não definida'}</p>
+                {isAdminOrTeacher ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Ver turma:</span>
+                    <select 
+                      value={targetClassRanking} 
+                      onChange={(e) => setSelectedClassForRanking(e.target.value)}
+                      style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                    >
+                      {uniqueClasses.length > 0 ? (
+                        uniqueClasses.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))
+                      ) : (
+                        <option value="">Nenhuma turma encontrada</option>
+                      )}
+                    </select>
+                  </div>
+                ) : (
+                  <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Sua sala: {userData?.classId || 'Não definida'}</p>
+                )}
               </div>
               <button 
                 onClick={() => setShowRankingAvatars(!showRankingAvatars)}
@@ -1656,7 +1678,7 @@ export default function Dashboard() {
               </button>
             </div>
             <div style={{ padding: '2rem' }}>
-              {userData?.classId ? renderRankingList(classStudents, 'class') : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
+              {targetClassRanking ? renderRankingList(classStudents, 'class') : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
             </div>
           </div>
         )}
