@@ -102,12 +102,12 @@ export default function CustomThemeModal({ initialTheme, isAdmin, onSave, onClos
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <input 
           type="color" 
-          value={theme.colors[colorKey] as string} 
+          value={(theme.colors[colorKey] as string) || '#000000'} 
           onChange={(e) => handleColorChange(colorKey, e.target.value)}
           style={{ width: '40px', height: '30px', padding: 0, border: '1px solid var(--border-glass)', borderRadius: '4px', cursor: 'pointer', background: 'transparent' }}
         />
         <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', width: '70px' }}>
-          {(theme.colors[colorKey] as string).toUpperCase()}
+          {((theme.colors[colorKey] as string) || '#000000').toUpperCase()}
         </span>
         
         {opacityKey && (

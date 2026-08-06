@@ -291,7 +291,7 @@ export default function LiveQuestAdmin() {
               onClick={handleStartGame}
               disabled={playersList.length === 0}
               className="login-btn"
-              style={{ padding: '1rem 3rem', fontSize: '1.2rem', background: playersList.length > 0 ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', color: playersList.length > 0 ? 'black' : 'var(--text-secondary)' }}
+              style={{ padding: '1rem 3rem', fontSize: '1.2rem', background: playersList.length > 0 ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', color: playersList.length > 0 ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)' }}
             >
               <Play fill="currentColor" size={24} style={{ marginRight: '0.5rem', display: 'inline' }} />
               Iniciar Batalha

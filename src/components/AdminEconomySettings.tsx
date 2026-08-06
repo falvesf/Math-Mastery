@@ -216,7 +216,7 @@ export default function AdminEconomySettings() {
           disabled={saving}
           style={{
             background: 'var(--gold-primary)',
-            color: 'black',
+            color: 'var(--text-on-gold, #000000)',
             border: 'none',
             padding: '0.75rem 2rem',
             fontSize: '1rem',

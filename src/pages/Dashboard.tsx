@@ -1227,31 +1227,31 @@ export default function Dashboard() {
       <div className="scrollable-menu-container" style={{ background: 'transparent', margin: '0 -2rem 0 -2rem', padding: '0.5rem 2rem' }}>
         <button 
           onClick={() => setActiveTab('quests')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <Swords size={20} /> Central de Missões
         </button>
         <button 
           onClick={() => setActiveTab('profile')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'profile' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'profile' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <Star size={20} /> Meu Perfil
         </button>
         <button 
           onClick={() => setActiveTab('ranking_class')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_class' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_class' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <Users size={20} /> Ranking da Turma
         </button>
         <button 
           onClick={() => setActiveTab('ranking_general')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_general' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_general' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <TrendingUp size={20} /> Ranking Geral
         </button>
         <button 
           onClick={() => setActiveTab('store')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'black' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
         >
           <Store size={20} /> Mercado
         </button>
@@ -1317,7 +1317,7 @@ export default function Dashboard() {
                             <Swords size={64} color="rgba(255,255,255,0.2)" />
                           </div>
                         )}
-                        <div style={{ position: 'absolute', top: '10px', right: '10px', background: isCompleted ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${isCompleted ? 'var(--accent-green)' : 'var(--gold-primary)'}`, color: isCompleted ? 'black' : 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ position: 'absolute', top: '10px', right: '10px', background: isCompleted ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${isCompleted ? 'var(--accent-green)' : 'var(--gold-primary)'}`, color: isCompleted ? 'var(--text-on-gold, #000000)' : 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {isCompleted ? <CheckCircle size={16} /> : <Star size={16} />} 
                           {isCompleted ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.1 }}>
@@ -1355,7 +1355,7 @@ export default function Dashboard() {
                               disabled={quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)}
                               style={{ 
                                 background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--btn-bg)' : 'var(--gold-primary)', 
-                                color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--text-primary)' : 'black', 
+                                color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--text-primary)' : 'var(--text-on-gold, #000000)', 
                                 border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? '1px solid var(--border-glass)' : 'none', 
                                 padding: '0.5rem 1.5rem', 
                                 fontSize: '1rem',
@@ -1397,14 +1397,14 @@ export default function Dashboard() {
               <button 
                 onClick={() => setProfileTab('overview')}
                 className="login-btn"
-                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'overview'  ? 'black'  : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'overview'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
               >
                 <Star size={20} /> Personagem e Histórico
               </button>
               <button 
                 onClick={() => setProfileTab('inventory')}
                 className="login-btn"
-                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'inventory'  ? 'black'  : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'inventory'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
               >
                 <Package size={20} /> Mochila
               </button>

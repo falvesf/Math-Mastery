@@ -72,7 +72,7 @@ export default function OnboardingModal({ userName, onSelectClass, onSelectTeach
                     key={cls.id}
                     className="login-btn"
                     onClick={() => { setSelectedClass(cls); setSelectedRole('student'); }}
-                    style={{ background: cls.color || 'var(--btn-bg)', color: cls.color  ? 'black'  : 'var(--text-primary)', fontWeight: 'bold' }}
+                    style={{ background: cls.color || 'var(--btn-bg)', color: cls.color  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
                   >
                     {cls.name}
                   </button>

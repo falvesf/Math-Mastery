@@ -113,7 +113,7 @@ export default function LevelUpModal({ oldRank, newRank, onClose, isMaxRank, ava
               onClick={handleReveal}
               style={{ 
                 marginTop: '2rem', padding: '0.8rem 2rem', fontSize: '1.1rem', fontWeight: 'bold', 
-                background: `linear-gradient(45deg, var(--gold-primary), #B8860B)`, color: 'black', 
+                background: `linear-gradient(45deg, var(--gold-primary), #B8860B)`, color: 'var(--text-on-gold, #000000)', 
                 border: `none`, borderRadius: '30px', cursor: 'pointer',
                 boxShadow: `0 0 15px var(--gold-primary)`, animation: 'pulse 2s infinite'
               }}

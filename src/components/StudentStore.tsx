@@ -678,14 +678,14 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           <button 
             onClick={() => setActiveTab('official')}
             className="login-btn"
-            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'official' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'official' ? 'black' : 'var(--text-primary)', fontWeight: 'bold' }}
+            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'official' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'official' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
           >
             Loja Oficial
           </button>
           <button 
             onClick={() => setActiveTab('market')}
             className="login-btn"
-            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'black' : 'var(--text-primary)', fontWeight: 'bold' }}
+            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
           >
             Bazar de Jogadores
           </button>
@@ -740,31 +740,31 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingTop: '0.5rem', paddingBottom: '0.25rem' }}>
             <button 
               onClick={() => setOfficialCategoryTab('all')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'all' ? 'black' : 'var(--text-primary)', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'all' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <Sparkles size={18} /> Todos
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('consumable')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'consumable' ? 'black' : 'var(--text-primary)', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'consumable' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <FlaskConical size={18} /> Consumíveis
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('attack')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'attack'  ? 'black'  : 'var(--text-primary)', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'attack'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <Sword size={18} /> Ataque
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('defense')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'defense'  ? 'black'  : 'var(--text-primary)', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'defense'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <Shield size={18} /> Defesa
             </button>
             <button 
               onClick={() => setOfficialCategoryTab('other')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'other'  ? 'black'  : 'var(--text-primary)', fontWeight: 'bold' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'other'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
             >
               <Package size={18} /> Outros
             </button>
@@ -856,7 +856,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               style={{ 
                                 flex: 1,
                                 background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
-                                color: canAfford ? 'black' : 'var(--text-secondary)', 
+                                color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
                                 border: 'none', 
                                 padding: '0.5rem',
                                 opacity: canAfford ? 1 : 0.5,
@@ -939,7 +939,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                             style={{ 
                               flex: 1,
                               background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
-                              color: canAfford ? 'black' : 'var(--text-secondary)', 
+                              color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
                               border: 'none', 
                               padding: '0.5rem',
                               opacity: canAfford ? 1 : 0.5,
@@ -1184,7 +1184,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                         flex: 1,
                         display: 'flex', justifyContent: 'center', alignItems: 'center',
                         background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
-                        color: canAfford ? 'black' : 'var(--text-secondary)', 
+                        color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
                         border: 'none', 
                         padding: '0.5rem',
                         opacity: canAfford ? 1 : 0.5,

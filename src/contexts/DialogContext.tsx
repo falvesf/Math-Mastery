@@ -224,7 +224,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                   borderRadius: '8px',
                   border: 'none',
                   background: type === 'alert' ? 'var(--accent-blue)' : 'var(--gold-primary)',
-                  color: type === 'alert'  ? 'var(--text-primary)' : 'black',
+                  color: type === 'alert'  ? 'var(--text-primary)' : 'var(--text-on-gold, #000000)',
                   fontWeight: 'bold',
                   cursor: 'pointer',
                   transition: 'all 0.2s',

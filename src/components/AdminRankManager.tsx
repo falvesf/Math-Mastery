@@ -274,7 +274,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                                   style={{
                                     padding: '0.25rem 0.5rem', fontSize: '0.8rem', borderRadius: '4px', cursor: 'pointer',
                                     background: isSelected ? c.color : 'var(--btn-bg)',
-                                    color: isSelected ? 'black' : 'var(--text-secondary)',
+                                    color: isSelected ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)',
                                     border: `1px solid ${isSelected ? c.color : 'var(--border-glass)'}`,
                                     fontWeight: isSelected ? 'bold' : 'normal'
                                   }}

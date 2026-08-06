@@ -545,7 +545,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
                   placeholder="https://..." 
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit' }} 
                 />
-                <button onClick={handleConfirmUrl} disabled={!customUrl.trim()} style={{ background: customUrl.trim() ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', color: customUrl.trim() ? 'black' : 'var(--text-secondary)', border: 'none', padding: '0.75rem', borderRadius: '8px', cursor: customUrl.trim() ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+                <button onClick={handleConfirmUrl} disabled={!customUrl.trim()} style={{ background: customUrl.trim() ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', color: customUrl.trim() ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', border: 'none', padding: '0.75rem', borderRadius: '8px', cursor: customUrl.trim() ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
                   Aplicar Link
                 </button>
               </div>

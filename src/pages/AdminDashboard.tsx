@@ -1358,7 +1358,7 @@ export default function AdminDashboard() {
                                   borderRadius: '20px',
                                   border: `1px solid ${cls.color}`,
                                   background: questTargetClasses.includes(cls.name) ? cls.color : 'var(--btn-bg)',
-                                  color: questTargetClasses.includes(cls.name)  ? 'black'  : 'var(--text-primary)',
+                                  color: questTargetClasses.includes(cls.name)  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)',
                                   cursor: 'pointer',
                                   fontWeight: 'bold',
                                   fontSize: '0.9rem'
@@ -1480,7 +1480,7 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'flex-end', gridColumn: '1 / -1' }}>
-                          <button onClick={() => setIsCustomizingMonster(true)} style={{ width: '100%', padding: '1rem', background: questMonsterConfig ? 'var(--gold-primary)' : 'rgba(59, 130, 246, 0.2)', color: questMonsterConfig ? 'black' : 'var(--accent-primary)', border: `1px solid ${questMonsterConfig ? 'var(--gold-primary)' : 'var(--accent-primary)'}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                          <button onClick={() => setIsCustomizingMonster(true)} style={{ width: '100%', padding: '1rem', background: questMonsterConfig ? 'var(--gold-primary)' : 'rgba(59, 130, 246, 0.2)', color: questMonsterConfig ? 'var(--text-on-gold, #000000)' : 'var(--accent-primary)', border: `1px solid ${questMonsterConfig ? 'var(--gold-primary)' : 'var(--accent-primary)'}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
                             {questMonsterConfig ? 'Editar Aparência deste Monstro' : 'Criar Monstro 3D Personalizado'}
                           </button>
                         </div>
@@ -2077,7 +2077,7 @@ export default function AdminDashboard() {
               <input type="text" value={bulkXpReason} onChange={e => setBulkXpReason(e.target.value)} placeholder="Ex: Vitória no Desafio das Frações" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
             </div>
 
-            <button className="login-btn" onClick={handleBulkXp} style={{ width: '100%', justifyContent: 'center', background: bulkXpAction === 'add' ? 'var(--gold-primary)' : 'var(--accent-red)', color: bulkXpAction === 'add'  ? 'black'  : 'var(--text-primary)', border: 'none' }}>
+            <button className="login-btn" onClick={handleBulkXp} style={{ width: '100%', justifyContent: 'center', background: bulkXpAction === 'add' ? 'var(--gold-primary)' : 'var(--accent-red)', color: bulkXpAction === 'add'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none' }}>
               Confirmar para {selectedStudentIds.length} Alunos
             </button>
           </div>

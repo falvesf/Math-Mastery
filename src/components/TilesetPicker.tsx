@@ -383,7 +383,7 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
             disabled={!selectedCell || uploading}
             style={{ 
               background: (!selectedCell || uploading) ? 'gray' : 'var(--gold-primary)', 
-              color: 'black', 
+              color: 'var(--text-on-gold, #000000)', 
               border: 'none', 
               padding: '0.75rem 1.5rem', 
               borderRadius: '8px', 
