@@ -348,7 +348,7 @@ h3 {
 
 .speech-bubble {
   position: absolute;
-  bottom: calc(100% + 20px);
+  bottom: calc(100% - 15px);
   left: 50%;
   transform: translateX(-50%);
   background: white;

@@ -89,8 +89,8 @@ export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, ani
   const isChest = modelUrl.includes('chest');
   
   // Aumentar a escala para monstros, mas não o suficiente para cortar a cabeça no modo desafio
-  const modelScale = isChest ? 2.8 : 4.0;
-  const modelPosY = isChest ? -2.5 : -3.5;
+  const modelScale = isChest ? 2.8 : 2.6;
+  const modelPosY = isChest ? -2.5 : -2.8;
 
   // Desabilitar rotação e zoom no modo desafio (quando role for passado)
   const isArena = !!role;

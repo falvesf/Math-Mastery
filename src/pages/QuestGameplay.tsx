@@ -1119,7 +1119,7 @@ export default function QuestGameplay() {
 
         {/* Battle Arena Fixed */}
         {gameState === 'playing' && (
-          <div ref={arenaRef} className="battle-arena-bg quest-arena" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, overflow: 'hidden' } as any}>
+          <div ref={arenaRef} className="battle-arena-bg quest-arena" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '130px', paddingBottom: '20px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, overflow: 'hidden' } as any}>
             <div className="battle-arena-bg-image" />
             
             {/* Player Side */}
@@ -1132,12 +1132,14 @@ export default function QuestGameplay() {
                   {playerBubble}
                 </div>
               )}
-              <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} />
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                <div style={{ marginBottom: '-60px' }}><AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} /></div>
                 {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
                 <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
               </div>
-              <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
+              <div style={{ height: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '4px' }}>
+                <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
+              </div>
             </div>
 
             {/* Battle Message */}
@@ -1160,12 +1162,12 @@ export default function QuestGameplay() {
                 </div>
               )}
               {monsterAnim === 'death-slice' ? (
-                <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', height: '180px' }}>
+                <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', height: (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? '240px' : '228px' }}>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {quest?.monsterModelUrl ? <CustomModelViewer modelUrl={quest.monsterModelUrl} size={160} animation="none" role="monster" /> : <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" />}
+                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" /> : <div style={{ marginBottom: '-60px' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                   <div className="death-slice-right" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {quest?.monsterModelUrl ? <CustomModelViewer modelUrl={quest.monsterModelUrl} size={160} animation="none" role="monster" /> : <AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" />}
+                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" /> : <div style={{ marginBottom: '-60px' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                 </div>
               ) : (
@@ -1175,12 +1177,12 @@ export default function QuestGameplay() {
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
                   }`}
-                  style={{ position: 'relative', width: '120px', height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+                  style={{ position: 'relative', width: '120px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
                 >
-                  {quest?.monsterModelUrl ? (
-                    <CustomModelViewer modelUrl={quest.monsterModelUrl} size={160} animation={monsterAnim} role="monster" />
+                  {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? (
+                    <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={monsterAnim} role="monster" />
                   ) : quest?.monsterAvatarConfig ? (
-                    <AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" />
+                    <div style={{ marginBottom: '-60px' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" /></div>
                   ) : (
                     <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
                   )}
@@ -1189,7 +1191,7 @@ export default function QuestGameplay() {
                 </div>
               )}
               
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ height: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '4px' }}>
                 <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>{quest?.monsterName || 'Inimigo'}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
                   {Array.from({ length: Math.max(0, (quest?.questions.length || 0) - currentQIndex - (monsterAnim.startsWith('death-') ? 1 : 0)) }).map((_, i) => (
