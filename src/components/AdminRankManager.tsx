@@ -175,7 +175,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
               Configure as patentes do jogo, a experiência necessária e as imagens (artes) de cada uma.
             </p>
           </div>
-          <button className="login-btn" onClick={openNew} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
+          <button className="login-btn" onClick={openNew} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
             <Plus size={18} /> Nova Patente
           </button>
         </div>
@@ -207,7 +207,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                   <div style={{ display: 'flex', gap: '1rem' }}>
                     <input type="text" value={formData.imageUrl || ''} onChange={e => setFormData({...formData, imageUrl: e.target.value})} placeholder="Ex: https://..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                     <DirectUploadButton folder="ranks" onUploadComplete={(url) => setFormData({...formData, imageUrl: url})} buttonStyle={{ minHeight: '100%' }} />
-                    <button onClick={() => setGalleryTarget('main')} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
+                    <button onClick={() => setGalleryTarget('main')} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                       <Search size={20} />
                     </button>
                   </div>
@@ -301,7 +301,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                               setFormData({...formData, variants: newV});
                             }} buttonStyle={{ minHeight: '100%', padding: '0 0.5rem' }} />
                             
-                            <button onClick={() => setGalleryTarget(vIdx)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 0.75rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                            <button onClick={() => setGalleryTarget(vIdx)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 0.75rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
                               <Search size={16} />
                             </button>
                           </div>
@@ -317,7 +317,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                 )}
               </div>              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
                 <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-                <button onClick={handleSaveRank} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>Salvar Patente</button>
+                <button onClick={handleSaveRank} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>Salvar Patente</button>
               </div>
             </div>
           </div>,

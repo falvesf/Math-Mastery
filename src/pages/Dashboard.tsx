@@ -18,7 +18,8 @@ import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
 import { Edit3, MessageCircle, X, Box, Palette } from 'lucide-react';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import OnboardingModal from '../components/OnboardingModal';
-
+import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../components/CustomThemeModal';
+import { applyCustomTheme } from '../lib/theme';
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
   classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
@@ -140,6 +141,20 @@ export default function Dashboard() {
   const [settingsTab, setSettingsTab] = useState<'cube' | 'theme'>('cube');
   const [appTheme, setAppTheme] = useState(() => localStorage.getItem('appTheme') || 'default');
   const [appFonts, setAppFonts] = useState(() => localStorage.getItem('appFonts') || 'default');
+
+  const [globalThemes, setGlobalThemes] = useState<CustomTheme[]>([]);
+  const [showCustomThemeModal, setShowCustomThemeModal] = useState(false);
+  const [editingTheme, setEditingTheme] = useState<CustomTheme | undefined>(undefined);
+
+  // Fetch Global Themes
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'themes'), (snap) => {
+      const t: CustomTheme[] = [];
+      snap.forEach(d => t.push({ id: d.id, ...d.data() } as CustomTheme));
+      setGlobalThemes(t);
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const fonts: Record<string, { heading: string, body: string }> = {
@@ -820,7 +835,7 @@ export default function Dashboard() {
                 
                 <div>
                   <h4 style={{ margin: 0, fontSize: fontSizeTitle, display: 'flex', alignItems: 'center', gap: '0.5rem', color: rankPos === 1 ? '#fbbf24' : 'var(--text-primary)' }}>
-                    {student.name} {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'black', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
+                    {student.name} {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
                   </h4>
                   <div style={{ fontSize: '0.85rem', color: sRank.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
                     {sRank.name} {student.classId && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', textShadow: 'none' }}>| {student.classId}</span>}
@@ -976,13 +991,39 @@ export default function Dashboard() {
 
               {settingsTab === 'theme' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left', flex: 1 }}>
-                  <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>Temas do Sistema</h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 1rem 0' }}>
+                    <h4 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>Temas do Sistema</h4>
+                    <button 
+                      onClick={() => {
+                        let tData = DEFAULT_FANTASY_THEME;
+                        if (appTheme === 'custom_local') {
+                           const saved = localStorage.getItem('currentCustomThemeData');
+                           if (saved) tData = JSON.parse(saved);
+                        } else if (appTheme.startsWith('custom_')) {
+                           const gt = globalThemes.find(g => g.id === appTheme);
+                           if (gt) tData = gt;
+                        }
+                        setEditingTheme(tData);
+                        setShowCustomThemeModal(true);
+                      }}
+                      style={{ padding: '0.4rem 0.75rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', borderRadius: '8px', border: 'none', fontWeight: 'bold', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                      className="hover-brightness"
+                    >
+                      <Palette size={16} /> Personalizar
+                    </button>
+                  </div>
                   
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
                     {[
-                      { id: 'default', name: 'Padrão (Dark RPG)', color: '#0f172a' },
-                      { id: 'light', name: 'Amanhecer (Claro)', color: '#f8fafc' },
-                      { id: 'fantasy', name: 'Fantasia (Colorido)', color: '#0c4a6e' }
+                      { id: 'default', name: 'Padrão (Dark RPG)', color: '#0f172a', isCustom: false },
+                      { id: 'light', name: 'Amanhecer (Claro)', color: '#f8fafc', isCustom: false },
+                      ...globalThemes.map(gt => ({ id: gt.id, name: gt.name, color: gt.colors.bgDark, isCustom: true, data: gt })),
+                      { 
+                        id: 'custom_local', 
+                        name: (localStorage.getItem('currentCustomThemeData') ? JSON.parse(localStorage.getItem('currentCustomThemeData') || '{}').name : 'Meu Tema') + ' (Pessoal)', 
+                        color: '#7dd3fc', 
+                        isCustom: true 
+                      }
                     ].map(t => (
                       <div 
                         key={t.id} 
@@ -990,6 +1031,22 @@ export default function Dashboard() {
                           setAppTheme(t.id);
                           localStorage.setItem('appTheme', t.id);
                           document.body.setAttribute('data-theme', t.id);
+                          
+                          if (t.isCustom) {
+                            if (t.id === 'custom_local') {
+                              const localData = localStorage.getItem('currentCustomThemeData');
+                              if (localData) {
+                                applyCustomTheme(JSON.parse(localData));
+                              } else {
+                                applyCustomTheme(DEFAULT_FANTASY_THEME);
+                              }
+                            } else if ((t as any).data) {
+                              localStorage.setItem('currentCustomThemeData', JSON.stringify((t as any).data));
+                              applyCustomTheme((t as any).data as CustomTheme);
+                            }
+                          } else {
+                            applyCustomTheme(null);
+                          }
                         }}
                         style={{ padding: '1rem', border: appTheme === t.id ? '2px solid var(--gold-primary)' : '2px solid transparent', background: 'var(--bg-card)', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', transition: '0.2s' }}
                         className="hover-brightness"
@@ -997,6 +1054,20 @@ export default function Dashboard() {
                         <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: t.color, border: '2px solid var(--border-glass)' }} />
                         <span style={{ fontWeight: appTheme === t.id ? 'bold' : 'normal', color: appTheme === t.id ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{t.name}</span>
                         {appTheme === t.id && <CheckCircle size={18} color="var(--gold-primary)" style={{ marginLeft: 'auto' }} />}
+                        
+                        {t.isCustom && appTheme === t.id && (
+                           <button 
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               setEditingTheme((t as any).data || (localStorage.getItem('currentCustomThemeData') ? JSON.parse(localStorage.getItem('currentCustomThemeData')!) : DEFAULT_FANTASY_THEME));
+                               setShowCustomThemeModal(true);
+                             }}
+                             style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0.25rem' }}
+                             title="Editar Tema"
+                           >
+                             <Edit3 size={18} />
+                           </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1032,13 +1103,53 @@ export default function Dashboard() {
               )}
 
               <div style={{ marginTop: 'auto', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-glass)' }}>
-                <button onClick={() => setIsSettingsModalOpen(false)} className="login-btn" style={{ padding: '0.5rem 1.5rem', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
+                <button onClick={() => setIsSettingsModalOpen(false)} className="login-btn" style={{ padding: '0.5rem 1.5rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
                   Concluir
                 </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {showCustomThemeModal && editingTheme && (
+        <CustomThemeModal
+          initialTheme={editingTheme}
+          isAdmin={userData?.role !== 'student'}
+          onPreview={(theme) => {
+            applyCustomTheme(theme);
+          }}
+          onClose={() => {
+            setShowCustomThemeModal(false);
+            // Restore previous active theme
+            const cur = localStorage.getItem('appTheme') || 'default';
+            if (cur.startsWith('custom_')) {
+               const saved = localStorage.getItem('currentCustomThemeData');
+               if (saved) applyCustomTheme(JSON.parse(saved));
+            } else {
+               applyCustomTheme(null);
+            }
+          }}
+          onSave={async (theme) => {
+            if (theme.isGlobal && userData?.role !== 'student') {
+               const newId = theme.id.startsWith('custom_local') ? 'custom_' + Date.now() : theme.id;
+               theme.id = newId;
+               await setDoc(doc(db, 'themes', newId), theme);
+               setAppTheme(newId);
+               localStorage.setItem('appTheme', newId);
+               localStorage.setItem('currentCustomThemeData', JSON.stringify(theme));
+               applyCustomTheme(theme);
+            } else {
+               theme.id = 'custom_local';
+               theme.isGlobal = false;
+               setAppTheme('custom_local');
+               localStorage.setItem('appTheme', 'custom_local');
+               localStorage.setItem('currentCustomThemeData', JSON.stringify(theme));
+               applyCustomTheme(theme);
+            }
+            setShowCustomThemeModal(false);
+          }}
+        />
       )}
 
       {userData && isCustomizingAvatar && (

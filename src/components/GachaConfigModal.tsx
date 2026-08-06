@@ -205,7 +205,7 @@ export default function GachaConfigModal({ itemData, initialConfig, initialFixed
         {/* Footer */}
         <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', background: 'rgba(0,0,0,0.3)' }}>
           <button onClick={onClose} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-          <button onClick={() => onSave(config, fixedAttributes, globalCfg, useGlobal)} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'black', border: 'none' }}>Salvar Configurações</button>
+          <button onClick={() => onSave(config, fixedAttributes, globalCfg, useGlobal)} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>Salvar Configurações</button>
         </div>
       </div>
     </div>,

@@ -1021,7 +1021,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               <button 
                                 disabled={!selectedGiftRecipient || (!canAfford && !isStaff) || purchasing === item.id} 
                                 onClick={() => handlePurchase(item, true, 'xp')} 
-                                style={{ flex: 1, background: 'var(--gold-primary)', border: 'none', color: 'black', borderRadius: '8px', padding: '0.5rem', fontWeight: 'bold' }}
+                                style={{ flex: 1, background: 'var(--gold-primary)', border: 'none', color: 'var(--text-on-gold, #000000)', borderRadius: '8px', padding: '0.5rem', fontWeight: 'bold' }}
                               >
                                 Enviar ({item.cost} XP)
                               </button>
@@ -1039,7 +1039,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                             <button 
                               disabled={!selectedGiftRecipient || (!canAfford && !isStaff) || purchasing === item.id} 
                               onClick={() => handlePurchase(item, true)} 
-                              style={{ flex: 1, background: 'var(--gold-primary)', border: 'none', color: 'black', borderRadius: '8px', padding: '0.5rem', fontWeight: 'bold' }}
+                              style={{ flex: 1, background: 'var(--gold-primary)', border: 'none', color: 'var(--text-on-gold, #000000)', borderRadius: '8px', padding: '0.5rem', fontWeight: 'bold' }}
                             >
                               Enviar
                             </button>
@@ -1277,7 +1277,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
               <button onClick={() => setMarketBuyModalItem(null)} className="login-btn" style={{ flex: 1, background: 'var(--bg-dark)', color: 'white' }}>Cancelar</button>
-              <button onClick={submitMarketBuy} className="login-btn" disabled={purchasing === marketBuyModalItem.id} style={{ flex: 1, background: 'var(--gold-primary)', color: 'black' }}>Confirmar</button>
+              <button onClick={submitMarketBuy} className="login-btn" disabled={purchasing === marketBuyModalItem.id} style={{ flex: 1, background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)' }}>Confirmar</button>
             </div>
           </div>
         </div>

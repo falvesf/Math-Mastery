@@ -486,7 +486,7 @@ export default function LiveQuestAdmin() {
             </div>
           )}
           {session.status === 'ranking' && (
-            <button onClick={handleNextQuestion} className="login-btn" style={{ padding: '0.5rem 2rem', fontSize: '1rem', background: 'var(--gold-primary)', color: 'black' }}>
+            <button onClick={handleNextQuestion} className="login-btn" style={{ padding: '0.5rem 2rem', fontSize: '1rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)' }}>
               Próxima Etapa <ChevronRight style={{ display: 'inline', marginLeft: '0.5rem' }} />
             </button>
           )}
@@ -679,7 +679,7 @@ export default function LiveQuestAdmin() {
                      )}
                      <Crown size={48} color="var(--gold-primary)" style={{ marginBottom: '0.5rem' }} />
                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginBottom: '0.5rem' }}>{sortedPlayers[0].name}</div>
-                     <div style={{ width: '140px', height: '160px', background: 'var(--gold-primary)', borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '1rem', color: 'black', fontWeight: 'bold', fontSize: '2rem', boxShadow: 'inset 0 4px 10px rgba(255,255,255,0.5)' }}>
+                     <div style={{ width: '140px', height: '160px', background: 'var(--gold-primary)', borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '1rem', color: 'var(--text-on-gold, #000000)', fontWeight: 'bold', fontSize: '2rem', boxShadow: 'inset 0 4px 10px rgba(255,255,255,0.5)' }}>
                        1º
                      </div>
                      <div style={{ marginTop: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1.2rem' }}>{sortedPlayers[0].score} pts</div>
@@ -702,7 +702,7 @@ export default function LiveQuestAdmin() {
                  )}
                </div>
                
-               <button onClick={handleEndSession} className="login-btn" style={{ padding: '1rem 3rem', fontSize: '1.2rem', background: 'var(--gold-primary)', color: 'black' }}>
+               <button onClick={handleEndSession} className="login-btn" style={{ padding: '1rem 3rem', fontSize: '1.2rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)' }}>
                  Finalizar Missão
                </button>
             </div>

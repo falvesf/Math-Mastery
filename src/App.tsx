@@ -85,6 +85,17 @@ function App() {
   React.useEffect(() => {
     const theme = localStorage.getItem('appTheme') || 'default';
     document.body.setAttribute('data-theme', theme);
+    
+    if (theme.startsWith('custom_')) {
+      const customData = localStorage.getItem('currentCustomThemeData');
+      if (customData) {
+        import('./lib/theme').then(({ applyCustomTheme }) => {
+          try {
+            applyCustomTheme(JSON.parse(customData));
+          } catch(e) {}
+        });
+      }
+    }
   }, []);
 
   return (

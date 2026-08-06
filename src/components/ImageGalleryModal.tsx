@@ -333,7 +333,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
                         placeholder="Sua API Key..."
                         style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', color: 'white' }}
                       />
-                      <button onClick={handleSavePixabayKey} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', borderRadius: '6px', padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                      <button onClick={handleSavePixabayKey} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '6px', padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
                         <Save size={16} /> Salvar
                       </button>
                     </div>
@@ -359,7 +359,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
                         placeholder="Ex: rpg monster, wizard, math..."
                         style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
                       />
-                      <button type="submit" className="login-btn" disabled={loading} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
+                      <button type="submit" className="login-btn" disabled={loading} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
                         {loading ? 'Buscando...' : 'Pesquisar'}
                       </button>
                     </form>

@@ -1006,7 +1006,7 @@ export default function AdminDashboard() {
                     <button 
                       className="login-btn" 
                       onClick={() => setIsBulkXpModalOpen(true)}
-                      style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0.5rem 1rem' }}
+                      style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0.5rem 1rem' }}
                     >
                       <Star size={18} style={{ marginRight: '0.5rem' }} /> XP em Massa
                     </button>
@@ -1226,7 +1226,7 @@ export default function AdminDashboard() {
                       <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Central de Missões</h2>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Crie desafios ao estilo Kahoot para os alunos faturarem XP.</p>
                     </div>
-                    <button className="login-btn" onClick={() => setIsCreatingQuest(true)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
+                    <button className="login-btn" onClick={() => setIsCreatingQuest(true)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
                       <Plus size={18} style={{ marginRight: '0.5rem' }} /> Nova Missão
                     </button>
                   </div>
@@ -1271,7 +1271,7 @@ export default function AdminDashboard() {
                         </div>
                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                           {quest.mode === 'live' && (
-                            <button onClick={() => navigate(`/live-admin/${quest.id}`)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }} title="Iniciar Sessão Ao Vivo">
+                            <button onClick={() => navigate(`/live-admin/${quest.id}`)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }} title="Iniciar Sessão Ao Vivo">
                               <Play size={18} fill="black" /> Iniciar Ao Vivo
                             </button>
                           )}
@@ -1378,7 +1378,7 @@ export default function AdminDashboard() {
                           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                             <input type="text" value={questCover} onChange={e => setQuestCover(e.target.value)} placeholder="URL ou Galeria ->" style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                             <DirectUploadButton folder="quests" onUploadComplete={setQuestCover} buttonStyle={{ minHeight: '100%' }} />
-                            <button onClick={() => setGalleryTarget('cover')} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
+                            <button onClick={() => setGalleryTarget('cover')} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                               <Search size={20} />
                             </button>
                           </div>
@@ -1653,7 +1653,7 @@ export default function AdminDashboard() {
                               style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px dashed var(--border-glass)', color: 'white', fontFamily: 'inherit' }} 
                             />
                             <DirectUploadButton folder="quests" onUploadComplete={(url) => handleUpdateQuestion(qIndex, 'imageUrl', url)} buttonStyle={{ minHeight: '100%' }} />
-                            <button onClick={() => setGalleryTarget(`question-${qIndex}`)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', minHeight: '100%' }}>
+                            <button onClick={() => setGalleryTarget(`question-${qIndex}`)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', minHeight: '100%' }}>
                               <Search size={18} />
                             </button>
                           </div>
@@ -1708,7 +1708,7 @@ export default function AdminDashboard() {
                                 style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.2)', border: '1px dashed rgba(255,255,255,0.1)', color: 'var(--text-secondary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
                               />
                               <DirectUploadButton folder="quests" onUploadComplete={(url) => handleUpdateOption(qIndex, optIndex, 'imageUrl', url)} buttonStyle={{ minHeight: '100%' }} />
-                              <button onClick={() => setGalleryTarget(`option-${qIndex}-${optIndex}`)} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', minHeight: '100%' }}>
+                              <button onClick={() => setGalleryTarget(`option-${qIndex}-${optIndex}`)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', minHeight: '100%' }}>
                                 <Search size={14} />
                               </button>
                             </div>
@@ -1727,7 +1727,7 @@ export default function AdminDashboard() {
                     <button className="login-btn" onClick={handleAddQuestion} style={{ flex: 1, background: 'rgba(255,255,255,0.1)', border: '1px dashed var(--border-glass)' }}>
                       <Plus size={18} style={{ marginRight: '0.5rem' }} /> Adicionar Nova Pergunta
                     </button>
-                    <button className="login-btn" onClick={handleSaveQuest} style={{ flex: 2, background: 'var(--gold-primary)', color: 'black', border: 'none' }}>
+                    <button className="login-btn" onClick={handleSaveQuest} style={{ flex: 2, background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
                       <Save size={18} style={{ marginRight: '0.5rem' }} /> Salvar Missão
                     </button>
                   </div>
@@ -1801,7 +1801,7 @@ export default function AdminDashboard() {
                 <button 
                   className="login-btn" 
                   onClick={() => { setEditingEvalId(null); setNewEvalName(''); setNewEvalWeight(''); setIsEvalModalOpen(true); }}
-                  style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '0.5rem 1rem' }}
+                  style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0.5rem 1rem' }}
                 >
                   <Plus size={18} style={{ marginRight: '0.5rem' }} /> Adicionar
                 </button>

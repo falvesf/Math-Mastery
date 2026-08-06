@@ -1226,7 +1226,7 @@ export default function QuestGameplay() {
                 </div>
               </div>
 
-              <button className="login-btn" onClick={startGame} style={{ background: 'var(--gold-primary)', color: 'black', border: 'none', padding: '1.5rem 4rem', fontSize: '1.5rem', borderRadius: '50px' }}>
+              <button className="login-btn" onClick={startGame} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '1.5rem 4rem', fontSize: '1.5rem', borderRadius: '50px' }}>
                 Iniciar Batalha
               </button>
             </div>
@@ -1363,7 +1363,7 @@ export default function QuestGameplay() {
                     ))}
                   </div>
                   
-                  <button className="login-btn" onClick={() => navigate('/dashboard')} style={{ marginTop: '4rem', background: 'var(--gold-primary)', color: 'black', padding: '1rem 3rem', fontSize: '1.2rem', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '1s', opacity: 0 }}>
+                  <button className="login-btn" onClick={() => navigate('/dashboard')} style={{ marginTop: '4rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '1rem 3rem', fontSize: '1.2rem', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '1s', opacity: 0 }}>
                     Coletar Tudo e Continuar
                   </button>
                 </div>

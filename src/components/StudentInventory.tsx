@@ -1030,7 +1030,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             
             <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
               <button onClick={() => setSellModalItem(null)} className="login-btn" style={{ flex: 1, background: 'var(--bg-dark)', color: 'white' }}>Cancelar</button>
-              <button onClick={submitSell} className="login-btn" style={{ flex: 1, background: 'var(--gold-primary)', color: 'black' }}>Confirmar Venda</button>
+              <button onClick={submitSell} className="login-btn" style={{ flex: 1, background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)' }}>Confirmar Venda</button>
             </div>
           </div>
         </div>
@@ -1074,7 +1074,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               <button onClick={() => setTrashModalItem(null)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>
                 Cancelar
               </button>
-              <button onClick={() => submitTrash(false)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', background: 'var(--gold-primary)', color: 'black', cursor: 'pointer', fontWeight: 'bold' }}>
+              <button onClick={() => submitTrash(false)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', cursor: 'pointer', fontWeight: 'bold' }}>
                 Jogar Fora
               </button>
               <button onClick={() => submitTrash(true)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', background: 'var(--accent-red)', color: 'white', cursor: 'pointer', fontWeight: 'bold' }} title="Destruir Permanentemente">
