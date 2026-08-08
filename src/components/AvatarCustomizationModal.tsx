@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, User as UserIcon, Dices, Settings, ChevronDown } from 'lucide-react';
+import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, updateDoc, collection, getDocs, addDoc, setDoc, query, where } from 'firebase/firestore';
 import { useAuth, type UserData } from '../contexts/AuthContext';
@@ -161,6 +161,67 @@ const DraggableWidget = ({ id, defaultPos = {x: 20, y: 20}, children }: { id: st
     document.body
   );
 };
+
+const HorizontalScrollList = ({ children }: { children: React.ReactNode }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const checkScroll = () => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      setCanScrollLeft(scrollLeft > 0);
+      setCanScrollRight(Math.ceil(scrollLeft + clientWidth) < scrollWidth - 1);
+    }
+  };
+
+  useEffect(() => {
+    // delay check slightly to allow DOM to render sizes
+    setTimeout(checkScroll, 100);
+    window.addEventListener('resize', checkScroll);
+    return () => window.removeEventListener('resize', checkScroll);
+  }, [children]);
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const amount = scrollRef.current.clientWidth * 0.75;
+      scrollRef.current.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' });
+      setTimeout(checkScroll, 350);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', position: 'relative', width: '100%' }}>
+      {canScrollLeft && (
+        <button
+          onClick={() => scroll('left')}
+          style={{ position: 'absolute', left: '-12px', zIndex: 10, background: 'var(--accent-primary)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', boxShadow: '0 2px 5px rgba(0,0,0,0.3)' }}
+        >
+          <ChevronLeft size={16} />
+        </button>
+      )}
+      <div 
+        ref={scrollRef}
+        onScroll={checkScroll}
+        style={{ display: 'flex', gap: '0.5rem', flexWrap: 'nowrap', overflowX: 'auto', padding: '0.25rem 0', width: '100%', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        <style>{`.hide-scroll::-webkit-scrollbar { display: none; }`}</style>
+        <div className="hide-scroll" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'nowrap' }}>
+          {children}
+        </div>
+      </div>
+      {canScrollRight && (
+        <button
+          onClick={() => scroll('right')}
+          style={{ position: 'absolute', right: '-12px', zIndex: 10, background: 'var(--accent-primary)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', boxShadow: '0 2px 5px rgba(0,0,0,0.3)' }}
+        >
+          <ChevronRight size={16} />
+        </button>
+      )}
+    </div>
+  );
+};
+
 export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, onPositionsSaved, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
   const { userData } = useAuth();
   const { showAlert } = useDialog();
@@ -314,9 +375,12 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     }
     setConfig(configToSave);
 
+    // Remove undefined values to prevent Firestore errors
+    const cleanConfig = JSON.parse(JSON.stringify(configToSave));
+
     try {
       if (!customSaveMode && userData && !inline) {
-        await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: configToSave });
+        await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: cleanConfig });
         if (onSave) {
           onSave(config, monsterName);
         }
@@ -391,6 +455,63 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
       }
     }
   }, [config.handedness, config.animationState, debugItemId, debugMode, equippedItems]);
+
+  const handleGenderSwap = (targetGender: 'male' | 'female') => {
+    if (config.gender === targetGender) return;
+
+    // Clean undefined values from current config before saving
+    const currentConfigForBackup = JSON.parse(JSON.stringify(config));
+    // Do not recursively save previous backups inside the new backup
+    delete currentConfigForBackup.savedOppositeGenderConfig;
+
+    let newConfig: AvatarConfig = {
+      ...config,
+      gender: targetGender,
+      savedOppositeGenderConfig: currentConfigForBackup,
+    };
+
+    // Safest approach: remove skin when switching genders to prevent clipping or gender-lock issues
+    if (config.customSkinUrl) {
+      newConfig.customSkinUrl = undefined;
+      newConfig.customModelUrl = undefined;
+      if (config.savedPreSkinConfig) {
+         // Se estava usando skin, o backup real das peças do outro gênero está em savedPreSkinConfig
+         // Então vamos pegar ele, e juntar com a config atual (que não tem as peças, mas tem corpo etc)
+         const preSkin = JSON.parse(JSON.stringify(config.savedPreSkinConfig));
+         currentConfigForBackup.savedPreSkinConfig = undefined; // prevent nested mess
+         newConfig.savedOppositeGenderConfig = { ...currentConfigForBackup, ...preSkin };
+         newConfig.savedPreSkinConfig = undefined;
+      }
+    }
+
+    if (config.savedOppositeGenderConfig) {
+      const backup = { ...config.savedOppositeGenderConfig };
+      
+      newConfig = {
+        ...newConfig,
+        ...backup,
+        gender: targetGender, // ensure it stays targetGender
+        savedOppositeGenderConfig: currentConfigForBackup, // restore the backup we just created
+      };
+    } else {
+      // Safe defaults if no backup exists for that gender
+      if (targetGender === 'female') {
+        newConfig.hairStyle = 'long';
+        newConfig.clothingStyle = 'dress';
+        newConfig.facialHair = 'none';
+      } else {
+        newConfig.hairStyle = 'short';
+        newConfig.clothingStyle = 't-shirt';
+        newConfig.facialHair = 'none';
+        newConfig.hairAccessory = 'none';
+        newConfig.hairAccessories = [];
+        newConfig.lipstickColor = undefined;
+      }
+    }
+
+    setConfig(newConfig);
+  };
+
   const handleEquipSkin = (skinUrl: string, modelUrl?: string) => {
     let newConfig = { ...config, customSkinUrl: skinUrl, customModelUrl: modelUrl };
     if (!config.customSkinUrl) {
@@ -754,11 +875,11 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             {customSaveMode && (
               <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-primary)', borderRadius: '8px' }}>
                 <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Skins de Monstro Pré-definidas</label>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <HorizontalScrollList>
                   <button
                     onClick={handleUnequipSkin}
                     style={{
-                       padding: '0.5rem', background: 'var(--btn-bg)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
+                       padding: '0.5rem', background: !config.customSkinUrl ? 'var(--accent-primary)' : 'var(--btn-bg)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: !config.customSkinUrl ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
                     }}
                   >
                     Nenhum
@@ -773,13 +894,13 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         handleEquipSkin(skin.url, modelUrl);
                       }}
                       style={{
-                         padding: '0.5rem', background: 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
+                         padding: '0.5rem', background: config.customSkinUrl === skin.url ? 'var(--accent-primary)' : 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: config.customSkinUrl === skin.url ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
                       }}
                     >
                       {skin.name}
                     </button>
                   ))}
-                </div>
+                </HorizontalScrollList>
               </div>
             )}
             
@@ -799,15 +920,15 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
 
               return (
                 <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Skins Pré-definidas (Nova Skin)</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Skins Pré-definidas</label>
+                  <HorizontalScrollList>
                     <button
                       onClick={handleUnequipSkin}
                       style={{
-                         padding: '0.5rem', background: 'var(--btn-bg)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.85rem'
+                         padding: '0.5rem', background: !config.customSkinUrl ? 'var(--accent-primary)' : 'var(--btn-bg)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: !config.customSkinUrl ? '#fff' : 'var(--text-primary)', fontSize: '0.85rem', flexShrink: 0
                       }}
                     >
-                      Nenhuma (Usar peças)
+                      Nenhuma
                     </button>
                     {availableSkins.map(skin => {
                       const expiry = userData?.unlockedSkins?.[skin.url];
@@ -817,7 +938,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         key={skin.id}
                         onClick={() => handleEquipSkin(skin.url)}
                         style={{
-                           padding: '0.5rem', background: 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem'
+                           padding: '0.5rem', background: config.customSkinUrl === skin.url ? 'var(--accent-primary)' : 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: config.customSkinUrl === skin.url ? '#fff' : 'var(--text-primary)', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', flexShrink: 0
                         }}
                       >
                         <span>{skin.name}</span>
@@ -826,7 +947,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         )}
                       </button>
                     )})}
-                  </div>
+                  </HorizontalScrollList>
                 </div>
               );
             })()}
@@ -860,15 +981,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                       {['male', 'female'].map(gender => (
                         <button
                           key={gender}
-                          onClick={() => setConfig({ 
-                            ...config, 
-                            gender: gender as any,
-                            hairStyle: gender === 'female' ? 'long' : 'short',
-                            clothingStyle: gender === 'female' ? 'dress' : 't-shirt',
-                            hairAccessory: gender === 'male' ? 'none' : config.hairAccessory,
-                            hairAccessories: gender === 'male' ? [] : config.hairAccessories,
-                            facialHair: gender === 'female' ? 'none' : config.facialHair
-                          })}
+                          onClick={() => handleGenderSwap(gender as 'male' | 'female')}
                           style={{
                             flex: 1,
                             padding: '0.5rem',

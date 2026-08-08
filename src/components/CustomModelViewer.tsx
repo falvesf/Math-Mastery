@@ -19,7 +19,20 @@ function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string
   
   // Clone to avoid mutating the cached GLTF if multiple are rendered
   const scene = useMemo(() => originalScene.clone(), [originalScene]);
-  const { actions } = useAnimations(animations, scene);
+  const { actions, mixer } = useAnimations(animations, scene);
+
+  // Guarda a pose original de todos os ossos e meshes
+  const initialTransforms = useMemo(() => {
+    const map = new Map();
+    scene.traverse((child) => {
+      map.set(child.uuid, {
+        position: child.position.clone(),
+        rotation: child.rotation.clone(),
+        scale: child.scale.clone()
+      });
+    });
+    return map;
+  }, [scene]);
 
   useEffect(() => {
     if (textureUrl) {
@@ -54,7 +67,19 @@ function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string
     let targetAction: THREE.AnimationAction | null = null;
     
     if (animationName && animationName !== 'none') {
-      const possibleNames = [animationName, animationName.toUpperCase(), animationName.toLowerCase(), 'animation.idle', 'animation.walk'];
+      const possibleNames = [
+        animationName, 
+        animationName.toUpperCase(), 
+        animationName.toLowerCase(), 
+        `animation.${animationName}`, 
+        `animation.${animationName.toLowerCase()}`,
+        `Armature|${animationName}`,
+        `Armature|${animationName.toLowerCase()}`,
+        `attack1`,
+        `attack2`,
+        'animation.idle', 
+        'animation.walk'
+      ];
       for (const name of possibleNames) {
         if (actions[name]) {
           targetAction = actions[name];
@@ -68,10 +93,22 @@ function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string
     }
 
     if (targetAction) {
+      // Restaura a pose original do esqueleto antes de transicionar
+      // Isso impede que ossos "presos" por animações anteriores deformem ou movam o modelo pra perto da câmera
+      scene.traverse((child) => {
+        const initial = initialTransforms.get(child.uuid);
+        if (initial) {
+          child.position.copy(initial.position);
+          child.rotation.copy(initial.rotation);
+          child.scale.copy(initial.scale);
+        }
+      });
+      
+      mixer.stopAllAction();
       targetAction.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.2).play();
       return () => { targetAction?.fadeOut(0.2); };
     }
-  }, [actions, animationName]);
+  }, [actions, animationName, mixer, scene, initialTransforms]);
 
   const targetRotation = React.useMemo(() => {
     if (!role) return [0, Math.PI, 0];

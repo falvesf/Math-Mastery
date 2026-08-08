@@ -211,13 +211,13 @@ h3 {
 }
 
 @keyframes teleport-attack-monster {
-  0% { transform: translateX(0); opacity: 1; filter: blur(0); }
-  15% { transform: translateX(30px); opacity: 0; filter: blur(10px); }
+  0% { transform: translateX(0) scale(1); opacity: 1; filter: blur(0); }
+  15% { transform: translateX(30px) scale(1); opacity: 0; filter: blur(10px); }
   33% { transform: translateX(calc(var(--attack-dist) * -1 + 40px)) scale(1.3); opacity: 1; filter: blur(0); }
   45% { transform: translateX(calc(var(--attack-dist) * -1)) scale(1.3) rotate(-15deg); }
   60% { transform: translateX(calc(var(--attack-dist) * -1)) scale(1.3) rotate(-15deg); opacity: 1; filter: blur(0); }
   75% { transform: translateX(calc(var(--attack-dist) * -1)) scale(1.3) rotate(-15deg); opacity: 0; filter: blur(10px); }
-  100% { transform: translateX(0); opacity: 1; filter: blur(0); }
+  100% { transform: translateX(0) scale(1); opacity: 1; filter: blur(0); }
 }
 
 @keyframes death-evaporate {
@@ -259,6 +259,34 @@ h3 {
   animation: teleport-attack-monster 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
+.teleport-player.is-3d {
+  animation: teleport-attack-player-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.teleport-monster.is-3d {
+  animation: teleport-attack-monster-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes teleport-attack-player-3d {
+  0% { transform: translateX(0); opacity: 1; filter: blur(0); }
+  20% { transform: translateX(-30px); opacity: 0; filter: blur(10px); }
+  33% { transform: translateX(calc(var(--attack-dist) - 40px)); opacity: 1; filter: blur(0); }
+  45% { transform: translateX(var(--attack-dist)) rotate(15deg); }
+  60% { transform: translateX(var(--attack-dist)) rotate(15deg); opacity: 1; filter: blur(0); }
+  75% { transform: translateX(var(--attack-dist)) rotate(15deg); opacity: 0; filter: blur(10px); }
+  100% { transform: translateX(0); opacity: 1; filter: blur(0); }
+}
+
+@keyframes teleport-attack-monster-3d {
+  0% { transform: translateX(0); opacity: 1; filter: blur(0); }
+  15% { transform: translateX(30px); opacity: 0; filter: blur(10px); }
+  33% { transform: translateX(calc(var(--attack-dist) * -1 + 40px)); opacity: 1; filter: blur(0); }
+  45% { transform: translateX(calc(var(--attack-dist) * -1)) rotate(-15deg); }
+  60% { transform: translateX(calc(var(--attack-dist) * -1)) rotate(-15deg); opacity: 1; filter: blur(0); }
+  75% { transform: translateX(calc(var(--attack-dist) * -1)) rotate(-15deg); opacity: 0; filter: blur(10px); }
+  100% { transform: translateX(0); opacity: 1; filter: blur(0); }
+}
+
 .anim-death-evaporate {
   animation: death-evaporate 4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
@@ -271,8 +299,8 @@ h3 {
 }
 
 @keyframes teleport-attack-monster-fatal {
-  0% { transform: translateX(0); opacity: 1; filter: blur(0); }
-  20% { transform: translateX(30px); opacity: 0; filter: blur(10px); }
+  0% { transform: translateX(0) scale(1); opacity: 1; filter: blur(0); }
+  20% { transform: translateX(30px) scale(1); opacity: 0; filter: blur(10px); }
   33% { transform: translateX(calc(var(--attack-dist) * -1 + 40px)) scale(1.3); opacity: 1; filter: blur(0); }
   100% { transform: translateX(calc(var(--attack-dist) * -1 - 20px)) scale(1.3) rotate(-15deg); opacity: 1; filter: blur(0); }
 }
@@ -283,6 +311,36 @@ h3 {
 
 .teleport-monster-fatal {
   animation: teleport-attack-monster-fatal 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.teleport-player-fatal.is-3d {
+  animation: teleport-attack-player-fatal-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.teleport-monster-fatal.is-3d {
+  animation: teleport-attack-monster-fatal-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.teleport-player-fatal-slow.is-3d {
+  animation: teleport-attack-player-fatal-3d 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.teleport-monster-fatal-slow.is-3d {
+  animation: teleport-attack-monster-fatal-3d 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes teleport-attack-player-fatal-3d {
+  0% { transform: translateX(0); opacity: 1; filter: blur(0); }
+  20% { transform: translateX(-30px); opacity: 0; filter: blur(10px); }
+  33% { transform: translateX(calc(var(--attack-dist) - 40px)); opacity: 1; filter: blur(0); }
+  100% { transform: translateX(calc(var(--attack-dist) + 20px)) rotate(15deg); opacity: 1; filter: blur(0); }
+}
+
+@keyframes teleport-attack-monster-fatal-3d {
+  0% { transform: translateX(0); opacity: 1; filter: blur(0); }
+  20% { transform: translateX(30px); opacity: 0; filter: blur(10px); }
+  33% { transform: translateX(calc(var(--attack-dist) * -1 + 40px)); opacity: 1; filter: blur(0); }
+  100% { transform: translateX(calc(var(--attack-dist) * -1 - 20px)) rotate(-15deg); opacity: 1; filter: blur(0); }
 }
 
 .teleport-player-fatal-slow {
@@ -357,7 +415,9 @@ h3 {
   border-radius: 16px;
   font-weight: bold;
   font-size: 0.95rem;
-  white-space: nowrap;
+  white-space: normal;
+  max-width: 200px;
+  text-align: center;
   box-shadow: 0 4px 15px rgba(0,0,0,0.4);
   animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
   z-index: 30;
@@ -373,6 +433,15 @@ h3 {
   border-width: 8px;
   border-style: solid;
   border-color: white transparent transparent transparent;
+}
+
+.speech-bubble.player {
+  margin-left: -20px;
+  margin-bottom: 15px;
+}
+
+.speech-bubble.monster {
+  margin-left: 20px;
 }
 
 @keyframes popIn {

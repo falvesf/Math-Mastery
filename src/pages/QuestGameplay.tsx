@@ -442,6 +442,9 @@ export default function QuestGameplay() {
         setPlayerBubble(msg);
         setBattleMessage('Câmera lenta ativada! Golpe final épico!');
         
+        // Espera 1.125s para o monstro sentir o golpe (momento exato do impacto)
+        setTimeout(() => setMonsterAnim('hurt'), 1125);
+        
         setTimeout(() => {
           setMonsterAnim(fatality);
           setMonsterBubble(monsterDefeatQuote);
@@ -459,7 +462,10 @@ export default function QuestGameplay() {
       setTimeout(() => {
         setMonsterAnim('attack-fatal-slow');
         setMonsterBubble(msg);
-        setBattleMessage('GOLPE FATAL DO MONSTRO! Câmera lenta ativada...');
+        setBattleMessage('O monstro está preparando um ataque letal!');
+        
+        // Espera 1.125s para o jogador sentir o golpe
+        setTimeout(() => setPlayerAnim('hurt'), 1125);
         
         setTimeout(() => {
           setPlayerAnim('death-fall');
@@ -1124,11 +1130,11 @@ export default function QuestGameplay() {
             
             {/* Player Side */}
             <div 
-              className={playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : ''}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: 10 }}
+              className={`${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : ''} ${userData?.avatarConfig?.customModelUrl ? 'is-3d' : ''}`}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: playerAnim.startsWith('attack') ? 30 : 10 }}
             >
               {playerBubble && (
-                <div className="speech-bubble">
+                <div className="speech-bubble player">
                   {playerBubble}
                 </div>
               )}
@@ -1153,11 +1159,11 @@ export default function QuestGameplay() {
 
             {/* Monster Side */}
             <div 
-              className={monsterAnim === 'attack' ? 'teleport-monster' : (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` : ''}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: 10 }}
+              className={`${monsterAnim === 'attack' ? 'teleport-monster' : (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` : ''} ${(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 'is-3d' : ''}`}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: monsterAnim.startsWith('attack') ? 30 : 10 }}
             >
               {monsterBubble && (
-                <div className="speech-bubble">
+                <div className="speech-bubble monster">
                   {monsterBubble}
                 </div>
               )}

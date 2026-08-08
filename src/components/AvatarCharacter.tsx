@@ -40,6 +40,7 @@ export interface AvatarConfig {
   firstEditAt?: number;
   genderUnlockUntil?: number;
   savedPreSkinConfig?: Partial<AvatarConfig>;
+  savedOppositeGenderConfig?: Partial<AvatarConfig>;
 }
 
 export interface EquippedItem {
@@ -1026,8 +1027,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         const nonAttackArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
 
         if (shouldSwing) {
-            // Movimento rápido de ataque com braço da arma e pequeno avanço
-            const swingValue = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * 15) * 2;
+            // Movimento de ataque com braço da arma e pequeno avanço
+            const swingSpeed = animation === 'attack-fatal-slow' ? 4 : 15;
+            const swingValue = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * swingSpeed) * 2;
             attackArm.rotation.x = swingValue;
             if (hasTwoHanded) {
                 nonAttackArm.rotation.x = swingValue;
@@ -1037,7 +1039,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 nonAttackArm.rotation.y = (isLeftHanded ? -Math.PI / 3 : Math.PI / 3);
                 nonAttackArm.rotation.z = (isLeftHanded ? -Math.PI / 8 : Math.PI / 8);
             }
-            player.position.z = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * 10) * 2;
+            const moveSpeed = animation === 'attack-fatal-slow' ? 3 : 10;
+            player.position.z = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * moveSpeed) * 2;
         } else {
             // Apenas preparando o golpe (braço erguido) enquanto teleporta
             attackArm.rotation.x = -Math.PI / 1.5;
