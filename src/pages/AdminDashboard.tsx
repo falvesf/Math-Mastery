@@ -1180,14 +1180,16 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            <button 
-                              className="login-btn" 
-                              onClick={() => openEditModal(student)}
-                              style={{ padding: '0.5rem', background: 'var(--btn-bg)', borderColor: 'transparent' }}
-                              title="Editar/Promover Usuário"
-                            >
-                              <Edit2 size={18} />
-                            </button>
+                            {student.uid !== userData?.uid && student.role !== 'admin' && (
+                              <button 
+                                className="login-btn" 
+                                onClick={() => openEditModal(student)}
+                                style={{ padding: '0.5rem', background: 'var(--btn-bg)', borderColor: 'transparent' }}
+                                title="Editar/Promover Usuário"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                            )}
                             {student.role === 'student' && (
                               <button 
                                 className="login-btn" 
@@ -1198,14 +1200,16 @@ export default function AdminDashboard() {
                                 <Star size={18} />
                               </button>
                             )}
-                            <button 
-                              className="login-btn" 
-                              onClick={() => setDeletingStudent(student)}
-                              style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', borderColor: 'transparent' }}
-                              title="Excluir Usuário"
-                            >
-                              <Trash2 size={18} />
-                            </button>
+                            {student.uid !== userData?.uid && student.role !== 'admin' && (
+                              <button 
+                                className="login-btn" 
+                                onClick={() => setDeletingStudent(student)}
+                                style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', borderColor: 'transparent' }}
+                                title="Excluir Usuário"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -1846,7 +1850,7 @@ export default function AdminDashboard() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div className="glass-panel" style={{ width: '400px', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>Editar Aluno</h3>
+              <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>Editar Usuário</h3>
               <button onClick={() => setEditingStudent(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
                 <X size={24} />
               </button>
@@ -1873,7 +1877,7 @@ export default function AdminDashboard() {
                     <option value="student">Aluno (Padrão)</option>
                     <option value="teacher">Professor</option>
                     <option value="coordinator">Coordenador</option>
-                    <option value="admin">Administrador (Super)</option>
+                    <option value="admin">Administrador (Gerente)</option>
                   </select>
                 </>
               )}
