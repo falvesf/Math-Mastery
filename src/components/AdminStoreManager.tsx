@@ -69,7 +69,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common'
   });
   
-  const [showGallery, setShowGallery] = useState(false);
+  const [showGallery, setShowGallery] = useState<'image' | 'model' | null>(null);
   const [showTransformModal, setShowTransformModal] = useState(false);
   const [showGachaModal, setShowGachaModal] = useState(false);
   const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
@@ -208,10 +208,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       {showGallery && createPortal(
         <ImageGalleryModal 
           apiKey={pixabayKey}
-          onClose={() => setShowGallery(false)}
+          onClose={() => setShowGallery(null)}
           onSelectImage={(url) => {
-            setFormData({ ...formData, imageUrl: url });
-            setShowGallery(false);
+            if (showGallery === 'model') {
+              setFormData({ ...formData, gameModelUrl: url });
+            } else {
+              setFormData({ ...formData, imageUrl: url });
+            }
+            setShowGallery(null);
           }}
         />,
         document.body
@@ -539,8 +543,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 </div>
                 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL do Modelo 3D (.glb) [Opcional]</label>
-                  <input type="text" value={formData.gameModelUrl || ''} onChange={e => setFormData({...formData, gameModelUrl: e.target.value})} placeholder="/models/item.glb" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', marginBottom: '0.5rem' }} />
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL do Modelo 3D (.glb) ou Sprite Pixel Art (.png) [Opcional]</label>
+                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+                    <input type="text" value={formData.gameModelUrl || ''} onChange={e => setFormData({...formData, gameModelUrl: e.target.value})} placeholder="/models/item.glb ou https://.../imagem.png" style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                    <DirectUploadButton folder="models" onUploadComplete={(url) => setFormData({...formData, gameModelUrl: url})} buttonStyle={{ minHeight: '100%' }} />
+                    <button onClick={() => setShowGallery('model')} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
+                      <Search size={20} />
+                    </button>
+                  </div>
                   {formData.gameModelUrl && formData.gameModelUrl.trim() !== '' && (
                     <button 
                       onClick={() => setShowTransformModal(true)}
@@ -586,7 +596,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <input type="text" value={formData.imageUrl || ''} onChange={e => setFormData({...formData, imageUrl: e.target.value})} placeholder="URL ou busque na galeria ->" style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                 <DirectUploadButton folder="store" onUploadComplete={(url) => setFormData({...formData, imageUrl: url})} buttonStyle={{ minHeight: '100%' }} />
-                <button onClick={() => setShowGallery(true)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
+                <button onClick={() => setShowGallery('image')} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                   <Search size={20} />
                 </button>
               </div>

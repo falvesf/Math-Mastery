@@ -5,6 +5,7 @@ import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/G
 import * as THREE from 'skinview3d/node_modules/three';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
+import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
 
 export interface AvatarConfig {
   gender?: 'male' | 'female';
@@ -13,15 +14,29 @@ export interface AvatarConfig {
   eyeColor?: string;
   hairStyle?: string;
   mouthStyle?: string;
+  lipstickColor?: string;
   eyeStyle?: string;
   shirtColor?: string;
   pantsColor?: string;
-  clothingStyle?: 'dress' | 'pants-shirt' | 't-shirt' | 'tank-top';
+  clothingStyle?: 'dress' | 'pants-shirt' | 't-shirt' | 'tank-top' | 'skirt' | 'crop-top' | 'overalls' | 'suit';
+  shoeStyle?: 'sneakers' | 'boots' | 'flats' | 'heels' | 'sandals';
+  shoeColor?: string;
+  hairAccessory?: 'none' | 'flower' | 'bow' | 'headband' | 'glasses'; // Mantido para retrocompatibilidade
+  hairAccessories?: string[]; // Suporta múltiplos acessórios
+  hairTieColor?: string; // Cor do laço das marias-chiquinhas
+  accessoryColor?: string; // Mantido para retrocompatibilidade
+  accessoryColors?: string[]; // Suporta cores múltiplas
+  glasses?: 'none' | 'classic' | 'thin' | 'round' | 'sunglasses';
+  glassesColor?: string;
   facialHair?: 'none' | 'beard' | 'mustache' | 'goatee';
+  facialHairColor?: string;
   handedness?: 'right' | 'left';
-  animationState?: 'idle' | 'walk' | 'run' | 'attack';
+  animationState?: 'idle' | 'walk' | 'run' | 'attack' | 'raise-hand';
   customSkinUrl?: string;
   customModelUrl?: string;
+  ponytailLength?: number;
+  ponytailThickness?: number;
+  ponytailAngle?: number;
 }
 
 export interface EquippedItem {
@@ -51,6 +66,7 @@ export interface ModelTransform {
   rotZ: number;
   slide: number;
   scale?: number;
+  thickness?: number;
 }
 
 export interface ModelTransformsConfig {
@@ -65,7 +81,7 @@ export interface AvatarCharacterProps {
   equippedItems?: EquippedItem[];
   size?: number;
   interactive?: boolean;
-  animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'cheer' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice';
+  animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'cheer' | 'raise-hand' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice';
   expression?: 'normal' | 'serious' | 'sad';
   role?: 'player' | 'monster';
   showSlots?: boolean;
@@ -82,6 +98,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
   const [modelsLoadedCount, setModelsLoadedCount] = useState(0);
+  const customHairRef = useRef<THREE.Group | null>(null);
 
   // States to hold generated skin URLs
   const [skinUrls, setSkinUrls] = useState<{
@@ -171,56 +188,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         }
         console.log(`Carregando modelo 3D para o item ${item.itemTitle}:`, safeUrl);
         
-        loader.load(
-          safeUrl, 
-          (gltf) => {
-            if (isCancelled) return;
-            console.log(`Modelo ${safeUrl} carregado com sucesso!`);
-            const model = gltf.scene;
-
-            if (item.modelTextureUrl) {
-              const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(item.modelTextureUrl)}`;
-              const texLoader = new THREE.TextureLoader();
-              texLoader.setCrossOrigin('anonymous');
-              
-              const loadTex = (url: string, fallbackUrl?: string) => {
-                texLoader.load(
-                  url,
-                  (texture) => {
-                    texture.flipY = false;
-                    texture.colorSpace = THREE.SRGBColorSpace;
-                    texture.magFilter = THREE.NearestFilter;
-                    texture.minFilter = THREE.NearestFilter;
-                    model.traverse((child) => {
-                      if ((child as THREE.Mesh).isMesh) {
-                        const mesh = child as THREE.Mesh;
-                        if (mesh.material) {
-                          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-                          materials.forEach(mat => {
-                            const stdMat = mat as THREE.MeshStandardMaterial;
-                            stdMat.map = texture;
-                            stdMat.color = new THREE.Color(0xffffff);
-                            stdMat.transparent = true;
-                            stdMat.alphaTest = 0.5;
-                            stdMat.needsUpdate = true;
-                          });
-                        }
-                      }
-                    });
-                  },
-                  undefined,
-                  (err) => {
-                    console.error(`Erro ao carregar texture do modelo via proxy ${url}:`, err);
-                    if (fallbackUrl) {
-                      loadTex(fallbackUrl);
-                    }
-                  }
-                );
-              };
-              const fallbackUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(item.modelTextureUrl)}`;
-              loadTex(proxyUrl, fallbackUrl);
-            }
-            
+        const processLoadedModel = (model: THREE.Object3D) => {
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
               const isDefense = item.itemCategory === 'defense';
               const isLeftHanded = config?.handedness === 'left';
@@ -239,7 +207,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 const inv = isLeftHanded ? -1 : 1;
                 
                 if (debugItemTransform && isTargetDebugItem) {
-                  model.scale.set(debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10);
+                  model.scale.set(debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10, (debugItemTransform.scale ?? 10) * (debugItemTransform.thickness ?? 1));
                   model.position.set(debugItemTransform.posX * inv, debugItemTransform.posY, debugItemTransform.posZ);
                   model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY * inv, debugItemTransform.rotZ * inv);
                   model.translateY(debugItemTransform.slide);
@@ -251,7 +219,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                                 : isBattle && item.modelTransforms.battle ? item.modelTransforms.battle 
                                 : item.modelTransforms.common;
                   if (transform) {
-                    model.scale.set(transform.scale ?? 10, transform.scale ?? 10, transform.scale ?? 10);
+                    model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
                     model.position.set(transform.posX * inv, transform.posY, transform.posZ);
                     model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
                     model.translateY(transform.slide);
@@ -287,14 +255,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               let appliedTransform = false;
               const itemId = item.itemId || item.docId;
               if (debugItemTransform && debugItemId === itemId) {
-                model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16);
+                model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, (debugItemTransform.scale ?? 16) * (debugItemTransform.thickness ?? 1));
                 model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
                 model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
               } else if (item.modelTransforms && item.modelTransforms.common) {
                 const t = item.modelTransforms.common;
-                model.scale.set(t.scale ?? 16, t.scale ?? 16, t.scale ?? 16);
+                model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
                 model.position.set(t.posX, t.posY, t.posZ);
                 model.rotation.set(t.rotX, t.rotY, t.rotZ);
                 model.translateY(t.slide);
@@ -315,14 +283,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               let appliedTransform = false;
               const itemId = item.itemId || item.docId;
               if (debugItemTransform && debugItemId === itemId) {
-                model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16);
+                model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, (debugItemTransform.scale ?? 16) * (debugItemTransform.thickness ?? 1));
                 model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
                 model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
               } else if (item.modelTransforms && item.modelTransforms.common) {
                 const t = item.modelTransforms.common;
-                model.scale.set(t.scale ?? 16, t.scale ?? 16, t.scale ?? 16);
+                model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
                 model.position.set(t.posX, t.posY, t.posZ);
                 model.rotation.set(t.rotX, t.rotY, t.rotZ);
                 model.translateY(t.slide);
@@ -344,12 +312,84 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             if (!isCancelled) {
               setModelsLoadedCount(prev => prev + 1);
             }
-          },
-          undefined,
-          (error) => {
-            console.error(`Falha ao carregar o modelo 3D (${safeUrl}):`, error);
+        };
+
+        // Extrai apenas o caminho da URL para ignorar parâmetros de query (ex: ?alt=media&token=...)
+        const getExtension = (urlPath: string) => {
+          try {
+            return new URL(urlPath, window.location.origin).pathname.toLowerCase();
+          } catch {
+            return urlPath.toLowerCase().split('?')[0];
           }
-        );
+        };
+
+        if (getExtension(safeUrl).endsWith('.png')) {
+           generateVoxelItemFromImage(safeUrl)
+             .then(model => {
+                if (isCancelled) return;
+                console.log(`Voxel gerado com sucesso a partir da imagem ${safeUrl}`);
+                processLoadedModel(model);
+             })
+             .catch(err => console.error(err));
+        } else {
+           loader.load(
+             safeUrl, 
+             (gltf) => {
+               if (isCancelled) return;
+               console.log(`Modelo ${safeUrl} carregado com sucesso!`);
+               const model = gltf.scene;
+   
+               if (item.modelTextureUrl) {
+                 const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(item.modelTextureUrl)}`;
+                 const texLoader = new THREE.TextureLoader();
+                 texLoader.setCrossOrigin('anonymous');
+                 
+                 const loadTex = (url: string, fallbackUrl?: string) => {
+                   texLoader.load(
+                     url,
+                     (texture) => {
+                       texture.flipY = false;
+                       texture.colorSpace = THREE.SRGBColorSpace;
+                       texture.magFilter = THREE.NearestFilter;
+                       texture.minFilter = THREE.NearestFilter;
+                       model.traverse((child) => {
+                         if ((child as THREE.Mesh).isMesh) {
+                           const mesh = child as THREE.Mesh;
+                           if (mesh.material) {
+                             const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                             materials.forEach(mat => {
+                               const stdMat = mat as THREE.MeshStandardMaterial;
+                               stdMat.map = texture;
+                               stdMat.color = new THREE.Color(0xffffff);
+                               stdMat.transparent = true;
+                               stdMat.alphaTest = 0.5;
+                               stdMat.needsUpdate = true;
+                             });
+                           }
+                         }
+                       });
+                     },
+                     undefined,
+                     (err) => {
+                       console.error(`Erro ao carregar texture do modelo via proxy ${url}:`, err);
+                       if (fallbackUrl) {
+                         loadTex(fallbackUrl);
+                       }
+                     }
+                   );
+                 };
+                 const fallbackUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(item.modelTextureUrl)}`;
+                 loadTex(proxyUrl, fallbackUrl);
+               }
+               
+               processLoadedModel(model);
+             },
+             undefined,
+             (error) => {
+               console.error(`Falha ao carregar o modelo 3D (${safeUrl}):`, error);
+             }
+           );
+        }
       } else if (item.minecraftHeadValue && item.minecraftHeadValue.trim() !== '' && item.avatarPart === 'head') {
         let textureUrl = item.minecraftHeadValue.trim();
         // Decode Base64 from Mojang format if it doesn't look like an HTTP URL
@@ -529,7 +569,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         const inv = isLeftHanded ? -1 : 1;
 
         if (debugItemTransform && isTargetDebugItem) {
-          model.scale.set(debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10);
+          model.scale.set(debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10, (debugItemTransform.scale ?? 10) * (debugItemTransform.thickness ?? 1));
           model.position.set(debugItemTransform.posX * inv, debugItemTransform.posY, debugItemTransform.posZ);
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY * inv, debugItemTransform.rotZ * inv);
           // Reset position Y, then translate
@@ -551,7 +591,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           }
           
           if (transform) {
-            model.scale.set(transform.scale ?? 10, transform.scale ?? 10, transform.scale ?? 10);
+            model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
             model.position.set(transform.posX * inv, transform.posY, transform.posZ);
             model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
             model.position.y = transform.posY;
@@ -579,7 +619,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         const isTargetDebugItem = debugItemId === itemId;
         const defaultHeadScale = item.minecraftHeadValue ? 9.2 : 16;
         if (debugItemTransform && isTargetDebugItem) {
-          model.scale.set(debugItemTransform.scale ?? defaultHeadScale, debugItemTransform.scale ?? defaultHeadScale, debugItemTransform.scale ?? defaultHeadScale);
+          model.scale.set(debugItemTransform.scale ?? defaultHeadScale, debugItemTransform.scale ?? defaultHeadScale, (debugItemTransform.scale ?? defaultHeadScale) * (debugItemTransform.thickness ?? 1));
           model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
           // For head, we might want to respect the slide, similar to hands
@@ -588,7 +628,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           appliedTransform = true;
         } else if (item.modelTransforms && item.modelTransforms.common) {
           const t = item.modelTransforms.common;
-          model.scale.set(t.scale ?? defaultHeadScale, t.scale ?? defaultHeadScale, t.scale ?? defaultHeadScale);
+          model.scale.set(t.scale ?? defaultHeadScale, t.scale ?? defaultHeadScale, (t.scale ?? defaultHeadScale) * (t.thickness ?? 1));
           model.position.set(t.posX, t.posY, t.posZ);
           model.rotation.set(t.rotX, t.rotY, t.rotZ);
           model.position.y = t.posY;
@@ -608,7 +648,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         let appliedTransform = false;
         const isTargetDebugItem = debugItemId === itemId;
         if (debugItemTransform && isTargetDebugItem) {
-          model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16);
+          model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, (debugItemTransform.scale ?? 16) * (debugItemTransform.thickness ?? 1));
           model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
           model.position.y = debugItemTransform.posY;
@@ -630,6 +670,143 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       }
     });
   }, [debugTransformJson, debugItemId, animation, config?.handedness, modelsLoadedCount, equippedItemsJson]);
+
+  // 3c. Add 3D Head Addons (Ponytail, Bow, etc)
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !viewer.playerObject) return;
+
+    if (customHairRef.current) {
+      viewer.playerObject.skin.head.remove(customHairRef.current);
+      customHairRef.current = null;
+    }
+
+    const addonsGroup = new THREE.Group();
+    let hasAddons = false;
+
+    if (config?.hairStyle === 'ponytail') {
+      const hairColor = config.hairColor || '#4a3000';
+      const hairMaterial = new THREE.MeshBasicMaterial({ color: hairColor });
+      
+      const tieColor = config.hairTieColor || config.shirtColor || '#d63074';
+      const tieMaterial = new THREE.MeshBasicMaterial({ color: tieColor });
+
+      const length = config?.ponytailLength ?? 7;
+      const thickness = config?.ponytailThickness ?? 3.5;
+      const angle = (config?.ponytailAngle ?? 15) * (Math.PI / 180);
+
+      // Cabelo
+      const tailGeo = new THREE.BoxGeometry(thickness, length, thickness - 1);
+      const tailMesh = new THREE.Mesh(tailGeo, hairMaterial);
+      
+      // Ajuste para ficar preso atrás da cabeça e cair nas costas
+      tailMesh.position.set(0, - (length / 2), -5.25); 
+      tailMesh.rotation.x = angle;
+
+      // Laço
+      const tieGeo = new THREE.BoxGeometry(thickness + 1, 1.5, thickness);
+      const tieMesh = new THREE.Mesh(tieGeo, tieMaterial);
+      tieMesh.position.set(0, 0, -4.5);
+      tieMesh.rotation.x = angle;
+
+      addonsGroup.add(tailMesh);
+      addonsGroup.add(tieMesh);
+      hasAddons = true;
+    }
+
+    const accsToRender = config?.hairAccessories || [config?.hairAccessory || 'none'];
+    const fallbackColor = config?.accessoryColor || '#ff0000';
+    
+    accsToRender.forEach((acc, index) => {
+        if (acc === 'bow') {
+            const accColor = config?.accessoryColors?.[index] || fallbackColor;
+            const bowMaterial = new THREE.MeshBasicMaterial({ color: accColor });
+            
+            const loopGeo = new THREE.BoxGeometry(1.6, 1.6, 0.4);
+            const knotGeo = new THREE.BoxGeometry(0.8, 0.8, 0.6);
+            
+            const leftLoop = new THREE.Mesh(loopGeo, bowMaterial);
+            leftLoop.position.set(-1, 0, 0);
+            leftLoop.rotation.z = Math.PI / 8;
+            
+            const rightLoop = new THREE.Mesh(loopGeo, bowMaterial);
+            rightLoop.position.set(1, 0, 0);
+            rightLoop.rotation.z = -Math.PI / 8;
+            
+            const knot = new THREE.Mesh(knotGeo, bowMaterial);
+            knot.position.set(0, 0, 0.1);
+            
+            const bowGroup = new THREE.Group();
+            bowGroup.add(leftLoop);
+            bowGroup.add(rightLoop);
+            bowGroup.add(knot);
+            
+            // Posição no topo da cabeça à direita (perspectiva do personagem)
+            // A camada "chapéu" (cabelo) vai até ~Y=8.5, X=-4.5 e Z=4.5
+            bowGroup.position.set(-3.5, 8.4, 4.6);
+            bowGroup.rotation.x = -Math.PI / 10;
+            bowGroup.rotation.y = -Math.PI / 8;
+            bowGroup.rotation.z = Math.PI / 12;
+
+            addonsGroup.add(bowGroup);
+            hasAddons = true;
+        } else if (acc === 'flower') {
+            const accColor = config?.accessoryColors?.[index] || fallbackColor;
+            const flowerGroup = new THREE.Group();
+            
+            const petalMat = new THREE.MeshBasicMaterial({ color: accColor });
+            const centerMat = new THREE.MeshBasicMaterial({ color: '#f1c40f' });
+            
+            const petalGeo = new THREE.BoxGeometry(2, 2, 0.4);
+            const centerGeo = new THREE.BoxGeometry(1, 1, 0.6);
+            
+            const petals = new THREE.Mesh(petalGeo, petalMat);
+            const center = new THREE.Mesh(centerGeo, centerMat);
+            center.position.set(0, 0, 0.1);
+            
+            flowerGroup.add(petals);
+            flowerGroup.add(center);
+            
+            flowerGroup.position.set(-3.5, 8.4, 4.6);
+            flowerGroup.rotation.x = -Math.PI / 10;
+            flowerGroup.rotation.y = -Math.PI / 8;
+            flowerGroup.rotation.z = Math.PI / 12;
+
+            addonsGroup.add(flowerGroup);
+            hasAddons = true;
+        } else if (acc === 'headband') {
+            const accColor = config?.accessoryColors?.[index] || fallbackColor;
+            const headbandGroup = new THREE.Group();
+            
+            const mat = new THREE.MeshBasicMaterial({ color: accColor });
+            
+            // A cabeça e camada de cabelo chegam até ~Y=8.5 e X/Z=±4.5
+            const topGeo = new THREE.BoxGeometry(9.4, 0.4, 1.5);
+            const sideGeo = new THREE.BoxGeometry(0.4, 5, 1.5);
+            
+            const top = new THREE.Mesh(topGeo, mat);
+            top.position.set(0, 8.7, 1);
+            
+            const leftSide = new THREE.Mesh(sideGeo, mat);
+            leftSide.position.set(-4.5, 6.4, 1);
+            
+            const rightSide = new THREE.Mesh(sideGeo, mat);
+            rightSide.position.set(4.5, 6.4, 1);
+            
+            headbandGroup.add(top);
+            headbandGroup.add(leftSide);
+            headbandGroup.add(rightSide);
+            
+            addonsGroup.add(headbandGroup);
+            hasAddons = true;
+        }
+    });
+
+    if (hasAddons) {
+      viewer.playerObject.skin.head.add(addonsGroup);
+      customHairRef.current = addonsGroup;
+    }
+  }, [config?.hairStyle, config?.hairColor, config?.hairTieColor, config?.shirtColor, config?.ponytailLength, config?.ponytailThickness, config?.ponytailAngle, config?.hairAccessories, config?.hairAccessory, config?.accessoryColor, config?.accessoryColors]);
 
   // 4. Generate skins when config changes
   useEffect(() => {
@@ -687,22 +864,24 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       let blinkTimeout: any;
 
       const applySkins = async () => {
+          const modelType = config.gender === 'female' ? 'slim' : 'default';
+
           if (animation === 'hurt') {
-              await viewerRef.current!.loadSkin(skinUrls.sad.blink);
+              await viewerRef.current!.loadSkin(skinUrls.sad.blink, { model: modelType });
           } else {
               const activeUrls = skinUrls[expression] || skinUrls.normal;
-              await viewerRef.current!.loadSkin(activeUrls.base);
+              await viewerRef.current!.loadSkin(activeUrls.base, { model: modelType });
               
               if (!isMounted) return;
               
               blinkInterval = setInterval(() => {
                   if (!viewerRef.current || !isMounted) return;
                   if (activeUrls.blink === activeUrls.base) return; 
-                  viewerRef.current.loadSkin(activeUrls.blink);
+                  viewerRef.current.loadSkin(activeUrls.blink, { model: modelType });
                   
                   blinkTimeout = setTimeout(() => {
                       if (viewerRef.current && isMounted) {
-                          viewerRef.current.loadSkin(activeUrls.base);
+                          viewerRef.current.loadSkin(activeUrls.base, { model: modelType });
                       }
                   }, 150);
               }, 3500 + Math.random() * 2000);
@@ -807,6 +986,23 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         player.skin.rightLeg.rotation.x = 0;
         player.skin.leftLeg.rotation.z = -0.1;
         player.skin.rightLeg.rotation.z = 0.1;
+      });
+    } else if (animation === 'raise-hand') {
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        const isLeftHanded = config?.handedness === 'left';
+        const raisedArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
+        const otherArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
+        
+        // Braço dominante levanta (exibindo a mão)
+        raisedArm.rotation.x = -Math.PI / 1.2;
+        raisedArm.rotation.z = isLeftHanded ? 0.2 : -0.2;
+        
+        // Braço secundário fica normal
+        otherArm.rotation.x = 0;
+        otherArm.rotation.z = 0;
+        
+        // Leve movimento de respiração
+        player.position.y = Math.sin(time * 3) * 1;
       });
     } else if (animation?.startsWith('attack')) {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
