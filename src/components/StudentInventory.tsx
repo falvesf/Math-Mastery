@@ -314,6 +314,20 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return;
       }
       
+      const skinsRef = collection(db, 'preset_skins');
+      const q = query(skinsRef, where('url', '==', skinId));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const skinData = querySnapshot.docs[0].data();
+        const genderTarget = skinData.genderTarget;
+        const currentGender = userData.avatarConfig?.gender || 'male';
+        if (genderTarget && genderTarget !== 'both' && genderTarget !== currentGender) {
+          await showAlert(`Esta skin é exclusiva para o gênero ${genderTarget === 'male' ? 'Masculino' : 'Feminino'}. Mude o gênero do seu avatar para usá-la.`);
+          return;
+        }
+      }
+      
       const confirmed = await showConfirm(`Deseja usar este item para liberar a skin por ${item.buffDurationDays || 7} dias?`);
       if (!confirmed) return;
       
@@ -337,7 +351,23 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
 
-    if (item.gameEffect && item.gameEffect !== 'none' && item.gameEffect !== 'restore_hp' && item.gameEffect !== 'unlock_skin') {
+    if (item.gameEffect === 'unlock_gender') {
+      const confirmed = await showConfirm(`Deseja usar este item para liberar a troca de gênero por 15 minutos?`);
+      if (!confirmed) return;
+      
+      const userRef = doc(db, 'users', userData.uid);
+      const newUnlock = Date.now() + 15 * 60 * 1000;
+      await updateDoc(userRef, {
+        'avatarConfig.genderUnlockUntil': newUnlock
+      });
+      
+      await consumeItemQuantity(item.itemId, 1, item.id);
+      fetchInventory();
+      await showAlert(`Seletor de gênero liberado por 15 minutos!`);
+      return;
+    }
+
+    if (item.gameEffect && item.gameEffect !== 'none' && item.gameEffect !== 'restore_hp' && item.gameEffect !== 'unlock_skin' && item.gameEffect !== 'unlock_gender') {
       await showAlert(`O item "${item.itemTitle}" é um Poder de Jogo! Você só pode utilizá-lo de dentro de uma Missão/Desafio ativo.`);
       return;
     }

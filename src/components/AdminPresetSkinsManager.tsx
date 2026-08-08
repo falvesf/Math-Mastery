@@ -21,6 +21,7 @@ export default function AdminPresetSkinsManager() {
   const [url, setUrl] = useState('');
   const [type, setType] = useState<'human' | 'monster' | 'equipment'>('human');
   const [baseModelId, setBaseModelId] = useState<string>('default');
+  const [genderTarget, setGenderTarget] = useState<'male' | 'female' | 'both'>('both');
 
   const [models3d, setModels3d] = useState<any[]>([]);
 
@@ -65,12 +66,14 @@ export default function AdminPresetSkinsManager() {
       setUrl(skin.url);
       setType(skin.type || activeTab);
       setBaseModelId(skin.baseModelId || 'default');
+      setGenderTarget(skin.genderTarget || 'both');
     } else {
       setEditingId(null);
       setName('');
       setUrl('');
       setType(activeTab); // Initialize with the active tab
       setBaseModelId('default');
+      setGenderTarget('both');
     }
     setIsModalOpen(true);
   };
@@ -91,7 +94,7 @@ export default function AdminPresetSkinsManager() {
     }
 
     try {
-      const data = { name: name.trim(), url: url.trim(), type, baseModelId: baseModelId === 'default' ? null : baseModelId };
+      const data = { name: name.trim(), url: url.trim(), type, baseModelId: baseModelId === 'default' ? null : baseModelId, genderTarget };
       if (editingId) {
         await updateDoc(doc(db, 'preset_skins', editingId), data);
         showAlert('Skin atualizada com sucesso!');
@@ -223,6 +226,18 @@ export default function AdminPresetSkinsManager() {
                   ))}
                 </select>
               </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Gênero Alvo</label>
+                <select 
+                  value={genderTarget} 
+                  onChange={e => setGenderTarget(e.target.value as any)} 
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                >
+                  <option value="both">Ambos (Unissex)</option>
+                  <option value="male">Masculino</option>
+                  <option value="female">Feminino</option>
+                </select>
+              </div>
             </div>
 
             <button 
@@ -258,6 +273,11 @@ export default function AdminPresetSkinsManager() {
                         <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: skin.type === 'monster' ? 'rgba(239, 68, 68, 0.2)' : skin.type === 'equipment' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: skin.type === 'monster' ? '#f87171' : skin.type === 'equipment' ? '#f59e0b' : '#60a5fa', borderRadius: '1rem' }}>
                           {skin.type === 'monster' ? 'Monstro' : skin.type === 'equipment' ? 'Equipamento' : 'Humano'}
                         </span>
+                        {skin.genderTarget && skin.genderTarget !== 'both' && (
+                          <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: skin.genderTarget === 'male' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(236, 72, 153, 0.2)', color: skin.genderTarget === 'male' ? '#60a5fa' : '#f472b6', borderRadius: '1rem' }}>
+                            {skin.genderTarget === 'male' ? 'Masculino' : 'Feminino'}
+                          </span>
+                        )}
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button onClick={() => handleOpenModal(skin)} style={{ padding: '0.5rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>

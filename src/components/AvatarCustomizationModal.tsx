@@ -30,6 +30,7 @@ export interface PresetSkin {
   type: 'human' | 'monster' | 'equipment';
   baseModelId?: string | null;
   config?: AvatarConfig;
+  genderTarget?: 'male' | 'female' | 'both';
 }
 
 const SKIN_COLORS = ['#ffcc99', '#f1c27d', '#e0ac69', '#8d5524', '#c68642', '#3d2c23'];
@@ -303,9 +304,17 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
 
   const handleSave = async () => {
     setSaving(true);
+    
+    // Set firstEditAt if it doesn't exist
+    const configToSave = { ...config };
+    if (!configToSave.firstEditAt) {
+      configToSave.firstEditAt = Date.now();
+    }
+    setConfig(configToSave);
+
     try {
       if (!customSaveMode && userData && !inline) {
-        await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: config });
+        await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: configToSave });
         if (onSave) {
           onSave(config, monsterName);
         }
@@ -385,9 +394,12 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     const randomItem = (arr: any[]) => arr[Math.floor(Math.random() * arr.length)];
     
     // Sugerir da galeria global
-    const relevantPresets = presetSkins.filter(s => s.type === (customSaveMode ? 'monster' : 'human') && s.config);
-    if (relevantPresets.length > 0 && Math.random() < 0.4) {
-      const selected = randomItem(relevantPresets);
+    const availableSkins = presetSkins.filter(s => 
+      (s.type || 'human') === (customSaveMode ? 'monster' : 'human') &&
+      (!s.genderTarget || s.genderTarget === 'both' || s.genderTarget === config.gender)
+    );
+    if (availableSkins.length > 0 && Math.random() < 0.4) {
+      const selected = randomItem(availableSkins);
       if (selected.config) {
         setConfig(selected.config);
         return;
@@ -443,7 +455,14 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     }
   };
 
-
+  const isGenderLocked = (() => {
+    if (isAdmin || customSaveMode) return false;
+    if (!config.firstEditAt) return false;
+    const now = Date.now();
+    const isWithinFirst15Min = now < config.firstEditAt + 15 * 60 * 1000;
+    const hasUnlockActive = config.genderUnlockUntil && now < config.genderUnlockUntil;
+    return !isWithinFirst15Min && !hasUnlockActive;
+  })();
 
   return (
     <div style={inline ? { width: '100%' } : {
@@ -736,9 +755,12 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               const availableSkins = presetSkins.filter(s => {
                 if ((s.type || 'human') !== 'human') return false;
                 const isStaff = userData?.role !== 'student' || isAdmin;
-                if (isStaff) return true;
-                const expiry = userData?.unlockedSkins?.[s.url];
-                return expiry && expiry > Date.now();
+                if (!isStaff) {
+                  const expiry = userData?.unlockedSkins?.[s.url];
+                  if (!expiry || expiry <= Date.now()) return false;
+                }
+                if (s.genderTarget && s.genderTarget !== 'both' && s.genderTarget !== config.gender) return false;
+                return true;
               });
 
               if (availableSkins.length === 0) return null;
@@ -798,8 +820,11 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               {activeTab === 'features' && (
                 <>
                   <div style={{ marginBottom: '0.75rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Modelo Base (Gênero)</label>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                      Modelo Base (Gênero)
+                      {isGenderLocked && <span style={{ fontSize: '0.75rem', color: 'var(--accent-red)' }}>(Bloqueado - Requer Item da Loja)</span>}
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', opacity: isGenderLocked ? 0.5 : 1, pointerEvents: isGenderLocked ? 'none' : 'auto' }}>
                       {['male', 'female'].map(gender => (
                         <button
                           key={gender}

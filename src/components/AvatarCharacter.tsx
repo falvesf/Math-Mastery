@@ -37,6 +37,8 @@ export interface AvatarConfig {
   ponytailLength?: number;
   ponytailThickness?: number;
   ponytailAngle?: number;
+  firstEditAt?: number;
+  genderUnlockUntil?: number;
 }
 
 export interface EquippedItem {
