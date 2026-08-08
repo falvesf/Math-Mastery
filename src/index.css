@@ -347,12 +347,20 @@ h3 {
   animation: teleport-attack-player-fatal 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
+.teleport-player-victory {
+  transform: translateX(calc(var(--attack-dist) + 20px));
+}
+
+.teleport-monster-victory {
+  transform: translateX(calc(var(--attack-dist) * -1 - 20px));
+}
+
 .teleport-monster-fatal-slow {
   animation: teleport-attack-monster-fatal 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
 .anim-death-fall {
-  animation: death-fall-anim 2s forwards;
+  animation: death-fall-anim 4s forwards;
   transform-origin: bottom center;
 }
 
@@ -363,7 +371,7 @@ h3 {
 }
 
 .anim-death-explode {
-  animation: death-explode-anim 1.5s forwards;
+  animation: death-explode-anim 4s forwards;
 }
 
 @keyframes death-explode-anim {

@@ -449,7 +449,22 @@ export default function QuestGameplay() {
           setMonsterAnim(fatality);
           setMonsterBubble(monsterDefeatQuote);
           setBattleMessage(getVictoryMessage());
-          setTimeout(() => finishGame(true, currentXp), 3500);
+          
+          // Entra em idle-victory (apreensão) e depois roda a animação de vitória (total 8.5 segundos até abrir modal)
+          setPlayerAnim('idle-victory' as any);
+          setPlayerBubble('');
+          
+          setTimeout(() => {
+             const hpPct = currentHearts / maxHearts;
+             let vicAnim: any = 'victory-hard';
+             if (hpPct === 1) vicAnim = 'victory-easy';
+             else if (hpPct >= 0.5) vicAnim = 'victory-mid';
+             
+             setPlayerAnim(`${vicAnim}_${fatality}` as any);
+             
+             // Espera 8.5 segundos (4.5 de suspense + 4 de comemoração) para abrir a recompensa
+             setTimeout(() => finishGame(true, currentXp), 8500);
+          }, 100); // pequeno delay para limpar a bubble e aplicar idle-victory
         }, 2500);
       }, 3000);
     } else {
@@ -1130,8 +1145,8 @@ export default function QuestGameplay() {
             
             {/* Player Side */}
             <div 
-              className={`${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : ''} ${userData?.avatarConfig?.customModelUrl ? 'is-3d' : ''}`}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: playerAnim.startsWith('attack') ? 30 : 10 }}
+              className={`${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : ''} ${userData?.avatarConfig?.customModelUrl ? 'is-3d' : ''}`}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: playerAnim.startsWith('attack') ? 30 : 10 }}
             >
               {playerBubble && (
                 <div className="speech-bubble player">
@@ -1159,8 +1174,8 @@ export default function QuestGameplay() {
 
             {/* Monster Side */}
             <div 
-              className={`${monsterAnim === 'attack' ? 'teleport-monster' : (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` : ''} ${(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 'is-3d' : ''}`}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: monsterAnim.startsWith('attack') ? 30 : 10 }}
+              className={`${monsterAnim === 'attack' ? 'teleport-monster' : (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (monsterAnim === 'idle-victory' || monsterAnim.startsWith('victory-')) ? 'teleport-monster-victory' : ''} ${(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 'is-3d' : ''}`}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: monsterAnim.startsWith('attack') ? 30 : 10 }}
             >
               {monsterBubble && (
                 <div className="speech-bubble monster">

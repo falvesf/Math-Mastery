@@ -85,7 +85,7 @@ export interface AvatarCharacterProps {
   equippedItems?: EquippedItem[];
   size?: number;
   interactive?: boolean;
-  animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'cheer' | 'raise-hand' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice';
+  animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'cheer' | 'raise-hand' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice' | 'victory-easy' | 'victory-mid' | 'victory-hard';
   expression?: 'normal' | 'serious' | 'sad';
   role?: 'player' | 'monster';
   showSlots?: boolean;
@@ -991,6 +991,118 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         player.skin.leftLeg.rotation.z = -0.1;
         player.skin.rightLeg.rotation.z = 0.1;
       });
+    } else if (animation?.startsWith('victory-')) {
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        const targetRotation = role === 'player' ? Math.PI / 2 : -Math.PI / 2;
+        let currentBodyRot = targetRotation;
+        let headRotY = 0;
+        let headRotX = 0;
+        
+        const isDeathFall = animation.includes('death-fall');
+
+        if (isDeathFall) {
+            // Morte: Queda Lenta (Cai como uma árvore)
+            // Jogador vira rápido para a câmera e olha para o chão aos seus pés
+            if (time < 0.5) {
+                currentBodyRot = targetRotation * (1.0 - (time / 0.5)); // Giro rápido
+                headRotX = (time / 0.5) * 1.0; // Abaixa rápido
+            } else if (time < 3.5) {
+                currentBodyRot = 0; // Encarando a tela
+                headRotX = 1.0; // Olhando para os pés
+            } else if (time < 4.5) {
+                currentBodyRot = 0;
+                headRotX = 1.0 * (1 - ((time - 3.5) / 1.0)); // Levanta a cabeça
+            } else {
+                currentBodyRot = 0;
+                headRotX = 0;
+            }
+            headRotY = 0;
+        } else {
+            // Outras mortes (Evaporar, Explodir, Cortar ao meio)
+            // Monstro morre na frente. Jogador continua virado para o lado.
+            if (time < 3.5) {
+                currentBodyRot = targetRotation;
+                headRotY = 0; // Cabeça reta (na direção do monstro)
+                headRotX = Math.sin(time * 3) * 0.05; // Apenas um movimento sutil de respiração com a cabeça
+            } else if (time < 4.5) {
+                // Entre 3.5 e 4.5s, dá o pivô para a câmera
+                const pivotProgress = (time - 3.5) / 1.0;
+                currentBodyRot = targetRotation * (1 - pivotProgress);
+                headRotY = 0; 
+                headRotX = 0; // Mantém a cabeça reta enquanto gira
+
+                // Passinhos
+                player.skin.leftLeg.rotation.x = Math.sin(pivotProgress * Math.PI * 4) * 0.3;
+                player.skin.rightLeg.rotation.x = -Math.sin(pivotProgress * Math.PI * 4) * 0.3;
+                player.position.y = Math.sin(pivotProgress * Math.PI * 4) * 2;
+            } else {
+                currentBodyRot = 0;
+                headRotY = 0;
+                headRotX = 0;
+            }
+        }
+
+        player.rotation.y = currentBodyRot;
+        player.skin.head.rotation.y = headRotY;
+        player.skin.head.rotation.x = headRotX;
+        player.skin.head.rotation.z = 0;
+
+        // Fase de Apreensão (Idle dramático) nos primeiros 4.5s
+        if (time < 4.5) {
+          if (time < 3.5) {
+              player.position.y = Math.sin(time * 3) * 1; // Respiração normal antes do pivô
+              player.skin.leftLeg.rotation.x = 0;
+              player.skin.rightLeg.rotation.x = 0;
+          }
+          player.skin.leftArm.rotation.x = Math.sin(time * 3) * 0.1;
+          player.skin.rightArm.rotation.x = -Math.sin(time * 3) * 0.1;
+          player.skin.leftArm.rotation.z = 0;
+          player.skin.rightArm.rotation.z = 0;
+          player.skin.leftLeg.rotation.z = -0.1;
+          player.skin.rightLeg.rotation.z = 0.1;
+          return;
+        }
+
+        const cheerTime = time - 4.5;
+
+        if (animation.startsWith('victory-easy')) {
+          // Vitória Fácil: Cruza os braços confiante e acena com a cabeça
+          player.skin.leftArm.rotation.x = -Math.PI / 2.5;
+          player.skin.leftArm.rotation.z = 0.5;
+          player.skin.rightArm.rotation.x = -Math.PI / 2.5;
+          player.skin.rightArm.rotation.z = -0.5;
+          player.skin.head.rotation.x = Math.sin(cheerTime * 2) * 0.1 + 0.1;
+          player.position.y = Math.sin(time * 3) * 1;
+        } else if (animation.startsWith('victory-mid')) {
+          // Vitória Média: Pulos vibrantes
+          player.position.y = Math.abs(Math.sin(cheerTime * 8)) * 8;
+          player.skin.leftArm.rotation.x = Math.PI;
+          player.skin.rightArm.rotation.x = Math.PI;
+          player.skin.leftArm.rotation.z = 0.2 + Math.sin(cheerTime * 15) * 0.2;
+          player.skin.rightArm.rotation.z = -0.2 - Math.sin(cheerTime * 15) * 0.2;
+          player.skin.leftLeg.rotation.x = -0.2;
+          player.skin.rightLeg.rotation.x = 0.2;
+          player.skin.head.rotation.x = -0.2;
+        } else if (animation.startsWith('victory-hard')) {
+          // Vitória Difícil: Arfando muito, levanta a mão com esforço
+          player.position.y = Math.sin(cheerTime * 6) * 2;
+          player.skin.head.rotation.x = 0.3 + Math.sin(cheerTime * 6) * 0.1;
+          
+          if (cheerTime > 1.0) {
+            // Levanta a mão direita meio fraca
+            const lift = Math.min(1, (cheerTime - 1.0) * 2);
+            player.skin.rightArm.rotation.x = Math.PI * 0.8 * lift;
+            player.skin.rightArm.rotation.z = -0.2 * lift;
+          } else {
+            player.skin.rightArm.rotation.x = 0.2;
+            player.skin.rightArm.rotation.z = 0;
+          }
+          player.skin.leftArm.rotation.x = 0.2;
+          player.skin.leftArm.rotation.z = 0.1;
+          player.skin.leftLeg.rotation.x = 0;
+          player.skin.rightLeg.rotation.x = 0;
+        }
+      });
     } else if (animation === 'raise-hand') {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
         const isLeftHanded = config?.handedness === 'left';
@@ -1028,8 +1140,24 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
         if (shouldSwing) {
             // Movimento de ataque com braço da arma e pequeno avanço
-            const swingSpeed = animation === 'attack-fatal-slow' ? 4 : 15;
-            const swingValue = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * swingSpeed) * 2;
+            let swingValue = 0;
+            let lungeValue = 0;
+
+            if (animation === 'attack-fatal-slow') {
+                const strikeTime = time - 1.125;
+                const progress = Math.min(strikeTime / 0.6, 1.0); // O golpe de descer a espada leva 0.6s
+                const easeOut = Math.sin(progress * Math.PI / 2); // Começa rápido e termina devagar (câmera lenta)
+                
+                // Interpola de -Math.PI/1.5 (braço erguido) até Math.PI/3 (espada cravada embaixo)
+                swingValue = -Math.PI / 1.5 + (easeOut * (Math.PI / 1.5 + Math.PI / 3));
+                lungeValue = easeOut * 3; // Corpo avança e segura a pose
+            } else {
+                const swingSpeed = 15;
+                const startTime = animation === 'attack-fatal' ? 0.225 : 0.48;
+                swingValue = Math.sin((time - startTime) * swingSpeed) * 2;
+                lungeValue = Math.sin((time - startTime) * 10) * 2;
+            }
+
             attackArm.rotation.x = swingValue;
             if (hasTwoHanded) {
                 nonAttackArm.rotation.x = swingValue;
@@ -1039,8 +1167,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 nonAttackArm.rotation.y = (isLeftHanded ? -Math.PI / 3 : Math.PI / 3);
                 nonAttackArm.rotation.z = (isLeftHanded ? -Math.PI / 8 : Math.PI / 8);
             }
-            const moveSpeed = animation === 'attack-fatal-slow' ? 3 : 10;
-            player.position.z = Math.sin((time - (animation === 'attack-fatal-slow' ? 1.125 : 0)) * moveSpeed) * 2;
+            player.position.z = lungeValue;
         } else {
             // Apenas preparando o golpe (braço erguido) enquanto teleporta
             attackArm.rotation.x = -Math.PI / 1.5;
@@ -1071,7 +1198,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
         player.rotation.y = targetRotation; // Cair de lado
         
-        const fall = Math.min(time * 3, Math.PI / 2);
+        const fall = Math.min(time * 1.5, Math.PI / 2); // Mais lento (antes era 3)
         player.rotation.x = -fall;
         player.position.y = -fall * 10;
         player.position.z = -fall * 5;
@@ -1080,25 +1207,25 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       });
     } else if (animation === 'death-explode') {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
-        const scatter = Math.min(time * 8, 30);
+        const scatter = Math.min(time * 3, 30); // Mais lento (antes era 8)
         player.skin.head.position.y = 8 + scatter * 1.5;
-        player.skin.head.rotation.y = time * 5;
+        player.skin.head.rotation.y = time * 2; // Mais lento
         
         player.skin.leftArm.position.x = -6 - scatter;
         player.skin.leftArm.position.y = 4 + scatter * 0.5;
-        player.skin.leftArm.rotation.z = time * -10;
+        player.skin.leftArm.rotation.z = time * -4;
 
         player.skin.rightArm.position.x = 6 + scatter;
         player.skin.rightArm.position.y = 4 + scatter * 0.5;
-        player.skin.rightArm.rotation.z = time * 10;
+        player.skin.rightArm.rotation.z = time * 4;
 
         player.skin.leftLeg.position.x = -2 - scatter * 0.5;
         player.skin.leftLeg.position.y = -4 - scatter;
-        player.skin.leftLeg.rotation.x = time * -5;
+        player.skin.leftLeg.rotation.x = time * -2;
 
         player.skin.rightLeg.position.x = 2 + scatter * 0.5;
         player.skin.rightLeg.position.y = -4 - scatter;
-        player.skin.rightLeg.rotation.x = time * 5;
+        player.skin.rightLeg.rotation.x = time * 2;
 
         player.skin.body.position.z = -scatter;
         player.skin.body.rotation.x = time * 3;
