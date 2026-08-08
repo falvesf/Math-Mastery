@@ -456,7 +456,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   };
 
   const isGenderLocked = (() => {
-    if (isAdmin || customSaveMode) return false;
+    if (isAdmin || customSaveMode || userData?.role === 'admin' || userData?.role === 'teacher') return false;
     if (!config.firstEditAt) return false;
     const now = Date.now();
     const isWithinFirst15Min = now < config.firstEditAt + 15 * 60 * 1000;
