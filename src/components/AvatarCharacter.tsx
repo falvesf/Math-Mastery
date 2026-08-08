@@ -39,6 +39,7 @@ export interface AvatarConfig {
   ponytailAngle?: number;
   firstEditAt?: number;
   genderUnlockUntil?: number;
+  savedPreSkinConfig?: Partial<AvatarConfig>;
 }
 
 export interface EquippedItem {

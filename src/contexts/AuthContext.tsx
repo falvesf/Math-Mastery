@@ -4,6 +4,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { initRanks } from '../lib/ranks';
 import { auth, db } from '../lib/firebase';
+import type { AvatarConfig } from '../components/AvatarCharacter';
 
 export type UserRole = 'student' | 'teacher' | 'coordinator' | 'admin' | 'pending_teacher';
 
@@ -34,19 +35,7 @@ export interface UserData {
     filterRarity: string;
     sortBy: string;
   };
-  avatarConfig?: {
-    skinColor: string;
-    hairColor: string;
-    eyeColor: string;
-    hairStyle: string;
-    mouthStyle: string;
-    shirtColor?: string;
-    pantsColor?: string;
-    handedness?: 'right' | 'left';
-    animationState?: 'idle' | 'walk' | 'run';
-    customSkinUrl?: string;
-    customModelUrl?: string;
-  };
+  avatarConfig?: AvatarConfig;
 }
 
 interface AuthContextType {
@@ -115,8 +104,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const skinUrl = fetchedUserData.avatarConfig.customSkinUrl;
           const expiry = fetchedUserData.unlockedSkins?.[skinUrl];
           if (!expiry || expiry <= Date.now()) {
-            fetchedUserData.avatarConfig.customSkinUrl = '';
-            await setDoc(userRef, { avatarConfig: { ...fetchedUserData.avatarConfig, customSkinUrl: '' } }, { merge: true });
+            let updatedConfig = { ...fetchedUserData.avatarConfig, customSkinUrl: '', customModelUrl: undefined };
+            if (updatedConfig.savedPreSkinConfig) {
+              updatedConfig = { ...updatedConfig, ...updatedConfig.savedPreSkinConfig };
+              delete updatedConfig.savedPreSkinConfig;
+            }
+            fetchedUserData.avatarConfig = updatedConfig;
+            await setDoc(userRef, { avatarConfig: updatedConfig }, { merge: true });
           }
         }
 

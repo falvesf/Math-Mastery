@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, User as UserIcon, Dices, Settings, ChevronDown } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, updateDoc, collection, getDocs, addDoc, setDoc, query, where } from 'firebase/firestore';
@@ -106,13 +107,13 @@ const DraggableWidget = ({ id, defaultPos = {x: 20, y: 20}, children }: { id: st
     localStorage.setItem(`avatarCustomizer_widgetMin_${id}`, JSON.stringify(isMinimized));
   }, [isMinimized, id]);
 
-  return (
+  return createPortal(
     <div
       style={{
-        position: 'absolute',
+        position: 'fixed',
         left: pos.x,
         top: pos.y,
-        zIndex: 100,
+        zIndex: 99999,
         background: 'rgba(30, 35, 45, 0.85)',
         backdropFilter: 'blur(10px)',
         padding: isMinimized ? '0.5rem 1rem' : '1rem',
@@ -156,7 +157,8 @@ const DraggableWidget = ({ id, defaultPos = {x: 20, y: 20}, children }: { id: st
         </div>
       </div>
       {!isMinimized && children}
-    </div>
+    </div>,
+    document.body
   );
 };
 export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, onPositionsSaved, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
@@ -389,6 +391,36 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
       }
     }
   }, [config.handedness, config.animationState, debugItemId, debugMode, equippedItems]);
+  const handleEquipSkin = (skinUrl: string, modelUrl?: string) => {
+    let newConfig = { ...config, customSkinUrl: skinUrl, customModelUrl: modelUrl };
+    if (!config.customSkinUrl) {
+      newConfig.savedPreSkinConfig = {
+        hairStyle: config.hairStyle,
+        hairAccessories: config.hairAccessories,
+        accessoryColors: config.accessoryColors,
+        hairTieColor: config.hairTieColor,
+        ponytailLength: config.ponytailLength,
+        ponytailThickness: config.ponytailThickness,
+        ponytailAngle: config.ponytailAngle,
+        hairAccessory: config.hairAccessory,
+        accessoryColor: config.accessoryColor
+      };
+    }
+    newConfig.hairStyle = 'bald';
+    newConfig.hairAccessories = [];
+    newConfig.hairAccessory = 'none';
+    setConfig(newConfig);
+  };
+
+  const handleUnequipSkin = () => {
+    if (config.savedPreSkinConfig) {
+      const restored = { ...config, ...config.savedPreSkinConfig, customSkinUrl: '', customModelUrl: undefined };
+      delete restored.savedPreSkinConfig;
+      setConfig(restored);
+    } else {
+      setConfig({ ...config, customSkinUrl: '', customModelUrl: undefined });
+    }
+  };
 
   const handleRandomize = () => {
     const randomItem = (arr: any[]) => arr[Math.floor(Math.random() * arr.length)];
@@ -724,7 +756,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                 <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Skins de Monstro Pré-definidas</label>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button
-                    onClick={() => setConfig({ ...config, customSkinUrl: '', customModelUrl: undefined })}
+                    onClick={handleUnequipSkin}
                     style={{
                        padding: '0.5rem', background: 'var(--btn-bg)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
                     }}
@@ -738,7 +770,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         const modelUrl = skin.baseModelId && skin.baseModelId !== 'default' 
                           ? models3d.find(m => m.id === skin.baseModelId)?.url 
                           : undefined;
-                        setConfig({ ...config, customSkinUrl: skin.url, customModelUrl: modelUrl });
+                        handleEquipSkin(skin.url, modelUrl);
                       }}
                       style={{
                          padding: '0.5rem', background: 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'white', fontSize: '0.85rem'
@@ -770,7 +802,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                   <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Skins Pré-definidas (Nova Skin)</label>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button
-                      onClick={() => setConfig({ ...config, customSkinUrl: '' })}
+                      onClick={handleUnequipSkin}
                       style={{
                          padding: '0.5rem', background: 'var(--btn-bg)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.85rem'
                       }}
@@ -783,7 +815,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                       return (
                       <button
                         key={skin.id}
-                        onClick={() => setConfig({ ...config, customSkinUrl: skin.url })}
+                        onClick={() => handleEquipSkin(skin.url)}
                         style={{
                            padding: '0.5rem', background: 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem'
                         }}
