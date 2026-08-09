@@ -88,8 +88,8 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 });
 
 export default function Dashboard() {
-  const { showAlert } = useDialog();
-  const { userData } = useAuth();
+  const { showAlert, showConfirm, showToast } = useDialog();
+  const { userData, toggleStudentView } = useAuth();
   if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
@@ -139,7 +139,7 @@ export default function Dashboard() {
 
   // Configurações do Sistema
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'cube' | 'theme'>('cube');
+  const [settingsTab, setSettingsTab] = useState<'cube' | 'theme' | 'debug'>('cube');
   const [appTheme, setAppTheme] = useState(() => localStorage.getItem('appTheme') || 'default');
   const [appFonts, setAppFonts] = useState(() => localStorage.getItem('appFonts') || 'default');
 
@@ -927,6 +927,14 @@ export default function Dashboard() {
                 >
                   <Palette size={18} /> Temas
                 </button>
+                {(userData?.role !== 'student' || userData?.studentViewActive) && (
+                  <button 
+                    onClick={() => setSettingsTab('debug')}
+                    style={{ background: settingsTab === 'debug' ? 'rgba(251, 191, 36, 0.1)' : 'transparent', color: settingsTab === 'debug' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', padding: '1rem', textAlign: 'left', cursor: 'pointer', borderLeft: settingsTab === 'debug' ? '3px solid var(--gold-primary)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: settingsTab === 'debug' ? 'bold' : 'normal', marginTop: 'auto' }}
+                  >
+                    <ShieldAlert size={18} /> Debug (Staff)
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1105,6 +1113,66 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {settingsTab === 'debug' && (userData?.role !== 'student' || userData?.studentViewActive) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left', flex: 1 }}>
+                  <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>Modo Debug (Staff)</h4>
+                  
+                  <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--accent-red)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                    <strong>Visão de Aluno (Mundo Paralelo)</strong>
+                    <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.4' }}>
+                      Ative para jogar, comprar itens e evoluir como se fosse um aluno. Todo o progresso feito aqui será salvo em um "cofre" separado, mantendo o seu acesso Master, seu XP e itens de Admin 100% protegidos.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-primary)', display: 'block', fontWeight: 'bold' }}>Simular como Aluno</span>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!userData.studentViewActive} onChange={async () => {
+                          if (toggleStudentView) {
+                            await toggleStudentView();
+                          }
+                      }} style={{ display: 'none' }} />
+                      <div style={{ width: '40px', height: '20px', background: userData.studentViewActive ? 'var(--gold-primary)' : 'rgba(255,255,255,0.2)', borderRadius: '10px', position: 'relative', transition: '0.3s' }}>
+                        <div style={{ position: 'absolute', top: '2px', left: userData.studentViewActive ? '22px' : '2px', width: '16px', height: '16px', background: userData.studentViewActive ? 'black' : 'white', borderRadius: '50%', transition: '0.3s' }} />
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Botão de reset do perfil de aluno */}
+                  <div style={{ marginTop: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-primary)', display: 'block', fontWeight: 'bold', fontSize: '0.9rem' }}>Resetar Perfil de Aluno</span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Apaga todo o progresso do mundo paralelo e começa do zero.</span>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const confirmed = await showConfirm(
+                          'Isso vai apagar TODO o progresso do seu perfil de aluno: XP, Moedas, Avatar, Histórico de Missões e Inventário.\n\nOs seus dados de Administrador (50.000 XP, itens, patente, etc.) ficam 100% intactos.\n\nDeseja continuar?',
+                          'Resetar Perfil de Aluno'
+                        );
+                        if (!confirmed) return;
+                        try {
+                          const { resetStudentProfile } = await import('../lib/debugSwap');
+                          await resetStudentProfile(userData);
+                          localStorage.setItem('studentViewActive', 'true'); // Proteger contra regra de XP no reload
+                          showToast('Perfil de aluno resetado com sucesso! Veja o console.', 'success');
+                          // setTimeout(() => window.location.reload(), 1500);
+                        } catch (err) {
+                          console.error('Erro ao resetar perfil:', err);
+                          showToast('Erro ao resetar perfil. Tente novamente.', 'error');
+                        }
+                      }}
+                      className="login-btn"
+                      style={{ padding: '0.5rem 1rem', background: 'rgba(239,68,68,0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      Resetar
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginTop: 'auto', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-glass)' }}>
                 <button onClick={() => setIsSettingsModalOpen(false)} className="login-btn" style={{ padding: '0.5rem 1.5rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
                   Concluir
@@ -1190,7 +1258,7 @@ export default function Dashboard() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
           
-          {(userData?.role === 'admin' || userData?.role === 'teacher') && (
+          {(userData?.role === 'admin' || userData?.role === 'teacher') && !userData?.studentViewActive && (
             <button 
               className="login-btn" 
               onClick={() => navigate('/admin')}
@@ -1369,8 +1437,14 @@ export default function Dashboard() {
                                 e.stopPropagation(); 
                                 // Block access to inactive live quests if NOT completed
                                 if (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) return;
-                                if (!isCompleted && (userData?.hearts || 0) < 1 && userData?.role === 'student') {
-                                  await showAlert("Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.");
+                                // Require avatar if in student mode or is a student
+                                const isActingAsStudent = userData?.role === 'student' || !!userData?.studentViewActive;
+                                if (isActingAsStudent && !userData?.avatarConfig) {
+                                  await showAlert('Você precisa criar o seu avatar antes de jogar uma missão!');
+                                  return;
+                                }
+                                if (!isCompleted && (userData?.hearts || 0) < 1 && isActingAsStudent) {
+                                  await showAlert('Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.');
                                   return;
                                 }
                                 if (quest.mode === 'live' && !isCompleted) {
@@ -1413,9 +1487,9 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center' }}>
               {/* Perfil do Aluno (Esquerda) */}
-              <div className="glass-panel" style={{ flex: '1 1 400px', padding: '1.5rem 2rem', textAlign: 'center', position: 'relative' }}>
+              <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 400px' : '0 1 500px', padding: '1.5rem 2rem', textAlign: 'center', position: 'relative' }}>
               <div 
                 style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '1.5rem', marginBottom: '2.5rem', perspective: '1000px' }}
               >
@@ -1523,9 +1597,11 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
-                Turma: {userData?.classId || 'Não definida'}
-              </p>
+              {(!userData?.studentViewActive && userData?.role !== 'student') ? null : (
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                  Turma: {userData?.classId || 'Não definida'}
+                </p>
+              )}
 
               <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
@@ -1594,7 +1670,7 @@ export default function Dashboard() {
             </div>
 
             {/* Coluna Direita Alternável (Histórico ou Mochila) */}
-            {profileTab === 'overview' ? (
+            {(userData?.role === 'student' || userData?.studentViewActive) && profileTab === 'overview' && (
               <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 140px)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
                 <History size={24} color="var(--gold-primary)" />
@@ -1602,12 +1678,7 @@ export default function Dashboard() {
               </div>
 
               <div style={{ flex: 1, overflowY: 'auto', maxHeight: '600px', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {userData?.role === 'admin' ? (
-                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-                    <ShieldAlert size={48} style={{ opacity: 0.5, margin: '0 auto 1rem auto' }} />
-                    <p>Você é um Administrador. Administradores não ganham XP.<br/>Acesse o Painel Master para gerenciar o sistema.</p>
-                  </div>
-                ) : loadingHistory ? (
+                {loadingHistory ? (
                   <p style={{ color: 'var(--text-secondary)' }}>Carregando suas conquistas...</p>
                 ) : xpHistory.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
@@ -1631,7 +1702,9 @@ export default function Dashboard() {
                 )}
               </div>
               </div>
-            ) : (
+            )}
+            
+            {profileTab === 'inventory' && (
               <div className="glass-panel" style={{ flex: '2 1 500px', padding: '2rem', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' }}>
                 {userData && <StudentInventory userData={userData} onEquip={() => setInventoryRefresh(r => r + 1)} inventoryRefresh={inventoryRefresh} />}
               </div>

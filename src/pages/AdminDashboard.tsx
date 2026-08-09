@@ -15,6 +15,7 @@ import AdminEntitiesManager from '../components/AdminEntitiesManager';
 import AdminEconomySettings from '../components/AdminEconomySettings';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
+import PublicProfileModal from '../components/PublicProfileModal';
 import { useDialog } from '../contexts/DialogContext';
 
 export interface ClassDef {
@@ -102,6 +103,7 @@ export default function AdminDashboard() {
 
   // Modal de Editar Aluno States
   const [editingStudent, setEditingStudent] = useState<UserData | null>(null);
+  const [viewingProfileUser, setViewingProfileUser] = useState<UserData | null>(null);
   const [editName, setEditName] = useState('');
   const [editClass, setEditClass] = useState('');
   const [editRole, setEditRole] = useState('student');
@@ -1153,11 +1155,19 @@ export default function AdminDashboard() {
                               style={{ width: '20px', height: '20px', cursor: 'pointer' }}
                             />
                             {student.avatarConfig ? (
-                              <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                              <div 
+                                onClick={() => setViewingProfileUser(student)}
+                                style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}
+                              >
                                 <AvatarCharacter config={student.avatarConfig} equippedItems={allUserItems[student.uid] || []} size={48} interactive={false} animation={student.avatarConfig?.animationState as any || 'idle'} />
                               </div>
                             ) : (
-                              <img src={student.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, objectFit: 'cover' }} />
+                              <img 
+                                src={student.photoURL} 
+                                onClick={() => setViewingProfileUser(student)}
+                                alt="" 
+                                style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, objectFit: 'cover', cursor: 'pointer' }} 
+                              />
                             )}
                             <div>
                               <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -2276,6 +2286,20 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {viewingProfileUser && (() => {
+        const rank = getRankForXp(viewingProfileUser.xp || 0);
+        return (
+          <PublicProfileModal 
+            isOpen={true}
+            user={viewingProfileUser} 
+            onClose={() => setViewingProfileUser(null)} 
+            equippedItems={allUserItems[viewingProfileUser.uid] || []}
+            rankName={rank.name}
+            rankColor={rank.color}
+          />
+        );
+      })()}
     </div>
   );
 }

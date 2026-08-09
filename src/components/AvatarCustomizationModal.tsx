@@ -330,7 +330,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         if (userData?.avatarConfig && !customSaveMode) {
           let loadedConfig = { ...userData.avatarConfig };
           if (loadedConfig.customSkinUrl) {
-            const isStaff = userData.role !== 'student' || isAdmin;
+            const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || isAdmin;
             const expiry = userData.unlockedSkins?.[loadedConfig.customSkinUrl];
             if (!isStaff && (!expiry || expiry <= Date.now())) {
               loadedConfig.customSkinUrl = '';
@@ -609,7 +609,9 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   };
 
   const isGenderLocked = (() => {
-    if (isAdmin || customSaveMode || userData?.role === 'admin' || userData?.role === 'teacher') return false;
+    if ((isAdmin || customSaveMode) && !userData?.studentViewActive) return false;
+    if (userData?.studentViewActive) return !config.firstEditAt ? false : (Date.now() >= (config.firstEditAt + 15 * 60 * 1000) && !config.genderUnlockUntil);
+    if (userData?.role === 'admin' || userData?.role === 'teacher') return false;
     if (!config.firstEditAt) return false;
     const now = Date.now();
     const isWithinFirst15Min = now < config.firstEditAt + 15 * 60 * 1000;
@@ -907,7 +909,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             {!customSaveMode && (() => {
               const availableSkins = presetSkins.filter(s => {
                 if ((s.type || 'human') !== 'human') return false;
-                const isStaff = userData?.role !== 'student' || isAdmin;
+                const isStaff = (userData?.role !== 'student' && !userData?.studentViewActive) || isAdmin;
                 if (!isStaff) {
                   const expiry = userData?.unlockedSkins?.[s.url];
                   if (!expiry || expiry <= Date.now()) return false;

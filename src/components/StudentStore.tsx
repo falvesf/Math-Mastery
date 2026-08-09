@@ -199,7 +199,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       return;
     }
 
-    const isStaff = userData.role !== 'student';
+    const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     const method = paymentMethod || economyType;
     let quantityToBuy = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
     let wasCapped = false;
@@ -347,7 +347,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const submitMarketBuy = async () => {
     if (!userData.uid || !marketBuyModalItem) return;
     
-    const isStaff = userData.role !== 'student';
+    const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     const currentBalance = economyType === 'xp' 
       ? (marketBuyPaymentMethod === 'xp' ? (userData.xp || 0) : (userData.coins || 0)) 
       : (userData.coins || 0);
@@ -459,7 +459,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   };
 
   const handleCancelSale = async (item: MarketItem) => {
-    const isStaff = userData.role !== 'student';
+    const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
     const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
@@ -516,7 +516,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   const getProcessedItems = () => {
     let result = [...items];
-    const isStaff = userData.role !== 'student';
+    const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     
     // Esconde os itens se a patente do aluno for menor que a exigida
     if (!isStaff) {
@@ -560,7 +560,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   const getProcessedMarketItems = () => {
     let result = [...marketItems];
-    const isStaff = userData.role !== 'student';
+    const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     
     // Esconde itens do mercado se a patente do aluno for menor que a exigida
     if (!isStaff) {
@@ -655,7 +655,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <>
                   <Star size={18} color="var(--gold-primary)" />
                   <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginRight: '1rem' }}>
-                    {userData.role !== 'student' ? 'Infinito (Staff)' : `${userData.xp || 0} XP`}
+                    {(userData.role !== 'student' && !userData.studentViewActive) ? 'Infinito (Staff)' : `${userData.xp || 0} XP`}
                   </span>
                   <Coins size={18} color="var(--gold-primary)" />
                   <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
@@ -666,7 +666,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <>
                   <Coins size={18} color="var(--gold-primary)" />
                   <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
-                    {userData.role !== 'student' ? 'Infinito (Staff)' : `${userData.coins || 0} Moedas`}
+                    {(userData.role !== 'student' && !userData.studentViewActive) ? 'Infinito (Staff)' : `${userData.coins || 0} Moedas`}
                   </span>
                 </>
               )}
@@ -775,7 +775,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       {activeTab === 'official' && (
         <div style={getGridStyle()}>
         {processedItems.map(item => {
-          const isStaff = userData.role !== 'student';
+          const isStaff = userData.role !== 'student' && !userData.studentViewActive;
           const itemQty = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
           const discountMultiplier = Math.max(0.5, 1 - (totalEquippedStats.persuasion / 100));
           const totalCost = Math.floor(item.cost * discountMultiplier) * itemQty;
@@ -978,7 +978,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               <Eye size={18} />
                             </button>
                           )}
-                          {(userData.role !== 'student' || giftWrapItemIds.length > 0) && (
+                          {(userData.role !== 'student' && !userData.studentViewActive || giftWrapItemIds.length > 0) && (
                             <button 
                               className="login-btn hover-brightness"
                               disabled={false} // Gift button just opens the sub-menu, so keep it enabled if they want to choose gift
@@ -1070,7 +1070,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           </div>
         )}
         {processedMarketItems.map(item => {
-          const isStaff = userData.role !== 'student';
+          const isStaff = userData.role !== 'student' && !userData.studentViewActive;
           const canAfford = isStaff || currentBalance >= (item.price || 0);
           const isList = viewMode === 'list';
           

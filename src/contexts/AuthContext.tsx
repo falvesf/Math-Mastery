@@ -36,18 +36,23 @@ export interface UserData {
     sortBy: string;
   };
   avatarConfig?: AvatarConfig;
+  studentViewActive?: boolean;
+  adminProfileBackup?: Record<string, any>;
+  studentProfileBackup?: Record<string, any>;
 }
 
 interface AuthContextType {
   currentUser: User | null;
   userData: UserData | null;
   loading: boolean;
+  toggleStudentView: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   currentUser: null,
   userData: null,
   loading: true,
+  toggleStudentView: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -93,10 +98,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         
         // Regra para Staff (Professor, Coordenador, Admin) ter 50.000 XP
-        if (fetchedUserData.role !== 'student' && (fetchedUserData.xp || 0) < 50000) {
+        // NUNCA aplicar se o modo de visão de aluno estiver ativo (mundo paralelo)
+        // Usamos 3 camadas de proteção:
+        // 1. Campo studentViewActive no Firestore
+        // 2. Flag no localStorage (para sobreviver ao reload logo após o reset)
+        // 3. Presença do campo adminProfileBackup (indica que o admin entrou no mundo paralelo)
+        const isInStudentViewFirestore = fetchedUserData.studentViewActive === true;
+        const isInStudentViewLocalStorage = localStorage.getItem('studentViewActive') === 'true';
+        const hasAdminBackup = !!(fetchedUserData as any).adminProfileBackup;
+        const isInStudentView = isInStudentViewFirestore || isInStudentViewLocalStorage || hasAdminBackup;
+        const isStaffAccount = fetchedUserData.role !== 'student';
+        
+        // Manter o localStorage em sincronia com o Firestore
+        if (isInStudentViewFirestore) {
+          localStorage.setItem('studentViewActive', 'true');
+        } else if (!hasAdminBackup) {
+          localStorage.removeItem('studentViewActive');
+        }
+        
+        console.log('[AuthContext] XP rule check:', {
+          xp: fetchedUserData.xp, role: fetchedUserData.role,
+          isInStudentViewFirestore, isInStudentViewLocalStorage, hasAdminBackup,
+          isInStudentView, willApplyRule: isStaffAccount && !isInStudentView && (fetchedUserData.xp || 0) < 50000
+        });
+
+        if (isStaffAccount && !isInStudentView && (fetchedUserData.xp || 0) < 50000) {
           fetchedUserData.xp = 50000;
           fetchedUserData.coins = 50000;
-          await setDoc(userRef, { xp: 50000, coins: 50000 }, { merge: true });
+          // Usar updateDoc (não setDoc) para evitar sobrescrever campos como studentViewActive
+          try {
+            const { updateDoc: fbUpdateDoc } = await import('firebase/firestore');
+            await fbUpdateDoc(userRef, { xp: 50000, coins: 50000 });
+          } catch (_e) {
+            // Silently fail if document doesn't exist yet; setDoc handles that case above
+          }
         }
         
         // Verifica se a skin do aluno expirou e remove
@@ -141,8 +176,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
+  const handleToggleStudentView = async () => {
+    if (userData) {
+      const { toggleStudentView } = await import('../lib/debugSwap');
+      await toggleStudentView(userData);
+      // O onSnapshot vai pegar a mudanca e atualizar userData automaticamente
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ currentUser, userData, loading }}>
+    <AuthContext.Provider value={{ currentUser, userData, loading, toggleStudentView: handleToggleStudentView }}>
       {children}
     </AuthContext.Provider>
   );

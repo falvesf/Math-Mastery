@@ -291,14 +291,14 @@ export default function QuestGameplay() {
   const startGame = async () => {
     const initialHearts = userData?.hearts ?? 3;
     setCurrentHearts(initialHearts);
-    if (userData?.role === 'student' && initialHearts < 1 && !isStudyMode) {
+    if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
       await showAlert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
       setGameState('result');
       return;
     }
     
     const chance = getMonsterSpecialChance();
-    const isSurpriseAttack = userData?.role === 'student' && !isStudyMode && (Math.random() * 100 < chance);
+    const isSurpriseAttack = (userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode && (Math.random() * 100 < chance);
 
     if (isSurpriseAttack) {
       const newHearts = Math.max(0, initialHearts - 1);
@@ -633,7 +633,7 @@ export default function QuestGameplay() {
       setFeedback('wrong');
       
       const chance = getMonsterSpecialChance();
-      const isMonsterCrit = userData?.role === 'student' && !isStudyMode && (Math.random() * 100 < chance);
+      const isMonsterCrit = (userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode && (Math.random() * 100 < chance);
       const damage = isMonsterCrit ? 2 : 1;
       
       let newHearts = Math.max(0, currentHearts - damage);
@@ -658,7 +658,7 @@ export default function QuestGameplay() {
 
       if (isFatalForPlayer) {
         setCurrentHearts(newHearts);
-        if (userData?.role === 'student' && !isStudyMode) {
+        if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
           updateUserHearts(newHearts);
         }
         if (isMonsterCrit) {
@@ -696,7 +696,7 @@ export default function QuestGameplay() {
       
       setCurrentHearts(newHearts);
 
-      if (userData?.role === 'student' && !isStudyMode) {
+      if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
         updateUserHearts(newHearts);
       }
       
@@ -733,9 +733,9 @@ export default function QuestGameplay() {
     setGameState('result');
     if (customMessage) setErrorMessage(customMessage);
 
-    const isStudent = userData?.role === 'student';
+    const isStudent = userData?.role === 'student' || !!userData?.studentViewActive;
     const isEligibleForXP = isStudent && !isStudyMode;
-    const isEligibleForChest = isStudent; // Baú cai em qualquer modo para alunos
+    const isEligibleForChest = isStudent; // Baú cai em qualquer modo para alunos/modo debug
     
     setSaving(true);
     
@@ -927,7 +927,7 @@ export default function QuestGameplay() {
     }
 
     // Save Attempt only for students (admins shouldn't pollute the logs)
-    if (userData?.role === 'student') {
+    if (userData?.role === 'student' || !!userData?.studentViewActive) {
       await addDoc(collection(db, 'quest_attempts'), {
         questId: quest?.id,
         studentId: userData.uid,
@@ -945,7 +945,7 @@ export default function QuestGameplay() {
   };
 
   const handleAbandon = async () => {
-    if (gameState === 'playing' && !isStudyMode && userData?.role === 'student') {
+    if (gameState === 'playing' && !isStudyMode && (userData?.role === 'student' || !!userData?.studentViewActive)) {
       const confirmed = await showConfirm("Tem certeza que deseja abandonar? Você perderá 1 vida e receberá penalidade de XP para as perguntas não respondidas. A missão será encerrada permanentemente!");
       if (!confirmed) {
         return;
@@ -1006,7 +1006,7 @@ export default function QuestGameplay() {
       
       setCurrentHearts(maxHearts);
       
-      if (userData?.role === 'student' && !isStudyMode) {
+      if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
         updateUserHearts(maxHearts);
       }
     } else if (item.gameEffect === 'heal_1_hp') {
@@ -1022,7 +1022,7 @@ export default function QuestGameplay() {
       const newHearts = Math.min(maxHearts, currentHearts + 1);
       setCurrentHearts(newHearts);
       
-      if (userData?.role === 'student' && !isStudyMode) {
+      if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
         updateUserHearts(newHearts);
       }
     }
