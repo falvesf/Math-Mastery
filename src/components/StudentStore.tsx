@@ -646,32 +646,6 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           <h2 style={{ fontSize: '1.5rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Store size={28} color="var(--gold-primary)" /> Lojas do Acampamento
           </h2>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            <div style={{ color: 'var(--text-secondary)', background: 'var(--bg-badge)', padding: '0.5rem 0.75rem', borderRadius: '12px', fontSize: '0.9rem' }}>
-               Mochila: <strong style={{ color: myInventoryCount >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{myInventoryCount}</strong> / {maxInventorySpace}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-badge)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--gold-primary)' }}>
-              {economyType === 'xp' ? (
-                <>
-                  <Star size={18} color="var(--gold-primary)" />
-                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginRight: '1rem' }}>
-                    {(userData.role !== 'student' && !userData.studentViewActive) ? 'Infinito (Staff)' : `${userData.xp || 0} XP`}
-                  </span>
-                  <Coins size={18} color="var(--gold-primary)" />
-                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
-                    {userData.role !== 'student' ? '' : `${userData.coins || 0} Moedas`}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Coins size={18} color="var(--gold-primary)" />
-                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
-                    {(userData.role !== 'student' && !userData.studentViewActive) ? 'Infinito (Staff)' : `${userData.coins || 0} Moedas`}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -735,41 +709,72 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           </div>
         )}
 
-        {/* Abas de Categoria da Loja Oficial movidas para dentro do cabeçalho fixo */}
-        {activeTab === 'official' && (
-          <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingTop: '0.5rem', paddingBottom: '0.25rem' }}>
-            <button 
-              onClick={() => setOfficialCategoryTab('all')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'all' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
-            >
-              <Sparkles size={18} /> Todos
-            </button>
-            <button 
-              onClick={() => setOfficialCategoryTab('consumable')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'consumable' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
-            >
-              <FlaskConical size={18} /> Consumíveis
-            </button>
-            <button 
-              onClick={() => setOfficialCategoryTab('attack')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'attack'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
-            >
-              <Sword size={18} /> Ataque
-            </button>
-            <button 
-              onClick={() => setOfficialCategoryTab('defense')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'defense'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
-            >
-              <Shield size={18} /> Defesa
-            </button>
-            <button 
-              onClick={() => setOfficialCategoryTab('other')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'other'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
-            >
-              <Package size={18} /> Outros
-            </button>
+        {/* Barra Inferior: Filtros/Categorias + Mochila/Moedas */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', paddingTop: '0.25rem', paddingBottom: '0.25rem' }}>
+          <div>
+            {activeTab === 'official' && !isFiltersOpen && (
+              <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto' }}>
+                <button 
+                  onClick={() => setOfficialCategoryTab('all')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'all' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                >
+                  <Sparkles size={18} /> Todos
+                </button>
+                <button 
+                  onClick={() => setOfficialCategoryTab('consumable')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'consumable' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                >
+                  <FlaskConical size={18} /> Consumíveis
+                </button>
+                <button 
+                  onClick={() => setOfficialCategoryTab('attack')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'attack'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                >
+                  <Sword size={18} /> Ataque
+                </button>
+                <button 
+                  onClick={() => setOfficialCategoryTab('defense')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'defense'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                >
+                  <Shield size={18} /> Defesa
+                </button>
+                <button 
+                  onClick={() => setOfficialCategoryTab('other')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'other'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                >
+                  <Package size={18} /> Outros
+                </button>
+              </div>
+            )}
           </div>
-        )}
+
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <div style={{ color: 'var(--text-secondary)', background: 'var(--bg-badge)', padding: '0.5rem 0.75rem', borderRadius: '12px', fontSize: '0.9rem' }}>
+               Mochila: <strong style={{ color: myInventoryCount >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{myInventoryCount}</strong> / {maxInventorySpace}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-badge)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--gold-primary)' }}>
+              {economyType === 'xp' ? (
+                <>
+                  <Star size={18} color="var(--gold-primary)" />
+                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginRight: '1rem' }}>
+                    {(userData.role !== 'student' && !userData.studentViewActive) ? 'Infinito (Staff)' : `${userData.xp || 0} XP`}
+                  </span>
+                  <Coins size={18} color="var(--gold-primary)" />
+                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                    {userData.role !== 'student' ? '' : `${userData.coins || 0} Moedas`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Coins size={18} color="var(--gold-primary)" />
+                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                    {(userData.role !== 'student' && !userData.studentViewActive) ? 'Infinito (Staff)' : `${userData.coins || 0} Moedas`}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {activeTab === 'official' && (
