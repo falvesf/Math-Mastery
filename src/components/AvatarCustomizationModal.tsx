@@ -4,7 +4,7 @@ import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, C
 import { db } from '../lib/firebase';
 import { doc, updateDoc, collection, getDocs, addDoc, setDoc, query, where } from 'firebase/firestore';
 import { useAuth, type UserData } from '../contexts/AuthContext';
-import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform } from './AvatarCharacter';
+import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose } from './AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import Admin3DModelsManager from './Admin3DModelsManager';
@@ -224,7 +224,7 @@ const HorizontalScrollList = ({ children }: { children: React.ReactNode }) => {
 
 export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, onPositionsSaved, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
   const { userData } = useAuth();
-  const { showAlert } = useDialog();
+  const { showAlert, showToast } = useDialog();
   const [config, setConfig] = useState<AvatarConfig>({
     gender: 'male',
     skinColor: '#ffcc99',
@@ -272,6 +272,10 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     slide: -18,
     scale: 16
   });
+  const [debugTab, setDebugTab] = useState<'item' | 'pose'>('item');
+  const [debugBodyPart, setDebugBodyPart] = useState<keyof CharacterPose>('rightArm');
+  const [debugPose, setDebugPose] = useState<CharacterPose>({});
+  const [debugAnimationFrames, setDebugAnimationFrames] = useState<CharacterPose[]>([]);
   const [activeTab, setActiveTab] = useState<'features' | 'hair' | 'clothes'>('features');
 
   const fetchPresetSkins = async (forceRefresh = false) => {
@@ -384,7 +388,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         if (onSave) {
           onSave(config, monsterName);
         }
-        await showAlert('Personagem salvo com sucesso!');
+        showToast('Personagem salvo com sucesso!', 'success');
       } else {
         if (onSave) {
           onSave(config, monsterName);
@@ -509,8 +513,37 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
       }
     }
 
+    // ===== SANITIZAÇÃO PÓSBACKUP =====
+    // Garante que atributos exclusivos do gênero oposto nunca migrem,
+    // mesmo que estejam no backup restaurado.
+    if (targetGender === 'female') {
+      // Mulheres não têm barba/bigode
+      newConfig.facialHair = 'none';
+      newConfig.facialHairColor = undefined;
+    } else {
+      // Homens não têm acessórios de cabelo femininos nem batom
+      const femaleOnlyAccessories = ['bow', 'flower', 'headband'];
+      const currentAccs = newConfig.hairAccessories || (newConfig.hairAccessory ? [newConfig.hairAccessory] : []);
+      newConfig.hairAccessories = currentAccs.filter(a => !femaleOnlyAccessories.includes(a));
+      if (femaleOnlyAccessories.includes(newConfig.hairAccessory || '')) {
+        newConfig.hairAccessory = 'none';
+      }
+      newConfig.lipstickColor = undefined;
+      // Peças de roupa exclusivamente femininas → t-shirt
+      const femaleOnlyClothing = ['dress', 'skirt', 'crop-top', 'overalls'];
+      if (femaleOnlyClothing.includes(newConfig.clothingStyle || '')) {
+        newConfig.clothingStyle = 't-shirt';
+      }
+      // Sapatos exclusivamente femininos → sneakers
+      const femaleOnlyShoes = ['flats', 'heels'];
+      if (femaleOnlyShoes.includes(newConfig.shoeStyle || '')) {
+        newConfig.shoeStyle = 'sneakers';
+      }
+    }
+
     setConfig(newConfig);
   };
+
 
   const handleEquipSkin = (skinUrl: string, modelUrl?: string) => {
     let newConfig = { ...config, customSkinUrl: skinUrl, customModelUrl: modelUrl };
@@ -683,131 +716,279 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
           {debugMode && (
             <DraggableWidget id="debug_panel" defaultPos={{x: 250, y: 20}}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem', fontSize: '0.9rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <p style={{ margin: 0, color: '#f59e0b', fontWeight: 'bold' }}>🔧 Debug Transform</p>
-                <select 
-                  value={debugItemId || ''} 
-                  onChange={(e) => {
-                    const newId = e.target.value;
-                    setDebugItemId(newId);
-                    if (newId) {
-                      const item = equippedItems.find(i => (i.itemId || i.docId) === newId);
-                      const isLeftHanded = config.handedness === 'left';
-                      const isBattle = config.animationState === 'attack';
-                      const loadKey = isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common');
-                      
-                      let loadedTransform = item?.modelTransforms?.[loadKey];
-                      if (!loadedTransform && isLeftHanded) {
-                        loadedTransform = item?.modelTransforms?.[isBattle ? 'battle' : 'common'];
-                      }
-                      
-                      if (loadedTransform) {
-                        setDebugTransform(loadedTransform);
-                      } else {
-                        setDebugTransform({
-                          posX: 0, posY: -11, posZ: 0,
-                          rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
-                          slide: -18,
-                          scale: 16,
-                          thickness: 1
-                        });
-                      }
-                    }
-                  }}
-                  style={{ background: 'rgba(0,0,0,0.5)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', padding: '0.25rem', maxWidth: '200px' }}
-                >
-                  <option value="">Selecione um item...</option>
-                  {equippedItems.filter(i => i.gameModelUrl || i.minecraftHeadValue).map(item => (
-                    <option key={item.itemId || item.docId} value={item.itemId || item.docId}>{item.itemTitle}</option>
-                  ))}
-                </select>
-              </div>
-              {[
-                { label: 'Pos X', key: 'posX' as const, min: -30, max: 30, step: 0.5 },
-                { label: 'Pos Y', key: 'posY' as const, min: -30, max: 10, step: 0.5 },
-                { label: 'Pos Z', key: 'posZ' as const, min: -30, max: 30, step: 0.5 },
-                { label: 'Rot X', key: 'rotX' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
-                { label: 'Rot Y', key: 'rotY' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
-                { label: 'Rot Z', key: 'rotZ' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
-                { label: 'Slide', key: 'slide' as const, min: -40, max: 20, step: 1 },
-                { label: 'Scale', key: 'scale' as const, min: 0.1, max: 100, step: 0.1 },
-                { label: 'Thick', key: 'thickness' as const, min: 0.1, max: 10, step: 0.1 },
-              ].map(({ label, key, min, max, step }) => (
-                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                  <span style={{ width: '42px', color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold' }}>{label}</span>
-                  <input 
-                    type="range" 
-                    min={min} max={max} step={step}
-                    value={debugTransform[key] ?? 16} 
-                    onChange={(e) => setDebugTransform(prev => ({ ...prev, [key]: parseFloat(e.target.value) }))}
-                    style={{ flex: 1, accentColor: '#f59e0b' }}
-                  />
-                  <span style={{ width: '55px', textAlign: 'right', color: '#fbbf24', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}>{(debugTransform[key] ?? (key === 'scale' ? 16 : 0)).toFixed(2)}</span>
+                <p style={{ margin: 0, color: '#f59e0b', fontWeight: 'bold' }}>🔧 Debug {debugTab === 'item' ? 'Transform' : 'Pose'}</p>
+                <div style={{ display: 'flex', gap: '0.25rem' }}>
+                   <button onClick={() => setDebugTab('item')} style={{ padding: '0.25rem 0.5rem', background: debugTab === 'item' ? '#f59e0b' : 'transparent', color: debugTab === 'item' ? '#000' : '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗡️ Item</button>
+                   <button onClick={() => setDebugTab('pose')} style={{ padding: '0.25rem 0.5rem', background: debugTab === 'pose' ? '#f59e0b' : 'transparent', color: debugTab === 'pose' ? '#000' : '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🧍 Pose</button>
                 </div>
-              ))}
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <button
-                  onClick={() => {
-                    const code = `posX: ${debugTransform.posX}, posY: ${debugTransform.posY}, posZ: ${debugTransform.posZ}, rotX: ${debugTransform.rotX.toFixed(4)}, rotY: ${debugTransform.rotY.toFixed(4)}, rotZ: ${debugTransform.rotZ.toFixed(4)}, slide: ${debugTransform.slide}, scale: ${debugTransform.scale}, thickness: ${debugTransform.thickness}`;
-                    navigator.clipboard.writeText(code);
-                    showAlert('Valores copiados para a área de transferência!');
-                  }}
-                  style={{ flex: 1, padding: '0.5rem', background: 'var(--bg-card)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
-                >
-                  📋 Copiar Valores
-                </button>
-                <button
-                  onClick={async () => {
-                    let targetItem = null;
-                    if (debugItemId) {
-                      targetItem = equippedItems.find(i => (i.itemId === debugItemId || i.docId === debugItemId));
-                    } else {
-                      targetItem = equippedItems.find(i => i.avatarPart === 'two_handed' || i.avatarPart === 'hand' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand');
-                    }
-                    
-                    if (!targetItem || !targetItem.itemId) {
-                      showAlert('Nenhum item válido selecionado para salvar a configuração!');
-                      return;
-                    }
-                    try {
-                      const isBattle = config.animationState === 'attack';
-                      const isLeftHanded = config.handedness === 'left';
-                      const transformKey = isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common');
-                      
-                      // 1. Save to store_items
-                      const itemRef = doc(db, 'store_items', targetItem.itemId);
-                      await setDoc(itemRef, {
-                        modelTransforms: {
-                          [transformKey]: debugTransform
-                        }
-                      }, { merge: true });
-                      
-                      // 2. Cascade to user_items
-                      const qUserItems = query(collection(db, 'user_items'), where('itemId', '==', targetItem.itemId));
-                      const snapUserItems = await getDocs(qUserItems);
-                      const updatePromises: Promise<void>[] = [];
-                      snapUserItems.forEach(d => {
-                        updatePromises.push(setDoc(doc(db, 'user_items', d.id), {
-                          modelTransforms: {
-                            [transformKey]: debugTransform
-                          }
-                        }, { merge: true }));
-                      });
-                      await Promise.all(updatePromises);
-                      if (onPositionsSaved) onPositionsSaved();
-                      
-                      showAlert(`Configuração de transformação (${transformKey}) salva com sucesso em todos os inventários!`);
-                    } catch (e) {
-                      console.error(e);
-                      showAlert('Erro ao salvar no banco de dados.');
-                    }
-                  }}
-                    
-
-                  style={{ flex: 1, padding: '0.5rem', background: '#f59e0b', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
-                >
-                  💾 Salvar no BD
-                </button>
               </div>
+
+              {debugTab === 'item' && (
+                <>
+                  <div style={{ marginBottom: '0.25rem' }}>
+                    <select 
+                      value={debugItemId || ''} 
+                      onChange={(e) => {
+                        const newId = e.target.value;
+                        setDebugItemId(newId);
+                        if (newId) {
+                          const item = equippedItems.find(i => (i.itemId || i.docId) === newId);
+                          const isLeftHanded = config.handedness === 'left';
+                          const isBattle = config.animationState === 'attack';
+                          const loadKey = isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common');
+                          
+                          let loadedTransform = item?.modelTransforms?.[loadKey];
+                          if (!loadedTransform && isLeftHanded) {
+                            loadedTransform = item?.modelTransforms?.[isBattle ? 'battle' : 'common'];
+                          }
+                          
+                          if (loadedTransform) {
+                            setDebugTransform(loadedTransform);
+                          } else {
+                            setDebugTransform({
+                              posX: 0, posY: -11, posZ: 0,
+                              rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
+                              slide: -18,
+                              scale: 16,
+                              thickness: 1
+                            });
+                          }
+                        }
+                      }}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.5)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', padding: '0.25rem' }}
+                    >
+                      <option value="">Selecione um item...</option>
+                      {equippedItems.filter(i => i.gameModelUrl || i.minecraftHeadValue).map(item => (
+                        <option key={item.itemId || item.docId} value={item.itemId || item.docId}>{item.itemTitle}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {[
+                    { label: 'Pos X', key: 'posX' as const, min: -30, max: 30, step: 0.5 },
+                    { label: 'Pos Y', key: 'posY' as const, min: -30, max: 10, step: 0.5 },
+                    { label: 'Pos Z', key: 'posZ' as const, min: -30, max: 30, step: 0.5 },
+                    { label: 'Rot X', key: 'rotX' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
+                    { label: 'Rot Y', key: 'rotY' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
+                    { label: 'Rot Z', key: 'rotZ' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
+                    { label: 'Slide', key: 'slide' as const, min: -40, max: 20, step: 1 },
+                    { label: 'Scale', key: 'scale' as const, min: 0.1, max: 100, step: 0.1 },
+                    { label: 'Thick', key: 'thickness' as const, min: 0.1, max: 10, step: 0.1 },
+                    { label: 'Curve X', key: 'curveX' as const, min: -10, max: 10, step: 0.01 },
+                    { label: 'Curve Y', key: 'curveY' as const, min: -10, max: 10, step: 0.01 },
+                  ].map(({ label, key, min, max, step }) => (
+                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                      <span style={{ width: '42px', color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold' }}>{label}</span>
+                      <input 
+                        type="range" 
+                        min={min} max={max} step={step}
+                        value={debugTransform[key] ?? (key.startsWith('curve') ? 0 : 16)} 
+                        onChange={(e) => setDebugTransform(prev => ({ ...prev, [key]: parseFloat(e.target.value) }))}
+                        style={{ flex: 1, accentColor: '#f59e0b' }}
+                      />
+                      <span style={{ width: '55px', textAlign: 'right', color: '#fbbf24', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}>{(debugTransform[key] ?? (key === 'scale' ? 16 : 0)).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button
+                      onClick={() => {
+                        const code = `posX: ${debugTransform.posX}, posY: ${debugTransform.posY}, posZ: ${debugTransform.posZ}, rotX: ${debugTransform.rotX.toFixed(4)}, rotY: ${debugTransform.rotY.toFixed(4)}, rotZ: ${debugTransform.rotZ.toFixed(4)}, slide: ${debugTransform.slide}, scale: ${debugTransform.scale}, thickness: ${debugTransform.thickness}, curveX: ${debugTransform.curveX || 0}, curveY: ${debugTransform.curveY || 0}`;
+                        navigator.clipboard.writeText(code);
+                        showAlert('Valores copiados para a área de transferência!');
+                      }}
+                      style={{ flex: 1, padding: '0.5rem', background: 'var(--bg-card)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                    >
+                      📋 Copiar Valores
+                    </button>
+                    <button
+                      onClick={async () => {
+                        let targetItem = null;
+                        if (debugItemId) {
+                          targetItem = equippedItems.find(i => (i.itemId === debugItemId || i.docId === debugItemId));
+                        } else {
+                          targetItem = equippedItems.find(i => i.avatarPart === 'two_handed' || i.avatarPart === 'hand' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand');
+                        }
+                        
+                        if (!targetItem || !targetItem.itemId) {
+                          showAlert('Nenhum item válido selecionado para salvar a configuração!');
+                          return;
+                        }
+                        try {
+                          const isBattle = config.animationState === 'attack';
+                          const isLeftHanded = config.handedness === 'left';
+                          const transformKey = isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common');
+                          
+                          // 1. Save to store_items
+                          const itemRef = doc(db, 'store_items', targetItem.itemId);
+                          await setDoc(itemRef, {
+                            modelTransforms: {
+                              [transformKey]: debugTransform
+                            }
+                          }, { merge: true });
+                          
+                          // 2. Cascade to user_items
+                          const qUserItems = query(collection(db, 'user_items'), where('itemId', '==', targetItem.itemId));
+                          const snapUserItems = await getDocs(qUserItems);
+                          const updatePromises: Promise<void>[] = [];
+                          snapUserItems.forEach(d => {
+                            updatePromises.push(setDoc(doc(db, 'user_items', d.id), {
+                              modelTransforms: {
+                                [transformKey]: debugTransform
+                              }
+                            }, { merge: true }));
+                          });
+                          await Promise.all(updatePromises);
+                          if (onPositionsSaved) onPositionsSaved();
+                          
+                          showAlert(`Configuração de transformação (${transformKey}) salva com sucesso em todos os inventários!`);
+                        } catch (e) {
+                          console.error(e);
+                          showAlert('Erro ao salvar no banco de dados.');
+                        }
+                      }}
+                      style={{ flex: 1, padding: '0.5rem', background: '#f59e0b', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                    >
+                      💾 Salvar no BD
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {debugTab === 'pose' && (
+                <>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <select 
+                      value={debugBodyPart}
+                      onChange={(e) => setDebugBodyPart(e.target.value as keyof CharacterPose)}
+                      style={{ flex: 1, background: 'rgba(0,0,0,0.5)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', padding: '0.25rem' }}
+                    >
+                      <option value="rightArm">Braço Direito</option>
+                      <option value="leftArm">Braço Esquerdo</option>
+                      <option value="rightLeg">Perna Direita</option>
+                      <option value="leftLeg">Perna Esquerda</option>
+                      <option value="body">Corpo</option>
+                      <option value="head">Cabeça</option>
+                    </select>
+                  </div>
+                  {[
+                    { label: 'Rot X', key: 'rx' as const },
+                    { label: 'Rot Y', key: 'ry' as const },
+                    { label: 'Rot Z', key: 'rz' as const },
+                  ].map(({ label, key }) => (
+                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                      <span style={{ width: '42px', color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold' }}>{label}</span>
+                      <input 
+                        type="range" 
+                        min={-Math.PI} max={Math.PI} step={0.05}
+                        value={debugPose[debugBodyPart]?.[key] ?? 0} 
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setDebugPose(prev => ({
+                            ...prev,
+                            [debugBodyPart]: {
+                              ...(prev[debugBodyPart] || { rx: 0, ry: 0, rz: 0 }),
+                              [key]: val
+                            }
+                          }));
+                        }}
+                        style={{ flex: 1, accentColor: '#f59e0b' }}
+                      />
+                      <span style={{ width: '55px', textAlign: 'right', color: '#fbbf24', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}>{(debugPose[debugBodyPart]?.[key] ?? 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  
+                  {/* Frames / Animação */}
+                  <div style={{ marginTop: '0.5rem', padding: '0.5rem', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px' }}>
+                    <p style={{ margin: '0 0 0.5rem 0', color: '#f59e0b', fontSize: '0.8rem', fontWeight: 'bold' }}>Animação de Batalha (Frames: {debugAnimationFrames.length})</p>
+                    <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.5rem' }}>
+                      <button 
+                        onClick={() => setDebugAnimationFrames([...debugAnimationFrames, JSON.parse(JSON.stringify(debugPose))])}
+                        style={{ flex: 1, padding: '0.25rem', background: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                      >+ Add Frame</button>
+                      <button 
+                        onClick={() => {
+                          if (debugAnimationFrames.length > 0) {
+                            const newFrames = [...debugAnimationFrames];
+                            newFrames.pop();
+                            setDebugAnimationFrames(newFrames);
+                          }
+                        }}
+                        style={{ padding: '0.25rem', background: '#eab308', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                      >Desfazer</button>
+                      <button 
+                        onClick={() => setDebugAnimationFrames([])}
+                        style={{ padding: '0.25rem', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                      >Limpar</button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.5rem' }}>
+                    <select 
+                      value={debugItemId || ''} 
+                      onChange={(e) => {
+                        setDebugItemId(e.target.value);
+                        const item = equippedItems.find(i => (i.itemId === e.target.value || i.docId === e.target.value));
+                        if (item) {
+                          const isBattle = config.animationState === 'attack';
+                          const isLeftHanded = config.handedness === 'left';
+                          const loadKey = isLeftHanded ? (isBattle ? 'battle_left' : 'common_left') : (isBattle ? 'battle' : 'common');
+                          let loadedTransform = item?.modelTransforms?.[loadKey];
+                          if (!loadedTransform && isLeftHanded) {
+                            loadedTransform = item?.modelTransforms?.[isBattle ? 'battle' : 'common'];
+                          }
+                          if (loadedTransform) setDebugTransform(loadedTransform);
+                        }
+                      }}
+                      style={{ flex: 1, background: 'rgba(0,0,0,0.5)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', padding: '0.25rem' }}
+                    >
+                      <option value="">Vincular Animação/Pose ao Item...</option>
+                      {equippedItems.filter(i => i.gameModelUrl || i.minecraftHeadValue || i.avatarPart === 'hand' || i.avatarPart === 'two_handed').map(item => (
+                        <option key={item.itemId || item.docId} value={item.itemId || item.docId}>{item.itemTitle}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={async () => {
+                        let targetItem = null;
+                        if (debugItemId) {
+                          targetItem = equippedItems.find(i => (i.itemId === debugItemId || i.docId === debugItemId));
+                        } else {
+                          showAlert('Selecione um item na lista acima para vincular a animação!');
+                          return;
+                        }
+                        
+                        if (!targetItem || !targetItem.itemId) {
+                          showAlert('Item inválido!');
+                          return;
+                        }
+                        try {
+                          // Se tiver frames, salva como animação, se não salva apenas a pose atual como 1 frame
+                          const framesToSave = debugAnimationFrames.length > 0 ? debugAnimationFrames : [JSON.parse(JSON.stringify(debugPose))];
+                          const customAnimation = { frames: framesToSave, loop: false, duration: 1000 };
+                          
+                          // 1. Save to store_items
+                          const itemRef = doc(db, 'store_items', targetItem.itemId);
+                          await setDoc(itemRef, { customAnimation }, { merge: true });
+                          
+                          // 2. Cascade to user_items
+                          const qUserItems = query(collection(db, 'user_items'), where('itemId', '==', targetItem.itemId));
+                          const snapUserItems = await getDocs(qUserItems);
+                          const updatePromises: Promise<void>[] = [];
+                          snapUserItems.forEach(d => {
+                            updatePromises.push(setDoc(doc(db, 'user_items', d.id), { customAnimation }, { merge: true }));
+                          });
+                          await Promise.all(updatePromises);
+                          
+                          showAlert(`Pose/Animação de Batalha salva com sucesso no item!`);
+                          if (onPositionsSaved) onPositionsSaved();
+                        } catch (e) {
+                          console.error(e);
+                          showAlert('Erro ao salvar animação no banco de dados.');
+                        }
+                      }}
+                      style={{ padding: '0.5rem', background: '#f59e0b', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                    >💾 Salvar Animação no BD</button>
+                  </div>
+                </>
+              )}
             </DraggableWidget>
           )}
         </div>
@@ -838,7 +1019,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               if (activeModel) {
                 return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={250} />;
               }
-              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={250} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} />;
+              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={250} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} />;
             })()}
             
             {/* Draggable Controls Widget */}

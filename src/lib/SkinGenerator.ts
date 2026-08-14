@@ -441,7 +441,7 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
           // Franja espetada (pontas irregulares para baixo)
           fill(hair, 40, 8, 8, 2);
           fill(hair, 41, 10, 1, 2);
-          fill(hair, 43, 10, 2, 3);
+          fill(hair, 43, 10, 2, 1); // Franja central mais curta, não cobre o nariz
           fill(hair, 46, 10, 1, 2);
       } else if (effectiveStyle === 'messy') {
           // Bagunçado: remove pedaços aleatórios do volume (Hat layer) para parecer despenteado
@@ -468,51 +468,16 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
       }
   }
 
-  // ==========================================
-  // PÊLOS FACIAIS (Barba / Bigode)
-  // ==========================================
-  if (config.facialHair && config.facialHair !== 'none') {
-      const facialHairColor = config.facialHairColor || adjustColor(hair, -15); // Usa a cor customizada ou um pouco mais escura que o cabelo
-      
-      // O Bigode vai aparecer para mustache, beard E goatee
-      if (config.facialHair === 'mustache' || config.facialHair === 'beard' || config.facialHair === 'goatee') {
-          // Bigode na Outer Layer (x = 10 + 32 = 42)
-          fill(facialHairColor, 42, 13, 4, 1);
-      }
-      
-      if (config.facialHair === 'goatee' || config.facialHair === 'beard') {
-          // Cavanhaque contornando a boca na Outer Layer
-          fill(facialHairColor, 42, 14, 1, 2); // Conector esquerdo
-          fill(facialHairColor, 45, 14, 1, 2); // Conector direito
-          fill(facialHairColor, 43, 15, 2, 1); // Base do queixo
-          
-          // Fundo do queixo (Bottom Face da Outer Layer, centro)
-          fill(facialHairColor, 51, 0, 2, 2); 
-      }
-      
-      if (config.facialHair === 'beard') {
-          // Laterais da barba na Outer Layer (Front face)
-          fill(facialHairColor, 40, 13, 2, 3); // Lado esquerdo do rosto
-          fill(facialHairColor, 46, 13, 2, 3); // Lado direito do rosto
-          // Linha do queixo nas laterais da cabeça (Right and Left faces na Outer Layer)
-          fill(facialHairColor, 36, 14, 4, 2); // Right face (jaw)
-          fill(facialHairColor, 48, 14, 4, 2); // Left face (jaw)
-          // Fundo do queixo completo (Bottom face na Outer Layer)
-          fill(facialHairColor, 48, 0, 8, 4); // Metade da frente do bottom face
-      }
-  }
+
+  // PÊLOS FACIAIS serão renderizados APÓS os estilos de cabelo
+  // para que clearRect() de estilos como mohawk e curly não apaguem a barba
 
   if (effectiveStyle === 'long') {
       fill(hair, 0, 11, 8, 5); // Laterais
       fill(hair, 16, 11, 8, 5); 
       fill(hair, 24, 14, 8, 2); // Nuca extra
       fillTextured(hair, 56, 10, 8, 6, 20, -10); // Volume extra atrás
-      
-      // Mechas caídas no peito
-      fillTextured(hair, 20, 36, 2, 6, 20, +5); 
-      fillTextured(hair, 26, 36, 2, 6, 20, +5); 
-      // Cabelo escorrido nas costas
-      fillTextured(adjustColor(hair, -15), 32, 36, 8, 8, 20, -10);
+      // Removido a pintura do cabelo no peito e costas, pois agora será um modelo 3D no AvatarCharacter.tsx
   } else if (effectiveStyle === 'ponytail') {
       fillTextured(hair, 56, 10, 8, 6, 20, -10); // Base do rabo de cavalo atrás
   } else if (effectiveStyle === 'bun') {
@@ -556,6 +521,47 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
       ctx.clearRect(32, 0, 64, 16); 
       fillTextured(hair, 43, 0, 2, 8, 20, 10); 
       fillTextured(hair, 59, 8, 2, 6, 20, -5); 
+  }
+
+  // ==========================================
+  // PÊLOS FACIAIS (Barba / Bigode)
+  // Renderizado APÓS o cabelo para que clearRect() de estilos como
+  // mohawk e curly não apaguem a barba que foi pintada antes.
+  // ==========================================
+  // Estilos de cabelo que apagam a Outer Layer (clearRect) — a barba não pode ser pintada antes deles
+  const hairStyleWipesOuterLayer = effectiveStyle === 'mohawk' || effectiveStyle === 'curly' || effectiveStyle === 'bald';
+
+  if (config.facialHair && config.facialHair !== 'none' && config.gender !== 'female') {
+      const facialHairColor = config.facialHairColor || adjustColor(hair, -15);
+      
+      // O Bigode vai aparecer para mustache, beard E goatee
+      if (config.facialHair === 'mustache' || config.facialHair === 'beard' || config.facialHair === 'goatee') {
+          fill(facialHairColor, 42, 13, 4, 1);
+      }
+      
+      if (config.facialHair === 'goatee' || config.facialHair === 'beard') {
+          fill(facialHairColor, 42, 14, 1, 2);
+          fill(facialHairColor, 45, 14, 1, 2);
+          fill(facialHairColor, 43, 15, 2, 1);
+          // Bottom face (X=48..56, Y=0..8). Y=8 is FRONT (chin), Y=0 is BACK (nape).
+          fill(facialHairColor, 51, 6, 2, 2); // Cavanhaque no queixo (Y=6 a 8)
+      }
+      
+      if (config.facialHair === 'beard') {
+          fill(facialHairColor, 40, 13, 2, 3);
+          fill(facialHairColor, 46, 13, 2, 3);
+          fill(facialHairColor, 36, 14, 4, 2);
+          fill(facialHairColor, 48, 14, 4, 2);
+          fill(facialHairColor, 48, 4, 8, 4); // Barba cheia no queixo e laterais (Y=4 a 8)
+      }
+
+      // Para estilos que limparam a Outer Layer, também precisamos limpar a zona do rosto
+      // no Hat Layer e recolocar só os pixels da barba (não o fundo limpo)
+      if (hairStyleWipesOuterLayer && config.facialHair === 'beard') {
+          // Certifica que o fundo do Hat Layer ainda está transparente no rosto
+          // (o beard precisa estar na Outer Layer mas o Hat Layer não deve bloquear)
+          ctx.clearRect(40, 11, 8, 5); // limpa hat layer rosto para que o beard (outer) fique visível
+      }
   }
   
   // ==========================================

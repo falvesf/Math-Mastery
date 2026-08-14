@@ -322,7 +322,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           minSalePrice: item.minSalePrice || 0,
           rarity: item.rarity || 'common',
           unlockedSkinId: item.unlockedSkinId || '',
-          buffDurationDays: item.buffDurationDays || 7
+          buffDurationDays: item.buffDurationDays || 7,
+          backColor: item.backColor || ''
         });
         remainingToBuy -= qty;
       }
@@ -1281,7 +1282,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             )}
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-              <button onClick={() => setMarketBuyModalItem(null)} className="login-btn" style={{ flex: 1, background: 'var(--bg-dark)', color: 'white' }}>Cancelar</button>
+              <button onClick={() => setMarketBuyModalItem(null)} className="login-btn hover-brightness" style={{ flex: 1, background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>Cancelar</button>
               <button onClick={submitMarketBuy} className="login-btn" disabled={purchasing === marketBuyModalItem.id} style={{ flex: 1, background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)' }}>Confirmar</button>
             </div>
           </div>

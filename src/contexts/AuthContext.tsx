@@ -31,7 +31,7 @@ export interface UserData {
   unlockedSkins?: Record<string, number>;
   inventoryPreferences?: {
     viewMode: string;
-    filterType: string;
+    activeCategory?: string;
     filterRarity: string;
     sortBy: string;
   };

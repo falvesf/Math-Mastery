@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../lib/firebase';
 import { collection, query, getDocs, getDoc, where, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
-import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Shield, Coins, Trash2, Zap, Hand } from 'lucide-react';
+import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
@@ -67,8 +67,25 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
   const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(userData.inventoryPreferences?.viewMode as any || 'grid-large');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<string>(userData.inventoryPreferences?.filterType || 'all');
   const [filterRarity, setFilterRarity] = useState<string>(userData.inventoryPreferences?.filterRarity || 'all');
+  
+  const [activeCategory, setActiveCategory] = useState<string>(sessionStorage.getItem('pendingCategory') || userData.inventoryPreferences?.activeCategory || 'Todos');
+  const [cascadeAnimationTrigger, setCascadeAnimationTrigger] = useState<number>(sessionStorage.getItem('pendingCategory') ? Date.now() : 0);
+
+  useEffect(() => {
+    if (sessionStorage.getItem('pendingCategory')) {
+      sessionStorage.removeItem('pendingCategory');
+      setTimeout(() => setCascadeAnimationTrigger(0), 4000);
+    }
+    const handleTabSelect = (e: any) => {
+      setActiveCategory(e.detail.category);
+      setCascadeAnimationTrigger(Date.now());
+      // Remover a animação depois que terminar para poder rodar de novo se clicar na mesma aba
+      setTimeout(() => setCascadeAnimationTrigger(0), 4000); 
+    };
+    window.addEventListener('select-inventory-tab', handleTabSelect);
+    return () => window.removeEventListener('select-inventory-tab', handleTabSelect);
+  }, []);
   
   // Custom slot mapping
   const [slotMap, setSlotMap] = useState<Record<string, number>>((userData.inventoryPreferences as any)?.slotMap || {});
@@ -80,13 +97,13 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     const savePreferences = async () => {
       try {
         await updateDoc(doc(db, 'users', userData.uid), {
-          inventoryPreferences: { viewMode, filterType, filterRarity }
+          inventoryPreferences: { viewMode, activeCategory, filterRarity }
         });
       } catch (err) {}
     };
     const t = setTimeout(savePreferences, 1000);
     return () => clearTimeout(t);
-  }, [viewMode, filterType, filterRarity, userData.uid]);
+  }, [viewMode, activeCategory, filterRarity, userData.uid]);
 
   const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
@@ -422,7 +439,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     }
     
     fetchInventory();
-    await showAlert(result.checked ? "Item destruído permanentemente!" : "Item jogado fora!");
+    showToast(result.checked ? "Item destruído permanentemente!" : "Item jogado fora!", 'info');
   };
 
   const submitTrash = async (permanent: boolean) => {
@@ -448,7 +465,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     setTrashModalItem(null);
     setTrashQuantity(1);
     fetchInventory();
-    await showAlert(permanent ? "Itens destruídos permanentemente!" : "Itens jogados fora!");
+    showToast(permanent ? "Itens destruídos permanentemente!" : "Itens jogados fora!", 'info');
   };
 
   const handleItemDrop = async (dragItem: UserItem, targetItem: UserItem) => {
@@ -622,8 +639,26 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   let bagItems = items.filter(i => !i.equipped);
   
   if (searchQuery) bagItems = bagItems.filter(i => i.itemTitle.toLowerCase().includes(searchQuery.toLowerCase()));
-  if (filterType !== 'all') bagItems = bagItems.filter(i => i.itemType === filterType);
   if (filterRarity !== 'all') bagItems = bagItems.filter(i => (i.rarity || 'common') === filterRarity);
+  
+  if (activeCategory !== 'Todos') {
+    bagItems = bagItems.filter(i => {
+      if (activeCategory === 'Consumíveis') return i.itemType === 'consumable';
+      if (activeCategory === 'Ataque') {
+        return ['two_handed', 'rightHand', 'leftHand'].includes(i.avatarPart || '') || 
+               (i.avatarPart === 'hand' && i.itemCategory !== 'defense');
+      }
+      if (activeCategory === 'Defesa') {
+        return ['head', 'body', 'legs', 'feet'].includes(i.avatarPart || '') || 
+               (i.avatarPart === 'hand' && i.itemCategory === 'defense');
+      }
+      if (activeCategory === 'Outros') {
+        return !['consumable'].includes(i.itemType) && 
+               !['hand', 'two_handed', 'rightHand', 'leftHand', 'head', 'body', 'legs', 'feet'].includes(i.avatarPart || '');
+      }
+      return true;
+    });
+  }
   
   bagItems.sort((a, b) => a.itemTitle.localeCompare(b.itemTitle));
 
@@ -719,6 +754,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         .inventory-item-card:hover {
           transform: translateY(-5px);
         }
+        }
         @media (max-width: 850px) {
           .inventory-layout {
             flex-direction: column !important;
@@ -729,6 +765,11 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             width: 100% !important;
             margin-bottom: 2rem;
           }
+        }
+        @keyframes highlight-cascade {
+          0% { box-shadow: 0 0 0px transparent; transform: scale(1); filter: brightness(1); }
+          50% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.6); transform: scale(1.05); filter: brightness(1.2); }
+          100% { box-shadow: 0 0 0px transparent; transform: scale(1); filter: brightness(1); }
         }
       `}</style>
 
@@ -744,16 +785,44 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         </div>
 
         {/* Barra de Filtros */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem' }}>
+          {[
+            { id: 'Todos', icon: <Sparkles size={16} /> },
+            { id: 'Consumíveis', icon: <FlaskConical size={16} /> },
+            { id: 'Ataque', icon: <Sword size={16} /> },
+            { id: 'Defesa', icon: <Shield size={16} /> },
+            { id: 'Outros', icon: <Package size={16} /> },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveCategory(tab.id);
+                setCascadeAnimationTrigger(Date.now());
+                setTimeout(() => setCascadeAnimationTrigger(0), 2000);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                padding: '0.5rem 1rem',
+                borderRadius: '999px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+                transition: 'all 0.2s ease',
+                background: activeCategory === tab.id ? 'var(--gold-primary)' : 'var(--btn-bg)',
+                color: activeCategory === tab.id ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)'
+              }}
+            >
+              {tab.icon} {tab.id}
+            </button>
+          ))}
+        </div>
+
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flex: 1, minWidth: '150px', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.5rem' }}>
             <Search size={16} color="var(--text-secondary)" />
             <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.5rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem' }} />
           </div>
-          <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-            <option value="all">Tipos</option>
-            <option value="consumable">Consumível</option>
-            <option value="equippable">Equipável</option>
-          </select>
           <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
             <option value="all">Raridades</option>
             <option value="common">Comum</option>
@@ -848,11 +917,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   background: isFullyDragged ? 'var(--btn-bg)' : 'var(--bg-card)', 
                   padding: viewMode === 'list' ? '0.5rem 1rem' : (viewMode === 'grid-small' ? '0.35rem' : '0.5rem'), 
                   borderRadius: '8px', 
+                  animation: (cascadeAnimationTrigger && item) ? `highlight-cascade 1.2s ease-out ${0.2 + index * 0.15}s` : undefined,
+                  border: isFullyDragged ? '2px dashed rgba(255,255,255,0.3)' : undefined,
                   display: 'flex', 
                   flexDirection: viewMode === 'list' ? 'row' : 'column', 
                   alignItems: viewMode === 'list' ? 'center' : 'stretch',
                   gap: viewMode === 'list' ? '1rem' : '0.25rem', 
-                  border: isFullyDragged ? '2px dashed rgba(255,255,255,0.3)' : undefined,
                   position: 'relative',
                   zIndex: hoveredItem === item.id ? 100 : 1,
                   cursor: isOverflow ? 'not-allowed' : 'grab',

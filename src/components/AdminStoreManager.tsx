@@ -41,6 +41,7 @@ export interface StoreItem {
   useGlobalGacha?: boolean;
   unlockedSkinId?: string;
   buffDurationDays?: number;
+  backColor?: string;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -171,7 +172,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           fixedAttributes: itemData.fixedAttributes || null,
           useGlobalGacha: itemData.useGlobalGacha ?? true,
           unlockedSkinId: itemData.unlockedSkinId || '',
-          buffDurationDays: itemData.buffDurationDays || 7
+          buffDurationDays: itemData.buffDurationDays || 7,
+          backColor: itemData.backColor || ''
         }));
       });
       await Promise.all(updatePromises);
@@ -608,6 +610,21 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               )}
             </div>
 
+            {formData.type === 'equippable' && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!formData.backColor} onChange={(e) => setFormData({...formData, backColor: e.target.checked ? '#333333' : ''})} style={{ width: '18px', height: '18px' }} />
+                  Usar cor sólida nas costas (Item 2.5D)
+                </label>
+                {formData.backColor !== undefined && formData.backColor !== '' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem', justifyContent: 'flex-end' }}>
+                    <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{formData.backColor}</span>
+                    <input type="color" value={formData.backColor} onChange={(e) => setFormData({...formData, backColor: e.target.value})} style={{ width: '50px', height: '40px', padding: 0, border: 'none', borderRadius: '4px', cursor: 'pointer' }} />
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
               <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
               <button onClick={handleSaveItem} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>Salvar Item</button>
@@ -661,6 +678,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       { label: 'Rot Y (Radianos)', key: 'rotY' as const, step: 0.05 },
                       { label: 'Rot Z (Radianos)', key: 'rotZ' as const, step: 0.05 },
                       { label: 'Slide (Translação Y)', key: 'slide' as const, step: 1 },
+                      { label: 'Curva X (Dobrar Horizontal)', key: 'curveX' as const, step: 0.01 },
+                      { label: 'Curva Y (Dobrar Vertical)', key: 'curveY' as const, step: 0.01 },
                     ].map(({ label, key, step }) => (
                       <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <span style={{ width: '130px', color: 'white', fontSize: '0.9rem' }}>{label}</span>

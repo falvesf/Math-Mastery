@@ -96,6 +96,15 @@ export default function Dashboard() {
   const [profileTab, setProfileTab] = useState('overview');
   const [xpHistory, setXpHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+
+  useEffect(() => {
+    const handleOpenInventory = () => {
+      setActiveTab('profile');
+      setProfileTab('inventory');
+    };
+    window.addEventListener('select-inventory-tab', handleOpenInventory);
+    return () => window.removeEventListener('select-inventory-tab', handleOpenInventory);
+  }, []);
   
   // Rankings state
   const [showRankingAvatars, setShowRankingAvatars] = useState(false);
@@ -408,7 +417,8 @@ export default function Dashboard() {
               gameModelUrl: data.gameModelUrl,
               modelTextureUrl: data.modelTextureUrl,
               minecraftHeadValue: data.minecraftHeadValue,
-              modelTransforms: data.modelTransforms
+              modelTransforms: data.modelTransforms,
+              backColor: data.backColor || ''
             });
           }
         });
@@ -420,7 +430,7 @@ export default function Dashboard() {
       }
     };
     fetchEquipped();
-  }, [userData?.uid, inventoryRefresh]);
+  }, [userData?.uid, userData?.studentViewActive, inventoryRefresh]);
 
   useEffect(() => {
     const q = query(collection(db, 'users'), where('role', '==', 'student'));
@@ -559,7 +569,8 @@ export default function Dashboard() {
               gameModelUrl: data.gameModelUrl,
               modelTextureUrl: data.modelTextureUrl,
               minecraftHeadValue: data.minecraftHeadValue,
-              modelTransforms: data.modelTransforms
+              modelTransforms: data.modelTransforms,
+              backColor: data.backColor || ''
             } as EquippedItem);
           }
         });
@@ -572,7 +583,13 @@ export default function Dashboard() {
     };
     
     fetchRankingItems();
-  }, [allStudents, userData?.classId]);
+  }, [allStudents, userData?.classId, userData?.studentViewActive]);
+
+  // Invalidate ranking cache when student mode changes (admin items are archived to backup)
+  useEffect(() => {
+    sessionCache.invalidate(CACHE_KEYS.rankingItems());
+    setRankingEquippedItems({});
+  }, [userData?.studentViewActive]);
 
   const recentBubblesRef = useRef<string[]>([]);
 
@@ -678,6 +695,17 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     await signOut(auth);
+  };
+
+  const getContrastColor = (hexColor: string): string => {
+    if (!hexColor || hexColor === 'transparent') return 'var(--text-primary)';
+    const hex = hexColor.replace('#', '');
+    if (hex.length < 6) return '#000000';
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    return luminance > 160 ? '#000000' : '#ffffff';
   };
 
   const handleUnequipItem = async (item: EquippedItem) => {
@@ -1132,6 +1160,14 @@ export default function Dashboard() {
                       <input type="checkbox" checked={!!userData.studentViewActive} onChange={async () => {
                           if (toggleStudentView) {
                             await toggleStudentView();
+                            const nextMode = !userData.studentViewActive;
+                            showToast(
+                              nextMode
+                                ? '🎮 Modo Aluno ativado! Recarregando...'
+                                : '🔓 Modo Admin restaurado! Recarregando...',
+                              'success'
+                            );
+                            setTimeout(() => window.location.reload(), 1500);
                           }
                       }} style={{ display: 'none' }} />
                       <div style={{ width: '40px', height: '20px', background: userData.studentViewActive ? 'var(--gold-primary)' : 'rgba(255,255,255,0.2)', borderRadius: '10px', position: 'relative', transition: '0.3s' }}>
@@ -1476,7 +1512,7 @@ export default function Dashboard() {
                 className="login-btn"
                 style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'overview'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
               >
-                <Star size={20} /> Personagem e Histórico
+                <Star size={20} /> {(userData?.role === 'student' || userData?.studentViewActive) ? 'Personagem e Histórico' : 'Personagem'}
               </button>
               <button 
                 onClick={() => setProfileTab('inventory')}
@@ -1509,7 +1545,7 @@ export default function Dashboard() {
                         ) : (
                           <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px', cursor: 'pointer' }} />
                         )}
-                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
                           Personagem
                         </div>
                       </div>
@@ -1521,7 +1557,7 @@ export default function Dashboard() {
                         ) : (
                           <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: currentRank.color }}>{currentRank.name}</div>
                         )}
-                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
                           {currentRank.name}
                         </div>
                       </div>
@@ -1541,7 +1577,7 @@ export default function Dashboard() {
                             </div>
                           );
                         })()}
-                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: '#fff', fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
                           Companheiro
                         </div>
                       </div>

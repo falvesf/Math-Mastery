@@ -268,7 +268,8 @@ export default function AdminDashboard() {
         gameModelUrl: data.gameModelUrl,
         modelTextureUrl: data.modelTextureUrl,
         minecraftHeadValue: data.minecraftHeadValue,
-        modelTransforms: data.modelTransforms
+        modelTransforms: data.modelTransforms,
+        backColor: data.backColor || ''
       });
     });
     setAllUserItems(itemsMap);
@@ -302,7 +303,8 @@ export default function AdminDashboard() {
         gameModelUrl: data.gameModelUrl,
         modelTextureUrl: data.modelTextureUrl,
         minecraftHeadValue: data.minecraftHeadValue,
-        modelTransforms: data.modelTransforms
+        modelTransforms: data.modelTransforms,
+        backColor: data.backColor || ''
       };
     });
     setSelectedStudentItems(eqItems);

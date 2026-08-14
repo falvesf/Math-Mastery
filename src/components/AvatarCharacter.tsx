@@ -5,7 +5,7 @@ import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/G
 import * as THREE from 'skinview3d/node_modules/three';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
-import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
+import { generateVoxelItemFromImage, updateVoxelCurve } from '../lib/VoxelItemGenerator';
 
 export interface AvatarConfig {
   gender?: 'male' | 'female';
@@ -59,6 +59,27 @@ export interface EquippedItem {
   minecraftHeadValue?: string;
   modelTransforms?: ModelTransformsConfig;
   rarity?: string;
+  backColor?: string;
+  customAnimation?: ItemAnimation;
+}
+
+export interface BoneTransform {
+  rx: number; ry: number; rz: number;
+}
+
+export interface CharacterPose {
+  head?: BoneTransform;
+  body?: BoneTransform;
+  leftArm?: BoneTransform;
+  rightArm?: BoneTransform;
+  leftLeg?: BoneTransform;
+  rightLeg?: BoneTransform;
+}
+
+export interface ItemAnimation {
+  frames: CharacterPose[];
+  loop: boolean;
+  duration?: number;
 }
 
 export interface ModelTransform {
@@ -71,6 +92,8 @@ export interface ModelTransform {
   slide: number;
   scale?: number;
   thickness?: number;
+  curveX?: number;
+  curveY?: number;
 }
 
 export interface ModelTransformsConfig {
@@ -79,6 +102,41 @@ export interface ModelTransformsConfig {
   common_left?: ModelTransform;
   battle_left?: ModelTransform;
 }
+
+const getPlaceholderIcon = (slotId: string, sizeStr: string) => {
+  const color = "var(--text-secondary)";
+  const opacity = 0.2;
+  const props = { width: sizeStr, height: sizeStr, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, style: { opacity } };
+  
+  switch(slotId) {
+    case 'head':
+      // Helmet
+      return <svg {...props}><path d="M12 2a9 9 0 0 0-9 9v4h18v-4a9 9 0 0 0-9-9z"></path><path d="M3 15v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"></path><path d="M12 15v5"></path></svg>;
+    case 'face':
+      // Glasses
+      return <svg {...props}><circle cx="6" cy="15" r="4"></circle><circle cx="18" cy="15" r="4"></circle><path d="M14 15a2 2 0 0 0-4 0"></path><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"></path><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"></path></svg>;
+    case 'accessory':
+      // Necklace (Gem)
+      return <svg {...props}><path d="M6 3h12l4 6-10 13L2 9Z"></path><path d="M11 3 8 9l4 13 4-13-3-6"></path></svg>;
+    case 'hand1':
+      // Sword
+      return <svg {...props}><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline><line x1="13" y1="19" x2="19" y2="13"></line><line x1="16" y1="16" x2="20" y2="20"></line><line x1="19" y1="21" x2="21" y2="19"></line></svg>;
+    case 'hand2':
+      // Shield
+      return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>;
+    case 'body':
+      // Armor / Shirt
+      return <svg {...props}><path d="M20.38 3.46 16 2a8 8 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"></path></svg>;
+    case 'legs':
+      // Pants (Trunks/Legs)
+      return <svg {...props}><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4l-3-7-3 7H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path></svg>;
+    case 'feet':
+      // Boots
+      return <svg {...props}><path d="M4 16h16v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3z"></path><path d="M8 10v11"></path><path d="M16 10v11"></path><path d="M20 16v-5a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v5"></path></svg>;
+    default:
+      return null;
+  }
+};
 
 export interface AvatarCharacterProps {
   config: AvatarConfig | null;
@@ -93,16 +151,26 @@ export interface AvatarCharacterProps {
   onSlotClick?: (item: EquippedItem) => void;
   debugItemTransform?: ModelTransform | null;
   debugItemId?: string | null;
+  debugPose?: CharacterPose;
+  debugAnimationFrames?: CharacterPose[];
 }
 
 import CustomModelViewer from './CustomModelViewer';
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick, debugItemTransform, debugItemId }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick, debugItemTransform, debugItemId, debugPose, debugAnimationFrames }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
   const [modelsLoadedCount, setModelsLoadedCount] = useState(0);
   const customHairRef = useRef<THREE.Group | null>(null);
+
+  const [zoomLevel, setZoomLevel] = useState(0.9);
+
+  useEffect(() => {
+    if (viewerRef.current) {
+        viewerRef.current.zoom = zoomLevel;
+    }
+  }, [zoomLevel]);
 
   // States to hold generated skin URLs
   const [skinUrls, setSkinUrls] = useState<{
@@ -128,7 +196,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       });
       viewer.animation = new IdleAnimation();
   
-      viewer.controls.enableZoom = interactive;
+      viewer.controls.enableZoom = false; // Desabilitado para evitar scroll indesejado, usando apenas o slider
       viewer.controls.enableRotate = interactive;
       viewer.controls.enablePan = interactive;
       
@@ -136,6 +204,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       
       if (viewer.renderer) {
           viewer.renderer.setClearColor(0x000000, 0);
+          viewer.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Garante nitidez máxima em telas Retina/High-DPI
       }
       
       viewer.camera.position.set(0, 10, 60);
@@ -158,7 +227,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       if (viewerRef.current) {
           viewerRef.current.width = size;
           viewerRef.current.height = size * 1.8;
-          viewerRef.current.controls.enableZoom = interactive;
+          viewerRef.current.controls.enableZoom = false; // Desabilitado
           viewerRef.current.controls.enableRotate = interactive;
           viewerRef.current.controls.enablePan = interactive;
       }
@@ -328,7 +397,17 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         };
 
         if (getExtension(safeUrl).endsWith('.png')) {
-           generateVoxelItemFromImage(safeUrl)
+           let curveX = 0;
+           let curveY = 0;
+           if (debugItemTransform && debugItemId === (item.itemId || item.docId)) {
+             curveX = debugItemTransform.curveX || 0;
+             curveY = debugItemTransform.curveY || 0;
+           } else if (item.modelTransforms && item.modelTransforms.common) {
+             curveX = item.modelTransforms.common.curveX || 0;
+             curveY = item.modelTransforms.common.curveY || 0;
+           }
+
+           generateVoxelItemFromImage(safeUrl, item.backColor, curveX, curveY)
              .then(model => {
                 if (isCancelled) return;
                 console.log(`Voxel gerado com sucesso a partir da imagem ${safeUrl}`);
@@ -579,6 +658,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           // Reset position Y, then translate
           model.position.y = debugItemTransform.posY;
           model.translateY(debugItemTransform.slide);
+          if (model.userData.is25D) {
+            updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
+          }
           appliedTransform = true;
         } else if (item.modelTransforms) {
           const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
@@ -600,6 +682,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
             model.position.y = transform.posY;
             model.translateY(transform.slide);
+            if (model.userData.is25D) {
+              updateVoxelCurve(model as THREE.Group, transform.curveX || 0, transform.curveY || 0);
+            }
             appliedTransform = true;
           }
         }
@@ -715,6 +800,74 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
       addonsGroup.add(tailMesh);
       addonsGroup.add(tieMesh);
+      hasAddons = true;
+    }
+
+    if (config?.hairStyle === 'spiky') {
+      const hairColor = config.hairColor || '#4a3000';
+      const hairMaterial = new THREE.MeshBasicMaterial({ color: hairColor });
+      
+      const createSpike = (x: number, y: number, z: number, rotX: number, rotZ: number, scale = 1) => {
+          // ConeGeometry com 4 lados forma uma pirâmide perfeita (Minecraft style)
+          const spikeGeo = new THREE.ConeGeometry(1.6 * scale, 3.5 * scale, 4);
+          const spikeMesh = new THREE.Mesh(spikeGeo, hairMaterial);
+          spikeMesh.position.set(x, y, z);
+          // Math.PI / 4 no eixo Y alinha a base quadrada da pirâmide com a grade da cabeça
+          spikeMesh.rotation.set(rotX, Math.PI / 4, rotZ); 
+          return spikeMesh;
+      };
+
+      // O topo da cabeça é Y=8. Como o centro da pirâmide fica no meio da altura,
+      // um Y=8.5 afunda a base da pirâmide no topo da cabeça, evitando buracos.
+
+      // Espinho Central (maior, apontando reto)
+      addonsGroup.add(createSpike(0, 9.2, 0, 0, 0, 1.3));
+      
+      // Espinhos Frontais (inclinados para frente -> rotX negativo)
+      addonsGroup.add(createSpike(-2, 8.5, 2.5, -0.4, 0.3, 0.9));
+      addonsGroup.add(createSpike(2, 8.5, 2.5, -0.4, -0.3, 1.0));
+      addonsGroup.add(createSpike(0, 8.5, 3.5, -0.6, 0, 0.8)); // Franja espetada
+      
+      // Espinhos Traseiros (inclinados para trás -> rotX positivo)
+      addonsGroup.add(createSpike(-2.5, 8.5, -2.5, 0.4, 0.3, 0.8));
+      addonsGroup.add(createSpike(2.5, 8.5, -2.5, 0.4, -0.3, 0.9));
+      addonsGroup.add(createSpike(0, 8.3, -3.5, 0.6, 0, 0.7));
+      
+      // Espinhos Laterais (inclinados para os lados -> rotZ)
+      addonsGroup.add(createSpike(-3.5, 8.3, 0, 0, 0.6, 0.8));
+      addonsGroup.add(createSpike(3.5, 8.3, 0, 0, -0.6, 0.8));
+      
+      hasAddons = true;
+    }
+    
+    if (config?.hairStyle === 'long') {
+      const hairColor = config.hairColor || '#4a3000';
+      const hairMaterial = new THREE.MeshBasicMaterial({ color: hairColor });
+      
+      // Cabelo volumoso caindo nas costas
+      const backGeo = new THREE.BoxGeometry(8.5, 12, 1.5);
+      const backMesh = new THREE.Mesh(backGeo, hairMaterial);
+      // Fica pendurado atrás da cabeça (Z=-4.2), descendo até as costas (Y=-2)
+      backMesh.position.set(0, -2, -4.2); 
+      backMesh.rotation.x = 0.08; // Leve inclinação para trás para evitar clipar nas costas do corpo
+      addonsGroup.add(backMesh);
+      
+      // Mecha caindo no ombro esquerdo (perspectiva do personagem)
+      const leftFrontGeo = new THREE.BoxGeometry(2.5, 12, 1.5);
+      const leftFrontMesh = new THREE.Mesh(leftFrontGeo, hairMaterial);
+      leftFrontMesh.position.set(-4.5, -2, 1);
+      leftFrontMesh.rotation.x = -0.05; // Leve inclinação para frente
+      leftFrontMesh.rotation.z = 0.08;  // Leve inclinação para fora (longe do pescoço)
+      addonsGroup.add(leftFrontMesh);
+      
+      // Mecha caindo no ombro direito (perspectiva do personagem)
+      const rightFrontGeo = new THREE.BoxGeometry(2.5, 12, 1.5);
+      const rightFrontMesh = new THREE.Mesh(rightFrontGeo, hairMaterial);
+      rightFrontMesh.position.set(4.5, -2, 1);
+      rightFrontMesh.rotation.x = -0.05;
+      rightFrontMesh.rotation.z = -0.08;
+      addonsGroup.add(rightFrontMesh);
+      
       hasAddons = true;
     }
 
@@ -870,22 +1023,44 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       const applySkins = async () => {
           const modelType = config.gender === 'female' ? 'slim' : 'default';
 
+          const forceNearestFilter = () => {
+              if (viewerRef.current?.playerObject) {
+                  viewerRef.current.playerObject.traverse((child) => {
+                      if ((child as THREE.Mesh).isMesh) {
+                          const mesh = child as THREE.Mesh;
+                          if (mesh.material) {
+                              const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                              mats.forEach((m: any) => {
+                                  if (m.map) {
+                                      m.map.magFilter = THREE.NearestFilter;
+                                      m.map.minFilter = THREE.NearestFilter;
+                                      m.map.needsUpdate = true;
+                                  }
+                              });
+                          }
+                      }
+                  });
+              }
+          };
+
           if (animation === 'hurt') {
               await viewerRef.current!.loadSkin(skinUrls.sad.blink, { model: modelType });
+              forceNearestFilter();
           } else {
               const activeUrls = skinUrls[expression] || skinUrls.normal;
               await viewerRef.current!.loadSkin(activeUrls.base, { model: modelType });
+              forceNearestFilter();
               
               if (!isMounted) return;
               
               blinkInterval = setInterval(() => {
                   if (!viewerRef.current || !isMounted) return;
                   if (activeUrls.blink === activeUrls.base) return; 
-                  viewerRef.current.loadSkin(activeUrls.blink, { model: modelType });
+                  viewerRef.current.loadSkin(activeUrls.blink, { model: modelType }).then(forceNearestFilter);
                   
                   blinkTimeout = setTimeout(() => {
                       if (viewerRef.current && isMounted) {
-                          viewerRef.current.loadSkin(activeUrls.base, { model: modelType });
+                          viewerRef.current.loadSkin(activeUrls.base, { model: modelType }).then(forceNearestFilter);
                       }
                   }, 150);
               }, 3500 + Math.random() * 2000);
@@ -949,6 +1124,69 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       nonDominantArm.rotation.y = (isLeftHanded ? -Math.PI / 3 : Math.PI / 3) + Math.cos(safeTime * 0.5) * 0.02;
       nonDominantArm.rotation.z = (isLeftHanded ? -Math.PI / 8 : Math.PI / 8);
     };
+
+    const applyPose = (player: any, pose: CharacterPose) => {
+        if (pose.head) { player.skin.head.rotation.x = pose.head.rx; player.skin.head.rotation.y = pose.head.ry; player.skin.head.rotation.z = pose.head.rz; }
+        if (pose.body) { player.skin.body.rotation.x = pose.body.rx; player.skin.body.rotation.y = pose.body.ry; player.skin.body.rotation.z = pose.body.rz; }
+        if (pose.leftArm) { player.skin.leftArm.rotation.x = pose.leftArm.rx; player.skin.leftArm.rotation.y = pose.leftArm.ry; player.skin.leftArm.rotation.z = pose.leftArm.rz; }
+        if (pose.rightArm) { player.skin.rightArm.rotation.x = pose.rightArm.rx; player.skin.rightArm.rotation.y = pose.rightArm.ry; player.skin.rightArm.rotation.z = pose.rightArm.rz; }
+        if (pose.leftLeg) { player.skin.leftLeg.rotation.x = pose.leftLeg.rx; player.skin.leftLeg.rotation.y = pose.leftLeg.ry; player.skin.leftLeg.rotation.z = pose.leftLeg.rz; }
+        if (pose.rightLeg) { player.skin.rightLeg.rotation.x = pose.rightLeg.rx; player.skin.rightLeg.rotation.y = pose.rightLeg.ry; player.skin.rightLeg.rotation.z = pose.rightLeg.rz; }
+    };
+
+    const applyInterpolatedPose = (player: any, frames: CharacterPose[], time: number) => {
+        if (frames.length === 1) {
+            applyPose(player, frames[0]);
+            return;
+        }
+        
+        const frameDuration = 0.5;
+        const totalDuration = frames.length * frameDuration;
+        const loopedTime = time % totalDuration;
+        const currentFrameIdx = Math.floor(loopedTime / frameDuration);
+        const nextFrameIdx = (currentFrameIdx + 1) % frames.length;
+        const progress = (loopedTime % frameDuration) / frameDuration;
+        
+        const f1 = frames[currentFrameIdx];
+        const f2 = frames[nextFrameIdx];
+        
+        const lerp = (v1: number = 0, v2: number = 0, t: number) => v1 + (v2 - v1) * t;
+        const lerpBone = (b1?: BoneTransform, b2?: BoneTransform) => ({
+            rx: lerp(b1?.rx, b2?.rx, progress),
+            ry: lerp(b1?.ry, b2?.ry, progress),
+            rz: lerp(b1?.rz, b2?.rz, progress),
+        });
+
+        const interpolatedPose: CharacterPose = {
+            head: lerpBone(f1.head, f2.head),
+            body: lerpBone(f1.body, f2.body),
+            leftArm: lerpBone(f1.leftArm, f2.leftArm),
+            rightArm: lerpBone(f1.rightArm, f2.rightArm),
+            leftLeg: lerpBone(f1.leftLeg, f2.leftLeg),
+            rightLeg: lerpBone(f1.rightLeg, f2.rightLeg),
+        };
+        applyPose(player, interpolatedPose);
+    };
+
+    const customAnimItem = equippedItems.find(i => i.customAnimation && i.customAnimation.frames.length > 0);
+    const hasCustomBattleAnim = customAnimItem && (animation === 'attack' || animation === 'attack-fatal');
+
+    if (debugAnimationFrames && debugAnimationFrames.length > 0) {
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+          applyInterpolatedPose(player, debugAnimationFrames, time);
+      });
+      return;
+    } else if (debugPose && Object.keys(debugPose).length > 0) {
+      viewerRef.current.animation = new FunctionAnimation((player: any) => {
+          applyPose(player, debugPose);
+      });
+      return;
+    } else if (hasCustomBattleAnim) {
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+          applyInterpolatedPose(player, customAnimItem.customAnimation!.frames, time);
+      });
+      return;
+    }
 
     if (animation === 'none') {
       viewerRef.current.animation = null;
@@ -1239,7 +1477,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         }
       });
     }
-  }, [animation, config?.handedness, equippedItemsJson]);
+  }, [animation, config?.handedness, equippedItemsJson, JSON.stringify(debugPose), JSON.stringify(debugAnimationFrames)]);
 
   const handItems = equippedItems.filter(i => i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'hand');
   const twoHandedItem = equippedItems.find(i => i.avatarPart === 'two_handed');
@@ -1324,6 +1562,38 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           cursor: onAvatarClick ? 'pointer' : 'default'
         }} 
       />
+      
+      {/* Slider de Zoom Preciso */}
+      {interactive && (
+        <div style={{
+          position: 'absolute',
+          bottom: '10px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 200,
+          background: 'rgba(30, 41, 59, 0.8)',
+          padding: '6px 12px',
+          borderRadius: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }}>
+          <span style={{ fontSize: '14px' }}>🔍</span>
+          <input 
+            type="range" 
+            min="0.3" 
+            max="2.5" 
+            step="0.05" 
+            value={zoomLevel} 
+            onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
+            style={{ width: '100px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+            title="Ajustar Zoom"
+          />
+        </div>
+      )}
+
       {/* Slots de Equipamento Externos */}
       {showSlots && ALL_SLOTS.map(slot => {
         const item = getEquippedForSlot(slot.id);
@@ -1334,9 +1604,19 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             onMouseEnter={() => setHoveredSlot(slot.id)}
             onMouseLeave={() => setHoveredSlot(null)}
             onClick={(e) => {
-              if (item && onSlotClick) {
-                e.stopPropagation();
-                onSlotClick(item);
+              e.stopPropagation();
+              if (item) {
+                if (window.matchMedia("(hover: none)").matches) {
+                  setHoveredSlot(hoveredSlot === slot.id ? null : slot.id);
+                } else if (onSlotClick) {
+                  onSlotClick(item);
+                }
+              } else {
+                let category = 'Outros';
+                if (['hand1'].includes(slot.id)) category = 'Ataque';
+                if (['hand2', 'head', 'body', 'legs', 'feet'].includes(slot.id)) category = 'Defesa';
+                sessionStorage.setItem('pendingCategory', category);
+                window.dispatchEvent(new CustomEvent('select-inventory-tab', { detail: { category } }));
               }
             }}
             onDragOver={(e) => {
@@ -1356,19 +1636,23 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               width: slotSize,
               height: slotSize,
               borderRadius: '50%',
-              background: item ? 'var(--bg-card)' : 'var(--btn-bg)',
-              border: item ? getRarityStyle(item.rarity).border : '1px dashed var(--border-glass)',
+              background: item ? 'var(--bg-card)' : 'rgba(0, 0, 0, 0.2)',
+              border: item ? getRarityStyle(item.rarity).border : '1px solid var(--border-glass)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: hoveredSlot === slot.id ? 100 : 10,
-              boxShadow: item ? getRarityStyle(item.rarity).boxShadow : 'none',
+              boxShadow: item ? getRarityStyle(item.rarity).boxShadow : 'inset 4px 4px 8px rgba(0,0,0,0.5), inset -3px -3px 6px rgba(255,255,255,0.1), 0 1px 2px rgba(255,255,255,0.15)',
               overflow: 'visible',
               cursor: item && onSlotClick ? 'pointer' : 'default'
           }}>
             {/* Imagem do Item centralizada e cortada (hidden) num circulo interior para não quebrar a borda visivel caso coloquemos o tooltip por fora */}
             <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {item && <img src={item.imageUrl} alt="" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />}
+                {item ? (
+                  <img src={item.imageUrl} alt="" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
+                ) : (
+                  getPlaceholderIcon(slot.id, '55%')
+                )}
             </div>
             
             {/* Tooltip Estilo RPG */}
