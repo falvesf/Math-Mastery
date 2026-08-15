@@ -66,7 +66,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
   const [myInventoryCount, setMyInventoryCount] = useState(0);
   const [myConsumableQuantities, setMyConsumableQuantities] = useState<Record<string, number>>({});
-  const [totalEquippedStats, setTotalEquippedStats] = useState(calculateTotalStats([]));
+  const [totalEquippedStats, setTotalEquippedStats] = useState(calculateTotalStats([], userData?.distributedStats));
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [economySettings, setEconomySettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -164,7 +164,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       setMyConsumableQuantities(consumableQuantities);
       setMyInventoryCount(count);
       setGiftWrapItemIds(wrapIds);
-      setTotalEquippedStats(calculateTotalStats(equippedItemsForStats));
+      setTotalEquippedStats(calculateTotalStats(equippedItemsForStats, userData?.distributedStats));
     }
 
     // Buscar lista de alunos para presente

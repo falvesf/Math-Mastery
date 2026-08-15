@@ -145,7 +145,7 @@ export default function LiveQuestStudent() {
             console.error("Erro ao carregar itens equipados", e);
           }
 
-          const stats = calculateTotalStats(equippedItems);
+          const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
           const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
           const maxHp = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
 
@@ -232,7 +232,7 @@ export default function LiveQuestStudent() {
   if (!session || !quest || !userData) return null;
 
   const me = session.players[userData.uid];
-  const totalEquippedStats = me?.equippedItems ? calculateTotalStats(me.equippedItems) : { attack: 0, defense: 0, xp: 0, coins: 0, vitality: 0, fortitude: 0, persuasion: 0 };
+  const totalEquippedStats = me?.equippedItems ? calculateTotalStats(me.equippedItems, userData?.distributedStats) : { attack: 0, defense: 0, xp: 0, coins: 0, vitality: 0, fortitude: 0, persuasion: 0 };
   const totalDefense = totalEquippedStats.defense;
   const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
   const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(totalEquippedStats.vitality / 30);

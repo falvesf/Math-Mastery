@@ -135,17 +135,17 @@ export function rollExactAttributes(count: number, existingTypes: AttributeType[
 }
 
 export const ATTRIBUTE_LABELS: Record<AttributeType, { label: string, icon: string, color: string }> = {
-  attack: { label: 'Poder de Ataque', icon: '⚔️', color: '#EF4444' },
+  attack: { label: 'Poder de Ataque', icon: '⚔️', color: '#94A3B8' }, // Slate Gray
   defense: { label: 'Poder de Defesa', icon: '🛡️', color: '#3B82F6' },
   xp: { label: 'Bônus de XP', icon: '⭐', color: '#FBBF24' },
   coins: { label: 'Bônus de Moedas', icon: '🪙', color: '#FCD34D' },
-  vitality: { label: 'Vitalidade', icon: '❤️', color: '#EC4899' },
-  fortitude: { label: 'Fortitude', icon: '🎒', color: '#8B5CF6' },
-  persuasion: { label: 'Persuasão', icon: '🗣️', color: '#10B981' },
+  vitality: { label: 'Vitalidade', icon: '❤️', color: '#F43F5E' },
+  fortitude: { label: 'Fortitude', icon: '🎒', color: '#EC4899' }, // Rose/Red
+  persuasion: { label: 'Persuasão', icon: '🗣️', color: '#8B5CF6' }, // Purple
   none: { label: 'Nenhum', icon: '', color: '#9CA3AF' }
 };
 
-export function calculateTotalStats(equippedItems: any[]) {
+export function calculateTotalStats(equippedItems: any[], distributedStats?: Record<string, number>) {
   const stats = {
     attack: 0,
     defense: 0,
@@ -174,6 +174,16 @@ export function calculateTotalStats(equippedItems: any[]) {
       });
     }
   });
+
+  if (distributedStats) {
+    if (distributedStats.attack) stats.attack += distributedStats.attack;
+    if (distributedStats.defense) stats.defense += distributedStats.defense;
+    if (distributedStats.xp) stats.xp += distributedStats.xp;
+    if (distributedStats.coins) stats.coins += distributedStats.coins;
+    if (distributedStats.vitality) stats.vitality += distributedStats.vitality;
+    if (distributedStats.fortitude) stats.fortitude += distributedStats.fortitude;
+    if (distributedStats.persuasion) stats.persuasion += distributedStats.persuasion;
+  }
 
   return stats;
 }

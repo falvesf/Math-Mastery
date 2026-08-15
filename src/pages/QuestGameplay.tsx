@@ -59,7 +59,7 @@ export default function QuestGameplay() {
   const [battleMessage, setBattleMessage] = useState<string>('Prepare-se para a batalha!');
   const [chestRewards, setChestRewards] = useState<{coins: number, items: any[]}>({ coins: 0, items: [] });
 
-  const totalEquippedStats = calculateTotalStats(playerEquippedItems);
+  const totalEquippedStats = calculateTotalStats(playerEquippedItems, userData?.distributedStats);
   const xpMultiplier = 1 + (totalEquippedStats.xp / 100);
   const coinsMultiplier = 1 + (totalEquippedStats.coins / 100);
 
@@ -996,7 +996,7 @@ export default function QuestGameplay() {
       
     } else if (item.gameEffect === 'restore_hp') {
       const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
-      const stats = calculateTotalStats(playerEquippedItems);
+      const stats = calculateTotalStats(playerEquippedItems, userData?.distributedStats);
       const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
       
       if (currentHearts >= maxHearts) {
@@ -1011,7 +1011,7 @@ export default function QuestGameplay() {
       }
     } else if (item.gameEffect === 'heal_1_hp') {
       const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
-      const stats = calculateTotalStats(playerEquippedItems);
+      const stats = calculateTotalStats(playerEquippedItems, userData?.distributedStats);
       const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
       
       if (currentHearts >= maxHearts) {
@@ -1037,7 +1037,7 @@ export default function QuestGameplay() {
   }
 
   const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
-  const stats = calculateTotalStats(playerEquippedItems);
+  const stats = calculateTotalStats(playerEquippedItems, userData?.distributedStats);
   const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
   const hpPercentage = (currentHearts / maxHearts) * 100;
 

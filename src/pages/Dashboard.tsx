@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { auth, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart, Package, Eye, EyeOff } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart, Package, Eye, EyeOff, Plus } from 'lucide-react';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, updateDoc, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { getRankForXp, RANKS, type RankDef } from '../lib/ranks';
-import { calculateTotalStats } from '../lib/gacha';
+import { calculateTotalStats, ATTRIBUTE_LABELS } from '../lib/gacha';
 import LevelUpModal from '../components/LevelUpModal';
 import StudentStore from '../components/StudentStore';
 import StudentInventory from '../components/StudentInventory';
@@ -20,6 +20,7 @@ import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import OnboardingModal from '../components/OnboardingModal';
 import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../components/CustomThemeModal';
 import { applyCustomTheme } from '../lib/theme';
+import StatDistributionModal from '../components/StatDistributionModal';
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
   classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
@@ -148,6 +149,7 @@ export default function Dashboard() {
 
   // Configurações do Sistema
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [showStatDistributionModal, setShowStatDistributionModal] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'cube' | 'theme' | 'debug'>('cube');
   const [appTheme, setAppTheme] = useState(() => localStorage.getItem('appTheme') || 'default');
   const [appFonts, setAppFonts] = useState(() => localStorage.getItem('appFonts') || 'default');
@@ -238,7 +240,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!userData || userData.role !== 'student' || !equippedItemsLoaded) return;
     
-    const stats = calculateTotalStats(equippedItems);
+    const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
     const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
     const dbHearts = userData.hearts !== undefined ? Number(userData.hearts) : maxHearts;
     
@@ -695,6 +697,23 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     await signOut(auth);
+  };
+
+  const handleToggleSlotVisibility = async (slotId: string) => {
+    if (!userData?.avatarConfig) return;
+    const currentHidden = userData.avatarConfig.hiddenSlots || [];
+    const newHidden = currentHidden.includes(slotId) 
+      ? currentHidden.filter(id => id !== slotId) 
+      : [...currentHidden, slotId];
+    
+    const newConfig = { ...userData.avatarConfig, hiddenSlots: newHidden };
+    
+    // Update live preview immediately
+    setLiveAvatarConfig(newConfig);
+    
+    if (userData.uid) {
+      await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: newConfig });
+    }
   };
 
   const getContrastColor = (hexColor: string): string => {
@@ -1523,24 +1542,46 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center' }}>
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'stretch', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center' }}>
               {/* Perfil do Aluno (Esquerda) */}
-              <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 400px' : '0 1 500px', padding: '1.5rem 2rem', textAlign: 'center', position: 'relative' }}>
+              <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 400px' : '0 1 500px', padding: '1.5rem 2rem 1.5rem 1.5rem', textAlign: 'center', position: 'relative', height: '71vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ flexShrink: 0, paddingRight: '0.5rem' }}>
               <div 
-                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '1.5rem', marginBottom: '2.5rem', perspective: '1000px' }}
+                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '0.5rem', marginBottom: '2.5rem', perspective: '1000px' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 10 }}>
+                  <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 1 }}>
                     {'<'}
                   </button>
                   
-                  <div className="cube-container">
+                  <div className="cube-container" style={{ zIndex: 10 }}>
                     <div className="cube" style={{ transform: `rotateY(${cubeRotation}deg)` }}>
                       {/* Frente: Avatar */}
-                      <div className="cube-face cube-face-front" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column' }} title="Clique para personalizar seu personagem">
+                      <div className="cube-face cube-face-front" style={{ 
+                        border: `3px solid ${currentRank.color}`, 
+                        boxShadow: `0 0 20px ${currentRank.color}40`, 
+                        flexDirection: 'column',
+                        background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))'
+                      }} title="Clique para personalizar seu personagem">
+                        
+                        {/* Rock Pedestal/Shadow */}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '0',
+                          left: '0',
+                          width: '100%',
+                          height: '35%',
+                          background: 'radial-gradient(ellipse at top, rgba(255, 255, 255, 0.15) 0%, rgba(0, 0, 0, 0.5) 50%, rgba(0, 0, 0, 0) 80%)',
+                          borderTopLeftRadius: '50% 100%',
+                          borderTopRightRadius: '50% 100%',
+                          borderBottomLeftRadius: '12px',
+                          borderBottomRightRadius: '12px',
+                          zIndex: 0
+                        }} />
+
                         {(liveAvatarConfig || userData?.avatarConfig) ? (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative' }} onClick={() => setIsCustomizingAvatar(true)}>
-                            <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={90} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} />
+                          <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 20 }} onClick={() => setIsCustomizingAvatar(true)}>
+                            <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={90} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} onToggleSlotVisibility={handleToggleSlotVisibility} />
                           </div>
                         ) : (
                           <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px', cursor: 'pointer' }} />
@@ -1553,9 +1594,9 @@ export default function Dashboard() {
                       {/* Trás: Patente */}
                       <div className="cube-face cube-face-back" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column' }}>
                         {currentDisplayImage ? (
-                          <img key={currentDisplayImage} src={currentDisplayImage} alt={currentRank.name} style={{ width: 110, height: 110, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
+                          <img key={currentDisplayImage} src={currentDisplayImage} alt={currentRank.name} style={{ width: 170, height: 170, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
                         ) : (
-                          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: currentRank.color }}>{currentRank.name}</div>
+                          <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: currentRank.color }}>{currentRank.name}</div>
                         )}
                         <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
                           {currentRank.name}
@@ -1567,13 +1608,13 @@ export default function Dashboard() {
                         {(() => {
                           const equippedPet = equippedItems.find(item => item.avatarPart === 'pet');
                           return equippedPet ? (
-                            <img src={equippedPet.imageUrl} alt="Pet" style={{ width: 80, height: 80, objectFit: 'contain', animation: 'float 3s ease-in-out infinite' }} />
+                            <img src={equippedPet.imageUrl} alt="Pet" style={{ width: 140, height: 140, objectFit: 'contain', animation: 'float 3s ease-in-out infinite' }} />
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: 0.5 }}>
-                              <div style={{ width: 60, height: 60, border: '2px dashed var(--border-glass)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.5rem' }}>
-                                <span style={{ fontSize: '1.5rem' }}>🐾</span>
+                              <div style={{ width: 100, height: 100, border: '3px dashed var(--border-glass)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                                <span style={{ fontSize: '3rem' }}>🐾</span>
                               </div>
-                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Nenhum Pet</span>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', fontWeight: 'bold' }}>Nenhum Pet</span>
                             </div>
                           );
                         })()}
@@ -1589,7 +1630,7 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 10 }}>
+                  <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 1 }}>
                     {'>'}
                   </button>
                 </div>
@@ -1632,9 +1673,13 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
+              </div>
+
+              {/* Início da área com Scroll */}
+              <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', marginTop: '0.5rem' }}>
 
               {(!userData?.studentViewActive && userData?.role !== 'student') ? null : (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '0.5rem', textAlign: 'left' }}>
                   Turma: {userData?.classId || 'Não definida'}
                 </p>
               )}
@@ -1702,12 +1747,70 @@ export default function Dashboard() {
                     Patente Máxima Alcançada!
                   </div>
                 )}
+                {/* Character Stats Section */}
+                {(() => {
+                  const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
+                  const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRank.name));
+                  const rankHpBonus = Math.floor(rankIndex / 2);
+                  
+                  const totalEarnedPoints = rankIndex * 4;
+                  const confirmedStats = userData?.distributedStats || {};
+                  const totalConfirmedPoints = Object.values(confirmedStats).reduce((sum: any, val: any) => sum + (val || 0), 0) as number;
+                  const unspentPoints = totalEarnedPoints - totalConfirmedPoints;
+                  
+                  return (
+                    <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Estatísticas do Personagem</h4>
+                        {unspentPoints > 0 && (
+                          <button 
+                            onClick={() => setShowStatDistributionModal(true)}
+                            className="glow-effect hover-brightness"
+                            style={{ 
+                              background: 'var(--gold-primary)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)', 
+                              borderRadius: '12px', padding: '0.3rem 0.8rem', fontSize: '0.8rem', fontWeight: 'bold',
+                              display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer',
+                              boxShadow: '0 0 15px var(--gold-primary)'
+                            }}
+                          >
+                            <Plus size={16} /> <span style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{unspentPoints} {unspentPoints === 1 ? 'Ponto Disponível' : 'Pontos Disponíveis'}</span>
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', paddingBottom: '1rem' }}>
+                        
+                        {Object.entries(stats).map(([key, value]) => {
+                          // Mostrar atributos chave mesmo se 0, e ocultar os secundários se não tiverem pontos
+                          if (value === 0 && key !== 'attack' && key !== 'defense' && key !== 'vitality') return null;
+                          
+                          const labelInfo = ATTRIBUTE_LABELS[key] || ATTRIBUTE_LABELS['none'];
+                          let displayValue = `+${value}`;
+                          if (key === 'xp' || key === 'coins') displayValue += '%';
+                          
+                          return (
+                            <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.15)', padding: '0.5rem 0.6rem', borderRadius: '12px', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                                <span style={{ fontSize: '1.2rem', flexShrink: 0 }} title={labelInfo.label}>{labelInfo.icon}</span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{labelInfo.label}</span>
+                              </div>
+                              <span style={{ fontSize: '1.1rem', color: labelInfo.color, fontWeight: 'bold', textShadow: '0 1px 3px rgba(0,0,0,0.8)', flexShrink: 0 }}>
+                                {displayValue}
+                              </span>
+                            </div>
+                          );
+                        })}
+
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
               </div>
             </div>
 
             {/* Coluna Direita Alternável (Histórico ou Mochila) */}
             {(userData?.role === 'student' || userData?.studentViewActive) && profileTab === 'overview' && (
-              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 140px)' }}>
+              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
                 <History size={24} color="var(--gold-primary)" />
                 <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Histórico de Conquistas</h3>
@@ -1741,7 +1844,7 @@ export default function Dashboard() {
             )}
             
             {profileTab === 'inventory' && (
-              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '2rem', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' }}>
+              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
                 {userData && <StudentInventory userData={userData} onEquip={() => setInventoryRefresh(r => r + 1)} inventoryRefresh={inventoryRefresh} />}
               </div>
             )}
@@ -1821,6 +1924,12 @@ export default function Dashboard() {
         )}
 
       </main>
+
+      <StatDistributionModal
+        isOpen={showStatDistributionModal}
+        onClose={() => setShowStatDistributionModal(false)}
+        userData={userData}
+      />
     </div>
   );
 }

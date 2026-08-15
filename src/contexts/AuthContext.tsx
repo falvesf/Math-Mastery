@@ -39,6 +39,7 @@ export interface UserData {
   studentViewActive?: boolean;
   adminProfileBackup?: Record<string, any>;
   studentProfileBackup?: Record<string, any>;
+  distributedStats?: Record<string, number>;
 }
 
 interface AuthContextType {

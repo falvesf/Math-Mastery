@@ -6,6 +6,7 @@ import * as THREE from 'skinview3d/node_modules/three';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
 import { generateVoxelItemFromImage, updateVoxelCurve } from '../lib/VoxelItemGenerator';
+import { Eye, EyeOff, PackageX } from 'lucide-react';
 
 export interface AvatarConfig {
   gender?: 'male' | 'female';
@@ -41,6 +42,7 @@ export interface AvatarConfig {
   genderUnlockUntil?: number;
   savedPreSkinConfig?: Partial<AvatarConfig>;
   savedOppositeGenderConfig?: Partial<AvatarConfig>;
+  hiddenSlots?: string[];
 }
 
 export interface EquippedItem {
@@ -103,11 +105,14 @@ export interface ModelTransformsConfig {
   battle_left?: ModelTransform;
 }
 
-const getPlaceholderIcon = (slotId: string, sizeStr: string) => {
-  const color = "var(--text-secondary)";
-  const opacity = 0.2;
+const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boolean = false) => {
+  const color = "rgba(255, 255, 255, 0.4)";
+  const opacity = 1;
   const props = { width: sizeStr, height: sizeStr, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, style: { opacity } };
   
+  const getSwordSvg = () => <svg {...props}><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline><line x1="13" y1="19" x2="19" y2="13"></line><line x1="16" y1="16" x2="20" y2="20"></line><line x1="19" y1="21" x2="21" y2="19"></line></svg>;
+  const getShieldSvg = () => <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>;
+
   switch(slotId) {
     case 'head':
       // Helmet
@@ -119,11 +124,11 @@ const getPlaceholderIcon = (slotId: string, sizeStr: string) => {
       // Necklace (Gem)
       return <svg {...props}><path d="M6 3h12l4 6-10 13L2 9Z"></path><path d="M11 3 8 9l4 13 4-13-3-6"></path></svg>;
     case 'hand1':
-      // Sword
-      return <svg {...props}><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline><line x1="13" y1="19" x2="19" y2="13"></line><line x1="16" y1="16" x2="20" y2="20"></line><line x1="19" y1="21" x2="21" y2="19"></line></svg>;
+      // hand1 is Right side of screen = Character's Left Hand
+      return isLeftHanded ? getSwordSvg() : getShieldSvg();
     case 'hand2':
-      // Shield
-      return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>;
+      // hand2 is Left side of screen = Character's Right Hand
+      return isLeftHanded ? getShieldSvg() : getSwordSvg();
     case 'body':
       // Armor / Shirt
       return <svg {...props}><path d="M20.38 3.46 16 2a8 8 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"></path></svg>;
@@ -149,6 +154,7 @@ export interface AvatarCharacterProps {
   showSlots?: boolean;
   onAvatarClick?: () => void;
   onSlotClick?: (item: EquippedItem) => void;
+  onToggleSlotVisibility?: (slotId: string) => void;
   debugItemTransform?: ModelTransform | null;
   debugItemId?: string | null;
   debugPose?: CharacterPose;
@@ -157,11 +163,19 @@ export interface AvatarCharacterProps {
 
 import CustomModelViewer from './CustomModelViewer';
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick, debugItemTransform, debugItemId, debugPose, debugAnimationFrames }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
+  const [activeMenuSlot, setActiveMenuSlot] = useState<string | null>(null);
   const [modelsLoadedCount, setModelsLoadedCount] = useState(0);
+
+  useEffect(() => {
+    const handleClickOutside = () => setActiveMenuSlot(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   const customHairRef = useRef<THREE.Group | null>(null);
 
   const [zoomLevel, setZoomLevel] = useState(0.9);
@@ -247,7 +261,26 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     const loadedModels: { parent: THREE.Object3D, model: THREE.Object3D }[] = [];
     const loader = new GLTFLoader();
     
+    const handItemsLocal = equippedItems.filter(i => i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'hand');
+    let rightScreenHandLocal = null;
+    let leftScreenHandLocal = null;
+    if (config?.handedness === 'left') {
+      rightScreenHandLocal = handItemsLocal[0];
+      leftScreenHandLocal = handItemsLocal[1];
+    } else {
+      leftScreenHandLocal = handItemsLocal[0];
+      rightScreenHandLocal = handItemsLocal[1];
+    }
+
     equippedItems.forEach(item => {
+      let slotId = item.avatarPart as string;
+      if (item.avatarPart === 'two_handed') slotId = 'hand2';
+      else if (item.avatarPart === 'hand' || item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand') {
+         if (item === rightScreenHandLocal) slotId = 'hand1';
+         else if (item === leftScreenHandLocal) slotId = 'hand2';
+      }
+      if (config?.hiddenSlots?.includes(slotId)) return;
+
       if (item.gameModelUrl && item.gameModelUrl.trim() !== '') {
         let safeUrl = item.gameModelUrl.replace(/\\/g, '/');
         if (!safeUrl.startsWith('http') && !safeUrl.startsWith('/')) {
@@ -620,7 +653,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       loadedModelsRef.current = [];
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equippedItemsJson, config?.handedness]);
+  }, [equippedItemsJson, config?.handedness, config?.hiddenSlots?.join(',')]);
 
   // 3b. Apply transformations dynamically to avoid reloading models (flicker)
   useEffect(() => {
@@ -758,7 +791,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         }
       }
     });
-  }, [debugTransformJson, debugItemId, animation, config?.handedness, modelsLoadedCount, equippedItemsJson]);
+  }, [debugTransformJson, debugItemId, animation, config?.handedness, modelsLoadedCount, equippedItemsJson, config?.hiddenSlots?.join(',')]);
 
   // 3c. Add 3D Head Addons (Ponytail, Bow, etc)
   useEffect(() => {
@@ -769,6 +802,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       viewer.playerObject.skin.head.remove(customHairRef.current);
       customHairRef.current = null;
     }
+
+    const hasHelmet = equippedItems.some(i => i.avatarPart === 'head' && !config?.hiddenSlots?.includes('head'));
+    if (hasHelmet) return;
 
     const addonsGroup = new THREE.Group();
     let hasAddons = false;
@@ -963,7 +999,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       viewer.playerObject.skin.head.add(addonsGroup);
       customHairRef.current = addonsGroup;
     }
-  }, [config?.hairStyle, config?.hairColor, config?.hairTieColor, config?.shirtColor, config?.ponytailLength, config?.ponytailThickness, config?.ponytailAngle, config?.hairAccessories, config?.hairAccessory, config?.accessoryColor, config?.accessoryColors]);
+  }, [config?.hairStyle, config?.hairColor, config?.hairTieColor, config?.shirtColor, config?.ponytailLength, config?.ponytailThickness, config?.ponytailAngle, config?.hairAccessories, config?.hairAccessory, config?.accessoryColor, config?.accessoryColors, equippedItemsJson, config?.hiddenSlots?.join(',')]);
 
   // 4. Generate skins when config changes
   useEffect(() => {
@@ -1498,24 +1534,27 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     return equippedItems.find(i => i.avatarPart === slotId);
   };
 
+  const isLeftHanded = config?.handedness === 'left';
   const ALL_SLOTS = [
-    { id: 'head', label: 'Elmo / Cabeça', pos: { top: '-5%', left: '50%', transform: 'translateX(-50%)' } },
+    { id: 'head', label: 'Elmo / Cabeça', pos: { top: '-12%', left: '50%', transform: 'translateX(-50%)' } },
     { id: 'face', label: 'Rosto / Óculos', pos: { top: '5%', right: '-35%' } },
     { id: 'accessory', label: 'Acessório', pos: { top: '5%', left: '-35%' } },
-    { id: 'hand1', label: 'Mão (Esquerda do Personagem)', pos: { top: '40%', right: '-50%', transform: 'translateY(-50%)' } },
-    { id: 'hand2', label: 'Mão (Direita do Personagem)', pos: { top: '40%', left: '-50%', transform: 'translateY(-50%)' } },
+    { id: 'hand1', label: isLeftHanded ? 'Arma Principal (Mão Esquerda)' : 'Secundária / Escudo (Mão Esquerda)', pos: { top: '40%', right: '-50%', transform: 'translateY(-50%)' } },
+    { id: 'hand2', label: isLeftHanded ? 'Secundária / Escudo (Mão Direita)' : 'Arma Principal (Mão Direita)', pos: { top: '40%', left: '-50%', transform: 'translateY(-50%)' } },
     { id: 'body', label: 'Armadura / Corpo', pos: { bottom: '20%', right: '-40%' } },
     { id: 'legs', label: 'Calças / Pernas', pos: { bottom: '20%', left: '-40%' } },
-    { id: 'feet', label: 'Botas / Pés', pos: { bottom: '-15%', left: '50%', transform: 'translateX(-50%)' } },
+    { id: 'feet', label: 'Botas / Pés', pos: { bottom: '-5%', left: '50%', transform: 'translateX(-50%)' } },
   ];
 
   const getRarityStyle = (rarity?: string) => {
-    switch (rarity) {
-      case 'uncommon': return { border: '2px solid #10b981', boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)' };
-      case 'rare': return { border: '3px solid #3b82f6', boxShadow: '0 0 15px rgba(59, 130, 246, 0.5)' };
-      case 'epic': return { border: '4px solid #8b5cf6', boxShadow: '0 0 20px rgba(139, 92, 246, 0.6)' };
-      case 'legendary': return { border: '5px solid #f59e0b', boxShadow: '0 0 25px rgba(245, 158, 11, 0.7)' };
-      default: return { border: '2px solid rgba(255,255,255,0.2)', boxShadow: 'none' };
+    const baseInset = 'inset 4px 4px 8px rgba(0,0,0,0.5), inset -2px -2px 4px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.1)';
+    switch(rarity) {
+      case 'common': return { border: '3px solid #9ca3af', boxShadow: `${baseInset}, 0 0 10px rgba(156, 163, 175, 0.4), inset 0 0 15px rgba(156, 163, 175, 0.2)` };
+      case 'uncommon': return { border: '3px solid #10b981', boxShadow: `${baseInset}, 0 0 12px rgba(16, 185, 129, 0.5), inset 0 0 15px rgba(16, 185, 129, 0.3)` };
+      case 'rare': return { border: '3px solid #3b82f6', boxShadow: `${baseInset}, 0 0 15px rgba(59, 130, 246, 0.6), inset 0 0 20px rgba(59, 130, 246, 0.4)` };
+      case 'epic': return { border: '4px solid #8b5cf6', boxShadow: `${baseInset}, 0 0 20px rgba(139, 92, 246, 0.7), inset 0 0 25px rgba(139, 92, 246, 0.5)` };
+      case 'legendary': return { border: '4px solid #f59e0b', boxShadow: `${baseInset}, 0 0 25px rgba(245, 158, 11, 0.9), inset 0 0 30px rgba(245, 158, 11, 0.7)` };
+      default: return { border: '2px solid var(--border-glass)', boxShadow: baseInset };
     }
   };
 
@@ -1606,10 +1645,10 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             onClick={(e) => {
               e.stopPropagation();
               if (item) {
-                if (window.matchMedia("(hover: none)").matches) {
-                  setHoveredSlot(hoveredSlot === slot.id ? null : slot.id);
-                } else if (onSlotClick) {
-                  onSlotClick(item);
+                if (window.matchMedia("(hover: none)").matches && hoveredSlot !== slot.id) {
+                  setHoveredSlot(slot.id);
+                } else {
+                  setActiveMenuSlot(activeMenuSlot === slot.id ? null : slot.id);
                 }
               } else {
                 let category = 'Outros';
@@ -1636,22 +1675,73 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               width: slotSize,
               height: slotSize,
               borderRadius: '50%',
-              background: item ? 'var(--bg-card)' : 'rgba(0, 0, 0, 0.2)',
-              border: item ? getRarityStyle(item.rarity).border : '1px solid var(--border-glass)',
+              background: 'rgba(0, 0, 0, 0.25)', // Universal dark recess for any theme
+              border: item ? getRarityStyle(item.rarity).border : '2px solid var(--border-glass)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: hoveredSlot === slot.id ? 100 : 10,
-              boxShadow: item ? getRarityStyle(item.rarity).boxShadow : 'inset 4px 4px 8px rgba(0,0,0,0.5), inset -3px -3px 6px rgba(255,255,255,0.1), 0 1px 2px rgba(255,255,255,0.15)',
+              boxShadow: item ? getRarityStyle(item.rarity).boxShadow : 'inset 4px 4px 8px rgba(0,0,0,0.5), inset -2px -2px 4px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.1)',
               overflow: 'visible',
-              cursor: item && onSlotClick ? 'pointer' : 'default'
+              cursor: item && onSlotClick ? 'pointer' : 'default',
+              backdropFilter: 'blur(6px)'
           }}>
+            {/* Passive Hidden Indicator */}
+            {item && config?.hiddenSlots?.includes(slot.id) && (
+              <div 
+                title="Este item está oculto"
+                style={{
+                  position: 'absolute', top: -5, right: -5, background: 'var(--bg-card)', 
+                  borderRadius: '50%', padding: '4px', zIndex: 110, 
+                  border: '1px solid var(--border-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}
+              >
+                <EyeOff size={14} color="#ef4444" />
+              </div>
+            )}
+
+            {/* Submenu de Opções */}
+            {activeMenuSlot === slot.id && item && (
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '110%',
+                transform: 'translateY(-50%)',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-glass)',
+                borderRadius: '8px',
+                padding: '0.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+                zIndex: 200,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                minWidth: '120px'
+              }}>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setActiveMenuSlot(null); if(onSlotClick) onSlotClick(item); }}
+                  style={{ background: 'var(--bg-dark)', border: 'none', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  className="hover-brightness"
+                >
+                  <PackageX size={16} color="var(--accent-red)" />
+                  <span style={{ fontSize: '0.85rem' }}>Desequipar</span>
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setActiveMenuSlot(null); onToggleSlotVisibility?.(slot.id); }}
+                  style={{ background: 'var(--bg-dark)', border: 'none', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  className="hover-brightness"
+                >
+                  {config?.hiddenSlots?.includes(slot.id) ? <Eye size={16} color="#10b981" /> : <EyeOff size={16} color="#ef4444" />}
+                  <span style={{ fontSize: '0.85rem' }}>{config?.hiddenSlots?.includes(slot.id) ? "Mostrar" : "Ocultar"}</span>
+                </button>
+              </div>
+            )}
             {/* Imagem do Item centralizada e cortada (hidden) num circulo interior para não quebrar a borda visivel caso coloquemos o tooltip por fora */}
-            <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: item ? '12%' : '0' }}>
                 {item ? (
-                  <img src={item.imageUrl} alt="" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
+                  <img src={item.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.6))' }} />
                 ) : (
-                  getPlaceholderIcon(slot.id, '55%')
+                  <div style={{ opacity: 1 }}>{getPlaceholderIcon(slot.id, '50%', isLeftHanded)}</div>
                 )}
             </div>
             
