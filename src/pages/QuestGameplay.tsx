@@ -296,7 +296,7 @@ export default function QuestGameplay() {
     const updates: any = { hp: newHearts };
     const currentHp = userData.hp !== undefined ? userData.hp : maxHearts;
     if (currentHp >= maxHearts && newHearts < maxHearts) {
-      updates.hpRecoveryStartTimestamp = Date.now();
+      updates.hp_recovery_start_timestamp = Date.now();
     }
     userData.hp = newHearts;
     await supabase.from('users').update(updates).eq('id', userData.uid);

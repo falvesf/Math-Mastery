@@ -482,7 +482,7 @@ export default function LiveQuestStudent() {
           try {
             const userUpdate: any = { hp: newHp };
             if (currentHp >= maxHearts && newHp < maxHearts) {
-              userUpdate.hpRecoveryStartTimestamp = Date.now();
+              userUpdate.hp_recovery_start_timestamp = Date.now();
             }
             await supabase.from('users').update(userUpdate).eq('id', userData.uid);
           } catch(e) { console.error(e); }

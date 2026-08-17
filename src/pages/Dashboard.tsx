@@ -89,7 +89,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 
 export default function Dashboard() {
   const { showAlert, showConfirm, showToast } = useDialog();
-  const { userData, toggleStudentView } = useAuth();
+  const { userData, toggleStudentView, updateUserDataLocally } = useAuth();
   if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
@@ -257,7 +257,7 @@ export default function Dashboard() {
     if (dbHearts > maxHearts) {
       supabase.from('users').update({ 
         hp: maxHearts,
-        hpRecoveryStartTimestamp: null 
+        hp_recovery_start_timestamp: null 
       }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
       setNextHeartProgress(0);
       return;
@@ -1006,11 +1006,21 @@ export default function Dashboard() {
 
   const handleSelectClass = async (classId: string) => {
     if (!userData) return;
-    await supabase.from('users').update({ class_id: classId }).eq('id', userData.uid);
+    const { error } = await supabase.from('users').update({ class_id: classId }).eq('id', userData.uid);
+    if (!error) {
+      updateUserDataLocally({ classId });
+    } else {
+      console.error('Erro ao salvar turma:', error);
+    }
   };
   const handleSelectTeacher = async () => {
     if (!userData) return;
-    await supabase.from('users').update({ role: 'pending_teacher' }).eq('id', userData.uid);
+    const { error } = await supabase.from('users').update({ role: 'pending_teacher' }).eq('id', userData.uid);
+    if (!error) {
+      updateUserDataLocally({ role: 'pending_teacher' });
+    } else {
+      console.error('Erro ao definir role de professor:', error);
+    }
   };
 
   if (userData?.role === 'pending_teacher') {
