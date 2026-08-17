@@ -89,7 +89,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 
 export default function Dashboard() {
   const { showAlert, showConfirm, showToast } = useDialog();
-  const { userData, toggleStudentView, updateUserDataLocally } = useAuth();
+  const { userData, toggleStudentView, updateUserDataLocally, ranksLoaded } = useAuth();
   if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
@@ -705,7 +705,7 @@ export default function Dashboard() {
 
   // Verificar se subiu de patente
   useEffect(() => {
-    if (!userData || userData.role !== 'student') return;
+    if (!userData || userData.role !== 'student' || !ranksLoaded) return;
     
     // Se não tem lastSeenRank e o rank é Iniciante, apenas salva silenciosamente.
     if (!userData.lastSeenRank) {
@@ -760,7 +760,7 @@ export default function Dashboard() {
         supabase.from('users').update(updateData).eq('id', userData.uid).then();
       }
     }
-  }, [userData?.xp, userData?.lastSeenRank, currentRank.name]);
+  }, [userData?.xp, userData?.lastSeenRank, currentRank.name, ranksLoaded]);
 
   const handleCloseLevelUp = async () => {
     setShowLevelUp(false);

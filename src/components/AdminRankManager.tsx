@@ -185,7 +185,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
 
         {isEditing && createPortal(
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-            <div className="glass-panel" style={{ width: '500px', maxWidth: '95vw', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+            <div className="glass-panel" style={{ width: '500px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
               <h3 style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingIndex !== null ? 'Editar Patente' : 'Criar Nova Patente'}</h3>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>

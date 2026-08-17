@@ -74,6 +74,7 @@ interface AuthContextType {
   loading: boolean;
   toggleStudentView: () => Promise<void>;
   updateUserDataLocally: (updates: Partial<UserData>) => void;
+  ranksLoaded: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -82,6 +83,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   toggleStudentView: async () => {},
   updateUserDataLocally: () => {},
+  ranksLoaded: false
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -90,6 +92,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ranksLoaded, setRanksLoaded] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -129,7 +132,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (mappedUserData.role === 'student' && mappedUserData.avatarConfig?.customSkinUrl) {
           const skinUrl = mappedUserData.avatarConfig.customSkinUrl;
           const expiry = mappedUserData.unlockedSkins?.[skinUrl];
-          if (!expiry || expiry <= Date.now()) {
+          if (expiry !== undefined && expiry <= Date.now()) {
             let updatedConfig = { ...mappedUserData.avatarConfig, customSkinUrl: '', customModelUrl: undefined };
             if (updatedConfig.savedPreSkinConfig) {
               updatedConfig = { ...updatedConfig, ...updatedConfig.savedPreSkinConfig };
@@ -183,6 +186,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     initRanks().then(() => {
+      if (isMounted) setRanksLoaded(true);
       supabase.auth.getSession().then(({ data: { session } }) => {
         handleUserSession(session?.user || null);
       });
@@ -211,7 +215,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, userData, loading, toggleStudentView, updateUserDataLocally }}>
+    <AuthContext.Provider value={{ currentUser, userData, loading, toggleStudentView, updateUserDataLocally, ranksLoaded }}>
       {!loading && children}
     </AuthContext.Provider>
   );

@@ -14,28 +14,46 @@ interface PublicProfileModalProps {
   rankPos?: number;
 }
 
+import { calculateTotalStats } from '../lib/gacha';
+import { RANKS } from '../lib/ranks';
 export default function PublicProfileModal({ isOpen, onClose, user, equippedItems, rankName, rankColor, rankPos }: PublicProfileModalProps) {
   const [questStats, setQuestStats] = useState({ participations: 0, wins: 0, defeats: 0 });
+  const [recentQuests, setRecentQuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isOpen || !user.uid) return;
+    if (!isOpen || !user.uid) {
+      setLoading(false);
+      return;
+    }
     
     const fetchStats = async () => {
       setLoading(true);
       try {
-        const { data: snap } = await supabase.from('quest_attempts').select('*').eq('student_id', user.uid);
+        const { data: snap } = await supabase.from('quest_attempts').select('*').eq('student_id', user.uid).order('created_at', { ascending: false });
         
         let wins = 0;
         let defeats = 0;
         const uniqueQuests = new Set<string>();
+        const recentAttempts = (snap || []).slice(0, 10);
 
         (snap || []).forEach((row: any) => {
-          // quest_attempts columns are snake_case in Supabase: quest_id, status
           uniqueQuests.add(row.quest_id);
           if (row.status === 'completed') wins++;
           if (row.status === 'failed') defeats++;
         });
+
+        const questsToFetch = Array.from(new Set(recentAttempts.map(a => a.quest_id)));
+        const { data: questsData } = questsToFetch.length > 0 
+          ? await supabase.from('quests').select('id, title').in('id', questsToFetch)
+          : { data: [] };
+          
+        const questsMap = new Map((questsData || []).map(q => [q.id, q.title]));
+
+        setRecentQuests(recentAttempts.map(a => ({
+          ...a,
+          title: questsMap.get(a.quest_id) || 'Missão Desconhecida'
+        })));
 
         setQuestStats({
           participations: uniqueQuests.size,
@@ -61,6 +79,19 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
   const totalAttack = equippedItems.reduce((acc, item) => item.baseAttributeType === 'attack' ? acc + (item.baseAttributeValue || 0) : acc, 0);
 
   const petItem = equippedItems.find(i => (i.itemCategory as string) === 'pet');
+
+  const stats = calculateTotalStats(equippedItems, user.distributedStats);
+  const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === rankName) || 0) / 2) + Math.floor(stats.vitality / 30);
+  
+  let visualHp = user.hp !== undefined ? Number(user.hp) : maxHearts;
+  if (user.hpRecoveryStartTimestamp && visualHp < maxHearts) {
+    const startMs = typeof user.hpRecoveryStartTimestamp === 'string' ? new Date(user.hpRecoveryStartTimestamp).getTime() : Number(user.hpRecoveryStartTimestamp);
+    const timePassed = Date.now() - startMs;
+    if (timePassed > 0) {
+      const recoveredHearts = Math.floor(timePassed / (30 * 60 * 1000));
+      visualHp = Math.min(maxHearts, visualHp + recoveredHearts);
+    }
+  }
 
   let bgGradient = 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 100%)';
   if (rankPos === 1) bgGradient = 'linear-gradient(180deg, rgba(251, 191, 36, 0.3) 0%, rgba(0,0,0,0.5) 100%)'; // Ouro
@@ -108,8 +139,8 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
             )}
 
             <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {Array.from({ length: 10 }).map((_, i) => (
-                <Heart key={i} size={20} fill={i < (user.hp || 0) ? "var(--accent-red)" : "none"} color={i < (user.hp || 0) ? "var(--accent-red)" : "rgba(255,255,255,0.2)"} />
+              {Array.from({ length: Math.max(10, maxHearts) }).map((_, i) => (
+                <Heart key={i} size={20} fill={i < visualHp ? "var(--accent-red)" : "none"} color={i < visualHp ? "var(--accent-red)" : "rgba(255,255,255,0.2)"} />
               ))}
             </div>
           </div>
@@ -147,6 +178,22 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                         <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Skull size={16} /> Derrotas</span>
                         <strong style={{ color: 'var(--accent-red)', fontSize: '1.1rem' }}>{questStats.defeats}</strong>
                       </div>
+                      
+                      {recentQuests.length > 0 && (
+                        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)' }}>
+                          <h4 style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.9rem', textTransform: 'uppercase' }}>Últimas Missões</h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {recentQuests.map((q, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '8px' }}>
+                                <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}>{q.title}</span>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: q.status === 'completed' ? 'var(--accent-green)' : (q.status === 'failed' ? 'var(--accent-red)' : 'var(--text-secondary)') }}>
+                                  {q.status === 'completed' ? 'VITÓRIA' : (q.status === 'failed' ? 'FALHA' : 'ABANDONOU')}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -618,6 +618,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     minecraftHeadValue: previewItem.minecraftHeadValue,
                     modelTransforms: previewItem.modelTransforms
                   });
+                  if (previewConfig.hiddenSlots && previewItem.avatarPart) {
+                    previewConfig.hiddenSlots = previewConfig.hiddenSlots.filter((slot: string) => slot !== previewItem.avatarPart);
+                  }
                 }
                 
                 return <AvatarCharacter config={previewConfig} equippedItems={previewEquipped} size={300} animation="idle" />;
