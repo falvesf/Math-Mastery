@@ -10,7 +10,7 @@ interface ClassDef {
 
 interface OnboardingModalProps {
   userName: string;
-  onSelectClass: (className: string) => void;
+  onSelectClass: (classId: string) => void;
   onSelectTeacher: () => void;
 }
 
@@ -41,7 +41,7 @@ export default function OnboardingModal({ userName, onSelectClass, onSelectTeach
     if (selectedRole === 'teacher') {
       onSelectTeacher();
     } else if (selectedClass) {
-      onSelectClass(selectedClass.name);
+      onSelectClass(selectedClass.id);
     }
   };
 

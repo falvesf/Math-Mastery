@@ -1004,9 +1004,9 @@ export default function Dashboard() {
     );
   };
 
-  const handleSelectClass = async (className: string) => {
+  const handleSelectClass = async (classId: string) => {
     if (!userData) return;
-    await supabase.from('users').update({ class_id: className }).eq('id', userData.uid);
+    await supabase.from('users').update({ class_id: classId }).eq('id', userData.uid);
   };
   const handleSelectTeacher = async () => {
     if (!userData) return;
