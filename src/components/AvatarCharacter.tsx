@@ -382,7 +382,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               head.add(model);
               loadedModels.push({ parent: head, model });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
-            } else if (item.avatarPart === 'body') {
+            } else if (item.avatarPart === 'body' || item.avatarPart === 'legs' || item.avatarPart === 'feet') {
               const body = viewer.playerObject.skin.body;
               model.scale.set(16, 16, 16);
               // O grupo "body" no skinview3d tem seu eixo deslocado. Precisamos descer o modelo em -6 para alinhar com o peitoral.
@@ -404,7 +404,10 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               }
               
               if (!appliedTransform) {
-                model.position.set(0, -6, 0);
+                let yOffset = -6;
+                if (item.avatarPart === 'legs') yOffset = -15;
+                if (item.avatarPart === 'feet') yOffset = -22;
+                model.position.set(0, yOffset, 0);
                 model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
               }
               body.add(model);
