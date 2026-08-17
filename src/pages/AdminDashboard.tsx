@@ -1133,6 +1133,9 @@ export default function AdminDashboard() {
                 </div>
               ) : (() => {
                 const filteredStudents = students.filter(student => {
+                  // Usuários pendentes NUNCA aparecem na listagem geral — só em "Solicitações"
+                  if (student.role === 'pending_teacher') return false;
+
                   const matchesSearch = student.name.toLowerCase().includes(studentSearch.toLowerCase());
                   
                   let matchesTab = true;

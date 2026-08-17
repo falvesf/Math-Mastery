@@ -9,6 +9,7 @@ import QuestGameplay from './pages/QuestGameplay';
 import LiveQuestAdmin from './pages/LiveQuestAdmin';
 import LiveQuestStudent from './pages/LiveQuestStudent';
 import { Loader2 } from 'lucide-react';
+import { supabase } from './lib/supabase';
 import './App.css';
 
 // Componente para proteger rotas privadas
@@ -25,8 +26,30 @@ const PrivateRoute = ({ children, requiredRole }: { children: React.ReactNode, r
 
   // Se não tem usuário, joga para o login
   if (!currentUser) return <Navigate to="/" />;
-  
-  // Se exigiu uma função (ex: admin) e o cara não tem
+
+  // Usuários aguardando aprovação NÃO têm acesso a nada — exibe tela de espera
+  if (userData?.role === 'pending_teacher') {
+    return (
+      <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
+        <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+          <Loader2 size={48} color="var(--gold-primary)" style={{ margin: '0 auto 1.5rem auto', display: 'block' }} />
+          <h2 style={{ color: 'var(--gold-primary)', marginBottom: '1rem', fontSize: '1.8rem' }}>Aguardando Aprovação</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '2rem' }}>
+            Sua solicitação de acesso como <strong style={{ color: 'white' }}>Professor/Coordenador</strong> foi enviada com sucesso.<br /><br />
+            Aguarde o administrador aprovar sua conta para ter acesso ao sistema.
+          </p>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            style={{ padding: '0.75rem 2rem', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--text-secondary)', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem' }}
+          >
+            Sair
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Se exigiu uma função (ex: teacher) e o usuário não tem a role necessária
   if (requiredRole && userData?.role !== requiredRole && userData?.role !== 'admin') {
      return <Navigate to="/dashboard" />;
   }
@@ -38,54 +61,55 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
-      <Route 
-        path="/dashboard" 
+      <Route
+        path="/dashboard"
         element={
           <PrivateRoute>
             <Dashboard />
           </PrivateRoute>
-        } 
+        }
       />
-      <Route 
-        path="/admin" 
+      <Route
+        path="/admin"
         element={
           <PrivateRoute requiredRole="teacher">
             <AdminDashboard />
           </PrivateRoute>
-        } 
+        }
       />
-      <Route 
-        path="/quest/:questId" 
+      <Route
+        path="/quest/:questId"
         element={
           <PrivateRoute>
             <QuestGameplay />
           </PrivateRoute>
-        } 
+        }
       />
-      <Route 
-        path="/live-admin/:sessionId" 
+      <Route
+        path="/live-admin/:sessionId"
         element={
           <PrivateRoute requiredRole="teacher">
             <LiveQuestAdmin />
           </PrivateRoute>
-        } 
+        }
       />
-      <Route 
-        path="/live/:sessionId" 
+      <Route
+        path="/live/:sessionId"
         element={
           <PrivateRoute>
             <LiveQuestStudent />
           </PrivateRoute>
-        } 
+        }
       />
     </Routes>
   );
 }
+
 function App() {
   React.useEffect(() => {
     const theme = localStorage.getItem('appTheme') || 'default';
     document.body.setAttribute('data-theme', theme);
-    
+
     if (theme.startsWith('custom_')) {
       const customData = localStorage.getItem('currentCustomThemeData');
       if (customData) {
