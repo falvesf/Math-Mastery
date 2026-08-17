@@ -492,7 +492,7 @@ export default function AdminDashboard() {
 
   const handleSaveStudent = async () => {
     if (!editingStudent) return;
-    const updateData: any = { name: editName, classId: editClass, role: editRole };
+    const updateData: any = { name: editName, class_id: editClass, role: editRole };
     
     // Promovendo para equipe concede 50k XP
     if (editRole !== 'student' && editingStudent.role === 'student') {
