@@ -5,6 +5,7 @@ import { useDialog } from '../contexts/DialogContext';
 import type { PresetSkin } from './AvatarCustomizationModal';
 import DirectUploadButton from './DirectUploadButton';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function AdminPresetSkinsManager() {
   const { showAlert, showConfirm } = useDialog();
@@ -43,12 +44,11 @@ export default function AdminPresetSkinsManager() {
         console.error('Supabase fetch error:', error);
         showAlert(`Erro do Supabase: ${error.message}`);
       } else if (snap) {
-        // Mapeia snake_case do banco para camelCase do JavaScript
+        // Garante que type tenha um valor padrão se vier null do banco
         const mapped = snap.map((s: any) => ({
           ...s,
           type: s.type || 'human',
-          baseModelId: s.base_model_id ?? s.baseModelId ?? null,
-          genderTarget: s.gender_target ?? s.genderTarget ?? 'both',
+          genderTarget: s.genderTarget || 'both',
         }));
         setSkins(mapped as PresetSkin[]);
       }
@@ -99,20 +99,22 @@ export default function AdminPresetSkinsManager() {
     }
 
     try {
-      // Usa snake_case para corresponder às colunas do Supabase
+      // As colunas no banco são camelCase (baseModelId, genderTarget)
+      // O id é text sem default, por isso geramos um UUID manualmente no insert
       const data: any = {
         name: name.trim(),
         url: url.trim(),
         type,
-        base_model_id: baseModelId === 'default' ? null : baseModelId,
-        gender_target: genderTarget,
+        baseModelId: baseModelId === 'default' ? null : baseModelId,
+        genderTarget,
       };
       let saveError: any = null;
       if (editingId) {
         const { error } = await supabase.from('preset_skins').update(data).eq('id', editingId);
         saveError = error;
       } else {
-        const { error } = await supabase.from('preset_skins').insert(data);
+        // Gera um ID único pois a coluna 'id' é text sem valor padrão
+        const { error } = await supabase.from('preset_skins').insert({ id: uuidv4(), ...data });
         saveError = error;
       }
       if (saveError) {
