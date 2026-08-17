@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Save, Plus, Minus } from 'lucide-react';
 import { ATTRIBUTE_LABELS } from '../lib/gacha';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { RANKS, getRankForXp } from '../lib/ranks';
+import { useAuth } from '../contexts/AuthContext';
 
 interface StatDistributionModalProps {
   isOpen: boolean;
@@ -23,6 +23,7 @@ const ATTRIBUTE_DESCRIPTIONS: Record<string, string> = {
 
 export default function StatDistributionModal({ isOpen, onClose, userData }: StatDistributionModalProps) {
   const [pendingStats, setPendingStats] = useState<Record<string, number>>({});
+  const { updateUserDataLocally } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -71,18 +72,17 @@ export default function StatDistributionModal({ isOpen, onClose, userData }: Sta
 
     setIsSaving(true);
     try {
-      const newDistributedStats = { ...confirmedStats };
+      const currentStats = { ...confirmedStats };
       
       Object.entries(pendingStats).forEach(([key, val]) => {
         if (val > 0) {
-          newDistributedStats[key] = (newDistributedStats[key] || 0) + val;
+          currentStats[key] = (currentStats[key] || 0) + val;
         }
       });
 
-      await updateDoc(doc(db, 'users', userData.uid), {
-        distributedStats: newDistributedStats
-      });
-
+      await supabase.from('users').update({ distributed_stats: currentStats }).eq('id', userData.uid);
+      updateUserDataLocally({ distributedStats: currentStats });
+      setPendingStats({});
       onClose();
     } catch (error) {
       console.error("Erro ao salvar distribuição de atributos:", error);
@@ -94,22 +94,10 @@ export default function StatDistributionModal({ isOpen, onClose, userData }: Sta
   const attributes = Object.keys(ATTRIBUTE_LABELS).filter(k => k !== 'none' && k !== 'xp' && k !== 'coins');
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.8)',
-      backdropFilter: 'blur(4px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 9999
-    }}>
-      <div className="glass-panel" style={{
-        width: '100%',
-        maxWidth: '500px',
-        padding: '2rem',
-        borderRadius: '24px',
-        position: 'relative'
+    <div className="modal-overlay">
+      <div className="glass-panel modal-content modal-content-sm" style={{
+        position: 'relative',
+        borderRadius: '24px'
       }}>
         <button 
           onClick={onClose}

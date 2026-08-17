@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Sword, Shield, Trophy, LogIn } from 'lucide-react';
-import { signInWithPopup, signOut } from 'firebase/auth';
-import { auth, googleProvider } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,18 +17,16 @@ export default function LandingPage() {
   const handleLogin = async () => {
     setError('');
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const email = result.user.email;
-      
-      if (!email?.endsWith('@eaportal.org')) {
-        await signOut(auth);
-        setError('Acesso negado. Por favor, use seu e-mail institucional @eaportal.org.');
-      }
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
     } catch (err: any) {
       console.error(err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-         setError('Erro ao fazer login. Tente novamente.');
-      }
+      setError('Erro ao fazer login. Tente novamente.');
     }
   };
 

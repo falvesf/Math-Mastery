@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { db } from '../lib/firebase';
-import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Medal, Plus, Edit2, Trash2, Search } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
@@ -47,28 +46,30 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   const [galleryTarget, setGalleryTarget] = useState<'main' | number | null>(null);
 
   useEffect(() => {
-    fetchRanks();
+    fetchRanks(false);
     fetchClasses();
   }, []);
 
-  const fetchClasses = async () => {
+  const fetchClasses = async (showLoading = true) => {
     try {
-      const snap = await getDocs(collection(db, 'classes'));
-      if (!snap.empty) {
-        setClasses(snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassDef)));
+      const { data: snap } = await supabase.from('classes').select('*');
+      if (snap && snap.length > 0) {
+        setClasses(snap as ClassDef[]);
       }
     } catch (e) {
       console.error(e);
     }
   };
 
-  const fetchRanks = async () => {
-    setLoading(true);
-    const snap = await getDocs(collection(db, 'custom_ranks'));
-    if (!snap.empty) {
-      const loadedRanks = snap.docs.map(d => d.data() as RankDef).sort((a,b) => a.minXp - b.minXp);
+  const fetchRanks = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    const { data: snap } = await supabase.from('custom_ranks').select('*');
+    if (snap && snap.length > 0) {
+      const loadedRanks = snap.map(d => {
+        const { id, ...rest } = d;
+        return rest as RankDef;
+      }).sort((a,b) => a.minXp - b.minXp);
       setRanks(loadedRanks);
-      // Sync with local memory
       RANKS.length = 0;
       RANKS.push(...loadedRanks);
     } else {
@@ -89,17 +90,19 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     
     newRanks.sort((a, b) => a.minXp - b.minXp);
 
-    // Save to Firebase
+    // Save to Supabase
     for (let i = 0; i < newRanks.length; i++) {
-      await setDoc(doc(db, 'custom_ranks', `rank_${i}`), newRanks[i]);
+      await supabase.from('custom_ranks').upsert({ id: `rank_${i}`, ...newRanks[i] });
     }
     
     // Clean up extra documents if we deleted some
-    const snap = await getDocs(collection(db, 'custom_ranks'));
-    for (const d of snap.docs) {
-      const index = parseInt(d.id.replace('rank_', ''));
-      if (index >= newRanks.length) {
-        await deleteDoc(doc(db, 'custom_ranks', d.id));
+    const { data: snap } = await supabase.from('custom_ranks').select('id');
+    if (snap) {
+      for (const d of snap) {
+        const index = parseInt(d.id.replace('rank_', ''));
+        if (index >= newRanks.length) {
+          await supabase.from('custom_ranks').delete().eq('id', d.id);
+        }
       }
     }
 
@@ -116,13 +119,13 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     if (confirmed) {
       const newRanks = ranks.filter((_, i) => i !== index);
       
-      // Save to Firebase
+      // Save to Supabase
       for (let i = 0; i < newRanks.length; i++) {
-        await setDoc(doc(db, 'custom_ranks', `rank_${i}`), newRanks[i]);
+        await supabase.from('custom_ranks').upsert({ id: `rank_${i}`, ...newRanks[i] });
       }
       
       // Delete the last one since we shifted everything up
-      await deleteDoc(doc(db, 'custom_ranks', `rank_${newRanks.length}`));
+      await supabase.from('custom_ranks').delete().eq('id', `rank_${newRanks.length}`);
 
       setRanks(newRanks);
       RANKS.length = 0;

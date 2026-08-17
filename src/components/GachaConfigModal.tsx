@@ -125,8 +125,8 @@ export default function GachaConfigModal({ itemData, initialConfig, initialFixed
   );
 
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-      <div className="glass-panel" style={{ width: '800px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', animation: 'fadeIn 0.2s ease-out' }}>
+    <div className="modal-overlay" style={{ zIndex: 10000 }}>
+      <div className="glass-panel modal-content modal-content-lg" style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
         
         {/* Header (Item Info) */}
         <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-glass)', display: 'flex', gap: '1rem', alignItems: 'center', background: 'rgba(0,0,0,0.3)' }}>

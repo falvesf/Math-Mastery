@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { UploadCloud, Loader2 } from 'lucide-react';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useDialog } from '../contexts/DialogContext';
 
 interface DirectUploadButtonProps {
@@ -39,32 +38,34 @@ export default function DirectUploadButton({ onUploadComplete, folder = 'uploads
     setUploading(true);
     setProgress(0);
 
-    const fileRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(fileRef, file);
+    const filePath = `${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    
+    // Simulate progress for UI since Supabase upload is a single promise
+    const progressInterval = setInterval(() => {
+       setProgress(p => Math.min(p + 10, 90));
+    }, 200);
 
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const p = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setProgress(p);
-      },
-      (err) => {
-        console.error(err);
-        showAlert('Erro ao fazer upload da imagem.');
-        setUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      },
-      async () => {
-        try {
-          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-          onUploadComplete(downloadUrl);
-        } catch (err) {
-          console.error('Erro ao pegar URL:', err);
-        } finally {
-          setUploading(false);
-          if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-      }
-    );
+    supabase.storage.from('uploads').upload(filePath, file, { cacheControl: '3600', upsert: false })
+      .then(({ data, error }) => {
+         clearInterval(progressInterval);
+         setProgress(100);
+         if (error) {
+            console.error(error);
+            showAlert('Erro ao fazer upload da imagem.');
+         } else if (data) {
+            const { data: publicData } = supabase.storage.from('uploads').getPublicUrl(filePath);
+            onUploadComplete(publicData.publicUrl);
+         }
+      })
+      .catch(err => {
+         clearInterval(progressInterval);
+         console.error('Erro de upload:', err);
+         showAlert('Erro ao fazer upload da imagem.');
+      })
+      .finally(() => {
+         setUploading(false);
+         if (fileInputRef.current) fileInputRef.current.value = '';
+      });
   };
 
   return (

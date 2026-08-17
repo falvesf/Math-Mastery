@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { auth, db } from '../lib/firebase';
-import { signOut } from 'firebase/auth';
+
 import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart, Package, Eye, EyeOff, Plus } from 'lucide-react';
-import { useAuth, type UserData } from '../contexts/AuthContext';
+import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, updateDoc, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { getRankForXp, RANKS, type RankDef } from '../lib/ranks';
 import { calculateTotalStats, ATTRIBUTE_LABELS } from '../lib/gacha';
 import LevelUpModal from '../components/LevelUpModal';
@@ -158,14 +157,22 @@ export default function Dashboard() {
   const [showCustomThemeModal, setShowCustomThemeModal] = useState(false);
   const [editingTheme, setEditingTheme] = useState<CustomTheme | undefined>(undefined);
 
-  // Fetch Global Themes
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'themes'), (snap) => {
-      const t: CustomTheme[] = [];
-      snap.forEach(d => t.push({ id: d.id, ...d.data() } as CustomTheme));
-      setGlobalThemes(t);
-    });
-    return () => unsub();
+    const fetchThemes = async () => {
+      const { data } = await supabase.from('system_collections').select('*').eq('type', 'themes');
+      if (data) {
+        setGlobalThemes(data.map(d => ({ id: d.id, ...(d.data as any) } as CustomTheme)));
+      }
+    };
+    fetchThemes();
+
+    const channel = supabase.channel('themes_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_collections', filter: 'type=eq.themes' }, () => {
+        fetchThemes();
+      })
+      .subscribe();
+      
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   useEffect(() => {
@@ -242,17 +249,16 @@ export default function Dashboard() {
     
     const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
     const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
-    const dbHearts = userData.hearts !== undefined ? Number(userData.hearts) : maxHearts;
+    const dbHearts = userData.hp !== undefined ? Number(userData.hp) : maxHearts;
     
     // A UI visual nunca deve mostrar mais do que o max atual
     setCurrentHpVisual(Math.min(dbHearts, maxHearts));
     
-    // Se o jogador tem mais corações do que o máximo permitido (ex: perdeu XP/patente)
     if (dbHearts > maxHearts) {
-      updateDoc(doc(db, 'users', userData.uid), { 
-        hearts: maxHearts,
+      supabase.from('users').update({ 
+        hp: maxHearts,
         hpRecoveryStartTimestamp: null 
-      }).catch(console.error);
+      }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
       setNextHeartProgress(0);
       return;
     }
@@ -261,13 +267,14 @@ export default function Dashboard() {
     if (dbHearts === maxHearts) {
       setNextHeartProgress(0);
       if (userData.hpRecoveryStartTimestamp) {
-        updateDoc(doc(db, 'users', userData.uid), { hpRecoveryStartTimestamp: null }).catch(console.error);
+        supabase.from('users').update({ hp_recovery_start_timestamp: null }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
       }
       return;
     }
 
     if (dbHearts < maxHearts && !userData.hpRecoveryStartTimestamp) {
-      updateDoc(doc(db, 'users', userData.uid), { hpRecoveryStartTimestamp: Date.now() }).catch(console.error);
+      const initialTimestamp = typeof userData.hpRecoveryStartTimestamp === 'string' ? new Date().toISOString() : Date.now();
+      supabase.from('users').update({ hp_recovery_start_timestamp: initialTimestamp }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
       setNextHeartProgress(0);
       return;
     }
@@ -276,7 +283,12 @@ export default function Dashboard() {
     
     const interval = setInterval(async () => {
       const now = Date.now();
-      const timePassed = now - userData.hpRecoveryStartTimestamp;
+      const startTimestampRaw = userData.hpRecoveryStartTimestamp;
+      const startMs = typeof startTimestampRaw === 'string' 
+        ? new Date(startTimestampRaw).getTime() 
+        : Number(startTimestampRaw);
+      
+      const timePassed = now - startMs;
       
       if (timePassed < 0) return;
 
@@ -294,13 +306,17 @@ export default function Dashboard() {
       
       if (recoveredHearts > 0 && newHp > dbHearts) {
         try {
-          const updates: any = { hearts: newHp };
+          const updates: any = { hp: newHp };
           if (newHp < maxHearts) {
-            updates.hpRecoveryStartTimestamp = userData.hpRecoveryStartTimestamp + (recoveredHearts * RECOVERY_TIME_MS);
+            const nextTimestampMs = startMs + (recoveredHearts * RECOVERY_TIME_MS);
+            // Salva como bigint ou ISO string baseado no que chegou
+            updates.hp_recovery_start_timestamp = typeof startTimestampRaw === 'string' 
+              ? new Date(nextTimestampMs).toISOString() 
+              : nextTimestampMs;
           } else {
-            updates.hpRecoveryStartTimestamp = null;
+            updates.hp_recovery_start_timestamp = null;
           }
-          await updateDoc(doc(db, 'users', userData.uid), updates);
+          await supabase.from('users').update(updates).eq('id', userData.uid);
         } catch (e) {
           console.error(e);
         }
@@ -321,10 +337,26 @@ export default function Dashboard() {
           setLoadingHistory(false);
           return;
         }
-        const q = query(collection(db, 'xp_logs'), where('studentId', '==', userData.uid));
-        const snap = await getDocs(q);
-        const logs = snap.docs.map(d => d.data());
-        logs.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+        const { data: snap } = await supabase.from('xp_logs').select('*').eq('student_id', userData.uid).order('created_at', { ascending: false });
+        const logs = snap ? snap.map((d: any) => {
+          let eName = d.reason || d.eval_name || 'Recompensa';
+          let img = '';
+          if (!d.eval_name && d.reason && d.reason.includes(' | ')) {
+             const parts = d.reason.split(' | ');
+             eName = parts[0].trim();
+             img = parts[1] ? parts[1].trim() : '';
+          } else if (d.eval_name && d.eval_name.includes(' | ')) {
+             const parts = d.eval_name.split(' | ');
+             eName = parts[0].trim();
+             img = parts[1] ? parts[1].trim() : '';
+          }
+          return { 
+            timestamp: { seconds: new Date(d.created_at).getTime() / 1000 }, 
+            xpGained: d.amount !== undefined ? d.amount : d.xp_gained, 
+            evalName: eName,
+            imageUrl: img
+          };
+        }) : [];
         sessionCache.set(cacheKey, logs, CACHE_TTL.XP_HISTORY);
         setXpHistory(logs);
         setLoadingHistory(false);
@@ -335,7 +367,7 @@ export default function Dashboard() {
         setLoadingQuests(true);
         
         // Buscar tentativas concluídas (com cache)
-        const attemptsCacheKey = `questAttemptsV2_${userData.uid}`;
+        const attemptsCacheKey = CACHE_KEYS.questAttempts(userData.uid);
         let completedIds: string[] = [];
         let completedDates: Record<string, number> = {};
         
@@ -345,18 +377,15 @@ export default function Dashboard() {
           completedIds = cachedAttempts.ids;
           completedDates = cachedAttempts.dates;
         } else {
-          const attemptQ = query(collection(db, 'quest_attempts'), where('studentId', '==', userData.uid), where('status', '==', 'completed'));
-          const attemptSnap = await getDocs(attemptQ);
-          attemptSnap.forEach(doc => {
-            const data = doc.data();
-            if (data.questId) {
-              completedIds.push(data.questId);
-              // O campo correto no banco de dados se chama 'timestamp'
-              completedDates[data.questId] = data.timestamp?.seconds 
-                ? data.timestamp.seconds * 1000 
-                : Date.now();
-            }
-          });
+          const { data: attemptSnap } = await supabase.from('quest_attempts').select('quest_id, created_at').eq('student_id', userData.uid).eq('status', 'completed');
+          if (attemptSnap) {
+            attemptSnap.forEach((data: any) => {
+              if (data.quest_id) {
+                completedIds.push(data.quest_id);
+                completedDates[data.quest_id] = new Date(data.created_at).getTime();
+              }
+            });
+          }
           sessionCache.set(attemptsCacheKey, { ids: completedIds, dates: completedDates }, CACHE_TTL.QUEST_ATTEMPTS);
         }
         setCompletedQuestIds(completedIds);
@@ -366,9 +395,16 @@ export default function Dashboard() {
         const questsCacheKey = CACHE_KEYS.quests(userData.classId || 'all');
         let fetched: any[] = sessionCache.get<any[]>(questsCacheKey) || [];
         if (fetched.length === 0) {
-          const q = query(collection(db, 'quests'), where('active', '==', true));
-          const snap = await getDocs(q);
-          fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          const { data: snap } = await supabase.from('quests').select('*').eq('active', true);
+          fetched = snap ? snap.map((d: any) => ({ 
+            ...d, 
+            id: d.id,
+            coverImageUrl: d.cover_image_url || d.coverImageUrl,
+            baseXp: d.base_xp || d.baseXp,
+            allowRetries: d.allow_retries !== undefined ? d.allow_retries : d.allowRetries,
+            targetClasses: d.target_classes || d.targetClasses || [],
+            createdAt: { seconds: new Date(d.created_at || d.id).getTime() / 1000 } 
+          })) : [];
           sessionCache.set(questsCacheKey, fetched, CACHE_TTL.QUESTS);
         }
         
@@ -396,34 +432,35 @@ export default function Dashboard() {
     if (!userData) return;
     const fetchEquipped = async () => {
       try {
-        const qEquip = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
-        const snapEquip = await getDocs(qEquip);
+        const { data: snapEquip } = await supabase.from('user_items').select('*').eq('student_id', userData.uid).eq('equipped', true);
         const eq: EquippedItem[] = [];
-        snapEquip.forEach(d => {
-          const data = d.data();
-          if (data.equipped === true && data.itemImageUrl && data.avatarPart) {
-            let parsedAdds = [];
-            if (data.adds) {
-              try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch(e){}
+        if (snapEquip) {
+          snapEquip.forEach((d: any) => {
+            const data = d.data;
+            if (data && data.itemImageUrl && data.avatarPart) {
+              let parsedAdds = [];
+              if (data.adds) {
+                try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch(e){}
+              }
+              eq.push({ 
+                docId: d.id,
+                itemId: d.item_id,
+                imageUrl: data.itemImageUrl, 
+                avatarPart: data.avatarPart as any,
+                itemTitle: data.itemTitle,
+                itemCategory: data.itemCategory,
+                baseAttributeType: data.baseAttributeType,
+                baseAttributeValue: data.baseAttributeValue,
+                adds: parsedAdds,
+                gameModelUrl: data.gameModelUrl,
+                modelTextureUrl: data.modelTextureUrl,
+                minecraftHeadValue: data.minecraftHeadValue,
+                modelTransforms: data.modelTransforms,
+                backColor: data.backColor || ''
+              });
             }
-            eq.push({ 
-              docId: d.id,
-              itemId: data.itemId,
-              imageUrl: data.itemImageUrl, 
-              avatarPart: data.avatarPart as any,
-              itemTitle: data.itemTitle,
-              itemCategory: data.itemCategory,
-              baseAttributeType: data.baseAttributeType,
-              baseAttributeValue: data.baseAttributeValue,
-              adds: parsedAdds,
-              gameModelUrl: data.gameModelUrl,
-              modelTextureUrl: data.modelTextureUrl,
-              minecraftHeadValue: data.minecraftHeadValue,
-              modelTransforms: data.modelTransforms,
-              backColor: data.backColor || ''
-            });
-          }
-        });
+          });
+        }
         setEquippedItems(eq);
       } catch (err) {
         console.error("Error fetching equipped items:", err);
@@ -435,29 +472,38 @@ export default function Dashboard() {
   }, [userData?.uid, userData?.studentViewActive, inventoryRefresh]);
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), where('role', '==', 'student'));
-    const unsubUsers = onSnapshot(q, (snap) => {
-      const loaded: UserData[] = [];
-      snap.forEach(d => loaded.push(d.data() as UserData));
-      loaded.sort((a, b) => (b.xp || 0) - (a.xp || 0));
-      setAllStudents(loaded);
+    const fetchUsers = async () => {
+      const { data } = await supabase.from('users').select('*').eq('role', 'student');
+      if (data) {
+        const loaded = data.map(d => mapUserToClient(d));
+        loaded.sort((a, b) => (b.xp || 0) - (a.xp || 0));
+        setAllStudents(loaded);
+      }
       setLoadingRankings(false);
-    });
+    };
+    fetchUsers();
 
-    const unsubLiveQuests = onSnapshot(collection(db, 'live_quests'), (snap) => {
-       const activeMap: Record<string, boolean> = {};
-       snap.forEach(doc => {
-         const data = doc.data();
-         if (data.status && data.status !== 'finished') {
-            activeMap[doc.id] = true;
-         }
-       });
-       setActiveLiveQuests(activeMap);
-    });
+    const fetchLiveQuests = async () => {
+      const { data } = await supabase.from('live_quests').select('*').neq('status', 'finished');
+      if (data) {
+        const activeMap: Record<string, boolean> = {};
+        data.forEach(d => activeMap[d.id] = true);
+        setActiveLiveQuests(activeMap);
+      }
+    };
+    fetchLiveQuests();
+
+    const channelUsers = supabase.channel('dashboard_users')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: 'role=eq.student' }, () => fetchUsers())
+      .subscribe();
+      
+    const channelLiveQuests = supabase.channel('dashboard_live_quests')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_quests' }, () => fetchLiveQuests())
+      .subscribe();
 
     return () => {
-      unsubUsers();
-      unsubLiveQuests();
+      supabase.removeChannel(channelUsers);
+      supabase.removeChannel(channelLiveQuests);
     };
   }, [userData?.classId]);
 
@@ -466,11 +512,10 @@ export default function Dashboard() {
     
     const checkAndSyncRankings = async () => {
       try {
-        const docRef = doc(db, 'system', 'rankings');
-        const snap = await getDoc(docRef);
+        const { data: snap } = await supabase.from('system_collections').select('data').eq('type', 'rankings').single();
         let history: RankingHistory = { general: {}, classes: {} };
-        if (snap.exists()) {
-          history = snap.data() as RankingHistory;
+        if (snap && snap.data) {
+          history = snap.data as RankingHistory;
         }
         
         let changed = false;
@@ -518,7 +563,7 @@ export default function Dashboard() {
         });
         
         if (changed) {
-          await setDoc(docRef, history);
+          await supabase.from('system_collections').upsert({ type: 'rankings', data: history }, { onConflict: 'type' });
         }
         setRankingHistory(history);
       } catch (err) {
@@ -551,31 +596,32 @@ export default function Dashboard() {
       }
       
       try {
-        const q = query(collection(db, 'user_items'), where('equipped', '==', true));
-        const snap = await getDocs(q);
+        const { data: snap } = await supabase.from('user_items').select('*').eq('equipped', true).in('student_id', Array.from(studentIds));
         const newRankingItems: Record<string, EquippedItem[]> = {};
         
-        snap.forEach(d => {
-          const data = d.data();
-          if (studentIds.has(data.studentId) && data.itemImageUrl && data.avatarPart) {
-            if (!newRankingItems[data.studentId]) newRankingItems[data.studentId] = [];
-            newRankingItems[data.studentId].push({
-              itemId: data.itemId,
-              imageUrl: data.itemImageUrl,
-              avatarPart: data.avatarPart as any,
-              itemTitle: data.itemTitle,
-              itemCategory: data.itemCategory,
-              baseAttributeType: data.baseAttributeType,
-              baseAttributeValue: data.baseAttributeValue,
-              adds: data.adds,
-              gameModelUrl: data.gameModelUrl,
-              modelTextureUrl: data.modelTextureUrl,
-              minecraftHeadValue: data.minecraftHeadValue,
-              modelTransforms: data.modelTransforms,
-              backColor: data.backColor || ''
-            } as EquippedItem);
-          }
-        });
+        if (snap) {
+          snap.forEach((d: any) => {
+            const data = d.data;
+            if (studentIds.has(d.student_id) && data && data.itemImageUrl && data.avatarPart) {
+              if (!newRankingItems[d.student_id]) newRankingItems[d.student_id] = [];
+              newRankingItems[d.student_id].push({
+                itemId: d.item_id,
+                imageUrl: data.itemImageUrl,
+                avatarPart: data.avatarPart as any,
+                itemTitle: data.itemTitle,
+                itemCategory: data.itemCategory,
+                baseAttributeType: data.baseAttributeType,
+                baseAttributeValue: data.baseAttributeValue,
+                adds: data.adds,
+                gameModelUrl: data.gameModelUrl,
+                modelTextureUrl: data.modelTextureUrl,
+                minecraftHeadValue: data.minecraftHeadValue,
+                modelTransforms: data.modelTransforms,
+                backColor: data.backColor || ''
+              } as EquippedItem);
+            }
+          });
+        }
         
         sessionCache.set(cacheKey, newRankingItems, CACHE_TTL.RANKING_ITEMS);
         setRankingEquippedItems(newRankingItems);
@@ -668,7 +714,8 @@ export default function Dashboard() {
         setLevelUpData({ oldRank: RANKS[0], newRank: currentRank });
         setShowLevelUp(true);
       } else {
-        updateDoc(doc(db, 'users', userData.uid), { lastSeenRank: currentRank.name });
+        const newPrefs = { ...(userData.inventoryPreferences || {}), lastSeenRank: currentRank.name };
+        supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
       }
       return;
     }
@@ -682,8 +729,35 @@ export default function Dashboard() {
         setLevelUpData({ oldRank: RANKS[oldRankIndex], newRank: currentRank });
         setShowLevelUp(true);
       } else {
-        // Caiu de rank (ex: punição). Atualiza silencioso.
-        updateDoc(doc(db, 'users', userData.uid), { lastSeenRank: currentRank.name });
+        // Caiu de rank (ex: punição).
+        const newPrefs = { ...(userData.inventoryPreferences || {}), lastSeenRank: currentRank.name };
+        
+        // Verifica se tem mais pontos distribuídos do que a patente atual permite
+        const totalEarnedPoints = newRankIndex * 4;
+        const confirmedStats = userData.distributedStats || {};
+        const totalConfirmedPoints = Object.values(confirmedStats).reduce((sum: any, val: any) => sum + (val || 0), 0) as number;
+        
+        let updateData: any = { inventory_preferences: newPrefs };
+        
+        if (totalConfirmedPoints > totalEarnedPoints) {
+          const pointsToRemove = totalConfirmedPoints - totalEarnedPoints;
+          let removed = 0;
+          let newStats = { ...confirmedStats };
+          
+          while (removed < pointsToRemove) {
+             const availableKeys = Object.keys(newStats).filter(k => newStats[k] > 0);
+             if (availableKeys.length === 0) break;
+             
+             const keyToReduce = availableKeys[0];
+             newStats[keyToReduce] -= 1;
+             removed++;
+          }
+          
+          updateData.distributed_stats = newStats;
+          showToast(`Sua patente caiu para ${currentRank.name}. ${pointsToRemove} ponto(s) de atributo foram removidos.`, 'error');
+        }
+
+        supabase.from('users').update(updateData).eq('id', userData.uid).then();
       }
     }
   }, [userData?.xp, userData?.lastSeenRank, currentRank.name]);
@@ -691,28 +765,51 @@ export default function Dashboard() {
   const handleCloseLevelUp = async () => {
     setShowLevelUp(false);
     if (userData) {
-      await updateDoc(doc(db, 'users', userData.uid), { lastSeenRank: currentRank.name });
+      const highest = userData.inventoryPreferences?.highestRankIndex || 0;
+      const newRankIndex = RANKS.findIndex(r => r.name === levelUpData?.newRank?.name);
+      
+      const newPrefs = { ...(userData.inventoryPreferences || {}), lastSeenRank: currentRank.name };
+      
+      if (levelUpData?.newRank && newRankIndex > highest) {
+        newPrefs.highestRankIndex = newRankIndex;
+        // Salva a conquista no histórico de XP
+        await supabase.from('xp_logs').insert({
+          student_id: userData.uid,
+          amount: 0,
+          reason: `Alcançou a Patente ${levelUpData.newRank.name} | ${levelUpData.newRank.imageUrl || ''} | Parabéns por alcançar a patente ${levelUpData.newRank.name} pela primeira vez!`
+        });
+        
+        // Invalida o cache do histórico
+        const cacheKey = CACHE_KEYS.xpHistory(userData.uid);
+        sessionCache.invalidate(cacheKey);
+        
+        // Atualiza o estado local para forçar recarregamento se voltar na aba
+        setXpHistory([]);
+      }
+      
+      await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
     }
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
   };
 
   const handleToggleSlotVisibility = async (slotId: string) => {
-    if (!userData?.avatarConfig) return;
-    const currentHidden = userData.avatarConfig.hiddenSlots || [];
+    const baseConfig = liveAvatarConfig || userData?.avatarConfig;
+    if (!baseConfig) return;
+    const currentHidden = baseConfig.hiddenSlots || [];
     const newHidden = currentHidden.includes(slotId) 
       ? currentHidden.filter(id => id !== slotId) 
       : [...currentHidden, slotId];
     
-    const newConfig = { ...userData.avatarConfig, hiddenSlots: newHidden };
+    const newConfig = { ...baseConfig, hiddenSlots: newHidden };
     
     // Update live preview immediately
     setLiveAvatarConfig(newConfig);
     
-    if (userData.uid) {
-      await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: newConfig });
+    if (userData && newConfig) {
+      await supabase.from('users').update({ avatar_config: newConfig }).eq('id', userData.uid);
     }
   };
 
@@ -730,7 +827,7 @@ export default function Dashboard() {
   const handleUnequipItem = async (item: EquippedItem) => {
     if (!userData || !item.docId) return;
     try {
-      await updateDoc(doc(db, 'user_items', item.docId), { equipped: false });
+      await supabase.from('user_items').update({ equipped: false }).eq('id', item.docId);
       // Remove do estado local para atualização instantânea (opcional, mas o inventário deve recarregar)
       setEquippedItems(prev => prev.filter(i => i.docId !== item.docId));
       setInventoryRefresh(prev => prev + 1);
@@ -752,7 +849,7 @@ export default function Dashboard() {
       return;
     }
 
-    await updateDoc(doc(db, 'users', userData!.uid), { customStatusText: status });
+    await supabase.from('users').update({ customStatusText: status }).eq('id', userData!.uid);
   };
 
   // Calcular progresso para a próxima patente
@@ -818,7 +915,7 @@ export default function Dashboard() {
     };
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {list.map((student, index) => {
           const rankPos = index + 1;
           const sRank = getRankForXp(student.xp || 0, student.classId);
@@ -826,42 +923,42 @@ export default function Dashboard() {
           let medalColor = 'var(--text-secondary)';
           let bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.02)';
           let borderStyle = student.uid === userData?.uid ? '1px solid var(--gold-primary)' : '1px solid transparent';
-          let avatarSize = 45;
-          let fontSizeTitle = '1.1rem';
-          let fontSizeXp = '1.2rem';
+          let avatarSize = 40;
+          let fontSizeTitle = '0.95rem';
+          let fontSizeXp = '1.1rem';
           
           if (rankPos === 1) {
             medalColor = '#fbbf24'; // Gold
-            avatarSize = 80;
-            fontSizeTitle = '1.5rem';
-            fontSizeXp = '1.6rem';
+            avatarSize = 60;
+            fontSizeTitle = '1.2rem';
+            fontSizeXp = '1.3rem';
             bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.2)' : 'linear-gradient(90deg, rgba(251, 191, 36, 0.1), rgba(0,0,0,0.2))';
             borderStyle = '1px solid #fbbf24';
           } else if (rankPos === 2) {
             medalColor = '#94a3b8'; // Silver
-            avatarSize = 65;
-            fontSizeTitle = '1.3rem';
-            fontSizeXp = '1.4rem';
+            avatarSize = 50;
+            fontSizeTitle = '1.1rem';
+            fontSizeXp = '1.2rem';
             bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.15)' : 'linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(0,0,0,0.2))';
             borderStyle = '1px solid #94a3b8';
           } else if (rankPos === 3) {
             medalColor = '#b45309'; // Bronze
-            avatarSize = 55;
-            fontSizeTitle = '1.2rem';
-            fontSizeXp = '1.3rem';
+            avatarSize = 45;
+            fontSizeTitle = '1rem';
+            fontSizeXp = '1.1rem';
             bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'linear-gradient(90deg, rgba(180, 83, 9, 0.1), rgba(0,0,0,0.2))';
             borderStyle = '1px solid #b45309';
           }
 
           return (
             <div key={student.uid} className="glass-panel" style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', 
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 1rem', 
               background: bgStyle,
               border: borderStyle,
               boxShadow: rankPos === 1 ? '0 0 15px rgba(251, 191, 36, 0.2)' : 'none'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <div style={{ width: '40px', textAlign: 'center', fontSize: rankPos <= 3 ? '1.5rem' : '1.2rem', fontWeight: 'bold', color: medalColor }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: '30px', textAlign: 'center', fontSize: rankPos <= 3 ? '1.2rem' : '1rem', fontWeight: 'bold', color: medalColor }}>
                   {rankPos}º
                 </div>
                 
@@ -887,7 +984,7 @@ export default function Dashboard() {
                   <h4 style={{ margin: 0, fontSize: fontSizeTitle, display: 'flex', alignItems: 'center', gap: '0.5rem', color: rankPos === 1 ? '#fbbf24' : 'var(--text-primary)' }}>
                     {student.name} {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
                   </h4>
-                  <div style={{ fontSize: '0.85rem', color: sRank.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+                  <div style={{ fontSize: '0.75rem', color: sRank.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
                     {sRank.name} {student.classId && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', textShadow: 'none' }}>| {student.classId}</span>}
                   </div>
                 </div>
@@ -909,12 +1006,11 @@ export default function Dashboard() {
 
   const handleSelectClass = async (className: string) => {
     if (!userData) return;
-    await updateDoc(doc(db, 'users', userData.uid), { classId: className });
+    await supabase.from('users').update({ classId: className }).eq('id', userData.uid);
   };
-
   const handleSelectTeacher = async () => {
     if (!userData) return;
-    await updateDoc(doc(db, 'users', userData.uid), { role: 'pending_teacher' });
+    await supabase.from('users').update({ role: 'pending_teacher' }).eq('id', userData.uid);
   };
 
   if (userData?.role === 'pending_teacher') {
@@ -926,7 +1022,7 @@ export default function Dashboard() {
           Sua solicitação de acesso como Professor / Coordenador está em análise pelo Administrador do sistema.
           Por favor, aguarde a liberação.
         </p>
-        <button className="login-btn" onClick={() => signOut(auth)} style={{ padding: '0.75rem 2rem', fontSize: '1.1rem' }}>
+        <button className="login-btn" onClick={() => supabase.auth.signOut()} style={{ padding: '0.75rem 2rem', fontSize: '1.1rem' }}>
           Sair
         </button>
       </div>
@@ -952,8 +1048,8 @@ export default function Dashboard() {
 
       {/* Modal de Configuração do Sistema */}
       {isSettingsModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="glass-panel" style={{ width: '600px', maxWidth: '95vw', display: 'flex', overflow: 'hidden', animation: 'slideUp 0.3s ease-out', position: 'relative', minHeight: '400px', padding: 0 }}>
+        <div className="modal-overlay">
+          <div className="glass-panel" style={{ width: '800px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', overflow: 'hidden', animation: 'slideUp 0.3s ease-out', position: 'relative', minHeight: '400px', padding: 0 }}>
             {/* Sidebar do Modal */}
             <div style={{ width: '200px', background: 'rgba(0,0,0,0.2)', borderRight: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column' }}>
               <div style={{ padding: '1.5rem 1rem', borderBottom: '1px solid var(--border-glass)' }}>
@@ -986,7 +1082,7 @@ export default function Dashboard() {
             </div>
 
             {/* Conteúdo Principal do Modal */}
-            <div style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, padding: '1.5rem', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
               <button onClick={() => setIsSettingsModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }} className="hover-brightness">
                 <X size={24} />
               </button>
@@ -1178,15 +1274,20 @@ export default function Dashboard() {
                     <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                       <input type="checkbox" checked={!!userData.studentViewActive} onChange={async () => {
                           if (toggleStudentView) {
-                            await toggleStudentView();
-                            const nextMode = !userData.studentViewActive;
-                            showToast(
-                              nextMode
-                                ? '🎮 Modo Aluno ativado! Recarregando...'
-                                : '🔓 Modo Admin restaurado! Recarregando...',
-                              'success'
-                            );
-                            setTimeout(() => window.location.reload(), 1500);
+                            try {
+                              await toggleStudentView();
+                              const nextMode = !userData.studentViewActive;
+                              showToast(
+                                nextMode
+                                  ? '🎮 Modo Aluno ativado! Recarregando...'
+                                  : '🔓 Modo Admin restaurado! Recarregando...',
+                                'success'
+                              );
+                              setTimeout(() => window.location.reload(), 1500);
+                            } catch (err: any) {
+                              console.error(err);
+                              alert('Erro ao alternar modo: ' + err.message);
+                            }
                           }
                       }} style={{ display: 'none' }} />
                       <div style={{ width: '40px', height: '20px', background: userData.studentViewActive ? 'var(--gold-primary)' : 'rgba(255,255,255,0.2)', borderRadius: '10px', position: 'relative', transition: '0.3s' }}>
@@ -1260,7 +1361,7 @@ export default function Dashboard() {
             if (theme.isGlobal && userData?.role !== 'student') {
                const newId = theme.id.startsWith('custom_local') ? 'custom_' + Date.now() : theme.id;
                theme.id = newId;
-               await setDoc(doc(db, 'themes', newId), theme);
+               await supabase.from('system_collections').upsert({ id: newId, type: 'themes', data: theme as any });
                setAppTheme(newId);
                localStorage.setItem('appTheme', newId);
                localStorage.setItem('currentCustomThemeData', JSON.stringify(theme));
@@ -1315,14 +1416,17 @@ export default function Dashboard() {
           
           {(userData?.role === 'admin' || userData?.role === 'teacher') && !userData?.studentViewActive && (
             <button 
-              className="login-btn" 
+              className="login-btn hide-text-mobile" 
               onClick={() => navigate('/admin')}
               style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)' }}
+              title={userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}
             >
               <ShieldAlert size={18} color="var(--gold-primary)" />
               <span style={{ color: 'var(--gold-primary)' }}>{userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}</span>
             </button>
           )}
+
+
 
           <button 
             onClick={() => setIsSettingsModalOpen(true)}
@@ -1498,7 +1602,7 @@ export default function Dashboard() {
                                   await showAlert('Você precisa criar o seu avatar antes de jogar uma missão!');
                                   return;
                                 }
-                                if (!isCompleted && (userData?.hearts || 0) < 1 && isActingAsStudent) {
+                                if (!isCompleted && currentHpVisual < 1 && isActingAsStudent) {
                                   await showAlert('Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.');
                                   return;
                                 }
@@ -1545,16 +1649,17 @@ export default function Dashboard() {
             <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'stretch', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center' }}>
               {/* Perfil do Aluno (Esquerda) */}
               <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 400px' : '0 1 500px', padding: '1.5rem 2rem 1.5rem 1.5rem', textAlign: 'center', position: 'relative', height: '71vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ flexShrink: 0, paddingRight: '0.5rem' }}>
+              
+              <div style={{ flexShrink: 0, paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
               <div 
-                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '0.5rem', marginBottom: '2.5rem', perspective: '1000px' }}
+                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', perspective: '1000px', width: '100%' }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
                     {'<'}
                   </button>
                   
-                  <div className="cube-container" style={{ zIndex: 10 }}>
+                  <div className="cube-container" style={{ position: 'relative', zIndex: 100 }}>
                     <div className="cube" style={{ transform: `rotateY(${cubeRotation}deg)` }}>
                       {/* Frente: Avatar */}
                       <div className="cube-face cube-face-front" style={{ 
@@ -1579,6 +1684,9 @@ export default function Dashboard() {
                           zIndex: 0
                         }} />
 
+                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                          Personagem
+                        </div>
                         {(liveAvatarConfig || userData?.avatarConfig) ? (
                           <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 20 }} onClick={() => setIsCustomizingAvatar(true)}>
                             <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={90} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} onToggleSlotVisibility={handleToggleSlotVisibility} />
@@ -1586,13 +1694,10 @@ export default function Dashboard() {
                         ) : (
                           <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px', cursor: 'pointer' }} />
                         )}
-                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
-                          Personagem
-                        </div>
                       </div>
 
                       {/* Trás: Patente */}
-                      <div className="cube-face cube-face-back" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column' }}>
+                      <div className="cube-face cube-face-back" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))' }}>
                         {currentDisplayImage ? (
                           <img key={currentDisplayImage} src={currentDisplayImage} alt={currentRank.name} style={{ width: 170, height: 170, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
                         ) : (
@@ -1604,7 +1709,7 @@ export default function Dashboard() {
                       </div>
 
                       {/* Direita: Pet */}
-                      <div className="cube-face cube-face-right" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column' }}>
+                      <div className="cube-face cube-face-right" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))' }}>
                         {(() => {
                           const equippedPet = equippedItems.find(item => item.avatarPart === 'pet');
                           return equippedPet ? (
@@ -1623,25 +1728,157 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      {/* Esquerda: Placeholder (Em Breve) */}
-                      <div className="cube-face cube-face-left" style={{ border: `1px dashed var(--border-glass)` }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Em Breve</span>
+                      {/* Esquerda: Status Integrado */}
+                      <div className="cube-face cube-face-left" style={{ 
+                        border: `3px solid ${currentRank.color}`, 
+                        boxShadow: `0 0 20px ${currentRank.color}40`, 
+                        flexDirection: 'column',
+                        background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))',
+                        padding: '12px',
+                        justifyContent: 'center'
+                      }}>
+                        
+                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          
+                          {(!userData?.studentViewActive && userData?.role !== 'student') ? null : (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '2px' }}>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>Turma</span>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{userData?.classId || 'N/A'}</span>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '2px' }}>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>Experiência Total</span>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>{userData?.xp || 0} XP</span>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '2px' }}>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>HP</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', maxWidth: '100%' }}>
+                              {(() => {
+                                const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
+                                const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
+                                const displayHp = userData?.role === 'admin' || userData?.role === 'teacher' ? maxHearts : currentHpVisual;
+                                return (
+                                  <>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'flex-end' }}>
+                                      {Array.from({ length: maxHearts }).map((_, i) => {
+                                        const isCharging = i === displayHp && displayHp < maxHearts;
+                                        const remainingMs = 1800000 - ((nextHeartProgress / 100) * 1800000);
+                                        const remainingMin = Math.ceil(remainingMs / 60000);
+                                        return (
+                                          <span key={i} title={isCharging ? `Carregando... (~${remainingMin}m restantes)` : undefined} style={{ display: 'flex' }}>
+                                            <Heart 
+                                              size={10} 
+                                              fill={i < displayHp ? "#ef4444" : "transparent"} 
+                                              color={i < displayHp ? "#ef4444" : "rgba(255,255,255,0.2)"} 
+                                              style={isCharging ? { animation: 'pulse-weak 2s ease-in-out infinite', opacity: 0.5 } : {}}
+                                            />
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                    {displayHp < maxHearts && (
+                                      <div style={{ width: '100%', height: '2px', background: 'rgba(0,0,0,0.3)', borderRadius: '1px', overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${nextHeartProgress}%`, background: '#ef4444', transition: 'width 1s linear' }} />
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* Progress */}
+                          {nextRank ? (
+                            <div style={{ margin: '2px 0' }}>
+                              <div style={{ width: '100%', height: '4px', background: 'rgba(0,0,0,0.3)', borderRadius: '2px', overflow: 'hidden', marginBottom: '2px' }}>
+                                <div style={{ height: '100%', width: `${progressPercentage}%`, background: `linear-gradient(90deg, ${currentRank.color}, ${nextRank.color})`, borderRadius: '2px', transition: 'width 1s ease-in-out' }}></div>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                                <span>{currentRank.name}</span>
+                                <span>Faltam {nextRank.minXp - (userData?.xp || 0)} XP</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '0.7rem', textAlign: 'center', margin: '2px 0' }}>
+                              Patente Máxima Alcançada!
+                            </div>
+                          )}
+
+                          {/* Character Stats Section */}
+                          {(() => {
+                            const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
+                            const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRank.name));
+                            const totalEarnedPoints = rankIndex * 4;
+                            const confirmedStats = userData?.distributedStats || {};
+                            const totalConfirmedPoints = Object.values(confirmedStats).reduce((sum: any, val: any) => sum + (val || 0), 0) as number;
+                            const unspentPoints = totalEarnedPoints - totalConfirmedPoints;
+                            
+                            return (
+                              <div style={{ marginTop: '2px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                  <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', margin: 0 }}>Estatísticas</h4>
+                                  {unspentPoints > 0 && (
+                                    <button 
+                                      onClick={() => setShowStatDistributionModal(true)}
+                                      className="glow-effect hover-brightness"
+                                      style={{ 
+                                        background: 'var(--gold-primary)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)', 
+                                        borderRadius: '4px', padding: '0.1rem 0.3rem', fontSize: '0.65rem', fontWeight: 'bold',
+                                        display: 'flex', alignItems: 'center', gap: '2px', cursor: 'pointer',
+                                        boxShadow: '0 0 5px var(--gold-primary)'
+                                      }}
+                                    >
+                                      <Plus size={10} /> <span style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{unspentPoints} pts</span>
+                                    </button>
+                                  )}
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '4px' }}>
+                                  {Object.entries(stats).map(([key, value]) => {
+                                    if (value === 0 && key !== 'attack' && key !== 'defense' && key !== 'vitality') return null;
+                                    const labelInfo = ATTRIBUTE_LABELS[key] || ATTRIBUTE_LABELS['none'];
+                                    let displayValue = `+${value}`;
+                                    if (key === 'xp' || key === 'coins') displayValue += '%';
+                                    
+                                    return (
+                                      <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '2px 4px', borderRadius: '4px', gap: '2px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', minWidth: 0 }}>
+                                          <span style={{ fontSize: '0.8rem', flexShrink: 0 }} title={labelInfo.label}>{labelInfo.icon}</span>
+                                          <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{labelInfo.label}</span>
+                                        </div>
+                                        <span style={{ fontSize: '0.65rem', color: labelInfo.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)', flexShrink: 0 }}>
+                                          {displayValue}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                        </div>
+
+                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                          Status
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 1 }}>
+                  <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
                     {'>'}
                   </button>
                 </div>
               </div>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0' }}>
-                <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)' }}>{userData?.name}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
+                <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', margin: 0 }}>{userData?.name}</h2>
               </div>
               
               {isEditingStatus ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.25rem 1rem', borderRadius: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', width: '100%', maxWidth: '400px' }}>
                   <MessageCircle size={16} color="var(--text-secondary)" />
                   <input 
                     autoFocus
@@ -1661,154 +1898,21 @@ export default function Dashboard() {
                       setIsEditingStatus(false);
                     }}
                     placeholder="Escreva seu status..."
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', flex: 1, outline: 'none', fontStyle: 'italic', width: '100%' }}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', flex: 1, outline: 'none', fontStyle: 'italic', width: '100%', fontSize: '0.9rem' }}
                   />
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.25rem 1rem', borderRadius: '20px', color: 'var(--text-secondary)', minHeight: '36px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', color: 'var(--text-secondary)', minHeight: '36px', width: '100%', maxWidth: '400px', fontSize: '0.9rem' }}>
                   <MessageCircle size={16} />
                   <span style={{ fontStyle: 'italic', flex: 1 }}>{userData?.customStatusText ? `"${userData.customStatusText}"` : "Escreva seu status..."}</span>
                   <button onClick={() => { setStatusInputValue(userData?.customStatusText || ''); setIsEditingStatus(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0 0.25rem', display: 'flex' }} className="hover-brightness" title="Editar Status">
-                    <Edit3 size={14} />
+                    <Edit3 size={16} />
                   </button>
                 </div>
               )}
               </div>
-
-              {/* Início da área com Scroll */}
-              <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', marginTop: '0.5rem' }}>
-
-              {(!userData?.studentViewActive && userData?.role !== 'student') ? null : (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '0.5rem', textAlign: 'left' }}>
-                  Turma: {userData?.classId || 'Não definida'}
-                </p>
-              )}
-
-              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Experiência Total</span>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Star size={16} /> {userData?.xp || 0} XP
-                  </span>
-                </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0', marginTop: '0.5rem' }}>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Vidas (HP)</span>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    {(() => {
-                      const stats = calculateTotalStats(equippedItems);
-                      const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
-                      const displayHp = userData?.role === 'admin' || userData?.role === 'teacher' ? maxHearts : currentHpVisual;
-                      return Array.from({ length: maxHearts }).map((_, i) => {
-                        if (i < displayHp) {
-                          return (
-                            <div key={i} style={{ position: 'relative', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Heart size={20} fill="#ef4444" color="#ef4444" />
-                            </div>
-                          );
-                        } else if (i === displayHp && userData?.hpRecoveryStartTimestamp && displayHp < maxHearts) {
-                          // Recovering heart
-                          const minsLeft = Math.ceil(((100 - nextHeartProgress) / 100) * 30);
-                          return (
-                            <div key={i} title={`Recuperando vida... ${minsLeft} min restantes`} style={{ position: 'relative', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>
-                              <Heart className="recovering-heart" size={20} fill="transparent" color="rgba(255,255,255,0.4)" style={{ position: 'absolute', top: 0, left: 0 }} />
-                              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${nextHeartProgress}%`, overflow: 'hidden', transition: 'height 1s linear' }}>
-                                <div style={{ position: 'absolute', bottom: 0, left: 0, width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <Heart size={20} fill="#ef4444" color="#ef4444" />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        } else {
-                          // Empty heart
-                          return (
-                            <div key={i} style={{ position: 'relative', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Heart size={20} fill="transparent" color="rgba(255,255,255,0.2)" />
-                            </div>
-                          );
-                        }
-                      });
-                    })()}
-                  </span>
-                </div>
-                
-                {nextRank ? (
-                  <>
-                    <div style={{ width: '100%', height: '6px', background: 'var(--bg-dark)', borderRadius: '3px', overflow: 'hidden', marginTop: '0.75rem', marginBottom: '0.25rem' }}>
-                      <div style={{ height: '100%', width: `${progressPercentage}%`, background: `linear-gradient(90deg, ${currentRank.color}, ${nextRank.color})`, borderRadius: '3px', transition: 'width 1s ease-in-out' }}></div>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      <span>{currentRank.name}</span>
-                      <span>Faltam {nextRank.minXp - (userData?.xp || 0)} XP para {nextRank.name}</span>
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ marginTop: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                    Patente Máxima Alcançada!
-                  </div>
-                )}
-                {/* Character Stats Section */}
-                {(() => {
-                  const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
-                  const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRank.name));
-                  const rankHpBonus = Math.floor(rankIndex / 2);
-                  
-                  const totalEarnedPoints = rankIndex * 4;
-                  const confirmedStats = userData?.distributedStats || {};
-                  const totalConfirmedPoints = Object.values(confirmedStats).reduce((sum: any, val: any) => sum + (val || 0), 0) as number;
-                  const unspentPoints = totalEarnedPoints - totalConfirmedPoints;
-                  
-                  return (
-                    <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Estatísticas do Personagem</h4>
-                        {unspentPoints > 0 && (
-                          <button 
-                            onClick={() => setShowStatDistributionModal(true)}
-                            className="glow-effect hover-brightness"
-                            style={{ 
-                              background: 'var(--gold-primary)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)', 
-                              borderRadius: '12px', padding: '0.3rem 0.8rem', fontSize: '0.8rem', fontWeight: 'bold',
-                              display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer',
-                              boxShadow: '0 0 15px var(--gold-primary)'
-                            }}
-                          >
-                            <Plus size={16} /> <span style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{unspentPoints} {unspentPoints === 1 ? 'Ponto Disponível' : 'Pontos Disponíveis'}</span>
-                          </button>
-                        )}
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', paddingBottom: '1rem' }}>
-                        
-                        {Object.entries(stats).map(([key, value]) => {
-                          // Mostrar atributos chave mesmo se 0, e ocultar os secundários se não tiverem pontos
-                          if (value === 0 && key !== 'attack' && key !== 'defense' && key !== 'vitality') return null;
-                          
-                          const labelInfo = ATTRIBUTE_LABELS[key] || ATTRIBUTE_LABELS['none'];
-                          let displayValue = `+${value}`;
-                          if (key === 'xp' || key === 'coins') displayValue += '%';
-                          
-                          return (
-                            <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.15)', padding: '0.5rem 0.6rem', borderRadius: '12px', gap: '0.5rem' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-                                <span style={{ fontSize: '1.2rem', flexShrink: 0 }} title={labelInfo.label}>{labelInfo.icon}</span>
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{labelInfo.label}</span>
-                              </div>
-                              <span style={{ fontSize: '1.1rem', color: labelInfo.color, fontWeight: 'bold', textShadow: '0 1px 3px rgba(0,0,0,0.8)', flexShrink: 0 }}>
-                                {displayValue}
-                              </span>
-                            </div>
-                          );
-                        })}
-
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-              </div>
             </div>
-
-            {/* Coluna Direita Alternável (Histórico ou Mochila) */}
+{/* Coluna Direita Alternável (Histórico ou Mochila) */}
             {(userData?.role === 'student' || userData?.studentViewActive) && profileTab === 'overview' && (
               <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
@@ -1827,11 +1931,18 @@ export default function Dashboard() {
                 ) : (
                   xpHistory.map((log, index) => (
                     <div key={index} style={{ padding: '1.25rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', borderLeft: `4px solid ${log.xpGained >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <h4 style={{ fontSize: '1.1rem', margin: '0 0 0.25rem 0' }}>{log.evalName}</h4>
-                        <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                          {log.justification ? `Motivo: ${log.justification}` : `Nota: ${log.grade}`} | Data: {log.timestamp ? new Date(log.timestamp.seconds * 1000).toLocaleDateString('pt-BR') : 'Hoje'}
-                        </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        {log.imageUrl && (
+                          <img src={log.imageUrl} alt="Badge" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                        )}
+                        <div>
+                          <h4 style={{ fontSize: '1.1rem', margin: '0 0 0.25rem 0' }}>
+                            {log.evalName}
+                          </h4>
+                          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            Data: {log.timestamp ? new Date(log.timestamp.seconds * 1000).toLocaleDateString('pt-BR') : 'Hoje'} | Hora: {log.timestamp ? new Date(log.timestamp.seconds * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                          </span>
+                        </div>
                       </div>
                       <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: log.xpGained >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)', background: log.xpGained >= 0 ? 'rgba(251, 191, 36, 0.1)' : 'rgba(239, 68, 68, 0.1)', padding: '0.5rem 1rem', borderRadius: '20px' }}>
                         {log.xpGained > 0 ? '+' : ''}{log.xpGained} XP
@@ -1845,7 +1956,10 @@ export default function Dashboard() {
             
             {profileTab === 'inventory' && (
               <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
-                {userData && <StudentInventory userData={userData} onEquip={() => setInventoryRefresh(r => r + 1)} inventoryRefresh={inventoryRefresh} />}
+                {userData && <StudentInventory userData={userData} onEquip={() => {
+                  setInventoryRefresh(r => r + 1);
+                  setCubeRotation(prev => prev % 360 !== 0 ? Math.round(prev / 360) * 360 : prev);
+                }} inventoryRefresh={inventoryRefresh} />}
               </div>
             )}
             </div>
@@ -1854,10 +1968,10 @@ export default function Dashboard() {
 
         {activeTab === 'ranking_class' && (
           <div className="glass-panel" style={{ padding: '0', animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ padding: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+            <div style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
               <Users size={32} color="var(--gold-primary)" />
-              <div style={{ flex: 1 }}>
-                <h2 style={{ fontSize: '2rem', margin: 0 }}>Top 10 da Turma</h2>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Top 10 da Turma</h2>
                 {isAdminOrTeacher ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Ver turma:</span>
@@ -1881,12 +1995,12 @@ export default function Dashboard() {
               </div>
               <button 
                 onClick={() => setShowRankingAvatars(!showRankingAvatars)}
-                className="login-btn"
+                className="login-btn hide-text-mobile"
                 style={{ background: 'transparent', border: '1px solid var(--gold-primary)', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
                 title={showRankingAvatars ? "Ocultar Avatares" : "Mostrar Avatares"}
               >
                 {showRankingAvatars ? <EyeOff size={18} /> : <Eye size={18} />}
-                {showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar Avatares'}
+                <span>{showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar Avatares'}</span>
               </button>
             </div>
             <div style={{ padding: '2rem' }}>
@@ -1897,20 +2011,20 @@ export default function Dashboard() {
 
         {activeTab === 'ranking_general' && (
           <div className="glass-panel" style={{ padding: '0', animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ padding: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+            <div style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
               <Trophy size={32} color="var(--gold-primary)" />
-              <div style={{ flex: 1 }}>
-                <h2 style={{ fontSize: '2rem', margin: 0 }}>Top 10 Geral</h2>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Top 10 Geral</h2>
                 <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Os maiores pontuadores de toda a escola.</p>
               </div>
               <button 
                 onClick={() => setShowRankingAvatars(!showRankingAvatars)}
-                className="login-btn"
+                className="login-btn hide-text-mobile"
                 style={{ background: 'transparent', border: '1px solid var(--gold-primary)', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
                 title={showRankingAvatars ? "Ocultar Avatares" : "Mostrar Avatares"}
               >
                 {showRankingAvatars ? <EyeOff size={18} /> : <Eye size={18} />}
-                {showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar Avatares'}
+                <span>{showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar Avatares'}</span>
               </button>
             </div>
             <div style={{ padding: '2rem' }}>

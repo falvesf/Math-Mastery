@@ -9,7 +9,7 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-// Registra o Service Worker para cache de imagens do Firebase Storage
+// Registra o Service Worker para cache de imagens do Supabase Storage
 // Só ativa em produção (ou quando servido via HTTPS / localhost)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

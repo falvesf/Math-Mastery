@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Plus, Trash2, Edit2, Save, X, Box } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import DirectUploadButton from './DirectUploadButton';
@@ -23,15 +22,13 @@ export default function Admin3DModelsManager() {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
 
-  const fetchModels = async () => {
-    setLoading(true);
+  const fetchModels = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
-      const snap = await getDocs(collection(db, '3d_models'));
-      const fetched: Model3D[] = [];
-      snap.forEach(d => {
-        fetched.push({ id: d.id, ...d.data() } as Model3D);
-      });
-      setModels(fetched);
+      const { data: snap } = await supabase.from('3d_models').select('*');
+      if (snap) {
+        setModels(snap as Model3D[]);
+      }
     } catch (e) {
       console.error(e);
       showAlert('Erro ao buscar modelos 3D.');
@@ -76,15 +73,15 @@ export default function Admin3DModelsManager() {
     try {
       const data = { name: name.trim(), url: url.trim() };
       if (editingId) {
-        await updateDoc(doc(db, '3d_models', editingId), data);
+        await supabase.from('3d_models').update(data).eq('id', editingId);
         showAlert('Modelo atualizado com sucesso!');
       } else {
-        await addDoc(collection(db, '3d_models'), data);
+        await supabase.from('3d_models').insert(data);
         showAlert('Modelo adicionado com sucesso!');
       }
       sessionCache.invalidate(CACHE_KEYS.models3d());
       setIsModalOpen(false);
-      fetchModels();
+      fetchModels(false);
     } catch (e) {
       console.error(e);
       showAlert('Erro ao salvar o modelo.');
@@ -94,10 +91,10 @@ export default function Admin3DModelsManager() {
   const handleDelete = async (id: string) => {
     if (await showConfirm('Deseja realmente excluir este modelo 3D? Ele deixará de funcionar nas skins que o utilizam.')) {
       try {
-        await deleteDoc(doc(db, '3d_models', id));
+        await supabase.from('3d_models').delete().eq('id', id);
         sessionCache.invalidate(CACHE_KEYS.models3d());
         showAlert('Modelo excluído com sucesso!');
-        fetchModels();
+        fetchModels(false);
       } catch (e) {
         console.error(e);
         showAlert('Erro ao excluir modelo.');

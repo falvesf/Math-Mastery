@@ -1,5 +1,4 @@
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
+import { supabase } from './supabase';
 
 export interface RankVariant {
   classIds: string[];
@@ -57,9 +56,13 @@ export function getRankForXp(xp: number, classId?: string): RankDef {
 
 export const initRanks = async () => {
   try {
-    const snap = await getDocs(collection(db, 'custom_ranks'));
-    if (!snap.empty) {
-      const loadedRanks = snap.docs.map(d => d.data() as RankDef).sort((a,b) => a.minXp - b.minXp);
+    const { data: snap, error } = await supabase.from('custom_ranks').select('*');
+    if (error) throw error;
+    if (snap && snap.length > 0) {
+      const loadedRanks = snap.map(d => {
+        const { id, ...rest } = d;
+        return rest as RankDef;
+      }).sort((a,b) => a.minXp - b.minXp);
       RANKS.length = 0; // clear existing
       RANKS.push(...loadedRanks);
     }

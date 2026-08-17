@@ -12,13 +12,15 @@
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
-    "firebase": "^12.15.0",
+    "@supabase/supabase-js": "^2.112.3",
+    "firebase-admin": "^14.2.0",
     "lucide-react": "^1.21.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0",
     "skinview3d": "^3.4.2",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

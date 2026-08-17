@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth, type UserData } from '../contexts/AuthContext';
-import { signOut } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc, setDoc, addDoc, serverTimestamp, getDoc, deleteDoc } from 'firebase/firestore';
+import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import { getRankForXp } from '../lib/ranks';
 import { DEFAULT_EVALUATIONS, type EvaluationType } from '../lib/evaluations';
 import ImageGalleryModal from '../components/ImageGalleryModal';
@@ -183,78 +181,91 @@ export default function AdminDashboard() {
   const [pixabayKey, setPixabayKey] = useState('');
 
   const fetchEvaluations = async () => {
-    const docRef = doc(db, 'settings', 'evaluations');
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const fetched = snap.data().types || [];
+    const { data: snap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'evaluations').single();
+    if (snap && snap.data) {
+      const fetched = (snap.data as any).types || [];
       setEvaluations(fetched);
       if (fetched.length > 0) setGradeType(fetched[0].id);
     } else {
       setEvaluations(DEFAULT_EVALUATIONS);
       setGradeType(DEFAULT_EVALUATIONS[0].id);
-      await setDoc(docRef, { types: DEFAULT_EVALUATIONS });
+      await supabase.from('system_collections').insert({ collection_name: 'settings', doc_id: 'evaluations', data: { types: DEFAULT_EVALUATIONS } });
     }
 
-    const apiRef = doc(db, 'settings', 'api');
-    const apiSnap = await getDoc(apiRef);
-    if (apiSnap.exists()) {
-      setPixabayKey(apiSnap.data().pixabayKey || '');
+    const { data: apiSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'api').single();
+    if (apiSnap && apiSnap.data) {
+      setPixabayKey((apiSnap.data as any).pixabayKey || '');
     }
   };
 
   const fetchClasses = async () => {
-    const snap = await getDocs(collection(db, 'classes'));
-    const loaded: ClassDef[] = [];
-    snap.forEach(d => loaded.push({ id: d.id, ...d.data() } as ClassDef));
+    const { data: snap } = await supabase.from('classes').select('*');
+    const loaded: ClassDef[] = (snap as ClassDef[]) || [];
     loaded.sort((a, b) => a.name.localeCompare(b.name));
     setSchoolClasses(loaded);
   };
 
   const fetchQuests = async () => {
-    const snap = await getDocs(collection(db, 'quests'));
-    const loaded: QuestDef[] = [];
-    snap.forEach(d => loaded.push({ id: d.id, ...d.data() } as QuestDef));
+    const { data: snap } = await supabase.from('quests').select('*');
+    const loaded: QuestDef[] = snap ? snap.map((d: any) => ({
+      ...d,
+      id: d.id,
+      coverImageUrl: d.cover_image_url || d.coverImageUrl,
+      baseXp: d.base_xp || d.baseXp,
+      allowRetries: d.allow_retries !== undefined ? d.allow_retries : d.allowRetries,
+      targetClasses: d.target_classes || d.targetClasses || [],
+      createdAt: { seconds: new Date(d.created_at || d.id).getTime() / 1000 }
+    })) as QuestDef[] : [];
     setQuests(loaded);
   };
 
   const fetch3DModels = async () => {
-    const snap = await getDocs(collection(db, '3d_models'));
-    const loaded: any[] = [];
-    snap.forEach(d => loaded.push({ id: d.id, ...d.data() }));
+    const { data: snap } = await supabase.from('3d_models').select('*');
+    const loaded: any[] = snap ? snap.map((d: any) => ({
+      ...d,
+      id: d.id,
+      imageUrl: d.image_url || d.imageUrl,
+      avatarPart: d.avatar_part || d.avatarPart
+    })) : [];
     setAvailable3DModels(loaded);
   };
 
   const fetchMonsters = async () => {
-    const snap = await getDocs(collection(db, 'monsters'));
-    const loaded: any[] = [];
-    snap.forEach(d => loaded.push({ id: d.id, ...d.data() }));
+    const { data: snap } = await supabase.from('monsters').select('*');
+    const loaded: any[] = snap ? snap.map((d: any) => ({
+      ...d,
+      id: d.id,
+      imageUrl: d.image_url || d.imageUrl,
+      avatarPart: d.avatar_part || d.avatarPart
+    })) : [];
     setAvailableMonsters(loaded);
   };
 
   const fetchStoreItems = async () => {
-    const snap = await getDocs(query(collection(db, 'store_items'), where('active', '==', true)));
-    const loaded: any[] = [];
-    snap.forEach(d => loaded.push({ id: d.id, ...d.data() }));
+    const { data: snap } = await supabase.from('store_items').select('*').eq('active', true);
+    const loaded: any[] = snap ? snap.map((d: any) => ({
+      ...d,
+      id: d.id,
+      imageUrl: d.image_url || d.imageUrl,
+      avatarPart: d.avatar_part || d.avatarPart
+    })) : [];
     setAvailableStoreItems(loaded);
   };
 
-  const fetchStudents = async () => {
-    setLoading(true);
-    const q = query(collection(db, 'users'));
-    const querySnapshot = await getDocs(q);
-    const loadedStudents: UserData[] = [];
-    querySnapshot.forEach((doc) => {
-      loadedStudents.push(doc.data() as UserData);
-    });
+  const fetchStudents = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    const { data: querySnapshot } = await supabase.from('users').select('*');
+    const loadedStudents: UserData[] = querySnapshot ? querySnapshot.map(d => mapUserToClient(d)) : [];
     // Sort by name
     loadedStudents.sort((a, b) => a.name.localeCompare(b.name));
     
     // Buscar todos os itens equipados
-    const itemsQ = query(collection(db, 'user_items'), where('equipped', '==', true));
-    const itemsSnap = await getDocs(itemsQ);
+    const { data: itemsSnap } = await supabase.from('user_items').select('*').eq('equipped', true);
     const itemsMap: Record<string, any[]> = {};
-    itemsSnap.forEach(d => {
-      const data = d.data();
+    if (itemsSnap) itemsSnap.forEach(d => {
+      const data = d.data || {};
+      data.itemId = d.item_id;
+      data.studentId = d.student_id;
       if (!itemsMap[data.studentId]) itemsMap[data.studentId] = [];
       itemsMap[data.studentId].push({
         itemId: data.itemId,
@@ -280,17 +291,38 @@ export default function AdminDashboard() {
 
   const loadStudentHistoryLocally = async (studentUid: string) => {
     setLoadingHistory(true);
-    const q = query(collection(db, 'xp_logs'), where('studentId', '==', studentUid));
-    const snap = await getDocs(q);
-    const logs = snap.docs.map(d => ({ logId: d.id, ...(d.data() as any) }));
-    logs.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+    const { data: snap } = await supabase.from('xp_logs').select('*').eq('student_id', studentUid);
+    let logs = (snap || []).map(d => {
+      let eName = d.eval_name || d.reason || 'Avaliação';
+      let just = d.justification || '';
+      let img = '';
+      if (!d.eval_name && d.reason && d.reason.includes(' | ')) {
+         const parts = d.reason.split(' | ');
+         eName = parts[0].trim();
+         img = parts[1] ? parts[1].trim() : '';
+         just = parts[2] ? parts[2].trim() : '';
+      } else if (d.eval_name && d.eval_name.includes(' | ')) {
+         const parts = d.eval_name.split(' | ');
+         eName = parts[0].trim();
+         img = parts[1] ? parts[1].trim() : '';
+      }
+      
+      return {
+        logId: d.id, 
+        evalName: eName,
+        imageUrl: img,
+        xpGained: d.xp_gained !== undefined ? d.xp_gained : (d.amount || 0),
+        justification: just,
+        ...d 
+      };
+    });
+    logs.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     setXpHistory(logs);
 
     // Fetch equipped items for the selected student
-    const itemsQ = query(collection(db, 'user_items'), where('studentId', '==', studentUid), where('equipped', '==', true));
-    const itemsSnap = await getDocs(itemsQ);
-    const eqItems = itemsSnap.docs.map(d => {
-      const data = d.data();
+    const { data: itemsSnap } = await supabase.from('user_items').select('*').eq('student_id', studentUid).eq('equipped', true);
+    const eqItems = (itemsSnap || []).map(d => {
+      const data = d.data || {};
       return {
         itemId: data.itemId,
         imageUrl: data.itemImageUrl,
@@ -341,15 +373,11 @@ export default function AdminDashboard() {
     if (isNaN(xpToRemove) || xpToRemove <= 0) return;
     const newXp = Math.max(0, (selectedStudent.xp || 0) - xpToRemove);
     const newCoins = Math.max(0, (selectedStudent.coins || 0) - xpToRemove);
-    const userRef = doc(db, 'users', selectedStudent.uid);
-    await updateDoc(userRef, { xp: newXp, coins: newCoins });
-    await addDoc(collection(db, 'xp_logs'), {
-      studentId: selectedStudent.uid,
-      studentName: selectedStudent.name,
-      evalName: 'Correção / Remoção de XP',
-      justification: removeReason,
-      xpGained: -xpToRemove,
-      timestamp: serverTimestamp()
+    await supabase.from('users').update({ xp: newXp, coins: newCoins }).eq('id', selectedStudent.uid);
+    await supabase.from('xp_logs').insert({
+      student_id: selectedStudent.uid,
+      amount: -xpToRemove,
+      reason: `Correção / Remoção de XP |  | ${removeReason}`
     });
     setSelectedStudent({ ...selectedStudent, xp: newXp, coins: newCoins });
     setRemoveAmount('');
@@ -367,21 +395,15 @@ export default function AdminDashboard() {
     const xpGained = numGrade * selectedEval.weight;
     const newXp = (selectedStudent.xp || 0) + xpGained;
     const newCoins = (selectedStudent.coins || 0) + xpGained;
-    const userRef = doc(db, 'users', selectedStudent.uid);
-    await updateDoc(userRef, { xp: newXp, coins: newCoins });
-    await addDoc(collection(db, 'xp_logs'), {
-      studentId: selectedStudent.uid,
-      studentName: selectedStudent.name,
-      evalId: selectedEval.id,
-      evalName: selectedEval.name,
-      grade: numGrade,
-      weight: selectedEval.weight,
-      xpGained: xpGained,
-      timestamp: serverTimestamp()
+    await supabase.from('users').update({ xp: newXp, coins: newCoins }).eq('id', selectedStudent.uid);
+    await supabase.from('xp_logs').insert({
+      student_id: selectedStudent.uid,
+      amount: xpGained,
+      reason: `${selectedEval.name} |  | Recebeu nota ${numGrade}`
     });
     setSelectedStudent({ ...selectedStudent, xp: newXp, coins: newCoins });
     setGrade('');
-    fetchStudents(); 
+    fetchStudents(false); 
     loadStudentHistoryLocally(selectedStudent.uid);
   };
 
@@ -389,13 +411,12 @@ export default function AdminDashboard() {
     if (!selectedStudent) return;
     const confirmed = await showConfirm("Atenção! Você está apagando este registro do histórico. O XP do aluno será recalculado. Deseja continuar?");
     if (confirmed) {
-      await deleteDoc(doc(db, 'xp_logs', logId));
+      await supabase.from('xp_logs').delete().eq('id', logId);
       const newXp = Math.max(0, (selectedStudent.xp || 0) - xpGained);
       const newCoins = Math.max(0, (selectedStudent.coins || 0) - xpGained);
-      const userRef = doc(db, 'users', selectedStudent.uid);
-      await updateDoc(userRef, { xp: newXp, coins: newCoins });
+      await supabase.from('users').update({ xp: newXp, coins: newCoins }).eq('id', selectedStudent.uid);
       setSelectedStudent({ ...selectedStudent, xp: newXp, coins: newCoins });
-      fetchStudents();
+      fetchStudents(false);
       loadStudentHistoryLocally(selectedStudent.uid);
     }
   };
@@ -416,7 +437,7 @@ export default function AdminDashboard() {
     setEditingEvalId(null);
     setNewEvalName('');
     setNewEvalWeight('');
-    await setDoc(doc(db, 'settings', 'evaluations'), { types: updated });
+    await supabase.from('system_collections').update({ data: { types: updated } }).eq('collection_name', 'settings').eq('doc_id', 'evaluations');
   };
 
   const handleEditEvaluation = (ev: EvaluationType) => {
@@ -432,7 +453,7 @@ export default function AdminDashboard() {
     }
     const updated = evaluations.filter(e => e.id !== id);
     setEvaluations(updated);
-    await setDoc(doc(db, 'settings', 'evaluations'), { types: updated });
+    await supabase.from('system_collections').update({ data: { types: updated } }).eq('collection_name', 'settings').eq('doc_id', 'evaluations');
   };
 
   // Turmas
@@ -440,15 +461,14 @@ export default function AdminDashboard() {
     if (!newClassName) return;
     const classId = Date.now().toString();
     const newClass = { id: classId, name: newClassName, color: newClassColor };
-    await setDoc(doc(db, 'classes', classId), newClass);
+    await supabase.from('classes').insert(newClass);
     setNewClassName('');
     fetchClasses();
   };
 
   const handleEditClassSubmit = async () => {
     if (!editingClassId || !editClassName) return;
-    const classRef = doc(db, 'classes', editingClassId);
-    await updateDoc(classRef, { name: editClassName, color: editClassColor });
+    await supabase.from('classes').update({ name: editClassName, color: editClassColor }).eq('id', editingClassId);
     setEditingClassId(null);
     setIsClassModalOpen(false);
     fetchClasses();
@@ -457,7 +477,7 @@ export default function AdminDashboard() {
   const handleRemoveClass = async (id: string) => {
     const confirmed = await showConfirm("Deseja realmente apagar esta turma?");
     if (confirmed) {
-      await deleteDoc(doc(db, 'classes', id));
+      await supabase.from('classes').delete().eq('id', id);
       fetchClasses();
     }
   };
@@ -472,7 +492,6 @@ export default function AdminDashboard() {
 
   const handleSaveStudent = async () => {
     if (!editingStudent) return;
-    const userRef = doc(db, 'users', editingStudent.uid);
     const updateData: any = { name: editName, classId: editClass, role: editRole };
     
     // Promovendo para equipe concede 50k XP
@@ -481,7 +500,7 @@ export default function AdminDashboard() {
       updateData.coins = Math.max(50000, editingStudent.coins || 0);
     }
     
-    await updateDoc(userRef, updateData);
+    await supabase.from('users').update(updateData).eq('id', editingStudent.uid);
     setEditingStudent(null);
     fetchStudents();
   };
@@ -489,7 +508,7 @@ export default function AdminDashboard() {
   const handleDeleteStudent = async () => {
     if (!deletingStudent) return;
     try {
-      await deleteDoc(doc(db, 'users', deletingStudent.uid));
+      await supabase.from('users').delete().eq('id', deletingStudent.uid);
       // NOTA: Em um sistema real em produção via Firebase Auth, não conseguimos deletar a conta Auth pelo cliente.
       // O usuário seria recriado ao logar, então você pode adicionar uma flag `disabled` ou rodar isso numa Cloud Function.
       // Para os fins deste projeto, deletamos o documento.
@@ -521,15 +540,11 @@ export default function AdminDashboard() {
         newCoins = Math.max(0, (student.coins || 0) + gain);
       }
 
-      const userRef = doc(db, 'users', uid);
-      await updateDoc(userRef, { xp: newXp, coins: newCoins });
-      await addDoc(collection(db, 'xp_logs'), {
-        studentId: uid,
-        studentName: student.name,
-        evalName: 'Ação em Massa',
-        justification: bulkXpReason,
-        xpGained: gain,
-        timestamp: serverTimestamp()
+      await supabase.from('users').update({ xp: newXp, coins: newCoins }).eq('id', uid);
+      await supabase.from('xp_logs').insert({
+        student_id: uid,
+        amount: gain,
+        reason: `Ação em Massa | | ${bulkXpReason}`
       });
     }
 
@@ -649,7 +664,7 @@ export default function AdminDashboard() {
     const sanitizedQuest = JSON.parse(JSON.stringify(newQuest));
 
     try {
-      await setDoc(doc(db, 'quests', questId), sanitizedQuest);
+      await supabase.from('quests').upsert({ id: questId, ...sanitizedQuest });
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
@@ -698,19 +713,34 @@ export default function AdminDashboard() {
   const openQuestHistory = async (quest: QuestDef) => {
     setSelectedQuestForHistory(quest);
     setIsQuestHistoryModalOpen(true);
-    setLoading(true);
+    setIsQuestHistoryModalOpen(true);
     
-    const attemptsRef = collection(db, 'quest_attempts');
-    const q = query(attemptsRef, where('questId', '==', quest.id));
-    const snap = await getDocs(q);
+    const { data: snap, error } = await supabase.from('quest_attempts').select('*').eq('quest_id', quest.id);
     
+    if (error) {
+      console.error("Erro ao buscar histórico:", error);
+      setLoading(false);
+      return;
+    }
+
     const loaded: any[] = [];
-    snap.forEach(d => {
-      loaded.push({ id: d.id, ...d.data() });
-    });
+    if (snap) {
+      snap.forEach(d => {
+        // Map snake_case from DB to camelCase for the frontend
+        loaded.push({ 
+          id: d.id, 
+          studentId: d.student_id, 
+          questId: d.quest_id, 
+          status: d.status,
+          timestamp: d.created_at ? { seconds: new Date(d.created_at).getTime() / 1000 } : null,
+          earnedXp: d.data?.earned_xp || 0,
+          answers: d.data?.answers || []
+        });
+      });
+    }
     
     setQuestHistoryAttempts(loaded);
-    setLoading(false);
+    setQuestHistoryAttempts(loaded);
   };
 
   const handleResetQuestAttempt = async (studentId: string) => {
@@ -719,21 +749,21 @@ export default function AdminDashboard() {
     
     const attemptsToDelete = questHistoryAttempts.filter(a => a.studentId === studentId);
     for (const attempt of attemptsToDelete) {
-      await deleteDoc(doc(db, 'quest_attempts', attempt.id));
+      await supabase.from('quest_attempts').delete().eq('id', attempt.id);
     }
     
     setQuestHistoryAttempts(prev => prev.filter(a => a.studentId !== studentId));
   };
 
   const handleToggleQuestActive = async (id: string, currentStatus: boolean) => {
-    await updateDoc(doc(db, 'quests', id), { active: !currentStatus });
+    await supabase.from('quests').update({ active: !currentStatus }).eq('id', id);
     fetchQuests();
   };
 
   const handleDeleteQuest = async (id: string) => {
     const confirmed = await showConfirm("Apagar essa Missão definitivamente?");
     if (confirmed) {
-      await deleteDoc(doc(db, 'quests', id));
+      await supabase.from('quests').delete().eq('id', id);
       fetchQuests();
     }
   };
@@ -863,7 +893,7 @@ export default function AdminDashboard() {
               <span style={{ fontWeight: 'bold' }}>{userData?.name?.split(' ')[0]}</span>
             </div>
           </div>
-          <button className="login-btn" onClick={() => signOut(auth)} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
+          <button className="login-btn" onClick={() => supabase.auth.signOut()} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
             <LogOut size={20} />
           </button>
         </div>
@@ -947,7 +977,7 @@ export default function AdminDashboard() {
                       <button 
                         onClick={async () => {
                           if (await showConfirm('Rejeitar Solicitação', `Deseja negar o acesso de professor para ${reqUser.name}? Ele voltará a ser um Aluno comum.`)) {
-                            await updateDoc(doc(db, 'users', reqUser.uid), { role: 'student' });
+                            await supabase.from('users').update({ role: 'student' }).eq('id', reqUser.uid);
                             fetchStudents();
                           }
                         }}
@@ -959,7 +989,7 @@ export default function AdminDashboard() {
                       <button 
                         onClick={async () => {
                           if (await showConfirm('Aprovar Professor', `Confirmar ${reqUser.name} como Professor?`)) {
-                            await updateDoc(doc(db, 'users', reqUser.uid), { role: 'teacher' });
+                            await supabase.from('users').update({ role: 'teacher' }).eq('id', reqUser.uid);
                             fetchStudents();
                           }
                         }}
@@ -986,9 +1016,11 @@ export default function AdminDashboard() {
         {/* Aba de Economia */}
         {activeTab === 'economy' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
-              <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Ajustes da Economia</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Configure taxas, quedas de moedas e regras do comércio.</p>
+            <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Ajustes da Economia</h2>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Configure taxas, quedas de moedas e regras do comércio.</span>
+              </div>
             </div>
             <AdminEconomySettings />
           </div>
@@ -1287,7 +1319,7 @@ export default function AdminDashboard() {
                         </div>
                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                           {quest.mode === 'live' && (
-                            <button onClick={() => navigate(`/live-admin/${quest.id}`)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }} title="Iniciar Sessão Ao Vivo">
+                            <button onClick={() => navigate(`/live-admin/${quest.id}`, { state: { reset: true } })} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }} title="Iniciar Sessão Ao Vivo">
                               <Play size={18} fill="black" /> Iniciar Ao Vivo
                             </button>
                           )}
@@ -1317,9 +1349,16 @@ export default function AdminDashboard() {
                 <div style={{ animation: 'slideUp 0.3s ease-out' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                     <h2 style={{ fontSize: '1.8rem', margin: 0 }}>{editingQuestId ? 'Editar Missão' : 'Criar Nova Missão (Estilo Kahoot)'}</h2>
-                    <button className="login-btn" onClick={() => { setIsCreatingQuest(false); setEditingQuestId(null); }} style={{ background: 'transparent', border: '1px solid var(--border-glass)' }}>
-                      Cancelar
-                    </button>
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      {editingQuestId && (
+                        <button className="login-btn" onClick={() => openQuestHistory(quests.find(q => q.id === editingQuestId)!)} style={{ background: 'var(--accent-blue)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <History size={18} /> Ver Histórico
+                        </button>
+                      )}
+                      <button className="login-btn" onClick={() => { setIsCreatingQuest(false); setEditingQuestId(null); }} style={{ background: 'transparent', border: '1px solid var(--border-glass)' }}>
+                        Cancelar
+                      </button>
+                    </div>
                   </div>
 
                   <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
@@ -1755,23 +1794,24 @@ export default function AdminDashboard() {
           {/* Aba de Turmas */}
           {activeTab === 'classes' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
-                <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Gerenciamento de Turmas</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem', marginTop: 0 }}>Crie turmas para agrupar os alunos e gerar Rankings exclusivos.</p>
+              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                  <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Gerenciamento de Turmas</h2>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Crie turmas para agrupar os alunos e gerar Rankings exclusivos.</span>
+                </div>
               
-              <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', background: 'rgba(0,0,0,0.2)' }}>
-                <h3 style={{ marginBottom: '1rem' }}>Criar Nova Turma</h3>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
-                  <div style={{ flex: 2 }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Nome da Turma</label>
-                    <input type="text" value={newClassName} onChange={e => setNewClassName(e.target.value)} placeholder="Ex: 6º ano A" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+              <div className="glass-panel" style={{ padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.2)' }}>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 200px' }}>
+                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Criar Nova Turma</label>
+                    <input type="text" value={newClassName} onChange={e => setNewClassName(e.target.value)} placeholder="Ex: 6º ano A" style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Cor da Turma</label>
-                    <input type="color" value={newClassColor} onChange={e => setNewClassColor(e.target.value)} style={{ width: '100%', height: '45px', padding: '0', borderRadius: '8px', background: 'transparent', border: 'none', cursor: 'pointer' }} />
+                  <div style={{ flex: '0 1 100px' }}>
+                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Cor</label>
+                    <input type="color" value={newClassColor} onChange={e => setNewClassColor(e.target.value)} style={{ width: '100%', height: '36px', padding: '0', borderRadius: '8px', background: 'transparent', border: 'none', cursor: 'pointer' }} />
                   </div>
-                  <button className="login-btn" onClick={handleAddClass} style={{ background: 'var(--accent-blue)', color: 'white', border: 'none', height: '45px' }}>
-                    <Plus size={20} />
+                  <button className="login-btn" onClick={handleAddClass} style={{ background: 'var(--accent-blue)', color: 'white', border: 'none', height: '36px', padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Plus size={16} /> <span className="hide-text-mobile">Adicionar</span>
                   </button>
                 </div>
                 </div>
@@ -1904,8 +1944,8 @@ export default function AdminDashboard() {
 
       {/* Modal de Gerenciar XP e Histórico */}
       {selectedStudent && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="glass-panel xp-modal-content" style={{ width: '800px', maxWidth: '95vw', maxHeight: '95vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out', display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
+        <div className="modal-overlay" style={{ zIndex: 100 }}>
+          <div className="glass-panel xp-modal-content modal-content" style={{ maxWidth: '800px', display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
             
             {/* Lado Esquerdo: Formulário */}
             <div style={{ flex: 1 }}>
@@ -2001,13 +2041,18 @@ export default function AdminDashboard() {
                   xpHistory.map((log) => (
                     <div key={log.logId} style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', borderLeft: `3px solid ${log.xpGained >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)'}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
-                        <div>
-                          <strong style={{ fontSize: '0.95rem' }}>{log.evalName}</strong>
-                          {log.justification && (
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                              Motivo: {log.justification}
-                            </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          {log.imageUrl && (
+                            <img src={log.imageUrl} alt="Badge" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
                           )}
+                          <div>
+                            <strong style={{ fontSize: '0.95rem' }}>{log.evalName}</strong>
+                            {log.justification && (
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                                Motivo: {log.justification}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <span style={{ color: log.xpGained >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)', fontWeight: 'bold' }}>
@@ -2038,8 +2083,8 @@ export default function AdminDashboard() {
         </div>
       )}      {/* Modal Apagar Aluno */}
       {deletingStudent && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="glass-panel" style={{ width: '450px', padding: '2rem', animation: 'slideUp 0.3s ease-out', textAlign: 'center' }}>
+        <div className="modal-overlay" style={{ zIndex: 100 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: '450px', textAlign: 'center' }}>
             <Trash2 size={48} color="var(--accent-red)" style={{ margin: '0 auto 1.5rem auto' }} />
             <h3 style={{ fontSize: '1.5rem', margin: '0 0 1rem 0' }}>Excluir {deletingStudent.name}?</h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', lineHeight: '1.5' }}>
@@ -2059,8 +2104,8 @@ export default function AdminDashboard() {
 
       {/* Modal Bulk XP */}
       {isBulkXpModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="glass-panel" style={{ width: '500px', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+        <div className="modal-overlay" style={{ zIndex: 100 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: '500px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Star size={24} /> XP em Massa
@@ -2108,8 +2153,8 @@ export default function AdminDashboard() {
       )}
 
       {isEvalModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="glass-panel" style={{ width: '400px', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+        <div className="modal-overlay" style={{ zIndex: 100 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: '400px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>{editingEvalId ? 'Editar Avaliação' : 'Nova Avaliação'}</h3>
               <button onClick={() => { setIsEvalModalOpen(false); setEditingEvalId(null); setNewEvalName(''); setNewEvalWeight(''); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
@@ -2136,8 +2181,8 @@ export default function AdminDashboard() {
 
       {/* Modal Histórico de Missão */}
       {isQuestHistoryModalOpen && selectedQuestForHistory && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-          <div className="glass-panel" style={{ width: '100%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+        <div className="modal-overlay" style={{ zIndex: 100 }}>
+          <div className="glass-panel modal-content modal-content-lg" style={{ maxWidth: '900px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
               <div>
                 <h2 style={{ fontSize: '1.8rem', margin: '0 0 0.5rem 0' }}>Histórico: {selectedQuestForHistory.title}</h2>
@@ -2263,8 +2308,8 @@ export default function AdminDashboard() {
       )}
 
       {isClassModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="glass-panel" style={{ width: '400px', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+        <div className="modal-overlay" style={{ zIndex: 100 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: '400px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>Editar Turma</h3>
               <button onClick={() => { setIsClassModalOpen(false); setEditingClassId(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>

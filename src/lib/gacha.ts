@@ -1,5 +1,4 @@
-import { db } from './firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { supabase } from './supabase';
 
 export type ItemCategory = 'attack' | 'defense' | 'support' | 'none';
 export type AttributeType = 'attack' | 'defense' | 'xp' | 'coins' | 'vitality' | 'fortitude' | 'persuasion' | 'none';
@@ -85,9 +84,9 @@ export const DEFAULT_GACHA_CONFIG: GachaConfig = {
 
 export async function fetchGlobalGachaConfig(): Promise<GachaConfig> {
   try {
-    const snap = await getDoc(doc(db, 'settings', 'gacha'));
-    if (snap.exists()) {
-      return snap.data() as GachaConfig;
+    const { data: snap, error } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'gacha').single();
+    if (!error && snap) {
+      return snap.data as GachaConfig;
     }
   } catch (err) {
     console.error("Error fetching global gacha config:", err);

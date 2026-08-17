@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { db } from '../lib/firebase';
-import { collection, query, getDocs, getDoc, where, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
@@ -96,14 +95,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (!userData.uid) return;
     const savePreferences = async () => {
       try {
-        await updateDoc(doc(db, 'users', userData.uid), {
-          inventoryPreferences: { viewMode, activeCategory, filterRarity }
-        });
+        await supabase.from('users').update({ inventory_preferences: { viewMode, activeCategory, filterRarity, slotMap } }).eq('id', userData.uid);
       } catch (err) {}
     };
     const t = setTimeout(savePreferences, 1000);
     return () => clearTimeout(t);
-  }, [viewMode, activeCategory, filterRarity, userData.uid]);
+  }, [viewMode, activeCategory, filterRarity, slotMap, userData.uid]);
 
   const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
@@ -139,31 +136,28 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     return () => window.removeEventListener('equip-item', handleEquipEvent);
   }, [items]);
 
-  const fetchInventory = async () => {
+  const fetchInventory = async (silent = false) => {
     if (!userData.uid) return;
-    setLoading(true);
+    if (!silent && items.length === 0) setLoading(true);
 
-    const econRef = doc(db, 'settings', 'economy');
-    const econSnap = await getDoc(econRef);
-    if (econSnap.exists()) {
-      const eData = econSnap.data();
+    const { data: econSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'economy').single();
+    if (econSnap) {
+      const eData = econSnap.data as any;
       setEconomyType(eData.currencyType || 'coins');
       setEconomySettings(eData);
     }
 
-    const storeQ = query(collection(db, 'store_items'));
-    const storeSnap = await getDocs(storeQ);
+    const { data: storeSnap } = await supabase.from('store_items').select('id, rarity');
     const storeRarities = new Map<string, string>();
-    storeSnap.forEach(d => {
-      storeRarities.set(d.id, d.data().rarity || 'common');
+    (storeSnap || []).forEach(d => {
+      storeRarities.set(d.id, d.rarity || 'common');
     });
 
-    const q = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
-    const snap = await getDocs(q);
+    const { data: snap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
     const loaded: UserItem[] = [];
-    snap.forEach(d => {
-      const data = d.data();
-      loaded.push({ id: d.id, ...data, rarity: data.rarity || storeRarities.get(data.itemId) || 'common' } as UserItem);
+    (snap || []).forEach(row => {
+      const data = row.data as any;
+      loaded.push({ ...data, id: row.id, equipped: row.equipped, rarity: data.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
     });
 
     const finalItems: UserItem[] = [];
@@ -183,11 +177,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             
             const { id, docIds, count, rarity, ...itemDataToDuplicate } = item as any;
             Promise.all([
-              updateDoc(doc(db, 'user_items', item.id), { quantity: 99 }),
-              addDoc(collection(db, 'user_items'), {
-                ...itemDataToDuplicate,
-                quantity: excess
-              })
+              supabase.from('user_items').update({ data: { ...itemDataToDuplicate, quantity: 99 } }).eq('id', item.id),
+              supabase.from('user_items').insert({ student_id: userData.uid, item_id: item.itemId, equipped: false, data: { ...itemDataToDuplicate, quantity: excess } })
             ]).finally(() => {
               setTimeout(() => { (window as any)[`migrating_${item.id}`] = false; }, 2000);
             });
@@ -209,17 +200,17 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     let remainingToRemove = amount;
 
     if (specificDocId) {
-      const specificDocRef = doc(db, 'user_items', specificDocId);
-      const specificDocSnap = await getDoc(specificDocRef);
-      if (specificDocSnap.exists()) {
-        const data = specificDocSnap.data() as UserItem;
-        if (data.itemType === 'consumable' && !data.forSale && data.studentId === userData.uid) {
+      const { data: specificDocSnap } = await supabase.from('user_items').select('*').eq('id', specificDocId).single();
+      if (specificDocSnap) {
+        const data = specificDocSnap.data as any;
+        if (data.itemType === 'consumable' && !data.forSale && specificDocSnap.student_id === userData.uid) {
           const qty = data.quantity || 1;
           if (qty <= remainingToRemove) {
-            await deleteDoc(specificDocRef);
+            await supabase.from('user_items').delete().eq('id', specificDocId);
             remainingToRemove -= qty;
           } else {
-            await updateDoc(specificDocRef, { quantity: qty - remainingToRemove });
+            const newData = { ...data, quantity: qty - remainingToRemove };
+            await supabase.from('user_items').update({ data: newData }).eq('id', specificDocId);
             remainingToRemove = 0;
           }
         }
@@ -228,73 +219,73 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
     if (remainingToRemove <= 0) return;
 
-    const q = query(collection(db, 'user_items'), where('studentId', '==', userData.uid), where('itemId', '==', itemId));
-    const snap = await getDocs(q);
+    const { data: snap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid).eq('item_id', itemId);
     
-    for (const d of snap.docs) {
+    for (const d of (snap || [])) {
       if (d.id === specificDocId) continue;
       if (remainingToRemove <= 0) break;
-      const data = d.data() as UserItem;
+      const data = d.data as any;
       if (data.itemType !== 'consumable' || data.forSale) continue;
       
       const qty = data.quantity || 1;
       if (qty <= remainingToRemove) {
-        await deleteDoc(d.ref);
+        await supabase.from('user_items').delete().eq('id', d.id);
         remainingToRemove -= qty;
       } else {
-        await updateDoc(d.ref, { quantity: qty - remainingToRemove });
+        const newData = { ...data, quantity: qty - remainingToRemove };
+        await supabase.from('user_items').update({ data: newData }).eq('id', d.id);
         remainingToRemove = 0;
       }
     }
+  };
+
+  const _updateEq = async (id: string, equipped: boolean) => {
+    await supabase.from('user_items').update({ equipped }).eq('id', id);
   };
 
   const handleEquip = async (item: UserItem) => {
     const newState = !item.equipped;
     const docToUpdate = item.docIds ? item.docIds[0] : item.id;
     
-    // Se for equipar e tiver uma parte do avatar, desequipa a anterior
     if (newState && item.avatarPart) {
       if (item.avatarPart === 'hand') {
         const equippedHands = items.filter(i => i.equipped && i.avatarPart === 'hand' && i.id !== item.id);
         const equippedTwoHanded = items.filter(i => i.equipped && i.avatarPart === 'two_handed' && i.id !== item.id);
         
-        // Unequip two-handed weapons if we are equipping a one-handed weapon
         for (const th of equippedTwoHanded) {
           const docId = th.docIds ? th.docIds[0] : th.id;
-          await updateDoc(doc(db, 'user_items', docId), { equipped: false });
+          await _updateEq(docId, false);
         }
         
-        // Não permitir duas armas de ataque ou dois escudos. Desequipa o item da mesma categoria
         const sameCategoryEquipped = equippedHands.find(i => i.itemCategory === item.itemCategory);
         if (sameCategoryEquipped) {
           const docId = sameCategoryEquipped.docIds ? sameCategoryEquipped.docIds[0] : sameCategoryEquipped.id;
-          await updateDoc(doc(db, 'user_items', docId), { equipped: false });
+          await _updateEq(docId, false);
           equippedHands.splice(equippedHands.indexOf(sameCategoryEquipped), 1);
         }
         
         if (equippedHands.length >= 2) {
           const otherDoc = equippedHands[0].docIds ? equippedHands[0].docIds[0] : equippedHands[0].id;
-          await updateDoc(doc(db, 'user_items', otherDoc), { equipped: false });
+          await _updateEq(otherDoc, false);
         }
       } else if (item.avatarPart === 'two_handed') {
-        // Unequip all one-handed and two-handed weapons
         const equippedWeapons = items.filter(i => i.equipped && (i.avatarPart === 'hand' || i.avatarPart === 'two_handed') && i.id !== item.id);
         for (const w of equippedWeapons) {
           const docId = w.docIds ? w.docIds[0] : w.id;
-          await updateDoc(doc(db, 'user_items', docId), { equipped: false });
+          await _updateEq(docId, false);
         }
       } else {
         const alreadyEquipped = items.find(i => i.equipped && i.avatarPart === item.avatarPart && i.id !== item.id);
         if (alreadyEquipped) {
           const otherDoc = alreadyEquipped.docIds ? alreadyEquipped.docIds[0] : alreadyEquipped.id;
-          await updateDoc(doc(db, 'user_items', otherDoc), { equipped: false });
+          await _updateEq(otherDoc, false);
         }
       }
     }
 
-    await updateDoc(doc(db, 'user_items', docToUpdate), { equipped: newState });
+    await _updateEq(docToUpdate, newState);
     if (onEquip) onEquip();
-    fetchInventory(); // recarrega do banco pra garantir consistência
+    fetchInventory();
   };
 
   const handleUseConsumable = async (item: UserItem) => {
@@ -302,21 +293,20 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const currentRankIndex = RANKS.findIndex(r => r.name === userData.lastSeenRank) || 0;
       const maxHearts = 3 + Math.floor(currentRankIndex / 2);
       
-      if ((userData.hearts || 0) >= maxHearts) {
+      if ((userData.hp || 0) >= maxHearts) {
         await showAlert("Sua vida já está cheia!");
         return;
       }
       const confirmed = await showConfirm(`Deseja beber "${item.itemTitle}" e restaurar todo o seu HP?`);
       if (!confirmed) return;
       
-      const userRef = doc(db, 'users', userData.uid);
-      await updateDoc(userRef, { 
-        hearts: maxHearts,
-        happyBuffUntil: null,
-        happyBuffDuration: null,
-        stunnedUntil: null
-      });
-      userData.hearts = maxHearts;
+      await supabase.from('users').update({ 
+        hp: maxHearts,
+        happy_buff_until: null,
+        happy_buff_duration: null,
+        stunned_until: null
+      }).eq('id', userData.uid);
+      userData.hp = maxHearts;
 
       await consumeItemQuantity(item.itemId, 1, item.id);
       fetchInventory();
@@ -331,12 +321,10 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return;
       }
       
-      const skinsRef = collection(db, 'preset_skins');
-      const q = query(skinsRef, where('url', '==', skinId));
-      const querySnapshot = await getDocs(q);
+      const { data: skinsSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'preset_skins').eq('data->>url', skinId);
       
-      if (!querySnapshot.empty) {
-        const skinData = querySnapshot.docs[0].data();
+      if (skinsSnap && skinsSnap.length > 0) {
+        const skinData = skinsSnap[0].data as any;
         const genderTarget = skinData.genderTarget;
         const currentGender = userData.avatarConfig?.gender || 'male';
         if (genderTarget && genderTarget !== 'both' && genderTarget !== currentGender) {
@@ -354,10 +342,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       
       const newExpiry = currentExpiry > now ? currentExpiry + durationMs : now + durationMs;
       
-      const userRef = doc(db, 'users', userData.uid);
-      await updateDoc(userRef, {
-        [`unlockedSkins.${skinId}`]: newExpiry
-      });
+      const newUnlockedSkins = { ...userData.unlockedSkins, [skinId]: newExpiry };
+      await supabase.from('users').update({ unlocked_skins: newUnlockedSkins }).eq('id', userData.uid);
       
       if (!userData.unlockedSkins) userData.unlockedSkins = {};
       userData.unlockedSkins[skinId] = newExpiry;
@@ -372,11 +358,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const confirmed = await showConfirm(`Deseja usar este item para liberar a troca de gênero por 15 minutos?`);
       if (!confirmed) return;
       
-      const userRef = doc(db, 'users', userData.uid);
       const newUnlock = Date.now() + 15 * 60 * 1000;
-      await updateDoc(userRef, {
-        'avatarConfig.genderUnlockUntil': newUnlock
-      });
+      await supabase.from('users').update({ avatar_config: { ...userData.avatarConfig, genderUnlockUntil: newUnlock } }).eq('id', userData.uid);
       
       await consumeItemQuantity(item.itemId, 1, item.id);
       fetchInventory();
@@ -419,22 +402,29 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       await consumeItemQuantity(item.itemId, 1, item.id);
       if (!result.checked) {
         const { id, count, docIds, ...itemDataToDrop } = item;
-        await addDoc(collection(db, 'user_items'), {
-          ...itemDataToDrop,
-          studentId: 'dropped',
-          droppedBy: userData.uid,
-          quantity: 1
+        await supabase.from('user_items').insert({
+          student_id: 'dropped',
+          item_id: item.itemId,
+          equipped: false,
+          data: {
+            ...itemDataToDrop,
+            droppedBy: userData.uid,
+            quantity: 1
+          }
         });
       }
     } else {
       const docToUpdate = item.docIds ? item.docIds[0] : item.id;
       if (result.checked) {
-        await deleteDoc(doc(db, 'user_items', docToUpdate));
+        await supabase.from('user_items').delete().eq('id', docToUpdate);
       } else {
-        await updateDoc(doc(db, 'user_items', docToUpdate), {
-          studentId: 'dropped',
-          droppedBy: userData.uid
-        });
+        const { data: currentData } = await supabase.from('user_items').select('data').eq('id', docToUpdate).single();
+        if (currentData) {
+          await supabase.from('user_items').update({
+            student_id: 'dropped',
+            data: { ...(currentData.data as any), droppedBy: userData.uid }
+          }).eq('id', docToUpdate);
+        }
       }
     }
     
@@ -454,11 +444,15 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     
     if (!permanent) {
       const { id, count, docIds, ...itemDataToDrop } = trashModalItem;
-      await addDoc(collection(db, 'user_items'), {
-        ...itemDataToDrop,
-        studentId: 'dropped',
-        droppedBy: userData.uid,
-        quantity: trashQuantity
+      await supabase.from('user_items').insert({
+        student_id: 'dropped',
+        item_id: trashModalItem.itemId,
+        equipped: false,
+        data: {
+          ...itemDataToDrop,
+          droppedBy: userData.uid,
+          quantity: trashQuantity
+        }
       });
     }
     
@@ -493,8 +487,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
       const amountToGenerate = 1;
       
-      const storeItemSnap = await getDoc(doc(db, 'store_items', targetItem.itemId));
-      const storeItemData = storeItemSnap.data();
+      const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
+      const storeItemData = storeItemSnap?.data as any;
       const globalGachaConfig = await fetchGlobalGachaConfig();
 
       const existingTypes = targetItem.adds ? targetItem.adds.map((a: any) => a.type as AttributeType) : [];
@@ -508,7 +502,10 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const finalAdds = [...(targetItem.adds || []), ...newAdds].slice(0, 4);
 
       const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
-      await updateDoc(doc(db, 'user_items', targetDocId), { adds: finalAdds });
+      const { data: currentData } = await supabase.from('user_items').select('data').eq('id', targetDocId).single();
+      if (currentData) {
+        await supabase.from('user_items').update({ data: { ...(currentData.data as any), adds: finalAdds } }).eq('id', targetDocId);
+      }
       
       showToast("SUCESSO! O poder do pergaminho fluiu para o equipamento e gerou novos atributos!", 'success');
       fetchInventory();
@@ -526,8 +523,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
       await consumeItemQuantity(dragItem.itemId, 1, dragItem.id);
 
-      const storeItemSnap = await getDoc(doc(db, 'store_items', targetItem.itemId));
-      const storeItemData = storeItemSnap.data();
+      const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
+      const storeItemData = storeItemSnap?.data as any;
       const globalGachaConfig = await fetchGlobalGachaConfig();
 
       const areAddsEqual = (addsA: ItemAdd[], addsB: ItemAdd[]) => {
@@ -549,7 +546,10 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       } while (areAddsEqual(newAdds, targetItem.adds || []) && attempts < 10);
       
       const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
-      await updateDoc(doc(db, 'user_items', targetDocId), { adds: newAdds });
+      const { data: currentData } = await supabase.from('user_items').select('data').eq('id', targetDocId).single();
+      if (currentData) {
+        await supabase.from('user_items').update({ data: { ...(currentData.data as any), adds: newAdds } }).eq('id', targetDocId);
+      }
       
       showToast("SUCESSO! O equipamento brilhou e seus atributos foram completamente renovados!", 'success');
       fetchInventory();
@@ -585,45 +585,57 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       let sellerClassName = '';
       let sellerClassColor = '';
       if (userData.classId) {
-        const classDoc = await getDoc(doc(db, 'classes', userData.classId));
-        if (classDoc.exists()) {
-          sellerClassName = classDoc.data().name || '';
-          sellerClassColor = classDoc.data().color || '';
+        const { data: classDoc } = await supabase.from('system_collections').select('*').eq('collection_name', 'classes').eq('id', userData.classId).single();
+        if (classDoc) {
+          const classData = classDoc.data as any;
+          sellerClassName = classData.name || '';
+          sellerClassColor = classData.color || '';
         }
       }
 
-      await addDoc(collection(db, 'user_items'), {
-        ...itemDataToSell,
-        quantity: sellQuantity,
-        forSale: true,
-        price: price,
-        preferredCurrency: preferredCurrency,
-        sellerName: userData.name,
-        sellerClassName,
-        sellerClassColor,
-        sellerPersuasion: totalEquippedStats.persuasion
+      await supabase.from('user_items').insert({
+        student_id: userData.uid,
+        item_id: sellModalItem.itemId,
+        equipped: false,
+        data: {
+          ...itemDataToSell,
+          quantity: sellQuantity,
+          forSale: true,
+          price: price,
+          preferredCurrency: preferredCurrency,
+          sellerName: userData.name,
+          sellerClassName,
+          sellerClassColor,
+          sellerPersuasion: totalEquippedStats.persuasion
+        }
       });
     } else {
       let sellerClassName = '';
       let sellerClassColor = '';
       if (userData.classId) {
-        const classDoc = await getDoc(doc(db, 'classes', userData.classId));
-        if (classDoc.exists()) {
-          sellerClassName = classDoc.data().name || '';
-          sellerClassColor = classDoc.data().color || '';
+        const { data: classDoc } = await supabase.from('classes').select('*').eq('id', userData.classId).single();
+        if (classDoc) {
+          sellerClassName = classDoc.name || '';
+          sellerClassColor = classDoc.color || '';
         }
       }
 
       const docToUpdate = sellModalItem.docIds ? sellModalItem.docIds[0] : sellModalItem.id;
-      await updateDoc(doc(db, 'user_items', docToUpdate), {
-        forSale: true,
-        price: price,
-        preferredCurrency: preferredCurrency,
-        sellerName: userData.name,
-        sellerClassName,
-        sellerClassColor,
-        sellerPersuasion: totalEquippedStats.persuasion
-      });
+      const { data: oldItem } = await supabase.from('user_items').select('data').eq('id', docToUpdate).single();
+      if (oldItem) {
+        await supabase.from('user_items').update({
+          data: {
+            ...(oldItem.data as any),
+            forSale: true,
+            price: price,
+            preferredCurrency: preferredCurrency,
+            sellerName: userData.name,
+            sellerClassName,
+            sellerClassColor,
+            sellerPersuasion: totalEquippedStats.persuasion
+          }
+        }).eq('id', docToUpdate);
+      }
     }
     
     setSellModalItem(null);
@@ -696,15 +708,14 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         const spaceLeft = 99 - targetQty;
         const transferAmount = Math.min(spaceLeft, draggedQty);
         
-        const draggedRef = doc(db, 'user_items', draggedItem.id);
-        const targetRef = doc(db, 'user_items', targetItem.id);
-        
         if (transferAmount === draggedQty) {
-          await deleteDoc(draggedRef);
+          await supabase.from('user_items').delete().eq('id', draggedItem.id);
         } else {
-          await updateDoc(draggedRef, { quantity: draggedQty - transferAmount });
+          const { data: draggedData } = await supabase.from('user_items').select('data').eq('id', draggedItem.id).single();
+          if (draggedData) await supabase.from('user_items').update({ data: { ...(draggedData.data as any), quantity: draggedQty - transferAmount } }).eq('id', draggedItem.id);
         }
-        await updateDoc(targetRef, { quantity: targetQty + transferAmount });
+        const { data: targetData } = await supabase.from('user_items').select('data').eq('id', targetItem.id).single();
+        if (targetData) await supabase.from('user_items').update({ data: { ...(targetData.data as any), quantity: targetQty + transferAmount } }).eq('id', targetItem.id);
         
         setDraggedItem(null);
         fetchInventory();
@@ -733,7 +744,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
     setSlotMap(newMap);
     setDraggedItem(null);
-    await updateDoc(doc(db, 'users', userData.uid), { 'inventoryPreferences.slotMap': newMap });
+    await supabase.from('users').update({ inventory_preferences: { ...userData.inventoryPreferences, slotMap: newMap } }).eq('id', userData.uid);
   };
 
   const getGridItemStyle = () => {
@@ -771,6 +782,14 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
           50% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.6); transform: scale(1.05); filter: brightness(1.2); }
           100% { box-shadow: 0 0 0px transparent; transform: scale(1); filter: brightness(1); }
         }
+        @media (max-width: 600px) {
+          .inventory-tab-text { display: none; }
+          .inventory-tab-btn { padding: 0.5rem !important; justify-content: center; width: 40px; height: 40px; }
+          .inventory-tabs-container { gap: 0.25rem !important; }
+        }
+        /* Custom scrollbar for tabs */
+        .inventory-tabs-container::-webkit-scrollbar { height: 4px; }
+        .inventory-tabs-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
       `}</style>
 
       <div style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-glass)', marginBottom: '1rem' }}>
@@ -785,7 +804,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         </div>
 
         {/* Barra de Filtros */}
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem' }}>
+        <div className="inventory-tabs-container" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'nowrap', overflowX: 'auto', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.25rem' }}>
           {[
             { id: 'Todos', icon: <Sparkles size={16} /> },
             { id: 'Consumíveis', icon: <FlaskConical size={16} /> },
@@ -800,20 +819,22 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                 setCascadeAnimationTrigger(Date.now());
                 setTimeout(() => setCascadeAnimationTrigger(0), 2000);
               }}
+              className="inventory-tab-btn"
               style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                padding: '0.5rem 1rem',
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                padding: '0.4rem 0.8rem',
                 borderRadius: '999px',
                 border: 'none',
                 cursor: 'pointer',
                 fontWeight: 600,
-                fontSize: '0.9rem',
+                fontSize: '0.85rem',
+                whiteSpace: 'nowrap',
                 transition: 'all 0.2s ease',
                 background: activeCategory === tab.id ? 'var(--gold-primary)' : 'var(--btn-bg)',
                 color: activeCategory === tab.id ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)'
               }}
             >
-              {tab.icon} {tab.id}
+              {tab.icon} <span className="inventory-tab-text">{tab.id}</span>
             </button>
           ))}
         </div>
@@ -1060,8 +1081,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         </div>
 
       {sellModalItem && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="glass-panel" style={{ padding: '2rem', maxWidth: '400px', width: '100%' }}>
+        <div className="modal-overlay">
+          <div className="glass-panel modal-content modal-content-sm">
             <h3 style={{ marginTop: 0, color: 'var(--gold-primary)', fontSize: '1.5rem' }}>Vender no Bazar do Jogador</h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
               Ao colocar este item à venda, ele sairá da sua mochila. Uma taxa de 10% será descontada se outro jogador comprar.
@@ -1137,8 +1158,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       )}
 
       {trashModalItem && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="glass-panel" style={{ padding: '2rem', maxWidth: '400px', width: '100%' }}>
+        <div className="modal-overlay">
+          <div className="glass-panel modal-content modal-content-sm">
             <h3 style={{ marginTop: 0, color: 'var(--accent-red)', fontSize: '1.5rem' }}>Jogar Item Fora</h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
               Selecione a quantidade que deseja descartar. Itens não destruídos poderão ser encontrados por outros jogadores em missões.

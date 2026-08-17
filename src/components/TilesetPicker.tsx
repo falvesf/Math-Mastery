@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Crop, Check, Loader2 } from 'lucide-react';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { storage, db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useDialog } from '../contexts/DialogContext';
 
 interface TilesetPickerProps {
@@ -68,9 +66,9 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
     const fetchDbConfig = async () => {
       try {
         const docId = tilesetRefPath.replace(/\//g, '_');
-        const docSnap = await getDoc(doc(db, 'tileset_configs', docId));
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        const { data: docData } = await supabase.from('tileset_configs').select('*').eq('id', docId).single();
+        if (docData) {
+          const data = docData;
           if (data.gridSize) setGridSizeInput(data.gridSize);
           if (data.offsetX) setOffsetXInput(data.offsetX);
           if (data.offsetY) setOffsetYInput(data.offsetY);
@@ -260,38 +258,37 @@ export default function TilesetPicker({ tilesetUrl, tilesetRefPath, onClose, onT
       const blob = await new Promise<Blob | null>(resolve => tempCanvas.toBlob(resolve, 'image/png'));
       if (!blob) throw new Error("Failed to create blob");
 
-      // Upload to Firebase
-      const fileRef = ref(storage, `items/tile_${Date.now()}.png`);
-      const uploadTask = uploadBytesResumable(fileRef, blob, { contentType: 'image/png' });
+      // Upload to Supabase
+      const fileName = `tile_${Date.now()}.png`;
+      const filePath = `items/${fileName}`;
+      
+      const { error } = await supabase.storage.from('uploads').upload(filePath, blob, { contentType: 'image/png' });
+      
+      if (error) {
+        console.error(error);
+        showAlert('Erro ao fazer upload do ícone.');
+        setUploading(false);
+        return;
+      }
 
-      uploadTask.on('state_changed', 
-        null,
-        (err) => {
-          console.error(err);
-          showAlert('Erro ao fazer upload do ícone.');
-          setUploading(false);
-        },
-        async () => {
-          // Salvar a configuração final utilizada no Banco de Dados para persistência em nuvem
-          try {
-            const docId = tilesetRefPath.replace(/\//g, '_');
-            await setDoc(doc(db, 'tileset_configs', docId), {
-              gridSize: gridSizeInput,
-              offsetX: offsetXInput,
-              offsetY: offsetYInput,
-              gapX: gapXInput,
-              gapY: gapYInput,
-              gridColor: gridColor,
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
-          } catch (dbErr) {
-            console.error("Erro ao salvar config no BD:", dbErr);
-          }
+      // Salvar a configuração final utilizada no Banco de Dados para persistência em nuvem
+      try {
+        const docId = tilesetRefPath.replace(/\//g, '_');
+        await supabase.from('tileset_configs').upsert({
+          id: docId,
+          gridSize: parseInt(gridSizeInput) || 32,
+          offsetX: parseInt(offsetXInput) || 0,
+          offsetY: parseInt(offsetYInput) || 0,
+          gapX: parseInt(gapXInput) || 0,
+          gapY: parseInt(gapYInput) || 0,
+          gridColor: gridColor
+        });
+      } catch (dbErr) {
+        console.error("Erro ao salvar config no BD:", dbErr);
+      }
 
-          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-          onTileSelected(downloadUrl);
-        }
-      );
+      const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(filePath);
+      onTileSelected(urlData.publicUrl);
 
     } catch (err) {
       console.error(err);

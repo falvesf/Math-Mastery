@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import type { PresetSkin } from './AvatarCustomizationModal';
@@ -27,26 +26,22 @@ export default function AdminPresetSkinsManager() {
 
   const fetchModels3d = async () => {
     try {
-      const snap = await getDocs(collection(db, '3d_models'));
-      const fetched: any[] = [];
-      snap.forEach(d => {
-        fetched.push({ id: d.id, ...d.data() });
-      });
-      setModels3d(fetched);
+      const { data: snap } = await supabase.from('models_3d').select('*');
+      if (snap) {
+        setModels3d(snap);
+      }
     } catch (e) {
       console.error('Erro ao buscar modelos 3D', e);
     }
   };
 
-  const fetchSkins = async () => {
-    setLoading(true);
+  const fetchSkins = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
-      const snap = await getDocs(collection(db, 'preset_skins'));
-      const fetched: PresetSkin[] = [];
-      snap.forEach(d => {
-        fetched.push({ id: d.id, ...d.data() } as PresetSkin);
-      });
-      setSkins(fetched);
+      const { data: snap } = await supabase.from('preset_skins').select('*');
+      if (snap) {
+        setSkins(snap as PresetSkin[]);
+      }
     } catch (e) {
       console.error(e);
       showAlert('Erro ao buscar skins pré-definidas.');
@@ -96,15 +91,15 @@ export default function AdminPresetSkinsManager() {
     try {
       const data = { name: name.trim(), url: url.trim(), type, baseModelId: baseModelId === 'default' ? null : baseModelId, genderTarget };
       if (editingId) {
-        await updateDoc(doc(db, 'preset_skins', editingId), data);
+        await supabase.from('preset_skins').update(data).eq('id', editingId);
         showAlert('Skin atualizada com sucesso!');
       } else {
-        await addDoc(collection(db, 'preset_skins'), data);
+        await supabase.from('preset_skins').insert(data);
         showAlert('Skin adicionada com sucesso!');
       }
       sessionCache.invalidate(CACHE_KEYS.presetSkins());
       setIsModalOpen(false);
-      fetchSkins();
+      fetchSkins(false);
     } catch (e) {
       console.error(e);
       showAlert('Erro ao salvar a skin.');
@@ -114,10 +109,10 @@ export default function AdminPresetSkinsManager() {
   const handleDelete = async (id: string) => {
     if (await showConfirm('Deseja realmente excluir esta skin pré-definida?')) {
       try {
-        await deleteDoc(doc(db, 'preset_skins', id));
+        await supabase.from('preset_skins').delete().eq('id', id);
         sessionCache.invalidate(CACHE_KEYS.presetSkins());
         showAlert('Skin excluída com sucesso!');
-        fetchSkins();
+        fetchSkins(false);
       } catch (e) {
         console.error(e);
         showAlert('Erro ao excluir skin.');

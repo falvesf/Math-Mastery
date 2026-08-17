@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import CustomModelViewer from './CustomModelViewer';
 
 interface ChestRevealProps {
@@ -68,12 +68,13 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
         }}
         className={!isOpen ? 'hover-pulse' : ''}
       >
-        <CustomModelViewer 
-          modelUrl="/models/minecraft_chest.glb"
-          animation={isOpen ? 'open' : 'none'}
-          size={120}
-          style={{ maxWidth: '120px', maxHeight: '120px' }}
-        />
+        <div style={{ maxWidth: '120px', maxHeight: '120px' }}>
+          <CustomModelViewer 
+            modelUrl="/models/minecraft_chest.glb"
+            animation={isOpen ? 'open' : 'none'}
+            size={120}
+          />
+        </div>
       </div>
     </div>
   );

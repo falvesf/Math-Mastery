@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { doc, updateDoc, collection, getDocs, addDoc, setDoc, query, where } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose } from './AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
@@ -285,11 +284,13 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         const cached = sessionCache.get<PresetSkin[]>(cacheKey);
         if (cached) { setPresetSkins(cached); return; }
       }
-      const snap = await getDocs(collection(db, 'preset_skins'));
+      const { data } = await supabase.from('preset_skins').select('*');
       const fetched: PresetSkin[] = [];
-      snap.forEach(d => {
-        fetched.push({ id: d.id, ...d.data() } as PresetSkin);
-      });
+      if (data) {
+        data.forEach(d => {
+          fetched.push({ id: d.id, ...d } as PresetSkin);
+        });
+      }
       sessionCache.set(cacheKey, fetched, CACHE_TTL.PRESET_SKINS);
       setPresetSkins(fetched);
     } catch (e) {
@@ -305,11 +306,13 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         const cached = sessionCache.get<any[]>(cacheKey);
         if (cached) { setModels3d(cached); return; }
       }
-      const snap = await getDocs(collection(db, '3d_models'));
+      const { data } = await supabase.from('3d_models').select('*');
       const fetched: any[] = [];
-      snap.forEach(d => {
-        fetched.push({ id: d.id, ...d.data() });
-      });
+      if (data) {
+        data.forEach(d => {
+          fetched.push({ id: d.id, ...d });
+        });
+      }
       sessionCache.set(cacheKey, fetched, CACHE_TTL.MODELS_3D);
       setModels3d(fetched);
     } catch (e) {
@@ -384,7 +387,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
 
     try {
       if (!customSaveMode && userData && !inline) {
-        await updateDoc(doc(db, 'users', userData.uid), { avatarConfig: cleanConfig });
+        await supabase.from('users').update({ avatar_config: cleanConfig }).eq('id', userData.uid);
         if (onSave) {
           onSave(config, monsterName);
         }
@@ -396,7 +399,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         
         if ((userData?.role === 'admin' || isAdmin) && inline && monsterName.trim()) {
           try {
-            await addDoc(collection(db, 'preset_skins'), {
+            await supabase.from('preset_skins').insert({
               name: monsterName.trim(),
               url: '',
               type: customSaveMode ? 'monster' : 'human',
@@ -653,17 +656,10 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   })();
 
   return (
-    <div style={inline ? { width: '100%' } : {
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      backdropFilter: 'blur(8px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 9999,
-      padding: '1rem'
-    }}>
-      <div className={inline ? '' : 'glass-panel'} style={{
-        width: '100%', maxWidth: inline ? '100%' : '800px',
-        maxHeight: '90vh',
+    <div className={inline ? '' : 'modal-overlay'} style={inline ? { width: '100%' } : {}}>
+      <div className={inline ? '' : 'glass-panel modal-content modal-content-lg'} style={{
+        width: '100%', maxWidth: inline ? '100%' : '1000px',
+        padding: 0,
         overflowY: 'hidden',
         position: 'relative',
         display: 'flex',
@@ -684,13 +680,15 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
           </button>
         )}
 
-        <div style={{ flexShrink: 0, padding: '2rem 2rem 1rem 2rem', borderBottom: '1px solid var(--border-glass)', zIndex: 11 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <UserIcon size={32} color="var(--accent-primary)" />
-            <h2 style={{ margin: 0, fontSize: '1.5rem', textTransform: 'uppercase' }}>
-              {customSaveMode ? 'Personalizar Monstro' : 'Personalizar Personagem'}
-            </h2>
-          </div>
+        <div style={{ flexShrink: 0, padding: inline ? '0' : '2rem 2rem 1rem 2rem', borderBottom: inline ? 'none' : '1px solid var(--border-glass)', zIndex: 11 }}>
+          {!inline && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+              <UserIcon size={32} color="var(--accent-primary)" />
+              <h2 style={{ margin: 0, fontSize: '1.5rem', textTransform: 'uppercase' }}>
+                {customSaveMode ? 'Personalizar Monstro' : 'Personalizar Personagem'}
+              </h2>
+            </div>
+          )}
           {(userData?.role === 'admin' || isAdmin) && !inline && (
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.25rem', fontSize: '0.9rem', flexWrap: 'wrap' }}>
               <button 
@@ -818,25 +816,27 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                           const transformKey = isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common');
                           
                           // 1. Save to store_items
-                          const itemRef = doc(db, 'store_items', targetItem.itemId);
-                          await setDoc(itemRef, {
-                            modelTransforms: {
-                              [transformKey]: debugTransform
-                            }
-                          }, { merge: true });
+                          // 1. Save to store_items
+                          const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
+                          if (storeItemSnap) {
+                            const newStoreData = { 
+                              ...(storeItemSnap.data as any), 
+                              modelTransforms: { ...((storeItemSnap.data as any).modelTransforms || {}), [transformKey]: debugTransform } 
+                            };
+                            await supabase.from('store_items').update({ data: newStoreData }).eq('id', targetItem.itemId);
+                          }
                           
                           // 2. Cascade to user_items
-                          const qUserItems = query(collection(db, 'user_items'), where('itemId', '==', targetItem.itemId));
-                          const snapUserItems = await getDocs(qUserItems);
-                          const updatePromises: Promise<void>[] = [];
-                          snapUserItems.forEach(d => {
-                            updatePromises.push(setDoc(doc(db, 'user_items', d.id), {
-                              modelTransforms: {
-                                [transformKey]: debugTransform
-                              }
-                            }, { merge: true }));
-                          });
-                          await Promise.all(updatePromises);
+                          const { data: snapUserItems } = await supabase.from('user_items').select('id, data').eq('item_id', targetItem.itemId);
+                          if (snapUserItems) {
+                            for (const d of snapUserItems) {
+                              const newUserData = { 
+                                ...(d.data as any), 
+                                modelTransforms: { ...((d.data as any).modelTransforms || {}), [transformKey]: debugTransform } 
+                              };
+                              await supabase.from('user_items').update({ data: newUserData }).eq('id', d.id);
+                            }
+                          }
                           if (onPositionsSaved) onPositionsSaved();
                           
                           showAlert(`Configuração de transformação (${transformKey}) salva com sucesso em todos os inventários!`);
@@ -965,17 +965,21 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                           const customAnimation = { frames: framesToSave, loop: false, duration: 1000 };
                           
                           // 1. Save to store_items
-                          const itemRef = doc(db, 'store_items', targetItem.itemId);
-                          await setDoc(itemRef, { customAnimation }, { merge: true });
+                          // 1. Save to store_items
+                          const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
+                          if (storeItemSnap) {
+                            const newStoreData = { ...(storeItemSnap.data as any), customAnimation };
+                            await supabase.from('store_items').update({ data: newStoreData }).eq('id', targetItem.itemId);
+                          }
                           
                           // 2. Cascade to user_items
-                          const qUserItems = query(collection(db, 'user_items'), where('itemId', '==', targetItem.itemId));
-                          const snapUserItems = await getDocs(qUserItems);
-                          const updatePromises: Promise<void>[] = [];
-                          snapUserItems.forEach(d => {
-                            updatePromises.push(setDoc(doc(db, 'user_items', d.id), { customAnimation }, { merge: true }));
-                          });
-                          await Promise.all(updatePromises);
+                          const { data: snapUserItems } = await supabase.from('user_items').select('id, data').eq('item_id', targetItem.itemId);
+                          if (snapUserItems) {
+                            for (const d of snapUserItems) {
+                              const newUserData = { ...(d.data as any), customAnimation };
+                              await supabase.from('user_items').update({ data: newUserData }).eq('id', d.id);
+                            }
+                          }
                           
                           showAlert(`Pose/Animação de Batalha salva com sucesso no item!`);
                           if (onPositionsSaved) onPositionsSaved();
@@ -993,11 +997,10 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
           )}
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '1.5rem 2rem' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: inline ? '0' : '1.5rem 2rem' }}>
+          <div className="avatar-modal-grid">
           
           <div style={{
-            flex: '1 1 250px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
             background: 'var(--bg-dark)',
             borderRadius: '16px',
@@ -1053,7 +1056,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
           </div>
 
           {/* Controls */}
-          <div style={{ flex: '2 1 400px', minWidth: 0 }}>
+          <div style={{ minWidth: 0 }}>
             
             {customSaveMode && (
               <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-primary)', borderRadius: '8px' }}>

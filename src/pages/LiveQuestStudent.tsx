@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, onSnapshot, updateDoc, deleteField, collection, query, where, getDocs, increment, deleteDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Loader2, ArrowLeft, Pen, Heart, Skull, Zap } from 'lucide-react';
 import type { QuestDef } from './AdminDashboard';
 import type { LiveSession, LivePlayer } from './LiveQuestAdmin';
@@ -68,35 +67,34 @@ export default function LiveQuestStudent() {
   useEffect(() => {
     if (!sessionId || !userData) return;
 
-    let unsub: any = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
     const joinSession = async () => {
       try {
         // Load Quest
-        const qDoc = await getDoc(doc(db, 'quests', sessionId));
-        if (!qDoc.exists()) {
+        const { data: qDoc } = await supabase.from('quests').select('*').eq('id', sessionId).single();
+        if (!qDoc) {
           setError('Missão não encontrada.');
           setLoading(false);
           return;
         }
-        setQuest(qDoc.data() as QuestDef);
+        setQuest(qDoc as QuestDef);
 
         // Check Session
-        const sessionRef = doc(db, 'live_quests', sessionId);
-        const sDoc = await getDoc(sessionRef);
-        if (!sDoc.exists()) {
+        const { data: sDoc } = await supabase.from('live_quests').select('*').eq('id', sessionId).maybeSingle();
+        if (!sDoc) {
           setError('O professor ainda não abriu a sala para esta missão.');
           setLoading(false);
           return;
         }
 
         // Fetch Economy
-        const econSnap = await getDoc(doc(db, 'settings', 'economy'));
-        if (econSnap.exists()) {
-          setEconomySettings(econSnap.data());
+        const { data: econSnap } = await supabase.from('system_collections').select('data').eq('type', 'economy').single();
+        if (econSnap && econSnap.data) {
+          setEconomySettings(econSnap.data);
         }
 
-        const currentSession = sDoc.data() as LiveSession;
+        const currentSession = sDoc as LiveSession;
         if (!currentSession.players) {
           currentSession.players = {};
         }
@@ -113,13 +111,11 @@ export default function LiveQuestStudent() {
           let equippedItems: any[] = [];
           let loadedPowerups: UserItem[] = [];
           try {
-            const invRef = collection(db, 'user_items');
-            const q = query(invRef, where('studentId', '==', userData.uid));
-            const invSnap = await getDocs(q);
+            const { data: invSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
             
             const pLoaded: any[] = [];
-            invSnap.docs.forEach(d => {
-              const item = d.data() as UserItem;
+            (invSnap || []).forEach(d => {
+              const item = { ...d.data, id: d.id } as UserItem;
               if (item.equipped) {
                 equippedItems.push({ docId: d.id, ...item });
               }
@@ -167,21 +163,83 @@ export default function LiveQuestStudent() {
 
           const sanitizedPlayer = JSON.parse(JSON.stringify(newPlayer));
 
-          await updateDoc(sessionRef, {
-            [`players.${userData.uid}`]: sanitizedPlayer
-          });
+          const { data: curr } = await supabase.from('live_quests').select('status, players').eq('id', sessionId).single();
+          if (curr && curr.players) {
+            const existingPlayer = curr.players[userData.uid];
+            
+            // Se já existe e a missão já começou, é uma reconexão!
+            if (existingPlayer && curr.status !== 'lobby') {
+               if (existingPlayer.hasSurrendered) {
+                  // Já era, abandonou a partida
+                  curr.players[userData.uid] = existingPlayer;
+               } else {
+                  // Reconexão: Preserva os dados antigos, mas tira 0.5 de vida como penalidade por queda
+                  existingPlayer.hp = Math.max(0, (existingPlayer.hp || 0) - 0.5);
+                  curr.players[userData.uid] = existingPlayer;
+               }
+            } else {
+               // Primeira entrada (ou entrada no lobby)
+               curr.players[userData.uid] = sanitizedPlayer;
+            }
+            
+            await supabase.from('live_quests').update({ players: curr.players }).eq('id', sessionId);
+          }
         }
 
         // Listen to Session
-        unsub = onSnapshot(sessionRef, (snap) => {
-          if (!snap.exists()) {
-            setError('A sessão foi encerrada pelo professor.');
-            setSession(null);
-          } else {
-            setSession(snap.data() as LiveSession);
-          }
-          setLoading(false);
-        });
+        channel = supabase.channel(`student_live_quests_${sessionId}_${Date.now()}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'live_quests', filter: `id=eq.${sessionId}` }, async (payload) => {
+            if (payload.eventType === 'DELETE') {
+              setError('A sessão foi encerrada pelo professor.');
+              setSession(null);
+            } else {
+              const newSession = payload.new as LiveSession;
+              setSession(newSession);
+              
+              // Auto re-registration: se o aluno foi removido durante um reset do admin
+              // mas a sessão ainda está no lobby, re-adicione o aluno automaticamente
+              if (newSession.status === 'lobby' && userData && !newSession.players?.[userData.uid]) {
+                try {
+                  const { data: curr } = await supabase.from('live_quests').select('players').eq('id', sessionId!).single();
+                  if (curr && curr.players && !curr.players[userData.uid]) {
+                    // Re-insert player with their current data
+                    const { data: invSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
+                    const equippedItems: any[] = (invSnap || []).filter(d => d.data?.equipped).map(d => ({ docId: d.id, ...d.data }));
+                    
+                    const { RANKS: R, getRankForXp: grfx } = await import('../lib/ranks');
+                    const { calculateTotalStats: cts } = await import('../lib/gacha');
+                    const stats = cts(equippedItems, userData.distributedStats);
+                    const rankIndex = Math.max(0, R.findIndex((r: any) => r.name === userData.lastSeenRank));
+                    const maxHp = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
+                    
+                    const rejoinPlayer = JSON.parse(JSON.stringify({
+                      uid: userData.uid,
+                      name: userData.name || 'Jogador',
+                      hp: maxHp,
+                      maxHp,
+                      attack: (userData as any).attack || 1,
+                      avatarConfig: userData.avatarConfig || null,
+                      equippedItems,
+                      score: 0,
+                      isDead: false,
+                      currentAnswer: null,
+                      xp: userData.xp || 0,
+                      sessionEarnedXp: 0,
+                      power: (userData.xp || 0) + stats.attack
+                    }));
+                    curr.players[userData.uid] = rejoinPlayer;
+                    await supabase.from('live_quests').update({ players: curr.players }).eq('id', sessionId!);
+                  }
+                } catch (e) {
+                  console.error('Erro ao re-registrar na sessão:', e);
+                }
+              }
+            }
+          })
+          .subscribe();
+        
+        setSession(sDoc as LiveSession);
+        setLoading(false);
       } catch (err: any) {
         console.error(err);
         setError(`Erro ao conectar na sala: ${err.message || String(err)}`);
@@ -192,18 +250,59 @@ export default function LiveQuestStudent() {
     joinSession();
 
     return () => {
-      if (unsub) unsub();
+      if (channel) supabase.removeChannel(channel);
     };
+  }, [sessionId, userData]);
+
+  // Polling fallback para garantir que o aluno receba atualizações (como limpeza de currentAnswer)
+  // mesmo que o realtime do Supabase falhe ou caia.
+  useEffect(() => {
+    if (!sessionId || !userData) return;
+
+    const interval = setInterval(async () => {
+      const { data } = await supabase.from('live_quests').select('*').eq('id', sessionId).single();
+      if (data) {
+        setSession(prev => {
+           if (!prev) return data as LiveSession;
+           // O polling deve respeitar o index da pergunta caso esteja no meio de uma transição
+           return {
+             ...prev,
+             status: data.status,
+             currentQuestionIndex: data.currentQuestionIndex,
+             activeQuestions: data.activeQuestions,
+             players: data.players || {},
+             monsterHp: data.monster_hp ?? data.monsterHp ?? prev.monsterHp,
+             nobodyCorrect: data.nobodyCorrect
+           };
+        });
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
   }, [sessionId, userData]);
 
   const handleLeave = async () => {
     if (session && session.status === 'lobby' && userData && sessionId) {
-      const sessionRef = doc(db, 'live_quests', sessionId);
-      await updateDoc(sessionRef, {
-        [`players.${userData.uid}`]: deleteField()
-      });
+      const { data: currSess } = await supabase.from('live_quests').select('players').eq('id', sessionId).single();
+      if (currSess && currSess.players) {
+        delete currSess.players[userData.uid];
+        await supabase.from('live_quests').update({ players: currSess.players }).eq('id', sessionId);
+      }
     }
     navigate('/dashboard');
+  };
+
+  const handleSurrender = async () => {
+    const confirmed = await showConfirm("Tem certeza que deseja abandonar a batalha? Você perderá todo seu progresso e XP desta missão, e não poderá retornar!");
+    if (confirmed && session && userData && sessionId) {
+       const { data: currSess } = await supabase.from('live_quests').select('players').eq('id', sessionId).single();
+       if (currSess && currSess.players && currSess.players[userData.uid]) {
+          currSess.players[userData.uid].hasSurrendered = true;
+          currSess.players[userData.uid].hp = 0;
+          await supabase.from('live_quests').update({ players: currSess.players }).eq('id', sessionId);
+       }
+       navigate('/dashboard');
+    }
   };
 
   if (loading) {
@@ -233,8 +332,7 @@ export default function LiveQuestStudent() {
 
   const me = session.players[userData.uid];
   const totalEquippedStats = me?.equippedItems ? calculateTotalStats(me.equippedItems, userData?.distributedStats) : { attack: 0, defense: 0, xp: 0, coins: 0, vitality: 0, fortitude: 0, persuasion: 0 };
-  const totalDefense = totalEquippedStats.defense;
-  const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
+    const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
   const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(totalEquippedStats.vitality / 30);
 
   if (session.status === 'lobby') {
@@ -254,8 +352,8 @@ export default function LiveQuestStudent() {
                 >
                   <Pen size={14} />
                 </button>
-                {me?.avatarConfig ? (
-                  <AvatarPrint config={me.avatarConfig} equippedItems={me.equippedItems || []} size={150} />
+                {(me?.avatarConfig || userData.avatarConfig) ? (
+                  <AvatarPrint config={me?.avatarConfig || userData.avatarConfig} equippedItems={me?.equippedItems || []} size={150} />
                 ) : (
                   <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: 'var(--accent-blue)' }}></div>
                 )}
@@ -280,12 +378,12 @@ export default function LiveQuestStudent() {
             onSave={async (config) => {
               try {
                 if (sessionId && userData) {
-                  await updateDoc(doc(db, 'live_quests', sessionId), {
-                    [`players.${userData.uid}.avatarConfig`]: config
-                  });
-                  await updateDoc(doc(db, 'users', userData.uid), {
-                    avatarConfig: config
-                  });
+                  const { data: c } = await supabase.from('live_quests').select('players').eq('id', sessionId).single();
+                  if (c && c.players && c.players[userData.uid]) {
+                    c.players[userData.uid].avatarConfig = config;
+                    await supabase.from('live_quests').update({ players: c.players }).eq('id', sessionId);
+                  }
+                  await supabase.from('users').update({ avatar_config: config }).eq('id', userData.uid);
                 }
               } catch (e) {
                 console.error(e);
@@ -331,72 +429,79 @@ export default function LiveQuestStudent() {
     const newXp = (me.xp || 0) + earnedXp;
     const newSessionEarnedXp = (me.sessionEarnedXp || 0) + earnedXp;
 
-    const updates: any = {
-      [`players.${userData.uid}.currentAnswer`]: answerIndex,
-      [`players.${userData.uid}.isCorrect`]: isCorrect,
-      [`players.${userData.uid}.answerTime`]: answerTime,
-      [`players.${userData.uid}.score`]: newScore,
-      [`players.${userData.uid}.xp`]: newXp,
-      [`players.${userData.uid}.sessionEarnedXp`]: newSessionEarnedXp,
-    };
-
-    if (isCorrect) {
-      const power = 1;
-      updates.monsterHp = increment(-power);
+        const { data: qData } = await supabase.from('live_quests').select('players, monsterHp').eq('id', sessionId).single();
+    if (qData && qData.players && qData.players[userData.uid]) {
+      const p = qData.players[userData.uid];
+      p.currentAnswer = answerIndex;
+      p.isCorrect = isCorrect;
+      p.answerTime = answerTime;
+      p.score = newScore;
+      p.xp = newXp;
+      p.sessionEarnedXp = newSessionEarnedXp;
       
-      if (economySettings?.coinsDropInCombat) {
-        const dmg = 1;
-        const rankObj = getRankForXp(userData?.xp || 0);
-        const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
-        const maxCoins = rankIndex * dmg;
-        const dropped = Math.floor(Math.random() * maxCoins) + 1;
-        setCoinsToRescue(dropped);
-      }
-
-      try {
-        await updateDoc(doc(db, 'users', userData.uid), {
-          xp: increment(earnedXp)
-        });
-      } catch (err) {
-        console.error("Erro ao adicionar XP ao usuário", err);
-      }
-    } else {
-      let hasEquippedShield = false;
-      me.equippedItems?.forEach((item: any) => {
-        if (item.gameEffect === 'extra_life') hasEquippedShield = true;
-      });
-
-      if (!hasEquippedShield && !hasShield) {
-        if (economySettings?.coinsLostInCombat) {
+      let newMonsterHp = qData.monsterHp;
+      
+      if (isCorrect) {
+        const power = 1;
+        newMonsterHp = (newMonsterHp || 0) - power;
+        
+        if (economySettings?.coinsDropInCombat) {
+          const dmg = 1;
           const rankObj = getRankForXp(userData?.xp || 0);
           const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
-          const maxLost = rankIndex * 1;
-          const lost = Math.floor(Math.random() * maxLost) + 1;
-          setLostCoinsDisplay(lost);
-          try {
-             const currentCoins = userData.coins || 0;
-             await updateDoc(doc(db, 'users', userData.uid), { coins: Math.max(0, currentCoins - lost) });
-          } catch(e){}
+          const maxCoins = rankIndex * dmg;
+          const dropped = Math.floor(Math.random() * maxCoins) + 1;
+          setCoinsToRescue(dropped);
         }
-
-        const currentHp = me.hp !== undefined ? me.hp : maxHearts;
-        const newHp = Math.max(0, currentHp - 1);
-        updates[`players.${userData.uid}.hp`] = newHp;
-
-        try {
-          const userUpdate: any = { hearts: newHp };
-          if (currentHp >= maxHearts && newHp < maxHearts) {
-            userUpdate.hpRecoveryStartTimestamp = Date.now();
-          }
-          await updateDoc(doc(db, 'users', userData.uid), userUpdate);
-        } catch(e) { console.error(e); }
+        // O XP não é mais creditado no banco aqui.
+        // Ele fica apenas acumulado em sessionEarnedXp e será creditado
+        // pelo admin apenas se o aluno sobreviver até o final da missão.
       } else {
-        if (hasShield) setHasShield(false);
-        updates[`players.${userData.uid}.isProtected`] = true;
-      }
-    }
+        let hasEquippedShield = false;
+        me.equippedItems?.forEach((item: any) => {
+          if (item.gameEffect === 'extra_life') hasEquippedShield = true;
+        });
 
-    await updateDoc(doc(db, 'live_quests', sessionId), updates);
+        if (!hasEquippedShield && !hasShield) {
+          if (economySettings?.coinsLostInCombat) {
+            const rankObj = getRankForXp(userData?.xp || 0);
+            const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+            const maxLost = rankIndex * 1;
+            const lost = Math.floor(Math.random() * maxLost) + 1;
+            setLostCoinsDisplay(lost);
+            try {
+               const currentCoins = userData.coins || 0;
+               await supabase.from('users').update({ coins: Math.max(0, currentCoins - lost) }).eq('id', userData.uid);
+            } catch(e){}
+          }
+
+          const currentHp = me.hp !== undefined ? me.hp : maxHearts;
+          const newHp = Math.max(0, currentHp - 1);
+          p.hp = newHp;
+
+          try {
+            const userUpdate: any = { hp: newHp };
+            if (currentHp >= maxHearts && newHp < maxHearts) {
+              userUpdate.hpRecoveryStartTimestamp = Date.now();
+            }
+            await supabase.from('users').update(userUpdate).eq('id', userData.uid);
+          } catch(e) { console.error(e); }
+        } else {
+          if (hasShield) setHasShield(false);
+          p.isProtected = true;
+        }
+      }
+
+      await supabase.from('live_quests').update({ players: qData.players, monsterHp: newMonsterHp }).eq('id', sessionId);
+      
+      // Atualiza o estado local imediatamente para feedback instantâneo sem depender de realtime/polling
+      setSession(prev => {
+         if (!prev) return prev;
+         const updatedPlayers = { ...prev.players };
+         updatedPlayers[userData.uid] = p;
+         return { ...prev, players: updatedPlayers, monsterHp: newMonsterHp };
+      });
+    }
 
     if (isCorrect) {
       setStudentAnim('attack');
@@ -441,16 +546,18 @@ export default function LiveQuestStudent() {
          return;
       }
       
-      await updateDoc(doc(db, 'live_quests', sessionId), {
-        [`players.${userData.uid}.hp`]: maxHearts
-      });
+      const { data: currSess } = await supabase.from('live_quests').select('players').eq('id', sessionId).single();
+      if (currSess && currSess.players && currSess.players[userData.uid]) {
+        currSess.players[userData.uid].hp = maxHearts;
+        await supabase.from('live_quests').update({ players: currSess.players }).eq('id', sessionId);
+      }
       try {
-         await updateDoc(doc(db, 'users', userData.uid), { hearts: maxHearts });
+         await supabase.from('users').update({ hp: maxHearts }).eq('id', userData.uid);
       } catch (e) {}
     } else if (item.gameEffect === 'heal_1_hp') {
       const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === me.rank));
       const maxHearts = 3 + Math.floor(rankIndex / 2);
-      const currentHp = me.hp !== undefined ? me.hp : (userData.hearts || maxHearts);
+      const currentHp = me.hp !== undefined ? me.hp : (userData.hp || maxHearts);
       
       if (currentHp >= maxHearts) {
          await showAlert('Sua vida já está no máximo!');
@@ -458,16 +565,18 @@ export default function LiveQuestStudent() {
       }
       const newHp = Math.min(maxHearts, currentHp + 1);
       
-      await updateDoc(doc(db, 'live_quests', sessionId), {
-        [`players.${userData.uid}.hp`]: newHp
-      });
+      const { data: currSess } = await supabase.from('live_quests').select('players').eq('id', sessionId).single();
+      if (currSess && currSess.players && currSess.players[userData.uid]) {
+        currSess.players[userData.uid].hp = newHp;
+        await supabase.from('live_quests').update({ players: currSess.players }).eq('id', sessionId);
+      }
       try {
-         await updateDoc(doc(db, 'users', userData.uid), { hearts: newHp });
+         await supabase.from('users').update({ hp: newHp }).eq('id', userData.uid);
       } catch (e) {}
     }
 
     setPowerups(powerups.filter(p => p.id !== item.id));
-    await deleteDoc(doc(db, 'user_items', item.id));
+    await supabase.from('user_items').delete().eq('id', item.id);
   };
 
   if (session.status === 'question' || session.status === 'reveal') {
@@ -476,9 +585,17 @@ export default function LiveQuestStudent() {
     return (
       <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         
-        {/* Header com Consumíveis */}
+        {/* Header com Consumíveis e Abandono */}
         <div style={{ padding: '0.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 10 }}>
-          <div style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>Desafio Ao Vivo</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>Desafio Ao Vivo</div>
+            <button 
+              onClick={handleSurrender} 
+              style={{ background: 'transparent', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', padding: '0.2rem 0.8rem', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer' }}
+            >
+              Abandonar Batalha
+            </button>
+          </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', overflowX: 'auto', maxWidth: '300px', scrollbarWidth: 'thin' }}>
             {powerups.map((p, i) => (
@@ -545,8 +662,8 @@ export default function LiveQuestStudent() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '1rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px' }}>
                 <span style={{ color: 'white', fontWeight: 'bold', marginRight: '0.5rem', fontSize: '0.9rem' }}>VOCÊ</span>
-                {Array.from({ length: me.maxHp || userData?.hearts || 5 }).map((_, i) => (
-                  <Heart key={i} size={20} fill={i < (me.hp !== undefined ? me.hp : (userData?.hearts || 5)) ? "#ef4444" : "transparent"} color="#ef4444" />
+                {Array.from({ length: me.maxHp || userData?.hp || 5 }).map((_, i) => (
+                  <Heart key={i} size={20} fill={i < (me.hp !== undefined ? me.hp : (userData?.hp || 5)) ? "#ef4444" : "transparent"} color="#ef4444" />
                 ))}
               </div>
             </div>
@@ -579,7 +696,7 @@ export default function LiveQuestStudent() {
                     onClick={() => {
                       if (userData?.uid) {
                         const currentCoins = userData.coins || 0;
-                        updateDoc(doc(db, 'users', userData.uid), { coins: currentCoins + coinsToRescue }).catch(console.error);
+                        supabase.from('users').update({ coins: currentCoins + coinsToRescue }).eq('id', userData.uid).then();
                       }
                       setCoinsToRescue(0);
                     }}
@@ -743,9 +860,12 @@ export default function LiveQuestStudent() {
         if (session.status === 'finished') {
     if (me.wonChest && !chestOpened) {
       // Immediately clear wonChest from Firestore to prevent re-claiming on revisit
-      updateDoc(doc(db, 'live_quests', sessionId!), {
-        [`players.${userData!.uid}.wonChest`]: deleteField()
-      }).catch(console.error);
+      supabase.from('live_quests').select('players').eq('id', sessionId!).single().then(({ data: sess }) => {
+        if (sess && sess.players && sess.players[userData!.uid]) {
+          delete sess.players[userData!.uid].wonChest;
+          supabase.from('live_quests').update({ players: sess.players }).eq('id', sessionId!).then();
+        }
+      });
 
       return (
         <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
@@ -753,9 +873,11 @@ export default function LiveQuestStudent() {
             <ChestReveal onOpen={async () => {
               // Remove wonChest from Firestore so re-entering the page doesn't show chest again
               try {
-                await updateDoc(doc(db, 'live_quests', sessionId!), {
-                  [`players.${userData!.uid}.wonChest`]: deleteField()
-                });
+                const { data: sess } = await supabase.from('live_quests').select('players').eq('id', sessionId!).single();
+                if (sess && sess.players && sess.players[userData!.uid]) {
+                  delete sess.players[userData!.uid].wonChest;
+                  await supabase.from('live_quests').update({ players: sess.players }).eq('id', sessionId!);
+                }
               } catch(e) { console.error(e); }
               setChestOpened(true);
             }} title={`Parabéns pelo ${me.wonChest.place}º Lugar!`} />

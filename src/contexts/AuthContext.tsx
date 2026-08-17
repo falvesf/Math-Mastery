@@ -1,9 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import type { User } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import { initRanks } from '../lib/ranks';
-import { auth, db } from '../lib/firebase';
 import type { AvatarConfig } from '../components/AvatarCharacter';
 
 export type UserRole = 'student' | 'teacher' | 'coordinator' | 'admin' | 'pending_teacher';
@@ -18,7 +17,7 @@ export interface UserData {
   xp?: number;
   coins?: number;
   lastSeenRank?: string;
-  hearts?: number;
+  hp?: number;
   hpRecoveryStartTimestamp?: number | null;
   lastHeartRegen?: number; // timestamp in milliseconds
   rank?: string;
@@ -34,6 +33,8 @@ export interface UserData {
     activeCategory?: string;
     filterRarity: string;
     sortBy: string;
+    lastSeenRank?: string;
+    highestRankIndex?: number;
   };
   avatarConfig?: AvatarConfig;
   studentViewActive?: boolean;
@@ -42,11 +43,37 @@ export interface UserData {
   distributedStats?: Record<string, number>;
 }
 
+export const mapUserToClient = (dbUser: any): UserData => {
+  return {
+    ...dbUser,
+    uid: dbUser.id,
+    photoURL: dbUser.photo_url || '',
+    classId: dbUser.class_id,
+    hpRecoveryStartTimestamp: dbUser.hp_recovery_start_timestamp,
+    lastHeartRegen: dbUser.last_heart_regen,
+    extraInventorySpace: dbUser.extra_inventory_space,
+    stunnedUntil: dbUser.stunned_until,
+    happyBuffUntil: dbUser.happy_buff_until,
+    happyBuffDuration: dbUser.happy_buff_duration,
+    customStatusText: dbUser.custom_status_text,
+    isProfilePublic: dbUser.is_profile_public,
+    unlockedSkins: dbUser.unlocked_skins,
+    inventoryPreferences: dbUser.inventory_preferences,
+    lastSeenRank: dbUser.inventory_preferences?.lastSeenRank || dbUser.rank,
+    avatarConfig: dbUser.avatar_config,
+    studentViewActive: dbUser.student_view_active,
+    adminProfileBackup: dbUser.admin_profile_backup,
+    studentProfileBackup: dbUser.student_profile_backup,
+    distributedStats: dbUser.distributed_stats
+  } as UserData;
+};
+
 interface AuthContextType {
   currentUser: User | null;
   userData: UserData | null;
   loading: boolean;
   toggleStudentView: () => Promise<void>;
+  updateUserDataLocally: (updates: Partial<UserData>) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -54,6 +81,7 @@ const AuthContext = createContext<AuthContextType>({
   userData: null,
   loading: true,
   toggleStudentView: async () => {},
+  updateUserDataLocally: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -64,130 +92,127 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let unsubscribeSnapshot: (() => void) | undefined;
-    let unsubscribeAuth: (() => void) | undefined;
+    let isMounted = true;
+    let realtimeSubscription: any;
 
-    // Carrega as patentes customizadas globais primeiro
-    initRanks().then(() => {
-      unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-        if (user && user.email?.endsWith('@eaportal.org')) {
-          setCurrentUser(user);
-        
-        // Buscar ou criar o documento do usuário no Firestore
-        const userRef = doc(db, 'users', user.uid);
-        
-        unsubscribeSnapshot = onSnapshot(userRef, async (userSnap) => {
-          let fetchedUserData: UserData;
-          
-          if (userSnap.exists()) {
-            fetchedUserData = userSnap.data() as UserData;
-          } else {
-          // A Mágica de Super Admin: Verifica se é o e-mail do Fabio
-          const isSuperAdmin = user.email === 'fabio.feitoza@eaportal.org';
-          
-          fetchedUserData = {
-            uid: user.uid,
-            email: user.email,
-            name: user.displayName || 'Sem Nome',
-            photoURL: user.photoURL || '',
-            role: isSuperAdmin ? 'admin' : 'student',
-            xp: 0,
-          };
-          
-          // Salva o novo usuário no banco de dados
-          await setDoc(userRef, fetchedUserData);
-        }
-        
-        // Regra para Staff (Professor, Coordenador, Admin) ter 50.000 XP
-        // NUNCA aplicar se o modo de visão de aluno estiver ativo (mundo paralelo)
-        // Usamos 3 camadas de proteção:
-        // 1. Campo studentViewActive no Firestore
-        // 2. Flag no localStorage (para sobreviver ao reload logo após o reset)
-        // 3. Presença do campo adminProfileBackup (indica que o admin entrou no mundo paralelo)
-        const isInStudentViewFirestore = fetchedUserData.studentViewActive === true;
-        const isInStudentViewLocalStorage = localStorage.getItem('studentViewActive') === 'true';
-        const hasAdminBackup = !!(fetchedUserData as any).adminProfileBackup;
-        const isInStudentView = isInStudentViewFirestore || isInStudentViewLocalStorage || hasAdminBackup;
-        const isStaffAccount = fetchedUserData.role !== 'student';
-        
-        // Manter o localStorage em sincronia com o Firestore
-        if (isInStudentViewFirestore) {
-          localStorage.setItem('studentViewActive', 'true');
-        } else if (!hasAdminBackup) {
-          localStorage.removeItem('studentViewActive');
-        }
-        
-        console.log('[AuthContext] XP rule check:', {
-          xp: fetchedUserData.xp, role: fetchedUserData.role,
-          isInStudentViewFirestore, isInStudentViewLocalStorage, hasAdminBackup,
-          isInStudentView, willApplyRule: isStaffAccount && !isInStudentView && (fetchedUserData.xp || 0) < 50000
-        });
+    const fetchUserData = async (sessionUser: User) => {
+      const { data: userDoc, error } = await supabase.from('users').select('*').eq('id', sessionUser.id).single();
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching user data', error);
+        return;
+      }
 
-        if (isStaffAccount && !isInStudentView && (fetchedUserData.xp || 0) < 50000) {
-          fetchedUserData.xp = 50000;
-          fetchedUserData.coins = 50000;
-          // Usar updateDoc (não setDoc) para evitar sobrescrever campos como studentViewActive
-          try {
-            const { updateDoc: fbUpdateDoc } = await import('firebase/firestore');
-            await fbUpdateDoc(userRef, { xp: 50000, coins: 50000 });
-          } catch (_e) {
-            // Silently fail if document doesn't exist yet; setDoc handles that case above
-          }
+      if (userDoc) {
+        // Mágica de Super Admin
+        const isSuperAdmin = sessionUser.email === 'fabio.feitoza@eaportal.org';
+        if (isSuperAdmin && userDoc.role !== 'admin') {
+           await supabase.from('users').update({ role: 'admin' }).eq('id', sessionUser.id);
+           userDoc.role = 'admin';
         }
+
+        const mappedUserData = mapUserToClient(userDoc);
         
-        // Verifica se a skin do aluno expirou e remove
-        if (fetchedUserData.role === 'student' && fetchedUserData.avatarConfig?.customSkinUrl) {
-          const skinUrl = fetchedUserData.avatarConfig.customSkinUrl;
-          const expiry = fetchedUserData.unlockedSkins?.[skinUrl];
+        // Staff Rules
+        const isInStudentView = mappedUserData.studentViewActive === true;
+        const isStaffAccount = mappedUserData.role !== 'student';
+        
+        if (isInStudentView && isStaffAccount) {
+          mappedUserData.role = 'student';
+        }
+
+        if (isStaffAccount && !isInStudentView && (mappedUserData.xp || 0) < 50000) {
+          mappedUserData.xp = 50000;
+          mappedUserData.coins = 50000;
+          await supabase.from('users').update({ xp: 50000, coins: 50000 }).eq('id', sessionUser.id);
+        }
+
+        if (mappedUserData.role === 'student' && mappedUserData.avatarConfig?.customSkinUrl) {
+          const skinUrl = mappedUserData.avatarConfig.customSkinUrl;
+          const expiry = mappedUserData.unlockedSkins?.[skinUrl];
           if (!expiry || expiry <= Date.now()) {
-            let updatedConfig = { ...fetchedUserData.avatarConfig, customSkinUrl: '', customModelUrl: undefined };
+            let updatedConfig = { ...mappedUserData.avatarConfig, customSkinUrl: '', customModelUrl: undefined };
             if (updatedConfig.savedPreSkinConfig) {
               updatedConfig = { ...updatedConfig, ...updatedConfig.savedPreSkinConfig };
               delete updatedConfig.savedPreSkinConfig;
             }
-            fetchedUserData.avatarConfig = updatedConfig;
-            await setDoc(userRef, { avatarConfig: updatedConfig }, { merge: true });
+            mappedUserData.avatarConfig = updatedConfig;
+            await supabase.from('users').update({ avatar_config: updatedConfig }).eq('id', sessionUser.id);
           }
         }
 
-        // Passar os dados exatamente como vieram do banco
-        setUserData(fetchedUserData as UserData);
-          setLoading(false);
-        }); // Fim do onSnapshot
-
-        // Retornar a função de limpeza do snapshot
-        return () => {
-          unsubscribeSnapshot();
-        };
-      } else {
-        if (unsubscribeSnapshot) {
-          unsubscribeSnapshot();
-          unsubscribeSnapshot = undefined;
-        }
-        setCurrentUser(null);
-        setUserData(null);
-        setLoading(false);
+        if (isMounted) setUserData(mappedUserData);
       }
-      }); // Fim do onAuthStateChanged
+    };
+
+    const handleUserSession = async (sessionUser: User | null) => {
+      if (!sessionUser) {
+        if (isMounted) {
+          setCurrentUser(null);
+          setUserData(null);
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (isMounted) setCurrentUser(sessionUser);
+      
+      // Fetch after row creation trigger
+      await fetchUserData(sessionUser);
+      // Fallback if trigger was slow
+      if (isMounted) {
+        setTimeout(() => fetchUserData(sessionUser), 1500);
+      }
+
+      if (realtimeSubscription) supabase.removeChannel(realtimeSubscription);
+      realtimeSubscription = supabase.channel(`public:users:${sessionUser.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${sessionUser.id}` }, (payload) => {
+           if (isMounted) {
+             setUserData(prev => {
+                if (!prev) return prev;
+                const newMapped = mapUserToClient(payload.new);
+                const isInStudentView = newMapped.studentViewActive === true;
+                if (isInStudentView && newMapped.role !== 'student') {
+                  newMapped.role = 'student';
+                }
+                return { ...prev, ...newMapped };
+             });
+           }
+        }).subscribe();
+
+      if (isMounted) setLoading(false);
+    };
+
+    initRanks().then(() => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        handleUserSession(session?.user || null);
+      });
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleUserSession(session?.user || null);
     });
 
     return () => {
-      if (unsubscribeAuth) unsubscribeAuth();
-      if (unsubscribeSnapshot) unsubscribeSnapshot();
+      isMounted = false;
+      if (realtimeSubscription) supabase.removeChannel(realtimeSubscription);
+      subscription.unsubscribe();
     };
   }, []);
 
-  const handleToggleStudentView = async () => {
+  const updateUserDataLocally = (updates: Partial<UserData>) => {
+    setUserData(prev => prev ? { ...prev, ...updates } : prev);
+  };
+
+  const toggleStudentView = async () => {
     if (userData) {
       const { toggleStudentView } = await import('../lib/debugSwap');
       await toggleStudentView(userData);
-      // O onSnapshot vai pegar a mudanca e atualizar userData automaticamente
     }
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, userData, loading, toggleStudentView: handleToggleStudentView }}>
-      {children}
+    <AuthContext.Provider value={{ currentUser, userData, loading, toggleStudentView, updateUserDataLocally }}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

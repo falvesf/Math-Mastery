@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp, where, deleteDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
@@ -108,47 +107,43 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     fetchStoreData();
   }, []);
 
-  const fetchStoreData = async () => {
-    setLoading(true);
-    const econRef = doc(db, 'settings', 'economy');
-    const econSnap = await getDoc(econRef);
-    if (econSnap.exists()) {
-      const eData = econSnap.data();
+  const fetchStoreData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    const { data: econSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'economy').single();
+    if (econSnap) {
+      const eData = econSnap.data as any;
       setEconomyType(eData.currencyType || 'coins');
       setEconomySettings(eData);
     }
 
-    const q = query(collection(db, 'store_items'));
-    const snap = await getDocs(q);
+    const { data: storeSnap } = await supabase.from('store_items').select('*').eq('active', true);
     const loaded: StoreItem[] = [];
-    snap.forEach(d => {
-      const data = d.data() as StoreItem;
-      if (data.active) loaded.push({ ...data, id: d.id });
+    (storeSnap || []).forEach(d => {
+      const data = d.data as StoreItem;
+      loaded.push({ ...data, id: d.id, price: d.price } as StoreItem);
     });
     setItems(loaded);
 
-    // Carregar inventário do aluno
     if (userData.uid) {
-      const myItemsQ = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
-      const myItemsSnap = await getDocs(myItemsQ);
+      const { data: myItemsSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
       let count = 0;
       const wrapIds: string[] = [];
       const consumableQuantities: Record<string, number> = {};
       const equippedItemsForStats: any[] = [];
 
-      myItemsSnap.forEach(doc => {
-        const d = doc.data();
-        if (!d.forSale && d.studentId !== 'dropped') {
-          if (d.equipped) {
+      (myItemsSnap || []).forEach(doc => {
+        const d = doc.data as any;
+        if (!d.forSale && doc.student_id !== 'dropped') {
+          if (doc.equipped) {
             equippedItemsForStats.push(d);
           }
           if (d.itemType === 'consumable') {
-            const key = d.itemId;
-            if (!d.equipped) {
+            const key = doc.item_id;
+            if (!doc.equipped) {
               consumableQuantities[key] = (consumableQuantities[key] || 0) + (d.quantity || 1);
             }
           } else {
-            if (!d.equipped) count++;
+            if (!doc.equipped) count++;
           }
 
           if (d.gameEffect === 'gift_wrap') {
@@ -167,23 +162,22 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       setTotalEquippedStats(calculateTotalStats(equippedItemsForStats, userData?.distributedStats));
     }
 
-    // Buscar lista de alunos para presente
-    const userQ = query(collection(db, 'users'), where('role', '==', 'student'));
-    const userSnap = await getDocs(userQ);
+    const { data: userSnap } = await supabase.from('users').select('*').eq('role', 'student');
     const loadedStudents: UserData[] = [];
-    userSnap.forEach(d => loadedStudents.push(d.data() as UserData));
+    (userSnap || []).forEach(d => {
+       const u = d.data as UserData;
+       loadedStudents.push({ ...u, uid: d.id, name: d.name, email: d.email, xp: d.xp, coins: d.coins, role: d.role, photoURL: d.photo_url, classId: d.class_id });
+    });
     loadedStudents.sort((a,b) => a.name.localeCompare(b.name));
     setStudents(loadedStudents);
     
-    // Buscar itens à venda no mercado
-    const marketQ = query(collection(db, 'user_items'), where('forSale', '==', true));
-    const marketSnap = await getDocs(marketQ);
+    const { data: marketSnap } = await supabase.from('user_items').select('*').eq('data->>forSale', 'true');
     const loadedMarket: MarketItem[] = [];
-    marketSnap.forEach(d => {
-      const data = d.data() as MarketItem;
-      const originalStoreItem = loaded.find(si => si.id === data.itemId);
+    (marketSnap || []).forEach(d => {
+      const data = d.data as MarketItem;
+      const originalStoreItem = loaded.find(si => si.id === d.item_id);
       const patchedRarity = data.rarity || originalStoreItem?.rarity || 'common';
-      loadedMarket.push({ ...data, id: d.id, rarity: patchedRarity });
+      loadedMarket.push({ ...data, id: d.id, itemId: d.item_id, rarity: patchedRarity });
     });
     setMarketItems(loadedMarket);
 
@@ -260,34 +254,28 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           setPurchasing(null);
           return;
         }
-        // Consumir a caixa de presente
         const boxIdToConsume = giftWrapItemIds[0];
-        await deleteDoc(doc(db, 'user_items', boxIdToConsume));
+        await supabase.from('user_items').delete().eq('id', boxIdToConsume);
         setGiftWrapItemIds(prev => prev.slice(1));
       }
 
-      // Deduzir valor Apenas de Alunos
       let newBalance = balanceToCheck;
       if (!isStaff) {
         newBalance = balanceToCheck - finalCost;
-        const userRef = doc(db, 'users', userData.uid);
-        
         if (method === 'xp') {
-          await updateDoc(userRef, { xp: newBalance });
-          await addDoc(collection(db, 'xp_logs'), {
-            studentId: userData.uid,
-            evalName: `Compra na Loja: ${item.title} ${isGift ? '(Presente)' : ''}`,
-            xpGained: -finalCost,
-            timestamp: serverTimestamp()
+          await supabase.from('users').update({ xp: newBalance }).eq('id', userData.uid);
+          await supabase.from('xp_logs').insert({
+            student_id: userData.uid,
+            eval_name: `Compra na Loja: ${item.title} ${isGift ? '(Presente)' : ''}`,
+            xp_gained: -finalCost
           });
           userData.xp = newBalance;
         } else {
-          await updateDoc(userRef, { coins: newBalance });
+          await supabase.from('users').update({ coins: newBalance }).eq('id', userData.uid);
           userData.coins = newBalance;
         }
       }
 
-      // Adicionar novo doc
       let finalAdds: ItemAdd[] = [];
       if (item.type === 'equippable') {
         const globalGachaConfig = await fetchGlobalGachaConfig();
@@ -297,33 +285,34 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       let remainingToBuy = quantityToBuy;
       while (remainingToBuy > 0) {
         const qty = Math.min(remainingToBuy, 99);
-        await addDoc(collection(db, 'user_items'), {
-          studentId: recipientId,
-          itemId: item.id,
-          itemTitle: item.title,
-          itemDescription: item.description || '',
-          itemType: item.type,
-          itemImageUrl: item.imageUrl || '',
-          gameEffect: item.gameEffect || 'none',
-          usableInQuest: item.usableInQuest || false,
-          quantity: qty,
+        await supabase.from('user_items').insert({
+          student_id: recipientId,
+          item_id: item.id,
           equipped: false,
-          purchasedAt: serverTimestamp(),
-          giftedBy: isGift ? userData.name : null,
-          avatarPart: item.avatarPart || null,
-          itemCategory: item.itemCategory || 'none',
-          baseAttributeType: item.baseAttributeType || 'none',
-          baseAttributeValue: item.baseAttributeValue || 0,
-          gameModelUrl: item.gameModelUrl || '',
-          modelTextureUrl: item.modelTextureUrl || '',
-          minecraftHeadValue: item.minecraftHeadValue || '',
-          modelTransforms: item.modelTransforms || null,
-          adds: finalAdds,
-          minSalePrice: item.minSalePrice || 0,
-          rarity: item.rarity || 'common',
-          unlockedSkinId: item.unlockedSkinId || '',
-          buffDurationDays: item.buffDurationDays || 7,
-          backColor: item.backColor || ''
+          data: {
+            itemTitle: item.title,
+            itemDescription: item.description || '',
+            itemType: item.type,
+            itemImageUrl: item.imageUrl || '',
+            gameEffect: item.gameEffect || 'none',
+            usableInQuest: item.usableInQuest || false,
+            quantity: qty,
+            giftedBy: isGift ? userData.name : null,
+            avatarPart: item.avatarPart || null,
+            itemCategory: item.itemCategory || 'none',
+            baseAttributeType: item.baseAttributeType || 'none',
+            baseAttributeValue: item.baseAttributeValue || 0,
+            gameModelUrl: item.gameModelUrl || '',
+            modelTextureUrl: item.modelTextureUrl || '',
+            minecraftHeadValue: item.minecraftHeadValue || '',
+            modelTransforms: item.modelTransforms || null,
+            adds: finalAdds,
+            minSalePrice: item.minSalePrice || 0,
+            rarity: item.rarity || 'common',
+            unlockedSkinId: item.unlockedSkinId || '',
+            buffDurationDays: item.buffDurationDays || 7,
+            backColor: item.backColor || ''
+          }
         });
         remainingToBuy -= qty;
       }
@@ -338,7 +327,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       setSelectedGiftRecipient('');
       
       // Atualiza o limite de mochila e balance
-      fetchStoreData();
+      fetchStoreData(false);
     } catch (err) {
       showToast('Erro ao processar o pagamento.', 'error');
     }
@@ -382,79 +371,76 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     try {
       if (!isStaff) {
         const newBalance = currentBalance - totalCost;
-        const userRef = doc(db, 'users', userData.uid);
         if (economyType === 'xp') {
           if (marketBuyPaymentMethod === 'xp') {
-            await updateDoc(userRef, { xp: newBalance });
+            await supabase.from('users').update({ xp: newBalance }).eq('id', userData.uid);
             userData.xp = newBalance;
           } else {
-            await updateDoc(userRef, { coins: newBalance });
+            await supabase.from('users').update({ coins: newBalance }).eq('id', userData.uid);
             userData.coins = newBalance;
           }
         } else {
-          await updateDoc(userRef, { coins: newBalance });
+          await supabase.from('users').update({ coins: newBalance }).eq('id', userData.uid);
           userData.coins = newBalance;
         }
       }
 
-      // Transferir pagamento para o vendedor (Descontando 10% de taxa)
-      // O vendedor escolheu preferredCurrency (se disponível), senão cai no padrão do sistema
-      const sellerRef = doc(db, 'users', marketBuyModalItem.studentId);
-      const sellerSnap = await getDoc(sellerRef);
-      if (sellerSnap.exists()) {
+      const { data: sellerSnap } = await supabase.from('users').select('*').eq('id', marketBuyModalItem.studentId).single();
+      if (sellerSnap) {
         const sellerPref = (marketBuyModalItem as any).preferredCurrency || economyType;
         const persuasionBonus = (marketBuyModalItem as any).sellerPersuasion ? (basePrice * ((marketBuyModalItem as any).sellerPersuasion / 100)) : 0;
         
         let sellerUnitReceive = basePrice;
         if (sellerPref === 'coins' && economyType === 'xp') {
-          sellerUnitReceive = basePrice * (economySettings?.coinToXPRatio || 10); // converte XP pra moedas pro vendedor se ele escolheu Moedas
+          sellerUnitReceive = basePrice * (economySettings?.coinToXPRatio || 10);
         }
         const netValuePerUnit = Math.floor((sellerUnitReceive * 0.90) + persuasionBonus);
         const totalNetValue = netValuePerUnit * marketBuyQuantity;
 
         if (sellerPref === 'xp') {
-          const sellerXp = (sellerSnap.data().xp || 0) + totalNetValue;
-          await updateDoc(sellerRef, { xp: sellerXp });
+          const sellerXp = (sellerSnap.xp || 0) + totalNetValue;
+          await supabase.from('users').update({ xp: sellerXp }).eq('id', marketBuyModalItem.studentId);
         } else {
-          const sellerCoins = (sellerSnap.data().coins || 0) + totalNetValue;
-          await updateDoc(sellerRef, { coins: sellerCoins });
+          const sellerCoins = (sellerSnap.coins || 0) + totalNetValue;
+          await supabase.from('users').update({ coins: sellerCoins }).eq('id', marketBuyModalItem.studentId);
         }
       }
 
       if (marketBuyQuantity < (marketBuyModalItem.quantity || 1)) {
-        // Comprou parcial: Deduz a quantidade do vendedor, cria um novo item para o comprador
-        await updateDoc(doc(db, 'user_items', marketBuyModalItem.id), {
-          quantity: (marketBuyModalItem.quantity || 1) - marketBuyQuantity
-        });
+        const { data: oldItem } = await supabase.from('user_items').select('data').eq('id', marketBuyModalItem.id).single();
+        if (oldItem) await supabase.from('user_items').update({ data: { ...(oldItem.data as any), quantity: (marketBuyModalItem.quantity || 1) - marketBuyQuantity } }).eq('id', marketBuyModalItem.id);
         
         const { id, docIds, count, forSale, price, sellerName, sellerPersuasion, preferredCurrency, ...itemDataToDuplicate } = marketBuyModalItem as any;
-        await addDoc(collection(db, 'user_items'), {
-          ...itemDataToDuplicate,
-          studentId: userData.uid,
-          quantity: marketBuyQuantity,
+        await supabase.from('user_items').insert({
+          student_id: userData.uid,
+          item_id: marketBuyModalItem.itemId,
           equipped: false,
-          purchasedAt: serverTimestamp()
+          data: {
+            ...itemDataToDuplicate,
+            quantity: marketBuyQuantity
+          }
         });
       } else {
-        // Comprou tudo: Alterar dono do item
-        await updateDoc(doc(db, 'user_items', marketBuyModalItem.id), {
-          studentId: userData.uid,
-          forSale: false,
-          price: null,
-          sellerName: null,
-          sellerPersuasion: null,
-          preferredCurrency: null,
-          equipped: false,
-          purchasedAt: serverTimestamp()
-        });
+        const { data: oldItem } = await supabase.from('user_items').select('data').eq('id', marketBuyModalItem.id).single();
+        if (oldItem) await supabase.from('user_items').update({
+          student_id: userData.uid,
+          data: {
+            ...(oldItem.data as any),
+            forSale: false,
+            price: null,
+            sellerName: null,
+            sellerPersuasion: null,
+            preferredCurrency: null
+          }
+        }).eq('id', marketBuyModalItem.id);
       }
 
-      await showAlert("Compra no Mercado realizada com sucesso!");
+      showToast("Compra no Mercado realizada com sucesso!", 'success');
       setMarketBuyModalItem(null);
-      fetchStoreData(); // Recarrega loja
+      fetchStoreData(false); // Recarrega loja suavemente
 
     } catch (err) {
-      await showAlert('Erro ao processar a compra no mercado.');
+      showToast('Erro ao processar a compra no mercado.', 'error');
     }
     setPurchasing(null);
   };
@@ -475,13 +461,12 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     if (!confirmed) return;
 
     try {
-      await updateDoc(doc(db, 'user_items', item.id), {
-        forSale: false,
-        price: null,
-        sellerName: null
-      });
+      const { data: oldItem } = await supabase.from('user_items').select('data').eq('id', item.id).single();
+      if (oldItem) await supabase.from('user_items').update({
+        data: { ...(oldItem.data as any), forSale: false, price: null, sellerName: null }
+      }).eq('id', item.id);
       await showAlert("Venda cancelada! O item voltou para sua mochila.");
-      fetchStoreData();
+      fetchStoreData(false);
     } catch (err) {
       await showAlert("Erro ao cancelar a venda.");
     }
@@ -498,9 +483,12 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     }
 
     try {
-      await updateDoc(doc(db, 'user_items', item.id), { price: price });
+      const { data: oldItem } = await supabase.from('user_items').select('data').eq('id', item.id).single();
+      if (oldItem) await supabase.from('user_items').update({
+        data: { ...(oldItem.data as any), price: price }
+      }).eq('id', item.id);
       await showAlert("Preço atualizado com sucesso!");
-      fetchStoreData();
+      fetchStoreData(false);
     } catch (err) {
       await showAlert("Erro ao atualizar o preço.");
     }
@@ -599,8 +587,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
       {previewItem && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div className="glass-panel" style={{ width: '400px', maxWidth: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--bg-dark)', border: '2px solid var(--border-color)', borderRadius: '16px', padding: '1.5rem' }}>
+        <div className="modal-overlay">
+          <div className="glass-panel modal-content modal-content-sm" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--bg-dark)', border: '2px solid var(--border-color)', borderRadius: '16px' }}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
                 Prévia: {(previewItem as StoreItem).title || (previewItem as MarketItem).itemTitle}
@@ -1229,8 +1217,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       )}
 
       {marketBuyModalItem && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="glass-panel" style={{ padding: '2rem', maxWidth: '400px', width: '100%' }}>
+        <div className="modal-overlay">
+          <div className="glass-panel modal-content modal-content-sm">
             <h3 style={{ marginTop: 0, color: 'var(--gold-primary)', fontSize: '1.5rem' }}>Confirmar Compra</h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
               <img src={marketBuyModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />

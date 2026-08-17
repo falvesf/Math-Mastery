@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, setDoc, onSnapshot, updateDoc, addDoc, collection, serverTimestamp, query, where, getDocs, increment } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
+
 import { Loader2, Play, CheckCircle, ChevronRight, Swords, Crown, Skull, Package } from 'lucide-react';
 import type { QuestDef } from './AdminDashboard';
 import AvatarPrint from '../components/AvatarPrint';
@@ -48,6 +48,7 @@ export default function LiveQuestAdmin() {
   const { userData } = useAuth();
   const { showConfirm } = useDialog();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const [loading, setLoading] = useState(true);
   const [quest, setQuest] = useState<QuestDef | null>(null);
@@ -55,6 +56,7 @@ export default function LiveQuestAdmin() {
   const [timeLeft, setTimeLeft] = useState(0);
 
   const processedAnswers = useRef<Set<string>>(new Set());
+  const resetApplied = useRef(false); // Garante que o reset só é aplicado uma vez
   const [playerAnims, setPlayerAnims] = useState<Record<string, any>>({});
   const [playerErrou, setPlayerErrou] = useState<Record<string, boolean>>({});
   const [activeAvatars, setActiveAvatars] = useState<Record<string, { active: boolean, direction: 'left' | 'right' }>>({});
@@ -89,13 +91,17 @@ export default function LiveQuestAdmin() {
        if (remaining === 0 || (activePlayersCount > 0 && ansCount >= activePlayersCount)) {
           clearInterval(interval);
           const correctCount = activePlayers.filter(p => p.currentAnswer === question.correctIndex).length;
-          const nobodyCorrect = activePlayersCount > 0 && correctCount === 0;
+          // Só considera "ninguém acertou" se PELO MENOS UM jogador tiver tentado responder.
+          // Se ansCount === 0, significa que estão todos AFK/desconectados. Não repete a pergunta para evitar loop infinito.
+          const nobodyCorrect = activePlayersCount > 0 && correctCount === 0 && ansCount > 0;
           
           const updates: any = { status: 'reveal', nobodyCorrect };
           if (nobodyCorrect) {
              updates.activeQuestions = [...session.activeQuestions, session.activeQuestions[session.currentQuestionIndex]];
           }
-          updateDoc(doc(db, 'live_quests', sessionId!), updates);
+          supabase.from('live_quests').update(updates).eq('id', sessionId!);
+          // Atualiza estado local imediatamente (sem depender de realtime)
+          setSession(prev => prev ? { ...prev, ...updates } : prev);
        }
     }, 500);
 
@@ -152,38 +158,42 @@ export default function LiveQuestAdmin() {
     });
   }, [session, quest]);
 
-  // Reveal to Ranking transition — ALWAYS go to 'ranking' so teacher clicks
-  // 'Próxima Etapa' which runs handleNextQuestion (distributes chests + XP)
+  // Reveal to Ranking transition
   useEffect(() => {
     if (session?.status === 'reveal' && sessionId) {
        const t = setTimeout(() => {
-          updateDoc(doc(db, 'live_quests', sessionId), { status: 'ranking' });
-       }, 5000); // Wait 5s on reveal screen before showing ranking/finish button
+          supabase.from('live_quests').update({ status: 'ranking' }).eq('id', sessionId);
+          // Atualiza estado local imediatamente
+          setSession(prev => prev ? { ...prev, status: 'ranking' } : prev);
+       }, 5000);
        return () => clearTimeout(t);
     }
   }, [session?.status, sessionId]);
 
   // Load Quest and Session
   useEffect(() => {
-    if (!sessionId || !userData) return;
+    if (!sessionId) return;
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
     const loadData = async () => {
       // Load Quest Def
-      const qDoc = await getDoc(doc(db, 'quests', sessionId));
-      if (!qDoc.exists()) {
+      const { data: qDocData } = await supabase.from('quests').select('*').eq('id', sessionId).single();
+      if (!qDocData) {
         navigate('/admin');
         return;
       }
-      const qData = qDoc.data() as QuestDef;
+      const qData = { id: qDocData.id, ...qDocData } as QuestDef;
       setQuest(qData);
 
       // Create or Load Session
-      const sessionRef = doc(db, 'live_quests', sessionId);
-      const sDoc = await getDoc(sessionRef);
-      if (!sDoc.exists()) {
+      let currentSessionData: LiveSession | null = null;
+      const { data: sDocData } = await supabase.from('live_quests').select('*').eq('id', sessionId).maybeSingle();
+      
+      if (!sDocData) {
         const newSession: LiveSession = {
           questId: sessionId,
-          teacherId: userData.uid,
+          teacherId: (userData?.uid || ''),
           status: 'lobby',
           currentQuestionIndex: 0,
           activeQuestions: qData.questions.map((_, i) => i),
@@ -191,65 +201,148 @@ export default function LiveQuestAdmin() {
           maxMonsterHp: 0,
           players: {}
         };
-        await setDoc(sessionRef, newSession);
+        await supabase.from('live_quests').insert({ id: sessionId, ...newSession });
+        currentSessionData = newSession;
       } else {
-        // If resuming a session but no players are present, force reset to lobby
-        const data = sDoc.data() as LiveSession;
+        const data = sDocData as LiveSession;
         const playersCount = Object.keys(data.players || {}).length;
-        if ((data.status as string) === 'lobby' || ((data.status as string) !== 'lobby' && playersCount === 0)) {
-          await updateDoc(sessionRef, {
+        // Aplica reset apenas na primeira carga (forceReset via location.state)
+        const forceReset = location.state?.reset === true && !resetApplied.current;
+        if (forceReset) resetApplied.current = true;
+        
+        if (forceReset || (data.status as string) === 'lobby' || ((data.status as string) !== 'lobby' && playersCount === 0)) {
+          const updates: any = {
             status: 'lobby',
             currentQuestionIndex: 0,
             activeQuestions: qData.questions.map((_, i) => i),
             monsterHp: 0,
-            maxMonsterHp: 0
-          });
+            maxMonsterHp: 0,
+            players: {}, // Limpa jogadores — cada sessão começa do zero
+          };
+          await supabase.from('live_quests').update(updates).eq('id', sessionId);
+          currentSessionData = { ...data, ...updates } as LiveSession;
+        } else {
+          currentSessionData = data;
         }
       }
 
-      // Listen to Session
-      const unsub = onSnapshot(sessionRef, (snap) => {
-        if (snap.exists()) {
-          setSession(snap.data() as LiveSession);
-        } else {
-          setSession(null);
-        }
-        setLoading(false);
-      });
+      setSession(currentSessionData);
+      setLoading(false);
 
-      return () => unsub();
+      // Listen to Session — canal com nome fixo para evitar duplicatas
+      channel = supabase.channel(`live_quest_admin_${sessionId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'live_quests', filter: `id=eq.${sessionId}` }, (payload) => {
+          if (payload.eventType !== 'DELETE') {
+            setSession(payload.new as LiveSession);
+          } else {
+            setSession(null);
+          }
+        })
+        .subscribe();
     };
 
     loadData();
-  }, [sessionId, userData, navigate]);
+
+    // Cleanup corretamente fora da função async — React registra este retorno
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [sessionId, navigate]); // NÃO depende de userData para evitar resets acidentais durante o jogo
+
+  // Polling de fallback no lobby: atualiza lista de jogadores a cada 2s
+  // Necessário pois o realtime do admin pode não receber updates de outros clientes
+  useEffect(() => {
+    if (!sessionId || session?.status !== 'lobby') return;
+
+    const interval = setInterval(async () => {
+      const { data } = await supabase.from('live_quests').select('players').eq('id', sessionId).single();
+      if (data?.players) {
+        setSession(prev => prev ? { ...prev, players: data.players } : prev);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [sessionId, session?.status]);
+
+  // Polling durante a fase de pergunta: atualiza sessão completa a cada 500ms
+  // Garante que o timer veja as respostas dos alunos mesmo sem realtime
+  useEffect(() => {
+    if (!sessionId || session?.status !== 'question') return;
+
+    const interval = setInterval(async () => {
+      const { data } = await supabase.from('live_quests').select('*').eq('id', sessionId).single();
+      if (data) {
+        setSession(prev => {
+          // Só atualiza players durante 'question' para não sobrescrever transições de status
+          if (prev?.status === 'question') {
+            return {
+              ...prev,
+              players: data.players || {},
+              monsterHp: data.monsterHp ?? data.monster_hp ?? prev.monsterHp
+            };
+          }
+          return prev;
+        });
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [sessionId, session?.status]);
+
 
   const handleStartGame = async () => {
-    if (!session || !sessionId || !quest) return;
-    const playerIds = Object.keys(session.players);
+    console.log('[handleStartGame] Iniciando...', { session: !!session, sessionId, quest: !!quest });
+    if (!session || !sessionId || !quest) {
+      console.warn('[handleStartGame] Guard falhou:', { session, sessionId, quest });
+      return;
+    }
+    const playerIds = Object.keys(session.players || {});
+    console.log('[handleStartGame] playerIds:', playerIds);
     if (playerIds.length === 0) {
       alert("Aguarde pelo menos 1 aluno entrar na sala!");
       return;
     }
 
     const players = Object.values(session.players);
+    const questionsLen = quest.questions?.length || 0;
+    console.log('[handleStartGame] players:', players.length, 'questions:', questionsLen);
 
-    // O HP do monstro é o total de acertos possíveis (se todos acertarem tudo) vezes 80%.
-    // O dano de cada aluno agora é fixo em 1 na missão ao vivo para garantir que o HP caia proporcionalmente ao número de questões.
-    const maxHp = Math.max(1, Math.ceil(players.length * quest.questions.length * 0.8));
+    if (questionsLen === 0) {
+      alert("Esta missão não tem perguntas configuradas!");
+      return;
+    }
 
-    await updateDoc(doc(db, 'live_quests', sessionId), {
+    const maxHp = Math.max(1, Math.ceil(players.length * questionsLen * 0.8));
+    console.log('[handleStartGame] maxHp calculado:', maxHp, '→ atualizando live_quests:', sessionId);
+
+    const { error } = await supabase.from('live_quests').update({
       status: 'question',
       monsterHp: maxHp,
       maxMonsterHp: maxHp,
       questionStartTime: Date.now()
-    });
+    }).eq('id', sessionId);
+
+    if (error) {
+      console.error('[handleStartGame] Erro ao atualizar live_quests:', error);
+      alert(`Erro ao iniciar batalha: ${error.message}`);
+    } else {
+      console.log('[handleStartGame] Atualização bem-sucedida! Atualizando estado local...');
+      // Atualiza o estado local imediatamente, sem esperar pelo realtime
+      setSession(prev => prev ? {
+        ...prev,
+        status: 'question',
+        monsterHp: maxHp,
+        maxMonsterHp: maxHp,
+        questionStartTime: Date.now()
+      } : prev);
+    }
   };
 
   const handleEndSession = async () => {
     if (!sessionId) return;
     const confirmed = await showConfirm("Tem certeza que deseja encerrar esta sessão ao vivo? Todos os alunos serão desconectados.");
     if (confirmed) {
-      await updateDoc(doc(db, 'live_quests', sessionId), { status: 'finished' });
+      await supabase.from('live_quests').update({ status: 'finished' }).eq('id', sessionId);
       navigate('/admin');
     }
   };
@@ -329,7 +422,7 @@ export default function LiveQuestAdmin() {
       // End game
       try {
         const sortedPlayers = Object.values(session.players).sort((a, b) => (b.score || 0) - (a.score || 0));
-        const promises: Promise<any>[] = [];
+        const promises: any[] = [];
         const sessionUpdates: any = { status: 'finished' };
 
         const processReward = async (playerUid: string, chestConfig: any, place: number) => {
@@ -338,16 +431,16 @@ export default function LiveQuestAdmin() {
           let itemsWon: any[] = [];
 
           if (chestConfig.maxCoins && chestConfig.maxCoins > 0) {
-             userUpdates.coins = increment(chestConfig.maxCoins);
+             const { data: uData } = await supabase.from('users').select('coins').eq('id', playerUid).single();
+             userUpdates.coins = (uData?.coins || 0) + chestConfig.maxCoins;
           }
 
           if (chestConfig.itemIds && chestConfig.itemIds.length > 0) {
              const validIds = chestConfig.itemIds.filter((id: string) => id.trim() !== '');
              if (validIds.length > 0) {
-               const q = query(collection(db, 'store_items'), where('__name__', 'in', validIds));
-               const snap = await getDocs(q);
+               const { data: snap } = await supabase.from('store_items').select('*').in('id', validIds);
                const storeItemsMap = new Map();
-               snap.docs.forEach(d => storeItemsMap.set(d.id, { id: d.id, ...d.data() }));
+               if (snap) snap.forEach(d => storeItemsMap.set(d.id, { id: d.id, ...d.data }));
 
                for (let i = 0; i < chestConfig.itemIds.length; i++) {
                  const itemId = chestConfig.itemIds[i];
@@ -368,7 +461,7 @@ export default function LiveQuestAdmin() {
                       minecraftHeadValue: item.minecraftHeadValue || '',
                       quantity: qty,
                       equipped: false,
-                      purchasedAt: serverTimestamp(),
+                      purchasedAt: new Date().toISOString(),
                       giftedBy: `Recompensa ${place}º Lugar`,
                       avatarPart: item.avatarPart || null,
                       itemCategory: item.itemCategory || 'none',
@@ -377,14 +470,14 @@ export default function LiveQuestAdmin() {
                       modelTransforms: item.modelTransforms || null,
                       adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : []
                    };
-                   promises.push(addDoc(collection(db, 'user_items'), itemData));
+                   promises.push(supabase.from('user_items').insert({ student_id: playerUid, item_id: item.id, equipped: false, data: itemData }));
                  }
                }
              }
           }
           
           if (Object.keys(userUpdates).length > 0) {
-             promises.push(updateDoc(doc(db, 'users', playerUid), userUpdates));
+             promises.push(supabase.from('users').update(userUpdates).eq('id', playerUid));
           }
 
           if (itemsWon.length > 0 || (chestConfig.maxCoins && chestConfig.maxCoins > 0)) {
@@ -398,61 +491,78 @@ export default function LiveQuestAdmin() {
         if (sortedPlayers.length > 1) await processReward(sortedPlayers[1].uid, quest.liveChest2ndPlace, 2);
         if (sortedPlayers.length > 2) await processReward(sortedPlayers[2].uid, quest.liveChest3rdPlace, 3);
 
-        Object.keys(session.players).forEach(uid => {
+        const playerUpdatePromises = Object.keys(session.players).map(async uid => {
           const player = session.players[uid];
           const earnedXp = player.sessionEarnedXp || 0;
 
           const survived = player.hp === undefined || player.hp > 0;
 
-          // Somente jogadores que sobreviveram ganham o status 'completed' e podem revisar depois
+          // Somente jogadores que sobreviveram ganham o XP acumulado e o status 'completed'
           if (survived) {
             promises.push(
-              addDoc(collection(db, 'quest_attempts'), {
-                questId: quest.id,
-                studentId: uid,
+              supabase.from('quest_attempts').insert({
+                quest_id: quest.id,
+                student_id: uid,
                 status: 'completed',
-                earnedXp: earnedXp,
-                answers: [],
-                timestamp: serverTimestamp(),
-                isStudyMode: false,
-                isLiveQuest: true
+                data: { answers: [], earned_xp: earnedXp },
+                created_at: new Date().toISOString(),
+                is_study_mode: false,
+                is_live_quest: true
               })
             );
-          }
 
-          if (earnedXp > 0) {
-            // Save to history log (XP already credited per question in LiveQuestStudent)
-            promises.push(
-              addDoc(collection(db, 'xp_logs'), {
-                studentId: uid,
-                studentName: player.name,
-                xpGained: earnedXp,
-                evalName: `Missão: ${quest.title}`,
-                timestamp: serverTimestamp()
-              })
-            );
+            if (earnedXp > 0) {
+              // Agora sim creditamos o XP oficialmente
+              const { data: u } = await supabase.from('users').select('xp').eq('id', uid).single();
+              if (u) {
+                promises.push(
+                  supabase.from('users').update({ xp: (u.xp || 0) + earnedXp }).eq('id', uid)
+                );
+              }
+
+              // Save to history log
+              promises.push(
+                supabase.from('xp_logs').insert({
+                  student_id: uid,
+                  student_name: player.name,
+                  xp_gained: earnedXp,
+                  eval_name: `Missão: ${quest.title}`,
+                  created_at: new Date().toISOString()
+                })
+              );
+            }
           }
         });
 
-        promises.push(updateDoc(doc(db, 'live_quests', sessionId), sessionUpdates));
+        await Promise.all(playerUpdatePromises);
+
+        promises.push(supabase.from('live_quests').update(sessionUpdates).eq('id', sessionId));
         
         await Promise.all(promises);
       } catch (err) {
         console.error("Erro ao registrar recompensas/historico da missão ao vivo:", err);
       }
     } else {
-      // Reset player answers
+      // Próxima pergunta: busca o estado atual dos jogadores do banco e reseta as respostas
+      const nextIndex = session.currentQuestionIndex + 1;
+      const { data: curr } = await supabase.from('live_quests').select('players').eq('id', sessionId).single();
+      const currentPlayers = curr?.players || session.players;
+      
+      // Reseta respostas dos jogadores corretamente (sem dot notation que não funciona em JSONB)
+      const resetPlayers: Record<string, any> = {};
+      Object.entries(currentPlayers).forEach(([uid, p]) => {
+        resetPlayers[uid] = { ...(p as any), currentAnswer: null, isCorrect: null, answerTime: null };
+      });
+      
       const updates: any = {
         status: 'question',
-        currentQuestionIndex: session.currentQuestionIndex + 1,
-        questionStartTime: Date.now()
+        currentQuestionIndex: nextIndex,
+        questionStartTime: Date.now(),
+        players: resetPlayers
       };
-      Object.keys(session.players).forEach(uid => {
-        updates[`players.${uid}.currentAnswer`] = null;
-        updates[`players.${uid}.isCorrect`] = null;
-        updates[`players.${uid}.answerTime`] = null;
-      });
-      await updateDoc(doc(db, 'live_quests', sessionId), updates);
+      await supabase.from('live_quests').update(updates).eq('id', sessionId);
+      // Atualiza estado local imediatamente
+      setSession(prev => prev ? { ...prev, ...updates } : prev);
     }
   };
 
@@ -465,8 +575,8 @@ export default function LiveQuestAdmin() {
   return (
     <div className="app-container" style={{ display: 'flex', flexDirection: 'column', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
       {/* HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 30, position: 'relative' }}>
-        <h1 style={{ margin: 0, color: 'var(--gold-primary)', fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 30, position: 'relative' }}>
+        <h1 style={{ margin: 0, color: 'var(--gold-primary)', fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '200px' }}>
           <Swords size={24} /> {quest.title}
         </h1>
         
@@ -592,7 +702,7 @@ export default function LiveQuestAdmin() {
 
           {/* QUESTION TEXT */}
           {(session.status === 'question' || session.status === 'reveal') && (
-            <div style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 100%)', padding: '1rem', borderRadius: '16px', pointerEvents: 'auto', width: '100%', maxWidth: '800px', border: '1px solid var(--border-glass)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', display: 'flex', flexDirection: question.imageUrl ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
+            <div style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 100%)', padding: '1rem', borderRadius: '16px', pointerEvents: 'auto', width: '100%', maxWidth: '800px', border: '1px solid var(--border-glass)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', display: 'flex', flexWrap: 'wrap', flexDirection: question.imageUrl ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
               {question.imageUrl && (
                 <img src={question.imageUrl} alt="Questão" style={{ maxHeight: '80px', maxWidth: '200px', objectFit: 'contain', borderRadius: '8px' }} />
               )}
@@ -605,14 +715,14 @@ export default function LiveQuestAdmin() {
         {/* BOTTOM AREA: OPTIONS & OVERLAYS */}
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20, padding: '1rem 2rem', pointerEvents: 'none' }}>
           {session.status === 'reveal' && (session as any).nobodyCorrect && (
-            <div style={{ position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(239, 68, 68, 0.95)', padding: '1.5rem 3rem', borderRadius: '16px', border: '2px solid white', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', textAlign: 'center', minWidth: '400px' }}>
+            <div style={{ position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(239, 68, 68, 0.95)', padding: '1.5rem', borderRadius: '16px', border: '2px solid white', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', textAlign: 'center', width: '90%', maxWidth: '400px' }}>
                <h2 style={{ margin: 0, fontSize: '2.5rem', color: 'white' }}>Ninguém Acertou!</h2>
                <p style={{ margin: '0.5rem 0 0', fontSize: '1.2rem', color: 'rgba(255,255,255,0.9)' }}>Essa pergunta voltará no futuro...</p>
             </div>
           )}
 
           {(session.status === 'question' || session.status === 'reveal') && (
-            <div style={{ pointerEvents: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '1000px', margin: '0 auto' }}>
+            <div className="responsive-grid" style={{ pointerEvents: 'auto', maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
               {question.options.map((opt, idx) => {
                 const isReveal = session.status === 'reveal';
                 const nobodyCorrect = (session as any).nobodyCorrect;

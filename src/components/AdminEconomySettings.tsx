@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Coins, Star, Save, Loader2 } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 
@@ -17,28 +16,29 @@ export default function AdminEconomySettings() {
   const [coinToXPRatio, setCoinToXPRatio] = useState(10);
 
   useEffect(() => {
-    fetchSettings();
+    fetchSettings(true);
   }, []);
 
-  const fetchSettings = async () => {
-    setLoading(true);
+  const fetchSettings = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
-      const econRef = doc(db, 'settings', 'economy');
-      const snap = await getDoc(econRef);
-      if (snap.exists()) {
-        const data = snap.data();
+      const { data: snap } = await supabase.from('system_collections').select('data').eq('type', 'economy').single();
+      if (snap && snap.data) {
+        const data = snap.data;
         setCoinsDropInCombat(data.coinsDropInCombat ?? false);
         setCoinsLostInCombat(data.coinsLostInCombat ?? false);
         setCoinsCanBuyItems(data.coinsCanBuyItems ?? true);
         setCoinToXPRatio(data.coinToXPRatio ?? 10);
       } else {
         // Initialize if doesn't exist
-        await setDoc(econRef, {
-          currencyType: 'coins',
-          coinsDropInCombat: false,
-          coinsLostInCombat: false,
-          coinsCanBuyItems: true,
-          coinToXPRatio: 10
+        await supabase.from('system_collections').insert({
+          type: 'economy',
+          data: {
+            coinsDropInCombat: false,
+            coinsLostInCombat: false,
+            coinsCanBuyItems: true,
+            coinToXPRatio: 10
+          }
         });
       }
     } catch (err) {
@@ -52,8 +52,7 @@ export default function AdminEconomySettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const econRef = doc(db, 'settings', 'economy');
-      const snap = await getDoc(econRef);
+      const { data: snap } = await supabase.from('system_collections').select('data').eq('type', 'economy').single();
       
       const payload = {
         coinsDropInCombat,
@@ -62,10 +61,10 @@ export default function AdminEconomySettings() {
         coinToXPRatio: Number(coinToXPRatio)
       };
 
-      if (snap.exists()) {
-        await updateDoc(econRef, payload);
+      if (snap) {
+        await supabase.from('system_collections').update({ data: payload }).eq('type', 'economy');
       } else {
-        await setDoc(econRef, { currencyType: 'coins', ...payload });
+        await supabase.from('system_collections').insert({ type: 'economy', data: { currencyType: 'coins', ...payload } });
       }
 
       showAlert('Sucesso', 'Configurações de economia salvas globalmente!');
@@ -88,50 +87,73 @@ export default function AdminEconomySettings() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       
-      <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-glass)' }}>
+      <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-glass)', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button
+            onClick={() => setActiveTab('coins')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderBottom: activeTab === 'coins' ? '3px solid #fbbf24' : '3px solid transparent',
+              color: activeTab === 'coins' ? '#fbbf24' : 'var(--text-secondary)',
+              padding: '0.75rem 1rem',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              fontWeight: activeTab === 'coins' ? 'bold' : 'normal',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            <Coins size={18} /> Moedas de Ouro
+          </button>
+          <button
+            onClick={() => setActiveTab('xp')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderBottom: activeTab === 'xp' ? '3px solid var(--gold-primary)' : '3px solid transparent',
+              color: activeTab === 'xp' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+              padding: '0.75rem 1rem',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              fontWeight: activeTab === 'xp' ? 'bold' : 'normal',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            <Star size={18} /> Gasto de XP
+          </button>
+        </div>
+        
         <button
-          onClick={() => setActiveTab('coins')}
+          className="login-btn hover-brightness"
+          onClick={handleSave}
+          disabled={saving}
           style={{
-            background: 'transparent',
+            background: 'var(--gold-primary)',
+            color: 'var(--text-on-gold, #000000)',
             border: 'none',
-            borderBottom: activeTab === 'coins' ? '3px solid #fbbf24' : '3px solid transparent',
-            color: activeTab === 'coins' ? '#fbbf24' : 'var(--text-secondary)',
-            padding: '1rem 2rem',
-            cursor: 'pointer',
-            fontSize: '1rem',
-            fontWeight: activeTab === 'coins' ? 'bold' : 'normal',
+            padding: '0.5rem 1rem',
+            fontSize: '0.9rem',
+            fontWeight: 'bold',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem'
+            gap: '0.5rem',
+            marginBottom: '0.5rem'
           }}
         >
-          <Coins size={20} /> Moedas de Ouro
-        </button>
-        <button
-          onClick={() => setActiveTab('xp')}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            borderBottom: activeTab === 'xp' ? '3px solid var(--gold-primary)' : '3px solid transparent',
-            color: activeTab === 'xp' ? 'var(--gold-primary)' : 'var(--text-secondary)',
-            padding: '1rem 2rem',
-            cursor: 'pointer',
-            fontSize: '1rem',
-            fontWeight: activeTab === 'xp' ? 'bold' : 'normal',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
-        >
-          <Star size={20} /> Gasto de XP
+          {saving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
+          Salvar Configurações
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
         {activeTab === 'coins' ? (
           <>
-            <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Configurações de Moedas nos Combates</h3>
-            <p style={{ color: 'var(--text-secondary)', margin: 0, marginBottom: '1rem', fontSize: '0.9rem' }}>
+            <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem' }}>Configurações de Moedas nos Combates</h3>
+            <p style={{ color: 'var(--text-secondary)', margin: 0, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
               Defina como as moedas se comportarão dentro dos desafios quando a economia do jogo for baseada nelas.
             </p>
 
@@ -167,8 +189,8 @@ export default function AdminEconomySettings() {
           </>
         ) : (
           <>
-            <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Configurações de Conversão de XP</h3>
-            <p style={{ color: 'var(--text-secondary)', margin: 0, marginBottom: '1rem', fontSize: '0.9rem' }}>
+            <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem' }}>Configurações de Conversão de XP</h3>
+            <p style={{ color: 'var(--text-secondary)', margin: 0, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
               Quando a economia "Gasto de XP" estiver ativa na loja, você pode controlar se as moedas também serão aceitas como forma de pagamento alternativo.
             </p>
 
@@ -207,28 +229,6 @@ export default function AdminEconomySettings() {
             )}
           </>
         )}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-        <button
-          className="login-btn hover-brightness"
-          onClick={handleSave}
-          disabled={saving}
-          style={{
-            background: 'var(--gold-primary)',
-            color: 'var(--text-on-gold, #000000)',
-            border: 'none',
-            padding: '0.75rem 2rem',
-            fontSize: '1rem',
-            fontWeight: 'bold',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
-        >
-          {saving ? <Loader2 className="spin" size={20} /> : <Save size={20} />}
-          Salvar Configurações
-        </button>
       </div>
 
     </div>

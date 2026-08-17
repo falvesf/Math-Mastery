@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../lib/firebase';
-import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+
+import { supabase } from '../lib/supabase';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircle, Package, Coins } from 'lucide-react';
@@ -63,6 +63,10 @@ export default function QuestGameplay() {
   const xpMultiplier = 1 + (totalEquippedStats.xp / 100);
   const coinsMultiplier = 1 + (totalEquippedStats.coins / 100);
 
+  const currentRankObj = getRankForXp(userData?.xp || 0, userData?.classId);
+  const calculatedRankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRankObj.name));
+  const calculatedMaxHearts = Math.max(3, 3 + Math.floor(calculatedRankIndex / 2)) + Math.floor(totalEquippedStats.vitality / 30);
+
   const [showChest, setShowChest] = useState(false);
   const [chestOpened, setChestOpened] = useState(false);
   const [criticalHits, setCriticalHits] = useState(0);
@@ -73,14 +77,18 @@ export default function QuestGameplay() {
   
   // Feedback Visual (certo/errado)
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
+  
+  // Dano Crítico Fracionado (Vantagens para a próxima pergunta)
+  const [nextQAdvantage, setNextQAdvantage] = useState<'eliminate-2' | 'eliminate-1' | 'bonus-crit' | null>(null);
+  const [bonusCritActive, setBonusCritActive] = useState<boolean>(false);
 
   // Histórico de Respostas
-  const [studentAnswers, setStudentAnswers] = useState<{ qIndex: number; text: string; isCorrect: boolean }[]>([]);
+  const studentAnswers = useRef<{ qIndex: number; text: string; isCorrect: boolean }[]>([]);
 
   // Economia Dinâmica
   const [economySettings, setEconomySettings] = useState<any>(null);
-  const [coinsToRescue, setCoinsToRescue] = useState<number>(0);
-  const [lostCoinsDisplay, setLostCoinsDisplay] = useState<number>(0);
+  const [, setCoinsToRescue] = useState<number | null>(null);
+  const [, setLostCoinsDisplay] = useState<number | null>(null);
 
   // Escudos e Defesa
   const totalDefense = totalEquippedStats.defense;
@@ -119,118 +127,124 @@ export default function QuestGameplay() {
 
   useEffect(() => {
     const fetchQuest = async () => {
-      if (!questId || !userData) return;
-      
-      const qRef = doc(db, 'quests', questId);
-      const snap = await getDoc(qRef);
-      if (!snap.exists()) {
-        setErrorMessage('Missão não encontrada.');
-        setGameState('result');
-        return;
-      }
-      
-      const qData = { id: snap.id, ...snap.data() } as QuestDef;
-      
-      if (!qData.active && userData.role !== 'admin') {
-        setErrorMessage('Esta missão não está ativa no momento.');
-        setGameState('result');
-        return;
-      }
-
-      // Check if already completed
-      const attemptsRef = collection(db, 'quest_attempts');
-      const qCheck = query(attemptsRef, where('questId', '==', questId), where('studentId', '==', userData.uid));
-      const attemptSnap = await getDocs(qCheck);
-      
-      let alreadyCompleted = false;
-      let alreadyFailedHardcore = false;
-
-      attemptSnap.forEach(doc => {
-        if (doc.data().status === 'completed') alreadyCompleted = true;
-        if (doc.data().status === 'failed' && !qData.allowRetries) alreadyFailedHardcore = true;
-      });
-
-      if (alreadyCompleted && userData.role !== 'admin' && !isStudyMode) {
-        setErrorMessage('Você já completou esta missão com sucesso!');
-        setGameState('result');
-        return;
-      }
-
-      if (alreadyFailedHardcore && userData.role !== 'admin') {
-        setErrorMessage('Você falhou nesta missão e ela não permite novas tentativas (Hardcore).');
-        setGameState('result');
-        return;
-      }
-
-      // Economy Config
-      const econSnap = await getDoc(doc(db, 'settings', 'economy'));
-      if (econSnap.exists()) {
-        setEconomySettings(econSnap.data());
-      }
-
-      // Apply shuffling if configured
-      let processedQuestions = [...qData.questions];
-      
-      if (qData.shuffleQuestions) {
-        processedQuestions.sort(() => Math.random() - 0.5);
-      }
-
-      if (qData.shuffleAnswers) {
-        processedQuestions = processedQuestions.map(q => {
-          const optionsWithCorrectness = q.options.map((opt, idx) => ({
-            ...opt,
-            isOriginalCorrect: idx === q.correctIndex
-          }));
-          
-          optionsWithCorrectness.sort(() => Math.random() - 0.5);
-          
-          const newCorrectIndex = optionsWithCorrectness.findIndex(o => o.isOriginalCorrect);
-          
-          return {
-            ...q,
-            options: optionsWithCorrectness.map(({ isOriginalCorrect, ...rest }) => rest),
-            correctIndex: newCorrectIndex
-          };
-        });
-      }
-      
-      qData.questions = processedQuestions;
-
-      setQuest(qData);
-      setCurrentXp(qData.baseXp);
-      setGameState('intro');
-
-      // Fetch Powerups & Equipped Items
-      if (userData?.uid) {
-        const pQ = query(collection(db, 'user_items'), where('studentId', '==', userData.uid));
-        const pSnap = await getDocs(pQ);
-        const pLoaded: UserItem[] = [];
-        const eLoaded: EquippedItem[] = [];
+      try {
+        if (!questId || !userData) return;
         
-        pSnap.forEach(d => {
-          const item = d.data() as UserItem;
-          if (item.itemType === 'consumable' && item.usableInQuest) {
-            pLoaded.push({ ...item, id: d.id });
-          }
-          if (item.equipped) {
-            eLoaded.push(item as unknown as EquippedItem);
-          }
-        });
-
-        const groupedMap = new Map<string, UserItem>();
-        pLoaded.forEach(item => {
-          const key = `${item.itemId}`;
-          if (groupedMap.has(key)) {
-            const existing = groupedMap.get(key)!;
-            existing.count = (existing.count || 1) + 1;
-            existing.docIds = [...(existing.docIds || [existing.id]), item.id];
-          } else {
-            groupedMap.set(key, { ...item, count: 1, docIds: [item.id] });
-          }
-        });
+        const { data: snap } = await supabase.from('quests').select('*').eq('id', questId).single();
+        if (!snap) {
+          setErrorMessage('Missão não encontrada.');
+          setGameState('result');
+          return;
+        }
         
-        setPowerups(Array.from(groupedMap.values()));
-        setPlayerEquippedItems(eLoaded);
+        const qData = { id: snap.id, ...snap } as QuestDef;
+        
+        if (!qData.active && userData.role !== 'admin') {
+          setErrorMessage('Esta missão não está ativa no momento.');
+          setGameState('result');
+          return;
+        }
+
+        // Check if already completed
+        const { data: attemptSnap } = await supabase.from('quest_attempts').select('status').eq('quest_id', questId).eq('student_id', userData.uid);
+        
+        let alreadyCompleted = false;
+        let alreadyFailedHardcore = false;
+
+        if (attemptSnap) {
+          attemptSnap.forEach((doc: any) => {
+            if (doc.status === 'completed') alreadyCompleted = true;
+            if (doc.status === 'failed' && !qData.allowRetries) alreadyFailedHardcore = true;
+          });
+        }
+
+        if (alreadyCompleted && userData.role !== 'admin' && !isStudyMode) {
+          setErrorMessage('Você já completou esta missão com sucesso!');
+          setGameState('result');
+          return;
+        }
+
+        if (alreadyFailedHardcore && userData.role !== 'admin') {
+          setErrorMessage('Você falhou nesta missão e ela não permite novas tentativas (Hardcore).');
+          setGameState('result');
+          return;
+        }
+
+        // Economy Config
+        const { data: econSnap } = await supabase.from('system_collections').select('data').eq('type', 'economy').single();
+        if (econSnap && econSnap.data) {
+          setEconomySettings(econSnap.data);
+        }
+
+        // Apply shuffling if configured
+        let processedQuestions = [...(qData.questions || [])];
+        
+        if (qData.shuffleQuestions) {
+          processedQuestions.sort(() => Math.random() - 0.5);
+        }
+
+        if (qData.shuffleAnswers) {
+          processedQuestions = processedQuestions.map(q => {
+            const optionsWithCorrectness = (q.options || []).map((opt, idx) => ({
+              ...opt,
+              isOriginalCorrect: idx === q.correctIndex
+            }));
+            
+            optionsWithCorrectness.sort(() => Math.random() - 0.5);
+            
+            const newCorrectIndex = optionsWithCorrectness.findIndex(o => o.isOriginalCorrect);
+            
+            return {
+              ...q,
+              options: optionsWithCorrectness.map(({ isOriginalCorrect, ...rest }) => rest),
+              correctIndex: newCorrectIndex
+            };
+          });
+        }
+        
+        qData.questions = processedQuestions;
+
+        setQuest(qData);
+        setCurrentXp(qData.baseXp);
+        setGameState('intro');
+
+        // Fetch Powerups & Equipped Items
+        if (userData?.uid) {
+          const { data: pSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
+          const pLoaded: UserItem[] = [];
+          const eLoaded: EquippedItem[] = [];
+          
+          if (pSnap) {
+            pSnap.forEach((d: any) => {
+              const item = { ...d.data, id: d.id, equipped: d.equipped };
+              if (item.itemType === 'consumable' && item.usableInQuest) {
+                pLoaded.push(item);
+              }
+              if (item.equipped) {
+                eLoaded.push(item);
+              }
+            });
+          }
+
+          const groupedMap = new Map<string, UserItem>();
+          pLoaded.forEach(item => {
+            const key = `${item.itemId}`;
+            if (groupedMap.has(key)) {
+              const existing = groupedMap.get(key)!;
+              existing.count = (existing.count || 1) + 1;
+              existing.docIds = [...(existing.docIds || [existing.id]), item.id];
+            } else {
+              groupedMap.set(key, { ...item, count: 1, docIds: [item.id] });
+            }
+          });
+          
+          setPowerups(Array.from(groupedMap.values()));
+          setPlayerEquippedItems(eLoaded);
+        }
+      } catch (err: any) {
+        console.error("Error fetching quest:", err);
+        setErrorMessage("Erro ao carregar a missão: " + err.message);
+        setGameState('result');
       }
     };
 
@@ -278,18 +292,18 @@ export default function QuestGameplay() {
 
   const updateUserHearts = async (newHearts: number) => {
     if (!userData?.uid) return;
-    const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === userData.rank) || 0) / 2);
-    const updates: any = { hearts: newHearts };
-    const currentHp = userData.hearts !== undefined ? userData.hearts : maxHearts;
+    const maxHearts = calculatedMaxHearts;
+    const updates: any = { hp: newHearts };
+    const currentHp = userData.hp !== undefined ? userData.hp : maxHearts;
     if (currentHp >= maxHearts && newHearts < maxHearts) {
       updates.hpRecoveryStartTimestamp = Date.now();
     }
-    userData.hearts = newHearts;
-    await updateDoc(doc(db, 'users', userData.uid), updates);
+    userData.hp = newHearts;
+    await supabase.from('users').update(updates).eq('id', userData.uid);
   };
 
   const startGame = async () => {
-    const initialHearts = userData?.hearts ?? 3;
+    const initialHearts = Math.min(userData?.hp ?? calculatedMaxHearts, calculatedMaxHearts);
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
       await showAlert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
@@ -392,7 +406,7 @@ export default function QuestGameplay() {
     
     // Consume in DB only if not in study mode
     if (!isStudyMode) {
-      await deleteDoc(doc(db, 'user_items', item.id));
+      await supabase.from('user_items').delete().eq('id', item.id);
     }
   };
 */
@@ -563,22 +577,39 @@ export default function QuestGameplay() {
     const isCorrect = !isTimeout && optIndex === q.correctIndex;
     
     // Save answer
-    setStudentAnswers(prev => [...prev, {
+    studentAnswers.current.push({
       qIndex: currentQIndex,
       text: isTimeout ? '(Tempo Esgotado)' : q.options[optIndex].text,
       isCorrect
-    }]);
+    });
 
     if (isCorrect) {
       setFeedback('correct');
       
       const timeRatio = timeLeft / quest.questions[currentQIndex].timeLimit;
-      const critChance = timeRatio > 0.5 ? 0.02 : 0.0025;
+      // Se a vantagem de bônus crítico estiver ativa, dobramos a chance
+      const baseCritChance = timeRatio > 0.5 ? 0.02 : 0.0025;
+      const critChance = bonusCritActive ? baseCritChance * 2.5 : baseCritChance;
+      
       const isCritical = Math.random() < critChance;
       
       if (isCritical) {
-        setBattleMessage('DANO CRÍTICO! Você deu um golpe duplo super efetivo!');
         setCriticalHits(prev => prev + 1);
+        
+        // Sorteia a vantagem fracionada
+        const fractions = ['1/4', '1/3', '1/2'];
+        const fraction = fractions[Math.floor(Math.random() * fractions.length)];
+        
+        if (fraction === '1/4') {
+          setNextQAdvantage('eliminate-2');
+          setBattleMessage('DANO CRÍTICO (1/4)! 2 alternativas falsas cairão na próxima!');
+        } else if (fraction === '1/3') {
+          setNextQAdvantage('eliminate-1');
+          setBattleMessage('DANO CRÍTICO (1/3)! 1 alternativa falsa cairá na próxima!');
+        } else {
+          setNextQAdvantage('bonus-crit');
+          setBattleMessage('DANO CRÍTICO (1/2)! Mais chance de crítico na próxima!');
+        }
       }
 
       if (economySettings?.coinsDropInCombat && !isStudyMode) {
@@ -592,42 +623,21 @@ export default function QuestGameplay() {
 
       const playerHpPercentage = (currentHearts / maxHearts) * 100;
       const quote = getDynamicQuote(playerHpPercentage, 'player');
-      if (quote) setPlayerBubble(quote);
+      if (quote && !isCritical) setPlayerBubble(quote);
 
       const nextQExists = currentQIndex < quest.questions.length - 1;
 
-      if (isCritical) {
-         if (nextQExists) {
-            setEliminatedOptions([]);
-            const targetIndex = currentQIndex + 2;
-            if (targetIndex >= quest.questions.length) {
-              triggerFatality(true);
-            } else {
-              setPlayerAnim('attack');
-              setTimeout(() => setMonsterAnim('hurt'), 500);
-              setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
-              setTimeout(() => {
-                setFeedback(null);
-                setBattleMessage(getRoundMessage(targetIndex, currentHearts));
-                setCurrentQIndex(targetIndex);
-              }, 2000);
-            }
-         } else {
-            triggerFatality(true);
-         }
+      if (!nextQExists) {
+        triggerFatality(true);
       } else {
-         if (!nextQExists) {
-            triggerFatality(true);
-         } else {
-            setPlayerAnim('attack');
-            setTimeout(() => setMonsterAnim('hurt'), 500);
-            setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
-            setTimeout(() => {
-              setFeedback(null);
-              setBattleMessage(getRoundMessage(currentQIndex + 1, currentHearts));
-              nextQuestion();
-            }, 2000);
-         }
+        setPlayerAnim('attack');
+        setTimeout(() => setMonsterAnim('hurt'), 500);
+        setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
+        setTimeout(() => {
+          setFeedback(null);
+          if (!isCritical) setBattleMessage(getRoundMessage(currentQIndex + 1, currentHearts));
+          nextQuestion();
+        }, 2000);
       }
     } else {
       setFeedback('wrong');
@@ -652,7 +662,7 @@ export default function QuestGameplay() {
         if (userData?.uid) {
            const currentCoins = userData.coins || 0;
            const newCoins = Math.max(0, currentCoins - lost);
-           updateDoc(doc(db, 'users', userData.uid), { coins: newCoins }).catch(e => console.error(e));
+           supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
         }
       }
 
@@ -720,9 +730,44 @@ export default function QuestGameplay() {
 
   const nextQuestion = () => {
     if (!quest) return;
-    setEliminatedOptions([]);
+    
+    // Processa a Vantagem antes de avançar
+    const nextIndex = currentQIndex + 1;
+    let newEliminated: number[] = [];
+    let isBonusCrit = false;
+    
+    if (nextIndex < quest.questions.length) {
+      const nextQ = quest.questions[nextIndex];
+      const correctIdx = nextQ.correctIndex;
+      const wrongOptionsCount = nextQ.options.length - 1;
+      
+      // Limita eliminações para não resolver a questão automaticamente se houver poucas opções
+      let toEliminateCount = 0;
+      if (nextQAdvantage === 'eliminate-2') {
+        toEliminateCount = Math.min(2, wrongOptionsCount - 1);
+      } else if (nextQAdvantage === 'eliminate-1') {
+        toEliminateCount = Math.min(1, wrongOptionsCount - 1);
+      } else if (nextQAdvantage === 'bonus-crit') {
+        isBonusCrit = true;
+      }
+      
+      if (toEliminateCount > 0) {
+        const availableWrongIdxs = nextQ.options
+          .map((_, i) => (i !== correctIdx ? i : -1))
+          .filter(i => i !== -1);
+        
+        // Embaralha e pega a quantidade exata
+        const shuffled = availableWrongIdxs.sort(() => 0.5 - Math.random());
+        newEliminated = shuffled.slice(0, toEliminateCount);
+      }
+    }
+    
+    setNextQAdvantage(null);
+    setBonusCritActive(isBonusCrit);
+    setEliminatedOptions(newEliminated);
+
     if (currentQIndex < quest.questions.length - 1) {
-      setCurrentQIndex(currentQIndex + 1);
+      setCurrentQIndex(nextIndex);
     } else {
       finishGame(true, currentXp);
     }
@@ -732,6 +777,7 @@ export default function QuestGameplay() {
     setWon(isWin);
     setGameState('result');
     if (customMessage) setErrorMessage(customMessage);
+    const isAbandon = customMessage?.includes('abandonou');
 
     const isStudent = userData?.role === 'student' || !!userData?.studentViewActive;
     const isEligibleForXP = isStudent && !isStudyMode;
@@ -780,10 +826,9 @@ export default function QuestGameplay() {
             
             if (wonSlots.length > 0) {
               const wonItemIds = wonSlots.map(s => s.id);
-              const q = query(collection(db, 'store_items'), where('__name__', 'in', wonItemIds));
-              const snap = await getDocs(q);
+              const { data: snap } = await supabase.from('store_items').select('*').in('id', wonItemIds);
               const storeItemsMap = new Map();
-              snap.docs.forEach(doc => storeItemsMap.set(doc.id, { id: doc.id, ...doc.data() }));
+              if (snap) snap.forEach(d => storeItemsMap.set(d.id, { id: d.id, ...d.data }));
               
               for (const slot of wonSlots) {
                 const item = storeItemsMap.get(slot.id);
@@ -802,7 +847,7 @@ export default function QuestGameplay() {
                   minecraftHeadValue: item.minecraftHeadValue || '',
                   quantity: slot.quantity,
                   equipped: false,
-                  purchasedAt: serverTimestamp(),
+                  purchasedAt: Date.now(),
                   giftedBy: 'Baú do Desafio',
                   avatarPart: item.avatarPart || null,
                   itemCategory: item.itemCategory || 'none',
@@ -810,9 +855,14 @@ export default function QuestGameplay() {
                   baseAttributeValue: item.baseAttributeValue || 0,
                   modelTransforms: item.modelTransforms || null,
                   adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : [],
-                  minSalePrice: item.minSalePrice || 0  // Propaga o preço mínimo de revenda
+                  minSalePrice: item.minSalePrice || 0
                 };
-                await addDoc(collection(db, 'user_items'), itemData);
+                await supabase.from('user_items').insert({
+                  student_id: userData!.uid,
+                  item_id: item.id,
+                  equipped: false,
+                  data: itemData
+                });
                 finalRewards.items.push({ ...item, quantity: slot.quantity });
               }
             }
@@ -824,10 +874,9 @@ export default function QuestGameplay() {
     if (isWin && quest?.monsterDrops && quest.monsterDrops.length > 0) {
       const dropItemIds = quest.monsterDrops.map(d => d.itemId);
       if (dropItemIds.length > 0) {
-        const q = query(collection(db, 'store_items'), where('__name__', 'in', dropItemIds));
-        const snap = await getDocs(q);
+        const { data: snap } = await supabase.from('store_items').select('*').in('id', dropItemIds);
         const storeItemsMap = new Map();
-        snap.docs.forEach(doc => storeItemsMap.set(doc.id, { id: doc.id, ...doc.data() }));
+        if (snap) snap.forEach(d => storeItemsMap.set(d.id, { id: d.id, ...d.data }));
 
         for (const drop of quest.monsterDrops) {
           if (Math.random() * 100 <= drop.dropChance) {
@@ -847,7 +896,7 @@ export default function QuestGameplay() {
               minecraftHeadValue: item.minecraftHeadValue || '',
               quantity: 1,
               equipped: false,
-              purchasedAt: serverTimestamp(),
+              purchasedAt: Date.now(),
               giftedBy: `Drop de Monstro (${quest.monsterName || 'Desconhecido'})`,
               avatarPart: item.avatarPart || null,
               itemCategory: item.itemCategory || 'none',
@@ -856,7 +905,12 @@ export default function QuestGameplay() {
               modelTransforms: item.modelTransforms || null,
               adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : []
             };
-            await addDoc(collection(db, 'user_items'), itemData);
+            await supabase.from('user_items').insert({
+              student_id: userData!.uid,
+              item_id: item.id,
+              equipped: false,
+              data: itemData
+            });
             finalRewards.items.push({ ...item, quantity: 1, isMonsterDrop: true });
           }
         }
@@ -868,19 +922,20 @@ export default function QuestGameplay() {
       setShowChest(true);
     }
       
-      // Log XP and Coins if won
-      if (isWin && (actualXpGained > 0 || earnedCoins > 0)) {
-        const userRef = doc(db, 'users', userData!.uid);
+      // Log XP and Coins if won or abandoned
+      if ((isWin || isAbandon) && (actualXpGained > 0 || earnedCoins > 0)) {
         const updates: any = {};
         
         if (actualXpGained > 0) {
           updates.xp = (userData?.xp || 0) + actualXpGained;
-          await addDoc(collection(db, 'xp_logs'), {
-            studentId: userData!.uid,
-            evalName: `Missão: ${quest?.title}`,
-            xpGained: actualXpGained,
-            timestamp: serverTimestamp()
+          const { error: xpErr } = await supabase.from('xp_logs').insert({
+            student_id: userData!.uid,
+            reason: `Missão: ${quest?.title}`,
+            amount: actualXpGained,
+            type: 'quest'
           });
+          if (xpErr) console.error("Falha ao registrar xp_logs (possível bloqueio de RLS):", xpErr);
+          
           // Invalida o cache de histórico para que o Dashboard mostre a nova entrada
           sessionCache.invalidate(CACHE_KEYS.xpHistory(userData!.uid));
         }
@@ -889,56 +944,60 @@ export default function QuestGameplay() {
           updates.coins = (userData?.coins || 0) + earnedCoins;
         }
 
-        await updateDoc(userRef, updates);
+        const { error: userErr } = await supabase.from('users').update(updates).eq('id', userData!.uid);
+        if (userErr) console.error("Falha ao atualizar users (possível bloqueio de RLS):", userErr);
       }
 
       // Buffs and Debuffs only applied if eligible for XP
       if (isEligibleForXP) {
-        const userRef = doc(db, 'users', userData.uid);
         const updates: any = {};
         const now = Date.now();
         
         const rankIdx = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
         const baseHearts = Math.max(3, 3 + Math.floor(rankIdx / 2));
-        const bonusHearts = Math.floor(stats.vitality / 30);
+        const bonusHearts = Math.floor(totalEquippedStats.vitality / 30);
         const mHearts = baseHearts + bonusHearts;
         const hpPerc = (currentHearts / mHearts) * 100;
         
         if (!isWin || currentHearts === 0) {
-          updates.stunnedUntil = now + 10 * 60 * 1000;
-          updates.happyBuffUntil = null;
-          updates.happyBuffDuration = null;
+          updates.stunned_until = now + 10 * 60 * 1000;
+          updates.happy_buff_until = null;
+          updates.happy_buff_duration = null;
         } else if (hpPerc === 100) {
           let newDuration = 5;
           if (userData.happyBuffUntil && userData.happyBuffUntil > now) {
             newDuration = (userData.happyBuffDuration || 5) * 2;
           }
-          updates.happyBuffUntil = now + newDuration * 60 * 1000;
-          updates.happyBuffDuration = newDuration;
-          updates.stunnedUntil = null;
+          updates.happy_buff_until = now + newDuration * 60 * 1000;
+          updates.happy_buff_duration = newDuration;
+          updates.stunned_until = null;
         } else {
-          updates.happyBuffUntil = null;
-          updates.happyBuffDuration = null;
-          updates.stunnedUntil = null;
+          updates.happy_buff_until = null;
+          updates.happy_buff_duration = null;
+          updates.stunned_until = null;
         }
         
-        await updateDoc(userRef, updates);
+        await supabase.from('users').update(updates).eq('id', userData.uid);
       }
     }
 
     // Save Attempt only for students (admins shouldn't pollute the logs)
     if (userData?.role === 'student' || !!userData?.studentViewActive) {
-      await addDoc(collection(db, 'quest_attempts'), {
-        questId: quest?.id,
-        studentId: userData.uid,
+      const { error: attemptErr } = await supabase.from('quest_attempts').insert({
+        quest_id: quest?.id,
+        student_id: userData.uid,
         status: isWin ? 'completed' : 'failed',
-        earnedXp: (isWin && isEligibleForXP) ? finalXp : 0,
-        answers: studentAnswers,
-        timestamp: serverTimestamp(),
-        isStudyMode: isStudyMode // Marking it so we know it was a review attempt
+        data: {
+          answers: studentAnswers.current,
+          isStudyMode: isStudyMode,
+          earned_xp: ((isWin || isAbandon) && isEligibleForXP) ? finalXp : 0
+        }
       });
+      
+      if (attemptErr) console.error("Falha ao registrar quest_attempts:", attemptErr);
+      
       // Invalida o cache de tentativas para que o Dashboard atualize os botões de missão
-      if (isWin) sessionCache.invalidate(CACHE_KEYS.questAttempts(userData.uid));
+      if (isWin || isAbandon) sessionCache.invalidate(CACHE_KEYS.questAttempts(userData.uid));
     }
 
     setSaving(false);
@@ -951,7 +1010,7 @@ export default function QuestGameplay() {
         return;
       }
       
-      let newHearts = userData.hearts || 0;
+      let newHearts = currentHearts;
       if (newHearts > 0) {
         newHearts -= 1;
         await updateUserHearts(newHearts);
@@ -962,7 +1021,7 @@ export default function QuestGameplay() {
       const actualPenalty = calculatePenalty(basePenalty);
       const finalXp = Math.max(0, currentXp - actualPenalty);
       
-      finishGame(true, finalXp, `Você abandonou a missão. Recebeu apenas ${finalXp} XP (penalidade aplicada).`);
+      finishGame(false, finalXp, `Você abandonou a missão. Recebeu apenas ${finalXp} XP (penalidade aplicada).`);
     } else {
       navigate('/dashboard');
     }
@@ -995,9 +1054,7 @@ export default function QuestGameplay() {
       setHasShield(true);
       
     } else if (item.gameEffect === 'restore_hp') {
-      const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
-      const stats = calculateTotalStats(playerEquippedItems, userData?.distributedStats);
-      const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
+      const maxHearts = calculatedMaxHearts;
       
       if (currentHearts >= maxHearts) {
          await showAlert("Sua vida já está cheia!");
@@ -1010,9 +1067,7 @@ export default function QuestGameplay() {
         updateUserHearts(maxHearts);
       }
     } else if (item.gameEffect === 'heal_1_hp') {
-      const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
-      const stats = calculateTotalStats(playerEquippedItems, userData?.distributedStats);
-      const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
+      const maxHearts = calculatedMaxHearts;
       
       if (currentHearts >= maxHearts) {
          await showAlert("Sua vida já está cheia!");
@@ -1027,7 +1082,7 @@ export default function QuestGameplay() {
       }
     }
     
-    await deleteDoc(doc(db, 'user_items', item.id));
+    await supabase.from('user_items').delete().eq('id', item.id);
     setPowerups(powerups.filter(p => p.id !== item.id));
   };
 
@@ -1036,9 +1091,7 @@ export default function QuestGameplay() {
     return <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><h2>Carregando Campo de Batalha...</h2></div>;
   }
 
-  const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
-  const stats = calculateTotalStats(playerEquippedItems, userData?.distributedStats);
-  const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(stats.vitality / 30);
+  const maxHearts = calculatedMaxHearts;
   const hpPercentage = (currentHearts / maxHearts) * 100;
 
   let baseAnim: 'idle' | 'exhausted' = 'idle';
@@ -1073,7 +1126,7 @@ export default function QuestGameplay() {
       <div style={{ position: 'relative', zIndex: 10, width: '100%', maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
         
         {/* Header */}
-        <div style={{ padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
+        <div style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
             <button onClick={handleAbandon} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <ArrowLeft /> Abandonar
@@ -1085,7 +1138,7 @@ export default function QuestGameplay() {
             )}
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
             {gameState === 'playing' && powerups.length > 0 && (
               <div style={{ display: 'flex', gap: '0.5rem', marginRight: '1rem', overflowX: 'auto', maxWidth: '300px', paddingBottom: '0.2rem', scrollbarWidth: 'thin' }}>
                 {powerups.map(p => (
@@ -1154,9 +1207,11 @@ export default function QuestGameplay() {
                 </div>
               )}
               <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                <div style={{ marginBottom: '-60px' }}><AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} /></div>
-                {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
-                <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px' }}>
+                  <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} />
+                  {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
+                  <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                </div>
               </div>
               <div style={{ height: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '4px' }}>
                 <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
@@ -1200,6 +1255,7 @@ export default function QuestGameplay() {
                   }`}
                   style={{ position: 'relative', width: '120px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
                 >
+                <div style={{ position: 'relative', display: 'inline-block' }}>
                   {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? (
                     <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={monsterAnim} role="monster" />
                   ) : quest?.monsterAvatarConfig ? (
@@ -1209,6 +1265,7 @@ export default function QuestGameplay() {
                   )}
                   {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, currentQIndex / Math.max(1, quest?.questions.length || 1))) } as any} />
+                </div>
                 </div>
               )}
               
@@ -1234,11 +1291,11 @@ export default function QuestGameplay() {
               <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem' }}>{quest.title}</h1>
               <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '3rem', lineHeight: 1.6 }}>{quest.description}</p>
               
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '4rem' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '2rem', marginBottom: '4rem' }}>
                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem 2rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
                   <h4 style={{ color: 'var(--text-secondary)', margin: '0 0 0.5rem 0' }}>Recompensa</h4>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gold-primary)', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                    <Star size={24} /> {isStudyMode ? '0 XP (Estudo)' : `${Math.floor(quest.baseXp * (1 + (stats.xp / 100)))} XP`}
+                    <Star size={24} /> {isStudyMode ? '0 XP (Estudo)' : `${Math.floor(quest.baseXp * (1 + (totalEquippedStats.xp / 100)))} XP`}
                   </div>
                 </div>
                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem 2rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
@@ -1321,30 +1378,32 @@ export default function QuestGameplay() {
               ) : won ? (
                 <>
                   <div className="quest-victory-avatar">
-                    <AvatarCharacter 
-                      config={userData?.avatarConfig || null} 
-                      equippedItems={playerEquippedItems} 
-                      size={100} 
-                      animation={hpPercentage === 100 ? 'cheer' : baseAnim} 
-                      expression={hpPercentage === 100 ? 'normal' : baseExp}
-                      interactive={false} 
-                    />
-                    <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                      <AvatarCharacter 
+                        config={userData?.avatarConfig || null} 
+                        equippedItems={playerEquippedItems} 
+                        size={120} 
+                        animation={hpPercentage === 100 ? 'cheer' : baseAnim} 
+                        expression={hpPercentage === 100 ? 'normal' : baseExp}
+                        interactive={false} 
+                      />
+                      <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                    </div>
                   </div>
-                  <h1 className="title-glow quest-victory-title" style={{ marginBottom: '1rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
-                  <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem' }}>O monstro foi derrotado e o desafio foi superado.</p>
-                  <div style={{ background: 'rgba(251, 191, 36, 0.1)', padding: '2rem', borderRadius: '12px', display: 'inline-block', marginBottom: '3rem' }}>
-                    <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center' }}>
-                      <div className="quest-victory-xp" style={{ fontWeight: 'bold', color: 'var(--gold-primary)' }}>+{isStudyMode ? 0 : Math.floor(currentXp * xpMultiplier)} XP</div>
-                      <div className="quest-victory-xp" style={{ fontWeight: 'bold', color: 'var(--gold-secondary)' }}>+{isStudyMode ? 0 : Math.floor(currentXp * coinsMultiplier)} <Coins size={32} style={{ display: 'inline' }}/></div>
+                  <h1 className="title-glow quest-victory-title" style={{ marginBottom: '0.5rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
+                  <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>O monstro foi derrotado e o desafio foi superado.</p>
+                  <div style={{ background: 'rgba(251, 191, 36, 0.1)', padding: '1rem', borderRadius: '12px', display: 'inline-block', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center', alignItems: 'center' }}>
+                      <div className="quest-victory-xp" style={{ fontWeight: 'bold', color: 'var(--gold-primary)', fontSize: '1.5rem' }}>+{isStudyMode ? 0 : Math.floor(currentXp * xpMultiplier)} XP</div>
+                      <div className="quest-victory-xp" style={{ fontWeight: 'bold', color: 'var(--gold-secondary)', fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>+{isStudyMode ? 0 : Math.floor(currentXp * coinsMultiplier)} <Coins size={24}/></div>
                     </div>
                   </div>
                 </>
               ) : (
                 <>
-                  <XCircle size={80} color="var(--accent-red)" style={{ margin: '0 auto 2rem auto' }} />
-                  <h1 className="title-glow quest-victory-title" style={{ marginBottom: '1rem', color: 'var(--accent-red)' }}>FALHA</h1>
-                  <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '3rem' }}>Você foi derrotado. O tempo acabou ou você errou o ataque fatal.</p>
+                  <XCircle size={64} color="var(--accent-red)" style={{ margin: '0 auto 1rem auto' }} />
+                  <h1 className="title-glow quest-victory-title" style={{ marginBottom: '0.5rem', color: 'var(--accent-red)' }}>FALHA</h1>
+                  <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', marginBottom: '2rem' }}>Você foi derrotado. O tempo acabou ou você errou o ataque fatal.</p>
                 </>
               )}
 

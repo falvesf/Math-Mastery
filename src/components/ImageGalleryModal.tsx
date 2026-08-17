@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Search, UploadCloud, Settings, Save, Archive, Trash2, Loader2, Grid } from 'lucide-react';
-import { ref, uploadBytesResumable, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
-import { storage, db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useDialog } from '../contexts/DialogContext';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
 import TilesetPicker from './TilesetPicker';
 
 interface ImageGalleryModalProps {
@@ -39,8 +37,8 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
   useEffect(() => {
     if (!apiKey) {
       const fetchKey = async () => {
-        const snap = await getDoc(doc(db, 'settings', 'api'));
-        if (snap.exists()) setLocalApiKey(snap.data().pixabayKey || '');
+        const { data: snap } = await supabase.from('system_collections').select('data').eq('collection_name', 'settings').eq('doc_id', 'api').single();
+        if (snap && snap.data) setLocalApiKey((snap.data as any).pixabayKey || '');
       };
       fetchKey();
     }
@@ -49,7 +47,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
   const activeApiKey = apiKey || localApiKey;
 
   const handleSavePixabayKey = async () => {
-    await setDoc(doc(db, 'settings', 'api'), { pixabayKey: localApiKey }, { merge: true });
+    await supabase.from('system_collections').update({ data: { pixabayKey: localApiKey } }).eq('collection_name', 'settings').eq('doc_id', 'api');
     setShowApiSettings(false);
   };
 
@@ -60,19 +58,21 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
   const fetchSavedImages = async () => {
     setLoadingSaved(true);
     try {
-      const folderRef = ref(storage, 'quests/');
-      const result = await listAll(folderRef);
-      const images = (await Promise.all(
-        result.items
-          .filter(itemRef => !itemRef.name.startsWith('tileset_'))
-          .map(async (itemRef) => {
-            const url = await getDownloadURL(itemRef);
-            return { url, refPath: itemRef.fullPath, name: itemRef.name };
-          })
-      ));
-      // Sort by newest first (assuming names have timestamps)
-      images.sort((a, b) => b.name.localeCompare(a.name));
-      setSavedImages(images);
+      const { data, error } = await supabase.storage.from('uploads').list('quests/', {
+        limit: 100,
+        offset: 0,
+        sortBy: { column: 'name', order: 'desc' },
+      });
+      if (error) throw error;
+      if (data) {
+        const images = data
+          .filter(item => !item.name.startsWith('tileset_'))
+          .map(item => {
+            const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(`quests/${item.name}`);
+            return { url: urlData.publicUrl, refPath: `quests/${item.name}`, name: item.name };
+          });
+        setSavedImages(images);
+      }
     } catch (err) {
       console.error("Erro ao carregar imagens salvas:", err);
       showAlert("Não foi possível carregar as imagens salvas.");
@@ -84,18 +84,21 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
   const fetchSavedTilesets = async () => {
     setLoadingTilesets(true);
     try {
-      const folderRef = ref(storage, 'quests/');
-      const result = await listAll(folderRef);
-      const images = (await Promise.all(
-        result.items
-          .filter(itemRef => itemRef.name.startsWith('tileset_'))
-          .map(async (itemRef) => {
-            const url = await getDownloadURL(itemRef);
-            return { url, refPath: itemRef.fullPath, name: itemRef.name.replace('tileset_', '') };
-          })
-      ));
-      images.sort((a, b) => b.name.localeCompare(a.name));
-      setSavedTilesets(images);
+      const { data, error } = await supabase.storage.from('uploads').list('quests/', {
+        limit: 100,
+        offset: 0,
+        sortBy: { column: 'name', order: 'desc' },
+      });
+      if (error) throw error;
+      if (data) {
+        const images = data
+          .filter(item => item.name.startsWith('tileset_'))
+          .map(item => {
+            const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(`quests/${item.name}`);
+            return { url: urlData.publicUrl, refPath: `quests/${item.name}`, name: item.name.replace('tileset_', '') };
+          });
+        setSavedTilesets(images);
+      }
     } catch (err) {
       console.error("Erro ao carregar tilesets:", err);
     } finally {
@@ -117,20 +120,13 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
     if (!confirm) return;
 
     try {
-      const imageRef = ref(storage, refPath);
-      await deleteObject(imageRef);
+      const { error } = await supabase.storage.from('uploads').remove([refPath]);
+      if (error) throw error;
       setSavedImages(prev => prev.filter(img => img.refPath !== refPath));
       setSavedTilesets(prev => prev.filter(img => img.refPath !== refPath));
     } catch (err: any) {
       console.error("Erro ao apagar imagem:", err);
-      // Se a imagem já não existir (por causa de cache fantasma do listAll),
-      // apenas remova da tela como se tivesse dado certo.
-      if (err.code === 'storage/object-not-found') {
-        setSavedImages(prev => prev.filter(img => img.refPath !== refPath));
-        setSavedTilesets(prev => prev.filter(img => img.refPath !== refPath));
-      } else {
-        showAlert("Não foi possível apagar a imagem.");
-      }
+      showAlert("Não foi possível apagar a imagem.");
     }
   };
 
@@ -141,7 +137,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -152,37 +148,36 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
     }
 
     setUploading(true);
-    setProgress(0);
+    setProgress(50); // Supabase-js doesn't have progress events easily without XMLHttpRequest, so we fake it
 
-    const prefix = activeTab === 'tilesets' ? 'tileset_' : '';
-    const fileRef = ref(storage, `quests/${prefix}${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(fileRef, file, { contentType: file.type });
+    try {
+      const prefix = activeTab === 'tilesets' ? 'tileset_' : '';
+      const fileName = `${prefix}${Date.now()}_${file.name}`;
+      const filePath = `quests/${fileName}`;
+      
+      const { error } = await supabase.storage.from('uploads').upload(filePath, file, { contentType: file.type });
+      
+      if (error) throw error;
+      setProgress(100);
 
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const p = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setProgress(p);
-      },
-      (err) => {
-        console.error(err);
-        showAlert('Erro ao fazer upload da imagem.');
-        setUploading(false);
-      },
-      async () => {
-        const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-        if (activeTab === 'tilesets') {
-          // Adiciona o tileset diretamente no estado para driblar o cache do listAll do Firebase
-          setSavedTilesets(prev => [
-            { url: downloadUrl, refPath: uploadTask.snapshot.ref.fullPath, name: uploadTask.snapshot.ref.name },
-            ...prev
-          ]);
-        } else {
-          onSelectImage(downloadUrl);
-          onClose();
-        }
-        setUploading(false);
+      const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(filePath);
+      const downloadUrl = urlData.publicUrl;
+
+      if (activeTab === 'tilesets') {
+        setSavedTilesets(prev => [
+          { url: downloadUrl, refPath: filePath, name: fileName },
+          ...prev
+        ]);
+      } else {
+        onSelectImage(downloadUrl);
+        onClose();
       }
-    );
+    } catch (err) {
+      console.error(err);
+      showAlert('Erro ao fazer upload da imagem.');
+    } finally {
+      setUploading(false);
+    }
   };
 
 
@@ -199,43 +194,33 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
       
       const blob = await response.blob();
       
-      // Upload para o Firebase Storage
-      const fileRef = ref(storage, `quests/pixabay_${Date.now()}.jpg`);
-      
-      // Usando uploadBytesResumable para manter a coerência de progresso
-      const uploadTask = uploadBytesResumable(fileRef, blob, { contentType: 'image/jpeg' });
+      // Upload para o Supabase Storage
+      const filePath = `quests/pixabay_${Date.now()}.jpg`;
+      const progressInterval = setInterval(() => setProgress(p => Math.min(p + 10, 90)), 200);
 
-      // Trava de segurança: Timeout de 10 segundos para não congelar a tela
-      const timeoutId = setTimeout(() => {
-        uploadTask.cancel();
-        console.error('Upload expirou por tempo (Timeout).');
-        showAlert('O Firebase não respondeu a tempo (possível bloqueio CORS ou Storage desativado). Usando o link original.');
-        onSelectImage(url);
-        setUploading(false);
-        onClose();
-      }, 10000);
-
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const p = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setProgress(p);
-        },
-        (err) => {
-          clearTimeout(timeoutId);
-          console.error('Upload falhou:', err);
-          showAlert('Erro no Firebase (Bloqueio). Usando link original.');
+      supabase.storage.from('uploads').upload(filePath, blob, { contentType: 'image/jpeg', cacheControl: '3600', upsert: false })
+        .then(({ data, error }) => {
+          clearInterval(progressInterval);
+          setProgress(100);
+          if (error) {
+            console.error('Upload falhou:', error);
+            showAlert('Erro no Storage. Usando link original.');
+            onSelectImage(url);
+          } else if (data) {
+            const { data: publicData } = supabase.storage.from('uploads').getPublicUrl(filePath);
+            onSelectImage(publicData.publicUrl);
+          }
+        })
+        .catch(err => {
+          clearInterval(progressInterval);
+          console.error('Download falhou:', err);
+          showAlert('Erro ao processar imagem. Usando link temporário.');
           onSelectImage(url);
+        })
+        .finally(() => {
           setUploading(false);
           onClose();
-        },
-        async () => {
-          clearTimeout(timeoutId);
-          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-          onSelectImage(downloadUrl);
-          setUploading(false);
-          onClose();
-        }
-      );
+        });
     } catch (err) {
       console.error('Download falhou:', err);
       showAlert('Erro ao processar imagem. Usando link temporário.');

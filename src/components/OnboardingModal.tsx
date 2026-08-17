@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Loader2, GraduationCap, CheckCircle, UserCheck } from 'lucide-react';
 
 interface ClassDef {
@@ -24,9 +23,9 @@ export default function OnboardingModal({ userName, onSelectClass, onSelectTeach
   useEffect(() => {
     const fetchClasses = async () => {
       try {
-        const snap = await getDocs(collection(db, 'classes'));
-        const loaded: ClassDef[] = [];
-        snap.forEach(d => loaded.push({ id: d.id, ...d.data() } as ClassDef));
+        const { data: snap, error } = await supabase.from('classes').select('*');
+        if (error) throw error;
+        const loaded: ClassDef[] = snap || [];
         loaded.sort((a, b) => a.name.localeCompare(b.name));
         setClasses(loaded);
       } catch (err) {

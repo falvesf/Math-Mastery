@@ -124,10 +124,10 @@ const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boole
       // Necklace (Gem)
       return <svg {...props}><path d="M6 3h12l4 6-10 13L2 9Z"></path><path d="M11 3 8 9l4 13 4-13-3-6"></path></svg>;
     case 'hand1':
-      // hand1 is Right side of screen = Character's Left Hand
+      // hand1 is Right side of screen
       return isLeftHanded ? getSwordSvg() : getShieldSvg();
     case 'hand2':
-      // hand2 is Left side of screen = Character's Right Hand
+      // hand2 is Left side of screen
       return isLeftHanded ? getShieldSvg() : getSwordSvg();
     case 'body':
       // Armor / Shirt
@@ -1675,13 +1675,13 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               width: slotSize,
               height: slotSize,
               borderRadius: '50%',
-              background: 'rgba(0, 0, 0, 0.25)', // Universal dark recess for any theme
+              background: 'var(--bg-panel)',
               border: item ? getRarityStyle(item.rarity).border : '2px solid var(--border-glass)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: hoveredSlot === slot.id ? 100 : 10,
-              boxShadow: item ? getRarityStyle(item.rarity).boxShadow : 'inset 4px 4px 8px rgba(0,0,0,0.5), inset -2px -2px 4px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.1)',
+              boxShadow: item ? getRarityStyle(item.rarity).boxShadow : '0 2px 8px rgba(0,0,0,0.1)',
               overflow: 'visible',
               cursor: item && onSlotClick ? 'pointer' : 'default',
               backdropFilter: 'blur(6px)'
@@ -1751,7 +1751,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                  position: 'absolute',
                  top: '110%',
                  left: '50%',
-                 transform: 'translateX(-50%)',
+                 transform: 'translateX(-50%) translateZ(30px)',
                  background: 'var(--bg-card)',
                  border: '1px solid var(--border-glass)',
                  borderRadius: '8px',
@@ -1759,8 +1759,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                  width: 'max-content',
                  minWidth: '200px',
                  zIndex: 50,
-                 boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-                 backdropFilter: 'blur(10px)',
+                 boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
+                 WebkitFontSmoothing: 'antialiased',
                  pointerEvents: 'none',
                  color: 'var(--text-primary)',
                  textAlign: 'left'

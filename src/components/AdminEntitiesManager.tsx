@@ -89,13 +89,13 @@ export default function AdminEntitiesManager() {
       </div>
 
       {/* Content */}
-      <div className="glass-panel" style={{ padding: '2rem' }}>
+      <div className="glass-panel" style={{ padding: '1rem' }}>
         {activeTab === 'players' && (
-          <div>
-            <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Configuração de Perfil do Jogador</h3>
-            <p style={{ marginBottom: '2rem', color: 'var(--text-secondary)' }}>
-              Configure a aparência do seu avatar. As opções avançadas (Skins, Moldes 3D) estão disponíveis abaixo.
-            </p>
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem' }}>Configuração de Jogadores</h3>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Configure a aparência base do avatar.</span>
+            </div>
             <AvatarCustomizationModal 
               key="player-modal"
               isOpen={true} 
@@ -108,11 +108,11 @@ export default function AdminEntitiesManager() {
         )}
 
         {activeTab === 'monsters' && (
-          <div>
-            <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Criação de Monstros</h3>
-            <p style={{ marginBottom: '2rem', color: 'var(--text-secondary)' }}>
-              Crie um novo monstro com peças customizadas ou importe um Molde 3D. Salve com um nome para utilizá-lo nas missões.
-            </p>
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem' }}>Criação de Monstros</h3>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Crie novos monstros com peças customizadas.</span>
+            </div>
             <AvatarCustomizationModal 
               key="monster-modal"
               isOpen={true} 

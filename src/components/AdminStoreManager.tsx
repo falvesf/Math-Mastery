@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { db } from '../lib/firebase';
-import { collection, query, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
@@ -95,35 +94,33 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     fetchData();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     // Fetch Economy Settings
-    const econRef = doc(db, 'settings', 'economy');
-    const econSnap = await getDoc(econRef);
-    if (econSnap.exists()) {
-      setEconomyType(econSnap.data().currencyType || 'coins');
+    const { data: econSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'economy').single();
+    if (econSnap) {
+      setEconomyType((econSnap.data as any).currencyType || 'coins');
     } else {
-      await setDoc(econRef, { currencyType: 'coins' });
+      await supabase.from('system_collections').insert({ collection_name: 'settings', doc_id: 'economy', data: { currencyType: 'coins' } });
     }
 
     // Fetch Items
-    const q = query(collection(db, 'store_items'));
-    const snap = await getDocs(q);
+    const { data: snap } = await supabase.from('store_items').select('*');
     const loaded: StoreItem[] = [];
-    snap.forEach(d => loaded.push({ id: d.id, ...d.data() } as StoreItem));
+    (snap || []).forEach(row => loaded.push({ id: row.id, ...row.data } as StoreItem));
     setItems(loaded);
     
     try {
-      const gachaSnap = await getDoc(doc(db, 'settings', 'gacha'));
-      if (gachaSnap.exists()) {
-        setGlobalGachaConfig(gachaSnap.data() as GachaConfig);
+      const { data: gachaSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'gacha').single();
+      if (gachaSnap) {
+        setGlobalGachaConfig(gachaSnap.data as GachaConfig);
       }
     } catch (e) { console.error(e); }
     
     try {
-      const skinsSnap = await getDocs(collection(db, 'preset_skins'));
+      const { data: skinsSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'preset_skins');
       const loadedSkins: {id: string, name: string, url: string, type?: string}[] = [];
-      skinsSnap.forEach(d => loadedSkins.push({ id: d.id, ...d.data() } as any));
+      (skinsSnap || []).forEach(row => loadedSkins.push({ id: row.id, ...row.data } as any));
       setPresetSkins(loadedSkins);
     } catch (e) { console.error(e); }
     
@@ -132,7 +129,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   const handleSaveEconomy = async (type: 'xp' | 'coins') => {
     setEconomyType(type);
-    await setDoc(doc(db, 'settings', 'economy'), { currencyType: type }, { merge: true });
+    await supabase.from('system_collections').update({ data: { currencyType: type } }).eq('collection_name', 'settings').eq('doc_id', 'economy');
     await showAlert('Configuração de economia salva com sucesso!');
   };
 
@@ -147,14 +144,18 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     };
 
     if (editingId) {
-      await updateDoc(doc(db, 'store_items', editingId), itemData);
+      await supabase.from('store_items').update({
+        name: itemData.title, description: itemData.description, type: itemData.type,
+        price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
+        rarity: itemData.rarity, avatar_part: itemData.avatarPart, data: itemData
+      }).eq('id', editingId);
       
       // Cascade update retroativo para itens já no inventário dos alunos
-      const qUserItems = query(collection(db, 'user_items'), where('itemId', '==', editingId));
-      const snapUserItems = await getDocs(qUserItems);
-      const updatePromises: Promise<void>[] = [];
-      snapUserItems.forEach(d => {
-        updatePromises.push(updateDoc(doc(db, 'user_items', d.id), {
+      const { data: snapUserItems } = await supabase.from('user_items').select('*').eq('item_id', editingId);
+      const updatePromises: Promise<any>[] = [];
+      (snapUserItems || []).forEach(row => {
+        const currentData = row.data as any;
+        const newData = { ...currentData,
           itemCategory: itemData.itemCategory || 'none',
           baseAttributeType: itemData.baseAttributeType || 'none',
           baseAttributeValue: itemData.baseAttributeValue || 0,
@@ -174,25 +175,30 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           unlockedSkinId: itemData.unlockedSkinId || '',
           buffDurationDays: itemData.buffDurationDays || 7,
           backColor: itemData.backColor || ''
-        }));
+        };
+        updatePromises.push(supabase.from('user_items').update({ data: newData }).eq('id', row.id) as any);
       });
       await Promise.all(updatePromises);
       
     } else {
-      await addDoc(collection(db, 'store_items'), itemData);
+      await supabase.from('store_items').insert({
+        name: itemData.title, description: itemData.description, type: itemData.type,
+        price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
+        rarity: itemData.rarity, avatar_part: itemData.avatarPart, data: itemData
+      });
     }
 
     setIsEditing(false);
     setEditingId(null);
     setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', minRankRequired: 0, active: true, imageUrl: '' });
-    fetchData();
+    fetchData(false);
   };
 
   const handleDeleteItem = async (id: string) => {
     const confirmed = await showConfirm('Tem certeza que deseja apagar este item?');
     if (confirmed) {
-      await deleteDoc(doc(db, 'store_items', id));
-      fetchData();
+      await supabase.from('store_items').delete().eq('id', id);
+      fetchData(false);
     }
   };
 
@@ -370,12 +376,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
       {/* Modal Novo/Editar Item */}
       {isEditing && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="glass-panel" style={{ width: '750px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+        <div className="modal-overlay">
+          <div className="glass-panel modal-content">
             <h3 style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingId ? 'Editar Item' : 'Criar Novo Item'}</h3>
             
             {/* Linha 1: Nome e Tipo */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+            <div className="responsive-grid" style={{ marginBottom: '1.5rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome do Item</label>
                 <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Ex: Voucher +1 Ponto" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
@@ -391,7 +397,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             </div>
 
             {/* Linha 2: Valores e Raridade */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+            <div className="responsive-grid" style={{ marginBottom: '1.5rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Custo ({economyType === 'coins' ? 'Moedas' : 'XP'})</label>
                 <input type="number" value={formData.cost} onChange={e => setFormData({...formData, cost: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
@@ -425,7 +431,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             </div>
 
             {/* Linha 3: Requisitos e Efeitos */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem', alignItems: 'flex-start' }}>
+            <div className="responsive-grid" style={{ marginBottom: '1.5rem', alignItems: 'flex-start' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Patente Mínima Exigida</label>
                 <select value={formData.minRankRequired} onChange={e => setFormData({...formData, minRankRequired: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
@@ -454,7 +460,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                     </select>
                   </div>
                   {formData.gameEffect === 'unlock_skin' && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div className="responsive-grid-sm">
                       <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Skin a ser Liberada</label>
                         <select value={formData.unlockedSkinId || ''} onChange={e => setFormData({...formData, unlockedSkinId: e.target.value})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
@@ -514,7 +520,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   </button>
                 </div>
                 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.5rem', marginBottom: '1.25rem' }}>
+                <div className="responsive-grid" style={{ marginBottom: '1.25rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Categoria do Item</label>
                     <select value={formData.itemCategory || 'none'} onChange={e => setFormData({...formData, itemCategory: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
@@ -635,8 +641,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       )}
 
       {showTransformModal && createPortal(
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'var(--bg-dark)', width: '90%', maxWidth: '500px', borderRadius: '16px', border: '1px solid var(--gold-primary)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="modal-overlay" style={{ zIndex: 100000 }}>
+          <div className="modal-content modal-content-sm" style={{ background: 'var(--bg-dark)', borderRadius: '16px', border: '1px solid var(--gold-primary)', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
             <div style={{ padding: '1rem', background: 'var(--btn-bg)', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>⚙️ Configurar Transformação 3D</h3>
               <button onClick={() => setShowTransformModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>✖</button>
@@ -720,7 +726,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             setFormData({ ...formData, gachaConfig: config, fixedAttributes: fixed, useGlobalGacha: useGlobal });
             if (newGlobalConfig) {
               setGlobalGachaConfig(newGlobalConfig);
-              await setDoc(doc(db, 'settings', 'gacha'), newGlobalConfig);
+              const existing = await supabase.from('system_collections').select('id').eq('collection_name', 'settings').eq('doc_id', 'gacha').single();
+              if (existing.data) {
+                await supabase.from('system_collections').update({ data: newGlobalConfig as any }).eq('collection_name', 'settings').eq('doc_id', 'gacha');
+              } else {
+                await supabase.from('system_collections').insert({ collection_name: 'settings', doc_id: 'gacha', data: newGlobalConfig as any });
+              }
             }
             setShowGachaModal(false);
           }}

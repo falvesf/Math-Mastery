@@ -16,7 +16,7 @@ export function getProfileAvatarState(userData: Partial<UserData> | null, custom
   const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRank.name));
   const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2));
   const isAdminOrTeacher = userData.role === 'admin' || userData.role === 'teacher';
-  const currentHearts = isAdminOrTeacher ? maxHearts : (userData.hearts ?? maxHearts);
+  const currentHearts = isAdminOrTeacher ? maxHearts : (userData.hp ?? maxHearts);
   const hpPercentage = (currentHearts / maxHearts) * 100;
   const damageOpacity = Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts));
 
