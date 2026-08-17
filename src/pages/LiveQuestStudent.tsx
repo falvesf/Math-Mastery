@@ -41,7 +41,7 @@ export default function LiveQuestStudent() {
   const [error, setError] = useState('');
   const [powerups, setPowerups] = useState<UserItem[]>([]);
   const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
-  const { showAlert } = useDialog();
+  const { showAlert, showConfirm } = useDialog();
   const [chestOpened, setChestOpened] = useState(false);
   const [isEditingAvatar, setIsEditingAvatar] = useState(false);
   const [studentAnim, setStudentAnim] = useState<string>('idle');
@@ -206,7 +206,7 @@ export default function LiveQuestStudent() {
                     const { data: invSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
                     const equippedItems: any[] = (invSnap || []).filter(d => d.data?.equipped).map(d => ({ docId: d.id, ...d.data }));
                     
-                    const { RANKS: R, getRankForXp: grfx } = await import('../lib/ranks');
+                    const { RANKS: R } = await import('../lib/ranks');
                     const { calculateTotalStats: cts } = await import('../lib/gacha');
                     const stats = cts(equippedItems, userData.distributedStats);
                     const rankIndex = Math.max(0, R.findIndex((r: any) => r.name === userData.lastSeenRank));
