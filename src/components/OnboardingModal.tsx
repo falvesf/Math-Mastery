@@ -41,7 +41,7 @@ export default function OnboardingModal({ userName, onSelectClass, onSelectTeach
     if (selectedRole === 'teacher') {
       onSelectTeacher();
     } else if (selectedClass) {
-      onSelectClass(selectedClass.id);
+      onSelectClass(selectedClass.name);
     }
   };
 
