@@ -26,7 +26,7 @@ export default function AdminPresetSkinsManager() {
 
   const fetchModels3d = async () => {
     try {
-      const { data: snap } = await supabase.from('models_3d').select('*');
+      const { data: snap } = await supabase.from('3d_models').select('*');
       if (snap) {
         setModels3d(snap);
       }
@@ -128,37 +128,16 @@ export default function AdminPresetSkinsManager() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0, textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--gold-primary)' }}>
-              Skins Pré-definidas (Debug: {skins.length})
+              Skins Pré-definidas
             </h2>
             <p style={{ color: 'var(--text-secondary)', margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>
-              URL: {import.meta.env.VITE_SUPABASE_URL || 'Fallback'}
+              Gerencie as skins disponíveis para alunos e monstros (Ex: Nova Skin).
             </p>
-            {skins.length > 0 && <p style={{ color: 'white', fontSize: '0.8rem', background: 'black', padding: '10px', wordBreak: 'break-all' }}>JSON[0]: {JSON.stringify(skins[0])}</p>}
           </div>
         {!isModalOpen && (
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <button onClick={async () => {
-              try {
-                const url = 'https://irpmeockteksidxnpznb.supabase.co/rest/v1/preset_skins?select=*';
-                const key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlycG1lb2NrdGVrc2lkeG5wem5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3NjA4NjUsImV4cCI6MjEwMjMzNjg2NX0.H0tBYFKtvX5B9fSGZmfEf5HNmZ3tVpwUEp-DLyeifZ0';
-                const res = await fetch(url, {
-                  headers: {
-                    'apikey': key,
-                    'Authorization': `Bearer ${key}`
-                  }
-                });
-                const data = await res.json();
-                alert(`RAW FETCH Data length: ${data?.length}\nFirst item: ${JSON.stringify(data?.[0])}`);
-              } catch (e: any) {
-                alert(`RAW FETCH ERROR: ${e.message}`);
-              }
-            }} className="btn-secondary" style={{ padding: '0.5rem', background: 'red', color: 'white' }}>
-              Testar Fetch Direto
-            </button>
-            <button onClick={() => handleOpenModal()} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Plus size={18} /> Nova Skin
-            </button>
-          </div>
+          <button onClick={() => handleOpenModal()} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Plus size={18} /> Nova Skin
+          </button>
         )}
       </div>
 
