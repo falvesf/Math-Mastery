@@ -99,13 +99,13 @@ function App() {
   }, []);
 
   return (
-    <AuthProvider>
-      <DialogProvider>
-        <Router basename="/Math-Mastery/">
+    <Router basename={import.meta.env.BASE_URL}>
+      <AuthProvider>
+        <DialogProvider>
           <AppRoutes />
-        </Router>
-      </DialogProvider>
-    </AuthProvider>
+        </DialogProvider>
+      </AuthProvider>
+    </Router>
   );
 }
 
