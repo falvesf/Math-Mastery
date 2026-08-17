@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
 
-const MAX_ANIMATED = 10;
+const MAX_ANIMATED = 8;
 
 // Estado global compartilhado entre TODAS as instâncias do componente na mesma página
 const activeIds = new Set<string>();
@@ -78,14 +78,20 @@ export default function LazyAnimatedAvatar({ id, config, equippedItems, size, an
   }, [id]);
 
   return (
-    <div ref={containerRef}>
-      <AvatarCharacter
-        config={config}
-        equippedItems={equippedItems}
-        size={size}
-        interactive={false}
-        animation={isAnimating ? (animation as any) : 'idle'}
-      />
+    <div ref={containerRef} style={{ width: size, height: size }}>
+      {isAnimating ? (
+        <AvatarCharacter
+          config={config}
+          equippedItems={equippedItems}
+          size={size}
+          interactive={false}
+          animation={animation as any}
+        />
+      ) : (
+        <div style={{ width: size, height: size, borderRadius: '50%', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: size * 0.3, opacity: 0.5 }}>...</span>
+        </div>
+      )}
     </div>
   );
 }
