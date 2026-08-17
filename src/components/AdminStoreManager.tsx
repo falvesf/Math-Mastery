@@ -118,9 +118,18 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     } catch (e) { console.error(e); }
     
     try {
-      const { data: skinsSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'preset_skins');
-      const loadedSkins: {id: string, name: string, url: string, type?: string}[] = [];
-      (skinsSnap || []).forEach(row => loadedSkins.push({ id: row.id, ...row.data } as any));
+      const { data: skinsSnap } = await supabase.from('preset_skins').select('*');
+      const loadedSkins: {id: string, name: string, url: string, type?: string, baseModelId?: string, genderTarget?: string}[] = [];
+      (skinsSnap || []).forEach(row => {
+        loadedSkins.push({
+          id: row.id,
+          name: row.name,
+          url: row.url,
+          type: row.type,
+          baseModelId: row.baseModelId,
+          genderTarget: row.genderTarget
+        });
+      });
       setPresetSkins(loadedSkins);
     } catch (e) { console.error(e); }
     
