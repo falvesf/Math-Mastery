@@ -294,7 +294,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         }
         console.log(`Carregando modelo 3D para o item ${item.itemTitle}:`, safeUrl);
         
-        const processLoadedModel = (model: THREE.Object3D) => {
+        const processLoadedModel = (model: THREE.Object3D, splitDir?: 'left' | 'right' | 'body_part', isGltf: boolean = false) => {
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
               const isDefense = item.itemCategory === 'defense';
               const isLeftHanded = config?.handedness === 'left';
@@ -383,7 +383,27 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               loadedModels.push({ parent: head, model });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
             } else if (item.avatarPart === 'body' || item.avatarPart === 'legs' || item.avatarPart === 'feet') {
-              const body = viewer.playerObject.skin.body;
+              let targetGroup = viewer.playerObject.skin.body;
+              let finalModelToAdd = model;
+
+              if (splitDir === 'left') {
+                 targetGroup = viewer.playerObject.skin.leftLeg;
+                 if (isGltf) {
+                   const wrapper = new THREE.Group();
+                   wrapper.position.set(2, 4, 0); // Cancela o offset do pivot da perna esquerda
+                   wrapper.add(model);
+                   finalModelToAdd = wrapper;
+                 }
+              } else if (splitDir === 'right') {
+                 targetGroup = viewer.playerObject.skin.rightLeg;
+                 if (isGltf) {
+                   const wrapper = new THREE.Group();
+                   wrapper.position.set(-2, 4, 0); // Cancela o offset do pivot da perna direita
+                   wrapper.add(model);
+                   finalModelToAdd = wrapper;
+                 }
+              }
+
               model.scale.set(16, 16, 16);
               // O grupo "body" no skinview3d tem seu eixo deslocado. Precisamos descer o modelo em -6 para alinhar com o peitoral.
               let appliedTransform = false;
@@ -407,15 +427,27 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 let yOffset = -6;
                 if (item.avatarPart === 'legs') yOffset = -15;
                 if (item.avatarPart === 'feet') yOffset = -22;
-                model.position.set(0, yOffset, 0);
-                model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
+                
+                let xOffset = 0;
+                if (!isGltf) {
+                  if (splitDir === 'left') {
+                     xOffset = 0; // The mesh is centered locally, leftLeg is at -2 globally, so xOffset 0 puts it at -2 globally!
+                     yOffset += 12; // Compensate for the leg's local pivot
+                  } else if (splitDir === 'right') {
+                     xOffset = 0;
+                     yOffset += 12;
+                  }
+                }
+
+                model.position.set(xOffset, yOffset, 0);
+                model.rotation.set(0, 0, 0); // Mantém a rotação original (0 graus)
               }
-              body.add(model);
+              targetGroup.add(finalModelToAdd);
               if (debugItemId === itemId) {
-                const helper = new THREE.BoxHelper(model, 0xff0000);
-                body.add(helper);
+                const helper = new THREE.BoxHelper(finalModelToAdd, 0xff0000);
+                targetGroup.add(helper);
               }
-              loadedModels.push({ parent: body, model });
+              loadedModels.push({ parent: targetGroup, model: finalModelToAdd });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
             }
             if (!isCancelled) {
@@ -443,13 +475,25 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
              curveY = item.modelTransforms.common.curveY || 0;
            }
 
-           generateVoxelItemFromImage(safeUrl, item.backColor, curveX, curveY)
-             .then(model => {
+            const normalizedAvatarPart = item.avatarPart ? String(item.avatarPart).toLowerCase().trim() : '';
+            if (normalizedAvatarPart === 'legs' || normalizedAvatarPart === 'feet') {
+             Promise.all([
+               generateVoxelItemFromImage(safeUrl, item.backColor, curveX, curveY, 'left'),
+               generateVoxelItemFromImage(safeUrl, item.backColor, curveX, curveY, 'right')
+             ]).then(([leftModel, rightModel]) => {
                 if (isCancelled) return;
-                console.log(`Voxel gerado com sucesso a partir da imagem ${safeUrl}`);
-                processLoadedModel(model);
-             })
-             .catch(err => console.error(err));
+                processLoadedModel(leftModel, 'left');
+                processLoadedModel(rightModel, 'right');
+             }).catch(err => console.error(err));
+           } else {
+             generateVoxelItemFromImage(safeUrl, item.backColor, curveX, curveY)
+               .then(model => {
+                  if (isCancelled) return;
+                  console.log(`Voxel gerado com sucesso a partir da imagem ${safeUrl}`);
+                  processLoadedModel(model);
+               })
+               .catch(err => console.error(err));
+           }
         } else {
            loader.load(
              safeUrl, 
@@ -499,9 +543,39 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                  };
                  const fallbackUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(item.modelTextureUrl)}`;
                  loadTex(proxyUrl, fallbackUrl);
-               }
-               
-               processLoadedModel(model);
+                }
+                
+                const normalizedPart = item.avatarPart ? String(item.avatarPart).toLowerCase().trim() : '';
+                if (normalizedPart === 'legs' || normalizedPart === 'feet') {
+                   const cloneLeft = model.clone();
+                   const cloneRight = model.clone();
+                   const cloneBody = model.clone();
+
+                   const isLeft = (n: any) => {
+                      let name = n.name.toLowerCase();
+                      let p = n.parent;
+                      while(p && p.type !== 'Scene') { name += ' ' + p.name.toLowerCase(); p = p.parent; }
+                      return name.includes('left') && (name.includes('leg') || name.includes('boot') || name.includes('foot') || name.includes('greva') || name.includes('calca'));
+                   };
+                   const isRight = (n: any) => {
+                      let name = n.name.toLowerCase();
+                      let p = n.parent;
+                      while(p && p.type !== 'Scene') { name += ' ' + p.name.toLowerCase(); p = p.parent; }
+                      return name.includes('right') && (name.includes('leg') || name.includes('boot') || name.includes('foot') || name.includes('greva') || name.includes('calca'));
+                   };
+
+                   cloneLeft.traverse((node) => { if ((node as any).isMesh && !isLeft(node)) node.visible = false; });
+                   cloneRight.traverse((node) => { if ((node as any).isMesh && !isRight(node)) node.visible = false; });
+                   cloneBody.traverse((node) => { if ((node as any).isMesh && (isLeft(node) || isRight(node))) node.visible = false; });
+
+                   // Como o modelo GLB é invertido e rotacionado em 180 graus (Math.PI) no processLoadedModel,
+                   // cloneLeft (boot_left) vai para o lado esquerdo da tela (-X), que é o leftLeg do skinview3d.
+                   processLoadedModel(cloneLeft, 'left', true); 
+                   processLoadedModel(cloneRight, 'right', true);
+                   processLoadedModel(cloneBody, 'body_part', true);
+                } else {
+                   processLoadedModel(model, undefined, true);
+                }
              },
              undefined,
              (error) => {
@@ -791,6 +865,24 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         if (!appliedTransform) {
           model.position.set(0, -6, 0);
           model.rotation.set(0, Math.PI, 0); // Girar 180 graus (frente para trás)
+        }
+      } else if (avatarPart === 'legs' || avatarPart === 'feet') {
+        const isTargetDebugItem = debugItemId === itemId;
+        if (debugItemTransform && isTargetDebugItem) {
+          model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, (debugItemTransform.scale ?? 16) * (debugItemTransform.thickness ?? 1));
+          model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+          
+          let baseRotY = 0; // O modelo GLB exportado pelo Blockbench já está virado para a frente (0 graus)
+          model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY + baseRotY, debugItemTransform.rotZ);
+          model.translateY(debugItemTransform.slide);
+        } else if (item.modelTransforms && item.modelTransforms.common) {
+          const t = item.modelTransforms.common;
+          model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
+          model.position.set(t.posX, t.posY, t.posZ);
+          
+          let baseRotY = 0; // O modelo GLB exportado pelo Blockbench já está virado para a frente (0 graus)
+          model.rotation.set(t.rotX, t.rotY + baseRotY, t.rotZ);
+          model.translateY(t.slide);
         }
       }
     });
@@ -1517,8 +1609,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       });
     }
   }, [animation, config?.handedness, equippedItemsJson, JSON.stringify(debugPose), JSON.stringify(debugAnimationFrames)]);
-
   const handItems = equippedItems.filter(i => i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'hand');
+
+
   const twoHandedItem = equippedItems.find(i => i.avatarPart === 'two_handed');
   let leftScreenHandItem = null; // Character's right hand
   let rightScreenHandItem = null; // Character's left hand

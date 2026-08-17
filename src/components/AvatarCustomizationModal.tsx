@@ -743,13 +743,24 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                           if (loadedTransform) {
                             setDebugTransform(loadedTransform);
                           } else {
-                            setDebugTransform({
-                              posX: 0, posY: -11, posZ: 0,
-                              rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
-                              slide: -18,
-                              scale: 16,
-                              thickness: 1
-                            });
+                            if (item.avatarPart === 'legs') {
+                              setDebugTransform({ posX: 0, posY: -15, posZ: 0, rotX: 0, rotY: 0, rotZ: 0, slide: 0, scale: 16, thickness: 1 });
+                            } else if (item.avatarPart === 'feet') {
+                              setDebugTransform({ posX: 0, posY: -22, posZ: 0, rotX: 0, rotY: 0, rotZ: 0, slide: 0, scale: 16, thickness: 1 });
+                            } else if (item.avatarPart === 'body') {
+                              setDebugTransform({ posX: 0, posY: -6, posZ: 0, rotX: 0, rotY: Math.PI, rotZ: 0, slide: 0, scale: 16, thickness: 1 });
+                            } else if (item.avatarPart === 'head') {
+                              const isMinecraft = !!item.minecraftHeadValue;
+                              setDebugTransform({ posX: 0, posY: isMinecraft ? 4 : 0, posZ: 0, rotX: 0, rotY: isMinecraft ? 0 : Math.PI, rotZ: 0, slide: 0, scale: isMinecraft ? 9.2 : 16, thickness: 1 });
+                            } else {
+                              setDebugTransform({
+                                posX: 0, posY: -11, posZ: 0,
+                                rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
+                                slide: -18,
+                                scale: 16,
+                                thickness: 1
+                              });
+                            }
                           }
                         }
                       }}

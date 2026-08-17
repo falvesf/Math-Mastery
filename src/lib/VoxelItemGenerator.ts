@@ -1,6 +1,6 @@
 import * as THREE from 'skinview3d/node_modules/three';
 
-export async function generateVoxelItemFromImage(imageUrl: string, backColor?: string, curveX = 0, curveY = 0): Promise<THREE.Group> {
+export async function generateVoxelItemFromImage(imageUrl: string, backColor?: string, curveX = 0, curveY = 0, split?: 'left' | 'right'): Promise<THREE.Group> {
   return new Promise((resolve, reject) => {
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
@@ -29,8 +29,23 @@ export async function generateVoxelItemFromImage(imageUrl: string, backColor?: s
         const planeWidth = (imgWidth / maxDim) * 1.6;
         const planeHeight = (imgHeight / maxDim) * 1.6;
         
+        let finalPlaneWidth = planeWidth;
+        if (split) finalPlaneWidth = planeWidth / 2;
+        
         // Usamos mais segmentos (16x16) para que o plano tenha vértices suficientes para curvar suavemente
-        const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, 16, 16);
+        const geometry = new THREE.PlaneGeometry(finalPlaneWidth, planeHeight, 16, 16);
+        
+        if (split) {
+          const uvAttribute = geometry.attributes.uv;
+          for (let i = 0; i < uvAttribute.count; i++) {
+            const u = uvAttribute.getX(i);
+            if (split === 'left') {
+              uvAttribute.setX(i, u * 0.5);
+            } else if (split === 'right') {
+              uvAttribute.setX(i, u * 0.5 + 0.5);
+            }
+          }
+        }
         
         if (curveX !== 0 || curveY !== 0) {
           const positionAttribute = geometry.attributes.position;
@@ -38,8 +53,15 @@ export async function generateVoxelItemFromImage(imageUrl: string, backColor?: s
             const x = positionAttribute.getX(i);
             const y = positionAttribute.getY(i);
             
-            // Normalizar coordenadas para [-1, 1] baseado no centro do plano
-            const nx = x / (planeWidth / 2);
+            // Normalizar coordenadas para [-1, 1] baseado no centro do plano original
+            let originalX = x;
+            if (split === 'left') {
+              originalX = x - planeWidth / 4;
+            } else if (split === 'right') {
+              originalX = x + planeWidth / 4;
+            }
+            
+            const nx = originalX / (planeWidth / 2);
             const ny = y / (planeHeight / 2);
             
             // Curva parabólica (quadrática): afunda as bordas de acordo com a força de curveX/curveY

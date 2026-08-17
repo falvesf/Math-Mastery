@@ -25,13 +25,16 @@ export default function Admin3DModelsManager() {
   const fetchModels = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const { data: snap } = await supabase.from('3d_models').select('*');
-      if (snap) {
+      const { data: snap, error } = await supabase.from('3d_models').select('*');
+      if (error) {
+        console.error('Supabase fetch error:', error);
+        showAlert(`Erro do Supabase: ${error.message}`);
+      } else if (snap) {
         setModels(snap as Model3D[]);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      showAlert('Erro ao buscar modelos 3D.');
+      showAlert(`Erro ao buscar modelos 3D: ${e.message}`);
     }
     setLoading(false);
   };

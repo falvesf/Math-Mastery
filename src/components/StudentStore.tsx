@@ -622,8 +622,12 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     previewConfig.hiddenSlots = previewConfig.hiddenSlots.filter((slot: string) => slot !== previewItem.avatarPart);
                   }
                 }
+                let previewAnimation = "idle";
+                if (previewItem && (previewItem.avatarPart === 'legs' || previewItem.avatarPart === 'feet')) {
+                  previewAnimation = "walk";
+                }
                 
-                return <AvatarCharacter config={previewConfig} equippedItems={previewEquipped} size={300} animation="idle" />;
+                return <AvatarCharacter config={previewConfig} equippedItems={previewEquipped} size={300} animation={previewAnimation as any} />;
               })()}
             </div>
             <p style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontSize: '0.85rem', textAlign: 'center' }}>
