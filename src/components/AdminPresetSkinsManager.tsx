@@ -43,7 +43,14 @@ export default function AdminPresetSkinsManager() {
         console.error('Supabase fetch error:', error);
         showAlert(`Erro do Supabase: ${error.message}`);
       } else if (snap) {
-        setSkins(snap as PresetSkin[]);
+        // Mapeia snake_case do banco para camelCase do JavaScript
+        const mapped = snap.map((s: any) => ({
+          ...s,
+          type: s.type || 'human',
+          baseModelId: s.base_model_id ?? s.baseModelId ?? null,
+          genderTarget: s.gender_target ?? s.genderTarget ?? 'both',
+        }));
+        setSkins(mapped as PresetSkin[]);
       }
     } catch (e: any) {
       console.error(e);
@@ -92,20 +99,34 @@ export default function AdminPresetSkinsManager() {
     }
 
     try {
-      const data = { name: name.trim(), url: url.trim(), type, baseModelId: baseModelId === 'default' ? null : baseModelId, genderTarget };
+      // Usa snake_case para corresponder às colunas do Supabase
+      const data: any = {
+        name: name.trim(),
+        url: url.trim(),
+        type,
+        base_model_id: baseModelId === 'default' ? null : baseModelId,
+        gender_target: genderTarget,
+      };
+      let saveError: any = null;
       if (editingId) {
-        await supabase.from('preset_skins').update(data).eq('id', editingId);
-        showAlert('Skin atualizada com sucesso!');
+        const { error } = await supabase.from('preset_skins').update(data).eq('id', editingId);
+        saveError = error;
       } else {
-        await supabase.from('preset_skins').insert(data);
-        showAlert('Skin adicionada com sucesso!');
+        const { error } = await supabase.from('preset_skins').insert(data);
+        saveError = error;
       }
+      if (saveError) {
+        console.error('Supabase save error:', saveError);
+        showAlert(`Erro ao salvar: ${saveError.message}`);
+        return;
+      }
+      showAlert(editingId ? 'Skin atualizada com sucesso!' : 'Skin adicionada com sucesso!');
       sessionCache.invalidate(CACHE_KEYS.presetSkins());
       setIsModalOpen(false);
       fetchSkins(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      showAlert('Erro ao salvar a skin.');
+      showAlert(`Erro ao salvar a skin: ${e.message}`);
     }
   };
 
