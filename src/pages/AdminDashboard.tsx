@@ -13,6 +13,7 @@ import AdminEntitiesManager from '../components/AdminEntitiesManager';
 import AdminEconomySettings from '../components/AdminEconomySettings';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
+import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
 import PublicProfileModal from '../components/PublicProfileModal';
 import { useDialog } from '../contexts/DialogContext';
 
@@ -1196,7 +1197,13 @@ export default function AdminDashboard() {
                                 onClick={() => setViewingProfileUser(student)}
                                 style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}
                               >
-                                <AvatarCharacter config={student.avatarConfig} equippedItems={allUserItems[student.uid] || []} size={48} interactive={false} animation={student.avatarConfig?.animationState as any || 'idle'} />
+                                <LazyAnimatedAvatar
+                                  id={student.uid}
+                                  config={student.avatarConfig!}
+                                  equippedItems={allUserItems[student.uid] || []}
+                                  size={48}
+                                  animation={student.avatarConfig?.animationState as any || 'idle'}
+                                />
                               </div>
                             ) : (
                               <img 
