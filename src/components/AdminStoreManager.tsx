@@ -348,7 +348,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                         {getRarityLabel(item.rarity)}
                       </div>
                       {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
-                        <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={imgSize} />
+                        <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={parseInt(imgSize)} />
                       ) : item.imageUrl ? (
                         <img src={item.imageUrl} alt={item.title} style={{ width: imgSize, height: imgSize, borderRadius: '8px', objectFit: 'contain' }} />
                       ) : (
