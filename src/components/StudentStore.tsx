@@ -9,7 +9,6 @@ import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
 import CachedImage from './CachedImage';
-import GachaAnimation from './GachaAnimation';
 
 interface MarketItem {
   id: string;

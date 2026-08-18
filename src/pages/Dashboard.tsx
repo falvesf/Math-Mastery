@@ -9,7 +9,6 @@ import { calculateTotalStats, ATTRIBUTE_LABELS } from '../lib/gacha';
 import LevelUpModal from '../components/LevelUpModal';
 import StudentStore from '../components/StudentStore';
 import StudentInventory from '../components/StudentInventory';
-import { useSound } from '../contexts/SoundContext';
 import CachedImage from '../components/CachedImage';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
