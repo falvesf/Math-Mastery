@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword } from 'lucide-react';
+import CachedImage from './CachedImage';
+import SkinBuffIcon from './SkinBuffIcon';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
@@ -962,8 +964,10 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   </div>
                     
                   <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', height: viewMode === 'grid-small' ? '36px' : '48px', width: viewMode === 'list' ? '48px' : 'fit-content', margin: viewMode === 'list' ? '0' : '0 auto', flexShrink: 0 }}>
-                    {item.itemImageUrl ? (
-                      <img src={item.itemImageUrl} alt="" style={{ height: '100%', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
+                    {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
+                      <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={viewMode === 'grid-small' ? 36 : 48} />
+                    ) : item.itemImageUrl ? (
+                      <CachedImage src={item.itemImageUrl} alt="" style={{ height: '100%', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
                     ) : (
                       <Package size={viewMode === 'grid-small' ? 24 : 32} color="var(--text-secondary)" style={{ alignSelf: 'center' }} />
                     )}
@@ -1088,7 +1092,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               Ao colocar este item à venda, ele sairá da sua mochila. Uma taxa de 10% será descontada se outro jogador comprar.
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
-              <img src={sellModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+              <CachedImage src={sellModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
               <div>
                 <strong>{sellModalItem.itemTitle}</strong>
                 {sellModalItem.itemType === 'consumable' && (
@@ -1165,7 +1169,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               Selecione a quantidade que deseja descartar. Itens não destruídos poderão ser encontrados por outros jogadores em missões.
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
-              <img src={trashModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+              <CachedImage src={trashModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
               <div>
                 <strong>{trashModalItem.itemTitle}</strong>
                 <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

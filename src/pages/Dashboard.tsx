@@ -9,6 +9,8 @@ import { calculateTotalStats, ATTRIBUTE_LABELS } from '../lib/gacha';
 import LevelUpModal from '../components/LevelUpModal';
 import StudentStore from '../components/StudentStore';
 import StudentInventory from '../components/StudentInventory';
+import { useSound } from '../contexts/SoundContext';
+import CachedImage from '../components/CachedImage';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
 import PublicProfileModal from '../components/PublicProfileModal';
@@ -61,7 +63,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 
       {/* Imagem da Patente (Sempre visível no fundo) */}
       {rank.imageUrl ? (
-        <img src={rank.imageUrl} alt={rank.name} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%', filter: `drop-shadow(0 0 10px ${rank.color}80)`, opacity: showAvatars ? 0.6 : 1, zIndex: 0 }} />
+        <CachedImage src={rank.imageUrl} alt={rank.name} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%', filter: `drop-shadow(0 0 10px ${rank.color}80)`, opacity: showAvatars ? 0.6 : 1, zIndex: 0 }} />
       ) : (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: rank.color, textAlign: 'center', fontSize: size > 60 ? '0.9rem' : '0.7rem', zIndex: 0, textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>{rank.name}</div>
       )}
@@ -1709,7 +1711,7 @@ export default function Dashboard() {
                       {/* Trás: Patente */}
                       <div className="cube-face cube-face-back" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))' }}>
                         {currentDisplayImage ? (
-                          <img key={currentDisplayImage} src={currentDisplayImage} alt={currentRank.name} style={{ width: 170, height: 170, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
+                          <CachedImage key={currentDisplayImage} src={currentDisplayImage} alt={currentRank.name} style={{ width: 170, height: 170, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
                         ) : (
                           <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: currentRank.color }}>{currentRank.name}</div>
                         )}
@@ -1723,7 +1725,7 @@ export default function Dashboard() {
                         {(() => {
                           const equippedPet = equippedItems.find(item => item.avatarPart === 'pet');
                           return equippedPet ? (
-                            <img src={equippedPet.imageUrl} alt="Pet" style={{ width: 140, height: 140, objectFit: 'contain', animation: 'float 3s ease-in-out infinite' }} />
+                            <CachedImage src={equippedPet.imageUrl} alt="Pet" style={{ width: 140, height: 140, objectFit: 'contain', animation: 'float 3s ease-in-out infinite' }} />
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: 0.5 }}>
                               <div style={{ width: 100, height: 100, border: '3px dashed var(--border-glass)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>

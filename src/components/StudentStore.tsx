@@ -8,6 +8,8 @@ import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calc
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
+import CachedImage from './CachedImage';
+import GachaAnimation from './GachaAnimation';
 
 interface MarketItem {
   id: string;
@@ -800,7 +802,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
                   <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={80} />
                 ) : item.imageUrl ? (
-                  <img src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  <CachedImage src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 ) : (
                   <Package size={48} color="var(--text-secondary)" />
                 )}
@@ -1085,39 +1087,39 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           
           return (
             <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
-              <div style={{ height: isList ? '100%' : (viewMode === 'grid-small' ? '100px' : '160px'), width: isList ? '120px' : '100%', position: 'relative', background: 'var(--bg-dark)', flexShrink: 0 }}>
+              <div style={{ width: '80px', height: '80px', background: 'rgba(0,0,0,0.5)', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-glass)', flexShrink: 0 }}>
                 {item.itemImageUrl ? (
-                  <img src={item.itemImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <CachedImage src={item.itemImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Store size={isList || viewMode === 'grid-small' ? 32 : 48} color="var(--text-secondary)" />
-                  </div>
-                )}
-                <div className={`rarity-badge ${item.rarity || 'common'}`}>
-                  {getRarityLabel(item.rarity)}
-                </div>
-                {item.quantity && item.quantity > 1 && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '5px',
-                    right: '5px',
-                    color: 'white',
-                    textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
-                    fontSize: '1.1rem',
-                    fontWeight: 'bold',
-                    zIndex: 2,
-                    pointerEvents: 'none',
-                    lineHeight: 1
-                  }}>
-                    {item.quantity}
-                  </div>
-                )}
-                {!isList && (
-                  <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                    {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}
+                    <Package size={32} color="var(--text-secondary)" />
                   </div>
                 )}
               </div>
+              <div className={`rarity-badge ${item.rarity || 'common'}`}>
+                {getRarityLabel(item.rarity)}
+              </div>
+              {item.quantity && item.quantity > 1 && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '5px',
+                  right: '5px',
+                  color: 'white',
+                  textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  zIndex: 2,
+                  pointerEvents: 'none',
+                  lineHeight: 1
+                }}>
+                  {item.quantity}
+                </div>
+              )}
+              {!isList && (
+                <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                  {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}
+                </div>
+              )}
               <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.5rem', minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
                   <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0, wordBreak: 'break-word', flex: 1 }}>{item.itemTitle}</h3>
@@ -1235,8 +1237,14 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         <div className="modal-overlay">
           <div className="glass-panel modal-content modal-content-sm">
             <h3 style={{ marginTop: 0, color: 'var(--gold-primary)', fontSize: '1.5rem' }}>Confirmar Compra</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
-              <img src={marketBuyModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+            <div className="glass-panel" style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.3)' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+              {marketBuyModalItem.itemImageUrl ? (
+                <CachedImage src={marketBuyModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+              ) : (
+                <Package size={20} color="var(--text-secondary)" />
+              )}
+            </div>
               <div>
                 <strong>{marketBuyModalItem.itemTitle}</strong>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Vendido por: {marketBuyModalItem.sellerName}</div>
