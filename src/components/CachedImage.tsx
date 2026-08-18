@@ -1,4 +1,4 @@
-import { useState, useEffect, ImgHTMLAttributes } from 'react';
+import { useState, useEffect, type ImgHTMLAttributes } from 'react';
 
 // Um cache na memória para evitar re-fazer o processo ObjectURL na mesma sessão
 const memoryCache: Record<string, string> = {};
