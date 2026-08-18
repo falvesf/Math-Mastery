@@ -198,6 +198,24 @@ h3 {
 }
 @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.1); } }
 
+/* Heart disappearing animation - right to left */
+@keyframes heart-die {
+  0% { transform: scale(1); opacity: 1; filter: hue-rotate(0deg); }
+  30% { transform: scale(1.3); opacity: 1; filter: hue-rotate(0deg); }
+  100% { transform: scale(0); opacity: 0; filter: hue-rotate(180deg); }
+}
+
+.heart-dying {
+  animation: heart-die 0.6s ease-in-out forwards;
+}
+
+/* Staggered delay for hearts disappearing right to left */
+.heart-dying:nth-last-child(1) { animation-delay: 0s; }
+.heart-dying:nth-last-child(2) { animation-delay: 0.15s; }
+.heart-dying:nth-last-child(3) { animation-delay: 0.3s; }
+.heart-dying:nth-last-child(4) { animation-delay: 0.45s; }
+.heart-dying:nth-last-child(5) { animation-delay: 0.6s; }
+
 
 
 @keyframes teleport-attack-player {
@@ -392,6 +410,8 @@ h3 {
   image-rendering: pixelated;
   mix-blend-mode: multiply;
   z-index: 10;
+  transition: opacity 1.5s ease-out;
+  border-radius: 4px;
 }
 
 .battle-arena-bg-image {

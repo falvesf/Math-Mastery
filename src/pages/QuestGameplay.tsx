@@ -100,6 +100,22 @@ export default function QuestGameplay() {
     return Math.floor(basePenalty * (1 - absorption / 100));
   };
 
+  // Animate hearts dying - simple delay then update
+  const drainHeartsAnimated = (newHearts: number, onComplete?: () => void) => {
+    const heartsToLose = currentHearts - newHearts;
+    if (heartsToLose <= 0) {
+      setCurrentHearts(newHearts);
+      if (onComplete) onComplete();
+      return;
+    }
+
+    // Small delay for dramatic effect, then update
+    setTimeout(() => {
+      setCurrentHearts(newHearts);
+      if (onComplete) onComplete();
+    }, heartsToLose * 150); // 150ms per heart for stagger effect
+  };
+
   const [arenaWidth, setArenaWidth] = useState(800);
   const arenaRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -367,18 +383,16 @@ export default function QuestGameplay() {
 
     if (isSurpriseAttack) {
       const newHearts = Math.max(0, initialHearts - 1);
-      setCurrentHearts(newHearts);
+      drainHeartsAnimated(newHearts);
       setGameState('playing');
       setCurrentQIndex(0);
       setEliminatedOptions([]);
       setHasShield(false);
       
       if (newHearts === 0) {
-        if (userData?.uid) {
-            updateUserHearts(newHearts);
-        }
         setBattleMessage('ATAQUE SURPRESA LETAL! O monstro te emboscou e você não resistiu!');
-        triggerFatality(false);
+        // Drenar corações após a animação de queda
+        triggerFatality(false, newHearts);
       } else {
         if (userData?.uid) {
             updateUserHearts(newHearts);
@@ -462,7 +476,7 @@ export default function QuestGameplay() {
   };
 */
 
-  const triggerFatality = (isPlayerWinning: boolean) => {
+  const triggerFatality = (isPlayerWinning: boolean, defeatHearts?: number) => {
     const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
     const fatality = deaths[Math.floor(Math.random() * deaths.length)];
     
@@ -554,6 +568,18 @@ export default function QuestGameplay() {
             ? 'Fim de Jogo (Modo Estudo). Suas vidas reais estão a salvo, mas a simulação terminou!' 
             : getDefeatMessage();
           setBattleMessage(gameOverMsg);
+          
+          // Drenar corações APÓS o personagem cair, com delay para efeito dramático
+          if (defeatHearts !== undefined && defeatHearts !== null) {
+            setTimeout(() => {
+              drainHeartsAnimated(defeatHearts, () => {
+                if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
+                  updateUserHearts(defeatHearts);
+                }
+              });
+            }, 800); // Delay para sincronizar com a queda
+          }
+          
           setTimeout(() => finishGame(false, 0, gameOverMsg), 3500);
         }, 2500);
       }, 3000);
@@ -724,14 +750,12 @@ export default function QuestGameplay() {
       }
 
       if (isFatalForPlayer) {
-        setCurrentHearts(newHearts);
-        if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
-          updateUserHearts(newHearts);
-        }
+        // NÃO drenar corações ainda - esperar a animação de queda
         if (isMonsterCrit) {
           setBattleMessage('DANO CRÍTICO LETAL! O monstro te aniquilou!');
         }
-        triggerFatality(false);
+        // Inicia a animação de morte - corações serão drenados APÓS o personagem cair
+        triggerFatality(false, newHearts);
         return;
       }
       
@@ -762,11 +786,11 @@ export default function QuestGameplay() {
         return;
       }
       
-      setCurrentHearts(newHearts);
-
-      if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
-        updateUserHearts(newHearts);
-      }
+      drainHeartsAnimated(newHearts, () => {
+        if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
+          updateUserHearts(newHearts);
+        }
+      });
       
       // Vidas Extras: Deduct penalty but don't move to next question
       const actualPenalty = calculatePenalty(quest.xpPenaltyPerRetry);
@@ -1303,7 +1327,7 @@ export default function QuestGameplay() {
                 </div>
               )}
               <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px' }}>
+                <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px', overflow: 'hidden', borderRadius: '8px' }}>
                   <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} />
                   {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
@@ -1351,7 +1375,7 @@ export default function QuestGameplay() {
                   }`}
                   style={{ position: 'relative', width: '120px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
                 >
-                <div style={{ position: 'relative', display: 'inline-block' }}>
+                <div style={{ position: 'relative', display: 'inline-block', overflow: 'hidden', borderRadius: '8px' }}>
                   {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? (
                     <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={monsterAnim} role="monster" />
                   ) : quest?.monsterAvatarConfig ? (
@@ -1440,7 +1464,7 @@ export default function QuestGameplay() {
               ) : won ? (
                 <>
                   <div className="quest-victory-avatar">
-                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <div style={{ position: 'relative', display: 'inline-block', overflow: 'hidden', borderRadius: '8px' }}>
                       <AvatarCharacter 
                         config={userData?.avatarConfig || null} 
                         equippedItems={playerEquippedItems} 
