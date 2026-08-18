@@ -30,6 +30,26 @@
   filter: drop-shadow(0 0 8px var(--gold-glow));
 }
 
+/* Logo responsivo - atualizado 2026-08-18 */
+.logo-container > div:first-child {
+  width: 64px !important;
+  height: 64px !important;
+}
+
+@media (max-width: 768px) {
+  .logo-container > div:first-child {
+    width: 48px !important;
+    height: 48px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo-container > div:first-child {
+    width: 36px !important;
+    height: 36px !important;
+  }
+}
+
 .login-btn {
   display: flex;
   align-items: center;

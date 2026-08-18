@@ -882,8 +882,7 @@ h3 {
 }
 
 .compact-nav .logo-icon {
-  width: 24px !important;
-  height: 24px !important;
+  /* Removido - agora controlado pelo CSS responsivo em App.css */
 }
 
 .scrollable-menu-container {

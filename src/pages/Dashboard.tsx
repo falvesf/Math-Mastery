@@ -1421,7 +1421,9 @@ export default function Dashboard() {
       <div style={{ position: 'sticky', top: 0, zIndex: 100, margin: '-1rem -2rem 0 -2rem', padding: '1rem 2rem 0.5rem 2rem', background: 'transparent', backdropFilter: 'blur(12px)' }}>
       <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '1rem' }}>
         <div className="logo-container">
-          <Trophy className="logo-icon" color="var(--gold-primary)" size={32} />
+          <div style={{ width: 64, height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} alt="Math Mastery" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
           <h1 className="title-glow">Painel do Aluno</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>

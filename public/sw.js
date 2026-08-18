@@ -1,20 +1,21 @@
 /**
- * Math Mastery — Service Worker para cache de imagens do Firebase Storage
+ * Math Mastery — Service Worker para cache de imagens
  * 
- * Estratégia: Cache-First para imagens do Firebase Storage.
- * - Na primeira vez: busca no Firebase, guarda no cache local.
+ * Estratégia: Cache-First para imagens do Supabase Storage e Firebase Storage.
+ * - Na primeira vez: busca na rede, guarda no cache local.
  * - Nas próximas vezes: serve direto do cache, sem nenhuma requisição de rede.
  * - Cache expira após 7 dias para garantir que imagens atualizadas apareçam.
  * 
  * Isso é totalmente transparente: nenhum componente React precisa mudar.
  */
 
-const CACHE_NAME = 'mathmastery-images-v2';
+const CACHE_NAME = 'mathmastery-images-v3';
 const MAX_AGE_SECONDS = 7 * 24 * 60 * 60; // 7 dias
 
 // Domínios cujas respostas devem ser cacheadas
 const CACHEABLE_ORIGINS = [
   'firebasestorage.googleapis.com',
+  'irpmeockteksidxnpznb.supabase.co',  // Supabase Storage
 ];
 
 self.addEventListener('install', (event) => {
@@ -49,20 +50,26 @@ self.addEventListener('fetch', (event) => {
 
   if (!isCacheable) return; // Deixa o browser lidar com tudo mais
 
-  // Só cacheia GET de imagens (não API calls do Firestore ou Firebase Storage List API)
+  // Só cacheia GET de imagens (não API calls do Firestore ou Supabase)
   if (event.request.method !== 'GET') return;
 
-  // GARANTIA CRÍTICA: Só cachear se for um download de arquivo de mídia (alt=media).
-  // A API listAll() e requisições de metadados NÃO têm alt=media e NUNCA devem ser cacheadas
-  // pois senão o banco de imagens ficaria congelado no tempo!
-  if (!url.searchParams.has('alt') || url.searchParams.get('alt') !== 'media') {
-    return; // Passa direto pra rede!
+  // Para Firebase: só cachear se for download de arquivo de mídia (alt=media)
+  if (url.hostname.includes('firebasestorage.googleapis.com')) {
+    if (!url.searchParams.has('alt') || url.searchParams.get('alt') !== 'media') {
+      return; // Passa direto pra rede!
+    }
+  }
+
+  // Para Supabase: só cachear URLs de storage (contêm /storage/v1/object/)
+  if (url.hostname.includes('supabase.co')) {
+    if (!url.pathname.includes('/storage/v1/object/')) {
+      return; // Não é uma URL de storage, passa direto
+    }
   }
 
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {
       // Remove o token de autenticação da URL para usar como chave do cache
-      // (o token pode mudar, mas a imagem em si é a mesma)
       const cacheKey = stripToken(event.request.url);
 
       // 1. Verifica se já temos essa imagem no cache
@@ -101,12 +108,13 @@ self.addEventListener('fetch', (event) => {
 });
 
 /**
- * Remove o parâmetro `token` da URL do Firebase Storage para usar como chave
- * estável no cache. O token pode ser rotacionado, mas o arquivo é o mesmo.
+ * Remove o parâmetro `token` da URL para usar como chave estável no cache.
+ * O token pode ser rotacionado, mas o arquivo é o mesmo.
  */
 function stripToken(urlString) {
   try {
     const url = new URL(urlString);
+    // Remove tokens do Firebase e Supabase
     url.searchParams.delete('token');
     return url.toString();
   } catch {

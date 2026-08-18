@@ -1024,9 +1024,12 @@ export default function AdminDashboard() {
 
   return (
     <div className="app-container" style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
-      <nav className="navbar glass-panel compact-nav">
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, padding: '0.5rem 1.5rem', background: 'transparent', backdropFilter: 'blur(12px)' }}>
+      <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '0.5rem' }}>
         <div className="logo-container">
-          <ShieldAlert className="logo-icon" color="var(--gold-primary)" size={32} />
+          <div style={{ width: 64, height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} alt="Math Mastery" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
           <h1 className="title-glow">
             {userData?.role === 'admin' ? 'Painel Master (Admin)' : 'Painel do Professor'}
           </h1>
@@ -1041,7 +1044,7 @@ export default function AdminDashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
               {userData && (
-                <div style={{ width: 36, height: 54, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
                   <AvatarPrint config={userData.avatarConfig} equippedItems={[]} size={36} />
                 </div>
               )}
@@ -1053,6 +1056,7 @@ export default function AdminDashboard() {
           </button>
         </div>
       </nav>
+      </div>
 
       <div style={{ display: 'flex', gap: '1.5rem', flex: 1, overflow: 'hidden' }}>
         {/* Overlay for Mobile */}
