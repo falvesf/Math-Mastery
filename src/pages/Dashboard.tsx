@@ -12,6 +12,8 @@ import StudentInventory from '../components/StudentInventory';
 import CachedImage from '../components/CachedImage';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
+import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
+import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
@@ -71,13 +73,12 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
       {showAvatars && (
         <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%' }}>
           {student.avatarConfig ? (
-            <AvatarCharacter 
+            <LazyAnimatedAvatar 
+              id={`ranking-${student.uid}`}
               config={student.avatarConfig} 
               equippedItems={equippedItems} 
               size={size} 
-              interactive={false} 
               animation={finalAnimation} 
-              expression={rankPos === 1 && show3D ? 'normal' : (avatarState.expression as any)} 
             />
           ) : (
             <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
@@ -1700,7 +1701,26 @@ export default function Dashboard() {
                         </div>
                         {(liveAvatarConfig || userData?.avatarConfig) ? (
                           <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 20 }} onClick={() => setIsCustomizingAvatar(true)}>
-                            <AvatarCharacter config={(liveAvatarConfig || userData.avatarConfig)} size={90} equippedItems={equippedItems} interactive={false} animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} showSlots={true} onAvatarClick={() => setIsCustomizingAvatar(true)} onSlotClick={handleUnequipItem} onToggleSlotVisibility={handleToggleSlotVisibility} />
+                            {(activeTab === 'ranking_class' || activeTab === 'ranking_general') ? (
+                              <AvatarPrint 
+                                config={liveAvatarConfig || userData.avatarConfig} 
+                                equippedItems={equippedItems} 
+                                size={90} 
+                              />
+                            ) : (
+                              <AvatarCharacter 
+                                config={(liveAvatarConfig || userData.avatarConfig)} 
+                                size={90} 
+                                equippedItems={equippedItems} 
+                                interactive={false} 
+                                animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} 
+                                expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} 
+                                showSlots={true} 
+                                onAvatarClick={() => setIsCustomizingAvatar(true)} 
+                                onSlotClick={handleUnequipItem} 
+                                onToggleSlotVisibility={handleToggleSlotVisibility} 
+                              />
+                            )}
                           </div>
                         ) : (
                           <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px', cursor: 'pointer' }} />

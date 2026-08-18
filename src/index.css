@@ -428,7 +428,7 @@ h3 {
   text-align: center;
   box-shadow: 0 4px 15px rgba(0,0,0,0.4);
   animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-  z-index: 30;
+  z-index: 50;
   pointer-events: none;
 }
 
@@ -456,6 +456,144 @@ h3 {
   0% { transform: translateX(-50%) scale(0); opacity: 0; }
   80% { transform: translateX(-50%) scale(1.1); opacity: 1; }
   100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+/* Quest Question Overlay on Arena */
+.quest-question-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  pointer-events: none;
+}
+
+.quest-question-overlay > * {
+  pointer-events: auto;
+}
+
+.quest-question-overlay .quest-question-title {
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glass);
+  border-radius: 10px;
+  padding: 0.6rem 1.2rem;
+  max-width: 90%;
+  text-align: center;
+  color: white;
+  font-size: 1rem;
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
+}
+
+.quest-question-overlay .quest-question-title h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.quest-question-overlay .quest-question-title img {
+  max-width: 100%;
+  height: auto;
+  max-height: 80px;
+  object-fit: contain;
+  border-radius: 6px;
+  margin-top: 0.25rem;
+}
+
+.quest-question-overlay .quest-options-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  max-width: 95%;
+}
+
+.quest-question-overlay .quest-option-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-glass);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  min-width: 120px;
+  max-width: 280px;
+}
+
+.quest-question-overlay .quest-option-btn:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: var(--gold-primary);
+}
+
+.quest-question-overlay .quest-option-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.quest-question-overlay .quest-option-btn .option-letter {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: var(--gold-primary);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.quest-question-overlay .quest-option-btn .option-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-question-overlay .quest-option-btn .option-img {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.quest-question-overlay .quest-option-btn.eliminated {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: transparent;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.quest-question-overlay .quest-option-btn.correct {
+  background: rgba(16, 185, 129, 0.3);
+  border-color: var(--accent-green);
+}
+
+.quest-question-overlay .quest-option-btn.wrong {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: var(--accent-red);
+}
+
+@media (max-width: 600px) {
+  .quest-question-overlay .quest-question-title {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.8rem;
+  }
+  .quest-question-overlay .quest-option-btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+    min-width: 100px;
+  }
 }
 
 /* Chest Animations */

@@ -77,6 +77,7 @@ export default function QuestGameplay() {
   
   // Feedback Visual (certo/errado)
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const [lastSelectedOption, setLastSelectedOption] = useState<number | null>(null);
   
   // Dano Crítico Fracionado (Vantagens para a próxima pergunta)
   const [nextQAdvantage, setNextQAdvantage] = useState<'eliminate-2' | 'eliminate-1' | 'bonus-crit' | null>(null);
@@ -215,15 +216,65 @@ export default function QuestGameplay() {
           const eLoaded: EquippedItem[] = [];
           
           if (pSnap) {
+            // Collect itemIds that need modelTransforms fallback from store_items
+            const missingTransformIds: string[] = [];
+
             pSnap.forEach((d: any) => {
-              const item = { ...d.data, id: d.id, equipped: d.equipped };
-              if (item.itemType === 'consumable' && item.usableInQuest) {
-                pLoaded.push(item);
+              const data = d.data;
+              if (!data) return;
+
+              if (data.itemType === 'consumable' && data.usableInQuest) {
+                pLoaded.push({ ...data, id: d.id, equipped: d.equipped });
               }
-              if (item.equipped) {
-                eLoaded.push(item);
+              if (d.equipped) {
+                let parsedAdds: any[] = [];
+                if (data.adds) {
+                  try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch(e){}
+                }
+                const eqItem: EquippedItem = { 
+                  docId: d.id,
+                  itemId: d.item_id,
+                  imageUrl: data.itemImageUrl || data.imageUrl || '', 
+                  avatarPart: data.avatarPart as any,
+                  itemTitle: data.itemTitle,
+                  itemCategory: data.itemCategory,
+                  baseAttributeType: data.baseAttributeType,
+                  baseAttributeValue: data.baseAttributeValue,
+                  adds: parsedAdds,
+                  gameModelUrl: data.gameModelUrl,
+                  modelTextureUrl: data.modelTextureUrl,
+                  minecraftHeadValue: data.minecraftHeadValue,
+                  modelTransforms: data.modelTransforms,
+                  backColor: data.backColor || '',
+                  rarity: data.rarity,
+                  customAnimation: data.customAnimation,
+                };
+                eLoaded.push(eqItem);
+
+                if (!data.modelTransforms && d.item_id) {
+                  missingTransformIds.push(d.item_id);
+                }
               }
             });
+
+            // Fallback: fetch modelTransforms from store_items for items missing them
+            if (missingTransformIds.length > 0) {
+              const uniqueIds = [...new Set(missingTransformIds)];
+              const { data: storeSnap } = await supabase.from('store_items').select('id, data').in('id', uniqueIds);
+              if (storeSnap) {
+                const storeMap = new Map<string, any>();
+                storeSnap.forEach((s: any) => {
+                  if (s.data?.modelTransforms) {
+                    storeMap.set(s.id, s.data.modelTransforms);
+                  }
+                });
+                eLoaded.forEach(eq => {
+                  if (!eq.modelTransforms && eq.itemId && storeMap.has(eq.itemId)) {
+                    eq.modelTransforms = storeMap.get(eq.itemId);
+                  }
+                });
+              }
+            }
           }
 
           const groupedMap = new Map<string, UserItem>();
@@ -583,6 +634,8 @@ export default function QuestGameplay() {
       isCorrect
     });
 
+    setLastSelectedOption(isTimeout ? -1 : optIndex);
+
     if (isCorrect) {
       setFeedback('correct');
       
@@ -635,6 +688,7 @@ export default function QuestGameplay() {
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
         setTimeout(() => {
           setFeedback(null);
+          setLastSelectedOption(null);
           if (!isCritical) setBattleMessage(getRoundMessage(currentQIndex + 1, currentHearts));
           nextQuestion();
         }, 2000);
@@ -695,6 +749,7 @@ export default function QuestGameplay() {
         setEliminatedOptions([...eliminatedOptions, optIndex]); // eliminate the one they just clicked
         setTimeout(() => {
           setFeedback(null);
+          setLastSelectedOption(null);
           if (isMonsterCrit) {
             setBattleMessage('DANO CRÍTICO DO INIMIGO! Sorte que seu escudo segurou o impacto!');
           } else {
@@ -716,6 +771,7 @@ export default function QuestGameplay() {
       setCurrentXp(newXp);
       setTimeout(() => {
         setFeedback(null);
+        setLastSelectedOption(null);
         if (isMonsterCrit) {
           setBattleMessage('DANO CRÍTICO DO INIMIGO! Você perdeu 2 corações!');
         } else {
@@ -1194,7 +1250,44 @@ export default function QuestGameplay() {
         {/* Battle Arena Fixed */}
         {gameState === 'playing' && (
           <div ref={arenaRef} className="battle-arena-bg quest-arena" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '130px', paddingBottom: '20px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, overflow: 'hidden' } as any}>
-            <div className="battle-arena-bg-image" />
+            <div 
+              className="battle-arena-bg-image" 
+              style={quest?.battleBgUrl ? { 
+                background: `url(${quest.battleBgUrl}) center bottom / cover no-repeat`
+              } : undefined}
+            />
+            
+            {/* Question Overlay - Sobre a arena, abaixo dos balões de fala */}
+            <div className="quest-question-overlay">
+              <div className="quest-question-title">
+                {quest.questions[currentQIndex].imageUrl && (
+                  <img src={getSafeUrl(quest.questions[currentQIndex].imageUrl)} alt="Quest" />
+                )}
+                <h2 dangerouslySetInnerHTML={{ __html: quest.questions[currentQIndex].title }} />
+              </div>
+              
+              <div className="quest-options-compact">
+                {quest.questions[currentQIndex].options.map((opt, i) => {
+                  const isEliminated = eliminatedOptions.includes(i);
+                  const isCorrectAnswer = feedback && i === quest.questions[currentQIndex].correctIndex;
+                  const isWrongSelected = feedback === 'wrong' && i === lastSelectedOption;
+                  
+                  return (
+                    <button 
+                      key={i} 
+                      onClick={() => !isEliminated && handleAnswer(i)}
+                      disabled={feedback !== null || isEliminated}
+                      className={`quest-option-btn ${isEliminated ? 'eliminated' : ''} ${isCorrectAnswer ? 'correct' : ''} ${isWrongSelected ? 'wrong' : ''}`}
+                    >
+                      {isEliminated && <XCircle size={16} color="rgba(239, 68, 68, 0.5)" style={{ position: 'absolute' }} />}
+                      <span className="option-letter">{String.fromCharCode(65 + i)}</span>
+                      {opt.imageUrl && <img src={getSafeUrl(opt.imageUrl)} alt="" className="option-img" />}
+                      <span className="option-text">{opt.text}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             
             {/* Player Side */}
             <div 
@@ -1313,56 +1406,22 @@ export default function QuestGameplay() {
           )}
 
           {gameState === 'playing' && quest && (
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '2rem', animation: 'fadeIn 0.3s ease-out' }}>
-              
-              {/* Question Card */}
-              <div className="glass-panel quest-question-card" style={{ position: 'relative', border: feedback === 'correct' ? '2px solid var(--accent-green)' : feedback === 'wrong' ? '2px solid var(--accent-red)' : '1px solid var(--border-glass)' }}>
-                {quest.questions[currentQIndex].imageUrl && (
-                  <div className="quest-image-box" style={{ width: '100%', marginBottom: '2rem', borderRadius: '12px', overflow: 'hidden', background: 'rgba(0,0,0,0.5)' }}>
-                    <img src={getSafeUrl(quest.questions[currentQIndex].imageUrl)} alt="Quest" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  </div>
-                )}
-                <h2 style={{ fontSize: '2rem', margin: 0, textAlign: 'center' }}>{quest.questions[currentQIndex].title}</h2>
-              </div>
-
-              {/* Options Grid */}
-              <div className="quest-options-grid" style={{ display: 'grid', gap: '1.5rem' }}>
-                {quest.questions[currentQIndex].options.map((opt, i) => {
-                  const isEliminated = eliminatedOptions.includes(i);
-                  return (
-                    <button 
-                      key={i} 
-                      onClick={() => !isEliminated && handleAnswer(i)}
-                      disabled={feedback !== null || isEliminated}
-                      style={{ 
-                        padding: '1.5rem', 
-                        borderRadius: '12px', 
-                        background: isEliminated ? 'rgba(0,0,0,0.2)' : 'var(--btn-bg)', 
-                        border: isEliminated ? '1px solid transparent' : '1px solid var(--border-glass)', 
-                        color: isEliminated ? 'rgba(255,255,255,0.2)' : 'var(--text-primary)', 
-                        cursor: isEliminated ? 'not-allowed' : 'pointer', 
-                        textAlign: 'left', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '1rem',
-                        fontSize: '1.1rem',
-                        transition: 'all 0.2s',
-                        position: 'relative',
-                        overflow: 'hidden'
-                      }}
-                    >
-                      {isEliminated && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><XCircle size={48} color="rgba(239, 68, 68, 0.3)" /></div>}
-                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: 'var(--gold-primary)', flexShrink: 0 }}>
-                        {String.fromCharCode(65 + i)}
-                      </div>
-                      {opt.imageUrl && <img src={getSafeUrl(opt.imageUrl)} alt="" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />}
-                      <span style={{ textDecoration: isEliminated ? 'line-through' : 'none' }}>{opt.text}</span>
-                    </button>
-                  )
-                })}
-              </div>
-
-
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'fadeIn 0.3s ease-out', flex: 1 }}>
+              {/* Feedback visual quando responde */}
+              {feedback && (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '1rem',
+                  animation: 'fadeIn 0.3s ease-out',
+                  background: feedback === 'correct' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  borderRadius: '12px',
+                  border: `1px solid ${feedback === 'correct' ? 'var(--accent-green)' : 'var(--accent-red)'}`,
+                }}>
+                  <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: feedback === 'correct' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                    {feedback === 'correct' ? '✓ Resposta Correta!' : '✗ Resposta Incorreta!'}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

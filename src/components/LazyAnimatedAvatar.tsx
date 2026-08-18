@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
 
-const MAX_ANIMATED = 8;
+const MAX_ANIMATED = 11;
 
 // Estado global compartilhado entre TODAS as instâncias do componente na mesma página
 const activeIds = new Set<string>();

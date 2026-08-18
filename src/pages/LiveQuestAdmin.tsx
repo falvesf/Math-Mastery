@@ -615,7 +615,13 @@ export default function LiveQuestAdmin() {
       <div style={{ flex: 1, position: 'relative' }}>
         {/* BACKGROUND IMAGE */}
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', zIndex: 0 }}>
-           <div className="battle-arena-bg-image" style={{ opacity: 0.5 }} />
+           <div 
+             className="battle-arena-bg-image" 
+             style={{ 
+               opacity: 0.5,
+               ...(quest?.battleBgUrl ? { background: `url(${quest.battleBgUrl}) center bottom / cover no-repeat` } : {})
+             }} 
+           />
         </div>
 
         {/* MIDDLE AREA: 3D VIEWER & AVATARS - HIDE ON RANKING */}

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -14,7 +14,9 @@ import AdminEconomySettings from '../components/AdminEconomySettings';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
+import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
+import RichTextEditor from '../components/RichTextEditor';
 import { useDialog } from '../contexts/DialogContext';
 
 export interface ClassDef {
@@ -69,12 +71,155 @@ export interface QuestDef {
     itemId: string;
     dropChance: number;
   }[];
+  battleBgUrl?: string;
   active: boolean;
   createdBy?: string;
   creatorRole?: string;
   targetClasses?: string[];
   shuffleQuestions?: boolean;
   shuffleAnswers?: boolean;
+}
+
+interface StoreItemOption {
+  id: string;
+  title?: string;
+  type?: string;
+  itemImageUrl?: string;
+  imageUrl?: string;
+  [key: string]: any;
+}
+
+function StoreItemSelect({ value, onChange, items, placeholder = '(Nenhum Item)', disabledIds = [] }: {
+  value: string;
+  onChange: (id: string, item: StoreItemOption | null) => void;
+  items: StoreItemOption[];
+  placeholder?: string;
+  disabledIds?: string[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selectedItem = items.find(i => i.id === value);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const getSortKey = (item: StoreItemOption) => (item.title || '').toLowerCase();
+
+  const filtered = items.filter(i => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (i.title || '').toLowerCase().includes(q) || (i.type || '').toLowerCase().includes(q);
+  });
+
+  const consumables = filtered.filter(i => i.type === 'consumable').sort((a, b) => getSortKey(a).localeCompare(getSortKey(b)));
+  const equippables = filtered.filter(i => i.type !== 'consumable').sort((a, b) => getSortKey(a).localeCompare(getSortKey(b)));
+
+  const renderOption = (item: StoreItemOption) => {
+    const imgUrl = item.itemImageUrl || item.imageUrl || '';
+    const isDisabled = disabledIds.includes(item.id);
+    const typeLabel = item.type === 'consumable' ? 'Consumível' : 'Equipável';
+    return (
+      <div
+        key={item.id}
+        onClick={() => { if (!isDisabled) { onChange(item.id, item); setIsOpen(false); setSearch(''); } }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem',
+          cursor: isDisabled ? 'not-allowed' : 'pointer', opacity: isDisabled ? 0.4 : 1,
+          background: value === item.id ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => { if (!isDisabled) (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.08)'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = value === item.id ? 'rgba(245, 158, 11, 0.15)' : 'transparent'; }}
+      >
+        {imgUrl ? (
+          <img src={imgUrl} alt="" style={{ width: '24px', height: '24px', borderRadius: '4px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }} />
+        ) : (
+          <div style={{ width: '24px', height: '24px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'var(--text-secondary)' }}>?</div>
+        )}
+        <span style={{ flex: 1, fontSize: '0.85rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || 'Sem nome'}</span>
+        <span style={{ fontSize: '0.7rem', color: item.type === 'consumable' ? '#10b981' : '#3b82f6', fontWeight: 'bold', flexShrink: 0 }}>{typeLabel}</span>
+      </div>
+    );
+  };
+
+  const renderGroup = (label: string, color: string, groupItems: StoreItemOption[]) => {
+    if (groupItems.length === 0) return null;
+    return (
+      <div>
+        <div style={{ padding: '0.4rem 0.75rem', fontSize: '0.7rem', fontWeight: 'bold', color, textTransform: 'uppercase', letterSpacing: '1px', background: 'rgba(0,0,0,0.3)', position: 'sticky', top: 0, zIndex: 1 }}>
+          {label} ({groupItems.length})
+        </div>
+        {groupItems.map(renderOption)}
+      </div>
+    );
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', flex: 1 }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem',
+          borderRadius: '8px', background: 'var(--bg-dark)', border: isOpen ? '1px solid var(--gold-primary)' : '1px solid var(--border-glass)',
+          cursor: 'pointer', minHeight: '42px', transition: 'border-color 0.2s',
+        }}
+      >
+        {selectedItem ? (
+          <>
+            {(selectedItem.itemImageUrl || selectedItem.imageUrl) ? (
+              <img src={selectedItem.itemImageUrl || selectedItem.imageUrl} alt="" style={{ width: '20px', height: '20px', borderRadius: '3px', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ width: '20px', height: '20px', borderRadius: '3px', background: 'rgba(255,255,255,0.1)' }} />
+            )}
+            <span style={{ flex: 1, fontSize: '0.85rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedItem.title || 'Sem nome'}</span>
+            <span style={{ fontSize: '0.7rem', color: selectedItem.type === 'consumable' ? '#10b981' : '#3b82f6', fontWeight: 'bold' }}>{selectedItem.type === 'consumable' ? 'Cons.' : 'Equip.'}</span>
+          </>
+        ) : (
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{placeholder}</span>
+        )}
+        <ChevronDown size={14} style={{ color: 'var(--text-secondary)', marginLeft: 'auto', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+      </div>
+
+      {isOpen && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999,
+          background: 'rgba(25, 30, 40, 0.98)', backdropFilter: 'blur(12px)',
+          border: '1px solid var(--gold-primary)', borderRadius: '8px',
+          marginTop: '4px', maxHeight: '280px', overflowY: 'auto',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        }}>
+          <div style={{ padding: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', position: 'sticky', top: 0, background: 'rgba(25, 30, 40, 0.98)', zIndex: 2 }}>
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar item..."
+              style={{ width: '100%', padding: '0.4rem 0.6rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+            />
+          </div>
+          <div onClick={() => { onChange('', null); setIsOpen(false); setSearch(''); }} style={{ padding: '0.5rem 0.75rem', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            {placeholder}
+          </div>
+          {renderGroup('Consumíveis', '#10b981', consumables)}
+          {renderGroup('Equipamentos', '#3b82f6', equippables)}
+          {consumables.length === 0 && equippables.length === 0 && (
+            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Nenhum item encontrado</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AdminDashboard() {
@@ -166,6 +311,7 @@ export default function AdminDashboard() {
   const [questMonsterQuotes, setQuestMonsterQuotes] = useState<{hp100_80?: string, hp79_50?: string, hp49_25?: string, hp24_0?: string}>({});
   const [questMonsterDefeatQuotes, setQuestMonsterDefeatQuotes] = useState('');
   const [questMonsterDrops, setQuestMonsterDrops] = useState<{itemId: string, dropChance: number}[]>([]);
+  const [questBattleBgUrl, setQuestBattleBgUrl] = useState('');
   const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], dropChance?: number}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
   const [questLiveChest1st, setQuestLiveChest1st] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
   const [questLiveChest2nd, setQuestLiveChest2nd] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -232,12 +378,14 @@ export default function AdminDashboard() {
   };
 
   const fetchMonsters = async () => {
-    const { data: snap } = await supabase.from('monsters').select('*');
+    const { data: snap } = await supabase.from('preset_skins').select('*').eq('type', 'monster');
     const loaded: any[] = snap ? snap.map((d: any) => ({
-      ...d,
       id: d.id,
-      imageUrl: d.image_url || d.imageUrl,
-      avatarPart: d.avatar_part || d.avatarPart
+      name: d.name || 'Sem nome',
+      url: d.url || '',
+      type: d.type || 'monster',
+      config: d.config || null,
+      baseModelId: d.baseModelId || null,
     })) : [];
     setAvailableMonsters(loaded);
   };
@@ -245,10 +393,12 @@ export default function AdminDashboard() {
   const fetchStoreItems = async () => {
     const { data: snap } = await supabase.from('store_items').select('*').eq('active', true);
     const loaded: any[] = snap ? snap.map((d: any) => ({
-      ...d,
       id: d.id,
-      imageUrl: d.image_url || d.imageUrl,
-      avatarPart: d.avatar_part || d.avatarPart
+      ...(d.data || {}),
+      title: (d.data as any)?.title || d.name || 'Sem nome',
+      type: (d.data as any)?.type || d.type || 'equippable',
+      imageUrl: (d.data as any)?.itemImageUrl || (d.data as any)?.imageUrl || d.image_url || d.imageUrl || '',
+      avatarPart: (d.data as any)?.avatarPart || d.avatar_part || d.avatarPart || '',
     })) : [];
     setAvailableStoreItems(loaded);
   };
@@ -648,6 +798,7 @@ export default function AdminDashboard() {
       monsterQuotes: questMonsterQuotes,
       monsterDefeatQuotes: questMonsterDefeatQuotes,
       monsterDrops: questMonsterDrops,
+      battleBgUrl: questBattleBgUrl,
       chestConfig: questChestConfig,
       mode: questMode,
       liveChest1stPlace: questLiveChest1st,
@@ -669,7 +820,7 @@ export default function AdminDashboard() {
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
       setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -698,6 +849,7 @@ export default function AdminDashboard() {
     setQuestMonsterQuotes(quest.monsterQuotes || {});
     setQuestMonsterDefeatQuotes(quest.monsterDefeatQuotes || '');
     setQuestMonsterDrops(quest.monsterDrops || []);
+    setQuestBattleBgUrl(quest.battleBgUrl || '');
     setQuestChestConfig(quest.chestConfig || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
     setQuestMode(quest.mode || 'classic');
     setQuestLiveChest1st(quest.liveChest1stPlace || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -771,6 +923,7 @@ export default function AdminDashboard() {
 
   const handleGallerySelect = (url: string) => {
     if (galleryTarget === 'cover') setQuestCover(url);
+    else if (galleryTarget === 'arena') setQuestBattleBgUrl(url);
     else if (galleryTarget?.startsWith('question-')) {
       const qIndex = parseInt(galleryTarget.split('-')[1]);
       handleUpdateQuestion(qIndex, 'imageUrl', url);
@@ -816,32 +969,19 @@ export default function AdminDashboard() {
             return (
               <div key={slot} style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Item {slot + 1} {showDropChance ? (slot === 0 ? '(50% de chance)' : slot === 1 ? '(25% de chance)' : slot === 2 ? '(10% de chance)' : '(5% de chance)') : '(100% de chance)'}</label>
-                <select 
-                  value={chestConfig?.itemIds?.[slot] || ''} 
-                  onChange={e => {
+                <StoreItemSelect
+                  value={chestConfig?.itemIds?.[slot] || ''}
+                  onChange={(id, item) => {
                     const newIds = [...(chestConfig?.itemIds || ['', '', '', ''])];
                     const newQuants = [...(chestConfig?.itemQuantities || [1, 1, 1, 1])];
-                    newIds[slot] = e.target.value;
-                    
-                    const newItem = availableStoreItems.find(i => i.id === e.target.value);
-                    if (newItem?.type === 'equippable') {
-                      newQuants[slot] = 1;
-                    }
-                    
+                    newIds[slot] = id;
+                    if (item?.type === 'equippable') newQuants[slot] = 1;
                     setChestConfig({ ...chestConfig, itemIds: newIds, itemQuantities: newQuants });
                   }}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', marginBottom: isConsumable ? '0.5rem' : '0' }}
-                >
-                  <option value="">(Nenhum Item)</option>
-                  {availableStoreItems.map(item => {
-                    const isSelectedElsewhere = (chestConfig?.itemIds || []).some((id: string, idx: number) => id === item.id && idx !== slot);
-                    return (
-                      <option key={item.id} value={item.id} disabled={isSelectedElsewhere}>
-                        {item.title} ({item.type === 'equippable' ? 'Equipamento' : 'Consumível'})
-                      </option>
-                    );
-                  })}
-                </select>
+                  items={availableStoreItems}
+                  placeholder="(Nenhum Item)"
+                  disabledIds={(chestConfig?.itemIds || []).filter((id: string, idx: number) => id && idx !== slot)}
+                />
                 
                 {isConsumable && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -887,8 +1027,8 @@ export default function AdminDashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
               {userData && (
-                <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
-                  <AvatarCharacter config={userData.avatarConfig || undefined} size={36} interactive={false} animation="none" />
+                <div style={{ width: 36, height: 54, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
+                  <AvatarPrint config={userData.avatarConfig} equippedItems={[]} size={36} />
                 </div>
               )}
               <span style={{ fontWeight: 'bold' }}>{userData?.name?.split(' ')[0]}</span>
@@ -1586,28 +1726,21 @@ export default function AdminDashboard() {
                         {questMonsterDrops.map((drop, index) => {
                           return (
                             <div key={index} style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
-                              <select 
+                              <StoreItemSelect
                                 value={drop.itemId}
-                                onChange={e => {
+                                onChange={(id, item) => {
                                   const newDrops = [...questMonsterDrops];
-                                  const selectedItem = availableStoreItems.find(i => i.id === e.target.value);
-                                  
                                   let defaultChance = 60;
-                                  if (selectedItem?.rarity === 'uncommon') defaultChance = 40;
-                                  if (selectedItem?.rarity === 'rare') defaultChance = 20;
-                                  if (selectedItem?.rarity === 'epic') defaultChance = 5;
-                                  if (selectedItem?.rarity === 'legendary') defaultChance = 1;
-                                  
-                                  newDrops[index] = { itemId: e.target.value, dropChance: defaultChance };
+                                  if (item?.rarity === 'uncommon') defaultChance = 40;
+                                  if (item?.rarity === 'rare') defaultChance = 20;
+                                  if (item?.rarity === 'epic') defaultChance = 5;
+                                  if (item?.rarity === 'legendary') defaultChance = 1;
+                                  newDrops[index] = { itemId: id, dropChance: defaultChance };
                                   setQuestMonsterDrops(newDrops);
                                 }}
-                                style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
-                              >
-                                <option value="">(Selecione um Item)</option>
-                                {availableStoreItems.map(si => (
-                                  <option key={si.id} value={si.id}>{si.title} ({si.type === 'equippable' ? 'Equipamento' : 'Consumível'})</option>
-                                ))}
-                              </select>
+                                items={availableStoreItems}
+                                placeholder="(Selecione um Item)"
+                              />
                               
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Chance:</label>
@@ -1647,6 +1780,59 @@ export default function AdminDashboard() {
                         </button>
                       </div>
 
+                    </div>
+
+                    {/* Fundo da Arena de Batalha */}
+                    <div style={{ background: 'rgba(139, 92, 246, 0.05)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.3)', marginTop: '1rem' }}>
+                      <h4 style={{ color: '#8b5cf6', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ImageIcon size={20} /> Fundo da Arena de Batalha
+                      </h4>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                        Escolha uma imagem de fundo personalizada para a arena de batalha. Se não selecionar, será usado o fundo padrão.
+                      </p>
+                      
+                      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        {/* Preview do fundo atual */}
+                        <div style={{ width: '200px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', flexShrink: 0 }}>
+                          {questBattleBgUrl ? (
+                            <img src={questBattleBgUrl} alt="Fundo da arena" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ width: '100%', height: '100%', background: 'url(/battle_bg.png) center/cover', opacity: 0.5 }} />
+                          )}
+                        </div>
+                        
+                        <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          {/* Botões de ação */}
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button 
+                              onClick={() => setGalleryTarget('arena')}
+                              style={{ padding: '0.5rem 1rem', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}
+                            >
+                              <Search size={16} /> Galeria
+                            </button>
+                            <DirectUploadButton 
+                              folder="arena-backgrounds" 
+                              onUploadComplete={(url) => setQuestBattleBgUrl(url)} 
+                              buttonStyle={{ padding: '0.5rem 1rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }} 
+                            />
+                            <button 
+                              onClick={() => setQuestBattleBgUrl('')}
+                              style={{ padding: '0.5rem 1rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}
+                            >
+                              Usar Padrão
+                            </button>
+                          </div>
+                          
+                          {/* Input manual de URL */}
+                          <input 
+                            type="text" 
+                            value={questBattleBgUrl} 
+                            onChange={e => setQuestBattleBgUrl(e.target.value)} 
+                            placeholder="Ou cole a URL da imagem aqui..."
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     {renderChestConfig(
@@ -1699,89 +1885,103 @@ export default function AdminDashboard() {
                       </div>
 
                       {/* Configurações da Pergunta: Texto, Tempo e Imagem */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                          <input 
-                            type="text" 
-                            value={q.title} 
-                            onChange={e => handleUpdateQuestion(qIndex, 'title', e.target.value)} 
-                            placeholder="Digite o enigma ou pergunta aqui..." 
-                            style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem' }} 
-                          />
-                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                            <ImageIcon size={20} color="var(--text-secondary)" />
+                      <div style={{ marginBottom: '1.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                          <label style={{ color: 'var(--text-secondary)', fontWeight: 'bold', fontSize: '0.9rem' }}>Enunciado da Pergunta</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                              <Clock size={16} /> Tempo (seg)
+                            </label>
                             <input 
-                              type="text" 
-                              value={q.imageUrl || ''} 
-                              onChange={e => handleUpdateQuestion(qIndex, 'imageUrl', e.target.value)} 
-                              placeholder="URL ou Galeria ->" 
-                              style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px dashed var(--border-glass)', color: 'white', fontFamily: 'inherit' }} 
+                              type="number" 
+                              value={q.timeLimit} 
+                              onChange={e => handleUpdateQuestion(qIndex, 'timeLimit', parseInt(e.target.value) || 0)} 
+                              style={{ width: '70px', padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit', fontSize: '1rem', textAlign: 'center' }} 
                             />
-                            <DirectUploadButton folder="quests" onUploadComplete={(url) => handleUpdateQuestion(qIndex, 'imageUrl', url)} buttonStyle={{ minHeight: '100%' }} />
-                            <button onClick={() => setGalleryTarget(`question-${qIndex}`)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', minHeight: '100%' }}>
-                              <Search size={18} />
-                            </button>
                           </div>
                         </div>
+                        <RichTextEditor
+                          value={q.title}
+                          onChange={(html) => handleUpdateQuestion(qIndex, 'title', html)}
+                          placeholder="Digite o enigma ou pergunta aqui... Use a toolbar para formatar e adicionar símbolos matemáticos."
+                        />
                         
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
-                            <Clock size={18} /> Tempo (Segundos)
-                          </label>
-                          <input 
-                            type="number" 
-                            value={q.timeLimit} 
-                            onChange={e => handleUpdateQuestion(qIndex, 'timeLimit', parseInt(e.target.value) || 0)} 
-                            style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit', fontSize: '1.2rem', textAlign: 'center' }} 
-                          />
+                        {/* Imagem da pergunta */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Imagem:</span>
+                          <button 
+                            onClick={() => setGalleryTarget(`question-${qIndex}`)} 
+                            style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold' }}
+                          >
+                            <Search size={14} /> Galeria
+                          </button>
+                          <DirectUploadButton folder="quests" onUploadComplete={(url) => handleUpdateQuestion(qIndex, 'imageUrl', url)} buttonStyle={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }} />
+                          {q.imageUrl && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '0.5rem' }}>
+                              <img src={q.imageUrl} alt="" style={{ width: '32px', height: '32px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border-glass)' }} />
+                              <button 
+                                onClick={() => handleUpdateQuestion(qIndex, 'imageUrl', '')} 
+                                style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}
+                                title="Remover imagem"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       {q.imageUrl && (
-                        <div style={{ width: '100%', height: '200px', marginBottom: '1.5rem', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-glass)' }}>
+                        <div style={{ width: '100%', maxHeight: '200px', marginBottom: '1.5rem', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-glass)' }}>
                           <img src={q.imageUrl} alt="Imagem da pergunta" style={{ width: '100%', height: '100%', objectFit: 'contain', background: 'rgba(0,0,0,0.5)' }} />
                         </div>
                       )}
 
                       {/* Opções */}
-                      <h4 style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>Alternativas (Mínimo de 2)</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <h4 style={{ marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Alternativas (Mínimo de 2)</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
                         {q.options.map((opt, optIndex) => (
-                          <div key={optIndex} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: q.correctIndex === optIndex ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: q.correctIndex === optIndex ? '2px solid var(--accent-green)' : '1px solid transparent' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                          <div key={optIndex} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: q.correctIndex === optIndex ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '8px', border: q.correctIndex === optIndex ? '2px solid var(--accent-green)' : '1px solid transparent' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <input 
                                 type="radio" 
                                 name={`correct-${qIndex}`} 
                                 checked={q.correctIndex === optIndex}
                                 onChange={() => handleUpdateQuestion(qIndex, 'correctIndex', optIndex)}
-                                style={{ width: '24px', height: '24px', cursor: 'pointer' }}
+                                style={{ width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0 }}
+                                title="Marcar como correta"
                               />
+                              <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '0.9rem', flexShrink: 0, width: '20px', textAlign: 'center' }}>{['A', 'B', 'C', 'D'][optIndex]}</span>
                               <input 
                                 type="text" 
                                 value={opt.text} 
                                 onChange={e => handleUpdateOption(qIndex, optIndex, 'text', e.target.value)}
-                                placeholder={`Texto da Opção ${['A', 'B', 'C', 'D'][optIndex]} (Deixe vazio p/ ocultar)`}
-                                style={{ flex: 1, padding: '0.75rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                                placeholder={`Texto da Opção ${['A', 'B', 'C', 'D'][optIndex]}`}
+                                style={{ flex: 1, padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.9rem', minWidth: 0 }}
                               />
                             </div>
-                            <div style={{ display: 'flex', gap: '1rem', paddingLeft: '2.5rem' }}>
-                              <input 
-                                type="text" 
-                                value={opt.imageUrl || ''} 
-                                onChange={e => handleUpdateOption(qIndex, optIndex, 'imageUrl', e.target.value)}
-                                placeholder={`URL / Galeria ->`}
-                                style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.2)', border: '1px dashed rgba(255,255,255,0.1)', color: 'var(--text-secondary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
-                              />
-                              <DirectUploadButton folder="quests" onUploadComplete={(url) => handleUpdateOption(qIndex, optIndex, 'imageUrl', url)} buttonStyle={{ minHeight: '100%' }} />
-                              <button onClick={() => setGalleryTarget(`option-${qIndex}-${optIndex}`)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', minHeight: '100%' }}>
-                                <Search size={14} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', paddingLeft: '2.5rem' }}>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', flexShrink: 0 }}>Img:</span>
+                              <button 
+                                onClick={() => setGalleryTarget(`option-${qIndex}-${optIndex}`)} 
+                                style={{ background: 'rgba(245, 158, 11, 0.1)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '0.3rem 0.5rem', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', fontWeight: 'bold', flexShrink: 0 }}
+                              >
+                                <Search size={12} /> Galeria
                               </button>
+                              <DirectUploadButton folder="quests" onUploadComplete={(url) => handleUpdateOption(qIndex, optIndex, 'imageUrl', url)} buttonStyle={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem' }} />
+                              {opt.imageUrl && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginLeft: 'auto' }}>
+                                  <img src={opt.imageUrl} alt="" style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '3px', border: '1px solid var(--border-glass)' }} />
+                                  <button 
+                                    onClick={() => handleUpdateOption(qIndex, optIndex, 'imageUrl', '')} 
+                                    style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.1rem', display: 'flex' }}
+                                    title="Remover imagem"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                            {opt.imageUrl && (
-                              <div style={{ paddingLeft: '2.5rem', marginTop: '0.5rem' }}>
-                                <img src={opt.imageUrl} alt="" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border-glass)' }} />
-                              </div>
-                            )}
                           </div>
                         ))}
                       </div>

@@ -114,15 +114,62 @@ export default function LiveQuestStudent() {
             const { data: invSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
             
             const pLoaded: any[] = [];
+            const missingTransformIds: string[] = [];
             (invSnap || []).forEach(d => {
-              const item = { ...d.data, id: d.id } as UserItem;
-              if (item.equipped) {
-                equippedItems.push({ docId: d.id, ...item });
+              const data = d.data;
+              if (!data) return;
+
+              if (d.equipped) {
+                let parsedAdds: any[] = [];
+                if (data.adds) {
+                  try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch(e){}
+                }
+                equippedItems.push({ 
+                  docId: d.id,
+                  itemId: d.item_id,
+                  imageUrl: data.itemImageUrl || data.imageUrl || '', 
+                  avatarPart: data.avatarPart,
+                  itemTitle: data.itemTitle,
+                  itemCategory: data.itemCategory,
+                  baseAttributeType: data.baseAttributeType,
+                  baseAttributeValue: data.baseAttributeValue,
+                  adds: parsedAdds,
+                  gameModelUrl: data.gameModelUrl,
+                  modelTextureUrl: data.modelTextureUrl,
+                  minecraftHeadValue: data.minecraftHeadValue,
+                  modelTransforms: data.modelTransforms,
+                  backColor: data.backColor || '',
+                  rarity: data.rarity,
+                  customAnimation: data.customAnimation,
+                });
+                if (!data.modelTransforms && d.item_id) {
+                  missingTransformIds.push(d.item_id);
+                }
               }
+              const item = { ...data, id: d.id } as UserItem;
               if (item.itemType === 'consumable' && item.usableInQuest && item.gameEffect !== 'add_time') {
                 pLoaded.push({ ...item, id: d.id });
               }
             });
+
+            // Fallback: fetch modelTransforms from store_items for items missing them
+            if (missingTransformIds.length > 0) {
+              const uniqueIds = [...new Set(missingTransformIds)];
+              const { data: storeSnap } = await supabase.from('store_items').select('id, data').in('id', uniqueIds);
+              if (storeSnap) {
+                const storeMap = new Map<string, any>();
+                storeSnap.forEach((s: any) => {
+                  if (s.data?.modelTransforms) {
+                    storeMap.set(s.id, s.data.modelTransforms);
+                  }
+                });
+                equippedItems.forEach((eq: any) => {
+                  if (!eq.modelTransforms && eq.itemId && storeMap.has(eq.itemId)) {
+                    eq.modelTransforms = storeMap.get(eq.itemId);
+                  }
+                });
+              }
+            }
 
             const groupedMap = new Map<string, UserItem>();
             pLoaded.forEach(item => {
@@ -624,7 +671,13 @@ export default function LiveQuestStudent() {
         {/* BATTLE SCENE 3D */}
         <div style={{ flex: '1 1 50%', position: 'relative', background: 'var(--bg-primary)', overflow: 'hidden', borderBottom: '2px solid var(--border-glass)' } as any}>
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', zIndex: 0 }}>
-            <div className="battle-arena-bg-image" style={{ opacity: 0.7 }} />
+            <div 
+              className="battle-arena-bg-image" 
+              style={{ 
+                opacity: 0.7,
+                ...(quest?.battleBgUrl ? { background: `url(${quest.battleBgUrl}) center bottom / cover no-repeat` } : {})
+              }} 
+            />
           </div>
           {/* Ambient elements */}
           <div style={{ position: 'absolute', top: '10%', left: '50%', transform: 'translateX(-50%)', opacity: 0.2, zIndex: 1 }}>
