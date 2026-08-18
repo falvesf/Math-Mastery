@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns } from 'lucide-react';
+import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Box } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import GachaConfigModal from './GachaConfigModal';
+import SkinBuffIcon from '../components/SkinBuffIcon';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
@@ -346,11 +347,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <div className={`rarity-badge ${item.rarity || 'common'}`}>
                         {getRarityLabel(item.rarity)}
                       </div>
-                      {item.imageUrl ? (
+                      {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
+                        <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={imgSize} />
+                      ) : item.imageUrl ? (
                         <img src={item.imageUrl} alt={item.title} style={{ width: imgSize, height: imgSize, borderRadius: '8px', objectFit: 'contain' }} />
                       ) : (
                         <div style={{ width: imgSize, height: imgSize, borderRadius: '8px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Star size={isGridIcon ? 32 : 24} color="var(--text-secondary)" />
+                          <Box size={isGridIcon ? 32 : 24} color="var(--text-secondary)" />
                         </div>
                       )}
                       <div style={{ flex: 1, width: isGridIcon ? '100%' : 'auto' }}>
@@ -618,11 +621,16 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <Search size={20} />
                 </button>
               </div>
-              {formData.imageUrl && (
+              
+              {formData.gameEffect === 'unlock_skin' && formData.unlockedSkinId ? (
+                <div style={{ marginTop: '1rem' }}>
+                  <SkinBuffIcon skinUrl={formData.unlockedSkinId} durationDays={formData.buffDurationDays || 7} size={100} />
+                </div>
+              ) : formData.imageUrl ? (
                 <div style={{ marginTop: '1rem', width: '100px', height: '100px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-glass)' }}>
                   <img src={formData.imageUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
-              )}
+              ) : null}
             </div>
 
             {formData.type === 'equippable' && (

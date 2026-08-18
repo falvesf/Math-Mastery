@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles } from 'lucide-react';
+import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Swords } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
+import SkinBuffIcon from './SkinBuffIcon';
 
 interface MarketItem {
   id: string;
@@ -32,6 +33,7 @@ interface MarketItem {
   minecraftHeadValue?: string;
   modelTransforms?: any;
   unlockedSkinId?: string;
+  buffDurationDays?: number;
 }
 
 const getAttributeName = (type: string) => {
@@ -793,12 +795,17 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
           return (
             <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
-              <div style={{ height: isList ? '100%' : (viewMode === 'grid-small' ? '100px' : '160px'), width: isList ? '130px' : '100%', position: 'relative', background: 'var(--bg-dark)', flexShrink: 0 }}>
-                {item.imageUrl ? (
-                  <img src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{ position: 'relative', width: isList ? '130px' : '100%', aspectRatio: isList ? 'none' : '1', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
+                  <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={80} />
+                ) : item.imageUrl ? (
+                  <img src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Store size={isList || viewMode === 'grid-small' ? 32 : 48} color="var(--text-secondary)" />
+                  <Package size={48} color="var(--text-secondary)" />
+                )}
+                {item.type === 'equippable' && (
+                  <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.8)', padding: '4px', borderRadius: '4px' }}>
+                    <Swords size={14} color="var(--gold-primary)" />
                   </div>
                 )}
                 <div className={`rarity-badge ${item.rarity || 'common'}`}>
