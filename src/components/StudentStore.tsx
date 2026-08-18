@@ -237,8 +237,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
     // Apply Persuasion discount (max 50%)
     const discountMultiplier = Math.max(0.5, 1 - (totalEquippedStats.persuasion / 100));
+    const ratio = economySettings?.coinToXPRatio || 10;
     
-    const unitCost = Math.floor((economyType === 'xp' && method === 'coins') ? item.cost * 10 * discountMultiplier : item.cost * discountMultiplier);
+    const unitCost = Math.floor((economyType === 'xp' && method === 'coins') ? item.cost * ratio * discountMultiplier : item.cost * discountMultiplier);
     const finalCost = unitCost * quantityToBuy;
     const balanceToCheck = method === 'xp' ? (userData.xp || 0) : (userData.coins || 0);
     
@@ -782,7 +783,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           const itemQty = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
           const discountMultiplier = Math.max(0.5, 1 - (totalEquippedStats.persuasion / 100));
           const totalCost = Math.floor(item.cost * discountMultiplier) * itemQty;
-          const ratio = economySettings?.coinToXPRatio || 10;
+          const ratio = economyType === 'xp' ? (economySettings?.coinToXPRatio || 10) : 1;
           const totalCostCoins = Math.floor(item.cost * ratio * discountMultiplier) * itemQty;
           
           const canAfford = isStaff || currentBalance >= (economyType === 'xp' ? totalCost : totalCostCoins);
