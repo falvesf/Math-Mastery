@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, Move } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -12,6 +12,7 @@ import AdminRankManager from '../components/AdminRankManager';
 import AdminEntitiesManager from '../components/AdminEntitiesManager';
 import AdminEconomySettings from '../components/AdminEconomySettings';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
+import ArenaBgEditor from '../components/ArenaBgEditor';
 import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
 import AvatarPrint from '../components/AvatarPrint';
@@ -72,6 +73,9 @@ export interface QuestDef {
     dropChance: number;
   }[];
   battleBgUrl?: string;
+  battleBgPosX?: number;
+  battleBgPosY?: number;
+  battleBgScale?: number;
   active: boolean;
   createdBy?: string;
   creatorRole?: string;
@@ -312,6 +316,10 @@ export default function AdminDashboard() {
   const [questMonsterDefeatQuotes, setQuestMonsterDefeatQuotes] = useState('');
   const [questMonsterDrops, setQuestMonsterDrops] = useState<{itemId: string, dropChance: number}[]>([]);
   const [questBattleBgUrl, setQuestBattleBgUrl] = useState('');
+  const [questBattleBgPosX, setQuestBattleBgPosX] = useState(50);
+  const [questBattleBgPosY, setQuestBattleBgPosY] = useState(50);
+  const [questBattleBgScale, setQuestBattleBgScale] = useState(1.2);
+  const [showArenaBgEditor, setShowArenaBgEditor] = useState(false);
   const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], dropChance?: number}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
   const [questLiveChest1st, setQuestLiveChest1st] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
   const [questLiveChest2nd, setQuestLiveChest2nd] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -799,6 +807,9 @@ export default function AdminDashboard() {
       monsterDefeatQuotes: questMonsterDefeatQuotes,
       monsterDrops: questMonsterDrops,
       battleBgUrl: questBattleBgUrl,
+      battleBgPosX: questBattleBgPosX,
+      battleBgPosY: questBattleBgPosY,
+      battleBgScale: questBattleBgScale,
       chestConfig: questChestConfig,
       mode: questMode,
       liveChest1stPlace: questLiveChest1st,
@@ -820,7 +831,7 @@ export default function AdminDashboard() {
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
       setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -850,6 +861,9 @@ export default function AdminDashboard() {
     setQuestMonsterDefeatQuotes(quest.monsterDefeatQuotes || '');
     setQuestMonsterDrops(quest.monsterDrops || []);
     setQuestBattleBgUrl(quest.battleBgUrl || '');
+    setQuestBattleBgPosX(quest.battleBgPosX ?? 50);
+    setQuestBattleBgPosY(quest.battleBgPosY ?? 50);
+    setQuestBattleBgScale(quest.battleBgScale ?? 1.2);
     setQuestChestConfig(quest.chestConfig || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
     setQuestMode(quest.mode || 'classic');
     setQuestLiveChest1st(quest.liveChest1stPlace || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -1795,7 +1809,14 @@ export default function AdminDashboard() {
                         {/* Preview do fundo atual */}
                         <div style={{ width: '200px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', flexShrink: 0 }}>
                           {questBattleBgUrl ? (
-                            <img src={questBattleBgUrl} alt="Fundo da arena" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <div style={{ 
+                              width: '100%', 
+                              height: '100%', 
+                              backgroundImage: `url(${questBattleBgUrl})`,
+                              backgroundSize: `${questBattleBgScale * 100}%`,
+                              backgroundPosition: `${questBattleBgPosX}% ${questBattleBgPosY}%`,
+                              backgroundRepeat: 'no-repeat'
+                            }} />
                           ) : (
                             <div style={{ width: '100%', height: '100%', background: 'url(/battle_bg.png) center/cover', opacity: 0.5 }} />
                           )}
@@ -1815,13 +1836,37 @@ export default function AdminDashboard() {
                               onUploadComplete={(url) => setQuestBattleBgUrl(url)} 
                               buttonStyle={{ padding: '0.5rem 1rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }} 
                             />
+                            {questBattleBgUrl && (
+                              <button 
+                                onClick={() => setShowArenaBgEditor(true)}
+                                style={{ padding: '0.5rem 1rem', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-blue)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}
+                              >
+                                <Move size={16} /> Ajustar Posição
+                              </button>
+                            )}
                             <button 
-                              onClick={() => setQuestBattleBgUrl('')}
+                              onClick={() => { setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); }}
                               style={{ padding: '0.5rem 1rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}
                             >
                               Usar Padrão
                             </button>
                           </div>
+                          
+                          {/* Position Info */}
+                          {questBattleBgUrl && (questBattleBgPosX !== 50 || questBattleBgPosY !== 50 || questBattleBgScale !== 1.2) && (
+                            <div style={{ 
+                              display: 'flex', gap: '1rem', 
+                              background: 'rgba(59, 130, 246, 0.1)', 
+                              padding: '0.5rem 0.75rem', 
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              color: 'var(--accent-blue)'
+                            }}>
+                              <span>X: {questBattleBgPosX.toFixed(0)}%</span>
+                              <span>Y: {questBattleBgPosY.toFixed(0)}%</span>
+                              <span>Zoom: {questBattleBgScale.toFixed(2)}x</span>
+                            </div>
+                          )}
                           
                           {/* Input manual de URL */}
                           <input 
@@ -2359,6 +2404,22 @@ export default function AdminDashboard() {
         <ImageGalleryModal 
           onClose={() => setGalleryTarget(null)}
           onSelectImage={handleGallerySelect}
+        />
+      )}
+
+      {showArenaBgEditor && questBattleBgUrl && (
+        <ArenaBgEditor
+          imageUrl={questBattleBgUrl}
+          initialPosX={questBattleBgPosX}
+          initialPosY={questBattleBgPosY}
+          initialScale={questBattleBgScale}
+          onSave={(posX, posY, scale) => {
+            setQuestBattleBgPosX(posX);
+            setQuestBattleBgPosY(posY);
+            setQuestBattleBgScale(scale);
+            setShowArenaBgEditor(false);
+          }}
+          onCancel={() => setShowArenaBgEditor(false)}
         />
       )}
 
