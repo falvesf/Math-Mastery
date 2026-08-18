@@ -698,10 +698,13 @@ export default function QuestGameplay() {
       
       const chance = getMonsterSpecialChance();
       const isMonsterCrit = (userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode && (Math.random() * 100 < chance);
-      const damage = isMonsterCrit ? 2 : 1;
+      
+      // Hardcore Mode: errou, perdeu todos os corações
+      const isHardcore = !quest.allowRetries;
+      const damage = isHardcore ? currentHearts : (isMonsterCrit ? 2 : 1);
       
       let newHearts = Math.max(0, currentHearts - damage);
-      const isFatalForPlayer = !hasShield && (newHearts === 0 || !quest.allowRetries);
+      const isFatalForPlayer = !hasShield && (newHearts === 0 || isHardcore);
 
       if (economySettings?.coinsLostInCombat && !isStudyMode && !hasShield) {
         const rankObj = getRankForXp(userData?.xp || 0);
