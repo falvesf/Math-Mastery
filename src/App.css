@@ -1,21 +1,20 @@
 .app-container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
   padding: 1rem 2rem;
   max-width: 1200px;
   margin: 0 auto;
+  overflow: hidden;
 }
 
 .navbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 2rem;
-  margin-bottom: 2rem;
-  position: sticky;
-  top: 1rem;
-  z-index: 50;
+  padding: 0.75rem 1.5rem;
+  margin-bottom: 1rem;
+  flex-shrink: 0;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -26,28 +25,23 @@
   gap: 1rem;
 }
 
-.logo-icon {
-  filter: drop-shadow(0 0 8px var(--gold-glow));
+.logo-container img {
+  height: 64px;
+  width: auto;
+  transition: height 0.3s ease;
 }
 
-/* Logo responsivo - atualizado 2026-08-18 */
-.logo-container > div:first-child {
-  width: 64px !important;
-  height: 64px !important;
-}
-
-@media (max-width: 768px) {
-  .logo-container > div:first-child {
-    width: 48px !important;
-    height: 48px !important;
-  }
-}
-
-@media (max-width: 480px) {
-  .logo-container > div:first-child {
-    width: 36px !important;
-    height: 36px !important;
-  }
+.landing-logo {
+  position: absolute;
+  left: 50%;
+  bottom: -180px;
+  transform: translateX(-50%);
+  height: 300px;
+  width: auto;
+  filter: drop-shadow(0 0 20px var(--gold-glow));
+  z-index: 10;
+  pointer-events: none;
+  animation: fadeIn 0.8s ease-out;
 }
 
 .login-btn {
@@ -57,13 +51,14 @@
   background: var(--btn-bg);
   border: 1px solid var(--border-glass);
   color: var(--text-primary);
-  padding: 0.75rem 1.5rem;
+  padding: 0.6rem 1.25rem;
   border-radius: 8px;
   font-family: 'Outfit', sans-serif;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.3s ease;
+  flex-shrink: 0;
 }
 
 .login-btn:hover {
@@ -82,7 +77,10 @@
 .main-content {
   display: flex;
   flex-direction: column;
-  gap: 4rem;
+  gap: 1.5rem;
+  flex: 1;
+  justify-content: center;
+  min-height: 0;
 }
 
 .hero-section {
@@ -91,15 +89,16 @@
 }
 
 .hero-title {
-  font-size: 3.5rem;
-  margin-bottom: 1rem;
+  font-size: clamp(1.8rem, 4vw, 3.5rem);
+  margin-bottom: 0.5rem;
   background: linear-gradient(to right, #fff, var(--gold-primary));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  line-height: 1.2;
 }
 
 .hero-subtitle {
-  font-size: 1.25rem;
+  font-size: clamp(0.9rem, 1.5vw, 1.25rem);
   color: var(--text-secondary);
   max-width: 600px;
   margin: 0 auto;
@@ -107,35 +106,142 @@
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
   animation: slideUp 1s ease-out 0.2s both;
 }
 
 .feature-card {
-  padding: 2.5rem 2rem;
+  padding: 1.25rem 1rem;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
+  gap: 0.75rem;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .feature-card:hover {
-  transform: translateY(-10px);
+  transform: translateY(-5px);
   box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
   border-color: rgba(255, 255, 255, 0.2);
 }
 
 .feature-card h3 {
-  font-size: 1.5rem;
+  font-size: clamp(1rem, 1.5vw, 1.25rem);
   color: var(--text-primary);
+  margin: 0;
 }
 
 .feature-card p {
   color: var(--text-secondary);
-  line-height: 1.6;
+  line-height: 1.4;
+  margin: 0;
+  font-size: clamp(0.8rem, 1vw, 0.95rem);
+}
+
+.feature-card svg {
+  width: clamp(32px, 4vw, 48px);
+  height: clamp(32px, 4vw, 48px);
+  flex-shrink: 0;
+}
+
+/* Responsivo - Tablet */
+@media (max-width: 768px) {
+  .app-container {
+    padding: 0.75rem 1rem;
+  }
+  
+  .navbar {
+    padding: 0.5rem 1rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .logo-container img {
+    height: 48px;
+  }
+  
+  .landing-logo {
+    height: 180px;
+    bottom: -15px;
+  }
+  
+  .login-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+  }
+  
+  .main-content {
+    gap: 1rem;
+  }
+  
+  .features-grid {
+    gap: 0.75rem;
+  }
+  
+  .feature-card {
+    padding: 1rem 0.75rem;
+    gap: 0.5rem;
+  }
+}
+
+/* Responsivo - Mobile */
+@media (max-width: 480px) {
+  .app-container {
+    padding: 0.5rem;
+  }
+  
+  .navbar {
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-radius: 12px;
+  }
+  
+  .logo-container img {
+    height: 40px;
+  }
+  
+  .landing-logo {
+    height: 130px;
+    bottom: -60px;
+    left: 1rem;
+    transform: none;
+  }
+  
+  .login-btn {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    gap: 0.5rem;
+  }
+  
+  .login-btn span {
+    display: none;
+  }
+  
+  .hero-title {
+    margin-bottom: 0.25rem;
+  }
+  
+  .hero-subtitle {
+    font-size: 0.85rem;
+  }
+  
+  .features-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .feature-card {
+    padding: 0.75rem;
+    gap: 0.4rem;
+    flex-direction: row;
+    text-align: left;
+  }
+  
+  .feature-card svg {
+    width: 28px;
+    height: 28px;
+  }
 }
 
 @keyframes fadeIn {

@@ -32,11 +32,8 @@ export default function LandingPage() {
 
   return (
     <div className="app-container">
-      <nav className="navbar glass-panel">
-        <div className="logo-container">
-          <Sword className="logo-icon" color="var(--gold-primary)" size={32} />
-          <h1 className="title-glow">Math Mastery</h1>
-        </div>
+      <nav className="navbar glass-panel" style={{ position: 'relative' }}>
+        <div style={{ flex: 1 }}></div>
         <button 
           className="login-btn"
           onMouseEnter={() => setIsHovered(true)}
@@ -46,6 +43,12 @@ export default function LandingPage() {
           <LogIn size={20} className={isHovered ? 'icon-hover' : ''} />
           <span>Login com Google</span>
         </button>
+        
+        <img 
+          src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} 
+          alt="Math Mastery" 
+          className="landing-logo"
+        />
       </nav>
 
       <main className="main-content">
