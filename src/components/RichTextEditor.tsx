@@ -31,6 +31,7 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Digite 
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
   const mathPanelRef = useRef<HTMLDivElement>(null);
   const colorPanelRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -117,7 +118,7 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Digite 
   return (
     <div style={{ border: '1px solid var(--border-glass)', borderRadius: '8px', overflow: 'hidden', background: 'rgba(0,0,0,0.4)' }}>
       {/* Toolbar */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', padding: '0.5rem', background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid var(--border-glass)', alignItems: 'center' }}>
+      <div ref={toolbarRef} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', padding: '0.5rem', background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid var(--border-glass)', alignItems: 'center' }}>
         {/* Formatação básica */}
         <button type="button" onClick={() => execCommand('bold')} style={toolbarBtnStyle(activeFormats.has('bold'))} title="Negrito (Ctrl+B)">
           <Bold size={14} />
@@ -182,7 +183,12 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Digite 
 
         {/* Símbolos matemáticos */}
         <div ref={mathPanelRef} style={{ position: 'relative' }}>
-          <button type="button" onClick={() => { setShowMathPanel(!showMathPanel); setShowColorPanel(false); }} style={toolbarBtnStyle(showMathPanel)} title="Símbolos matemáticos">
+          <button 
+            type="button" 
+            onClick={() => { setShowMathPanel(!showMathPanel); setShowColorPanel(false); }}
+            style={toolbarBtnStyle(showMathPanel)} 
+            title="Símbolos matemáticos"
+          >
             <Calculator size={14} />
           </button>
           {showMathPanel && (

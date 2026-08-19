@@ -19,6 +19,7 @@ import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
 import RichTextEditor from '../components/RichTextEditor';
 import { useDialog } from '../contexts/DialogContext';
+import { validateCharacterName, normalizeForComparison } from '../lib/nameValidation';
 
 export interface ClassDef {
   id: string;
@@ -76,12 +77,18 @@ export interface QuestDef {
   battleBgPosX?: number;
   battleBgPosY?: number;
   battleBgScale?: number;
+  battleBgMoveEnabled?: boolean;
+  battleBgMoveDirection?: 'horizontal' | 'vertical' | 'diagonal';
+  battleBgMoveSpeed?: number;
+  battleBgMoveDuration?: number;
   active: boolean;
   createdBy?: string;
   creatorRole?: string;
   targetClasses?: string[];
   shuffleQuestions?: boolean;
   shuffleAnswers?: boolean;
+  randomQuestionSelection?: boolean;
+  randomQuestionCount?: number;
 }
 
 interface StoreItemOption {
@@ -227,7 +234,7 @@ function StoreItemSelect({ value, onChange, items, placeholder = '(Nenhum Item)'
 }
 
 export default function AdminDashboard() {
-  const { showAlert, showConfirm } = useDialog();
+  const { showAlert, showConfirm, showToast } = useDialog();
   const { userData } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('users');
@@ -242,8 +249,11 @@ export default function AdminDashboard() {
   const [selectedStudent, setSelectedStudent] = useState<UserData | null>(null);
   const [selectedStudentItems, setSelectedStudentItems] = useState<any[]>([]);
   const [modalMode, setModalMode] = useState('add');
+  const [xpMode, setXpMode] = useState<'grade' | 'free'>('grade');
   const [grade, setGrade] = useState('');
   const [gradeType, setGradeType] = useState('');
+  const [freeXpAmount, setFreeXpAmount] = useState('');
+  const [freeXpReason, setFreeXpReason] = useState('');
   const [xpHistory, setXpHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [removeAmount, setRemoveAmount] = useState('');
@@ -255,6 +265,7 @@ export default function AdminDashboard() {
   const [editName, setEditName] = useState('');
   const [editClass, setEditClass] = useState('');
   const [editRole, setEditRole] = useState('student');
+  const [editCharacterName, setEditCharacterName] = useState('');
 
   // Novos States - Filtros e Seleção em Massa
   const [studentSearch, setStudentSearch] = useState('');
@@ -301,6 +312,8 @@ export default function AdminDashboard() {
   const [questRetries, setQuestRetries] = useState(false);
   const [questShuffleQuestions, setQuestShuffleQuestions] = useState(false);
   const [questShuffleAnswers, setQuestShuffleAnswers] = useState(false);
+  const [questRandomSelection, setQuestRandomSelection] = useState(false);
+  const [questRandomCount, setQuestRandomCount] = useState(10);
   const [questPenalty, setQuestPenalty] = useState('0');
   const [questQuestions, setQuestQuestions] = useState<QuestQuestion[]>([
     { title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }
@@ -319,6 +332,10 @@ export default function AdminDashboard() {
   const [questBattleBgPosX, setQuestBattleBgPosX] = useState(50);
   const [questBattleBgPosY, setQuestBattleBgPosY] = useState(50);
   const [questBattleBgScale, setQuestBattleBgScale] = useState(1.2);
+  const [questBattleBgMoveEnabled, setQuestBattleBgMoveEnabled] = useState(true);
+  const [questBattleBgMoveDirection, setQuestBattleBgMoveDirection] = useState<'horizontal' | 'vertical' | 'diagonal'>('diagonal');
+  const [questBattleBgMoveSpeed, setQuestBattleBgMoveSpeed] = useState(10);
+  const [questBattleBgMoveDuration, setQuestBattleBgMoveDuration] = useState(30);
   const [showArenaBgEditor, setShowArenaBgEditor] = useState(false);
   const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], dropChance?: number}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
   const [questLiveChest1st, setQuestLiveChest1st] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -566,6 +583,26 @@ export default function AdminDashboard() {
     loadStudentHistoryLocally(selectedStudent.uid);
   };
 
+  // Dar XP por valor livre
+  const handleGiveFreeXp = async () => {
+    if (!selectedStudent || !freeXpAmount) return;
+    const xpGained = parseFloat(freeXpAmount.replace(',', '.'));
+    if (isNaN(xpGained) || xpGained <= 0) return;
+    const newXp = (selectedStudent.xp || 0) + xpGained;
+    const newCoins = (selectedStudent.coins || 0) + xpGained;
+    await supabase.from('users').update({ xp: newXp, coins: newCoins }).eq('id', selectedStudent.uid);
+    await supabase.from('xp_logs').insert({
+      student_id: selectedStudent.uid,
+      amount: xpGained,
+      reason: `Valor Livre |  | ${freeXpReason || 'Atribuição manual de XP'}`
+    });
+    setSelectedStudent({ ...selectedStudent, xp: newXp, coins: newCoins });
+    setFreeXpAmount('');
+    setFreeXpReason('');
+    fetchStudents(false);
+    loadStudentHistoryLocally(selectedStudent.uid);
+  };
+
   const handleDeleteHistoryLog = async (logId: string, xpGained: number) => {
     if (!selectedStudent) return;
     const confirmed = await showConfirm("Atenção! Você está apagando este registro do histórico. O XP do aluno será recalculado. Deseja continuar?");
@@ -647,11 +684,47 @@ export default function AdminDashboard() {
     setEditName(student.name || '');
     setEditClass(student.classId || '');
     setEditRole(student.role || 'student');
+    setEditCharacterName(student.characterName || '');
   };
 
   const handleSaveStudent = async () => {
     if (!editingStudent) return;
-    const updateData: any = { name: editName, class_id: editClass, role: editRole };
+    
+    const trimmedCharName = editCharacterName.trim();
+    if (trimmedCharName && trimmedCharName !== (editingStudent.characterName || '')) {
+      const validation = validateCharacterName(trimmedCharName);
+      if (!validation.valid) {
+        showToast(validation.error!, 'error');
+        return;
+      }
+      
+      const { data: existing } = await supabase.from('users')
+        .select('id, character_name')
+        .not('id', 'eq', editingStudent.uid)
+        .not('character_name', 'is', null);
+      
+      if (existing) {
+        const normalizedNew = normalizeForComparison(trimmedCharName);
+        const conflict = existing.find(u => {
+          const existingNorm = normalizeForComparison(u.character_name || '');
+          return existingNorm === normalizedNew || 
+                 existingNorm.includes(normalizedNew) || 
+                 normalizedNew.includes(existingNorm);
+        });
+        
+        if (conflict) {
+          showToast('Este nome de personagem já está em uso ou é muito similar ao de outro personagem.', 'error');
+          return;
+        }
+      }
+    }
+    
+    const updateData: any = { 
+      name: editName, 
+      class_id: editClass, 
+      role: editRole,
+      character_name: trimmedCharName || null
+    };
     
     // Promovendo para equipe concede 50k XP
     if (editRole !== 'student' && editingStudent.role === 'student') {
@@ -810,6 +883,10 @@ export default function AdminDashboard() {
       battleBgPosX: questBattleBgPosX,
       battleBgPosY: questBattleBgPosY,
       battleBgScale: questBattleBgScale,
+      battleBgMoveEnabled: questBattleBgMoveEnabled,
+      battleBgMoveDirection: questBattleBgMoveDirection,
+      battleBgMoveSpeed: questBattleBgMoveSpeed,
+      battleBgMoveDuration: questBattleBgMoveDuration,
       chestConfig: questChestConfig,
       mode: questMode,
       liveChest1stPlace: questLiveChest1st,
@@ -820,23 +897,39 @@ export default function AdminDashboard() {
       creatorRole: questCreatorRole || userData?.role,
       targetClasses: questTargetClasses,
       shuffleQuestions: questShuffleQuestions,
-      shuffleAnswers: questShuffleAnswers
+      shuffleAnswers: questShuffleAnswers,
+      randomQuestionSelection: questRandomSelection,
+      randomQuestionCount: questRandomSelection ? questRandomCount : undefined
     };
 
     // Sanitize object to remove undefined values for Firestore
     const sanitizedQuest = JSON.parse(JSON.stringify(newQuest));
 
     try {
-      await supabase.from('quests').upsert({ id: questId, ...sanitizedQuest });
+      // Tenta salvar com as colunas de seleção aleatória
+      try {
+        await supabase.from('quests').upsert({ id: questId, ...sanitizedQuest });
+      } catch (upsertErr: any) {
+        // Se as colunas randomQuestionSelection/Count não existirem na tabela,
+        // o Supabase rejeita. Salva sem esses campos para não perder as imagens.
+        const errMsg = upsertErr?.message || '';
+        if (errMsg.includes('randomQuestionSelection') || errMsg.includes('randomQuestionCount') || errMsg.includes('Could not find')) {
+          const { randomQuestionSelection, randomQuestionCount, ...questWithoutRandom } = sanitizedQuest;
+          await supabase.from('quests').upsert({ id: questId, ...questWithoutRandom });
+        } else {
+          throw upsertErr;
+        }
+      }
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
       setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestCreatedBy(null); setQuestCreatorRole(null); setQuestTargetClasses([]);
       setQuestShuffleQuestions(false); setQuestShuffleAnswers(false);
+      setQuestRandomSelection(false); setQuestRandomCount(10);
       setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
       fetchQuests();
     } catch (e: any) {
@@ -864,6 +957,10 @@ export default function AdminDashboard() {
     setQuestBattleBgPosX(quest.battleBgPosX ?? 50);
     setQuestBattleBgPosY(quest.battleBgPosY ?? 50);
     setQuestBattleBgScale(quest.battleBgScale ?? 1.2);
+    setQuestBattleBgMoveEnabled(quest.battleBgMoveEnabled ?? true);
+    setQuestBattleBgMoveDirection(quest.battleBgMoveDirection ?? 'diagonal');
+    setQuestBattleBgMoveSpeed(quest.battleBgMoveSpeed ?? 10);
+    setQuestBattleBgMoveDuration(quest.battleBgMoveDuration ?? 30);
     setQuestChestConfig(quest.chestConfig || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
     setQuestMode(quest.mode || 'classic');
     setQuestLiveChest1st(quest.liveChest1stPlace || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -874,6 +971,8 @@ export default function AdminDashboard() {
     setQuestTargetClasses(quest.targetClasses || []);
     setQuestShuffleQuestions(quest.shuffleQuestions || false);
     setQuestShuffleAnswers(quest.shuffleAnswers || false);
+    setQuestRandomSelection(quest.randomQuestionSelection || false);
+    setQuestRandomCount(quest.randomQuestionCount || 10);
     setIsCreatingQuest(true);
   };
 
@@ -1405,7 +1504,7 @@ export default function AdminDashboard() {
                             {student.role === 'student' && (
                               <button 
                                 className="login-btn" 
-                                onClick={() => setSelectedStudent(student)}
+                                onClick={() => { setModalMode('add'); setXpMode('grade'); setSelectedStudent(student); }}
                                 style={{ borderColor: 'var(--gold-primary)', color: 'var(--gold-primary)', background: 'rgba(251, 191, 36, 0.1)' }}
                                 title="Gerenciar XP"
                               >
@@ -1480,7 +1579,7 @@ export default function AdminDashboard() {
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                               <span>Recompensa: <strong style={{ color: 'var(--gold-primary)' }}>{quest.baseXp} XP</strong></span>
                               <span>Modo: {quest.allowRetries ? `Vidas Extras` : 'Hardcore'}</span>
-                              <span>{quest.questions.length} Perguntas</span>
+                              <span>{quest.randomQuestionSelection && quest.randomQuestionCount ? `${quest.randomQuestionCount} de ${quest.questions.length}` : quest.questions.length} Perguntas</span>
                               {quest.targetClasses && quest.targetClasses.length > 0 && <span style={{ color: 'var(--accent-blue)' }}>Turmas: {quest.targetClasses.join(', ')}</span>}
                             </div>
                           </div>
@@ -1641,6 +1740,33 @@ export default function AdminDashboard() {
                               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>A ordem das opções (A, B, C, D) será aleatória para cada aluno.</span>
                             </label>
                           </div>
+                          <hr style={{ border: 'none', borderTop: '1px solid var(--border-glass)', margin: '0.5rem 0' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <input type="checkbox" id="questRandomSel" checked={questRandomSelection} onChange={e => setQuestRandomSelection(e.target.checked)} style={{ width: '1.2rem', height: '1.2rem', accentColor: 'var(--accent-blue)' }} />
+                            <label htmlFor="questRandomSel" style={{ color: 'white', cursor: 'pointer' }}>
+                              <strong style={{ display: 'block', marginBottom: '0.25rem' }}>Seleção Aleatória de Questões</strong>
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Cada aluno recebe um subconjunto aleatório das questões. Evita cola entre colegas.</span>
+                            </label>
+                          </div>
+                          {questRandomSelection && (
+                            <div style={{ marginLeft: '2.2rem', marginTop: '0.5rem' }}>
+                              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                Número de questões por aluno (total: {questQuestions.length})
+                              </label>
+                              <input 
+                                type="number" 
+                                value={questRandomCount} 
+                                onChange={e => setQuestRandomCount(Math.max(1, Math.min(questQuestions.length, parseInt(e.target.value) || 1)))} 
+                                min={1} 
+                                max={questQuestions.length}
+                                placeholder="Ex: 10" 
+                                style={{ width: '150px', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} 
+                              />
+                              <span style={{ marginLeft: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                questões aleatórias de {questQuestions.length} disponíveis
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1849,7 +1975,7 @@ export default function AdminDashboard() {
                               </button>
                             )}
                             <button 
-                              onClick={() => { setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); }}
+                              onClick={() => { setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); }}
                               style={{ padding: '0.5rem 1rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}
                             >
                               Usar Padrão
@@ -2172,6 +2298,21 @@ export default function AdminDashboard() {
               <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
             </div>
 
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome do Personagem</label>
+              <input 
+                type="text" 
+                value={editCharacterName} 
+                onChange={e => setEditCharacterName(e.target.value)} 
+                maxLength={12}
+                placeholder="Até 12 caracteres, sem acentos/espaços"
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} 
+              />
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                {editCharacterName.length}/12 caracteres
+              </div>
+            </div>
+
             <div style={{ marginBottom: '2rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Turma Oficial</label>
               <select value={editClass} onChange={e => setEditClass(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', marginBottom: '1rem' }}>
@@ -2240,24 +2381,53 @@ export default function AdminDashboard() {
 
               {modalMode === 'add' ? (
                 <>
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo de Avaliação</label>
-                    <select value={gradeType} onChange={e => setGradeType(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}>
-                      {evaluations.map(ev => (
-                        <option key={ev.id} value={ev.id}>{ev.name} (Peso x{ev.weight})</option>
-                      ))}
-                    </select>
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Como atribuir o XP?</label>
+                    <div style={{ display: 'flex', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: xpMode === 'grade' ? 'var(--gold-primary)' : 'var(--text-secondary)', fontWeight: xpMode === 'grade' ? 'bold' : 'normal' }}>
+                        <input type="radio" name="xpMode" checked={xpMode === 'grade'} onChange={() => setXpMode('grade')} style={{ accentColor: 'var(--gold-primary)', width: '16px', height: '16px' }} />
+                        Por Nota
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: xpMode === 'free' ? 'var(--gold-primary)' : 'var(--text-secondary)', fontWeight: xpMode === 'free' ? 'bold' : 'normal' }}>
+                        <input type="radio" name="xpMode" checked={xpMode === 'free'} onChange={() => setXpMode('free')} style={{ accentColor: 'var(--gold-primary)', width: '16px', height: '16px' }} />
+                        Valor Livre
+                      </label>
+                    </div>
                   </div>
-                  <div style={{ marginBottom: '2rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nota (0 a 10)</label>
-                    <input type="number" step="0.1" min="0" max="10" value={grade} onChange={e => setGrade(e.target.value)} placeholder="Ex: 8.5" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '1.2rem' }} />
-                    {grade && !isNaN(parseFloat(grade.replace(',', '.'))) && (
-                      <div style={{ marginTop: '0.5rem', color: 'var(--gold-primary)', fontSize: '0.9rem', fontWeight: 600 }}>
-                        Resultado: +{parseFloat(grade.replace(',', '.')) * (evaluations.find(e => e.id === gradeType)?.weight || 100)} XP
+
+                  {xpMode === 'grade' ? (
+                    <>
+                      <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo de Avaliação</label>
+                        <select value={gradeType} onChange={e => setGradeType(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}>
+                          {evaluations.map(ev => (
+                            <option key={ev.id} value={ev.id}>{ev.name} (Peso x{ev.weight})</option>
+                          ))}
+                        </select>
                       </div>
-                    )}
-                  </div>
-                  <button className="login-btn" onClick={handleGiveGrade} style={{ width: '100%', justifyContent: 'center', background: 'var(--gold-primary)', color: 'var(--bg-dark)', border: 'none' }}>
+                      <div style={{ marginBottom: '2rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nota (0 a 10)</label>
+                        <input type="number" step="0.1" min="0" max="10" value={grade} onChange={e => setGrade(e.target.value)} placeholder="Ex: 8.5" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+                        {grade && !isNaN(parseFloat(grade.replace(',', '.'))) && (
+                          <div style={{ marginTop: '0.5rem', color: 'var(--gold-primary)', fontSize: '0.9rem', fontWeight: 600 }}>
+                            Resultado: +{parseFloat(grade.replace(',', '.')) * (evaluations.find(e => e.id === gradeType)?.weight || 100)} XP
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Quantidade de XP</label>
+                        <input type="number" step="1" min="1" value={freeXpAmount} onChange={e => setFreeXpAmount(e.target.value)} placeholder="Ex: 150" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+                      </div>
+                      <div style={{ marginBottom: '2rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Justificativa (Opcional)</label>
+                        <input type="text" value={freeXpReason} onChange={e => setFreeXpReason(e.target.value)} placeholder="Ex: Participação, tarefa extra, bônus..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+                      </div>
+                    </>
+                  )}
+                  <button className="login-btn" onClick={xpMode === 'grade' ? handleGiveGrade : handleGiveFreeXp} style={{ width: '100%', justifyContent: 'center', background: 'var(--gold-primary)', color: 'var(--bg-dark)', border: 'none' }}>
                     Confirmar e Dar XP
                   </button>
                 </>
@@ -2417,10 +2587,18 @@ export default function AdminDashboard() {
           initialPosX={questBattleBgPosX}
           initialPosY={questBattleBgPosY}
           initialScale={questBattleBgScale}
-          onSave={(posX, posY, scale) => {
+          initialMoveEnabled={questBattleBgMoveEnabled}
+          initialMoveDirection={questBattleBgMoveDirection}
+          initialMoveSpeed={questBattleBgMoveSpeed}
+          initialMoveDuration={questBattleBgMoveDuration}
+          onSave={(posX, posY, scale, moveEnabled, moveDirection, moveSpeed, moveDuration) => {
             setQuestBattleBgPosX(posX);
             setQuestBattleBgPosY(posY);
             setQuestBattleBgScale(scale);
+            setQuestBattleBgMoveEnabled(moveEnabled);
+            setQuestBattleBgMoveDirection(moveDirection);
+            setQuestBattleBgMoveSpeed(moveSpeed);
+            setQuestBattleBgMoveDuration(moveDuration);
             setShowArenaBgEditor(false);
           }}
           onCancel={() => setShowArenaBgEditor(false)}

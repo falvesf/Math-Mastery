@@ -22,6 +22,7 @@ import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import OnboardingModal from '../components/OnboardingModal';
 import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../components/CustomThemeModal';
 import { applyCustomTheme } from '../lib/theme';
+import { validateCharacterName, normalizeForComparison } from '../lib/nameValidation';
 import StatDistributionModal from '../components/StatDistributionModal';
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
@@ -90,7 +91,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 });
 
 export default function Dashboard() {
-  const { showAlert, showConfirm, showToast } = useDialog();
+  const { showAlert, showConfirm, showToast, showPrompt } = useDialog();
   const { userData, toggleStudentView, updateUserDataLocally, ranksLoaded } = useAuth();
   if (!userData) return null;
   const navigate = useNavigate();
@@ -147,6 +148,10 @@ export default function Dashboard() {
 
   const [currentHpVisual, setCurrentHpVisual] = useState(0);
   const [nextHeartProgress, setNextHeartProgress] = useState(0);
+
+  // Character Name
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameInput, setRenameInput] = useState('');
 
   // Configurações do Sistema
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -854,6 +859,91 @@ export default function Dashboard() {
     await supabase.from('users').update({ custom_status_text: status }).eq('id', userData!.uid);
   };
 
+  const handleRenameCharacter = async () => {
+    if (!userData) return;
+    
+    const isFreeCreation = !userData.characterName;
+    const canRenameFreely = isAdminOrTeacher || isFreeCreation;
+    
+    if (!canRenameFreely) {
+      const { data: items } = await supabase.from('user_items')
+        .select('*')
+        .eq('student_id', userData.uid)
+        .eq('item_type', 'consumable');
+      
+      const hasRenameItem = (items || []).some(i => {
+        const data = i.data || {};
+        return data.gameEffect === 'rename_character' && (i.count || 0) > 0;
+      });
+      
+      if (!hasRenameItem) {
+        showToast('Você precisa de uma Carta de Troca de Nome para renomear seu personagem. Compre na loja!', 'error');
+        return;
+      }
+    }
+    
+    const newName = await showPrompt(
+      isFreeCreation
+        ? 'Escolha um nome para seu personagem (até 12 caracteres, sem acentos/espaços/símbolos):'
+        : 'Digite o novo nome do seu personagem (até 12 caracteres, sem acentos/espaços/símbolos):',
+      userData.characterName || '',
+      isFreeCreation ? 'Criar Nome do Personagem' : 'Renomear Personagem'
+    );
+    
+    if (!newName || newName.trim() === (userData.characterName || '')) return;
+    
+    const validation = validateCharacterName(newName);
+    if (!validation.valid) {
+      showToast(validation.error!, 'error');
+      return;
+    }
+    
+    const { data: existing } = await supabase.from('users')
+      .select('id, character_name')
+      .not('id', 'eq', userData.uid)
+      .not('character_name', 'is', null);
+    
+    if (existing) {
+      const normalizedNew = normalizeForComparison(newName);
+      const conflict = existing.find(u => {
+        const existingNorm = normalizeForComparison(u.character_name || '');
+        return existingNorm === normalizedNew || 
+               existingNorm.includes(normalizedNew) || 
+               normalizedNew.includes(existingNorm);
+      });
+      
+      if (conflict) {
+        showToast('Este nome já está em uso ou é muito similar ao de outro personagem. Escolha outro nome.', 'error');
+        return;
+      }
+    }
+    
+    if (!canRenameFreely) {
+      const { data: renameItems } = await supabase.from('user_items')
+        .select('*')
+        .eq('student_id', userData.uid)
+        .eq('item_type', 'consumable');
+      
+      const renameItem = (renameItems || []).find(i => {
+        const data = i.data || {};
+        return data.gameEffect === 'rename_character' && (i.count || 0) > 0;
+      });
+      
+      if (renameItem) {
+        const newCount = (renameItem.count || 1) - 1;
+        if (newCount <= 0) {
+          await supabase.from('user_items').delete().eq('id', renameItem.id);
+        } else {
+          await supabase.from('user_items').update({ count: newCount }).eq('id', renameItem.id);
+        }
+      }
+    }
+    
+    await supabase.from('users').update({ character_name: newName.trim() }).eq('id', userData.uid);
+    updateUserDataLocally({ characterName: newName.trim() });
+    showToast(`Nome do personagem definido como "${newName.trim()}"!`, 'success');
+  };
+
   // Calcular progresso para a próxima patente
   const currentIndex = RANKS.findIndex(r => r.name === currentRank.name);
   const nextRank = currentIndex < RANKS.length - 1 ? RANKS[currentIndex + 1] : null;
@@ -984,8 +1074,13 @@ export default function Dashboard() {
                 
                 <div>
                   <h4 style={{ margin: 0, fontSize: fontSizeTitle, display: 'flex', alignItems: 'center', gap: '0.5rem', color: rankPos === 1 ? '#fbbf24' : 'var(--text-primary)' }}>
-                    {student.name} {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
+                    {student.characterName || student.name} {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
                   </h4>
+                  {student.characterName && (
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
+                      ({student.name})
+                    </div>
+                  )}
                   <div style={{ fontSize: '0.75rem', color: sRank.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
                     {sRank.name} {student.classId && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', textShadow: 'none' }}>| {student.classId}</span>}
                   </div>
@@ -1591,7 +1686,7 @@ export default function Dashboard() {
                             </span>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                               <Clock size={14} style={{ flexShrink: 0 }} /> 
-                              <span>{quest.questions?.length || 0} Desafios</span>
+                              <span>{quest.randomQuestionSelection && quest.randomQuestionCount ? quest.randomQuestionCount : (quest.questions?.length || 0)} Desafios</span>
                             </span>
                           </div>
                             <button 
@@ -1664,7 +1759,7 @@ export default function Dashboard() {
               {/* Perfil do Aluno (Esquerda) */}
               <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 400px' : '0 1 500px', padding: '1.5rem 2rem 1.5rem 1.5rem', textAlign: 'center', position: 'relative', height: '71vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               
-              <div style={{ flexShrink: 0, paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <div style={{ flexShrink: 0, paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem', height: '100%' }}>
               <div 
                 style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', perspective: '1000px', width: '100%' }}
               >
@@ -1698,8 +1793,15 @@ export default function Dashboard() {
                           zIndex: 0
                         }} />
 
-                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
-                          Personagem
+                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          {userData?.characterName || 'Personagem'}
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleRenameCharacter(); }}
+                            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', opacity: 0.7 }}
+                            title={userData?.characterName ? 'Renomear personagem' : 'Criar nome do personagem'}
+                          >
+                            <Edit3 size={12} />
+                          </button>
                         </div>
                         {(liveAvatarConfig || userData?.avatarConfig) ? (
                           <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 20 }} onClick={() => setIsCustomizingAvatar(true)}>

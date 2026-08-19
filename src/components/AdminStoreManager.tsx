@@ -12,7 +12,7 @@ import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
 
-export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender';
+export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 
 export interface StoreItem {
@@ -470,6 +470,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="gift_wrap">Caixa de Presente (Pode colocar 1 item dentro)</option>
                       <option value="unlock_skin">Liberar Skin Temporária (Buff)</option>
                       <option value="unlock_gender">Liberar Troca de Gênero (15 min)</option>
+                      <option value="rename_character">Carta de Troca de Nome (Renomear personagem)</option>
                     </select>
                   </div>
                   {formData.gameEffect === 'unlock_skin' && (

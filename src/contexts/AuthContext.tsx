@@ -27,6 +27,7 @@ export interface UserData {
   happyBuffDuration?: number | null;
   customStatusText?: string;
   isProfilePublic?: boolean;
+  characterName?: string;
   unlockedSkins?: Record<string, number>;
   inventoryPreferences?: {
     viewMode: string;
@@ -57,6 +58,7 @@ export const mapUserToClient = (dbUser: any): UserData => {
     happyBuffDuration: dbUser.happy_buff_duration,
     customStatusText: dbUser.custom_status_text,
     isProfilePublic: dbUser.is_profile_public,
+    characterName: dbUser.character_name,
     unlockedSkins: dbUser.unlocked_skins,
     inventoryPreferences: dbUser.inventory_preferences,
     lastSeenRank: dbUser.inventory_preferences?.lastSeenRank || dbUser.rank,

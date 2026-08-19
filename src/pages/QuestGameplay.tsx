@@ -86,6 +86,41 @@ export default function QuestGameplay() {
   // Histórico de Respostas
   const studentAnswers = useRef<{ qIndex: number; text: string; isCorrect: boolean }[]>([]);
 
+  // Fatores de estresse para o suor
+  const [stressFactors, setStressFactors] = useState({
+    lowTimeAnswers: 0,    // Respostas com pouco tempo
+    wrongAnswers: 0,      // Respostas erradas
+    hpLost: 0,            // Vida perdida (0-1)
+  });
+
+  // Cálculo do nível de estresse (0-1)
+  const calculateStress = (): number => {
+    if (!quest) return 0;
+    
+    const totalQuestions = quest.questions.length;
+    const progress = (currentQIndex + 1) / totalQuestions;
+    
+    // Fator 1: Tempo baixo nas respostas (0-25%)
+    const timePressure = Math.min(1, stressFactors.lowTimeAnswers / Math.max(1, totalQuestions * 0.3)) * 0.25;
+    
+    // Fator 2: Vida perdida (0-30%)
+    const hpFactor = stressFactors.hpLost * 0.30;
+    
+    // Factor 3: Respostas erradas (0-25%)
+    const wrongFactor = Math.min(1, stressFactors.wrongAnswers / Math.max(1, totalQuestions * 0.4)) * 0.25;
+    
+    // Fator 4: Progresso sem sucesso (0-20%)
+    // Se passou da metade com menos de 50% de vida, aumenta estresse
+    const progressStress = (progress > 0.5 && stressFactors.hpLost > 0.5) 
+      ? Math.min(1, (progress - 0.5) * 2) * 0.20 
+      : 0;
+    
+    const totalStress = timePressure + hpFactor + wrongFactor + progressStress;
+    return Math.min(1, totalStress);
+  };
+
+  const stressLevel = calculateStress();
+
   // Economia Dinâmica
   const [economySettings, setEconomySettings] = useState<any>(null);
   const [, setCoinsToRescue] = useState<number | null>(null);
@@ -93,6 +128,16 @@ export default function QuestGameplay() {
 
   // Escudos e Defesa
   const totalDefense = totalEquippedStats.defense;
+
+  // Verificar se o jogador tem arma de ataque equipada
+  const hasAttackWeapon = playerEquippedItems.some(item => 
+    item.itemCategory === 'attack' || 
+    (item.baseAttributeType === 'attack' && (item.baseAttributeValue || 0) > 0) ||
+    item.avatarPart === 'rightHand' || 
+    item.avatarPart === 'leftHand' || 
+    item.avatarPart === 'hand' || 
+    item.avatarPart === 'two_handed'
+  );
 
   const calculatePenalty = (basePenalty: number) => {
     if (basePenalty <= 0) return 0;
@@ -119,6 +164,11 @@ export default function QuestGameplay() {
   const [arenaWidth, setArenaWidth] = useState(800);
   const arenaRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const gameStateRef = useRef(gameState);
+
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
   useEffect(() => {
     if (arenaRef.current) {
@@ -142,7 +192,38 @@ export default function QuestGameplay() {
     }
   }, [battleMessage, playerBubble, monsterBubble]);
 
+  // Proteção contra F5/atualização durante a missão
   useEffect(() => {
+    if (gameState !== 'playing') return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Ao desmontar durante o jogo, registra a falha
+      if (gameStateRef.current === 'playing' && questId && userData) {
+        const isStudent = userData.role === 'student' || !!userData.studentViewActive;
+        if (isStudent) {
+          supabase.from('quest_attempts').insert({
+            quest_id: questId,
+            student_id: userData.uid,
+            status: 'failed',
+            data: { answers: studentAnswers.current, isStudyMode: isStudyMode, earned_xp: 0 }
+          });
+          supabase.from('users').update({ stunned_until: Date.now() + 10 * 60 * 1000 }).eq('id', userData.uid);
+        }
+      }
+    };
+  }, [gameState, questId, userData]);
+
+  useEffect(() => {
+    // Não re-executar se já estamos jogando ou em resultado
+    if (gameState !== 'loading') return;
+
     const fetchQuest = async () => {
       try {
         if (!questId || !userData) return;
@@ -198,6 +279,13 @@ export default function QuestGameplay() {
         
         if (qData.shuffleQuestions) {
           processedQuestions.sort(() => Math.random() - 0.5);
+        }
+
+        // Apply random selection if configured (select N random questions)
+        if (qData.randomQuestionSelection && qData.randomQuestionCount && qData.randomQuestionCount < processedQuestions.length) {
+          // Shuffle first, then take the first N questions
+          const shuffled = [...processedQuestions].sort(() => Math.random() - 0.5);
+          processedQuestions = shuffled.slice(0, qData.randomQuestionCount);
         }
 
         if (qData.shuffleAnswers) {
@@ -477,14 +565,22 @@ export default function QuestGameplay() {
 */
 
   const triggerFatality = (isPlayerWinning: boolean, defeatHearts?: number) => {
-    const deaths = ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'];
+    // Se não tem arma, só animações simples (sem explosão, corte)
+    const deaths = hasAttackWeapon 
+      ? ['death-fall', 'death-evaporate', 'death-slice', 'death-explode']
+      : ['death-fall', 'death-evaporate'];
     const fatality = deaths[Math.floor(Math.random() * deaths.length)];
     
     let msg = '';
-    if (fatality === 'death-explode') msg = 'Agora EXPLODA!!!';
-    else if (fatality === 'death-slice') msg = 'Seja derrotado pela minha lâmina!';
-    else if (fatality === 'death-evaporate') msg = 'Vou te pulverizar!';
-    else msg = 'Caia perante mim!';
+    if (hasAttackWeapon) {
+      if (fatality === 'death-explode') msg = 'Agora EXPLODA!!!';
+      else if (fatality === 'death-slice') msg = 'Seja derrotado pela minha lâmina!';
+      else if (fatality === 'death-evaporate') msg = 'Vou te pulverizar!';
+      else msg = 'Caia perante mim!';
+    } else {
+      if (fatality === 'death-evaporate') msg = 'Desapareça!';
+      else msg = 'Caia perante mim!';
+    }
     
     const getVictoryMessage = () => {
       const playerHpPercentage = (currentHearts / maxHearts) * 100;
@@ -517,19 +613,21 @@ export default function QuestGameplay() {
       }
 
       setTimeout(() => {
-        setPlayerAnim('attack-fatal-slow');
+        // Se tem arma, usa ataque fatal. Se não, usa ataque normal
+        setPlayerAnim(hasAttackWeapon ? 'attack-fatal-slow' : 'attack');
         setPlayerBubble(msg);
-        setBattleMessage('Câmera lenta ativada! Golpe final épico!');
+        setBattleMessage(hasAttackWeapon ? 'Câmera lenta ativada! Golpe final épico!' : 'Golpe final!');
         
-        // Espera 1.125s para o monstro sentir o golpe (momento exato do impacto)
-        setTimeout(() => setMonsterAnim('hurt'), 1125);
+        // Espera para o monstro sentir o golpe
+        const impactDelay = hasAttackWeapon ? 1125 : 600;
+        setTimeout(() => setMonsterAnim('hurt'), impactDelay);
         
         setTimeout(() => {
           setMonsterAnim(fatality);
           setMonsterBubble(monsterDefeatQuote);
           setBattleMessage(getVictoryMessage());
           
-          // Entra em idle-victory (apreensão) e depois roda a animação de vitória (total 8.5 segundos até abrir modal)
+          // Entra em idle-victory (apreensão) e depois roda a animação de vitória
           setPlayerAnim('idle-victory' as any);
           setPlayerBubble('');
           
@@ -615,6 +713,31 @@ export default function QuestGameplay() {
     ]
   };
 
+  // Falas baseadas no nível de estresse da luta
+  const playerQuotesByStress = {
+    easy: [
+      "Essa foi fácil!",
+      "Não deu nem para o começo!",
+      "Muito simples!",
+      "Próximo!",
+      "Sem esforço!"
+    ],
+    tense: [
+      "Deu para suar um pouco!",
+      "Foi uma boa luta!",
+      "Quase complicou!",
+      "Essa foi acirrada!",
+      "Boa tentativa!"
+    ],
+    epic: [
+      "Essa foi por pouco!",
+      "Não foi fácil, mas venci!",
+      "Ufa! Consegui!",
+      "Por um triz!",
+      "Que luta intensa!"
+    ]
+  };
+
   const getDynamicQuote = (hpPercentage: number, source: 'player' | 'monster') => {
     // 25% chance to speak
     if (Math.random() > 0.25) return null;
@@ -622,10 +745,22 @@ export default function QuestGameplay() {
     let quotesArray: string[] = [];
     
     if (source === 'player') {
-      if (hpPercentage >= 80) quotesArray = playerQuotesByHp.hp100_80;
-      else if (hpPercentage >= 50) quotesArray = playerQuotesByHp.hp79_50;
-      else if (hpPercentage >= 25) quotesArray = playerQuotesByHp.hp49_25;
-      else quotesArray = playerQuotesByHp.hp24_0;
+      // 40% de chance de usar fala baseada em estresse, 60% baseada em HP
+      if (stressLevel >= 0.5 && Math.random() < 0.4) {
+        // Luta épica ou tensa
+        quotesArray = stressLevel >= 0.75 
+          ? playerQuotesByStress.epic 
+          : playerQuotesByStress.tense;
+      } else if (stressLevel < 0.25 && Math.random() < 0.3) {
+        // Luta fácil
+        quotesArray = playerQuotesByStress.easy;
+      } else {
+        // Fallback para falas baseadas em HP
+        if (hpPercentage >= 80) quotesArray = playerQuotesByHp.hp100_80;
+        else if (hpPercentage >= 50) quotesArray = playerQuotesByHp.hp79_50;
+        else if (hpPercentage >= 25) quotesArray = playerQuotesByHp.hp49_25;
+        else quotesArray = playerQuotesByHp.hp24_0;
+      }
     } else {
       const custom = quest?.monsterQuotes;
       let rawQuotes = '';
@@ -659,6 +794,15 @@ export default function QuestGameplay() {
       text: isTimeout ? '(Tempo Esgotado)' : q.options[optIndex].text,
       isCorrect
     });
+
+    // Rastrear fatores de estresse
+    const timeRatio = timeLeft / q.timeLimit;
+    if (timeRatio < 0.3) {
+      setStressFactors(prev => ({ ...prev, lowTimeAnswers: prev.lowTimeAnswers + 1 }));
+    }
+    if (!isCorrect) {
+      setStressFactors(prev => ({ ...prev, wrongAnswers: prev.wrongAnswers + 1 }));
+    }
 
     setLastSelectedOption(isTimeout ? -1 : optIndex);
 
@@ -791,6 +935,10 @@ export default function QuestGameplay() {
           updateUserHearts(newHearts);
         }
       });
+      
+      // Atualizar fator de estresse baseado na vida perdida
+      const hpLostRatio = 1 - (newHearts / maxHearts);
+      setStressFactors(prev => ({ ...prev, hpLost: hpLostRatio }));
       
       // Vidas Extras: Deduct penalty but don't move to next question
       const actualPenalty = calculatePenalty(quest.xpPenaltyPerRetry);
@@ -1005,8 +1153,8 @@ export default function QuestGameplay() {
       setShowChest(true);
     }
       
-      // Log XP and Coins if won or abandoned
-      if ((isWin || isAbandon) && (actualXpGained > 0 || earnedCoins > 0)) {
+      // Log XP and Coins only if won
+      if (isWin && (actualXpGained > 0 || earnedCoins > 0)) {
         const updates: any = {};
         
         if (actualXpGained > 0) {
@@ -1073,7 +1221,7 @@ export default function QuestGameplay() {
         data: {
           answers: studentAnswers.current,
           isStudyMode: isStudyMode,
-          earned_xp: ((isWin || isAbandon) && isEligibleForXP) ? finalXp : 0
+          earned_xp: (isWin && isEligibleForXP) ? finalXp : 0
         }
       });
       
@@ -1276,13 +1424,22 @@ export default function QuestGameplay() {
 
         {/* Battle Arena Fixed */}
         {gameState === 'playing' && (
-          <div ref={arenaRef} className="battle-arena-bg quest-arena" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '130px', paddingBottom: '20px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, overflow: 'hidden' } as any}>
-            <div 
-              className="battle-arena-bg-image" 
-              style={quest?.battleBgUrl ? { 
-                background: `url(${quest.battleBgUrl}) ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`
-              } : undefined}
-            />
+          <div ref={arenaRef} className="battle-arena-bg quest-arena" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '130px', paddingBottom: '60px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20 } as any}>
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
+              <div 
+                className="battle-arena-bg-image" 
+                style={quest?.battleBgUrl ? ({
+                  background: `url(${quest.battleBgUrl}) ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
+                  ...(quest.battleBgMoveEnabled !== false
+                    ? {
+                        '--bg-move-x': `${quest.battleBgMoveDirection === 'horizontal' || quest.battleBgMoveDirection === 'diagonal' ? (quest.battleBgMoveSpeed ?? 10) : 0}%`,
+                        '--bg-move-y': `${quest.battleBgMoveDirection === 'vertical' ? (quest.battleBgMoveSpeed ?? 10) : quest.battleBgMoveDirection === 'diagonal' ? -(quest.battleBgMoveSpeed ?? 10) / 2 : 0}%`,
+                        '--bg-move-duration': `${quest.battleBgMoveDuration ?? 30}s`,
+                      }
+                    : { '--bg-move-play': 'paused' })
+                } as any) : undefined}
+              />
+            </div>
             
             {/* Question Overlay - Sobre a arena, abaixo dos balões de fala */}
             <div className="quest-question-overlay">
@@ -1319,27 +1476,41 @@ export default function QuestGameplay() {
             {/* Player Side */}
             <div 
               className={`${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : ''} ${userData?.avatarConfig?.customModelUrl ? 'is-3d' : ''}`}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: playerAnim.startsWith('attack') ? 30 : 10 }}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (playerAnim.startsWith('attack') || playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 30 : (monsterAnim.startsWith('death-') ? 20 : 26) }}
             >
               {playerBubble && (
                 <div className="speech-bubble player">
                   {playerBubble}
                 </div>
               )}
-              <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px', overflow: 'hidden', borderRadius: '8px' }}>
-                  <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} />
-                  {playerAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
-                  <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
-                </div>
+              {/* Nome do jogador - pequeno, acima da cabeça */}
+              <div style={{ position: 'absolute', top: '-20px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap' }}>
+                <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
               </div>
-              <div style={{ height: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '4px' }}>
-                <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem' }}>Você</span>
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: playerAnim.startsWith('attack-fatal') ? '220px' : '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease' }}>
+                <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-80px' }}>
+                  <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
+                  {!quest?.allowRetries ? (
+                    (() => {
+                      // Suor baseado em estresse real (tempo, vida, erros)
+                      const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
+                      return (
+                        <div className="sweat-overlay" style={{ '--sweat-opacity': sweatLevel } as any}>
+                          {stressLevel >= 0.25 && <div className="sweat-drop" />}
+                          {stressLevel >= 0.5 && <div className="sweat-drop" />}
+                          {stressLevel >= 0.75 && <div className="sweat-drop" />}
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                  )}
+                </div>
               </div>
             </div>
 
             {/* Battle Message */}
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 2rem', zIndex: 10, opacity: battleMessage ? 1 : 0, transition: 'opacity 0.3s' }}>
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 2rem', zIndex: 20, opacity: battleMessage ? 1 : 0, transition: 'opacity 0.3s' }}>
               <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', textAlign: 'center', minWidth: '250px', backdropFilter: 'blur(10px)', boxShadow: 'var(--shadow-glass)' }}>
                 <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)', minHeight: '1.5em', fontStyle: 'italic', textShadow: battleMessage.includes('FATALITY') ? '0 0 10px red' : 'none' }}>
                   {battleMessage}
@@ -1350,7 +1521,7 @@ export default function QuestGameplay() {
             {/* Monster Side */}
             <div 
               className={`${monsterAnim === 'attack' ? 'teleport-monster' : (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (monsterAnim === 'idle-victory' || monsterAnim.startsWith('victory-')) ? 'teleport-monster-victory' : ''} ${(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 'is-3d' : ''}`}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: monsterAnim.startsWith('attack') ? 30 : 10 }}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? 35 : (monsterAnim.startsWith('attack') || monsterAnim.startsWith('death-')) ? 30 : 26 }}
             >
               {monsterBubble && (
                 <div className="speech-bubble monster">
@@ -1358,12 +1529,16 @@ export default function QuestGameplay() {
                 </div>
               )}
               {monsterAnim === 'death-slice' ? (
-                <div className="quest-arena-avatars" style={{ position: 'relative', width: '120px', height: (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? '240px' : '228px' }}>
+                <div className="quest-arena-avatars" style={{ position: 'relative', width: '160px', height: (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? '240px' : '228px' }}>
+                  {/* Nome do monstro - acompanha death-slice */}
+                  <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                    <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', opacity: 0.3 }}>{quest?.monsterName || 'Inimigo'}</span>
+                  </div>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" /> : <div style={{ marginBottom: '-60px' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
+                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" /> : <div style={{ marginBottom: '-80px' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                   <div className="death-slice-right" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" /> : <div style={{ marginBottom: '-60px' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
+                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" /> : <div style={{ marginBottom: '-80px' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                 </div>
               ) : (
@@ -1373,30 +1548,29 @@ export default function QuestGameplay() {
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
                   }`}
-                  style={{ position: 'relative', width: '120px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+                  style={{ position: 'relative', width: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
                 >
-                <div style={{ position: 'relative', display: 'inline-block', overflow: 'hidden', borderRadius: '8px' }}>
+                  {/* Nome do monstro - acompanha animações de morte */}
+                  <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
+                    <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
+                      {Array.from({ length: Math.max(0, (quest?.questions.length || 0) - currentQIndex - (monsterAnim.startsWith('death-') ? 1 : 0)) }).map((_, i) => (
+                        <Heart key={i} size={10} fill="#ef4444" color="#ef4444" />
+                      ))}
+                    </div>
+                  </div>
+                <div style={{ position: 'relative', display: 'inline-block' }}>
                   {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? (
                     <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={monsterAnim} role="monster" />
                   ) : quest?.monsterAvatarConfig ? (
-                    <div style={{ marginBottom: '-60px' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" /></div>
+                    <div style={{ marginBottom: '-80px' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" hurt={monsterAnim === 'hurt'} /></div>
                   ) : (
                     <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
                   )}
-                  {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, currentQIndex / Math.max(1, quest?.questions.length || 1))) } as any} />
                 </div>
                 </div>
               )}
-              
-              <div style={{ height: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '4px' }}>
-                <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.9rem', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>{quest?.monsterName || 'Inimigo'}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
-                  {Array.from({ length: Math.max(0, (quest?.questions.length || 0) - currentQIndex - (monsterAnim.startsWith('death-') ? 1 : 0)) }).map((_, i) => (
-                    <Heart key={i} size={14} fill="#ef4444" color="#ef4444" />
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -1464,7 +1638,7 @@ export default function QuestGameplay() {
               ) : won ? (
                 <>
                   <div className="quest-victory-avatar">
-                    <div style={{ position: 'relative', display: 'inline-block', overflow: 'hidden', borderRadius: '8px' }}>
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
                       <AvatarCharacter 
                         config={userData?.avatarConfig || null} 
                         equippedItems={playerEquippedItems} 
@@ -1473,7 +1647,21 @@ export default function QuestGameplay() {
                         expression={hpPercentage === 100 ? 'normal' : baseExp}
                         interactive={false} 
                       />
-                      <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                      {!quest?.allowRetries ? (
+                        (() => {
+                          // Suor baseado em estresse real na tela de vitória
+                          const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
+                          return (
+                            <div className="sweat-overlay" style={{ '--sweat-opacity': sweatLevel } as any}>
+                              {stressLevel >= 0.25 && <div className="sweat-drop" />}
+                              {stressLevel >= 0.5 && <div className="sweat-drop" />}
+                              {stressLevel >= 0.75 && <div className="sweat-drop" />}
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                      )}
                     </div>
                   </div>
                   <h1 className="title-glow quest-victory-title" style={{ marginBottom: '0.5rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>

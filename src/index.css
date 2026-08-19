@@ -312,15 +312,15 @@ h3 {
 @keyframes teleport-attack-player-fatal {
   0% { transform: translateX(0); opacity: 1; filter: blur(0); }
   20% { transform: translateX(-30px); opacity: 0; filter: blur(10px); }
-  33% { transform: translateX(calc(var(--attack-dist) - 40px)) scale(1.3); opacity: 1; filter: blur(0); }
-  100% { transform: translateX(calc(var(--attack-dist) + 20px)) scale(1.3) rotate(15deg); opacity: 1; filter: blur(0); }
+  33% { transform: translateX(calc(var(--attack-dist) - 40px)); opacity: 1; filter: blur(0); }
+  100% { transform: translateX(calc(var(--attack-dist) + 20px)) rotate(15deg); opacity: 1; filter: blur(0); }
 }
 
 @keyframes teleport-attack-monster-fatal {
-  0% { transform: translateX(0) scale(1); opacity: 1; filter: blur(0); }
-  20% { transform: translateX(30px) scale(1); opacity: 0; filter: blur(10px); }
-  33% { transform: translateX(calc(var(--attack-dist) * -1 + 40px)) scale(1.3); opacity: 1; filter: blur(0); }
-  100% { transform: translateX(calc(var(--attack-dist) * -1 - 20px)) scale(1.3) rotate(-15deg); opacity: 1; filter: blur(0); }
+  0% { transform: translateX(0); opacity: 1; filter: blur(0); }
+  20% { transform: translateX(30px); opacity: 0; filter: blur(10px); }
+  33% { transform: translateX(calc(var(--attack-dist) * -1 + 40px)); opacity: 1; filter: blur(0); }
+  100% { transform: translateX(calc(var(--attack-dist) * -1 - 20px)) rotate(-15deg); opacity: 1; filter: blur(0); }
 }
 
 .teleport-player-fatal {
@@ -402,34 +402,67 @@ h3 {
 
 .bruise-overlay {
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 15%; left: 20%; right: 20%; bottom: 15%;
   pointer-events: none;
   opacity: var(--damage-opacity);
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect x="4" y="6" width="2" height="2" fill="darkred"/><rect x="6" y="8" width="2" height="2" fill="purple"/><rect x="5" y="10" width="2" height="2" fill="darkred"/><rect x="18" y="5" width="2" height="2" fill="purple"/><rect x="20" y="7" width="2" height="2" fill="darkred"/><rect x="10" y="20" width="2" height="2" fill="darkred"/><rect x="8" y="22" width="2" height="2" fill="purple"/><rect x="12" y="23" width="2" height="2" fill="darkred"/><rect x="22" y="25" width="2" height="2" fill="purple"/><rect x="20" y="27" width="2" height="2" fill="darkred"/><rect x="14" y="14" width="2" height="2" fill="darkred"/><rect x="16" y="16" width="2" height="2" fill="purple"/><rect x="25" y="15" width="2" height="2" fill="darkred"/><rect x="7" y="17" width="2" height="2" fill="darkred"/><rect x="28" y="22" width="2" height="2" fill="purple"/></svg>');
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="12" cy="18" r="4" fill="rgba(80,0,0,0.6)"/><circle cx="10" cy="20" r="2" fill="rgba(120,0,60,0.5)"/><circle cx="14" cy="16" r="2" fill="rgba(60,0,30,0.4)"/><circle cx="40" cy="12" r="3" fill="rgba(80,0,0,0.5)"/><circle cx="42" cy="14" r="2" fill="rgba(100,0,50,0.4)"/><circle cx="24" cy="40" r="4" fill="rgba(80,0,0,0.6)"/><circle cx="22" cy="42" r="2" fill="rgba(120,0,60,0.5)"/><circle cx="26" cy="38" r="2" fill="rgba(60,0,30,0.4)"/><circle cx="50" cy="36" r="3" fill="rgba(80,0,0,0.5)"/><circle cx="48" cy="38" r="2" fill="rgba(100,0,50,0.4)"/><circle cx="32" cy="24" r="2" fill="rgba(60,0,30,0.3)"/><circle cx="16" cy="50" r="3" fill="rgba(80,0,0,0.4)"/><circle cx="44" cy="52" r="2" fill="rgba(100,0,50,0.3)"/></svg>');
   background-size: cover;
   image-rendering: pixelated;
-  mix-blend-mode: multiply;
   z-index: 10;
   transition: opacity 1.5s ease-out;
-  border-radius: 4px;
+  border-radius: 8px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 80% at 50% 50%, black 50%, transparent 100%);
+  mask-image: radial-gradient(ellipse 85% 80% at 50% 50%, black 50%, transparent 100%);
+}
+
+.sweat-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  opacity: var(--sweat-opacity, 0);
+  z-index: 10;
+  transition: opacity 1.5s ease-out;
+  overflow: hidden;
+}
+
+.sweat-drop {
+  position: absolute;
+  width: 4px;
+  height: 10px;
+  background: linear-gradient(to bottom, rgba(100,180,255,0.9), rgba(100,180,255,0));
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  animation: sweat-fall 1.2s ease-in infinite;
+}
+
+.sweat-drop:nth-child(1) { left: 35%; top: 12%; animation-delay: 0s; }
+.sweat-drop:nth-child(2) { left: 60%; top: 16%; animation-delay: 0.35s; }
+.sweat-drop:nth-child(3) { left: 48%; top: 8%; animation-delay: 0.7s; }
+
+@keyframes sweat-fall {
+  0% { transform: translateY(0) scale(1); opacity: 0.9; }
+  50% { transform: translateY(18px) scale(0.7); opacity: 0.5; }
+  100% { transform: translateY(35px) scale(0.4); opacity: 0; }
 }
 
 .battle-arena-bg-image {
   position: absolute;
   top: 0;
-  left: -10%;
-  width: 120%;
-  height: 120%;
-  background: url('/battle_bg.png') center bottom / cover no-repeat;
+  left: 0;
+  width: 100%;
+  height: 100%;
   z-index: 1;
-  animation: pan-background 30s linear infinite alternate;
+  --bg-move-x: 10%;
+  --bg-move-y: -5%;
+  --bg-move-duration: 30s;
+  animation: pan-background var(--bg-move-duration, 30s) linear infinite alternate;
+  animation-play-state: var(--bg-move-play, running);
   filter: brightness(0.6) contrast(1.1);
   opacity: 0.8;
 }
 
 @keyframes pan-background {
   0% { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(10%, -5%) scale(1.1); }
+  100% { transform: translate(var(--bg-move-x, 10%), var(--bg-move-y, -5%)) scale(1.1); }
 }
 
 .speech-bubble {

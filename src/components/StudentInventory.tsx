@@ -51,7 +51,7 @@ const getRarityLabel = (rarity?: string) => {
 
 
 export default function StudentInventory({ userData, onEquip, inventoryRefresh }: { userData: UserData, onEquip?: () => void, inventoryRefresh?: number }) {
-  const { showAlert, showConfirm, showConfirmWithCheckbox, showToast } = useDialog();
+  const { showAlert, showConfirm, showConfirmWithCheckbox, showToast, showPrompt } = useDialog();
   const [items, setItems] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sellModalItem, setSellModalItem] = useState<UserItem | null>(null);
@@ -366,6 +366,52 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       await consumeItemQuantity(item.itemId, 1, item.id);
       fetchInventory();
       await showAlert(`Seletor de gênero liberado por 15 minutos!`);
+      return;
+    }
+
+    if (item.gameEffect === 'rename_character') {
+      const { validateCharacterName, normalizeForComparison } = await import('../lib/nameValidation');
+      
+      const newName = await showPrompt(
+        'Digite o novo nome do seu personagem (até 12 caracteres, sem acentos/espaços/símbolos):',
+        userData.characterName || '',
+        'Renomear Personagem'
+      );
+      
+      if (!newName || newName.trim() === (userData.characterName || '')) return;
+      
+      const validation = validateCharacterName(newName);
+      if (!validation.valid) {
+        showToast(validation.error!, 'error');
+        return;
+      }
+      
+      const { data: existing } = await supabase.from('users')
+        .select('id, character_name')
+        .not('id', 'eq', userData.uid)
+        .not('character_name', 'is', null);
+      
+      if (existing) {
+        const normalizedNew = normalizeForComparison(newName);
+        const conflict = existing.find(u => {
+          const existingNorm = normalizeForComparison(u.character_name || '');
+          return existingNorm === normalizedNew || 
+                 existingNorm.includes(normalizedNew) || 
+                 normalizedNew.includes(existingNorm);
+        });
+        
+        if (conflict) {
+          showToast('Este nome já está em uso ou é muito similar ao de outro personagem. Escolha outro nome.', 'error');
+          return;
+        }
+      }
+      
+      await supabase.from('users').update({ character_name: newName.trim() }).eq('id', userData.uid);
+      userData.characterName = newName.trim();
+      
+      await consumeItemQuantity(item.itemId, 1, item.id);
+      fetchInventory();
+      showToast(`Nome do personagem alterado para "${newName.trim()}"!`, 'success');
       return;
     }
 

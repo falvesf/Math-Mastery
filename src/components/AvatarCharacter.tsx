@@ -152,6 +152,7 @@ export interface AvatarCharacterProps {
   expression?: 'normal' | 'serious' | 'sad';
   role?: 'player' | 'monster';
   showSlots?: boolean;
+  hurt?: boolean;
   onAvatarClick?: () => void;
   onSlotClick?: (item: EquippedItem) => void;
   onToggleSlotVisibility?: (slotId: string) => void;
@@ -163,7 +164,7 @@ export interface AvatarCharacterProps {
 
 import CustomModelViewer from './CustomModelViewer';
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
@@ -185,6 +186,58 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         viewerRef.current.zoom = zoomLevel;
     }
   }, [zoomLevel]);
+
+  // Efeito de flash vermelho quando toma dano
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !viewer.playerObject) return;
+
+    const skin = viewer.playerObject.skin;
+    if (!skin) return;
+
+    // Aplicar flash vermelho
+    const applyRedFlash = () => {
+      skin.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach((mat: any) => {
+            if (mat.color) {
+              // Salvar cor original no próprio material
+              if (!mat._originalColor) {
+                mat._originalColor = mat.color.clone();
+              }
+              mat.color.set(0xff4444);
+              mat.needsUpdate = true;
+            }
+          });
+        }
+      });
+    };
+
+    // Restaurar cores originais
+    const restoreColors = () => {
+      skin.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach((mat: any) => {
+            if (mat._originalColor) {
+              mat.color.copy(mat._originalColor);
+              mat.needsUpdate = true;
+            } else if (mat.color) {
+              mat.color.set(0xffffff);
+              mat.needsUpdate = true;
+            }
+          });
+        }
+      });
+    };
+
+    if (hurt) {
+      applyRedFlash();
+      const timer = setTimeout(restoreColors, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [hurt]);
 
   // States to hold generated skin URLs
   const [skinUrls, setSkinUrls] = useState<{
@@ -1493,6 +1546,10 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
         // Encarar o oponente
         player.rotation.y = targetRotation;
+        // Manter a cabeça reta (evita que fique torta de animações anteriores)
+        player.skin.head.rotation.x = 0;
+        player.skin.head.rotation.y = 0;
+        player.skin.head.rotation.z = 0;
         
         let shouldSwing = true;
         if (animation === 'attack-fatal-slow') {

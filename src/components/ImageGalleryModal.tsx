@@ -19,7 +19,7 @@ interface GalleryImage {
 }
 
 export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: ImageGalleryModalProps) {
-  const { showAlert, showConfirm } = useDialog();
+  const { showAlert, showConfirm, showToast } = useDialog();
   const [customUrl, setCustomUrl] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -230,6 +230,11 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
       return;
     }
 
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('O arquivo não pode exceder 2 MB.', 'error');
+      return;
+    }
+
     setUploading(true);
     setProgress(50);
 
@@ -280,6 +285,15 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
       if (!response.ok) throw new Error('Erro ao baixar imagem do Pixabay');
       
       const blob = await response.blob();
+
+      if (blob.size > 2 * 1024 * 1024) {
+        showToast('O arquivo não pode exceder 2 MB. Usando o link original.', 'error');
+        onSelectImage(url);
+        setUploading(false);
+        onClose();
+        return;
+      }
+
       const filePath = `quests/pixabay_${Date.now()}.jpg`;
       const progressInterval = setInterval(() => setProgress(p => Math.min(p + 10, 90)), 200);
 

@@ -6,7 +6,11 @@ interface ArenaBgEditorProps {
   initialPosX?: number;  // 0-100 percentage
   initialPosY?: number;  // 0-100 percentage
   initialScale?: number; // 1-3 scale factor
-  onSave: (posX: number, posY: number, scale: number) => void;
+  initialMoveEnabled?: boolean;
+  initialMoveDirection?: 'horizontal' | 'vertical' | 'diagonal';
+  initialMoveSpeed?: number;   // amplitude em %
+  initialMoveDuration?: number; // segundos por ciclo
+  onSave: (posX: number, posY: number, scale: number, moveEnabled: boolean, moveDirection: 'horizontal' | 'vertical' | 'diagonal', moveSpeed: number, moveDuration: number) => void;
   onCancel: () => void;
 }
 
@@ -15,12 +19,20 @@ export default function ArenaBgEditor({
   initialPosX = 50, 
   initialPosY = 50, 
   initialScale = 1.2,
+  initialMoveEnabled = true,
+  initialMoveDirection = 'diagonal',
+  initialMoveSpeed = 10,
+  initialMoveDuration = 30,
   onSave, 
   onCancel 
 }: ArenaBgEditorProps) {
   const [posX, setPosX] = useState(initialPosX);
   const [posY, setPosY] = useState(initialPosY);
   const [scale, setScale] = useState(initialScale);
+  const [moveEnabled, setMoveEnabled] = useState(initialMoveEnabled);
+  const [moveDirection, setMoveDirection] = useState<'horizontal' | 'vertical' | 'diagonal'>(initialMoveDirection);
+  const [moveSpeed, setMoveSpeed] = useState(initialMoveSpeed);
+  const [moveDuration, setMoveDuration] = useState(initialMoveDuration);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -70,7 +82,14 @@ export default function ArenaBgEditor({
     setPosX(50);
     setPosY(50);
     setScale(1.2);
+    setMoveEnabled(true);
+    setMoveDirection('diagonal');
+    setMoveSpeed(10);
+    setMoveDuration(30);
   };
+
+  const moveX = moveDirection === 'horizontal' || moveDirection === 'diagonal' ? moveSpeed : 0;
+  const moveY = moveDirection === 'vertical' ? moveSpeed : moveDirection === 'diagonal' ? -moveSpeed / 2 : 0;
 
   return (
     <div style={{
@@ -166,6 +185,85 @@ export default function ArenaBgEditor({
                 <div style={{ position: 'absolute', top: '66.66%', left: 0, right: 0, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
               </div>
             </div>
+
+            {/* Movimento do Fundo */}
+            <div style={{ marginTop: '1rem', background: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '6px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: moveEnabled ? '0.75rem' : 0, color: moveEnabled ? 'var(--gold-primary)' : 'var(--text-secondary)', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                <input
+                  type="checkbox"
+                  checked={moveEnabled}
+                  onChange={(e) => setMoveEnabled(e.target.checked)}
+                  style={{ accentColor: 'var(--gold-primary)', width: '16px', height: '16px' }}
+                />
+                Movimento do fundo durante a batalha
+              </label>
+
+              {moveEnabled && (
+                <>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                      Direção do Movimento
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {(['horizontal', 'vertical', 'diagonal'] as const).map(dir => (
+                        <button
+                          key={dir}
+                          onClick={() => setMoveDirection(dir)}
+                          style={{
+                            flex: 1, padding: '0.4rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold',
+                            background: moveDirection === dir ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                            color: moveDirection === dir ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                            border: moveDirection === dir ? '1px solid var(--gold-primary)' : '1px solid var(--border-glass)'
+                          }}
+                        >
+                          {dir === 'horizontal' ? 'Horizontal' : dir === 'vertical' ? 'Vertical' : 'Diagonal'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                      <label style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                        Velocidade (amplitude)
+                      </label>
+                      <span style={{ color: 'var(--gold-primary)', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                        {moveSpeed}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="2"
+                      max="25"
+                      step="1"
+                      value={moveSpeed}
+                      onChange={(e) => setMoveSpeed(parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: 'var(--gold-primary)' }}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                      <label style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                        Frequência (segundos por ciclo)
+                      </label>
+                      <span style={{ color: 'var(--gold-primary)', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                        {moveDuration}s
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="5"
+                      max="60"
+                      step="1"
+                      value={moveDuration}
+                      onChange={(e) => setMoveDuration(parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: 'var(--gold-primary)' }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Preview */}
@@ -189,9 +287,12 @@ export default function ArenaBgEditor({
                 backgroundSize: `${scale * 100}%`,
                 backgroundPosition: `${posX}% ${posY}%`,
                 backgroundRepeat: 'no-repeat',
-                animation: 'pan-background-preview 30s linear infinite alternate',
+                '--preview-move-x': `${moveX}%`,
+                '--preview-move-y': `${moveY}%`,
+                '--preview-move-duration': `${moveDuration}s`,
+                animation: moveEnabled ? 'pan-background-preview var(--preview-move-duration) linear infinite alternate' : 'none',
                 filter: 'brightness(0.6) contrast(1.1)'
-              }} />
+              } as React.CSSProperties} />
               {/* Simulated arena elements */}
               <div style={{
                 position: 'absolute', bottom: '10%', left: '15%',
@@ -294,7 +395,7 @@ export default function ArenaBgEditor({
             Cancelar
           </button>
           <button 
-            onClick={() => onSave(posX, posY, scale)}
+            onClick={() => onSave(posX, posY, scale, moveEnabled, moveDirection, moveSpeed, moveDuration)}
             style={{ 
               padding: '0.75rem 1.5rem', 
               background: 'var(--gold-primary)', 
@@ -314,7 +415,7 @@ export default function ArenaBgEditor({
       <style>{`
         @keyframes pan-background-preview {
           0% { transform: translate(0, 0) scale(1); }
-          100% { transform: translate(5%, -2.5%) scale(1.05); }
+          100% { transform: translate(var(--preview-move-x, 10%), var(--preview-move-y, -5%)) scale(1.05); }
         }
       `}</style>
     </div>

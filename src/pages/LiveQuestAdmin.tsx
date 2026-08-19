@@ -620,7 +620,14 @@ export default function LiveQuestAdmin() {
              style={{ 
                opacity: 0.5,
                ...(quest?.battleBgUrl ? { 
-                 background: `url(${quest.battleBgUrl}) ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`
+                 background: `url(${quest.battleBgUrl}) ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
+                 ...(quest.battleBgMoveEnabled !== false
+                   ? {
+                       '--bg-move-x': `${quest.battleBgMoveDirection === 'horizontal' || quest.battleBgMoveDirection === 'diagonal' ? (quest.battleBgMoveSpeed ?? 10) : 0}%`,
+                       '--bg-move-y': `${quest.battleBgMoveDirection === 'vertical' ? (quest.battleBgMoveSpeed ?? 10) : quest.battleBgMoveDirection === 'diagonal' ? -(quest.battleBgMoveSpeed ?? 10) / 2 : 0}%`,
+                       '--bg-move-duration': `${quest.battleBgMoveDuration ?? 30}s`,
+                     }
+                   : { '--bg-move-play': 'paused' })
                } : {})
              }} 
            />
