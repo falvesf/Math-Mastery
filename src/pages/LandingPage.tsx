@@ -43,22 +43,21 @@ export default function LandingPage() {
           <LogIn size={20} className={isHovered ? 'icon-hover' : ''} />
           <span>Login com Google</span>
         </button>
-        
-        <img 
-          src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} 
-          alt="Math Mastery" 
-          className="landing-logo"
-        />
       </nav>
 
       <main className="main-content">
         <div className="hero-section">
+          <img 
+            src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} 
+            alt="Math Mastery" 
+            className="landing-logo"
+          />
           <h2 className="hero-title">Prepare-se para a Batalha do Conhecimento</h2>
           <p className="hero-subtitle">
             Resolva desafios, suba de patente e torne-se uma lenda da matemática.
           </p>
           {error && (
-            <div style={{ marginTop: '1.5rem', color: 'var(--accent-red)', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem 2rem', borderRadius: '8px', border: '1px solid var(--accent-red)', display: 'inline-block', fontWeight: 600 }}>
+            <div style={{ marginTop: '1rem', color: 'var(--accent-red)', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem 2rem', borderRadius: '8px', border: '1px solid var(--accent-red)', display: 'inline-block', fontWeight: 600 }}>
               {error}
             </div>
           )}
