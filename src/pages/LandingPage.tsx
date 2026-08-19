@@ -31,7 +31,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-container landing-page">
       <nav className="navbar glass-panel" style={{ position: 'relative' }}>
         <div style={{ flex: 1 }}></div>
         <button 
