@@ -681,8 +681,8 @@ h3 {
 /* 3D Cube Styles */
 .cube-container {
   perspective: 1000px;
-  width: 240px;
-  height: 240px;
+  width: clamp(180px, 25vw, 240px);
+  height: clamp(180px, 25vw, 240px);
   margin: 0 auto;
 }
 
@@ -696,8 +696,8 @@ h3 {
 
 .cube-face {
   position: absolute;
-  width: 240px;
-  height: 240px;
+  width: clamp(180px, 25vw, 240px);
+  height: clamp(180px, 25vw, 240px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -706,10 +706,10 @@ h3 {
   /* border is applied inline based on rank color */
 }
 
-.cube-face-front  { transform: rotateY(0deg) translateZ(120px); }
-.cube-face-right  { transform: rotateY(90deg) translateZ(120px); }
-.cube-face-back   { transform: rotateY(180deg) translateZ(120px); }
-.cube-face-left   { transform: rotateY(-90deg) translateZ(120px); }
+.cube-face-front  { transform: rotateY(0deg) translateZ(clamp(90px, 12.5vw, 120px)); }
+.cube-face-right  { transform: rotateY(90deg) translateZ(clamp(90px, 12.5vw, 120px)); }
+.cube-face-back   { transform: rotateY(180deg) translateZ(clamp(90px, 12.5vw, 120px)); }
+.cube-face-left   { transform: rotateY(-90deg) translateZ(clamp(90px, 12.5vw, 120px)); }
 
 /* --- Rarity Styles --- */
 .rarity-common {

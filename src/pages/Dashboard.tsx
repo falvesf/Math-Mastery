@@ -1755,9 +1755,9 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'stretch', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center' }}>
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center' }}>
               {/* Perfil do Aluno (Esquerda) */}
-              <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 400px' : '0 1 500px', padding: '1.5rem 2rem 1.5rem 1.5rem', textAlign: 'center', position: 'relative', height: '71vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 400px' : '0 1 500px', padding: '1.5rem 2rem 5vh 1.5rem', textAlign: 'center', position: 'relative', minHeight: '60vh', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', alignSelf: 'flex-start' }}>
               
               <div style={{ flexShrink: 0, paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem', height: '100%' }}>
               <div 
@@ -2102,8 +2102,8 @@ export default function Dashboard() {
         )}
 
         {activeTab === 'ranking_class' && (
-          <div className="glass-panel" style={{ padding: '0', animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+          <div style={{ animation: 'fadeIn 0.3s ease-out', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)', background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-glass)', overflow: 'hidden' }}>
+            <div style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, background: 'var(--bg-card)', backdropFilter: 'blur(12px)' }}>
               <Users size={32} color="var(--gold-primary)" />
               <div style={{ flex: 1, minWidth: '200px' }}>
                 <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Top 10 da Turma</h2>
@@ -2138,15 +2138,15 @@ export default function Dashboard() {
                 <span>{showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar Avatares'}</span>
               </button>
             </div>
-            <div style={{ padding: '2rem' }}>
+            <div style={{ padding: '2rem', flex: 1, overflowY: 'auto' }}>
               {targetClassRanking ? renderRankingList(classStudents, 'class') : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
             </div>
           </div>
         )}
 
         {activeTab === 'ranking_general' && (
-          <div className="glass-panel" style={{ padding: '0', animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', position: 'sticky', top: '75px', zIndex: 90, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+          <div style={{ animation: 'fadeIn 0.3s ease-out', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)', background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-glass)', overflow: 'hidden' }}>
+            <div style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, background: 'var(--bg-card)', backdropFilter: 'blur(12px)' }}>
               <Trophy size={32} color="var(--gold-primary)" />
               <div style={{ flex: 1, minWidth: '200px' }}>
                 <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Top 10 Geral</h2>
@@ -2162,7 +2162,7 @@ export default function Dashboard() {
                 <span>{showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar Avatares'}</span>
               </button>
             </div>
-            <div style={{ padding: '2rem' }}>
+            <div style={{ padding: '2rem', flex: 1, overflowY: 'auto' }}>
               {renderRankingList(top10General, 'general')}
             </div>
           </div>
