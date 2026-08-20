@@ -816,7 +816,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     <Swords size={11} color="var(--gold-primary)" />
                   </div>
                 )}
-                <div className={`rarity-badge ${item.rarity || 'common'}`} style={{ fontSize: '0.6rem', padding: '1px 5px', bottom: '3px', left: '3px' }}>
+                <div className={`rarity-badge ${item.rarity || 'common'}`}>
                   {getRarityLabel(item.rarity)}
                 </div>
                 {viewMode !== 'list' && (
