@@ -110,6 +110,6 @@ export const CACHE_KEYS = {
   quests: (classId: string) => `quests_${classId}`,
   questAttempts: (uid: string) => `quest_attempts_${uid}`,
   rankingItems: () => `ranking_items`,
-  presetSkins: () => `preset_skins`,
-  models3d: () => `3d_models`,
+  presetSkins: (tenantId?: string | null) => tenantId ? `preset_skins_${tenantId}` : `preset_skins`,
+  models3d: (tenantId?: string | null) => tenantId ? `3d_models_${tenantId}` : `3d_models`,
 };

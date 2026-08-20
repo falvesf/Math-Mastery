@@ -4,6 +4,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { useAuth } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
+import { fetchEconomySettings } from '../lib/economy';
 import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircle, Package, Coins } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
@@ -32,6 +34,7 @@ interface UserItem {
 export default function QuestGameplay() {
   const { questId } = useParams();
   const { userData } = useAuth();
+  const { tenant, tenantId, isSuperAdmin } = useTenant();
   const navigate = useNavigate();
   const { showAlert, showConfirm } = useDialog();
 
@@ -237,6 +240,16 @@ export default function QuestGameplay() {
         
         const qData = { id: snap.id, ...snap } as QuestDef;
         
+        // Isolamento por escola: impedir que aluno de outra escola acesse a missão
+        if (userData.role !== 'admin' && tenantId) {
+          const questTenant = (qData as any).tenant_id;
+          if (questTenant && questTenant !== tenantId) {
+            setErrorMessage('Esta missão pertence a outra escola.');
+            setGameState('result');
+            return;
+          }
+        }
+
         if (!qData.active && userData.role !== 'admin') {
           setErrorMessage('Esta missão não está ativa no momento.');
           setGameState('result');
@@ -268,11 +281,9 @@ export default function QuestGameplay() {
           return;
         }
 
-        // Economy Config
-        const { data: econSnap } = await supabase.from('system_collections').select('data').eq('type', 'economy').single();
-        if (econSnap && econSnap.data) {
-          setEconomySettings(econSnap.data);
-        }
+        // Economy Config (por escola)
+        const econ = await fetchEconomySettings(tenantId);
+        setEconomySettings(econ);
 
         // Apply shuffling if configured
         let processedQuestions = [...(qData.questions || [])];

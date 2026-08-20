@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
+import { fetchEconomySettings } from '../lib/economy';
 import { supabase } from '../lib/supabase';
 import { Loader2, ArrowLeft, Pen, Heart, Skull, Zap } from 'lucide-react';
 import type { QuestDef } from './AdminDashboard';
@@ -33,6 +35,7 @@ interface UserItem {
 export default function LiveQuestStudent() {
   const { sessionId } = useParams();
   const { userData } = useAuth();
+  const { tenant, tenantId, isSuperAdmin } = useTenant();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -78,6 +81,15 @@ export default function LiveQuestStudent() {
           setLoading(false);
           return;
         }
+        // Isolamento por escola
+        if (tenantId) {
+          const questTenant = (qDoc as any).tenant_id;
+          if (questTenant && questTenant !== tenantId) {
+            setError('Esta missão pertence a outra escola.');
+            setLoading(false);
+            return;
+          }
+        }
         setQuest(qDoc as QuestDef);
 
         // Check Session
@@ -88,11 +100,9 @@ export default function LiveQuestStudent() {
           return;
         }
 
-        // Fetch Economy
-        const { data: econSnap } = await supabase.from('system_collections').select('data').eq('type', 'economy').single();
-        if (econSnap && econSnap.data) {
-          setEconomySettings(econSnap.data);
-        }
+        // Fetch Economy (por escola)
+        const econ = await fetchEconomySettings(tenantId);
+        setEconomySettings(econ);
 
         const currentSession = sDoc as LiveSession;
         if (!currentSession.players) {

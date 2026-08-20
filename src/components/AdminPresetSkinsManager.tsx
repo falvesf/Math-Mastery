@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Globe, Building2 } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
+import { useTenant } from '../contexts/TenantContext';
 import type { PresetSkin } from './AvatarCustomizationModal';
 import DirectUploadButton from './DirectUploadButton';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
@@ -9,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 export default function AdminPresetSkinsManager() {
   const { showAlert, showConfirm } = useDialog();
+  const { tenantId, isSuperAdmin } = useTenant();
   const [skins, setSkins] = useState<PresetSkin[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -27,7 +29,11 @@ export default function AdminPresetSkinsManager() {
 
   const fetchModels3d = async () => {
     try {
-      const { data: snap } = await supabase.from('3d_models').select('*');
+      let query = supabase.from('3d_models').select('*');
+      if (tenantId) {
+        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      }
+      const { data: snap } = await query;
       if (snap) {
         setModels3d(snap);
       }
@@ -39,7 +45,11 @@ export default function AdminPresetSkinsManager() {
   const fetchSkins = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const { data: snap, error } = await supabase.from('preset_skins').select('*');
+      let query = supabase.from('preset_skins').select('*');
+      if (tenantId) {
+        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      }
+      const { data: snap, error } = await query;
       if (error) {
         console.error('Supabase fetch error:', error);
         showAlert(`Erro do Supabase: ${error.message}`);
@@ -49,6 +59,7 @@ export default function AdminPresetSkinsManager() {
           ...s,
           type: s.type || 'human',
           genderTarget: s.genderTarget || 'both',
+          _isGlobal: s.is_global ?? false,
         }));
         setSkins(mapped as PresetSkin[]);
       }
@@ -62,7 +73,8 @@ export default function AdminPresetSkinsManager() {
   useEffect(() => {
     fetchSkins();
     fetchModels3d();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
 
   const handleOpenModal = (skin?: PresetSkin) => {
     if (skin) {
@@ -107,9 +119,16 @@ export default function AdminPresetSkinsManager() {
         type,
         baseModelId: baseModelId === 'default' ? null : baseModelId,
         genderTarget,
+        tenant_id: tenantId || null,
+        is_global: false,
       };
       let saveError: any = null;
       if (editingId) {
+        const editingSkin = skins.find(s => s.id === editingId);
+        if ((editingSkin as any)?._isGlobal && !isSuperAdmin) {
+          showAlert('Skins globais só podem ser editadas pelo superadmin.');
+          return;
+        }
         const { error } = await supabase.from('preset_skins').update(data).eq('id', editingId);
         saveError = error;
       } else {
@@ -135,6 +154,11 @@ export default function AdminPresetSkinsManager() {
   const handleDelete = async (id: string) => {
     if (await showConfirm('Deseja realmente excluir esta skin pré-definida?')) {
       try {
+        const skin = skins.find(s => s.id === id);
+        if ((skin as any)?._isGlobal && !isSuperAdmin) {
+          showAlert('Skins globais só podem ser excluídas pelo superadmin.');
+          return;
+        }
         await supabase.from('preset_skins').delete().eq('id', id);
         sessionCache.invalidate(CACHE_KEYS.presetSkins());
         showAlert('Skin excluída com sucesso!');
@@ -294,7 +318,10 @@ export default function AdminPresetSkinsManager() {
                     <div key={skin.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                       <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: 'var(--bg-card)', border: '1px solid var(--border-glass)', overflow: 'hidden', flexShrink: 0, backgroundImage: `url(${skin.url})`, backgroundSize: 'cover', backgroundPosition: 'top center' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <h4 style={{ fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: '0 0 0.25rem 0' }}>{skin.name}</h4>
+                        <h4 style={{ fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {skin.name}
+                          {(skin as any)._isGlobal ? <span title="Global (somente leitura)"><Globe size={14} color="var(--text-secondary)" /></span> : <span title="Local (editável)"><Building2 size={14} color="#10b981" /></span>}
+                        </h4>
                         <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: skin.type === 'monster' ? 'rgba(239, 68, 68, 0.2)' : skin.type === 'equipment' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: skin.type === 'monster' ? '#f87171' : skin.type === 'equipment' ? '#f59e0b' : '#60a5fa', borderRadius: '1rem' }}>
                           {skin.type === 'monster' ? 'Monstro' : skin.type === 'equipment' ? 'Equipamento' : 'Humano'}
                         </span>
@@ -305,10 +332,10 @@ export default function AdminPresetSkinsManager() {
                         )}
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => handleOpenModal(skin)} style={{ padding: '0.5rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>
+                        <button onClick={() => handleOpenModal(skin)} disabled={(skin as any)._isGlobal && !isSuperAdmin} style={{ padding: '0.5rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', cursor: (skin as any)._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: (skin as any)._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
                           <Edit2 size={16} />
                         </button>
-                        <button onClick={() => handleDelete(skin.id)} style={{ padding: '0.5rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>
+                        <button onClick={() => handleDelete(skin.id)} disabled={(skin as any)._isGlobal && !isSuperAdmin} style={{ padding: '0.5rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', cursor: (skin as any)._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: (skin as any)._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
                           <Trash2 size={16} />
                         </button>
                       </div>

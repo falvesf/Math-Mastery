@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Swords } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
+import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
@@ -62,6 +64,7 @@ const getRarityLabel = (rarity?: string) => {
 
 export default function StudentStore({ userData }: { userData: UserData }) {
   const { showAlert, showConfirm, showPrompt, showToast } = useDialog();
+  const { tenantId } = useTenant();
   const [activeTab, setActiveTab] = useState<'official' | 'market'>('official');
   const [officialCategoryTab, setOfficialCategoryTab] = useState<'all' | 'consumable' | 'attack' | 'defense' | 'other'>('all');
   const [items, setItems] = useState<StoreItem[]>([]);
@@ -112,14 +115,17 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   const fetchStoreData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
-    const { data: econSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'economy').single();
-    if (econSnap) {
-      const eData = econSnap.data as any;
-      setEconomyType(eData.currencyType || 'coins');
-      setEconomySettings(eData);
-    }
+    const econ = await fetchEconomySettings(tenantId);
+    setEconomyType(econ.currencyType);
+    setEconomySettings(econ);
 
-    const { data: storeSnap } = await supabase.from('store_items').select('*').eq('active', true);
+    // Buscar itens da loja com filtro de tenant
+    let storeQuery = supabase.from('store_items').select('*').eq('active', true);
+    // Buscar itens globais OU itens da escola atual
+    if (tenantId) {
+      storeQuery = storeQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    }
+    const { data: storeSnap } = await storeQuery;
     const loaded: StoreItem[] = [];
     (storeSnap || []).forEach(d => {
       const data = d.data as StoreItem;

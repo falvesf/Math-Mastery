@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
 import { supabase } from '../lib/supabase';
 
 import { Loader2, Play, CheckCircle, ChevronRight, Swords, Crown, Skull, Package } from 'lucide-react';
@@ -46,6 +47,7 @@ export interface LiveSession {
 export default function LiveQuestAdmin() {
   const { sessionId } = useParams(); // Using questId as sessionId for simplicity
   const { userData } = useAuth();
+  const { tenant, tenantId, isSuperAdmin } = useTenant();
   const { showConfirm } = useDialog();
   const navigate = useNavigate();
   const location = useLocation();
@@ -201,7 +203,7 @@ export default function LiveQuestAdmin() {
           maxMonsterHp: 0,
           players: {}
         };
-        await supabase.from('live_quests').insert({ id: sessionId, ...newSession });
+        await supabase.from('live_quests').insert({ id: sessionId, ...newSession, tenant_id: (qData as any).tenant_id || null });
         currentSessionData = newSession;
       } else {
         const data = sDocData as LiveSession;

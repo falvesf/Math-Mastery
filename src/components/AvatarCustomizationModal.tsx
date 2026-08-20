@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
 import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose } from './AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
@@ -223,6 +224,7 @@ const HorizontalScrollList = ({ children }: { children: React.ReactNode }) => {
 
 export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, onPositionsSaved, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
   const { userData } = useAuth();
+  const { tenantId } = useTenant();
   const { showAlert, showToast } = useDialog();
   const [config, setConfig] = useState<AvatarConfig>({
     gender: 'male',
@@ -279,12 +281,16 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
 
   const fetchPresetSkins = async (forceRefresh = false) => {
     try {
-      const cacheKey = CACHE_KEYS.presetSkins();
+      const cacheKey = CACHE_KEYS.presetSkins(tenantId);
       if (!forceRefresh) {
         const cached = sessionCache.get<PresetSkin[]>(cacheKey);
         if (cached) { setPresetSkins(cached); return; }
       }
-      const { data } = await supabase.from('preset_skins').select('*');
+      let query = supabase.from('preset_skins').select('*');
+      if (tenantId) {
+        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      }
+      const { data } = await query;
       const fetched: PresetSkin[] = [];
       if (data) {
         data.forEach(d => {
@@ -301,12 +307,16 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
 
   const fetchModels3d = async (forceRefresh = false) => {
     try {
-      const cacheKey = CACHE_KEYS.models3d();
+      const cacheKey = CACHE_KEYS.models3d(tenantId);
       if (!forceRefresh) {
         const cached = sessionCache.get<any[]>(cacheKey);
         if (cached) { setModels3d(cached); return; }
       }
-      const { data } = await supabase.from('3d_models').select('*');
+      let query = supabase.from('3d_models').select('*');
+      if (tenantId) {
+        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      }
+      const { data } = await query;
       const fetched: any[] = [];
       if (data) {
         data.forEach(d => {

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, Move } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
+import { useTenant, type Tenant } from '../contexts/TenantContext';
 import { supabase } from '../lib/supabase';
 import { getRankForXp } from '../lib/ranks';
 import { DEFAULT_EVALUATIONS, type EvaluationType } from '../lib/evaluations';
@@ -17,6 +18,7 @@ import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacte
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
 import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
+import PreAuthorizedStudentsManager from '../components/PreAuthorizedStudentsManager';
 import RichTextEditor from '../components/RichTextEditor';
 import { useDialog } from '../contexts/DialogContext';
 import { validateCharacterName, normalizeForComparison } from '../lib/nameValidation';
@@ -89,6 +91,7 @@ export interface QuestDef {
   shuffleAnswers?: boolean;
   randomQuestionSelection?: boolean;
   randomQuestionCount?: number;
+  tenant_id?: string | null;
 }
 
 interface StoreItemOption {
@@ -233,9 +236,178 @@ function StoreItemSelect({ value, onChange, items, placeholder = '(Nenhum Item)'
   );
 }
 
+// Componente para card de aprovação de aluno
+function StudentEnrollmentCard({ reqUser, tenantId, schoolClasses, userData, onApprove, onReject, showConfirm, showAlert }: {
+  reqUser: any;
+  tenantId: string | null;
+  schoolClasses: any[];
+  userData: any;
+  onApprove: () => void;
+  onReject: () => void;
+  showConfirm: (title: string, msg: string) => Promise<boolean>;
+  showAlert: (title: string, msg: string) => void;
+}) {
+  const [schoolName, setSchoolName] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchSchoolName();
+  }, [reqUser.tenantId]);
+
+  const fetchSchoolName = async () => {
+    try {
+      if (reqUser.tenantId) {
+        const { data } = await supabase
+          .from('tenants')
+          .select('name')
+          .eq('id', reqUser.tenantId)
+          .maybeSingle();
+        if (data) setSchoolName(data.name);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar escola:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (await showConfirm('Aprovar Aluno', `Aprovar ${reqUser.name} como aluno?`)) {
+      // Usar escola e turma que o aluno escolheu (salvas no próprio usuário)
+      const targetTenantId = reqUser.tenantId || tenantId;
+      const targetClassName = reqUser.pendingClassName || reqUser.classId || schoolClasses[0]?.name || 'Sem Turma';
+      
+      if (targetTenantId) {
+        // 1. Atualizar role para student e associar à escola/turma
+        const { error: userUpdateError } = await supabase.from('users').update({ 
+          role: 'student',
+          tenant_id: targetTenantId,
+          class_id: targetClassName,
+          xp: 0,
+          coins: 0
+        }).eq('id', reqUser.uid);
+        
+        if (userUpdateError) {
+          console.error('Erro ao aprovar aluno:', userUpdateError);
+          showAlert('Erro', 'Não foi possível aprovar o aluno.');
+          return;
+        }
+        
+        // 2. Tentar limpar pending_class_name (pode não existir ainda)
+        try {
+          await supabase.from('users').update({ pending_class_name: null }).eq('id', reqUser.uid);
+        } catch (e) {
+          console.warn('Coluna pending_class_name não existe, ignorando:', e);
+        }
+        
+        // 3. Criar relação tenant_users
+        await supabase.from('tenant_users').upsert({
+          tenant_id: targetTenantId,
+          user_id: reqUser.uid,
+          role: 'student'
+        }, { onConflict: 'tenant_id,user_id' });
+        
+        // 4. Atualizar status da solicitação se existir
+        try {
+          await supabase.from('enrollment_requests')
+            .update({ status: 'approved', reviewed_by: userData?.uid, reviewed_at: new Date().toISOString() })
+            .eq('user_id', reqUser.uid)
+            .eq('status', 'pending');
+        } catch (e) { console.error('Erro ao atualizar solicitação:', e); }
+        
+        showAlert('Sucesso', `${reqUser.name} foi aprovado como aluno da turma ${targetClassName}!`);
+      } else {
+        showAlert('Erro', 'Não foi possível determinar a escola do aluno.');
+      }
+      onApprove();
+    }
+  };
+
+  const handleReject = async () => {
+    if (await showConfirm('Rejeitar Aluno', `Deseja rejeitar a solicitação de ${reqUser.name}?`)) {
+      // Primeiro: reverter o role para student e limpar escola/turma (colunas que sempre existem)
+      const { error: updateError } = await supabase.from('users').update({ 
+        role: 'student', 
+        tenant_id: null, 
+        class_id: null 
+      }).eq('id', reqUser.uid);
+      
+      if (updateError) {
+        console.error('Erro ao rejeitar aluno:', updateError);
+        showAlert('Erro', 'Não foi possível rejeitar o aluno. Verifique se as colunas existem.');
+        return;
+      }
+      
+      // Tentar limpar pending_class_name (pode não existir ainda)
+      try {
+        await supabase.from('users').update({ pending_class_name: null }).eq('id', reqUser.uid);
+      } catch (e) {
+        console.warn('Coluna pending_class_name não existe, ignorando:', e);
+      }
+      
+      // Remover solicitação de matrícula se existir
+      try {
+        await supabase.from('enrollment_requests').delete().eq('user_id', reqUser.uid);
+      } catch (e) { console.error('Erro ao remover solicitação:', e); }
+      
+      onReject();
+      showAlert('Sucesso', `${reqUser.name} foi rejeitado e poderá escolher outra escola/turma.`);
+    }
+  };
+
+  const chosenSchool = schoolName || (reqUser.tenantId ? `ID: ${reqUser.tenantId.substring(0, 8)}...` : 'Não definida');
+  const chosenClass = reqUser.pendingClassName || 'Não definida';
+
+  return (
+    <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', border: '1px solid #3b82f6', background: 'rgba(59, 130, 246, 0.05)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <img src={reqUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(reqUser.name)}`} alt="" style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
+        <div style={{ overflow: 'hidden', flex: 1 }}>
+          <h4 style={{ margin: 0, fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reqUser.name}</h4>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{reqUser.email}</span>
+        </div>
+      </div>
+      
+      {/* Informações da escola e turma escolhidas pelo aluno */}
+      {loading ? (
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Carregando informações...</div>
+      ) : (
+        <div style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Escola escolhida:</span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>{chosenSchool}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Turma escolhida:</span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--accent-blue)' }}>{chosenClass}</span>
+          </div>
+        </div>
+      )}
+      
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
+        <button 
+          onClick={handleReject}
+          className="login-btn" 
+          style={{ flex: 1, padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }}
+        >
+          Rejeitar
+        </button>
+        <button 
+          onClick={handleApprove}
+          className="login-btn" 
+          style={{ flex: 1, padding: '0.5rem', background: 'var(--accent-green)', color: 'white', border: 'none' }}
+        >
+          Aprovar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const { showAlert, showConfirm, showToast } = useDialog();
   const { userData } = useAuth();
+  const { tenant, tenantId, tenants, isSuperAdmin, noTenants, switchTenant, createTenant, updateTenant, deleteTenant, refreshTenants } = useTenant();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('users');
   const [students, setStudents] = useState<UserData[]>([]);
@@ -244,6 +416,11 @@ export default function AdminDashboard() {
   const [evaluations, setEvaluations] = useState<EvaluationType[]>([]);
   const [schoolClasses, setSchoolClasses] = useState<ClassDef[]>([]);
   const [quests, setQuests] = useState<QuestDef[]>([]);
+
+  // Modal de Escolas (Multi-tenant) States
+  const [tenantModalOpen, setTenantModalOpen] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [tenantForm, setTenantForm] = useState({ name: '', slug: '', max_students: 500, status: 'active' as 'active' | 'inactive' | 'suspended' });
 
   // Modal de Lançar Nota States
   const [selectedStudent, setSelectedStudent] = useState<UserData | null>(null);
@@ -371,14 +548,22 @@ export default function AdminDashboard() {
   };
 
   const fetchClasses = async () => {
-    const { data: snap } = await supabase.from('classes').select('*');
+    let classesQuery = supabase.from('classes').select('*');
+    if (tenantId) {
+      classesQuery = classesQuery.eq('tenant_id', tenantId);
+    }
+    const { data: snap } = await classesQuery;
     const loaded: ClassDef[] = (snap as ClassDef[]) || [];
     loaded.sort((a, b) => a.name.localeCompare(b.name));
     setSchoolClasses(loaded);
   };
 
   const fetchQuests = async () => {
-    const { data: snap } = await supabase.from('quests').select('*');
+    let questsQuery = supabase.from('quests').select('*');
+    if (tenantId) {
+      questsQuery = questsQuery.eq('tenant_id', tenantId);
+    }
+    const { data: snap } = await questsQuery;
     const loaded: QuestDef[] = snap ? snap.map((d: any) => ({
       ...d,
       id: d.id,
@@ -391,8 +576,70 @@ export default function AdminDashboard() {
     setQuests(loaded);
   };
 
+  // Funções para o modal de escolas
+  const openCreateTenantModal = () => {
+    setEditingTenant(null);
+    setTenantForm({ name: '', slug: '', max_students: 100, status: 'active' });
+    setTenantModalOpen(true);
+  };
+
+  // Se não houver nenhuma escola cadastrada, abrir automaticamente o modal de criação
+  useEffect(() => {
+    if (isSuperAdmin && noTenants && !tenantModalOpen) {
+      openCreateTenantModal();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, noTenants, tenantModalOpen]);
+
+  const openEditTenantModal = (t: Tenant) => {
+    setEditingTenant(t);
+    setTenantForm({ name: t.name, slug: t.slug, max_students: t.max_students || 100, status: t.status });
+    setTenantModalOpen(true);
+  };
+
+  const handleSaveTenant = async () => {
+    if (!tenantForm.name.trim()) {
+      await showAlert('Erro', 'O nome da escola é obrigatório.');
+      return;
+    }
+    if (!tenantForm.slug.trim()) {
+      await showAlert('Erro', 'O slug da escola é obrigatório.');
+      return;
+    }
+
+    if (editingTenant) {
+      // Editar escola existente
+      const success = await updateTenant(editingTenant.id, {
+        name: tenantForm.name,
+        slug: tenantForm.slug,
+        max_students: tenantForm.max_students,
+        status: tenantForm.status
+      });
+      if (success) {
+        await showAlert('Sucesso', `Escola "${tenantForm.name}" atualizada com sucesso!`);
+        setTenantModalOpen(false);
+      }
+    } else {
+      // Criar nova escola
+      const newTenant = await createTenant({
+        name: tenantForm.name,
+        slug: tenantForm.slug,
+        max_students: tenantForm.max_students,
+        status: tenantForm.status
+      });
+      if (newTenant) {
+        await showAlert('Sucesso', `Escola "${tenantForm.name}" criada com sucesso!`);
+        setTenantModalOpen(false);
+      }
+    }
+  };
+
   const fetch3DModels = async () => {
-    const { data: snap } = await supabase.from('3d_models').select('*');
+    let query = supabase.from('3d_models').select('*');
+    if (tenantId) {
+      query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    }
+    const { data: snap } = await query;
     const loaded: any[] = snap ? snap.map((d: any) => ({
       ...d,
       id: d.id,
@@ -403,7 +650,11 @@ export default function AdminDashboard() {
   };
 
   const fetchMonsters = async () => {
-    const { data: snap } = await supabase.from('preset_skins').select('*').eq('type', 'monster');
+    let query = supabase.from('preset_skins').select('*').eq('type', 'monster');
+    if (tenantId) {
+      query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    }
+    const { data: snap } = await query;
     const loaded: any[] = snap ? snap.map((d: any) => ({
       id: d.id,
       name: d.name || 'Sem nome',
@@ -416,7 +667,12 @@ export default function AdminDashboard() {
   };
 
   const fetchStoreItems = async () => {
-    const { data: snap } = await supabase.from('store_items').select('*').eq('active', true);
+    let storeQuery = supabase.from('store_items').select('*').eq('active', true);
+    if (tenantId) {
+      // Buscar itens globais OU itens da escola atual
+      storeQuery = storeQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    }
+    const { data: snap } = await storeQuery;
     const loaded: any[] = snap ? snap.map((d: any) => ({
       id: d.id,
       ...(d.data || {}),
@@ -430,13 +686,24 @@ export default function AdminDashboard() {
 
   const fetchStudents = async (showLoading = true) => {
     if (showLoading) setLoading(true);
-    const { data: querySnapshot } = await supabase.from('users').select('*');
+    
+    // Buscar usuários - incluir alunos do tenant atual OU alunos sem tenant (pendentes de aprovação)
+    let usersQuery = supabase.from('users').select('*');
+    if (tenantId) {
+      usersQuery = usersQuery.or(`tenant_id.eq.${tenantId},tenant_id.is.null,role.eq.pending_student,role.eq.pending_teacher`);
+    }
+    const { data: querySnapshot } = await usersQuery;
+    
     const loadedStudents: UserData[] = querySnapshot ? querySnapshot.map(d => mapUserToClient(d)) : [];
     // Sort by name
     loadedStudents.sort((a, b) => a.name.localeCompare(b.name));
     
-    // Buscar todos os itens equipados
-    const { data: itemsSnap } = await supabase.from('user_items').select('*').eq('equipped', true);
+    // Buscar todos os itens equipados com filtro de tenant
+    let itemsQuery = supabase.from('user_items').select('*').eq('equipped', true);
+    if (tenantId) {
+      itemsQuery = itemsQuery.eq('tenant_id', tenantId);
+    }
+    const { data: itemsSnap } = await itemsQuery;
     const itemsMap: Record<string, any[]> = {};
     if (itemsSnap) itemsSnap.forEach(d => {
       const data = d.data || {};
@@ -656,7 +923,7 @@ export default function AdminDashboard() {
   const handleAddClass = async () => {
     if (!newClassName) return;
     const classId = Date.now().toString();
-    const newClass = { id: classId, name: newClassName, color: newClassColor };
+    const newClass = { id: classId, name: newClassName, color: newClassColor, tenant_id: tenantId || null };
     await supabase.from('classes').insert(newClass);
     setNewClassName('');
     fetchClasses();
@@ -894,6 +1161,7 @@ export default function AdminDashboard() {
       liveChest3rdPlace: questLiveChest3rd,
       active: true,
       createdBy: questCreatedBy || userData?.uid,
+      tenant_id: tenantId || null,
       creatorRole: questCreatorRole || userData?.role,
       targetClasses: questTargetClasses,
       shuffleQuestions: questShuffleQuestions,
@@ -1198,6 +1466,11 @@ export default function AdminDashboard() {
               <Box size={20} /> Entidades (3D)
             </button>
           )}
+          {isSuperAdmin && (
+            <button className={`login-btn ${activeTab === 'tenants' ? 'active' : ''}`} onClick={() => setActiveTab('tenants')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'tenants' ? '1px solid #8b5cf6' : '1px solid transparent', background: activeTab === 'tenants' ? 'rgba(139, 92, 246, 0.1)' : 'transparent' }}>
+              <GraduationCap size={20} /> Escolas (Multi-tenant)
+            </button>
+          )}
         </div>
 
         {/* Content */}
@@ -1211,55 +1484,89 @@ export default function AdminDashboard() {
                 <UserCheck size={28} color="var(--gold-primary)" />
                 Solicitações de Acesso
               </h2>
-              <p style={{ color: 'var(--text-secondary)' }}>Aprove ou rejeite contas que solicitaram acesso como Professor / Coordenador.</p>
+              <p style={{ color: 'var(--text-secondary)' }}>Aprove ou rejeite contas que solicitaram acesso como Professor / Coordenador ou Aluno.</p>
             </div>
             
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-              {students.filter(s => s.role === 'pending_teacher').length === 0 ? (
-                <div style={{ gridColumn: '1 / -1', padding: '3rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--border-glass)' }}>
-                  <ShieldAlert size={48} color="var(--text-secondary)" style={{ opacity: 0.5, margin: '0 auto 1rem auto' }} />
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>Nenhuma solicitação pendente no momento.</p>
-                </div>
-              ) : (
-                students.filter(s => s.role === 'pending_teacher').map(reqUser => (
-                  <div key={reqUser.uid} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', border: '1px solid var(--gold-primary)', background: 'rgba(251, 191, 36, 0.05)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <img src={reqUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(reqUser.name)}`} alt="" style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
-                      <div style={{ overflow: 'hidden' }}>
-                        <h4 style={{ margin: 0, fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reqUser.name}</h4>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{reqUser.email}</span>
+            {/* Seção de Alunos Pendentes */}
+            <div style={{ marginBottom: '2rem' }}>
+              <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>Solicitações de Alunos</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+                {students.filter(s => s.role === 'pending_student').length === 0 ? (
+                  <div style={{ gridColumn: '1 / -1', padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--border-glass)' }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>Nenhuma solicitação de aluno pendente.</p>
+                  </div>
+                ) : (
+                  students.filter(s => s.role === 'pending_student').map(reqUser => (
+                    <StudentEnrollmentCard 
+                      key={reqUser.uid} 
+                      reqUser={reqUser}
+                      tenantId={tenantId}
+                      schoolClasses={schoolClasses}
+                      userData={userData}
+                      onApprove={fetchStudents}
+                      onReject={fetchStudents}
+                      showConfirm={showConfirm}
+                      showAlert={showAlert}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Seção de Professores Pendentes */}
+            <div style={{ marginBottom: '2rem' }}>
+              <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>Solicitações de Professores</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+                {students.filter(s => s.role === 'pending_teacher').length === 0 ? (
+                  <div style={{ gridColumn: '1 / -1', padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--border-glass)' }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>Nenhuma solicitação de professor pendente.</p>
+                  </div>
+                ) : (
+                  students.filter(s => s.role === 'pending_teacher').map(reqUser => (
+                    <div key={reqUser.uid} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', border: '1px solid var(--gold-primary)', background: 'rgba(251, 191, 36, 0.05)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <img src={reqUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(reqUser.name)}`} alt="" style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
+                        <div style={{ overflow: 'hidden' }}>
+                          <h4 style={{ margin: 0, fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reqUser.name}</h4>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{reqUser.email}</span>
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
+                        <button 
+                          onClick={async () => {
+                            if (await showConfirm('Rejeitar Solicitação', `Deseja negar o acesso de professor para ${reqUser.name}? Ele voltará a ser um Aluno comum.`)) {
+                              await supabase.from('users').update({ role: 'student' }).eq('id', reqUser.uid);
+                              fetchStudents();
+                            }
+                          }}
+                          className="login-btn" 
+                          style={{ flex: 1, padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }}
+                        >
+                          Rejeitar
+                        </button>
+                        <button 
+                          onClick={async () => {
+                            if (await showConfirm('Aprovar Professor', `Confirmar ${reqUser.name} como Professor?`)) {
+                              await supabase.from('users').update({ role: 'teacher' }).eq('id', reqUser.uid);
+                              fetchStudents();
+                            }
+                          }}
+                          className="login-btn" 
+                          style={{ flex: 1, padding: '0.5rem', background: 'var(--accent-green)', color: 'white', border: 'none' }}
+                        >
+                          Aprovar
+                        </button>
                       </div>
                     </div>
-                    
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
-                      <button 
-                        onClick={async () => {
-                          if (await showConfirm('Rejeitar Solicitação', `Deseja negar o acesso de professor para ${reqUser.name}? Ele voltará a ser um Aluno comum.`)) {
-                            await supabase.from('users').update({ role: 'student' }).eq('id', reqUser.uid);
-                            fetchStudents();
-                          }
-                        }}
-                        className="login-btn" 
-                        style={{ flex: 1, padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }}
-                      >
-                        Rejeitar
-                      </button>
-                      <button 
-                        onClick={async () => {
-                          if (await showConfirm('Aprovar Professor', `Confirmar ${reqUser.name} como Professor?`)) {
-                            await supabase.from('users').update({ role: 'teacher' }).eq('id', reqUser.uid);
-                            fetchStudents();
-                          }
-                        }}
-                        className="login-btn" 
-                        style={{ flex: 1, padding: '0.5rem', background: 'var(--accent-green)', color: 'white', border: 'none' }}
-                      >
-                        Aprovar
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Seção de Alunos Pré-autorizados */}
+            <div style={{ marginTop: '2rem' }}>
+              <PreAuthorizedStudentsManager />
             </div>
           </div>
         )}
@@ -1268,6 +1575,152 @@ export default function AdminDashboard() {
         {activeTab === 'entities' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             <AdminEntitiesManager />
+          </div>
+        )}
+
+        {/* Aba de Escolas (Multi-tenant) - Apenas Superadmin */}
+        {activeTab === 'tenants' && isSuperAdmin && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+            <div style={{ marginBottom: '2rem' }}>
+              <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <GraduationCap size={28} color="#8b5cf6" />
+                Gerenciamento de Escolas
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                Gerencie as escolas da plataforma. Cada escola é um tenant isolado com seus próprios alunos, missões e itens.
+              </p>
+            </div>
+
+            {/* Tenant Atual */}
+            {tenant && (
+              <div style={{ background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <span style={{ color: '#8b5cf6', fontWeight: 'bold', fontSize: '0.85rem' }}>ESCOLA ATUAL</span>
+                    <h3 style={{ margin: '0.25rem 0 0 0', fontSize: '1.3rem' }}>{tenant.name}</h3>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Slug: {tenant.slug} | Status: {tenant.status} | Limite: {tenant.max_students || 500} alunos</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {tenantId !== '00000000-0000-0000-0000-000000000001' && (
+                      <button 
+                        onClick={async () => {
+                          if (await showConfirm('Voltar para Escola Padrão', 'Deseja voltar para a escola padrão? A página será recarregada.')) {
+                            localStorage.removeItem('superadmin_selected_tenant');
+                            window.location.reload();
+                          }
+                        }}
+                        style={{ padding: '0.5rem 1rem', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                      >
+                        <ArrowLeft size={16} /> Voltar Padrão
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => refreshTenants()}
+                      style={{ padding: '0.5rem 1rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                    >
+                      <RefreshCw size={16} /> Atualizar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Lista de Escolas */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1rem' }}>
+              {tenants.map(t => (
+                <div 
+                  key={t.id} 
+                  className="glass-panel" 
+                  style={{ 
+                    padding: '1.5rem', 
+                    border: t.id === tenantId ? '2px solid #8b5cf6' : '1px solid var(--border-glass)',
+                    background: t.id === tenantId ? 'rgba(139, 92, 246, 0.05)' : 'var(--bg-card)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {t.name}
+                        {t.id === tenantId && (
+                          <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: 'white', padding: '0.15rem 0.5rem', borderRadius: '10px' }}>ATUAL</span>
+                        )}
+                      </h4>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Slug: {t.slug}</span>
+                    </div>
+                    <span style={{ 
+                      fontSize: '0.75rem', 
+                      fontWeight: 'bold',
+                      padding: '0.2rem 0.6rem', 
+                      borderRadius: '10px',
+                      background: t.status === 'active' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                      color: t.status === 'active' ? '#10b981' : '#ef4444'
+                    }}>
+                      {t.status === 'active' ? 'Ativa' : t.status === 'inactive' ? 'Inativa' : 'Suspensa'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                      👥 Limite: {t.max_students || 500} alunos
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {t.id !== tenantId && (
+                      <button 
+                        onClick={async () => {
+                          if (await showConfirm('Trocar de Escola', `Deseja trocar para a escola "${t.name}"? A página será recarregada.`)) {
+                            await switchTenant(t.id);
+                          }
+                        }}
+                        style={{ padding: '0.4rem 0.8rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
+                      >
+                        Entrar
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => openEditTenantModal(t)}
+                      style={{ padding: '0.4rem 0.8rem', background: 'rgba(59, 130, 246, 0.2)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
+                    >
+                      Editar
+                    </button>
+                    {t.id !== '00000000-0000-0000-0000-000000000001' && t.id !== tenantId && (
+                      <button 
+                        onClick={async () => {
+                          if (await showConfirm('DELETAR ESCOLA', `ATENÇÃO: Isso deletará permanentemente a escola "${t.name}" e TODOS os seus dados (alunos, missões, itens). Esta ação é IRREVERSÍVEL!`)) {
+                            await deleteTenant(t.id);
+                          }
+                        }}
+                        style={{ padding: '0.4rem 0.8rem', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
+                      >
+                        Deletar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Card para criar nova escola */}
+              <div 
+                className="glass-panel" 
+                style={{ 
+                  padding: '1.5rem', 
+                  border: '2px dashed rgba(139, 92, 246, 0.3)',
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  minHeight: '150px'
+                }}
+                onClick={openCreateTenantModal}
+              >
+                <Plus size={32} color="#8b5cf6" />
+                <span style={{ color: '#8b5cf6', fontWeight: 'bold', marginTop: '0.5rem' }}>Nova Escola</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1392,7 +1845,7 @@ export default function AdminDashboard() {
               ) : (() => {
                 const filteredStudents = students.filter(student => {
                   // Usuários pendentes NUNCA aparecem na listagem geral — só em "Solicitações"
-                  if (student.role === 'pending_teacher') return false;
+                  if (student.role === 'pending_teacher' || student.role === 'pending_student') return false;
 
                   const matchesSearch = student.name.toLowerCase().includes(studentSearch.toLowerCase());
                   
@@ -1481,8 +1934,20 @@ export default function AdminDashboard() {
                               </h3>
                               <div style={{ display: 'flex', gap: '1rem', fontSize: '0.95rem', color: 'var(--text-secondary)', marginTop: '0.4rem', flexWrap: 'wrap' }}>
                                 {student.role === 'student' && (
-                                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: classColor }}>
-                                    <BookOpen size={14} /> {student.classId || 'Sem Turma'}
+                                  <span style={{ 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: '0.3rem', 
+                                    padding: '0.15rem 0.6rem', 
+                                    borderRadius: '12px', 
+                                    fontSize: '0.8rem',
+                                    fontWeight: 'bold',
+                                    background: classColor || 'var(--text-secondary)',
+                                    color: '#fff',
+                                    textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                                    border: `1px solid ${classColor || 'var(--border-glass)'}`
+                                  }}>
+                                    <BookOpen size={12} /> {student.classId || 'Sem Turma'}
                                   </span>
                                 )}
                                 <span style={{ color: currentRank.color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}><ShieldAlert size={14} /> {currentRank.name}</span>
@@ -2636,7 +3101,7 @@ export default function AdminDashboard() {
       {isQuestHistoryModalOpen && selectedQuestForHistory && (
         <div className="modal-overlay" style={{ zIndex: 100 }}>
           <div className="glass-panel modal-content modal-content-lg" style={{ maxWidth: '900px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <div style={{ position: 'sticky', top: '-2rem', zIndex: 5, background: 'var(--bg-card)', padding: '1.5rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h2 style={{ fontSize: '1.8rem', margin: '0 0 0.5rem 0' }}>Histórico: {selectedQuestForHistory.title}</h2>
                 <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Respostas e desempenho dos alunos</p>
@@ -2800,6 +3265,90 @@ export default function AdminDashboard() {
           />
         );
       })()}
+
+      {/* Modal de Gerenciamento de Escolas */}
+      {tenantModalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 100 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: '500px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <GraduationCap size={24} color="#8b5cf6" />
+                {editingTenant ? 'Editar Escola' : 'Nova Escola'}
+              </h3>
+              <button onClick={() => setTenantModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Nome da Escola *</label>
+              <input 
+                type="text" 
+                value={tenantForm.name} 
+                onChange={e => setTenantForm({...tenantForm, name: e.target.value})} 
+                placeholder="Ex: Escola Modelo" 
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} 
+              />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Slug (URL) *</label>
+              <input 
+                type="text" 
+                value={tenantForm.slug} 
+                onChange={e => setTenantForm({...tenantForm, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-')})} 
+                placeholder="escola-modelo" 
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} 
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                Apenas letras minúsculas, números e hífens
+              </span>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Limite de Alunos</label>
+              <input 
+                type="number" 
+                value={tenantForm.max_students} 
+                onChange={e => setTenantForm({...tenantForm, max_students: parseInt(e.target.value) || 500})} 
+                min="10"
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} 
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                Mínimo: 10 alunos
+              </span>
+            </div>
+
+            <div style={{ marginBottom: '2rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Status</label>
+              <select 
+                value={tenantForm.status} 
+                onChange={e => setTenantForm({...tenantForm, status: e.target.value as 'active' | 'inactive' | 'suspended'})}
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+              >
+                <option value="active">Ativa</option>
+                <option value="inactive">Inativa</option>
+                <option value="suspended">Suspensa</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button 
+                onClick={() => setTenantModalOpen(false)} 
+                style={{ flex: 1, padding: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSaveTenant} 
+                style={{ flex: 1, padding: '0.75rem', background: '#8b5cf6', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                {editingTenant ? 'Salvar' : 'Criar Escola'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

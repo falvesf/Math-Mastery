@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { initRanks } from '../lib/ranks';
 import type { AvatarConfig } from '../components/AvatarCharacter';
 
-export type UserRole = 'student' | 'teacher' | 'coordinator' | 'admin' | 'pending_teacher';
+export type UserRole = 'student' | 'teacher' | 'coordinator' | 'admin' | 'superadmin' | 'pending_teacher';
 
 export interface UserData {
   uid: string;
@@ -13,7 +13,9 @@ export interface UserData {
   name: string;
   role: UserRole;
   photoURL: string;
+  tenantId?: string;
   classId?: string;
+  pendingClassName?: string;
   xp?: number;
   coins?: number;
   lastSeenRank?: string;
@@ -49,7 +51,9 @@ export const mapUserToClient = (dbUser: any): UserData => {
     ...dbUser,
     uid: dbUser.id,
     photoURL: dbUser.photo_url || '',
+    tenantId: dbUser.tenant_id,
     classId: dbUser.class_id,
+    pendingClassName: dbUser.pending_class_name,
     hpRecoveryStartTimestamp: dbUser.hp_recovery_start_timestamp,
     lastHeartRegen: dbUser.last_heart_regen,
     extraInventorySpace: dbUser.extra_inventory_space,
@@ -74,6 +78,7 @@ interface AuthContextType {
   currentUser: User | null;
   userData: UserData | null;
   loading: boolean;
+  needsEnrollment: boolean;
   toggleStudentView: () => Promise<void>;
   updateUserDataLocally: (updates: Partial<UserData>) => void;
   ranksLoaded: boolean;
@@ -83,6 +88,7 @@ const AuthContext = createContext<AuthContextType>({
   currentUser: null,
   userData: null,
   loading: true,
+  needsEnrollment: false,
   toggleStudentView: async () => {},
   updateUserDataLocally: () => {},
   ranksLoaded: false
@@ -94,6 +100,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [needsEnrollment, setNeedsEnrollment] = useState(false);
   const [ranksLoaded, setRanksLoaded] = useState(false);
 
   useEffect(() => {
@@ -107,19 +114,77 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
+      // Se o usuário não existe, criar um novo registro
+      if (!userDoc) {
+        console.log('Novo usuário detectado, criando registro...');
+        const newUser = {
+          id: sessionUser.id,
+          email: sessionUser.email || '',
+          name: sessionUser.user_metadata?.full_name || sessionUser.email?.split('@')[0] || 'Novo Aluno',
+          photo_url: sessionUser.user_metadata?.avatar_url || '',
+          role: 'student',
+          xp: 0,
+          coins: 0,
+          hp: 3
+        };
+        
+        const { data: createdUser, error: createError } = await supabase.from('users').insert(newUser).select().single();
+        
+        if (createError) {
+          console.error('Erro ao criar usuário:', createError);
+          // Mesmo com erro, criar um userData mínimo para não travar
+          if (isMounted) {
+            setUserData({
+              uid: sessionUser.id,
+              email: sessionUser.email || '',
+              name: newUser.name,
+              role: 'student',
+              photoURL: newUser.photo_url,
+              xp: 0,
+              coins: 0,
+              hp: 3
+            } as UserData);
+            setNeedsEnrollment(true);
+          }
+          return;
+        }
+        
+        // Usar o usuário criado
+        const mappedUserData = mapUserToClient(createdUser);
+        if (isMounted) {
+          setUserData(mappedUserData);
+          setNeedsEnrollment(true);
+        }
+        return;
+      }
+
+      // Usuário existe - continuar com o fluxo normal
       if (userDoc) {
-        // Mágica de Super Admin
-        const isSuperAdmin = sessionUser.email === 'fabio.feitoza@eaportal.org';
-        if (isSuperAdmin && userDoc.role !== 'admin') {
+        // Mágica de Super Admin (Abordagem Híbrida)
+        // 1. Chave mestra: email hardcoded (fallback de segurança)
+        // 2. Role no banco: permite adicionar outros superadmins
+        const isSuperAdmin = 
+          sessionUser.email === 'fabio.feitoza@eaportal.org' ||  // Chave mestra
+          userDoc.role === 'superadmin';                         // Role no banco
+        
+        if (isSuperAdmin && userDoc.role !== 'superadmin' && userDoc.role !== 'admin') {
+           // Se é superadmin mas não tem role adequada, promover para admin
            await supabase.from('users').update({ role: 'admin' }).eq('id', sessionUser.id);
            userDoc.role = 'admin';
         }
 
         const mappedUserData = mapUserToClient(userDoc);
         
+        // Verificar se o aluno precisa fazer matrícula
+        if (mappedUserData.role === 'student' && (!mappedUserData.tenantId || !mappedUserData.classId)) {
+          if (isMounted) setNeedsEnrollment(true);
+        } else {
+          if (isMounted) setNeedsEnrollment(false);
+        }
+        
         // Staff Rules
         const isInStudentView = mappedUserData.studentViewActive === true;
-        const isStaffAccount = mappedUserData.role !== 'student';
+        const isStaffAccount = mappedUserData.role !== 'student' && mappedUserData.role !== 'pending_student';
         
         if (isInStudentView && isStaffAccount) {
           mappedUserData.role = 'student';
@@ -217,7 +282,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, userData, loading, toggleStudentView, updateUserDataLocally, ranksLoaded }}>
+    <AuthContext.Provider value={{ currentUser, userData, loading, needsEnrollment, toggleStudentView, updateUserDataLocally, ranksLoaded }}>
       {!loading && children}
     </AuthContext.Provider>
   );

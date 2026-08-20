@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, Edit2, Save, X, Box } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Box, Globe, Building2 } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
+import { useTenant } from '../contexts/TenantContext';
 import DirectUploadButton from './DirectUploadButton';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
@@ -9,10 +10,12 @@ export interface Model3D {
   id: string;
   name: string;
   url: string;
+  _isGlobal?: boolean;
 }
 
 export default function Admin3DModelsManager() {
   const { showAlert, showConfirm } = useDialog();
+  const { tenantId, isSuperAdmin } = useTenant();
   const [models, setModels] = useState<Model3D[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -25,12 +28,16 @@ export default function Admin3DModelsManager() {
   const fetchModels = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const { data: snap, error } = await supabase.from('3d_models').select('*');
+      let query = supabase.from('3d_models').select('*');
+      if (tenantId) {
+        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      }
+      const { data: snap, error } = await query;
       if (error) {
         console.error('Supabase fetch error:', error);
         showAlert(`Erro do Supabase: ${error.message}`);
       } else if (snap) {
-        setModels(snap as Model3D[]);
+        setModels((snap as any[]).map((m: any) => ({ ...m, _isGlobal: m.is_global ?? false })));
       }
     } catch (e: any) {
       console.error(e);
@@ -42,7 +49,7 @@ export default function Admin3DModelsManager() {
   useEffect(() => {
     fetchModels();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tenantId]);
 
   const handleOpenModal = (model?: Model3D) => {
     if (model) {
@@ -74,8 +81,13 @@ export default function Admin3DModelsManager() {
     }
 
     try {
-      const data = { name: name.trim(), url: url.trim() };
+      const data: any = { name: name.trim(), url: url.trim(), tenant_id: tenantId || null, is_global: false };
       if (editingId) {
+        const editingModel = models.find(m => m.id === editingId);
+        if (editingModel?._isGlobal && !isSuperAdmin) {
+          showAlert('Modelos globais só podem ser editados pelo superadmin.');
+          return;
+        }
         await supabase.from('3d_models').update(data).eq('id', editingId);
         showAlert('Modelo atualizado com sucesso!');
       } else {
@@ -94,6 +106,11 @@ export default function Admin3DModelsManager() {
   const handleDelete = async (id: string) => {
     if (await showConfirm('Deseja realmente excluir este modelo 3D? Ele deixará de funcionar nas skins que o utilizam.')) {
       try {
+        const model = models.find(m => m.id === id);
+        if (model?._isGlobal && !isSuperAdmin) {
+          showAlert('Modelos globais só podem ser excluídos pelo superadmin.');
+          return;
+        }
         await supabase.from('3d_models').delete().eq('id', id);
         sessionCache.invalidate(CACHE_KEYS.models3d());
         showAlert('Modelo excluído com sucesso!');
@@ -112,7 +129,7 @@ export default function Admin3DModelsManager() {
           <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Box size={20} color="var(--accent-primary)" /> Moldes 3D Customizados
           </h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Cadastre os moldes (.glb) que as skins de monstros e pets podem usar.</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Cadastre os moldes (.glb) que as skins de monstros e pets podem usar. Moldes globais (🌐) são somente leitura.</p>
         </div>
         <button onClick={() => handleOpenModal()} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Plus size={18} /> Novo Molde
@@ -183,13 +200,16 @@ export default function Admin3DModelsManager() {
                     <Box size={24} color="var(--accent-primary)" />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <h4 style={{ fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: '0 0 0.25rem 0' }}>{model.name}</h4>
+                    <h4 style={{ fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {model.name}
+                      {model._isGlobal ? <span title="Global (somente leitura)"><Globe size={14} color="var(--text-secondary)" /></span> : <span title="Local (editável)"><Building2 size={14} color="#10b981" /></span>}
+                    </h4>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button onClick={() => handleOpenModal(model)} style={{ padding: '0.5rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>
+                    <button onClick={() => handleOpenModal(model)} disabled={model._isGlobal && !isSuperAdmin} style={{ padding: '0.5rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
                       <Edit2 size={16} />
                     </button>
-                    <button onClick={() => handleDelete(model.id)} style={{ padding: '0.5rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>
+                    <button onClick={() => handleDelete(model.id)} disabled={model._isGlobal && !isSuperAdmin} style={{ padding: '0.5rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
                       <Trash2 size={16} />
                     </button>
                   </div>

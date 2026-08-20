@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Box } from 'lucide-react';
+import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Box, Package } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import GachaConfigModal from './GachaConfigModal';
+import ItemBankModal from './ItemBankModal';
 import SkinBuffIcon from '../components/SkinBuffIcon';
 import CachedImage from './CachedImage';
 import { useDialog } from '../contexts/DialogContext';
+import { useTenant } from '../contexts/TenantContext';
+import { fetchEconomyType, fetchEconomySettings, saveEconomySettings } from '../lib/economy';
 import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
@@ -58,6 +61,7 @@ const getRarityLabel = (rarity?: string) => {
 
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
   const { showAlert, showConfirm } = useDialog();
+  const { tenantId } = useTenant();
   const [items, setItems] = useState<StoreItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
@@ -74,6 +78,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [showGallery, setShowGallery] = useState<'image' | 'model' | null>(null);
   const [showTransformModal, setShowTransformModal] = useState(false);
   const [showGachaModal, setShowGachaModal] = useState(false);
+  const [showItemBank, setShowItemBank] = useState(false);
   const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
   
   const [layoutMode, setLayoutMode] = useState<'list' | 'grid-2' | 'grid-3' | 'small-icons' | 'large-icons'>(
@@ -98,16 +103,16 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   const fetchData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
-    // Fetch Economy Settings
-    const { data: econSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'economy').single();
-    if (econSnap) {
-      setEconomyType((econSnap.data as any).currencyType || 'coins');
-    } else {
-      await supabase.from('system_collections').insert({ collection_name: 'settings', doc_id: 'economy', data: { currencyType: 'coins' } });
-    }
+    // Fetch Economy Type (por escola)
+    const econType = await fetchEconomyType(tenantId);
+    setEconomyType(econType);
 
-    // Fetch Items
-    const { data: snap } = await supabase.from('store_items').select('*');
+    // Fetch Items (globais + da escola atual)
+    let itemsQuery = supabase.from('store_items').select('*');
+    if (tenantId) {
+      itemsQuery = itemsQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    }
+    const { data: snap } = await itemsQuery;
     const loaded: StoreItem[] = [];
     (snap || []).forEach(row => loaded.push({ id: row.id, ...row.data } as StoreItem));
     setItems(loaded);
@@ -120,7 +125,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     } catch (e) { console.error(e); }
     
     try {
-      const { data: skinsSnap } = await supabase.from('preset_skins').select('*');
+      let skinsQuery = supabase.from('preset_skins').select('*');
+      if (tenantId) {
+        skinsQuery = skinsQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      }
+      const { data: skinsSnap } = await skinsQuery;
       const loadedSkins: {id: string, name: string, url: string, type?: string, baseModelId?: string, genderTarget?: string}[] = [];
       (skinsSnap || []).forEach(row => {
         loadedSkins.push({
@@ -140,8 +149,57 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   const handleSaveEconomy = async (type: 'xp' | 'coins') => {
     setEconomyType(type);
-    await supabase.from('system_collections').update({ data: { currencyType: type } }).eq('collection_name', 'settings').eq('doc_id', 'economy');
+    await saveEconomySettings(tenantId, { ...(await fetchEconomySettings(tenantId)), currencyType: type });
     await showAlert('Configuração de economia salva com sucesso!');
+  };
+
+  const handleImportFromBank = async (item: any, copyMode: 'direct' | 'customize') => {
+    const newItem: Partial<StoreItem> = {
+      title: item.title || 'Sem nome',
+      description: item.description || '',
+      cost: item.cost || 100,
+      type: item.type || 'consumable',
+      imageUrl: item.imageUrl || '',
+      gameModelUrl: item.gameModelUrl || '',
+      modelTextureUrl: item.modelTextureUrl || '',
+      minecraftHeadValue: item.minecraftHeadValue || '',
+      rarity: item.rarity || 'common',
+      active: true,
+      minRankRequired: 0,
+      usableInQuest: false,
+      gameEffect: 'none',
+    };
+
+    if (copyMode === 'direct') {
+      // Importar direto - salvar no banco
+      const itemData = {
+        ...newItem,
+        cost: Number(newItem.cost),
+        minRankRequired: 0,
+        minSalePrice: 0,
+      };
+
+      await supabase.from('store_items').insert({
+        name: itemData.title,
+        description: itemData.description,
+        type: itemData.type,
+        price: itemData.cost,
+        image_url: itemData.imageUrl,
+        active: itemData.active,
+        rarity: itemData.rarity,
+        data: itemData,
+        tenant_id: tenantId || null,
+        is_global: false
+      });
+
+      await showAlert('Sucesso', `Item "${item.title}" importado com sucesso!`);
+      fetchData(false);
+    } else {
+      // Importar e personalizar - abrir editor
+      setFormData(newItem);
+      setEditingId(null);
+      setIsEditing(true);
+    }
   };
 
   const handleSaveItem = async () => {
@@ -195,7 +253,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       await supabase.from('store_items').insert({
         name: itemData.title, description: itemData.description, type: itemData.type,
         price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
-        rarity: itemData.rarity, avatar_part: itemData.avatarPart, data: itemData
+        rarity: itemData.rarity, avatar_part: itemData.avatarPart, data: itemData,
+        tenant_id: tenantId || null,
+        is_global: false
       });
     }
 
@@ -240,52 +300,23 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         document.body
       )}
 
-      {/* Economy & Store Manager merged view */}
+      {/* Store Manager */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         
-        {/* Economy Config Section */}
+        {/* Store Catalog Section */}
         <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <div>
-              <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Coins color="var(--gold-primary)" /> Configuração de Economia
-              </h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>
-                O valor na loja mudará de Moedas para XP automaticamente.
-              </p>
-            </div>
-          </div>
-          
-          <button className="retractable-toggle-btn" onClick={() => setIsEconomyOpen(!isEconomyOpen)}>
-            {isEconomyOpen ? 'Ocultar Configuração' : 'Alterar Economia'}
-          </button>
-          <div className={`retractable-content ${isEconomyOpen ? 'open' : ''}`} style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-            <div 
-              onClick={() => handleSaveEconomy('coins')}
-              style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', border: economyType === 'coins' ? '2px solid var(--gold-primary)' : '1px solid var(--border-glass)', background: economyType === 'coins' ? 'rgba(251, 191, 36, 0.1)' : 'rgba(0,0,0,0.2)' }}
-            >
-              <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Coins size={16} /> Moedas de Ouro</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Ganha moedas para gastar. A patente não cai.</p>
-            </div>
-
-            <div 
-              onClick={() => handleSaveEconomy('xp')}
-              style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', border: economyType === 'xp' ? '2px solid var(--accent-red)' : '1px solid var(--border-glass)', background: economyType === 'xp' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0,0,0,0.2)' }}
-            >
-              <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><ShieldAlert size={16} /> Gasto de XP</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Gasta o próprio XP. Pode perder patentes.</p>
-            </div>
-          </div>
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--border-glass)', margin: '0 0 1rem 0' }} />
-
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ fontSize: '1.5rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Star color="var(--gold-primary)" /> Catálogo de Itens
             </h2>
-            <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
-              <Plus size={18} /> Novo Item
-            </button>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button className="login-btn" onClick={() => setShowItemBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+                <Package size={18} /> Banco de Itens
+              </button>
+              <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
+                <Plus size={18} /> Novo Item
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '0.5rem' }}>
@@ -753,6 +784,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             setShowGachaModal(false);
           }}
           onClose={() => setShowGachaModal(false)}
+        />
+      )}
+
+      {showItemBank && (
+        <ItemBankModal
+          isOpen={showItemBank}
+          onClose={() => setShowItemBank(false)}
+          onImport={handleImportFromBank}
         />
       )}
     </div>

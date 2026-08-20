@@ -2,11 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 
 import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart, Package, Eye, EyeOff, Plus } from 'lucide-react';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
+import { fetchEconomySettings } from '../lib/economy';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { getRankForXp, RANKS, type RankDef } from '../lib/ranks';
 import { calculateTotalStats, ATTRIBUTE_LABELS } from '../lib/gacha';
 import LevelUpModal from '../components/LevelUpModal';
+import ChestReveal from '../components/ChestReveal';
 import StudentStore from '../components/StudentStore';
 import StudentInventory from '../components/StudentInventory';
 import CachedImage from '../components/CachedImage';
@@ -20,6 +23,8 @@ import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
 import { Edit3, MessageCircle, X, Box, Palette } from 'lucide-react';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import OnboardingModal from '../components/OnboardingModal';
+import SchoolSelectorModal from '../components/SchoolSelectorModal';
+import ClassSelectorModal from '../components/ClassSelectorModal';
 import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../components/CustomThemeModal';
 import { applyCustomTheme } from '../lib/theme';
 import { validateCharacterName, normalizeForComparison } from '../lib/nameValidation';
@@ -93,6 +98,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 export default function Dashboard() {
   const { showAlert, showConfirm, showToast, showPrompt } = useDialog();
   const { userData, toggleStudentView, updateUserDataLocally, ranksLoaded } = useAuth();
+  const { tenant, tenantId, isSuperAdmin } = useTenant();
   if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
@@ -118,6 +124,43 @@ export default function Dashboard() {
   const [isIdle, setIsIdle] = useState(false);
   const lastInteractionTime = useRef(Date.now());
   const [loadingRankings, setLoadingRankings] = useState(true);
+
+  // Enrollment flow state
+  const [enrollmentStep, setEnrollmentStep] = useState<'school' | 'class' | 'pending' | 'complete'>('school');
+  const [selectedSchool, setSelectedSchool] = useState<any>(null);
+  const [selectedClassName, setSelectedClassName] = useState<string>('');
+
+  // Monitorar se o aluno foi aprovado (role muda de pending_student para student com tenant/class)
+  useEffect(() => {
+    const shouldMonitor = userData?.role === 'pending_student' || 
+      (userData?.role === 'student' && (!userData?.tenantId || !userData?.classId));
+
+    if (!shouldMonitor || !userData?.uid) return;
+
+    const checkApproval = async () => {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('role, tenant_id, class_id, pending_class_name')
+          .eq('id', userData.uid)
+          .maybeSingle();
+
+        if (data && data.role === 'student' && data.tenant_id && data.class_id) {
+          // Foi aprovado! Recarregar para atualizar todos os dados
+          console.log('Aluno aprovado! Recarregando...');
+          window.location.reload();
+        }
+      } catch (err) {
+        console.error('Erro ao verificar aprovação:', err);
+      }
+    };
+
+    // Verificar imediatamente e depois a cada 5 segundos
+    checkApproval();
+    const interval = setInterval(checkApproval, 5000);
+
+    return () => clearInterval(interval);
+  }, [userData?.uid, userData?.role, userData?.tenantId, userData?.classId]);
   const [rankingEquippedItems, setRankingEquippedItems] = useState<Record<string, EquippedItem[]>>({});
   const [rankingHistory, setRankingHistory] = useState<RankingHistory | null>(null);
   const [publicProfileUser, setPublicProfileUser] = useState<{user: UserData, rankPos: number} | null>(null);
@@ -132,6 +175,10 @@ export default function Dashboard() {
   // Level Up Animation State
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [levelUpData, setLevelUpData] = useState<{oldRank: RankDef | null, newRank: RankDef} | null>(null);
+
+  // Rank Up Chest State
+  const [showRankUpChest, setShowRankUpChest] = useState(false);
+  const [rankUpChestItems, setRankUpChestItems] = useState<any[]>([]);
 
   // Quests State
   const [activeQuests, setActiveQuests] = useState<any[]>([]);
@@ -399,10 +446,15 @@ export default function Dashboard() {
         setCompletedQuestDates(completedDates);
 
         // Buscar missões ativas (com cache por turma)
-        const questsCacheKey = CACHE_KEYS.quests(userData.classId || 'all');
+        const questsCacheKey = CACHE_KEYS.quests(tenantId ? `${tenantId}_${userData.classId || 'all'}` : (userData.classId || 'all'));
         let fetched: any[] = sessionCache.get<any[]>(questsCacheKey) || [];
         if (fetched.length === 0) {
-          const { data: snap } = await supabase.from('quests').select('*').eq('active', true);
+          let questsQuery = supabase.from('quests').select('*').eq('active', true);
+          // Filtrar por tenant_id
+          if (tenantId) {
+            questsQuery = questsQuery.eq('tenant_id', tenantId);
+          }
+          const { data: snap } = await questsQuery;
           fetched = snap ? snap.map((d: any) => ({ 
             ...d, 
             id: d.id,
@@ -480,7 +532,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchUsers = async () => {
-      const { data } = await supabase.from('users').select('*').eq('role', 'student');
+      let usersQuery = supabase.from('users').select('*').eq('role', 'student');
+      // Filtrar por tenant_id (superadmin vê a escola selecionada, outros veem sua escola)
+      if (tenantId) {
+        usersQuery = usersQuery.eq('tenant_id', tenantId);
+      }
+      const { data } = await usersQuery;
       if (data) {
         const loaded = data.map(d => mapUserToClient(d));
         loaded.sort((a, b) => (b.xp || 0) - (a.xp || 0));
@@ -491,7 +548,12 @@ export default function Dashboard() {
     fetchUsers();
 
     const fetchLiveQuests = async () => {
-      const { data } = await supabase.from('live_quests').select('*').neq('status', 'finished');
+      let liveQuestsQuery = supabase.from('live_quests').select('*').neq('status', 'finished');
+      // Filtrar por tenant_id
+      if (tenantId) {
+        liveQuestsQuery = liveQuestsQuery.eq('tenant_id', tenantId);
+      }
+      const { data } = await liveQuestsQuery;
       if (data) {
         const activeMap: Record<string, boolean> = {};
         data.forEach(d => activeMap[d.id] = true);
@@ -792,8 +854,97 @@ export default function Dashboard() {
         
         // Atualiza o estado local para forçar recarregamento se voltar na aba
         setXpHistory([]);
+
+        // Verificar se deve mostrar baú de patente
+        try {
+          const econ = await fetchEconomySettings(tenantId);
+          const rankChestItems = (levelUpData?.newRank?.rankUpChestItems || []) as {itemId: string, quantity: number}[];
+          // Só distribui se o checkbox global estiver ativo E a patente alcançada tiver itens configurados
+          if (econ.rankUpChestEnabled && rankChestItems.length > 0) {
+            // Carregar itens do baú da patente alcançada
+            const chestItems = rankChestItems;
+            const itemIds = chestItems.map(i => i.itemId).filter(id => id);
+            
+            if (itemIds.length > 0) {
+              const { data: storeItems } = await supabase.from('store_items').select('id, data').in('id', itemIds);
+              
+              if (storeItems) {
+                const itemsToShow: any[] = [];
+                
+                chestItems.forEach(chestItem => {
+                  if (!chestItem.itemId) return;
+                  const storeItem = storeItems.find(s => s.id === chestItem.itemId);
+                  if (storeItem) {
+                    const itemData = storeItem.data || {};
+                    itemsToShow.push({
+                      itemId: chestItem.itemId,
+                      title: itemData.title || 'Item',
+                      imageUrl: itemData.imageUrl || '',
+                      quantity: chestItem.quantity,
+                      type: itemData.type || 'consumable'
+                    });
+                  }
+                });
+                
+                if (itemsToShow.length > 0) {
+                  // Agrupar itens empilháveis
+                  const grouped = new Map<string, any>();
+                  itemsToShow.forEach(item => {
+                    const key = `${item.itemId}-${item.type}`;
+                    if (grouped.has(key) && item.type === 'consumable') {
+                      grouped.get(key).quantity += item.quantity;
+                    } else {
+                      grouped.set(key, { ...item });
+                    }
+                  });
+                  
+                  setRankUpChestItems(Array.from(grouped.values()));
+                  setShowRankUpChest(true);
+                  return; // Sair aqui para mostrar o baú antes de fechar
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao verificar baú de patente:", err);
+        }
       }
       
+      await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
+    }
+  };
+
+  const handleOpenRankUpChest = async () => {
+    // Adicionar itens ao inventário do jogador
+    if (userData && rankUpChestItems.length > 0) {
+      const inserts = rankUpChestItems.map(item => ({
+        student_id: userData.uid,
+        item_id: item.itemId,
+        equipped: false,
+        data: {
+          itemId: item.itemId,
+          itemTitle: item.title,
+          itemImageUrl: item.imageUrl,
+          quantity: item.quantity,
+          itemType: item.type,
+          obtainedFrom: 'rank_up_chest',
+          obtainedAt: Date.now()
+        }
+      }));
+      
+      await supabase.from('user_items').insert(inserts);
+    }
+    setShowRankUpChest(false);
+    setRankUpChestItems([]);
+    
+    // Agora salvar as preferências
+    if (userData) {
+      const highest = userData.inventoryPreferences?.highestRankIndex || 0;
+      const newRankIndex = RANKS.findIndex(r => r.name === levelUpData?.newRank?.name);
+      const newPrefs = { ...(userData.inventoryPreferences || {}), lastSeenRank: currentRank.name };
+      if (levelUpData?.newRank && newRankIndex > highest) {
+        newPrefs.highestRankIndex = newRankIndex;
+      }
       await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
     }
   };
@@ -1136,6 +1287,114 @@ export default function Dashboard() {
     );
   }
 
+  // Novo aluno - precisa selecionar escola e turma
+  if (userData?.role === 'student' && (!userData?.tenantId || !userData?.classId)) {
+    if (enrollmentStep === 'school') {
+      return (
+        <SchoolSelectorModal 
+          onSelect={(school) => {
+            setSelectedSchool(school);
+            setEnrollmentStep('class');
+          }}
+        />
+      );
+    }
+    
+    if (enrollmentStep === 'class' && selectedSchool) {
+      return (
+        <ClassSelectorModal 
+          tenantId={selectedSchool.id}
+          schoolName={selectedSchool.name}
+          onSelect={async (cls) => {
+            setSelectedClassName(cls.name);
+            
+            // Verificar se o aluno está na lista pré-autorizada
+            const { data: preAuth } = await supabase
+              .from('pre_authorized_students')
+              .select('*')
+              .eq('tenant_id', selectedSchool.id)
+              .eq('class_name', cls.name)
+              .eq('name', userData.name)
+              .single();
+
+            if (preAuth) {
+              // Auto-aprovar - associar à escola e turma
+              await supabase.from('users').update({ 
+                tenant_id: selectedSchool.id,
+                class_id: cls.name 
+              }).eq('id', userData.uid);
+              
+              await supabase.from('tenant_users').upsert({
+                tenant_id: selectedSchool.id,
+                user_id: userData.uid,
+                role: 'student'
+              });
+              
+              updateUserDataLocally({ 
+                tenantId: selectedSchool.id,
+                classId: cls.name 
+              });
+              
+              setEnrollmentStep('complete');
+            } else {
+              // Enviar para aprovação - salvar escola/turma escolhidas diretamente no usuário
+              await supabase.from('users').update({ 
+                role: 'pending_student',
+                tenant_id: selectedSchool.id,
+                pending_class_name: cls.name
+              }).eq('id', userData.uid);
+              
+              // Também criar registro na tabela de solicitações (para backup/relatórios)
+              try {
+                await supabase.from('enrollment_requests').insert({
+                  user_id: userData.uid,
+                  tenant_id: selectedSchool.id,
+                  class_name: cls.name,
+                  status: 'pending'
+                });
+              } catch (e) {
+                console.error('Erro ao criar solicitação de matrícula (opcional):', e);
+              }
+              
+              updateUserDataLocally({ 
+                tenantId: selectedSchool.id,
+                pendingClassName: cls.name,
+                role: 'pending_student'
+              });
+              
+              setEnrollmentStep('pending');
+            }
+          }}
+          onBack={() => {
+            setSelectedSchool(null);
+            setEnrollmentStep('school');
+          }}
+        />
+      );
+    }
+    
+    if (enrollmentStep === 'pending') {
+      return (
+        <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
+          <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+            <ShieldAlert size={64} color="var(--gold-primary)" style={{ margin: '0 auto 1.5rem auto', display: 'block' }} />
+            <h2 style={{ color: 'var(--gold-primary)', marginBottom: '1rem', fontSize: '1.8rem' }}>Aguardando Aprovação</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '2rem' }}>
+              Sua solicitação de matrícula na escola <strong style={{ color: 'white' }}>{selectedSchool?.name}</strong> foi enviada com sucesso.<br /><br />
+              Aguarde o administrador aprovar sua conta para ter acesso ao sistema.
+            </p>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              style={{ padding: '0.75rem 2rem', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--text-secondary)', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem' }}
+            >
+              Sair
+            </button>
+          </div>
+        </div>
+      );
+    }
+  }
+
   if (userData?.role === 'student' && !userData?.classId) {
     return <OnboardingModal userName={userData.name} onSelectClass={handleSelectClass} onSelectTeacher={handleSelectTeacher} />;
   }
@@ -1151,6 +1410,32 @@ export default function Dashboard() {
           avatarConfig={liveAvatarConfig || userData.avatarConfig}
           equippedItems={equippedItems}
         />
+      )}
+
+      {showRankUpChest && rankUpChestItems.length > 0 && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)' }} />
+          <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '600px', padding: '2rem' }}>
+            <ChestReveal 
+              title="Baú de Patente!"
+              subtitle={`Parabéns por alcançar a patente ${levelUpData?.newRank?.name || 'novo'}!`}
+              onOpen={handleOpenRankUpChest}
+            />
+            {rankUpChestItems.map((item, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', marginBottom: '0.5rem' }}>
+                {item.imageUrl ? (
+                  <img src={item.imageUrl} alt={item.title} style={{ width: '32px', height: '32px', borderRadius: '4px', objectFit: 'cover' }} />
+                ) : (
+                  <Package size={32} color="var(--text-secondary)" />
+                )}
+                <span style={{ flex: 1, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{item.title}</span>
+                {item.quantity > 1 && (
+                  <span style={{ color: 'var(--gold-primary)', fontSize: '0.85rem', fontWeight: 'bold' }}>x{item.quantity}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Modal de Configuração do Sistema */}

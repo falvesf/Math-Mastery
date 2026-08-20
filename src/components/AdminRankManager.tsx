@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Medal, Plus, Edit2, Trash2, Search } from 'lucide-react';
+import { Medal, Plus, Edit2, Trash2, Search, Globe, Building2, Copy, Gift, Package } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import { useDialog } from '../contexts/DialogContext';
+import { useTenant } from '../contexts/TenantContext';
 import { RANKS } from '../lib/ranks';
 import type { RankDef } from '../lib/ranks';
 import type { ClassDef } from '../pages/AdminDashboard';
@@ -33,7 +34,8 @@ const AnimatedRankIcon = ({ rank }: { rank: RankDef }) => {
 
 export default function AdminRankManager({ pixabayKey }: { pixabayKey: string }) {
   const { showConfirm } = useDialog();
-  const [ranks, setRanks] = useState<RankDef[]>([...RANKS]);
+  const { tenantId, isSuperAdmin } = useTenant();
+  const [ranks, setRanks] = useState<RankDef[]>([]);
   const [classes, setClasses] = useState<ClassDef[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -42,17 +44,44 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   const [formData, setFormData] = useState<RankDef>({
     name: '', minXp: 0, color: '#fbbf24', imageUrl: ''
   });
+  const [availableItems, setAvailableItems] = useState<{ id: string; title: string; type: string; imageUrl: string }[]>([]);
   
   const [galleryTarget, setGalleryTarget] = useState<'main' | number | null>(null);
 
   useEffect(() => {
     fetchRanks(false);
     fetchClasses();
-  }, []);
+    fetchAvailableItems();
+  }, [tenantId]);
+
+  const fetchAvailableItems = async () => {
+    try {
+      let query = supabase.from('store_items').select('id, data').eq('active', true);
+      if (tenantId) {
+        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      }
+      const { data: snap } = await query;
+      if (snap) {
+        const items = snap.map((item: any) => ({
+          id: item.id,
+          title: item.data?.title || 'Sem nome',
+          type: item.data?.type || 'consumable',
+          imageUrl: item.data?.imageUrl || ''
+        }));
+        setAvailableItems(items);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar itens:", err);
+    }
+  };
 
   const fetchClasses = async (showLoading = true) => {
     try {
-      const { data: snap } = await supabase.from('classes').select('*');
+      let query = supabase.from('classes').select('*');
+      if (tenantId) {
+        query = query.eq('tenant_id', tenantId);
+      }
+      const { data: snap } = await query;
       if (snap && snap.length > 0) {
         setClasses(snap as ClassDef[]);
       }
@@ -63,84 +92,204 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
 
   const fetchRanks = async (showLoading = true) => {
     if (showLoading) setLoading(true);
-    const { data: snap } = await supabase.from('custom_ranks').select('*');
-    if (snap && snap.length > 0) {
-      const loadedRanks = snap.map(d => {
-        const { id, ...rest } = d;
-        return rest as RankDef;
-      }).sort((a,b) => a.minXp - b.minXp);
-      setRanks(loadedRanks);
-      RANKS.length = 0;
-      RANKS.push(...loadedRanks);
-    } else {
-      setRanks([...RANKS]); // fallback to defaults
+    try {
+      // Buscar patentes globais + patentes da escola atual
+      let query = supabase.from('custom_ranks').select('*');
+      if (tenantId) {
+        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      }
+      const { data: snap } = await query;
+      if (snap && snap.length > 0) {
+        const loadedRanks = snap.map(d => {
+          const { id, ...rest } = d;
+          return { ...rest, _isGlobal: d.is_global ?? false } as RankDef & { _isGlobal?: boolean };
+        }).sort((a,b) => a.minXp - b.minXp);
+        setRanks(loadedRanks);
+        // Atualizar RANKS global com as patentes da escola atual (não globais para não interferir)
+        const localRanks = loadedRanks.filter(r => !r._isGlobal);
+        const globalRanks = loadedRanks.filter(r => r._isGlobal);
+        RANKS.length = 0;
+        // Usar locais se existirem, senão globais
+        RANKS.push(...(localRanks.length > 0 ? localRanks : globalRanks));
+      } else {
+        setRanks([...RANKS]);
+      }
+    } catch (e) {
+      console.error('Erro ao carregar patentes:', e);
+      setRanks([...RANKS]);
     }
     setLoading(false);
+  };
+
+  const copyGlobalsAsBase = async () => {
+    const confirmed = await showConfirm('Copiar patentes globais como base? Elas serão copiadas para esta escola e ficarão editáveis. As globais originais permanecem para outras escolas.');
+    if (!confirmed) return;
+
+    const globalRanks = ranks.filter(r => (r as any)._isGlobal);
+    if (globalRanks.length === 0) return;
+
+    const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
+
+    // Limpar patentes locais existentes
+    const { data: existingLocal } = await supabase
+      .from('custom_ranks')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('is_global', false);
+
+    if (existingLocal) {
+      for (const d of existingLocal) {
+        await supabase.from('custom_ranks').delete().eq('id', d.id);
+      }
+    }
+
+    const sorted = [...globalRanks].sort((a, b) => a.minXp - b.minXp);
+    for (let i = 0; i < sorted.length; i++) {
+      const { _isGlobal, ...rankData } = sorted[i] as any;
+      await supabase.from('custom_ranks').upsert({
+        id: `rank_${tenantPrefix}_${i}`,
+        ...rankData,
+        tenant_id: tenantId || null,
+        is_global: false
+      });
+    }
+
+    fetchRanks(false);
   };
 
   const handleSaveRank = async () => {
     if (!formData.name) return;
 
-    const newRanks = [...ranks];
+    // Se o superadmin está editando uma patente GLOBAL, atualiza-a diretamente
+    if (editingIndex !== null && (ranks[editingIndex] as any)._isGlobal) {
+      const editingGlobal = ranks[editingIndex] as any;
+      const globalId = editingGlobal.id;
+      const { _isGlobal: _g, id: _id, tenant_id: globalTenantId, ...rankFields } = editingGlobal;
+      const { _isGlobal: _f, id: _fid, ...formFields } = formData as any;
+      await supabase.from('custom_ranks').update({
+        ...rankFields,
+        ...formFields,
+        is_global: true,
+        tenant_id: globalTenantId ?? null,
+      }).eq('id', globalId);
+      setIsEditing(false);
+      setEditingIndex(null);
+      fetchRanks(false);
+      return;
+    }
+
+    // Somente patentes locais (não globais) podem ser editadas
+    const localRanks = ranks.filter(r => !(r as any)._isGlobal);
+    const globalRanks = ranks.filter(r => (r as any)._isGlobal);
+
+    const newRanks = [...localRanks];
     if (editingIndex !== null) {
-      newRanks[editingIndex] = formData;
+      const actualIdx = localRanks.indexOf(ranks[editingIndex]);
+      if (actualIdx >= 0) newRanks[actualIdx] = formData;
     } else {
       newRanks.push(formData);
     }
     
     newRanks.sort((a, b) => a.minXp - b.minXp);
 
-    // Save to Supabase
-    for (let i = 0; i < newRanks.length; i++) {
-      await supabase.from('custom_ranks').upsert({ id: `rank_${i}`, ...newRanks[i] });
-    }
-    
-    // Clean up extra documents if we deleted some
-    const { data: snap } = await supabase.from('custom_ranks').select('id');
-    if (snap) {
-      for (const d of snap) {
-        const index = parseInt(d.id.replace('rank_', ''));
-        if (index >= newRanks.length) {
-          await supabase.from('custom_ranks').delete().eq('id', d.id);
-        }
+    // Limpar patentes locais antigas da escola (para evitar duplicatas)
+    const { data: existingLocal } = await supabase
+      .from('custom_ranks')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('is_global', false);
+
+    if (existingLocal) {
+      for (const d of existingLocal) {
+        await supabase.from('custom_ranks').delete().eq('id', d.id);
       }
     }
 
-    setRanks(newRanks);
+    // Salvar patentes locais com IDs únicos por tenant
+    const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
+    for (let i = 0; i < newRanks.length; i++) {
+      const { _isGlobal, ...rankData } = newRanks[i] as any;
+      await supabase.from('custom_ranks').upsert({
+        id: `rank_${tenantPrefix}_${i}`,
+        ...rankData,
+        tenant_id: tenantId || null,
+        is_global: false
+      });
+    }
+
+    setRanks([...globalRanks, ...newRanks]);
     RANKS.length = 0;
     RANKS.push(...newRanks);
     
     setIsEditing(false);
     setEditingIndex(null);
+    fetchRanks(false);
   };
 
   const handleDeleteRank = async (index: number) => {
     const confirmed = await showConfirm('Tem certeza que deseja apagar esta patente?');
     if (confirmed) {
+      const target = ranks[index] as any;
+      if (target._isGlobal && !isSuperAdmin) {
+        await showConfirm('Patentes globais não podem ser excluídas. Apenas o superadmin pode alterá-las.', 'Ação bloqueada');
+        return;
+      }
+      // Superadmin excluindo patente global diretamente
+      if (target._isGlobal && isSuperAdmin && target.id) {
+        await supabase.from('custom_ranks').delete().eq('id', target.id);
+        setRanks(ranks.filter((_, i) => i !== index));
+        fetchRanks(false);
+        return;
+      }
       const newRanks = ranks.filter((_, i) => i !== index);
       
-      // Save to Supabase
-      for (let i = 0; i < newRanks.length; i++) {
-        await supabase.from('custom_ranks').upsert({ id: `rank_${i}`, ...newRanks[i] });
-      }
-      
-      // Delete the last one since we shifted everything up
-      await supabase.from('custom_ranks').delete().eq('id', `rank_${newRanks.length}`);
+      const localRanks = newRanks.filter(r => !(r as any)._isGlobal);
+      const globalRanks = newRanks.filter(r => (r as any)._isGlobal);
 
-      setRanks(newRanks);
+      // Limpar patentes locais da escola
+      const { data: existingLocal } = await supabase
+        .from('custom_ranks')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('is_global', false);
+
+      if (existingLocal) {
+        for (const d of existingLocal) {
+          await supabase.from('custom_ranks').delete().eq('id', d.id);
+        }
+      }
+
+      const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
+      for (let i = 0; i < localRanks.length; i++) {
+        const { _isGlobal, ...rankData } = localRanks[i] as any;
+        await supabase.from('custom_ranks').upsert({
+          id: `rank_${tenantPrefix}_${i}`,
+          ...rankData,
+          tenant_id: tenantId || null,
+          is_global: false
+        });
+      }
+
+      setRanks([...globalRanks, ...localRanks]);
       RANKS.length = 0;
-      RANKS.push(...newRanks);
+      RANKS.push(...localRanks);
+      fetchRanks(false);
     }
   };
 
   const openEdit = (rank: RankDef, index: number) => {
-    setFormData({ ...rank, variants: rank.variants || [] });
+    if ((rank as any)._isGlobal && !isSuperAdmin) {
+      showConfirm('Esta patente é global. Para personalizá-la, crie uma cópia local.', 'Informação');
+      return;
+    }
+    setFormData({ ...rank, variants: rank.variants || [], rankUpChestItems: rank.rankUpChestItems || [] });
     setEditingIndex(index);
     setIsEditing(true);
   };
 
   const openNew = () => {
-    setFormData({ name: '', minXp: ranks.length > 0 ? ranks[ranks.length-1].minXp + 500 : 0, color: '#fbbf24', imageUrl: '', variants: [] });
+    const localRanks = ranks.filter(r => !(r as any)._isGlobal);
+    setFormData({ name: '', minXp: localRanks.length > 0 ? localRanks[localRanks.length-1].minXp + 500 : 0, color: '#fbbf24', imageUrl: '', variants: [], rankUpChestItems: [] });
     setEditingIndex(null);
     setIsEditing(true);
   };
@@ -169,24 +318,31 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       )}
 
       <div className="glass-panel" style={{ padding: '2rem' }}>
-        <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Medal color="var(--gold-primary)" /> Patentes e Artes
             </h2>
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-              Configure as patentes do jogo, a experiência necessária e as imagens (artes) de cada uma.
+              Configure as patentes da sua escola. Patentes globais (🌐) são somente leitura.
             </p>
           </div>
-          <button className="login-btn" onClick={openNew} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
-            <Plus size={18} /> Nova Patente
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {ranks.filter(r => !(r as any)._isGlobal).length === 0 && ranks.some(r => (r as any)._isGlobal) && (
+              <button className="login-btn" onClick={copyGlobalsAsBase} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
+                <Copy size={16} /> Copiar Globais como Base
+              </button>
+            )}
+            <button className="login-btn" onClick={openNew} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
+              <Plus size={18} /> Nova Patente Local
+            </button>
+          </div>
         </div>
 
         {isEditing && createPortal(
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
             <div className="glass-panel" style={{ width: '500px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
-              <h3 style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingIndex !== null ? 'Editar Patente' : 'Criar Nova Patente'}</h3>
+              <h3 style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingIndex !== null ? 'Editar Patente Local' : 'Criar Nova Patente Local'}</h3>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
                 <div>
@@ -231,6 +387,72 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                     <audio controls src={formData.audioUrl} style={{ marginTop: '1rem', width: '100%', height: '40px' }} />
                   )}
                 </div>
+              </div>
+
+              {/* Itens do Baú de Patente (por patente) */}
+              <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ color: 'var(--text-secondary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Gift size={18} color="var(--gold-primary)" /> Itens do Baú de Patente
+                  </label>
+                  <button onClick={() => setFormData({...formData, rankUpChestItems: [...(formData.rankUpChestItems || []), { itemId: '', quantity: 1 }]})} style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Plus size={14} /> Adicionar Item
+                  </button>
+                </div>
+                <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                  Estes itens são premiados quando o aluno alcançar ESTA patente, desde que o checkbox "Receber baú ao subir de patente" esteja ativo nas Configurações da Economia.
+                </p>
+
+                {(formData.rankUpChestItems || []).length === 0 ? (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic' }}>Nenhum item configurado. Este baú não será distribuído ao alcançar esta patente.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {(formData.rankUpChestItems || []).map((slot, index) => (
+                      <div key={index} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+                        <select
+                          value={slot.itemId}
+                          onChange={(e) => {
+                            const newItems = [...(formData.rankUpChestItems || [])];
+                            newItems[index] = { ...newItems[index], itemId: e.target.value };
+                            setFormData({...formData, rankUpChestItems: newItems});
+                          }}
+                          style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                        >
+                          <option value="">Selecione um item...</option>
+                          {availableItems.map(item => (
+                            <option key={item.id} value={item.id}>{item.title} ({item.type === 'consumable' ? 'Consumível' : 'Equipável'})</option>
+                          ))}
+                        </select>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Qtd:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="99"
+                            value={slot.quantity}
+                            onChange={(e) => {
+                              const newItems = [...(formData.rankUpChestItems || [])];
+                              newItems[index] = { ...newItems[index], quantity: parseInt(e.target.value) || 1 };
+                              setFormData({...formData, rankUpChestItems: newItems});
+                            }}
+                            style={{ width: '60px', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                          />
+                        </div>
+                        <button
+                          onClick={() => {
+                            const newItems = [...(formData.rankUpChestItems || [])];
+                            newItems.splice(index, 1);
+                            setFormData({...formData, rankUpChestItems: newItems});
+                          }}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.25rem' }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Variações por Turma */}
@@ -328,21 +550,27 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         )}
 
         <div style={{ display: 'grid', gap: '1rem' }}>
-          {ranks.map((rank, idx) => (
+          {ranks.map((rank, idx) => {
+            const isGlobal = (rank as any)._isGlobal;
+            return (
             <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                 <AnimatedRankIcon rank={rank} />
                 <div>
-                  <h3 style={{ margin: 0, color: rank.color, fontSize: '1.2rem', textShadow: `0 0 5px ${rank.color}80` }}>{rank.name}</h3>
+                  <h3 style={{ margin: 0, color: rank.color, fontSize: '1.2rem', textShadow: `0 0 5px ${rank.color}80`, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {rank.name}
+                    {isGlobal ? <span title="Global (somente leitura)"><Globe size={14} color="var(--text-secondary)" /></span> : <span title="Local (editável)"><Building2 size={14} color="#10b981" /></span>}
+                  </h3>
                   <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>A partir de {rank.minXp} XP</p>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => openEdit(rank, idx)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem' }}><Edit2 size={18} /></button>
-                <button onClick={() => handleDeleteRank(idx)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} disabled={ranks.length === 1}><Trash2 size={18} /></button>
+                <button onClick={() => openEdit(rank, idx)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem' }} disabled={isGlobal && !isSuperAdmin}><Edit2 size={18} /></button>
+                <button onClick={() => handleDeleteRank(idx)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} disabled={(isGlobal && !isSuperAdmin) || ranks.length === 1}><Trash2 size={18} /></button>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       </div>
     </div>

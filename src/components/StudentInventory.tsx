@@ -5,6 +5,8 @@ import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Shield, Coin
 import CachedImage from './CachedImage';
 import SkinBuffIcon from './SkinBuffIcon';
 import type { UserData } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
+import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
@@ -52,6 +54,7 @@ const getRarityLabel = (rarity?: string) => {
 
 export default function StudentInventory({ userData, onEquip, inventoryRefresh }: { userData: UserData, onEquip?: () => void, inventoryRefresh?: number }) {
   const { showAlert, showConfirm, showConfirmWithCheckbox, showToast, showPrompt } = useDialog();
+  const { tenantId } = useTenant();
   const [items, setItems] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sellModalItem, setSellModalItem] = useState<UserItem | null>(null);
@@ -142,12 +145,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (!userData.uid) return;
     if (!silent && items.length === 0) setLoading(true);
 
-    const { data: econSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'economy').single();
-    if (econSnap) {
-      const eData = econSnap.data as any;
-      setEconomyType(eData.currencyType || 'coins');
-      setEconomySettings(eData);
-    }
+    const econ = await fetchEconomySettings(tenantId);
+    setEconomyType(econ.currencyType);
+    setEconomySettings(econ);
 
     const { data: storeSnap } = await supabase.from('store_items').select('id, rarity');
     const storeRarities = new Map<string, string>();

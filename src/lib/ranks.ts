@@ -12,6 +12,7 @@ export interface RankDef {
   imageUrl?: string;
   audioUrl?: string;
   variants?: RankVariant[];
+  rankUpChestItems?: { itemId: string; quantity: number }[];
 }
 
 export const RANKS: RankDef[] = [
@@ -54,17 +55,31 @@ export function getRankForXp(xp: number, classId?: string): RankDef {
   return currentRank;
 }
 
-export const initRanks = async () => {
+export const initRanks = async (tenantId?: string) => {
   try {
-    const { data: snap, error } = await supabase.from('custom_ranks').select('*');
+    let ranksQuery = supabase.from('custom_ranks').select('*');
+    // Buscar ranks globais OU ranks da escola atual
+    if (tenantId) {
+      ranksQuery = ranksQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    }
+    const { data: snap, error } = await ranksQuery;
     if (error) throw error;
     if (snap && snap.length > 0) {
       const loadedRanks = snap.map(d => {
         const { id, ...rest } = d;
-        return rest as RankDef;
+        return { ...rest, _isGlobal: d.is_global ?? false } as RankDef & { _isGlobal?: boolean };
       }).sort((a,b) => a.minXp - b.minXp);
+
+      // Se a escola tem patentes locais, elas substituem as globais
+      const localRanks = loadedRanks.filter(r => !(r as any)._isGlobal);
+      const globalRanks = loadedRanks.filter(r => (r as any)._isGlobal);
+
       RANKS.length = 0; // clear existing
-      RANKS.push(...loadedRanks);
+      if (localRanks.length > 0) {
+        RANKS.push(...localRanks);
+      } else {
+        RANKS.push(...globalRanks);
+      }
     }
   } catch (e) {
     console.error("Failed to load custom ranks", e);
