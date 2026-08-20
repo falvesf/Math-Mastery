@@ -94,12 +94,12 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   // Filtros e View
   const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(
-    (localStorage.getItem('store_viewMode') as any) || 'grid-large'
+    (localStorage.getItem('store_viewMode') as any) || 'list'
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>(localStorage.getItem('store_filterType') || 'all');
   const [filterRarity, setFilterRarity] = useState<string>(localStorage.getItem('store_filterRarity') || 'all');
-  const [sortBy, setSortBy] = useState<string>(localStorage.getItem('store_sortBy') || 'name-asc');
+  const [sortBy, setSortBy] = useState<string>(localStorage.getItem('store_sortBy') || 'rarity-desc');
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   useEffect(() => {
@@ -589,9 +589,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const processedMarketItems = getProcessedMarketItems();
 
   const getGridStyle = () => {
-    if (viewMode === 'grid-small') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' };
-    if (viewMode === 'list') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' };
-    return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' };
+    if (viewMode === 'grid-small') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem' };
+    if (viewMode === 'list') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' };
+    return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' };
   };
 
   return (
@@ -803,38 +803,38 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
           return (
             <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
-              <div style={{ position: 'relative', width: isList ? '130px' : '100%', aspectRatio: isList ? 'none' : '1', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ position: 'relative', width: isList ? '90px' : '100%', aspectRatio: isList ? 'none' : '1', minHeight: isList ? '90px' : undefined, background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
-                  <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={80} />
+                  <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={60} />
                 ) : item.imageUrl ? (
                   <CachedImage src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 ) : (
-                  <Package size={48} color="var(--text-secondary)" />
+                  <Package size={36} color="var(--text-secondary)" />
                 )}
                 {item.type === 'equippable' && (
-                  <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.8)', padding: '4px', borderRadius: '4px' }}>
-                    <Swords size={14} color="var(--gold-primary)" />
+                  <div style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.8)', padding: '2px', borderRadius: '3px' }}>
+                    <Swords size={11} color="var(--gold-primary)" />
                   </div>
                 )}
-                <div className={`rarity-badge ${item.rarity || 'common'}`}>
+                <div className={`rarity-badge ${item.rarity || 'common'}`} style={{ fontSize: '0.6rem', padding: '1px 5px', bottom: '3px', left: '3px' }}>
                   {getRarityLabel(item.rarity)}
                 </div>
                 {viewMode !== 'list' && (
-                  <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                  <div style={{ position: 'absolute', top: '4px', right: '4px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.7rem' }}>
                      {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
                   </div>
                 )}
               </div>
-              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.5rem', minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0, wordBreak: 'break-word', flex: 1 }}>{item.title}</h3>
+              <div style={{ padding: '0.6rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.3rem', minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
+                  <h3 style={{ fontSize: '0.85rem', margin: 0, wordBreak: 'break-word', flex: 1, lineHeight: 1.2 }}>{item.title}</h3>
                   {isList && (
-                    <div style={{ flexShrink: 0, background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                    <div style={{ flexShrink: 0, background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.7rem' }}>
                        {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
                     </div>
                   )}
                 </div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0, flex: 1, display: viewMode === 'grid-small' ? '-webkit-box' : 'block', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: 0, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: viewMode === 'list' ? 2 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   {item.description}
                 </p>
                 
@@ -845,23 +845,23 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 ) : (
                   <>
                     {!isGiftingThis ? (
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', flexDirection: viewMode === 'grid-small' ? 'column' : 'column' }}>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
                         
                         {item.type === 'consumable' && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', alignSelf: 'flex-start' }}>
-                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Qtd:</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Qtd:</span>
                             <input 
                               type="number" 
                               min="1" 
                               max="999" 
                               value={quantities[item.id] || 1} 
                               onChange={(e) => setQuantities({...quantities, [item.id]: Math.max(1, Math.min(999, parseInt(e.target.value) || 1))})}
-                              style={{ width: '60px', padding: '0.4rem', borderRadius: '8px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)' }}
+                              style={{ width: '44px', padding: '0.2rem 0.3rem', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)', fontSize: '0.75rem', textAlign: 'center' }}
                             />
                           </div>
                         )}
 
-                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%', flexWrap: 'wrap', marginTop: 'auto' }}>
+                        <div style={{ display: 'flex', gap: '0.3rem', flex: 1, flexWrap: 'wrap' }}>
                         {economyType === 'xp' ? (
                            <>
                             <button 
@@ -874,19 +874,19 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                                 background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
                                 color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
                                 border: 'none', 
-                                padding: '0.5rem',
+                                padding: '0.35rem 0.5rem',
                                 opacity: canAfford ? 1 : 0.5,
                                 cursor: canAfford ? 'pointer' : 'not-allowed',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '0.4rem'
+                                gap: '0.3rem'
                               }}
                             >
-                              {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : (
+                              {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
                                 <>
-                                  <Star size={18} fill="currentColor" />
-                                  <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{totalCost}</span>
+                                  <Star size={14} fill="currentColor" />
+                                  <span style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>{totalCost}</span>
                                 </>
                               )}
                             </button>
@@ -901,19 +901,19 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                                   background: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? '#fbbf24' : 'rgba(255,255,255,0.1)', 
                                   color: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'black' : 'var(--text-secondary)', 
                                   border: 'none', 
-                                  padding: '0.5rem',
+                                  padding: '0.35rem 0.5rem',
                                   opacity: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 1 : 0.5,
                                   cursor: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'pointer' : 'not-allowed',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  gap: '0.4rem'
+                                  gap: '0.3rem'
                                 }}
                               >
-                                {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : (
+                                {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
                                   <>
-                                    <Coins size={18} fill="currentColor" />
-                                    <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{totalCostCoins}</span>
+                                    <Coins size={14} fill="currentColor" />
+                                    <span style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>{totalCostCoins}</span>
                                   </>
                                 )}
                               </button>
@@ -930,19 +930,19 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                                 background: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? '#fbbf24' : 'rgba(255,255,255,0.1)', 
                                 color: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'black' : 'var(--text-secondary)', 
                                 border: 'none', 
-                                padding: '0.5rem',
+                                padding: '0.35rem 0.5rem',
                                 opacity: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 1 : 0.5,
                                 cursor: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'pointer' : 'not-allowed',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '0.4rem'
+                                gap: '0.3rem'
                               }}
                             >
-                              {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : (
+                              {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
                                 <>
-                                  <Coins size={18} fill="currentColor" />
-                                  <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{totalCostCoins}</span>
+                                  <Coins size={14} fill="currentColor" />
+                                  <span style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>{totalCostCoins}</span>
                                 </>
                               )}
                             </button>
@@ -957,19 +957,19 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
                               color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
                               border: 'none', 
-                              padding: '0.5rem',
+                              padding: '0.35rem 0.5rem',
                               opacity: canAfford ? 1 : 0.5,
                               cursor: canAfford ? 'pointer' : 'not-allowed',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              gap: '0.4rem'
+                              gap: '0.3rem'
                             }}
                           >
-                            {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : (
+                            {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
                                 <>
-                                  <ShoppingCart size={18} />
-                                  <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Comprar</span>
+                                  <ShoppingCart size={14} />
+                                  <span style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>Comprar</span>
                                 </>
                               )}
                           </button>
@@ -981,39 +981,39 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               title="Ver no Personagem"
                               style={{
                                 flex: 1,
-                                maxWidth: '60px',
+                                maxWidth: '40px',
                                 background: 'var(--btn-bg)',
                                 color: 'var(--text-primary)',
                                 border: '1px solid var(--border-glass)',
-                                padding: '0.5rem',
+                                padding: '0.35rem',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center'
                               }}
                             >
-                              <Eye size={18} />
+                              <Eye size={14} />
                             </button>
                           )}
                           {(userData.role !== 'student' && !userData.studentViewActive || giftWrapItemIds.length > 0) && (
                             <button 
                               className="login-btn hover-brightness"
-                              disabled={false} // Gift button just opens the sub-menu, so keep it enabled if they want to choose gift
+                              disabled={false}
                               title="Dar de Presente"
                               onClick={() => setGiftingItemId(item.id)}
                               style={{ 
                                 flex: 1,
-                                maxWidth: '60px',
+                                maxWidth: '40px',
                                 background: 'rgba(251, 191, 36, 0.1)', 
                                 color: 'var(--gold-primary)', 
                                 border: '1px solid var(--gold-primary)', 
-                                padding: '0.5rem',
+                                padding: '0.35rem',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 cursor: 'pointer'
                               }}
                             >
-                              <Gift size={18} />
+                              <Gift size={14} />
                             </button>
                           )}
                         </div>
