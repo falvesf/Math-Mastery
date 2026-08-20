@@ -816,6 +816,29 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     <Swords size={11} color="var(--gold-primary)" />
                   </div>
                 )}
+                {(item.type === 'equippable' || item.gameEffect === 'unlock_skin') && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setPreviewItem(item); }}
+                    title="Ver no Personagem"
+                    style={{
+                      position: 'absolute',
+                      bottom: '4px',
+                      right: '4px',
+                      background: 'rgba(0,0,0,0.7)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '3px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--text-secondary)',
+                      zIndex: 6
+                    }}
+                  >
+                    <Eye size={12} />
+                  </button>
+                )}
                 <div className={`rarity-badge ${item.rarity || 'common'}`}>
                   {getRarityLabel(item.rarity)}
                 </div>
@@ -974,26 +997,6 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                               )}
                           </button>
                         )}
-                          {(item.type === 'equippable' || item.gameEffect === 'unlock_skin') && (
-                            <button
-                              className="login-btn hover-brightness"
-                              onClick={() => setPreviewItem(item)}
-                              title="Ver no Personagem"
-                              style={{
-                                flex: 1,
-                                maxWidth: '40px',
-                                background: 'var(--btn-bg)',
-                                color: 'var(--text-primary)',
-                                border: '1px solid var(--border-glass)',
-                                padding: '0.35rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                              }}
-                            >
-                              <Eye size={14} />
-                            </button>
-                          )}
                           {(userData.role !== 'student' && !userData.studentViewActive || giftWrapItemIds.length > 0) && (
                             <button 
                               className="login-btn hover-brightness"
