@@ -1107,7 +1107,7 @@ export default function Dashboard() {
   }
 
   // Filtragem de Rankings (Top 10)
-  const uniqueClasses = Array.from(new Set(allStudents.map(s => s.classId).filter(Boolean))) as string[];
+  const uniqueClasses = Array.from(new Set(allStudents.map(s => s.classId).filter(Boolean))).sort() as string[];
   const targetClassRanking = isAdminOrTeacher ? (selectedClassForRanking || userData?.classId || uniqueClasses[0] || '') : userData?.classId;
   const classStudents = allStudents.filter(s => s.classId === targetClassRanking).slice(0, 10);
   const top10General = allStudents.slice(0, 10);
