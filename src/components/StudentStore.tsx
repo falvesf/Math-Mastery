@@ -839,6 +839,31 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     <Eye size={12} />
                   </button>
                 )}
+                {item.type === 'consumable' && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '4px',
+                    left: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                    background: 'rgba(0,0,0,0.7)',
+                    borderRadius: '4px',
+                    padding: '2px 4px',
+                    zIndex: 6
+                  }}>
+                    <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Qtd:</span>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="999" 
+                      value={quantities[item.id] || 1} 
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setQuantities({...quantities, [item.id]: Math.max(1, Math.min(999, parseInt(e.target.value) || 1))})}
+                      style={{ width: '32px', padding: '1px 2px', borderRadius: '4px', background: 'rgba(255,255,255,0.15)', color: 'white', border: 'none', fontSize: '0.65rem', textAlign: 'center' }}
+                    />
+                  </div>
+                )}
                 <div className={`rarity-badge ${item.rarity || 'common'}`}>
                   {getRarityLabel(item.rarity)}
                 </div>
@@ -870,20 +895,6 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     {!isGiftingThis ? (
                       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
                         
-                        {item.type === 'consumable' && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Qtd:</span>
-                            <input 
-                              type="number" 
-                              min="1" 
-                              max="999" 
-                              value={quantities[item.id] || 1} 
-                              onChange={(e) => setQuantities({...quantities, [item.id]: Math.max(1, Math.min(999, parseInt(e.target.value) || 1))})}
-                              style={{ width: '44px', padding: '0.2rem 0.3rem', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)', fontSize: '0.75rem', textAlign: 'center' }}
-                            />
-                          </div>
-                        )}
-
                         <div style={{ display: 'flex', gap: '0.3rem', flex: 1, flexWrap: 'wrap' }}>
                         {economyType === 'xp' ? (
                            <>
