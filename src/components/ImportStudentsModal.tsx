@@ -42,21 +42,39 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
 
   const fetchClasses = async () => {
     try {
-      let query = supabase.from('classes').select('id, name, code');
-      if (tenantId) {
-        // Busca turmas da escola específica + globais (tenant_id null)
-        query = query.or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
-      } else {
-        query = query.is('tenant_id', null);
+      // Primeiro tenta com a coluna 'code'. Se não existir, faz fallback sem ela.
+      let classesData: ClassInfo[] | null = null;
+      try {
+        let query = supabase.from('classes').select('id, name, code');
+        if (tenantId) {
+          query = query.or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
+        } else {
+          query = query.is('tenant_id', null);
+        }
+        const { data, error } = await query;
+        if (!error && data) classesData = data as ClassInfo[];
+      } catch (e) {
+        console.error('Falha ao buscar com coluna code, tentando sem ela:', e);
       }
-      const { data, error } = await query;
-      if (error) {
-        console.error('Erro ao buscar turmas:', error);
-        setClasses([]);
-        return;
+
+      if (!classesData) {
+        let query = supabase.from('classes').select('id, name');
+        if (tenantId) {
+          query = query.or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
+        } else {
+          query = query.is('tenant_id', null);
+        }
+        const { data, error } = await query;
+        if (error) {
+          console.error('Erro ao buscar turmas:', error);
+          setClasses([]);
+          return;
+        }
+        classesData = (data || []).map((c: any) => ({ id: c.id, name: c.name }));
       }
-      setClasses(data || []);
-      console.log('Turmas carregadas para importação:', data || []);
+
+      setClasses(classesData);
+      console.log('Turmas carregadas para importação:', classesData);
     } catch (err) {
       console.error('Erro ao buscar turmas:', err);
       setClasses([]);
@@ -68,20 +86,16 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
     const invalid: ImportedStudent[] = [];
 
     for (const student of students) {
-      if (student.class_code) {
-        const matched = classes.find(c => c.code && c.code.toUpperCase() === student.class_code!.toUpperCase());
-        if (matched) {
-          valid.push({ ...student, matched: true, matchedClassName: matched.name });
-        } else {
-          invalid.push({ ...student, matched: false });
-        }
+      const codeMatch = student.class_code
+        ? classes.find(c => c.code && c.code.trim().toUpperCase() === student.class_code!.trim().toUpperCase())
+        : undefined;
+      const nameMatch = classes.find(c => c.name.trim().toUpperCase() === student.class_name.trim().toUpperCase());
+
+      const matched = codeMatch || nameMatch;
+      if (matched) {
+        valid.push({ ...student, matched: true, matchedClassName: matched.name });
       } else {
-        const matched = classes.find(c => c.name.toUpperCase() === student.class_name.toUpperCase());
-        if (matched) {
-          valid.push({ ...student, matched: true, matchedClassName: matched.name });
-        } else {
-          invalid.push({ ...student, matched: false });
-        }
+        invalid.push({ ...student, matched: false });
       }
     }
 
@@ -175,6 +189,9 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
       setAllStudents(students);
       setValidStudents(valid);
       setInvalidStudents(invalid);
+      console.log('Alunos parseados (amostra):', students.slice(0, 5));
+      console.log('Turmas no sistema (amostra):', classes.slice(0, 10));
+      console.log('Valid/Invalid:', valid.length, invalid.length);
     } catch (err) {
       console.error('Erro ao processar arquivo:', err);
       showAlert('Erro', 'Não foi possível processar o arquivo.');
