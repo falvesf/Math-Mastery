@@ -26,6 +26,7 @@ import { validateCharacterName, normalizeForComparison } from '../lib/nameValida
 export interface ClassDef {
   id: string;
   name: string;
+  code?: string;
   color: string;
 }
 
@@ -469,9 +470,11 @@ export default function AdminDashboard() {
   
   // Turmas States
   const [newClassName, setNewClassName] = useState('');
+  const [newClassCode, setNewClassCode] = useState('');
   const [newClassColor, setNewClassColor] = useState('#3b82f6');
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editClassName, setEditClassName] = useState('');
+  const [editClassCode, setEditClassCode] = useState('');
   const [editClassColor, setEditClassColor] = useState('#3b82f6');
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
 
@@ -923,15 +926,16 @@ export default function AdminDashboard() {
   const handleAddClass = async () => {
     if (!newClassName) return;
     const classId = Date.now().toString();
-    const newClass = { id: classId, name: newClassName, color: newClassColor, tenant_id: tenantId || null };
+    const newClass = { id: classId, name: newClassName, code: newClassCode.trim() || null, color: newClassColor, tenant_id: tenantId || null };
     await supabase.from('classes').insert(newClass);
     setNewClassName('');
+    setNewClassCode('');
     fetchClasses();
   };
 
   const handleEditClassSubmit = async () => {
     if (!editingClassId || !editClassName) return;
-    await supabase.from('classes').update({ name: editClassName, color: editClassColor }).eq('id', editingClassId);
+    await supabase.from('classes').update({ name: editClassName, code: editClassCode.trim() || null, color: editClassColor }).eq('id', editingClassId);
     setEditingClassId(null);
     setIsClassModalOpen(false);
     fetchClasses();
@@ -2656,6 +2660,10 @@ export default function AdminDashboard() {
                     <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Criar Nova Turma</label>
                     <input type="text" value={newClassName} onChange={e => setNewClassName(e.target.value)} placeholder="Ex: 6º ano A" style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                   </div>
+                  <div style={{ flex: '1 1 150px' }}>
+                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Código da Turma</label>
+                    <input type="text" value={newClassCode} onChange={e => setNewClassCode(e.target.value)} placeholder="Ex: EFUND06MA" style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+                  </div>
                   <div style={{ flex: '0 1 100px' }}>
                     <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Cor</label>
                     <input type="color" value={newClassColor} onChange={e => setNewClassColor(e.target.value)} style={{ width: '100%', height: '36px', padding: '0', borderRadius: '8px', background: 'transparent', border: 'none', cursor: 'pointer' }} />
@@ -2677,7 +2685,7 @@ export default function AdminDashboard() {
                         <BookOpen size={20} color={cls.color} /> {cls.name}
                       </h4>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => { setEditingClassId(cls.id); setEditClassName(cls.name); setEditClassColor(cls.color); setIsClassModalOpen(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Turma">
+                        <button onClick={() => { setEditingClassId(cls.id); setEditClassName(cls.name); setEditClassCode(cls.code || ''); setEditClassColor(cls.color); setIsClassModalOpen(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Turma">
                           <Edit2 size={20} />
                         </button>
                         <button onClick={() => handleRemoveClass(cls.id)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Turma">
@@ -3237,7 +3245,12 @@ export default function AdminDashboard() {
             
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Turma</label>
-              <input type="text" value={editClassName} onChange={e => setEditClassName(e.target.value)} placeholder="Ex: 6º ano A" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+              <input type="text" value={editClassName} onChange={e => setEditClassName(e.target.value)} placeholder="Ex: 6o ano A" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Codigo da Turma</label>
+              <input type="text" value={editClassCode} onChange={e => setEditClassCode(e.target.value)} placeholder="Ex: EFUND06MA" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
             </div>
 
             <div style={{ marginBottom: '2rem' }}>

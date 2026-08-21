@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useDialog } from '../contexts/DialogContext';
-import { Upload, FileSpreadsheet, Loader2, CheckCircle, X } from 'lucide-react';
+import { Upload, FileSpreadsheet, Loader2, CheckCircle, X, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface ImportStudentsModalProps {
@@ -13,15 +13,62 @@ interface ImportStudentsModalProps {
 interface ImportedStudent {
   name: string;
   class_name: string;
+  class_code?: string;
   grade?: string;
+  matched?: boolean;
+  matchedClassName?: string;
+}
+
+interface ClassInfo {
+  id: string;
+  name: string;
+  code?: string;
 }
 
 export default function ImportStudentsModal({ tenantId, onClose, onComplete }: ImportStudentsModalProps) {
   const { showAlert } = useDialog();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
-  const [preview, setPreview] = useState<ImportedStudent[]>([]);
+  const [allStudents, setAllStudents] = useState<ImportedStudent[]>([]);
+  const [validStudents, setValidStudents] = useState<ImportedStudent[]>([]);
+  const [invalidStudents, setInvalidStudents] = useState<ImportedStudent[]>([]);
   const [fileName, setFileName] = useState('');
+  const [classes, setClasses] = useState<ClassInfo[]>([]);
+  const [importMode, setImportMode] = useState<'matched' | 'all'>('matched');
+
+  useEffect(() => {
+    fetchClasses();
+  }, [tenantId]);
+
+  const fetchClasses = async () => {
+    const { data } = await supabase.from('classes').select('id, name, code').eq('tenant_id', tenantId);
+    setClasses(data || []);
+  };
+
+  const matchStudents = (students: ImportedStudent[]): { valid: ImportedStudent[]; invalid: ImportedStudent[] } => {
+    const valid: ImportedStudent[] = [];
+    const invalid: ImportedStudent[] = [];
+
+    for (const student of students) {
+      if (student.class_code) {
+        const matched = classes.find(c => c.code && c.code.toUpperCase() === student.class_code!.toUpperCase());
+        if (matched) {
+          valid.push({ ...student, matched: true, matchedClassName: matched.name });
+        } else {
+          invalid.push({ ...student, matched: false });
+        }
+      } else {
+        const matched = classes.find(c => c.name.toUpperCase() === student.class_name.toUpperCase());
+        if (matched) {
+          valid.push({ ...student, matched: true, matchedClassName: matched.name });
+        } else {
+          invalid.push({ ...student, matched: false });
+        }
+      }
+    }
+
+    return { valid, invalid };
+  };
 
   const parseRows = (headers: string[], rows: string[][]): ImportedStudent[] => {
     const h = headers.map(v => v.toLowerCase().trim());
@@ -34,24 +81,31 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
       v.includes('turma') || v.includes('class') || v.includes('sala') || 
       v.includes('classe') || v.includes('turma/série')
     );
+    const codeIdx = h.findIndex(v => 
+      v.includes('código da turma') || v.includes('codigo da turma') || 
+      v.includes('código turma') || v.includes('codigo turma') ||
+      v.includes('cod turma') || v.includes('cod. turma')
+    );
     const gradeIdx = h.findIndex(v => 
       v.includes('série') || v.includes('serie') || v.includes('grade') || 
       v.includes('ano') || v.includes('nível')
     );
 
-    if (nameIdx === -1 || classIdx === -1) {
-      showAlert('Erro', 'O arquivo deve ter colunas com "Nome" e "Turma" no cabeçalho. Colunas encontradas: ' + headers.join(', '));
+    if (nameIdx === -1 || (classIdx === -1 && codeIdx === -1)) {
+      showAlert('Erro', 'O arquivo deve ter colunas com "Nome" e pelo menos "Turma" ou "Código da turma". Colunas encontradas: ' + headers.join(', '));
       return [];
     }
 
     const students: ImportedStudent[] = [];
     for (const cols of rows) {
       const name = cols[nameIdx]?.trim();
-      const className = cols[classIdx]?.trim();
-      if (name && className) {
+      const className = classIdx >= 0 ? cols[classIdx]?.trim() : '';
+      const classCode = codeIdx >= 0 ? cols[codeIdx]?.trim() : '';
+      if (name && (className || classCode)) {
         students.push({
           name,
-          class_name: className,
+          class_name: className || classCode,
+          class_code: classCode || undefined,
           grade: gradeIdx >= 0 ? cols[gradeIdx]?.trim() : undefined
         });
       }
@@ -99,7 +153,10 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
         return;
       }
 
-      setPreview(students);
+      const { valid, invalid } = matchStudents(students);
+      setAllStudents(students);
+      setValidStudents(valid);
+      setInvalidStudents(invalid);
     } catch (err) {
       console.error('Erro ao processar arquivo:', err);
       showAlert('Erro', 'Não foi possível processar o arquivo.');
@@ -109,14 +166,15 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
   };
 
   const handleImport = async () => {
-    if (preview.length === 0) return;
+    const toImport = importMode === 'matched' ? validStudents : allStudents;
+    if (toImport.length === 0) return;
 
     setLoading(true);
     try {
-      const records = preview.map(student => ({
+      const records = toImport.map(student => ({
         tenant_id: tenantId,
         name: student.name,
-        class_name: student.class_name,
+        class_name: student.matchedClassName || student.class_name,
         grade: student.grade,
         imported_from: 'csv'
       }));
@@ -124,7 +182,7 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
       const { error } = await supabase.from('pre_authorized_students').insert(records);
       if (error) throw error;
 
-      showAlert('Sucesso', `${preview.length} alunos importados com sucesso!`);
+      showAlert('Sucesso', `${toImport.length} alunos importados com sucesso!`);
       onComplete();
     } catch (err) {
       console.error('Erro ao importar alunos:', err);
@@ -134,9 +192,11 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
     }
   };
 
+  const hasData = allStudents.length > 0;
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001 }}>
-      <div className="glass-panel" style={{ width: '600px', maxWidth: '90vw', maxHeight: '80vh', padding: '2rem', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out' }}>
+      <div className="glass-panel" style={{ width: '650px', maxWidth: '90vw', maxHeight: '85vh', padding: '2rem', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
             Importar Alunos
@@ -148,7 +208,7 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
 
         {/* Upload Area */}
         <div
-          style={{ border: '2px dashed var(--border-glass)', borderRadius: '12px', padding: '2rem', textAlign: 'center', cursor: 'pointer', marginBottom: '1rem', transition: 'all 0.2s' }}
+          style={{ border: '2px dashed var(--border-glass)', borderRadius: '12px', padding: '1.5rem', textAlign: 'center', cursor: 'pointer', marginBottom: '1rem', transition: 'all 0.2s' }}
           onClick={() => fileInputRef.current?.click()}
           onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--gold-primary)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-glass)'}
@@ -160,34 +220,93 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
             onChange={handleFileChange}
             style={{ display: 'none' }}
           />
-          <FileSpreadsheet size={48} color="var(--text-secondary)" style={{ marginBottom: '1rem' }} />
-          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Clique para selecionar um arquivo CSV ou XLSX
+          <FileSpreadsheet size={36} color="var(--text-secondary)" style={{ marginBottom: '0.5rem' }} />
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            Clique para selecionar CSV ou XLSX
           </p>
-          <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.8rem', opacity: 0.7 }}>
-            Formato esperado: Nome Completo, Turma
+          <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.75rem', opacity: 0.7 }}>
+            Colunas: Nome Completo, Turma (ou Código da turma), Série
           </p>
         </div>
 
         {/* Preview */}
-        {preview.length > 0 && (
+        {hasData && (
           <div style={{ flex: 1, overflow: 'auto', marginBottom: '1rem' }}>
-            <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text-primary)', fontSize: '1rem' }}>
-              Preview ({preview.length} alunos encontrados)
+            {/* Resumo */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '120px', padding: '0.75rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#10b981' }}>{validStudents.length}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Encontrados</div>
+              </div>
+              {invalidStudents.length > 0 && (
+                <div style={{ flex: 1, minWidth: '120px', padding: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444' }}>{invalidStudents.length}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Não encontrados</div>
+                </div>
+              )}
+            </div>
+
+            {/* Modo de importação */}
+            {invalidStudents.length > 0 && (
+              <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <AlertTriangle size={16} color="#f59e0b" />
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                    {invalidStudents.length} alunos com turma não encontrada no sistema
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.8rem', color: importMode === 'matched' ? 'var(--gold-primary)' : 'var(--text-secondary)' }}>
+                    <input type="radio" name="importMode" checked={importMode === 'matched'} onChange={() => setImportMode('matched')} />
+                    Importar apenas turmas encontradas ({validStudents.length})
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.8rem', color: importMode === 'all' ? 'var(--gold-primary)' : 'var(--text-secondary)' }}>
+                    <input type="radio" name="importMode" checked={importMode === 'all'} onChange={() => setImportMode('all')} />
+                    Importar todos ({allStudents.length})
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* Lista de alunos encontrados */}
+            <h4 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '0.9rem' }}>
+              Alunos encontrados ({validStudents.length})
             </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {preview.slice(0, 10).map((student, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
-                  <span style={{ color: 'var(--text-primary)' }}>{student.name}</span>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{student.class_name}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: invalidStudents.length > 0 ? '1rem' : 0 }}>
+              {validStudents.slice(0, 10).map((student, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0.6rem', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.15)' }}>
+                  <span style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{student.name}</span>
+                  <span style={{ color: '#10b981', fontSize: '0.8rem' }}>{student.matchedClassName}</span>
                 </div>
               ))}
-              {preview.length > 10 && (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', textAlign: 'center' }}>
-                  ... e mais {preview.length - 10} alunos
+              {validStudents.length > 10 && (
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center', margin: '0.25rem 0' }}>
+                  ... e mais {validStudents.length - 10} alunos
                 </p>
               )}
             </div>
+
+            {/* Lista de alunos não encontrados */}
+            {invalidStudents.length > 0 && (
+              <>
+                <h4 style={{ margin: '0 0 0.5rem 0', color: '#ef4444', fontSize: '0.9rem' }}>
+                  Alunos não encontrados ({invalidStudents.length})
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  {invalidStudents.slice(0, 10).map((student, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0.6rem', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
+                      <span style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{student.name}</span>
+                      <span style={{ color: '#ef4444', fontSize: '0.8rem' }}>{student.class_code || student.class_name}</span>
+                    </div>
+                  ))}
+                  {invalidStudents.length > 10 && (
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center', margin: '0.25rem 0' }}>
+                      ... e mais {invalidStudents.length - 10} alunos
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -201,11 +320,11 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
           </button>
           <button
             onClick={handleImport}
-            disabled={preview.length === 0 || loading}
-            style={{ flex: 1, padding: '0.75rem', background: preview.length > 0 ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', color: preview.length > 0 ? 'var(--text-on-gold, #000)' : 'var(--text-secondary)', cursor: preview.length > 0 ? 'pointer' : 'not-allowed', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+            disabled={!hasData || loading || (importMode === 'matched' && validStudents.length === 0)}
+            style={{ flex: 1, padding: '0.75rem', background: hasData && (importMode === 'all' || validStudents.length > 0) ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', color: hasData && (importMode === 'all' || validStudents.length > 0) ? 'var(--text-on-gold, #000)' : 'var(--text-secondary)', cursor: hasData && (importMode === 'all' || validStudents.length > 0) ? 'pointer' : 'not-allowed', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
           >
             {loading ? <Loader2 className="spin" size={18} /> : <CheckCircle size={18} />}
-            Importar {preview.length > 0 ? `(${preview.length})` : ''}
+            Importar ({importMode === 'matched' ? validStudents.length : allStudents.length})
           </button>
         </div>
       </div>
