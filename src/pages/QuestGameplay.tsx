@@ -126,7 +126,7 @@ export default function QuestGameplay() {
 
   // Economia Dinâmica
   const [economySettings, setEconomySettings] = useState<any>(null);
-  const [, setCoinsToRescue] = useState<number | null>(null);
+  const [coinsToRescue, setCoinsToRescue] = useState<number | null>(null);
   const [, setLostCoinsDisplay] = useState<number | null>(null);
 
   // Escudos e Defesa
@@ -853,6 +853,12 @@ export default function QuestGameplay() {
         const maxCoins = rankIndex * dmg;
         const dropped = Math.floor(Math.random() * maxCoins) + 1;
         setCoinsToRescue(dropped);
+        // Credita as moedas ao jogador
+        const currentCoins = userData?.coins || 0;
+        supabase.from('users').update({ coins: currentCoins + dropped }).eq('id', userData!.uid).then(({ error }) => { if (error) console.error(error); });
+        userData.coins = currentCoins + dropped;
+        // Remove a animação após alguns segundos
+        setTimeout(() => setCoinsToRescue(null), 2500);
       }
 
       const playerHpPercentage = (currentHearts / maxHearts) * 100;
@@ -1451,6 +1457,22 @@ export default function QuestGameplay() {
                 } as any) : undefined}
               />
             </div>
+            
+            {/* Coin Drop Animation */}
+            {coinsToRescue != null && (
+              <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none' }}>
+                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                  {Array.from({ length: Math.min(coinsToRescue, 8) }).map((_, i) => (
+                    <div key={i} style={{ animation: `coin-fall 2s ease-in ${i * 0.15}s forwards`, opacity: 0, fontSize: '2rem' }}>
+                      <Coins size={28} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: '1rem', background: 'rgba(0,0,0,0.75)', padding: '0.4rem 1rem', borderRadius: '20px', border: '1px solid var(--gold-primary)', color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1.1rem', animation: 'fadeIn 0.3s ease-out' }}>
+                  +{coinsToRescue} <Coins size={16} style={{ verticalAlign: 'middle' }} />
+                </div>
+              </div>
+            )}
             
             {/* Question Overlay - Sobre a arena, abaixo dos balões de fala */}
             <div className="quest-question-overlay">
