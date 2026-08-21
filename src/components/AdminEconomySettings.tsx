@@ -78,6 +78,30 @@ export default function AdminEconomySettings() {
         )}
       </div>
 
+      {/* Header com título e botão salvar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.2rem' }}>Ajustes de Economia</h3>
+        <button
+          className="login-btn hover-brightness"
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            background: 'var(--gold-primary)',
+            color: 'var(--text-on-gold, #000000)',
+            border: 'none',
+            padding: '0.5rem 1rem',
+            fontSize: '0.9rem',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+        >
+          {saving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
+          Salvar
+        </button>
+      </div>
+
       {/* Tipo de Economia */}
       <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
         <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-primary)', fontSize: '1.1rem' }}>Tipo de Economia</h3>
@@ -103,9 +127,11 @@ export default function AdminEconomySettings() {
         </div>
       </div>
 
-      {/* Configurações de Moedas nos Combates */}
-      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-        <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-primary)', fontSize: '1.1rem' }}>Moedas nos Combates</h3>
+      {/* Moedas de Ouro - Combates e Baú */}
+      {isCoins && (
+        <>
+          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-primary)', fontSize: '1.1rem' }}>Moedas nos Combates</h3>
         <p style={{ color: 'var(--text-secondary)', margin: '0 0 1rem 0', fontSize: '0.85rem' }}>
           Configure como as moedas se comportam durante os desafios.
         </p>
@@ -163,7 +189,9 @@ export default function AdminEconomySettings() {
             Os itens do baú são definidos em <strong style={{ color: 'var(--text-primary)' }}>Patentes e Artes</strong>, ao editar cada patente.
           </p>
         </div>
-      </div>
+        </div>
+        </>
+      )}
 
       {/* Gasto de XP - Moedas como pagamento alternativo */}
       {!isCoins && (
@@ -208,29 +236,6 @@ export default function AdminEconomySettings() {
           )}
         </div>
       )}
-
-      {/* Botão Salvar */}
-      <button
-        className="login-btn hover-brightness"
-        onClick={handleSave}
-        disabled={saving}
-        style={{
-          background: 'var(--gold-primary)',
-          color: 'var(--text-on-gold, #000000)',
-          border: 'none',
-          padding: '0.75rem 1.5rem',
-          fontSize: '1rem',
-          fontWeight: 'bold',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.5rem',
-          alignSelf: 'flex-end'
-        }}
-      >
-        {saving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-        Salvar Configurações
-      </button>
 
     </div>
   );
