@@ -41,8 +41,26 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
   }, [tenantId]);
 
   const fetchClasses = async () => {
-    const { data } = await supabase.from('classes').select('id, name, code').eq('tenant_id', tenantId);
-    setClasses(data || []);
+    try {
+      let query = supabase.from('classes').select('id, name, code');
+      if (tenantId) {
+        // Busca turmas da escola específica + globais (tenant_id null)
+        query = query.or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
+      } else {
+        query = query.is('tenant_id', null);
+      }
+      const { data, error } = await query;
+      if (error) {
+        console.error('Erro ao buscar turmas:', error);
+        setClasses([]);
+        return;
+      }
+      setClasses(data || []);
+      console.log('Turmas carregadas para importação:', data || []);
+    } catch (err) {
+      console.error('Erro ao buscar turmas:', err);
+      setClasses([]);
+    }
   };
 
   const matchStudents = (students: ImportedStudent[]): { valid: ImportedStudent[]; invalid: ImportedStudent[] } => {
