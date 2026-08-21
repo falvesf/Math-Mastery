@@ -206,19 +206,55 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
 
     setLoading(true);
     try {
-      const records = toImport.map(student => ({
-        tenant_id: tenantId,
-        name: student.name,
-        class_name: student.matchedClassName || student.class_name,
-        imported_from: 'csv'
-      }));
+      // Busca alunos já existentes para não duplicar (funciona mesmo com tenant_id NULL)
+      let existingQuery = supabase.from('pre_authorized_students').select('id, name, class_name');
+      if (tenantId) {
+        existingQuery = existingQuery.eq('tenant_id', tenantId);
+      } else {
+        existingQuery = existingQuery.is('tenant_id', null);
+      }
+      const { data: existing, error: existingError } = await existingQuery;
+      if (existingError) throw existingError;
 
-      const { error } = await supabase
-        .from('pre_authorized_students')
-        .upsert(records, { onConflict: 'tenant_id,name' });
-      if (error) throw error;
+      const existingByName = new Map<string, { id: string; class_name: string }>();
+      (existing || []).forEach((rec: any) => existingByName.set((rec.name || '').toLowerCase(), rec));
 
-      showAlert('Sucesso', `${toImport.length} alunos importados com sucesso! (duplicados atualizados)`);
+      const toInsert: any[] = [];
+      const toUpdate: { id: string; class_name: string }[] = [];
+      let inserted = 0;
+      let updated = 0;
+
+      for (const student of toImport) {
+        const key = (student.name || '').toLowerCase();
+        const existingRec = existingByName.get(key);
+        const newClassName = student.matchedClassName || student.class_name;
+        if (existingRec) {
+          if (existingRec.class_name !== newClassName) {
+            toUpdate.push({ id: existingRec.id, class_name: newClassName });
+          }
+          updated++;
+        } else {
+          toInsert.push({
+            tenant_id: tenantId,
+            name: student.name,
+            class_name: newClassName,
+            imported_from: 'csv'
+          });
+          inserted++;
+        }
+      }
+
+      if (toInsert.length > 0) {
+        const { error: insErr } = await supabase.from('pre_authorized_students').insert(toInsert);
+        if (insErr) throw insErr;
+      }
+
+      // Atualiza turma dos existentes que mudaram
+      for (const upd of toUpdate) {
+        await supabase.from('pre_authorized_students').update({ class_name: upd.class_name }).eq('id', upd.id);
+      }
+
+      showAlert('Sucesso', `${inserted} aluno(s) adicionados, ${updated} já existente(s).`);
       onComplete();
     } catch (err: any) {
       console.error('Erro ao importar alunos:', err);

@@ -68,9 +68,11 @@ export default function PreAuthorizedStudentsManager() {
 
       if (classesError) throw classesError;
       setClasses(classesData || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao carregar dados:', err);
-      showAlert('Erro', 'Não foi possível carregar os dados.');
+      setStudents([]);
+      setClasses([]);
+      showAlert('Erro', 'Não foi possível carregar os dados. ' + (err?.message || ''));
     } finally {
       setLoading(false);
     }
