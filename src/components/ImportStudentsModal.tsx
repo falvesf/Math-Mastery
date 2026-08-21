@@ -210,7 +210,6 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
         tenant_id: tenantId,
         name: student.name,
         class_name: student.matchedClassName || student.class_name,
-        grade: student.grade,
         imported_from: 'csv'
       }));
 
@@ -219,9 +218,9 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
 
       showAlert('Sucesso', `${toImport.length} alunos importados com sucesso!`);
       onComplete();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao importar alunos:', err);
-      showAlert('Erro', 'Não foi possível importar os alunos.');
+      showAlert('Erro', 'Não foi possível importar os alunos. ' + (err?.message || ''));
     } finally {
       setLoading(false);
     }
