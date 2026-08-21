@@ -37,13 +37,13 @@ export default function AdminEconomySettings() {
       };
       const ok = await saveEconomySettings(tenantId, payload);
       if (ok) {
-        showAlert('Sucesso', 'Configurações de economia salvas!');
+        showAlert('Configurações de economia salvas com sucesso!');
       } else {
-        showAlert('Erro', 'Ocorreu um erro ao salvar as configurações.');
+        showAlert('Ocorreu um erro ao salvar as configurações. Verifique o console (F12).');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      showAlert('Erro', 'Ocorreu um erro ao salvar as configurações.');
+      showAlert('Erro ao salvar: ' + (err.message || 'Erro desconhecido.'));
     } finally {
       setSaving(false);
     }
