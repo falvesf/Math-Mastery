@@ -33,7 +33,7 @@ interface UserItem {
 
 export default function QuestGameplay() {
   const { questId } = useParams();
-  const { userData } = useAuth();
+  const { userData, updateUserDataLocally } = useAuth();
   const { tenant, tenantId, isSuperAdmin } = useTenant();
   const navigate = useNavigate();
   const { showAlert, showConfirm } = useDialog();
@@ -1185,6 +1185,8 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
 
         const { error: userErr } = await supabase.from('users').update(updates).eq('id', userData!.uid);
         if (userErr) console.error("Falha ao atualizar users (possível bloqueio de RLS):", userErr);
+        // Atualiza o estado local para refletir XP/moedas imediatamente (evita valor desatualizado na loja)
+        updateUserDataLocally({ xp: updates.xp ?? userData?.xp, coins: updates.coins ?? userData?.coins });
       }
 
       // Buffs and Debuffs only applied if eligible for XP
