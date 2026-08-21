@@ -53,6 +53,7 @@ export default function LiveQuestStudent() {
   
   const [economySettings, setEconomySettings] = useState<any>(null);
   const [coinsToRescue, setCoinsToRescue] = useState<number>(0);
+  const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [lostCoinsDisplay, setLostCoinsDisplay] = useState<number>(0);
 
   const arenaRef = useRef<HTMLDivElement>(null);
@@ -453,6 +454,14 @@ export default function LiveQuestStudent() {
     );
   }
 
+  const collectCoin = (coinId: number, value: number) => {
+    if (!userData?.uid) return;
+    const currentCoins = userData.coins || 0;
+    supabase.from('users').update({ coins: currentCoins + value }).eq('id', userData.uid).then();
+    userData.coins = currentCoins + value;
+    setDroppedCoins(prev => prev.filter(c => c.id !== coinId));
+  };
+
   const handleAnswerSubmit = async (answerIndex: number) => {
     if (!sessionId || !userData || !session || !quest) return;
     if (me?.currentAnswer !== null && me?.currentAnswer !== undefined) return;
@@ -509,6 +518,14 @@ export default function LiveQuestStudent() {
           const maxCoins = rankIndex * dmg;
           const dropped = Math.floor(Math.random() * maxCoins) + 1;
           setCoinsToRescue(dropped);
+          // Cria moedas individuais espalhadas perto do monstro
+          const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
+            id: Date.now() + i,
+            x: 40 + Math.random() * 55, // % horizontal (monstro fica à direita)
+            y: 15 + Math.random() * 30,  // % vertical
+            value: 1
+          }));
+          setDroppedCoins(prev => [...prev, ...newCoins]);
         }
         // O XP não é mais creditado no banco aqui.
         // Ele fica apenas acumulado em sessionEarnedXp e será creditado
@@ -763,37 +780,35 @@ export default function LiveQuestStudent() {
                 </div>
                 {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
                 
-                {coinsToRescue > 0 && (
-                  <div 
-                    onClick={() => {
-                      if (userData?.uid) {
-                        const currentCoins = userData.coins || 0;
-                        supabase.from('users').update({ coins: currentCoins + coinsToRescue }).eq('id', userData.uid).then();
-                      }
-                      setCoinsToRescue(0);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      zIndex: 100,
-                      animation: 'bounce 1s infinite',
-                      cursor: 'pointer',
-                      background: 'rgba(0,0,0,0.8)',
-                      padding: '1rem',
-                      borderRadius: '16px',
-                      border: '2px solid var(--gold-primary)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      boxShadow: '0 0 20px rgba(251, 191, 36, 0.5)'
-                    }}
-                  >
-                    <Coins size={40} color="var(--gold-primary)" />
-                    <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1.2rem' }}>+{coinsToRescue}</span>
-                    <span style={{ fontSize: '0.8rem', color: 'white' }}>Pegar!</span>
+                {droppedCoins.length > 0 && (
+                  <div style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}>
+                    {droppedCoins.map(coin => (
+                      <button
+                        key={coin.id}
+                        onClick={() => collectCoin(coin.id, coin.value)}
+                        title="Coletar moeda"
+                        style={{
+                          position: 'absolute',
+                          left: `${coin.x}%`,
+                          top: `${coin.y}%`,
+                          pointerEvents: 'auto',
+                          background: 'rgba(245, 158, 11, 0.2)',
+                          border: '2px solid var(--gold-primary)',
+                          borderRadius: '50%',
+                          width: '40px',
+                          height: '40px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          animation: 'coin-pop 0.4s ease-out, coin-bounce 1.5s ease-in-out infinite',
+                          zIndex: 100,
+                          boxShadow: '0 0 15px rgba(245, 158, 11, 0.6)'
+                        }}
+                      >
+                        <Coins size={20} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
+                      </button>
+                    ))}
                   </div>
                 )}
                 

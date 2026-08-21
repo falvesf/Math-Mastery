@@ -127,6 +127,7 @@ export default function QuestGameplay() {
   // Economia Dinâmica
   const [economySettings, setEconomySettings] = useState<any>(null);
   const [coinsToRescue, setCoinsToRescue] = useState<number | null>(null);
+const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [, setLostCoinsDisplay] = useState<number | null>(null);
 
   // Escudos e Defesa
@@ -852,12 +853,16 @@ export default function QuestGameplay() {
         const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
         const maxCoins = rankIndex * dmg;
         const dropped = Math.floor(Math.random() * maxCoins) + 1;
+        // Cria moedas individuais espalhadas perto do monstro (lado direito da arena)
+        const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
+          id: Date.now() + i,
+          x: 35 + Math.random() * 55, // % horizontal (monstro fica à direita)
+          y: 20 + Math.random() * 25,  // % vertical
+          value: 1
+        }));
+        setDroppedCoins(prev => [...prev, ...newCoins]);
         setCoinsToRescue(dropped);
-        // Credita as moedas ao jogador
-        const currentCoins = userData?.coins || 0;
-        supabase.from('users').update({ coins: currentCoins + dropped }).eq('id', userData!.uid).then(({ error }) => { if (error) console.error(error); });
-        userData.coins = currentCoins + dropped;
-        // Remove a animação após alguns segundos
+        // Credita as moedas ao jogador quando coletadas (no clique)
         setTimeout(() => setCoinsToRescue(null), 2500);
       }
 
@@ -1275,6 +1280,15 @@ export default function QuestGameplay() {
     }
   };
 
+  const collectCoin = (coinId: number, value: number) => {
+    if (!userData) return;
+    const currentCoins = userData.coins || 0;
+    const newCoins = currentCoins + value;
+    supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
+    userData.coins = newCoins;
+    setDroppedCoins(prev => prev.filter(c => c.id !== coinId));
+  };
+
   const handleUsePowerup = async (item: UserItem) => {
     if (gameState !== 'playing') {
       await showAlert("Você só pode usar itens durante a batalha!");
@@ -1458,19 +1472,36 @@ export default function QuestGameplay() {
               />
             </div>
             
-            {/* Coin Drop Animation */}
-            {coinsToRescue != null && (
-              <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none' }}>
-                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                  {Array.from({ length: Math.min(coinsToRescue, 8) }).map((_, i) => (
-                    <div key={i} style={{ animation: `coin-fall 2s ease-in ${i * 0.15}s forwards`, opacity: 0, fontSize: '2rem' }}>
-                      <Coins size={28} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
-                    </div>
-                  ))}
-                </div>
-                <div style={{ marginTop: '1rem', background: 'rgba(0,0,0,0.75)', padding: '0.4rem 1rem', borderRadius: '20px', border: '1px solid var(--gold-primary)', color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1.1rem', animation: 'fadeIn 0.3s ease-out' }}>
-                  +{coinsToRescue} <Coins size={16} style={{ verticalAlign: 'middle' }} />
-                </div>
+            {/* Coin Drop Animation - moedas caem do monstro e ficam clicáveis no chão */}
+            {droppedCoins.length > 0 && (
+              <div style={{ position: 'absolute', inset: 0, zIndex: 40, pointerEvents: 'none' }}>
+                {droppedCoins.map(coin => (
+                  <button
+                    key={coin.id}
+                    onClick={() => collectCoin(coin.id, coin.value)}
+                    title="Coletar moeda"
+                    style={{
+                      position: 'absolute',
+                      left: `${coin.x}%`,
+                      top: `${coin.y}%`,
+                      pointerEvents: 'auto',
+                      background: 'rgba(245, 158, 11, 0.2)',
+                      border: '2px solid var(--gold-primary)',
+                      borderRadius: '50%',
+                      width: '44px',
+                      height: '44px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      animation: 'coin-pop 0.4s ease-out, coin-bounce 1.5s ease-in-out infinite',
+                      zIndex: 40,
+                      boxShadow: '0 0 15px rgba(245, 158, 11, 0.6)'
+                    }}
+                  >
+                    <Coins size={22} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
+                  </button>
+                ))}
               </div>
             )}
             
