@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS public.pre_authorized_students (
   class_name text NOT NULL,
   grade text,
   imported_from text DEFAULT 'manual',
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT pre_authorized_students_tenant_name_key UNIQUE (tenant_id, name)
 );
 
 -- Índice para busca rápida por tenant

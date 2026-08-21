@@ -213,10 +213,12 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
         imported_from: 'csv'
       }));
 
-      const { error } = await supabase.from('pre_authorized_students').insert(records);
+      const { error } = await supabase
+        .from('pre_authorized_students')
+        .upsert(records, { onConflict: 'tenant_id,name' });
       if (error) throw error;
 
-      showAlert('Sucesso', `${toImport.length} alunos importados com sucesso!`);
+      showAlert('Sucesso', `${toImport.length} alunos importados com sucesso! (duplicados atualizados)`);
       onComplete();
     } catch (err: any) {
       console.error('Erro ao importar alunos:', err);
