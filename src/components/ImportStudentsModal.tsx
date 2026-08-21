@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useDialog } from '../contexts/DialogContext';
 import { Upload, FileSpreadsheet, Loader2, CheckCircle, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface ImportStudentsModalProps {
   tenantId: string;
@@ -22,32 +23,58 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
   const [preview, setPreview] = useState<ImportedStudent[]>([]);
   const [fileName, setFileName] = useState('');
 
-  const parseCSV = (text: string): ImportedStudent[] => {
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return [];
-
-    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const nameIdx = header.findIndex(h => h.includes('nome') || h.includes('name'));
-    const classIdx = header.findIndex(h => h.includes('turma') || h.includes('class'));
-    const gradeIdx = header.findIndex(h => h.includes('série') || h.includes('serie') || h.includes('grade'));
+  const parseRows = (headers: string[], rows: string[][]): ImportedStudent[] => {
+    const h = headers.map(v => v.toLowerCase().trim());
+    
+    const nameIdx = h.findIndex(v => 
+      v.includes('nome completo') || v.includes('nome do aluno') || 
+      v.includes('nome') || v.includes('name') || v.includes('aluno')
+    );
+    const classIdx = h.findIndex(v => 
+      v.includes('turma') || v.includes('class') || v.includes('sala') || 
+      v.includes('classe') || v.includes('turma/série')
+    );
+    const gradeIdx = h.findIndex(v => 
+      v.includes('série') || v.includes('serie') || v.includes('grade') || 
+      v.includes('ano') || v.includes('nível')
+    );
 
     if (nameIdx === -1 || classIdx === -1) {
-      showAlert('Erro', 'O arquivo deve ter colunas "Nome" e "Turma".');
+      showAlert('Erro', 'O arquivo deve ter colunas com "Nome" e "Turma" no cabeçalho. Colunas encontradas: ' + headers.join(', '));
       return [];
     }
 
     const students: ImportedStudent[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map(c => c.trim());
-      if (cols[nameIdx] && cols[classIdx]) {
+    for (const cols of rows) {
+      const name = cols[nameIdx]?.trim();
+      const className = cols[classIdx]?.trim();
+      if (name && className) {
         students.push({
-          name: cols[nameIdx],
-          class_name: cols[classIdx],
-          grade: gradeIdx >= 0 ? cols[gradeIdx] : undefined
+          name,
+          class_name: className,
+          grade: gradeIdx >= 0 ? cols[gradeIdx]?.trim() : undefined
         });
       }
     }
     return students;
+  };
+
+  const parseCSV = (text: string): ImportedStudent[] => {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(',').map(h => h.trim());
+    const rows = lines.slice(1).map(line => line.split(',').map(c => c.trim()));
+    return parseRows(headers, rows);
+  };
+
+  const parseXLSX = (buffer: ArrayBuffer): ImportedStudent[] => {
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+    if (data.length < 2) return [];
+    const headers = data[0].map(h => String(h || '').trim());
+    const rows = data.slice(1).map(row => row.map(cell => String(cell || '').trim()));
+    return parseRows(headers, rows);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,15 +85,16 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
     setLoading(true);
 
     try {
-      const text = await file.text();
       let students: ImportedStudent[] = [];
 
       if (file.name.endsWith('.csv')) {
+        const text = await file.text();
         students = parseCSV(text);
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        // For XLSX, we'll need a library like xlsx
-        // For now, show a message to use CSV
-        showAlert('Aviso', 'Por favor, converta o arquivo para CSV antes de importar. Suporte para XLSX será adicionado em breve.');
+        const buffer = await file.arrayBuffer();
+        students = parseXLSX(buffer);
+      } else {
+        showAlert('Erro', 'Formato não suportado. Use CSV ou XLSX.');
         setLoading(false);
         return;
       }
