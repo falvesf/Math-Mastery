@@ -47,9 +47,9 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
       try {
         let query = supabase.from('classes').select('id, name, code');
         if (tenantId) {
-          query = query.or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
+          query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
         } else {
-          query = query.is('tenant_id', null);
+          query = query.or('is_global.eq.true,tenant_id.is.null');
         }
         const { data, error } = await query;
         if (!error && data) classesData = data as ClassInfo[];
@@ -60,9 +60,9 @@ export default function ImportStudentsModal({ tenantId, onClose, onComplete }: I
       if (!classesData) {
         let query = supabase.from('classes').select('id, name');
         if (tenantId) {
-          query = query.or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
+          query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
         } else {
-          query = query.is('tenant_id', null);
+          query = query.or('is_global.eq.true,tenant_id.is.null');
         }
         const { data, error } = await query;
         if (error) {
