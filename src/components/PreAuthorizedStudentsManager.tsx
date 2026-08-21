@@ -37,9 +37,7 @@ export default function PreAuthorizedStudentsManager() {
   const [newClassName, setNewClassName] = useState('');
 
   useEffect(() => {
-    if (tenantId) {
-      fetchData();
-    }
+    fetchData();
   }, [tenantId]);
 
   const fetchData = async () => {
