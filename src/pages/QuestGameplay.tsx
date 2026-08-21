@@ -629,8 +629,9 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
       }
 
       setTimeout(() => {
-        // Se tem arma, usa ataque fatal. Se não, usa ataque normal
-        setPlayerAnim(hasAttackWeapon ? 'attack-fatal-slow' : 'attack');
+        // Golpe final: usa animação fatal que mantém o player perto do monstro,
+        // independente de ter arma ou não (evita reset para a posição inicial)
+        setPlayerAnim(hasAttackWeapon ? 'attack-fatal-slow' : 'attack-fatal');
         setPlayerBubble(msg);
         setBattleMessage(hasAttackWeapon ? 'Câmera lenta ativada! Golpe final épico!' : 'Golpe final!');
         
