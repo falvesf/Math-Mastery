@@ -46,21 +46,25 @@ export default function PreAuthorizedStudentsManager() {
     setLoading(true);
     try {
       // Fetch pre-authorized students
-      const { data: studentsData, error: studentsError } = await supabase
-        .from('pre_authorized_students')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .order('name');
+      let studentsQuery = supabase.from('pre_authorized_students').select('*');
+      if (tenantId) {
+        studentsQuery = studentsQuery.eq('tenant_id', tenantId);
+      } else {
+        studentsQuery = studentsQuery.is('tenant_id', null);
+      }
+      const { data: studentsData, error: studentsError } = await studentsQuery.order('name');
 
       if (studentsError) throw studentsError;
       setStudents(studentsData || []);
 
       // Fetch classes for this tenant
-      const { data: classesData, error: classesError } = await supabase
-        .from('classes')
-        .select('*')
-        .or(`is_global.eq.true,tenant_id.eq.${tenantId}`)
-        .order('name');
+      let classesQuery = supabase.from('classes').select('*');
+      if (tenantId) {
+        classesQuery = classesQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      } else {
+        classesQuery = classesQuery.is('tenant_id', null);
+      }
+      const { data: classesData, error: classesError } = await classesQuery.order('name');
 
       if (classesError) throw classesError;
       setClasses(classesData || []);
