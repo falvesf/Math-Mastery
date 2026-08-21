@@ -521,8 +521,8 @@ export default function LiveQuestStudent() {
           // Cria moedas individuais espalhadas perto do monstro
           const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
             id: Date.now() + i,
-            x: 40 + Math.random() * 55, // % horizontal (monstro fica à direita)
-            y: 15 + Math.random() * 30,  // % vertical
+            x: 55 + Math.random() * 40, // lado direito (monstro)
+            y: 55 + Math.random() * 25, // perto do chão
             value: 1
           }));
           setDroppedCoins(prev => [...prev, ...newCoins]);
@@ -801,7 +801,7 @@ export default function LiveQuestStudent() {
                           alignItems: 'center',
                           justifyContent: 'center',
                           cursor: 'pointer',
-                          animation: 'coin-pop 0.4s ease-out, coin-bounce 1.5s ease-in-out infinite',
+                          animation: 'coin-pop 0.4s ease-out',
                           zIndex: 100,
                           boxShadow: '0 0 15px rgba(245, 158, 11, 0.6)'
                         }}

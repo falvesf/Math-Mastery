@@ -851,40 +851,6 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
         }
       }
 
-      if (economySettings?.coinsDropInCombat) {
-        // Usa a config da missão se definida, senão cai na lógica por patente
-        const cfg = combatCoinConfigRef.current;
-        let dropped: number;
-        let coinValue: number;
-
-        if (cfg.minCoins && cfg.maxCoins) {
-          const minC = Math.max(1, cfg.minCoins);
-          const maxC = Math.max(minC, cfg.maxCoins);
-          dropped = Math.floor(Math.random() * (maxC - minC + 1)) + minC;
-        } else {
-          let dmg = isCritical ? 2 : 1;
-          const rankObj = getRankForXp(userData?.xp || 0);
-          const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
-          const maxCoins = rankIndex * dmg;
-          dropped = Math.floor(Math.random() * maxCoins) + 1;
-        }
-
-        const minV = Math.max(1, cfg.minValue ?? 1);
-        const maxV = Math.max(minV, cfg.maxValue ?? minV);
-        coinValue = Math.floor(Math.random() * (maxV - minV + 1)) + minV;
-
-        // Cria moedas individuais espalhadas perto do monstro (lado direito da arena)
-        const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
-          id: Date.now() + i,
-          x: 35 + Math.random() * 55, // % horizontal (monstro fica à direita)
-          y: 20 + Math.random() * 25,  // % vertical
-          value: coinValue
-        }));
-        setDroppedCoins(prev => [...prev, ...newCoins]);
-        setCoinsToRescue(dropped);
-        setTimeout(() => setCoinsToRescue(null), 2500);
-      }
-
       const playerHpPercentage = (currentHearts / maxHearts) * 100;
       const quote = getDynamicQuote(playerHpPercentage, 'player');
       if (quote && !isCritical) setPlayerBubble(quote);
@@ -895,7 +861,7 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
         triggerFatality(true);
       } else {
         setPlayerAnim('attack');
-        setTimeout(() => setMonsterAnim('hurt'), 500);
+        setTimeout(() => { setMonsterAnim('hurt'); dropCoins(); }, 500);
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
         setTimeout(() => {
           setFeedback(null);
@@ -1308,6 +1274,38 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
     setDroppedCoins(prev => prev.filter(c => c.id !== coinId));
   };
 
+  const dropCoins = () => {
+    if (!economySettings?.coinsDropInCombat) return;
+    const cfg = combatCoinConfigRef.current;
+    let dropped: number;
+    let coinValue: number;
+
+    if (cfg.minCoins && cfg.maxCoins) {
+      const minC = Math.max(1, cfg.minCoins);
+      const maxC = Math.max(minC, cfg.maxCoins);
+      dropped = Math.floor(Math.random() * (maxC - minC + 1)) + minC;
+    } else {
+      const rankObj = getRankForXp(userData?.xp || 0);
+      const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+      dropped = Math.floor(Math.random() * rankIndex) + 1;
+    }
+
+    const minV = Math.max(1, cfg.minValue ?? 1);
+    const maxV = Math.max(minV, cfg.maxValue ?? minV);
+    coinValue = Math.floor(Math.random() * (maxV - minV + 1)) + minV;
+
+    // Moedas caem perto dos pés do monstro (lado direito), com variação aleatória
+    const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
+      id: Date.now() + i,
+      x: 55 + Math.random() * 40, // lado direito (monstro)
+      y: 55 + Math.random() * 25, // perto do chão
+      value: coinValue
+    }));
+    setDroppedCoins(prev => [...prev, ...newCoins]);
+    setCoinsToRescue(dropped);
+    setTimeout(() => setCoinsToRescue(null), 2500);
+  };
+
   const handleUsePowerup = async (item: UserItem) => {
     if (gameState !== 'playing') {
       await showAlert("Você só pode usar itens durante a batalha!");
@@ -1513,7 +1511,7 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
-                      animation: 'coin-pop 0.4s ease-out, coin-bounce 1.5s ease-in-out infinite',
+                      animation: 'coin-pop 0.4s ease-out',
                       zIndex: 40,
                       boxShadow: '0 0 15px rgba(245, 158, 11, 0.6)'
                     }}
