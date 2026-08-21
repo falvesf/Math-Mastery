@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Medal, Plus, Edit2, Trash2, Search, Globe, Building2, Copy, Gift, Package } from 'lucide-react';
+import { Medal, Plus, Edit2, Trash2, Search, Globe, Building2, Copy, Gift, Package, X } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
-import { RANKS } from '../lib/ranks';
+import { RANKS, ensureGlobalRanks, DEFAULT_RANKS } from '../lib/ranks';
 import type { RankDef } from '../lib/ranks';
+import { fetchModelsByCategory } from '../lib/model3d';
 import type { ClassDef } from '../pages/AdminDashboard';
 
 const AnimatedRankIcon = ({ rank }: { rank: RankDef }) => {
@@ -36,15 +37,19 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   const { showConfirm } = useDialog();
   const { tenantId, isSuperAdmin } = useTenant();
   const [ranks, setRanks] = useState<RankDef[]>([]);
+  const [globalRanks, setGlobalRanks] = useState<(RankDef & { _isGlobal?: boolean })[]>([]);
   const [classes, setClasses] = useState<ClassDef[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showRankBank, setShowRankBank] = useState(false);
   
   const [isEditing, setIsEditing] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingGlobalId, setEditingGlobalId] = useState<string | null>(null);
   const [formData, setFormData] = useState<RankDef>({
     name: '', minXp: 0, color: '#fbbf24', imageUrl: ''
   });
   const [availableItems, setAvailableItems] = useState<{ id: string; title: string; type: string; imageUrl: string }[]>([]);
+  const [availableChests, setAvailableChests] = useState<{ id: string; name: string; url: string; rarity?: string }[]>([]);
   
   const [galleryTarget, setGalleryTarget] = useState<'main' | number | null>(null);
 
@@ -52,7 +57,13 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     fetchRanks(false);
     fetchClasses();
     fetchAvailableItems();
+    fetchChests();
   }, [tenantId]);
+
+  const fetchChests = async () => {
+    const chests = await fetchModelsByCategory('chest', tenantId);
+    setAvailableChests(chests.map(c => ({ id: c.id, name: c.name, url: c.url, rarity: c.rarity })));
+  };
 
   const fetchAvailableItems = async () => {
     try {
@@ -93,30 +104,43 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   const fetchRanks = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      // Buscar patentes globais + patentes da escola atual
+      // Garantir que exista base global (patentes padrão) no banco
+      await ensureGlobalRanks();
+
+      // Patentes LOCAIS da escola (exibidas no editor)
       let query = supabase.from('custom_ranks').select('*');
       if (tenantId) {
-        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+        query = query.eq('tenant_id', tenantId).eq('is_global', false);
+      } else {
+        query = query.is('tenant_id', null).eq('is_global', false);
       }
       const { data: snap } = await query;
+      let loadedRanks: (RankDef & { _isGlobal?: boolean })[] = [];
       if (snap && snap.length > 0) {
-        const loadedRanks = snap.map(d => {
+        loadedRanks = snap.map(d => {
           const { id, ...rest } = d;
           return { ...rest, _isGlobal: d.is_global ?? false } as RankDef & { _isGlobal?: boolean };
-        }).sort((a,b) => a.minXp - b.minXp);
-        setRanks(loadedRanks);
-        // Atualizar RANKS global com as patentes da escola atual (não globais para não interferir)
-        const localRanks = loadedRanks.filter(r => !r._isGlobal);
-        const globalRanks = loadedRanks.filter(r => r._isGlobal);
-        RANKS.length = 0;
-        // Usar locais se existirem, senão globais
-        RANKS.push(...(localRanks.length > 0 ? localRanks : globalRanks));
-      } else {
-        setRanks([...RANKS]);
+        }).sort((a, b) => a.minXp - b.minXp);
       }
+      setRanks(loadedRanks);
+
+      // Globais (banco de patentes)
+      const { data: gSnap } = await supabase.from('custom_ranks').select('*').eq('is_global', true);
+      const loadedGlobals: (RankDef & { _isGlobal?: boolean; id?: string })[] = (gSnap || []).map(d => {
+        const { id, ...rest } = d;
+        return { id, ...rest, _isGlobal: true } as RankDef & { _isGlobal?: boolean; id?: string };
+      }).sort((a, b) => a.minXp - b.minXp);
+      // Fallback: se não houver globais no banco, usar as patentes padrão embutidas
+      const effectiveGlobals = loadedGlobals.length > 0
+        ? loadedGlobals
+        : DEFAULT_RANKS.map((r, i) => ({ ...r, id: `default_global_${i}`, _isGlobal: true }) as RankDef & { _isGlobal?: boolean; id?: string });
+      setGlobalRanks(effectiveGlobals);
+
+      // RANKS do jogo: usar os locais se existirem, senão os globais (padrão)
+      RANKS.length = 0;
+      RANKS.push(...(loadedRanks.length > 0 ? loadedRanks : effectiveGlobals));
     } catch (e) {
       console.error('Erro ao carregar patentes:', e);
-      setRanks([...RANKS]);
     }
     setLoading(false);
   };
@@ -125,7 +149,6 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     const confirmed = await showConfirm('Copiar patentes globais como base? Elas serão copiadas para esta escola e ficarão editáveis. As globais originais permanecem para outras escolas.');
     if (!confirmed) return;
 
-    const globalRanks = ranks.filter(r => (r as any)._isGlobal);
     if (globalRanks.length === 0) return;
 
     const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
@@ -157,39 +180,84 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     fetchRanks(false);
   };
 
+  // Copiar UMA patente global para a escola (cópia local editável)
+  const handleImportRankToLocal = async (global: any) => {
+    const confirmed = await showConfirm('Copiar esta patente global para a sua escola? Será criada uma cópia local editável.');
+    if (!confirmed) return;
+    const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
+    const existingLocal = await supabase
+      .from('custom_ranks')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('is_global', false);
+    const nextIdx = existingLocal.data?.length || 0;
+    const { _isGlobal, ...rankData } = global as any;
+    await supabase.from('custom_ranks').upsert({
+      id: `rank_${tenantPrefix}_${nextIdx}`,
+      ...rankData,
+      tenant_id: tenantId || null,
+      is_global: false
+    });
+    await showConfirm('Patente copiada para a sua escola!', 'Sucesso');
+    fetchRanks(false);
+  };
+
+  // Superadmin: abrir editor para editar uma patente GLOBAL do banco
+  const openEditGlobal = (global: any) => {
+    if (!isSuperAdmin) return;
+    const { _isGlobal, _id, id: _rid, ...rankData } = global as any;
+    setFormData({ ...rankData, name: global.name || '', minXp: global.minXp || 0, color: global.color || '#fbbf24' } as RankDef);
+    setEditingGlobalId(global.id);
+    setEditingIndex(null);
+    setIsEditing(true);
+  };
+
+  // Superadmin: excluir patente GLOBAL do banco
+  const handleDeleteGlobal = async (id: string) => {
+    if (!isSuperAdmin) return;
+    const confirmed = await showConfirm('Excluir esta patente global do banco? Isso não afeta as cópias locais das escolas.');
+    if (!confirmed) return;
+    await supabase.from('custom_ranks').delete().eq('id', id);
+    fetchRanks(false);
+  };
+
   const handleSaveRank = async () => {
     if (!formData.name) return;
 
-    // Se o superadmin está editando uma patente GLOBAL, atualiza-a diretamente
-    if (editingIndex !== null && (ranks[editingIndex] as any)._isGlobal) {
-      const editingGlobal = ranks[editingIndex] as any;
-      const globalId = editingGlobal.id;
-      const { _isGlobal: _g, id: _id, tenant_id: globalTenantId, ...rankFields } = editingGlobal;
-      const { _isGlobal: _f, id: _fid, ...formFields } = formData as any;
+    // Superadmin editando uma patente GLOBAL (via banco de patentes)
+    if (editingGlobalId) {
       await supabase.from('custom_ranks').update({
-        ...rankFields,
-        ...formFields,
+        name: formData.name,
+        minXp: formData.minXp,
+        color: formData.color,
+        imageUrl: formData.imageUrl || '',
+        audioUrl: formData.audioUrl || '',
+        variants: formData.variants || [],
+        rankUpChestItems: formData.rankUpChestItems || [],
+        rankUpChestModelId: formData.rankUpChestModelId || '',
         is_global: true,
-        tenant_id: globalTenantId ?? null,
-      }).eq('id', globalId);
+        tenant_id: null,
+      }).eq('id', editingGlobalId);
       setIsEditing(false);
+      setEditingGlobalId(null);
       setEditingIndex(null);
       fetchRanks(false);
       return;
     }
 
-    // Somente patentes locais (não globais) podem ser editadas
+    // Patentes LOCAIS da escola (a lista já contém só locais)
     const localRanks = ranks.filter(r => !(r as any)._isGlobal);
-    const globalRanks = ranks.filter(r => (r as any)._isGlobal);
 
     const newRanks = [...localRanks];
+    let isNewRank = false;
     if (editingIndex !== null) {
       const actualIdx = localRanks.indexOf(ranks[editingIndex]);
       if (actualIdx >= 0) newRanks[actualIdx] = formData;
     } else {
       newRanks.push(formData);
+      isNewRank = true;
     }
-    
+
     newRanks.sort((a, b) => a.minXp - b.minXp);
 
     // Limpar patentes locais antigas da escola (para evitar duplicatas)
@@ -217,10 +285,31 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       });
     }
 
-    setRanks([...globalRanks, ...newRanks]);
+    // Nova patente também vira base GLOBAL (banco de patentes), editável só pelo superadmin
+    if (isNewRank) {
+      try {
+        await supabase.from('custom_ranks').insert({
+          id: `global_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          name: formData.name,
+          minXp: formData.minXp,
+          color: formData.color,
+          imageUrl: formData.imageUrl || '',
+          audioUrl: formData.audioUrl || '',
+          variants: formData.variants || [],
+          rankUpChestItems: formData.rankUpChestItems || [],
+          rankUpChestModelId: formData.rankUpChestModelId || '',
+          tenant_id: null,
+          is_global: true
+        });
+      } catch (e) {
+        console.error('Erro ao criar base global da patente:', e);
+      }
+    }
+
+    setRanks(newRanks);
     RANKS.length = 0;
     RANKS.push(...newRanks);
-    
+
     setIsEditing(false);
     setEditingIndex(null);
     fetchRanks(false);
@@ -282,15 +371,17 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       showConfirm('Esta patente é global. Para personalizá-la, crie uma cópia local.', 'Informação');
       return;
     }
-    setFormData({ ...rank, variants: rank.variants || [], rankUpChestItems: rank.rankUpChestItems || [] });
+    setFormData({ ...rank, variants: rank.variants || [], rankUpChestItems: rank.rankUpChestItems || [], rankUpChestModelId: rank.rankUpChestModelId || '' });
     setEditingIndex(index);
+    setEditingGlobalId(null);
     setIsEditing(true);
   };
 
   const openNew = () => {
     const localRanks = ranks.filter(r => !(r as any)._isGlobal);
-    setFormData({ name: '', minXp: localRanks.length > 0 ? localRanks[localRanks.length-1].minXp + 500 : 0, color: '#fbbf24', imageUrl: '', variants: [], rankUpChestItems: [] });
+    setFormData({ name: '', minXp: localRanks.length > 0 ? localRanks[localRanks.length-1].minXp + 500 : 0, color: '#fbbf24', imageUrl: '', variants: [], rankUpChestItems: [], rankUpChestModelId: '' });
     setEditingIndex(null);
+    setEditingGlobalId(null);
     setIsEditing(true);
   };
 
@@ -328,9 +419,14 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            {ranks.filter(r => !(r as any)._isGlobal).length === 0 && ranks.some(r => (r as any)._isGlobal) && (
+            {ranks.length === 0 && globalRanks.length > 0 && (
               <button className="login-btn" onClick={copyGlobalsAsBase} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
                 <Copy size={16} /> Copiar Globais como Base
+              </button>
+            )}
+            {globalRanks.length > 0 && (
+              <button className="login-btn" onClick={() => setShowRankBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+                <Package size={16} /> Banco de Patentes
               </button>
             )}
             <button className="login-btn" onClick={openNew} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
@@ -402,6 +498,25 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                 <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic' }}>
                   Estes itens são premiados quando o aluno alcançar ESTA patente, desde que o checkbox "Receber baú ao subir de patente" esteja ativo nas Configurações da Economia.
                 </p>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                    <Gift size={16} color="var(--gold-primary)" /> Baú Visual (opcional)
+                  </label>
+                  <select
+                    value={formData.rankUpChestModelId || ''}
+                    onChange={(e) => setFormData({ ...formData, rankUpChestModelId: e.target.value || '' })}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                  >
+                    <option value="">(Baú padrão do jogo)</option>
+                    {availableChests.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}{c.rarity ? ` — ${c.rarity}` : ''}</option>
+                    ))}
+                  </select>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', display: 'block', marginTop: '0.35rem' }}>
+                    Arte usada na revelação do baú ao subir de patente. Cadastre na aba "Moldes 3D → Baús de Recompensa".
+                  </span>
+                </div>
 
                 {(formData.rankUpChestItems || []).length === 0 ? (
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic' }}>Nenhum item configurado. Este baú não será distribuído ao alcançar esta patente.</p>
@@ -573,6 +688,63 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
           })}
         </div>
       </div>
+
+      {/* Banco de Patentes (globais) */}
+      {showRankBank && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="glass-panel" style={{ width: '700px', maxWidth: '95vw', maxHeight: '90vh', padding: '2rem', display: 'flex', flexDirection: 'column', background: 'var(--bg-dark)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gold-primary)' }}>
+                <Medal color="var(--gold-primary)" /> Banco de Patentes (Global)
+              </h2>
+              <button onClick={() => setShowRankBank(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}><X size={24} /></button>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>
+              Patentes globais criadas por todas as escolas. {isSuperAdmin ? 'Como superadmin, você edita/exclui a base global.' : 'Copie para a sua escola para editar localmente.'}
+            </p>
+            {!isSuperAdmin && (
+              <div style={{ marginBottom: '1rem' }}>
+                <button className="login-btn" onClick={async () => { await copyGlobalsAsBase(); setShowRankBank(false); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
+                  <Copy size={16} /> Copiar Todas como Base
+                </button>
+              </div>
+            )}
+            <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gap: '0.5rem' }}>
+              {globalRanks.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Nenhuma patente global no banco ainda.</p>
+              ) : globalRanks.map((rank, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <AnimatedRankIcon rank={rank} />
+                    <div>
+                      <h4 style={{ margin: 0, color: rank.color, fontSize: '1rem' }}>{rank.name}</h4>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>A partir de {rank.minXp} XP</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {!isSuperAdmin && (
+                      <button onClick={() => handleImportRankToLocal(rank)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <Copy size={14} /> Copiar
+                      </button>
+                    )}
+                    {isSuperAdmin && (
+                      <>
+                        <button onClick={() => openEditGlobal(rank)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <Edit2 size={14} /> Editar
+                        </button>
+                        <button onClick={() => handleDeleteGlobal(rank.id)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <Trash2 size={14} /> Excluir
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
