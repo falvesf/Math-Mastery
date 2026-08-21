@@ -129,6 +129,8 @@ export default function QuestGameplay() {
   const [coinsToRescue, setCoinsToRescue] = useState<number | null>(null);
 const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [, setLostCoinsDisplay] = useState<number | null>(null);
+  const alreadyCompletedRef = useRef(false);
+  const combatCoinConfigRef = useRef<{ minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number }>({});
 
   // Escudos e Defesa
   const totalDefense = totalEquippedStats.defense;
@@ -269,6 +271,8 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
             if (doc.status === 'failed' && !qData.allowRetries) alreadyFailedHardcore = true;
           });
         }
+        alreadyCompletedRef.current = alreadyCompleted;
+        combatCoinConfigRef.current = qData.combatCoinDrop || {};
 
         if (alreadyCompleted && userData.role !== 'admin' && !isStudyMode) {
           setErrorMessage('Você já completou esta missão com sucesso!');
@@ -847,22 +851,37 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
         }
       }
 
-      if (economySettings?.coinsDropInCombat && !isStudyMode) {
-        let dmg = isCritical ? 2 : 1;
-        const rankObj = getRankForXp(userData?.xp || 0);
-        const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
-        const maxCoins = rankIndex * dmg;
-        const dropped = Math.floor(Math.random() * maxCoins) + 1;
+      if (economySettings?.coinsDropInCombat) {
+        // Usa a config da missão se definida, senão cai na lógica por patente
+        const cfg = combatCoinConfigRef.current;
+        let dropped: number;
+        let coinValue: number;
+
+        if (cfg.minCoins && cfg.maxCoins) {
+          const minC = Math.max(1, cfg.minCoins);
+          const maxC = Math.max(minC, cfg.maxCoins);
+          dropped = Math.floor(Math.random() * (maxC - minC + 1)) + minC;
+        } else {
+          let dmg = isCritical ? 2 : 1;
+          const rankObj = getRankForXp(userData?.xp || 0);
+          const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+          const maxCoins = rankIndex * dmg;
+          dropped = Math.floor(Math.random() * maxCoins) + 1;
+        }
+
+        const minV = Math.max(1, cfg.minValue ?? 1);
+        const maxV = Math.max(minV, cfg.maxValue ?? minV);
+        coinValue = Math.floor(Math.random() * (maxV - minV + 1)) + minV;
+
         // Cria moedas individuais espalhadas perto do monstro (lado direito da arena)
         const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
           id: Date.now() + i,
           x: 35 + Math.random() * 55, // % horizontal (monstro fica à direita)
           y: 20 + Math.random() * 25,  // % vertical
-          value: 1
+          value: coinValue
         }));
         setDroppedCoins(prev => [...prev, ...newCoins]);
         setCoinsToRescue(dropped);
-        // Credita as moedas ao jogador quando coletadas (no clique)
         setTimeout(() => setCoinsToRescue(null), 2500);
       }
 
@@ -1034,7 +1053,7 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
 
     const isStudent = userData?.role === 'student' || !!userData?.studentViewActive;
     const isEligibleForXP = isStudent && !isStudyMode;
-    const isEligibleForChest = isStudent; // Baú cai em qualquer modo para alunos/modo debug
+    const isEligibleForChest = isStudent && !alreadyCompletedRef.current; // Baú só na 1ª conclusão
     
     setSaving(true);
     
@@ -1123,8 +1142,8 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
         }
       }
     
-    // Monster Drops
-    if (isWin && quest?.monsterDrops && quest.monsterDrops.length > 0) {
+    // Monster Drops (só na 1ª conclusão)
+    if (isWin && !alreadyCompletedRef.current && quest?.monsterDrops && quest.monsterDrops.length > 0) {
       const dropItemIds = quest.monsterDrops.map(d => d.itemId);
       if (dropItemIds.length > 0) {
         const { data: snap } = await supabase.from('store_items').select('*').in('id', dropItemIds);

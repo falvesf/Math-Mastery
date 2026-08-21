@@ -84,6 +84,12 @@ export interface QuestDef {
   battleBgMoveDirection?: 'horizontal' | 'vertical' | 'diagonal';
   battleBgMoveSpeed?: number;
   battleBgMoveDuration?: number;
+  combatCoinDrop?: {
+    minCoins?: number;
+    maxCoins?: number;
+    minValue?: number;
+    maxValue?: number;
+  };
   active: boolean;
   createdBy?: string;
   creatorRole?: string;
@@ -518,6 +524,10 @@ export default function AdminDashboard() {
   const [questBattleBgMoveDuration, setQuestBattleBgMoveDuration] = useState(30);
   const [showArenaBgEditor, setShowArenaBgEditor] = useState(false);
   const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], dropChance?: number}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+  const [questCombatCoinMin, setQuestCombatCoinMin] = useState(2);
+  const [questCombatCoinMax, setQuestCombatCoinMax] = useState(6);
+  const [questCombatCoinMinValue, setQuestCombatCoinMinValue] = useState(1);
+  const [questCombatCoinMaxValue, setQuestCombatCoinMaxValue] = useState(3);
   const [questLiveChest1st, setQuestLiveChest1st] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
   const [questLiveChest2nd, setQuestLiveChest2nd] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
   const [questLiveChest3rd, setQuestLiveChest3rd] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -1158,6 +1168,12 @@ export default function AdminDashboard() {
       battleBgMoveDirection: questBattleBgMoveDirection,
       battleBgMoveSpeed: questBattleBgMoveSpeed,
       battleBgMoveDuration: questBattleBgMoveDuration,
+      combatCoinDrop: {
+        minCoins: questCombatCoinMin,
+        maxCoins: questCombatCoinMax,
+        minValue: questCombatCoinMinValue,
+        maxValue: questCombatCoinMaxValue,
+      },
       chestConfig: questChestConfig,
       mode: questMode,
       liveChest1stPlace: questLiveChest1st,
@@ -1195,7 +1211,7 @@ export default function AdminDashboard() {
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
       setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -1233,6 +1249,10 @@ export default function AdminDashboard() {
     setQuestBattleBgMoveDirection(quest.battleBgMoveDirection ?? 'diagonal');
     setQuestBattleBgMoveSpeed(quest.battleBgMoveSpeed ?? 10);
     setQuestBattleBgMoveDuration(quest.battleBgMoveDuration ?? 30);
+    setQuestCombatCoinMin(quest.combatCoinDrop?.minCoins ?? 2);
+    setQuestCombatCoinMax(quest.combatCoinDrop?.maxCoins ?? 6);
+    setQuestCombatCoinMinValue(quest.combatCoinDrop?.minValue ?? 1);
+    setQuestCombatCoinMaxValue(quest.combatCoinDrop?.maxValue ?? 3);
     setQuestChestConfig(quest.chestConfig || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
     setQuestMode(quest.mode || 'classic');
     setQuestLiveChest1st(quest.liveChest1stPlace || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -2475,6 +2495,32 @@ export default function AdminDashboard() {
                             placeholder="Ou cole a URL da imagem aqui..."
                             style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
                           />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Drop de Moedas em Combate */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '2rem', padding: '1.5rem', border: '1px solid var(--gold-primary)', borderRadius: '12px', background: 'rgba(251, 191, 36, 0.05)' }}>
+                      <h3 style={{ fontSize: '1.2rem', color: 'var(--gold-primary)', margin: 0 }}>Drop de Moedas em Combate</h3>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
+                        Moedas caem do monstro a cada acerto, e o jogador clica para coletar. Vale quando a economia é "Moedas de Ouro" e "Moedas visíveis nos desafios" está ativa (também nas revisões). O baú e itens grandes só caem na 1ª conclusão.
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Qtd. mínima de moedas</label>
+                          <input type="number" min="1" value={questCombatCoinMin} onChange={e => setQuestCombatCoinMin(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Qtd. máxima de moedas</label>
+                          <input type="number" min="1" value={questCombatCoinMax} onChange={e => setQuestCombatCoinMax(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Valor mín. por moeda</label>
+                          <input type="number" min="1" value={questCombatCoinMinValue} onChange={e => setQuestCombatCoinMinValue(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Valor máx. por moeda</label>
+                          <input type="number" min="1" value={questCombatCoinMaxValue} onChange={e => setQuestCombatCoinMaxValue(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
                         </div>
                       </div>
                     </div>
