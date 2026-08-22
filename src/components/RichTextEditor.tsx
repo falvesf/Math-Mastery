@@ -22,9 +22,10 @@ interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
+  autoFocus?: boolean;
 }
 
-export default function RichTextEditor({ value, onChange, placeholder = 'Digite aqui...' }: RichTextEditorProps) {
+export default function RichTextEditor({ value, onChange, placeholder = 'Digite aqui...', autoFocus = false }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const [showMathPanel, setShowMathPanel] = useState(false);
   const [showColorPanel, setShowColorPanel] = useState(false);
@@ -32,6 +33,12 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Digite 
   const mathPanelRef = useRef<HTMLDivElement>(null);
   const colorPanelRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (autoFocus) {
+      editorRef.current?.focus();
+    }
+  }, [autoFocus]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

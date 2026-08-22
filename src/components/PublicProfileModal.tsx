@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
-import { X, Shield, Swords, Heart, Trophy, Crosshair, Skull, UserPlus, UserMinus } from 'lucide-react';
+import { X, Shield, Swords, Heart, Trophy, Crosshair, Skull, UserPlus, UserMinus, History, Package, Star } from 'lucide-react';
 import AvatarCharacter, { type EquippedItem } from './AvatarCharacter';
 import { type UserData } from '../contexts/AuthContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { calculateTotalStats } from '../lib/gacha';
+import { RANKS } from '../lib/ranks';
+import { fetchStudentAchievementHistory, type AchievementItem } from '../lib/achievementHistory';
+import NintendoHeart from './NintendoHeart';
 
 interface PublicProfileModalProps {
   isOpen: boolean;
@@ -15,11 +19,11 @@ interface PublicProfileModalProps {
   rankPos?: number;
 }
 
-import { calculateTotalStats } from '../lib/gacha';
-import { RANKS } from '../lib/ranks';
 export default function PublicProfileModal({ isOpen, onClose, user, equippedItems, rankName, rankColor, rankPos }: PublicProfileModalProps) {
   const [questStats, setQuestStats] = useState({ participations: 0, wins: 0, defeats: 0 });
   const [recentQuests, setRecentQuests] = useState<any[]>([]);
+  const [achievements, setAchievements] = useState<AchievementItem[]>([]);
+  const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,6 +65,10 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
           wins,
           defeats
         });
+
+        // Carrega o Histórico de Conquistas Completo
+        const achList = await fetchStudentAchievementHistory(user.uid);
+        setAchievements(achList);
       } catch (e) {
         console.error(e);
       } finally {
@@ -131,7 +139,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(5px)', padding: '1rem' }}>
-      <div className="glass-panel" style={{ width: '100%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', padding: '0' }}>
+      <div className="glass-panel" style={{ width: '100%', maxWidth: '950px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', padding: '0' }}>
         
         <button onClick={onClose} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'var(--btn-bg)', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
           <X size={24} />
@@ -169,9 +177,14 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
               </p>
             )}
 
-            <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {Array.from({ length: Math.max(10, maxHearts) }).map((_, i) => (
-                <Heart key={i} size={20} fill={i < visualHp ? "var(--accent-red)" : "none"} color={i < visualHp ? "var(--accent-red)" : "rgba(255,255,255,0.2)"} />
+            <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.5rem', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
+              {Array.from({ length: maxHearts }).map((_, i) => (
+                <NintendoHeart 
+                  key={i} 
+                  size={16} 
+                  fillPercentage={i < visualHp ? 100 : 0} 
+                  title={i < visualHp ? "Coração Cheio" : "Coração Vazio"} 
+                />
               ))}
             </div>
             <button
@@ -189,8 +202,8 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
             </button>
           </div>
 
-          {/* Lado Direito: Informações e Status */}
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          {/* Lado Direito: Abas de Informações e Histórico de Conquistas */}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
             {isPrivate ? (
               <div style={{ textAlign: 'center', padding: '3rem', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
                 <Shield size={48} color="var(--text-secondary)" style={{ marginBottom: '1rem', opacity: 0.5 }} />
@@ -198,77 +211,173 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                 <p style={{ color: 'rgba(255,255,255,0.4)', marginTop: '0.5rem' }}>Este jogador escolheu ocultar suas estatísticas.</p>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
-                
-                {/* Estatísticas de Missões */}
-                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-                  <h3 style={{ color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1.5rem 0' }}>
-                    <Trophy size={20} /> Histórico de Missões
-                  </h3>
-                  
-                  {loading ? (
-                    <p style={{ color: 'var(--text-secondary)' }}>Carregando dados...</p>
-                  ) : (
-                    <div style={{ display: 'grid', gap: '1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                        <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Crosshair size={16} /> Participações</span>
-                        <strong style={{ fontSize: '1.1rem' }}>{questStats.participations}</strong>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                        <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Trophy size={16} /> Vitórias</span>
-                        <strong style={{ color: 'var(--accent-green)', fontSize: '1.1rem' }}>{questStats.wins}</strong>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Skull size={16} /> Derrotas</span>
-                        <strong style={{ color: 'var(--accent-red)', fontSize: '1.1rem' }}>{questStats.defeats}</strong>
-                      </div>
+              <div>
+                {/* Abas */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
+                  <button 
+                    onClick={() => setActiveTab('stats')}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: activeTab === 'stats' ? 'var(--gold-primary)' : 'transparent',
+                      color: activeTab === 'stats' ? 'var(--bg-primary, #000)' : 'var(--text-secondary)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontSize: '0.95rem'
+                    }}
+                  >
+                    <Trophy size={16} /> Status & Estatísticas
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('history')}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: activeTab === 'history' ? 'var(--gold-primary)' : 'transparent',
+                      color: activeTab === 'history' ? 'var(--bg-primary, #000)' : 'var(--text-secondary)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontSize: '0.95rem'
+                    }}
+                  >
+                    <History size={16} /> Histórico de Conquistas
+                  </button>
+                </div>
+
+                {activeTab === 'stats' ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
+                    
+                    {/* Estatísticas de Missões */}
+                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+                      <h3 style={{ color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>
+                        <Trophy size={18} /> Missões Concluídas
+                      </h3>
                       
-                      {recentQuests.length > 0 && (
-                        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)' }}>
-                          <h4 style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.9rem', textTransform: 'uppercase' }}>Últimas Missões</h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {recentQuests.map((q, i) => (
-                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '8px' }}>
-                                <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}>{q.title}</span>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: q.status === 'completed' ? 'var(--accent-green)' : (q.status === 'failed' ? 'var(--accent-red)' : 'var(--text-secondary)') }}>
-                                  {q.status === 'completed' ? 'VITÓRIA' : (q.status === 'failed' ? 'FALHA' : 'ABANDONOU')}
-                                </span>
-                              </div>
-                            ))}
+                      {loading ? (
+                        <p style={{ color: 'var(--text-secondary)' }}>Carregando dados...</p>
+                      ) : (
+                        <div style={{ display: 'grid', gap: '1rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                            <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Crosshair size={16} /> Participações</span>
+                            <strong style={{ fontSize: '1.1rem' }}>{questStats.participations}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                            <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Trophy size={16} /> Vitórias</span>
+                            <strong style={{ color: 'var(--accent-green)', fontSize: '1.1rem' }}>{questStats.wins}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Skull size={16} /> Derrotas</span>
+                            <strong style={{ color: 'var(--accent-red)', fontSize: '1.1rem' }}>{questStats.defeats}</strong>
                           </div>
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
 
-                {/* Equipamentos e Atributos */}
-                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-                  <h3 style={{ color: 'var(--accent-blue)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1.5rem 0' }}>
-                    <Swords size={20} /> Equipamentos & Status
-                  </h3>
-                  
-                  <div style={{ display: 'grid', gap: '1rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                      <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Shield size={16} /> Defesa Total</span>
-                      <strong style={{ color: 'var(--accent-blue)', fontSize: '1.1rem' }}>+{totalDefense}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                      <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Swords size={16} /> Força de Ataque</span>
-                      <strong style={{ color: 'var(--accent-red)', fontSize: '1.1rem' }}>+{totalAttack}</strong>
-                    </div>
-                    {petItem && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Pet Equipado</span>
-                        <strong style={{ color: 'var(--gold-primary)', fontSize: '1.1rem' }}>{petItem.itemTitle}</strong>
+                    {/* Equipamentos e Atributos */}
+                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+                      <h3 style={{ color: 'var(--accent-blue)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>
+                        <Swords size={18} /> Equipamentos & Status
+                      </h3>
+                      
+                      <div style={{ display: 'grid', gap: '1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                          <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Shield size={16} /> Defesa Total</span>
+                          <strong style={{ color: 'var(--accent-blue)', fontSize: '1.1rem' }}>+{totalDefense}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                          <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}><Swords size={16} /> Força de Ataque</span>
+                          <strong style={{ color: 'var(--accent-red)', fontSize: '1.1rem' }}>+{totalAttack}</strong>
+                        </div>
+                        {petItem && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Pet Equipado</span>
+                            <strong style={{ color: 'var(--gold-primary)', fontSize: '1.1rem' }}>{petItem.itemTitle}</strong>
+                          </div>
+                        )}
+                        {equippedItems.length === 0 && (
+                          <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center', margin: 0, fontSize: '0.9rem' }}>Nenhum equipamento.</p>
+                        )}
                       </div>
-                    )}
-                    {equippedItems.length === 0 && (
-                      <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center', margin: 0, fontSize: '0.9rem' }}>Nenhum equipamento.</p>
+                    </div>
+
+                  </div>
+                ) : (
+                  /* Feed do Histórico de Conquistas */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                    {loading ? (
+                      <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>Carregando conquistas...</p>
+                    ) : achievements.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                        <Star size={36} style={{ opacity: 0.5, margin: '0 auto 0.5rem auto' }} />
+                        <p>Nenhuma conquista registrada ainda.</p>
+                      </div>
+                    ) : (
+                      achievements.map((item, index) => {
+                        const isRank = item.type === 'rank_up';
+                        const isItem = item.type === 'item';
+                        const isNegative = item.badgeType === 'xp_negative';
+                        
+                        let borderColor = 'var(--gold-primary)';
+                        let badgeBg = 'rgba(251, 191, 36, 0.15)';
+                        let badgeColor = 'var(--gold-primary)';
+                        
+                        if (isRank) {
+                          borderColor = '#a855f7';
+                          badgeBg = 'rgba(168, 85, 247, 0.2)';
+                          badgeColor = '#c084fc';
+                        } else if (isItem) {
+                          borderColor = '#3b82f6';
+                          badgeBg = 'rgba(59, 130, 246, 0.15)';
+                          badgeColor = '#60a5fa';
+                        } else if (isNegative) {
+                          borderColor = 'var(--accent-red)';
+                          badgeBg = 'rgba(239, 68, 68, 0.15)';
+                          badgeColor = 'var(--accent-red)';
+                        }
+
+                        const dateObj = new Date(item.timestamp);
+
+                        return (
+                          <div key={item.id || index} style={{ padding: '0.9rem 1.1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', borderLeft: `4px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} alt="" style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '6px', flexShrink: 0 }} />
+                              ) : (
+                                <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  {isRank ? <Trophy size={18} color="#c084fc" /> : isItem ? <Package size={18} color="#60a5fa" /> : <Star size={18} color="var(--gold-primary)" />}
+                                </div>
+                              )}
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <h4 style={{ fontSize: '0.95rem', margin: '0 0 0.15rem 0', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                                  {item.title}
+                                </h4>
+                                {item.subtitle && (
+                                  <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                    {item.subtitle}
+                                  </p>
+                                )}
+                                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
+                                  Data: {dateObj.toLocaleDateString('pt-BR')} | Hora: {dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: badgeColor, background: badgeBg, padding: '0.35rem 0.75rem', borderRadius: '16px', whiteSpace: 'nowrap', border: `1px solid ${borderColor}40` }}>
+                              {item.badgeText}
+                            </div>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
-                </div>
-
+                )}
               </div>
             )}
           </div>

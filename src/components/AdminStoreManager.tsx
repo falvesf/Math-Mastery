@@ -17,7 +17,7 @@ import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd }
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
 import { v4 as uuidv4 } from 'uuid';
 
-export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character';
+export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 
 export interface StoreItem {
@@ -30,6 +30,8 @@ export interface StoreItem {
   cost: number;
   type: 'consumable' | 'equippable';
   gameEffect?: GameEffectType;
+  hpCooldownReductionMinutes?: number;
+  buffDurationHours?: number;
   usableInQuest?: boolean;
   minRankRequired: number; // Index of RANKS array
   active: boolean;
@@ -354,6 +356,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           useGlobalGacha: itemData.useGlobalGacha ?? true,
           unlockedSkinId: itemData.unlockedSkinId || '',
           buffDurationDays: itemData.buffDurationDays || 7,
+          hpCooldownReductionMinutes: itemData.hpCooldownReductionMinutes || null,
+          buffDurationHours: itemData.buffDurationHours || null,
           backColor: itemData.backColor || ''
         };
         updatePromises.push(supabase.from('user_items').update({ data: newData }).eq('id', row.id) as any);
@@ -637,6 +641,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="extra_life">Escudo (Protege contra erro na questão atual)</option>
                       <option value="restore_hp">Elixir da Vida (Recupera todo HP do jogador)</option>
                       <option value="heal_1_hp">Poção de Vida (Recupera 1 HP do jogador)</option>
+                      <option value="reduce_hp_cooldown">Acelerador de Regeneração (Reduz tempo de recarga dos corações)</option>
                       <option value="add_attribute">Pergaminho do Novo Atributo (Adiciona até 2 atributos a um item base, 70% chance)</option>
                       <option value="reroll_attributes">Pergaminho do Aprimoramento (Sorteia novos atributos para um item que já possui)</option>
                       <option value="gift_wrap">Caixa de Presente (Pode colocar 1 item dentro)</option>
@@ -645,6 +650,45 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="rename_character">Carta de Troca de Nome (Renomear personagem)</option>
                     </select>
                   </div>
+                  {formData.gameEffect === 'reduce_hp_cooldown' && (
+                    <div className="responsive-grid-sm" style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#f87171', fontWeight: 'bold' }}>
+                          ⚡ Tempo a Reduzir por Coração (Minutos)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={29}
+                          value={formData.hpCooldownReductionMinutes ?? 10}
+                          onChange={e => setFormData({...formData, hpCooldownReductionMinutes: Math.max(1, Math.min(29, Number(e.target.value)))})}
+                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                        />
+                        <small style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', display: 'block', marginTop: '4px' }}>
+                          Padrão: 30 min. Com este item, cada coração encherá em <strong>{30 - (formData.hpCooldownReductionMinutes ?? 10)} minutos</strong>.
+                        </small>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                          ⏳ Duração do Efeito
+                        </label>
+                        <select
+                          value={formData.buffDurationHours ?? 24}
+                          onChange={e => setFormData({...formData, buffDurationHours: Number(e.target.value)})}
+                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                        >
+                          <option value={1}>1 Hora</option>
+                          <option value={6}>6 Horas</option>
+                          <option value={12}>12 Horas</option>
+                          <option value={24}>24 Horas (1 Dia)</option>
+                          <option value={48}>48 Horas (2 Dias)</option>
+                          <option value={72}>3 Dias</option>
+                          <option value={168}>7 Dias</option>
+                          <option value={720}>30 Dias</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
                   {formData.gameEffect === 'unlock_skin' && (
                     <div className="responsive-grid-sm">
                       <div>

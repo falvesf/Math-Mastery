@@ -285,11 +285,6 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         newBalance = balanceToCheck - finalCost;
         if (method === 'xp') {
           await supabase.from('users').update({ xp: newBalance }).eq('id', userData.uid);
-          await supabase.from('xp_logs').insert({
-            student_id: userData.uid,
-            eval_name: `Compra na Loja: ${item.title} ${isGift ? '(Presente)' : ''}`,
-            xp_gained: -finalCost
-          });
           userData.xp = newBalance;
         } else {
           await supabase.from('users').update({ coins: newBalance }).eq('id', userData.uid);

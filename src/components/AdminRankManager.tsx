@@ -13,7 +13,7 @@ import type { ClassDef } from '../pages/AdminDashboard';
 
 const AnimatedRankIcon = ({ rank }: { rank: RankDef }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  
+
   const allImages = [rank.imageUrl, ...(rank.variants || []).map(v => v.imageUrl)].filter(Boolean) as string[];
 
   useEffect(() => {
@@ -37,11 +37,11 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   const { showConfirm } = useDialog();
   const { tenantId, isSuperAdmin } = useTenant();
   const [ranks, setRanks] = useState<RankDef[]>([]);
-  const [globalRanks, setGlobalRanks] = useState<(RankDef & { _isGlobal?: boolean })[]>([]);
+  const [globalRanks, setGlobalRanks] = useState<(RankDef & { _isGlobal?: boolean; id?: string })[]>([]);
   const [classes, setClasses] = useState<ClassDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [showRankBank, setShowRankBank] = useState(false);
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingGlobalId, setEditingGlobalId] = useState<string | null>(null);
@@ -50,7 +50,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   });
   const [availableItems, setAvailableItems] = useState<{ id: string; title: string; type: string; imageUrl: string }[]>([]);
   const [availableChests, setAvailableChests] = useState<{ id: string; name: string; url: string; rarity?: string }[]>([]);
-  
+
   const [galleryTarget, setGalleryTarget] = useState<'main' | number | null>(null);
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     }
   };
 
-  const fetchClasses = async (showLoading = true) => {
+  const fetchClasses = async (_showLoading = true) => {
     try {
       let query = supabase.from('classes').select('*');
       if (tenantId) {
@@ -120,7 +120,11 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       if (snap && snap.length > 0) {
         loadedRanks = snap.map(d => {
           const { id, ...rest } = d;
-          return { ...rest, _isGlobal: d.is_global ?? false } as RankDef & { _isGlobal?: boolean };
+          return {
+            ...rest,
+            hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
+            _isGlobal: d.is_global ?? false
+          } as RankDef & { _isGlobal?: boolean };
         }).sort((a, b) => a.minXp - b.minXp);
       }
       setRanks(loadedRanks);
@@ -129,7 +133,12 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       const { data: gSnap } = await supabase.from('custom_ranks').select('*').eq('is_global', true);
       const loadedGlobals: (RankDef & { _isGlobal?: boolean; id?: string })[] = (gSnap || []).map(d => {
         const { id, ...rest } = d;
-        return { id, ...rest, _isGlobal: true } as RankDef & { _isGlobal?: boolean; id?: string };
+        return {
+          id,
+          ...rest,
+          hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
+          _isGlobal: true
+        } as RankDef & { _isGlobal?: boolean; id?: string };
       }).sort((a, b) => a.minXp - b.minXp);
       // Fallback: se não houver globais no banco, usar as patentes padrão embutidas
       const effectiveGlobals = loadedGlobals.length > 0
@@ -207,7 +216,13 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   const openEditGlobal = (global: any) => {
     if (!isSuperAdmin) return;
     const { _isGlobal, _id, id: _rid, ...rankData } = global as any;
-    setFormData({ ...rankData, name: global.name || '', minXp: global.minXp || 0, color: global.color || '#fbbf24' } as RankDef);
+    setFormData({
+      ...rankData,
+      name: global.name || '',
+      minXp: global.minXp || 0,
+      color: global.color || '#fbbf24',
+      hideFromHistory: global.hideFromHistory ?? global.hide_from_history ?? (global.minXp === 0)
+    } as RankDef);
     setEditingGlobalId(global.id);
     setEditingIndex(null);
     setIsEditing(true);
@@ -236,6 +251,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         variants: formData.variants || [],
         rankUpChestItems: formData.rankUpChestItems || [],
         rankUpChestModelId: formData.rankUpChestModelId || '',
+        hide_from_history: formData.hideFromHistory ?? (formData.minXp === 0),
         is_global: true,
         tenant_id: null,
       }).eq('id', editingGlobalId);
@@ -281,6 +297,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       await supabase.from('custom_ranks').upsert({
         id: `rank_${tenantPrefix}_${i}`,
         ...rankData,
+        hide_from_history: rankData.hideFromHistory ?? (rankData.minXp === 0),
         tenant_id: tenantId || null,
         is_global: false
       });
@@ -299,6 +316,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
           variants: formData.variants || [],
           rankUpChestItems: formData.rankUpChestItems || [],
           rankUpChestModelId: formData.rankUpChestModelId || '',
+          hide_from_history: formData.hideFromHistory ?? (formData.minXp === 0),
           tenant_id: null,
           is_global: true
         });
@@ -332,7 +350,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         return;
       }
       const newRanks = ranks.filter((_, i) => i !== index);
-      
+
       const localRanks = newRanks.filter(r => !(r as any)._isGlobal);
       const globalRanks = newRanks.filter(r => (r as any)._isGlobal);
 
@@ -355,6 +373,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         await supabase.from('custom_ranks').upsert({
           id: `rank_${tenantPrefix}_${i}`,
           ...rankData,
+          hide_from_history: rankData.hideFromHistory ?? (rankData.minXp === 0),
           tenant_id: tenantId || null,
           is_global: false
         });
@@ -372,7 +391,13 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       showConfirm('Esta patente é global. Para personalizá-la, crie uma cópia local.', 'Informação');
       return;
     }
-    setFormData({ ...rank, variants: rank.variants || [], rankUpChestItems: rank.rankUpChestItems || [], rankUpChestModelId: rank.rankUpChestModelId || '' });
+    setFormData({
+      ...rank,
+      hideFromHistory: rank.hideFromHistory ?? (rank.minXp === 0),
+      variants: rank.variants || [],
+      rankUpChestItems: rank.rankUpChestItems || [],
+      rankUpChestModelId: rank.rankUpChestModelId || ''
+    });
     setEditingIndex(index);
     setEditingGlobalId(null);
     setIsEditing(true);
@@ -380,7 +405,17 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
 
   const openNew = () => {
     const localRanks = ranks.filter(r => !(r as any)._isGlobal);
-    setFormData({ name: '', minXp: localRanks.length > 0 ? localRanks[localRanks.length-1].minXp + 500 : 0, color: '#fbbf24', imageUrl: '', variants: [], rankUpChestItems: [], rankUpChestModelId: '' });
+    const minXp = localRanks.length > 0 ? localRanks[localRanks.length - 1].minXp + 500 : 0;
+    setFormData({
+      name: '',
+      minXp,
+      color: '#fbbf24',
+      imageUrl: '',
+      variants: [],
+      rankUpChestItems: [],
+      rankUpChestModelId: '',
+      hideFromHistory: minXp === 0
+    });
     setEditingIndex(null);
     setEditingGlobalId(null);
     setIsEditing(true);
@@ -390,9 +425,9 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
 
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-      
+
       {galleryTarget !== null && createPortal(
-        <ImageGalleryModal 
+        <ImageGalleryModal
           apiKey={pixabayKey}
           onClose={() => setGalleryTarget(null)}
           onSelectImage={(url) => {
@@ -440,29 +475,29 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
             <div className="glass-panel" style={{ width: '500px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
               <h3 style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingIndex !== null ? 'Editar Patente Local' : 'Criar Nova Patente Local'}</h3>
-              
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome da Patente</label>
-                  <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: Guerreiro de Prata" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                  <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ex: Guerreiro de Prata" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                 </div>
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>XP Mínimo</label>
-                    <input type="number" value={formData.minXp} onChange={e => setFormData({...formData, minXp: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                    <input type="number" value={formData.minXp} onChange={e => setFormData({ ...formData, minXp: Number(e.target.value) })} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Cor do Brilho/Borda</label>
-                    <input type="color" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})} style={{ width: '100%', height: '45px', padding: '0.2rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', cursor: 'pointer' }} />
+                    <input type="color" value={formData.color} onChange={e => setFormData({ ...formData, color: e.target.value })} style={{ width: '100%', height: '45px', padding: '0.2rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', cursor: 'pointer' }} />
                   </div>
                 </div>
 
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Arte da Patente (URL da Imagem)</label>
                   <div style={{ display: 'flex', gap: '1rem' }}>
-                    <input type="text" value={formData.imageUrl || ''} onChange={e => setFormData({...formData, imageUrl: e.target.value})} placeholder="Ex: https://..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
-                    <DirectUploadButton folder="ranks" onUploadComplete={(url) => setFormData({...formData, imageUrl: url})} buttonStyle={{ minHeight: '100%' }} />
+                    <input type="text" value={formData.imageUrl || ''} onChange={e => setFormData({ ...formData, imageUrl: e.target.value })} placeholder="Ex: https://..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                    <DirectUploadButton folder="ranks" onUploadComplete={(url) => setFormData({ ...formData, imageUrl: url })} buttonStyle={{ minHeight: '100%' }} />
                     <button onClick={() => setGalleryTarget('main')} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                       <Search size={20} />
                     </button>
@@ -477,12 +512,28 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                 <div style={{ marginTop: '1.5rem' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Música de Comemoração (Opcional - MP3/WAV)</label>
                   <div style={{ display: 'flex', gap: '1rem' }}>
-                    <input type="text" value={formData.audioUrl || ''} onChange={e => setFormData({...formData, audioUrl: e.target.value})} placeholder="URL do áudio..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
-                    <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={(url) => setFormData({...formData, audioUrl: url})} buttonStyle={{ minHeight: '100%' }} />
+                    <input type="text" value={formData.audioUrl || ''} onChange={e => setFormData({ ...formData, audioUrl: e.target.value })} placeholder="URL do áudio..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                    <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={(url) => setFormData({ ...formData, audioUrl: url })} buttonStyle={{ minHeight: '100%' }} />
                   </div>
                   {formData.audioUrl && (
                     <audio controls src={formData.audioUrl} style={{ marginTop: '1rem', width: '100%', height: '40px' }} />
                   )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', background: 'rgba(255,255,255,0.03)', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                  <input
+                    type="checkbox"
+                    id="hideFromHistoryCheckbox"
+                    checked={formData.hideFromHistory ?? (formData.minXp === 0)}
+                    onChange={e => setFormData({ ...formData, hideFromHistory: e.target.checked })}
+                    style={{ width: '18px', height: '18px', marginTop: '2px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="hideFromHistoryCheckbox" style={{ color: 'var(--text-primary)', cursor: 'pointer', margin: 0, fontSize: '0.9rem' }}>
+                    <strong style={{ display: 'block', color: 'var(--gold-primary)' }}>Omitir do Histórico de Conquistas</strong>
+                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: '1.3' }}>
+                      Se ativado, esta patente não gerará registros de conquista na linha do tempo dos alunos (ideal para a patente inicial de 0 XP).
+                    </span>
+                  </label>
                 </div>
               </div>
 
@@ -492,7 +543,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                   <label style={{ color: 'var(--text-secondary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Gift size={18} color="var(--gold-primary)" /> Itens do Baú de Patente
                   </label>
-                  <button onClick={() => setFormData({...formData, rankUpChestItems: [...(formData.rankUpChestItems || []), { itemId: '', quantity: 1 }]})} style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <button onClick={() => setFormData({ ...formData, rankUpChestItems: [...(formData.rankUpChestItems || []), { itemId: '', quantity: 1 }] })} style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <Plus size={14} /> Adicionar Item
                   </button>
                 </div>
@@ -531,7 +582,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                           onChange={(e) => {
                             const newItems = [...(formData.rankUpChestItems || [])];
                             newItems[index] = { ...newItems[index], itemId: e.target.value };
-                            setFormData({...formData, rankUpChestItems: newItems});
+                            setFormData({ ...formData, rankUpChestItems: newItems });
                           }}
                           style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                         >
@@ -550,7 +601,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                             onChange={(e) => {
                               const newItems = [...(formData.rankUpChestItems || [])];
                               newItems[index] = { ...newItems[index], quantity: parseInt(e.target.value) || 1 };
-                              setFormData({...formData, rankUpChestItems: newItems});
+                              setFormData({ ...formData, rankUpChestItems: newItems });
                             }}
                             style={{ width: '60px', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                           />
@@ -559,7 +610,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                           onClick={() => {
                             const newItems = [...(formData.rankUpChestItems || [])];
                             newItems.splice(index, 1);
-                            setFormData({...formData, rankUpChestItems: newItems});
+                            setFormData({ ...formData, rankUpChestItems: newItems });
                           }}
                           style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.25rem' }}
                         >
@@ -575,11 +626,11 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
               <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <label style={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>Variações de Arte (Por Turma)</label>
-                  <button onClick={() => setFormData({...formData, variants: [...(formData.variants || []), { classIds: [], imageUrl: '' }]})} style={{ background: 'var(--btn-bg)', border: 'none', color: 'var(--text-primary)', padding: '0.25rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <button onClick={() => setFormData({ ...formData, variants: [...(formData.variants || []), { classIds: [], imageUrl: '' }] })} style={{ background: 'var(--btn-bg)', border: 'none', color: 'var(--text-primary)', padding: '0.25rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
                     + Adicionar Variação
                   </button>
                 </div>
-                
+
                 {(formData.variants || []).length === 0 ? (
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic' }}>Nenhuma variação específica. Todas as turmas usarão a arte padrão.</p>
                 ) : (
@@ -591,10 +642,10 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                           <button onClick={() => {
                             const newV = [...(formData.variants || [])];
                             newV.splice(vIdx, 1);
-                            setFormData({...formData, variants: newV});
+                            setFormData({ ...formData, variants: newV });
                           }} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer' }}><Trash2 size={16} /></button>
                         </div>
-                        
+
                         <div style={{ marginBottom: '1rem' }}>
                           <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Turmas vinculadas:</label>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -610,7 +661,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                                     } else {
                                       newV[vIdx].classIds.push(c.name);
                                     }
-                                    setFormData({...formData, variants: newV});
+                                    setFormData({ ...formData, variants: newV });
                                   }}
                                   style={{
                                     padding: '0.25rem 0.5rem', fontSize: '0.8rem', borderRadius: '4px', cursor: 'pointer',
@@ -633,15 +684,15 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                             <input type="text" value={variant.imageUrl} onChange={e => {
                               const newV = [...(formData.variants || [])];
                               newV[vIdx].imageUrl = e.target.value;
-                              setFormData({...formData, variants: newV});
+                              setFormData({ ...formData, variants: newV });
                             }} placeholder="URL..." style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
-                            
+
                             <DirectUploadButton folder="ranks" onUploadComplete={(url) => {
                               const newV = [...(formData.variants || [])];
                               newV[vIdx].imageUrl = url;
-                              setFormData({...formData, variants: newV});
+                              setFormData({ ...formData, variants: newV });
                             }} buttonStyle={{ minHeight: '100%', padding: '0 0.5rem' }} />
-                            
+
                             <button onClick={() => setGalleryTarget(vIdx)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 0.75rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
                               <Search size={16} />
                             </button>
@@ -669,23 +720,30 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
           {ranks.map((rank, idx) => {
             const isGlobal = (rank as any)._isGlobal;
             return (
-            <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                <AnimatedRankIcon rank={rank} />
-                <div>
-                  <h3 style={{ margin: 0, color: rank.color, fontSize: '1.2rem', textShadow: `0 0 5px ${rank.color}80`, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {rank.name}
-                    {isGlobal ? <span title="Global (somente leitura)"><Globe size={14} color="var(--text-secondary)" /></span> : <span title="Local (editável)"><Building2 size={14} color="#10b981" /></span>}
-                  </h3>
-                  <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>A partir de {rank.minXp} XP</p>
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                  <AnimatedRankIcon rank={rank} />
+                  <div>
+                    <h3 style={{ margin: 0, color: rank.color, fontSize: '1.2rem', textShadow: `0 0 5px ${rank.color}80`, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {rank.name}
+                      {isGlobal ? <span title="Global (somente leitura)"><Globe size={14} color="var(--text-secondary)" /></span> : <span title="Local (editável)"><Building2 size={14} color="#10b981" /></span>}
+                    </h3>
+                    <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span>A partir de {rank.minXp} XP</span>
+                      {(rank.hideFromHistory || (rank.minXp === 0 && rank.hideFromHistory !== false)) && (
+                        <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                          Oculta do Histórico
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button onClick={() => openEdit(rank, idx)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem' }} disabled={isGlobal && !isSuperAdmin}><Edit2 size={18} /></button>
+                  <button onClick={() => handleDeleteRank(idx)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} disabled={(isGlobal && !isSuperAdmin) || ranks.length === 1}><Trash2 size={18} /></button>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => openEdit(rank, idx)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem' }} disabled={isGlobal && !isSuperAdmin}><Edit2 size={18} /></button>
-                <button onClick={() => handleDeleteRank(idx)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} disabled={(isGlobal && !isSuperAdmin) || ranks.length === 1}><Trash2 size={18} /></button>
-              </div>
-            </div>
-          );
+            );
           })}
         </div>
       </div>
@@ -733,7 +791,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                         <button onClick={() => openEditGlobal(rank)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                           <Edit2 size={14} /> Editar
                         </button>
-                        <button onClick={() => handleDeleteGlobal(rank.id)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <button onClick={() => handleDeleteGlobal(rank.id || '')} style={{ padding: '0.4rem 0.8rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                           <Trash2 size={14} /> Excluir
                         </button>
                       </>

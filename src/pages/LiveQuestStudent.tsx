@@ -19,6 +19,7 @@ import { useDialog } from '../contexts/DialogContext';
 import { calculateTotalStats } from '../lib/gacha';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import { fetchModel3DById, fetchActiveCoin } from '../lib/model3d';
+import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 interface UserItem {
   id: string;
@@ -31,13 +32,14 @@ interface UserItem {
   equipped: boolean;
   count?: number;
   docIds?: string[];
+  hpCooldownReductionMinutes?: number;
+  buffDurationHours?: number;
 }
-
 
 export default function LiveQuestStudent() {
   const { sessionId } = useParams();
-  const { userData } = useAuth();
-  const { tenant, tenantId, isSuperAdmin } = useTenant();
+  const { userData, updateUserDataLocally } = useAuth();
+  const { tenantId, isSuperAdmin } = useTenant();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -63,6 +65,37 @@ export default function LiveQuestStudent() {
 
   const arenaRef = useRef<HTMLDivElement>(null);
   const [arenaWidth, setArenaWidth] = useState(0);
+  const hasSavedAttempt = useRef(false);
+
+  // Quando a missão ao vivo finaliza, o aluno registra sua tentativa concluída e invalida o cache do Dashboard
+  useEffect(() => {
+    if (session?.status === 'finished' && quest && userData && !hasSavedAttempt.current) {
+      hasSavedAttempt.current = true;
+      const me = session.players?.[userData.uid];
+      const isAlive = me?.hp === undefined || me?.hp > 0;
+      const earnedXp = me?.sessionEarnedXp || 0;
+      const status = isAlive ? 'completed' : 'failed';
+
+      supabase.from('quest_attempts').insert({
+        quest_id: quest.id,
+        student_id: userData.uid,
+        status: status,
+        tenant_id: tenantId || quest.tenant_id,
+        data: {
+          answers: [],
+          isStudyMode: false,
+          isLiveQuest: true,
+          earned_xp: earnedXp,
+          score: me?.score || 0,
+          place: me?.wonChest?.place || null
+        },
+        created_at: new Date().toISOString()
+      }).then(({ error: attErr }) => {
+        if (attErr) console.error("Erro ao registrar tentativa do aluno na missão ao vivo:", attErr);
+        sessionCache.invalidate(CACHE_KEYS.questAttempts(userData.uid));
+      });
+    }
+  }, [session?.status, quest?.id, userData?.uid, tenantId]);
 
   useEffect(() => {
     if (arenaRef.current) setArenaWidth(arenaRef.current.offsetWidth);
@@ -87,8 +120,8 @@ export default function LiveQuestStudent() {
           setLoading(false);
           return;
         }
-        // Isolamento por escola
-        if (tenantId) {
+        // Isolamento por escola (Superadmin pode acessar qualquer missão)
+        if (tenantId && !isSuperAdmin) {
           const questTenant = (qDoc as any).tenant_id;
           if (questTenant && questTenant !== tenantId) {
             setError('Esta missão pertence a outra escola.');
@@ -244,7 +277,7 @@ export default function LiveQuestStudent() {
             // Se já existe e a missão já começou, é uma reconexão!
             if (existingPlayer && curr.status !== 'lobby') {
                if (existingPlayer.hasSurrendered) {
-                  // Já era, abandonou a partida
+                  // Abandonou a partida
                   curr.players[userData.uid] = existingPlayer;
                } else {
                   // Reconexão: Preserva os dados antigos, mas tira 0.5 de vida como penalidade por queda
@@ -276,7 +309,6 @@ export default function LiveQuestStudent() {
                 try {
                   const { data: curr } = await supabase.from('live_quests').select('players').eq('id', sessionId!).single();
                   if (curr && curr.players && !curr.players[userData.uid]) {
-                    // Re-insert player with their current data
                     const { data: invSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
                     const equippedItems: any[] = (invSnap || []).filter(d => d.data?.equipped).map(d => ({ docId: d.id, ...d.data }));
                     
@@ -328,8 +360,7 @@ export default function LiveQuestStudent() {
     };
   }, [sessionId, userData]);
 
-  // Polling fallback para garantir que o aluno receba atualizações (como limpeza de currentAnswer)
-  // mesmo que o realtime do Supabase falhe ou caia.
+  // Polling fallback para garantir que o aluno receba atualizações
   useEffect(() => {
     if (!sessionId || !userData) return;
 
@@ -338,15 +369,15 @@ export default function LiveQuestStudent() {
       if (data) {
         setSession(prev => {
            if (!prev) return data as LiveSession;
-           // O polling deve respeitar o index da pergunta caso esteja no meio de uma transição
            return {
              ...prev,
              status: data.status,
-             currentQuestionIndex: data.currentQuestionIndex,
-             activeQuestions: data.activeQuestions,
+             currentQuestionIndex: data.currentQuestionIndex ?? (data as any).current_question_index ?? prev.currentQuestionIndex,
+             activeQuestions: data.activeQuestions ?? (data as any).active_questions ?? prev.activeQuestions,
+             questionStartTime: data.questionStartTime ?? (data as any).questionstarttime ?? (data as any).question_start_time ?? prev.questionStartTime,
              players: data.players || {},
              monsterHp: data.monster_hp ?? data.monsterHp ?? prev.monsterHp,
-             nobodyCorrect: data.nobodyCorrect
+             nobodyCorrect: data.nobodyCorrect ?? (data as any).nobody_correct
            };
         });
       }
@@ -406,7 +437,6 @@ export default function LiveQuestStudent() {
 
   const me = session.players[userData.uid];
   const totalEquippedStats = me?.equippedItems ? calculateTotalStats(me.equippedItems, userData?.distributedStats) : { attack: 0, defense: 0, xp: 0, coins: 0, vitality: 0, fortitude: 0, persuasion: 0 };
-  // Staff (admin/teacher/coordinator) sempre na última patente: usa getRankForXp
   const isStaff = userData.role === 'admin' || userData.role === 'teacher' || userData.role === 'coordinator';
   const rankObj = isStaff ? getRankForXp(userData.xp || 50000) : RANKS.find(r => r.name === userData.lastSeenRank) || RANKS[0];
   const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === rankObj.name));
@@ -493,20 +523,18 @@ export default function LiveQuestStudent() {
 
     // Calculate score
     const timeLimitMs = (question.timeLimit || 30) * 1000;
-    const timeTaken = answerTime - (session.questionStartTime || (answerTime - timeLimitMs));
+    const qStartTime = session.questionStartTime || (session as any).questionstarttime || (session as any).question_start_time || (answerTime - 5000);
+    const timeTaken = Math.max(0, Math.min(timeLimitMs, answerTime - qStartTime));
     const timeLeft = Math.max(0, timeLimitMs - timeTaken);
 
     let earnedScore = 0;
     let earnedXp = 0;
 
     if (isCorrect) {
-      earnedScore = Math.floor((timeLeft / timeLimitMs) * 100);
-
+      earnedScore = Math.max(10, Math.floor((timeLeft / timeLimitMs) * 100));
       const baseQuestXp = quest.baseXp || 0;
-      const xpPerQuestion = Math.floor(baseQuestXp / quest.questions.length);
-
+      const xpPerQuestion = Math.floor(baseQuestXp / (quest.questions?.length || 1));
       earnedXp = xpPerQuestion;
-
       const xpMultiplier = 1 + (totalEquippedStats.xp / 100);
       earnedXp = Math.floor(earnedXp * xpMultiplier);
     }
@@ -515,7 +543,7 @@ export default function LiveQuestStudent() {
     const newXp = (me.xp || 0) + earnedXp;
     const newSessionEarnedXp = (me.sessionEarnedXp || 0) + earnedXp;
 
-        const { data: qData } = await supabase.from('live_quests').select('players, monsterHp').eq('id', sessionId).single();
+    const { data: qData } = await supabase.from('live_quests').select('players, monsterHp').eq('id', sessionId).single();
     if (qData && qData.players && qData.players[userData.uid]) {
       const p = qData.players[userData.uid];
       p.currentAnswer = answerIndex;
@@ -547,18 +575,15 @@ export default function LiveQuestStudent() {
           const maxV = Math.max(minV, cfg.maxValue ?? minV);
           const coinValue = Math.floor(Math.random() * (maxV - minV + 1)) + minV;
           setCoinsToRescue(dropped);
-          // Cria moedas individuais no chão, aos pés do monstro (lado direito)
+          setTimeout(() => setCoinsToRescue(0), 3000);
           const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
             id: Date.now() + i,
-            x: 74 + Math.random() * 18, // lado direito (monstro)
-            y: 70 + Math.random() * 15, // no chão
+            x: 74 + Math.random() * 18,
+            y: 70 + Math.random() * 15,
             value: coinValue
           }));
           setDroppedCoins(prev => [...prev, ...newCoins]);
         }
-        // O XP não é mais creditado no banco aqui.
-        // Ele fica apenas acumulado em sessionEarnedXp e será creditado
-        // pelo admin apenas se o aluno sobreviver até o final da missão.
       } else {
         let hasEquippedShield = false;
         me.equippedItems?.forEach((item: any) => {
@@ -586,8 +611,20 @@ export default function LiveQuestStudent() {
             const userUpdate: any = { hp: newHp };
             if (currentHp >= maxHearts && newHp < maxHearts) {
               userUpdate.hp_recovery_start_timestamp = Date.now();
+            } else if (newHp >= maxHearts) {
+              userUpdate.hp_recovery_start_timestamp = null;
             }
             await supabase.from('users').update(userUpdate).eq('id', userData.uid);
+            userData.hp = newHp;
+            if (userUpdate.hp_recovery_start_timestamp !== undefined) {
+              userData.hpRecoveryStartTimestamp = userUpdate.hp_recovery_start_timestamp;
+            }
+            updateUserDataLocally({
+              hp: newHp,
+              hpRecoveryStartTimestamp: userUpdate.hp_recovery_start_timestamp !== undefined
+                ? userUpdate.hp_recovery_start_timestamp
+                : userData.hpRecoveryStartTimestamp
+            });
           } catch(e) { console.error(e); }
         } else {
           if (hasShield) setHasShield(false);
@@ -597,7 +634,6 @@ export default function LiveQuestStudent() {
 
       await supabase.from('live_quests').update({ players: qData.players, monsterHp: newMonsterHp }).eq('id', sessionId);
       
-      // Atualiza o estado local imediatamente para feedback instantâneo sem depender de realtime/polling
       setSession(prev => {
          if (!prev) return prev;
          const updatedPlayers = { ...prev.players };
@@ -684,6 +720,25 @@ export default function LiveQuestStudent() {
 
   if (session.status === 'question' || session.status === 'reveal') {
     const hasAnswered = me.currentAnswer !== null && me.currentAnswer !== undefined;
+    const currentHp = me.hp !== undefined ? me.hp : (userData?.hp || maxHearts);
+    const isEliminated = currentHp <= 0;
+    const hpPercentage = (currentHp / maxHearts) * 100;
+    const stressLevel = Math.max(0, (maxHearts - currentHp) / maxHearts);
+    const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
+
+    let baseAnim: 'idle' | 'exhausted' | 'dead' = 'idle';
+    let baseExp: 'normal' | 'serious' | 'sad' = 'normal';
+    if (isEliminated) {
+      baseAnim = 'dead';
+      baseExp = 'sad';
+    } else if (hpPercentage < 50) {
+      baseAnim = 'exhausted';
+      baseExp = hpPercentage < 25 ? 'sad' : 'serious';
+    } else if (hpPercentage < 75) {
+      baseAnim = 'idle';
+      baseExp = 'serious';
+    }
+    const activeStudentAnim = (studentAnim === 'attack' || studentAnim === 'hurt') ? studentAnim : baseAnim;
 
     return (
       <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -705,10 +760,10 @@ export default function LiveQuestStudent() {
               <button
                 key={i}
                 onClick={() => usePowerup(p)}
-                disabled={hasAnswered || me.hp <= 0}
+                disabled={hasAnswered || isEliminated}
                 title={`Usar: ${p.itemTitle}`}
                 style={{
-                  position: 'relative', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: (hasAnswered || me.hp <= 0) ? 'not-allowed' : 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: (hasAnswered || me.hp <= 0) ? 0.5 : 1, flexShrink: 0
+                  position: 'relative', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: (hasAnswered || isEliminated) ? 'not-allowed' : 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: (hasAnswered || isEliminated) ? 0.5 : 1, flexShrink: 0
                 }}
               >
                 {p.itemImageUrl ? (
@@ -753,7 +808,7 @@ export default function LiveQuestStudent() {
             {/* Player (Left) */}
             <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: '1rem' }}>
               <div
-                className={studentAnim === 'attack' ? 'teleport-player' : ''}
+                className={`${studentAnim === 'attack' ? 'teleport-player' : ''} ${isEliminated ? 'anim-death-fall' : ''}`}
                 style={{
                   transform: studentAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : 'none',
                   transition: studentAnim === 'attack' ? 'none' : 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
@@ -761,27 +816,40 @@ export default function LiveQuestStudent() {
                   display: 'flex',
                   alignItems: 'flex-end',
                   justifyContent: 'center',
-                  height: '250px'
+                  height: '220px',
+                  transformOrigin: 'bottom center'
                 }}
               >
                 {me.avatarConfig && (
-                  <>
+                  <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-30px' }}>
                     <AvatarCharacter
                       config={me.avatarConfig}
                       equippedItems={me.equippedItems || []}
-                      size={200}
+                      size={180}
                       interactive={false}
-                      animation={studentAnim === 'attack' ? 'attack' : (studentAnim === 'hurt' ? 'hurt' : 'idle')}
+                      animation={activeStudentAnim as any}
+                      expression={baseExp}
                       role="player"
+                      hurt={studentAnim === 'hurt'}
                     />
                     {studentAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
-                  </>
+                    {!isEliminated && (
+                      <>
+                        <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHp) / maxHearts)) } as any} />
+                        <div className="sweat-overlay" style={{ '--sweat-opacity': sweatLevel } as any}>
+                          {sweatLevel >= 0.25 && <div className="sweat-drop" />}
+                          {sweatLevel >= 0.5 && <div className="sweat-drop" />}
+                          {sweatLevel >= 0.75 && <div className="sweat-drop" />}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '1rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px' }}>
                 <span style={{ color: 'white', fontWeight: 'bold', marginRight: '0.5rem', fontSize: '0.9rem' }}>VOCÊ</span>
                 {Array.from({ length: me.maxHp || userData?.hp || 5 }).map((_, i) => (
-                  <Heart key={i} size={20} fill={i < (me.hp !== undefined ? me.hp : (userData?.hp || 5)) ? "#ef4444" : "transparent"} color="#ef4444" />
+                  <Heart key={i} size={20} fill={i < currentHp ? "#ef4444" : "transparent"} color="#ef4444" />
                 ))}
               </div>
             </div>
@@ -797,14 +865,28 @@ export default function LiveQuestStudent() {
                   display: 'flex',
                   alignItems: 'flex-end',
                   justifyContent: 'center',
-                  height: '250px'
+                  height: '220px'
                 }}
               >
                 <div style={{ transform: 'scaleX(-1)', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                   {quest?.monsterAvatarConfig ? (
-                    <AvatarCharacter config={quest.monsterAvatarConfig} size={250} animation={monsterAnim === 'attack' ? 'attack' : (monsterAnim === 'hurt' ? 'hurt' : 'idle')} interactive={false} />
+                    <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-30px' }}>
+                      <AvatarCharacter
+                        config={quest.monsterAvatarConfig}
+                        size={180}
+                        animation={monsterAnim === 'attack' ? 'attack' : (monsterAnim === 'hurt' ? 'hurt' : 'idle')}
+                        interactive={false}
+                        role="monster"
+                        hurt={monsterAnim === 'hurt'}
+                      />
+                    </div>
                   ) : (
-                    <CustomModelViewer modelUrl={quest?.monsterModelUrl || 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'} role="monster" animation={monsterAnim} />
+                    <CustomModelViewer
+                      modelUrl={quest?.monsterModelUrl || 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'}
+                      role="monster"
+                      size={190}
+                      animation={monsterAnim}
+                    />
                   )}
                 </div>
                 {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
@@ -859,6 +941,32 @@ export default function LiveQuestStudent() {
                   </div>
                 )}
                 
+                {coinsToRescue > 0 && (
+                  <div 
+                    style={{
+                      position: 'absolute',
+                      top: '20%',
+                      right: '15%',
+                      background: 'rgba(245, 158, 11, 0.95)',
+                      color: '#000',
+                      padding: '0.4rem 0.9rem',
+                      borderRadius: '16px',
+                      fontWeight: 'bold',
+                      fontSize: '0.95rem',
+                      boxShadow: '0 0 20px rgba(245, 158, 11, 0.9)',
+                      animation: 'popIn 0.3s ease-out',
+                      zIndex: 100,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <Coins size={18} color="#000" />
+                    +{coinsToRescue} Moedas no Chão! Pegue-as!
+                  </div>
+                )}
+                
                 {lostCoinsDisplay > 0 && (
                   <div 
                     style={{
@@ -895,15 +1003,15 @@ export default function LiveQuestStudent() {
 
         {/* ANSWER BUTTONS */}
         <div style={{ flex: '0 0 50%', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', background: 'var(--bg-secondary)', position: 'relative' }}>
-          {(me.hp !== undefined && me.hp <= 0) ? (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', zIndex: 10 }}>
-                <Skull size={64} color="var(--accent-red)" style={{ marginBottom: '1rem' }} />
-                <h2 style={{ color: 'var(--accent-red)', fontSize: '2.5rem', textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>ELIMINADO</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', marginTop: '1rem' }}>Você não pode mais batalhar nesta missão.</p>
+          {isEliminated ? (
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '1rem' }}>
+              <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '2px solid var(--accent-red)', padding: '1.5rem 2rem', borderRadius: '20px', maxWidth: '500px', width: '100%', boxShadow: '0 0 25px rgba(239, 68, 68, 0.3)' }}>
+                <Skull size={48} color="var(--accent-red)" style={{ margin: '0 auto 0.5rem' }} />
+                <h2 style={{ color: 'var(--accent-red)', fontSize: '2rem', margin: '0 0 0.5rem', fontWeight: 'bold' }}>Você foi Eliminado!</h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', margin: 0 }}>Acompanhe o restante do combate e o ranking dos seus colegas pelo telão principal.</p>
               </div>
-            ) : null}
-
-            {hasAnswered ? (
+            </div>
+          ) : hasAnswered ? (
               <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <div style={{ fontSize: '2rem', fontWeight: 'bold', color: me.isCorrect ? 'var(--accent-green)' : 'var(--accent-red)', marginBottom: '1rem', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
                   {me.isCorrect ? 'RESPOSTA ENVIADA!' : 'RESPOSTA ENVIADA!'}
@@ -914,25 +1022,24 @@ export default function LiveQuestStudent() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '1rem', height: '100%', padding: '1rem' }}>
                 {[0, 1, 2, 3].map((idx) => {
-                  const isEliminated = eliminatedOptions.includes(idx);
+                  const isEliminatedOpt = eliminatedOptions.includes(idx);
                   return (
                     <button
                       key={idx}
-                      onClick={() => !isEliminated && handleAnswerSubmit(idx)}
-                      disabled={(me.hp !== undefined && me.hp <= 0) || isEliminated}
+                      onClick={() => !isEliminatedOpt && handleAnswerSubmit(idx)}
                       style={{
-                        background: isEliminated ? 'rgba(0,0,0,0.5)' : OPTION_COLORS[idx],
-                        border: isEliminated ? '1px solid var(--border-glass)' : 'none',
+                        background: isEliminatedOpt ? 'rgba(0,0,0,0.5)' : OPTION_COLORS[idx],
+                        border: isEliminatedOpt ? '1px solid var(--border-glass)' : 'none',
                         borderRadius: '16px',
-                        color: isEliminated  ? 'rgba(255,255,255,0.2)'  : 'var(--text-primary)',
+                        color: isEliminatedOpt  ? 'rgba(255,255,255,0.2)'  : 'var(--text-primary)',
                         fontSize: '4rem',
                         fontWeight: 'bold',
-                        cursor: ((me.hp !== undefined && me.hp <= 0) || isEliminated) ? 'not-allowed' : 'pointer',
-                        boxShadow: isEliminated ? 'none' : '0 8px 0 rgba(0,0,0,0.3)',
+                        cursor: isEliminatedOpt ? 'not-allowed' : 'pointer',
+                        boxShadow: isEliminatedOpt ? 'none' : '0 8px 0 rgba(0,0,0,0.3)',
                         transition: 'transform 0.1s',
                       }}
-                      onMouseDown={(e) => { if ((me.hp === undefined || me.hp > 0) && !isEliminated) e.currentTarget.style.transform = 'translateY(4px)'; }}
-                      onMouseUp={(e) => { if ((me.hp === undefined || me.hp > 0) && !isEliminated) e.currentTarget.style.transform = 'none'; }}
+                      onMouseDown={(e) => { if (!isEliminatedOpt) e.currentTarget.style.transform = 'translateY(4px)'; }}
+                      onMouseUp={(e) => { if (!isEliminatedOpt) e.currentTarget.style.transform = 'none'; }}
                     >
                       {['A', 'B', 'C', 'D'][idx]}
                     </button>
@@ -940,13 +1047,28 @@ export default function LiveQuestStudent() {
                 })}
               </div>
             )}
-          </div>
         </div>
-        );
+      </div>
+    );
   }
 
-        if (session.status === 'ranking') {
+  if (session.status === 'ranking') {
     const isCorrect = me.isCorrect;
+    const currentHp = me.hp !== undefined ? me.hp : (userData?.hp || 5);
+    const isEliminated = currentHp <= 0;
+
+    if (isEliminated) {
+      return (
+        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '2rem' }}>
+          <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '2px solid var(--accent-red)', padding: '2.5rem', borderRadius: '24px', maxWidth: '600px', width: '100%', boxShadow: '0 0 30px rgba(239, 68, 68, 0.3)' }}>
+            <Skull size={64} color="var(--accent-red)" style={{ margin: '0 auto 1rem' }} />
+            <h1 style={{ color: 'var(--accent-red)', fontSize: '2.8rem', margin: '0 0 1rem' }}>Fora da Disputa</h1>
+            <p style={{ fontSize: '1.3rem', color: 'var(--text-secondary)', margin: 0 }}>Olhe para o telão para acompanhar a pontuação e os sobreviventes.</p>
+          </div>
+        </div>
+      );
+    }
+
     let earnedXp = 0;
     if (isCorrect && quest) {
       const baseQuestXp = quest.baseXp || 0;
@@ -954,44 +1076,44 @@ export default function LiveQuestStudent() {
       const xpMultiplier = 1 + (totalEquippedStats.xp / 100);
       earnedXp = Math.floor(xpPerQuestion * xpMultiplier);
     }
-        return (
-        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-          {isCorrect && (
-             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 10 }}>
-                <div style={{ 
-                  color: 'var(--gold-primary)', 
-                  fontWeight: 'bold', 
-                  fontSize: '3rem', 
-                  textShadow: '0 4px 8px rgba(0,0,0,0.8)',
-                  animation: 'floatUpAndFade 2s ease-out forwards'
-                }}>
-                  +{earnedXp} XP
-                </div>
-             </div>
-          )}
-          {!isCorrect && (
-             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 10 }}>
-                <div style={{ 
-                  color: 'var(--accent-red)', 
-                  animation: 'floatUpAndFade 2s ease-out forwards',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Heart size={80} fill="var(--accent-red)" stroke="black" strokeWidth={2} style={{ clipPath: 'polygon(0 0, 50% 0, 50% 100%, 0 100%)' }} />
-                  <Heart size={80} fill="var(--accent-red)" stroke="black" strokeWidth={2} style={{ clipPath: 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%)', marginLeft: '-80px', transform: 'translate(10px, 10px) rotate(15deg)' }} />
-                </div>
-             </div>
-          )}
-          <h1 style={{ color: isCorrect ? 'var(--accent-green)' : 'var(--accent-red)', fontSize: '4rem', textShadow: '0 4px 8px rgba(0,0,0,0.5)', textAlign: 'center' }}>
-            {isCorrect ? 'Você Acertou!' : 'Você Errou!'}
-          </h1>
-          <p style={{ fontSize: '1.5rem', color: 'var(--text-secondary)', marginTop: '1rem', textAlign: 'center' }}>Olhe para o telão para ver o ranking provisório.</p>
-        </div>
-        );
+    return (
+      <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+        {isCorrect && (
+           <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 10 }}>
+              <div style={{ 
+                color: 'var(--gold-primary)', 
+                fontWeight: 'bold', 
+                fontSize: '3rem', 
+                textShadow: '0 4px 8px rgba(0,0,0,0.8)',
+                animation: 'floatUpAndFade 2s ease-out forwards'
+              }}>
+                +{earnedXp} XP
+              </div>
+           </div>
+        )}
+        {!isCorrect && (
+           <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 10 }}>
+              <div style={{ 
+                color: 'var(--accent-red)', 
+                animation: 'floatUpAndFade 2s ease-out forwards',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Heart size={80} fill="var(--accent-red)" stroke="black" strokeWidth={2} style={{ clipPath: 'polygon(0 0, 50% 0, 50% 100%, 0 100%)' }} />
+                <Heart size={80} fill="var(--accent-red)" stroke="black" strokeWidth={2} style={{ clipPath: 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%)', marginLeft: '-80px', transform: 'translate(10px, 10px) rotate(15deg)' }} />
+              </div>
+           </div>
+        )}
+        <h1 style={{ color: isCorrect ? 'var(--accent-green)' : 'var(--accent-red)', fontSize: '4rem', textShadow: '0 4px 8px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+          {isCorrect ? 'Você Acertou!' : 'Você Errou!'}
+        </h1>
+        <p style={{ fontSize: '1.5rem', color: 'var(--text-secondary)', marginTop: '1rem', textAlign: 'center' }}>Olhe para o telão para ver o ranking provisório.</p>
+      </div>
+    );
   }
 
-        if (session.status === 'finished') {
+  if (session.status === 'finished') {
     if (me.wonChest && !chestOpened) {
       // Immediately clear wonChest from Firestore to prevent re-claiming on revisit
       supabase.from('live_quests').select('players').eq('id', sessionId!).single().then(({ data: sess }) => {
@@ -1042,7 +1164,13 @@ export default function LiveQuestStudent() {
                 </div>
               )}
               <p style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>Acompanhe o pódio na tela do professor!</p>
-              <button onClick={() => navigate('/dashboard')} style={{ marginTop: '2rem', padding: '1rem 3rem', background: 'var(--gold-primary)', color: 'var(--bg-primary)', fontSize: '1.5rem', borderRadius: '12px', fontWeight: 'bold' }}>
+              <button 
+                onClick={() => {
+                  if (userData?.uid) sessionCache.invalidate(CACHE_KEYS.questAttempts(userData.uid));
+                  navigate('/dashboard');
+                }} 
+                style={{ marginTop: '2rem', padding: '1rem 3rem', background: 'var(--gold-primary)', color: 'var(--bg-primary)', fontSize: '1.5rem', borderRadius: '12px', fontWeight: 'bold' }}
+              >
                 Voltar ao Início
               </button>
             </div>
@@ -1052,15 +1180,21 @@ export default function LiveQuestStudent() {
     }
     
     return (
-        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
-          <h1 style={{ color: 'var(--gold-primary)', fontSize: '4rem', textShadow: '0 4px 8px rgba(0,0,0,0.5)' }}>Missão Concluída!</h1>
-          <p style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>Olhe para o telão para ver o pódio final.</p>
-          <button onClick={() => navigate('/dashboard')} style={{ marginTop: '3rem', padding: '1rem 3rem', background: 'var(--gold-primary)', color: 'var(--bg-primary)', fontSize: '1.5rem', borderRadius: '12px', fontWeight: 'bold' }}>
-            Voltar ao Início
-          </button>
-        </div>
-        );
+      <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
+        <h1 style={{ color: 'var(--gold-primary)', fontSize: '4rem', textShadow: '0 4px 8px rgba(0,0,0,0.5)' }}>Missão Concluída!</h1>
+        <p style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>Olhe para o telão para ver o pódio final.</p>
+        <button 
+          onClick={() => {
+            if (userData?.uid) sessionCache.invalidate(CACHE_KEYS.questAttempts(userData.uid));
+            navigate('/dashboard');
+          }} 
+          style={{ marginTop: '3rem', padding: '1rem 3rem', background: 'var(--gold-primary)', color: 'var(--bg-primary)', fontSize: '1.5rem', borderRadius: '12px', fontWeight: 'bold' }}
+        >
+          Voltar ao Início
+        </button>
+      </div>
+    );
   }
 
-        return null;
+  return null;
 }

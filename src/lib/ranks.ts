@@ -6,6 +6,7 @@ export interface RankVariant {
 }
 
 export interface RankDef {
+  id?: string;
   name: string;
   minXp: number;
   color: string;
@@ -14,10 +15,12 @@ export interface RankDef {
   variants?: RankVariant[];
   rankUpChestItems?: { itemId: string; quantity: number }[];
   rankUpChestModelId?: string;
+  hideFromHistory?: boolean;
+  hide_from_history?: boolean;
 }
 
 export const RANKS: RankDef[] = [
-  { name: 'Sem Patente', minXp: 0, color: '#94a3b8' },
+  { name: 'Sem Patente', minXp: 0, color: '#94a3b8', hideFromHistory: true },
   { name: 'Bronze I', minXp: 600, color: '#cd7f32' },
   { name: 'Bronze II', minXp: 1200, color: '#cd7f32' },
   { name: 'Bronze III', minXp: 1800, color: '#cd7f32' },
@@ -71,7 +74,11 @@ export const initRanks = async (tenantId?: string) => {
     if (snap && snap.length > 0) {
       const loadedRanks = snap.map(d => {
         const { id, ...rest } = d;
-        return { ...rest, _isGlobal: d.is_global ?? false } as RankDef & { _isGlobal?: boolean };
+        return { 
+          ...rest, 
+          hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
+          _isGlobal: d.is_global ?? false 
+        } as RankDef & { _isGlobal?: boolean };
       }).sort((a,b) => a.minXp - b.minXp);
 
       // Se a escola tem patentes locais, elas substituem as globais
@@ -109,6 +116,7 @@ export async function ensureGlobalRanks(): Promise<void> {
       variants: r.variants || [],
       rankUpChestItems: r.rankUpChestItems || [],
       rankUpChestModelId: r.rankUpChestModelId || '',
+      hide_from_history: r.hideFromHistory ?? (r.minXp === 0),
       tenant_id: null,
       is_global: true
     }));

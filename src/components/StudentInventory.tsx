@@ -6,6 +6,7 @@ import CachedImage from './CachedImage';
 import SkinBuffIcon from './SkinBuffIcon';
 import ItemIcon from './ItemIcon';
 import type { UserData } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
@@ -37,8 +38,11 @@ interface UserItem {
   preferredCurrency?: 'xp' | 'coins';
   itemDescription?: string;
   rarity?: string;
+  minecraftHeadValue?: string;
   unlockedSkinId?: string;
   buffDurationDays?: number;
+  hpCooldownReductionMinutes?: number;
+  buffDurationHours?: number;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -56,6 +60,7 @@ const getRarityLabel = (rarity?: string) => {
 export default function StudentInventory({ userData, onEquip, inventoryRefresh }: { userData: UserData, onEquip?: () => void, inventoryRefresh?: number }) {
   const { showAlert, showConfirm, showConfirmWithCheckbox, showToast, showPrompt } = useDialog();
   const { tenantId } = useTenant();
+  const { updateUserDataLocally } = useAuth();
   const [items, setItems] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sellModalItem, setSellModalItem] = useState<UserItem | null>(null);
@@ -416,7 +421,45 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
 
-    if (item.gameEffect && item.gameEffect !== 'none' && item.gameEffect !== 'restore_hp' && item.gameEffect !== 'unlock_skin' && item.gameEffect !== 'unlock_gender') {
+    if (item.gameEffect === 'reduce_hp_cooldown') {
+      const reductionMinutes = item.hpCooldownReductionMinutes || 10;
+      const durationHours = item.buffDurationHours || 24;
+      const durationMs = durationHours * 60 * 60 * 1000;
+      const now = Date.now();
+
+      const durationText = durationHours >= 24 
+        ? `${Math.round(durationHours / 24)} dia(s)` 
+        : `${durationHours} hora(s)`;
+
+      const confirmed = await showConfirm(
+        `Deseja usar "${item.itemTitle}" para acelerar a recarga de vida em ${reductionMinutes} minutos por coração (cada coração encherá em ${30 - reductionMinutes} min) durante ${durationText}?`
+      );
+      if (!confirmed) return;
+
+      const currentExpiry = (userData.hpCooldownReductionUntil && userData.hpCooldownReductionUntil > now) 
+        ? userData.hpCooldownReductionUntil 
+        : now;
+      const newExpiry = currentExpiry + durationMs;
+
+      await supabase.from('users').update({
+        hp_cooldown_reduction_until: newExpiry,
+        hp_cooldown_reduction_minutes: reductionMinutes
+      }).eq('id', userData.uid);
+
+      userData.hpCooldownReductionUntil = newExpiry;
+      userData.hpCooldownReductionMinutes = reductionMinutes;
+      updateUserDataLocally({
+        hpCooldownReductionUntil: newExpiry,
+        hpCooldownReductionMinutes: reductionMinutes
+      });
+
+      await consumeItemQuantity(item.itemId, 1, item.id);
+      fetchInventory();
+      await showAlert(`Acelerador ativado com sucesso! Cada coração agora encherá em ${30 - reductionMinutes} minutos durante ${durationText}.`);
+      return;
+    }
+
+    if (item.gameEffect && item.gameEffect !== 'none' && item.gameEffect !== 'restore_hp' && item.gameEffect !== 'reduce_hp_cooldown' && item.gameEffect !== 'unlock_skin' && item.gameEffect !== 'unlock_gender' && item.gameEffect !== 'rename_character') {
       await showAlert(`O item "${item.itemTitle}" é um Poder de Jogo! Você só pode utilizá-lo de dentro de uma Missão/Desafio ativo.`);
       return;
     }
@@ -1294,6 +1337,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               item.itemType === 'consumable' && (
                 <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', maxWidth: '250px', whiteSpace: 'normal' }}>
                   {item.gameEffect === 'restore_hp' ? '"Restaura todos os pontos de vida."' :
+                   item.gameEffect === 'heal_1_hp' ? '"Recupera 1 coração de vida."' :
+                   item.gameEffect === 'reduce_hp_cooldown' ? `"Acelera a recarga de vida: -${item.hpCooldownReductionMinutes || 10} min por coração."` :
                    item.gameEffect === 'add_attribute' ? '"Adiciona um novo atributo aleatório a um equipamento."' :
                    item.gameEffect === 'remove_attribute' ? '"Remove um atributo negativo de um equipamento."' :
                    item.gameEffect === 'reroll_attributes' ? '"Sorteia novamente todos os atributos extras de um equipamento."' :
@@ -1301,6 +1346,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                    '"Item consumível."'}
                 </div>
               )
+            )}
+            
+            {item.gameEffect === 'reduce_hp_cooldown' && (
+              <div style={{ marginTop: '0.25rem', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#f87171', fontWeight: 'bold' }}>
+                ⚡ Recarga Acelerada: -{item.hpCooldownReductionMinutes || 10} min por coração (cada coração enche em {30 - (item.hpCooldownReductionMinutes || 10)} min)
+              </div>
             )}
             
             {item.itemType === 'consumable' && ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(item.gameEffect || '') && (

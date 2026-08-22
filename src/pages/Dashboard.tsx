@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Heart, Package, Eye, EyeOff, Plus } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus } from 'lucide-react';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
@@ -16,7 +16,6 @@ import CachedImage from '../components/CachedImage';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
-import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
@@ -35,15 +34,17 @@ import TeacherWanderer from '../components/TeacherWanderer';
 import AboutModal from '../components/AboutModal';
 import TenantSwitcher from '../components/TenantSwitcher';
 import StatDistributionModal from '../components/StatDistributionModal';
+import NintendoHeart from '../components/NintendoHeart';
+import { fetchStudentAchievementHistory } from '../lib/achievementHistory';
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
   classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
 }
 
-const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, activeBubbleId, onAvatarClick, showAvatars = false }: { 
-  student: UserData; 
-  size: number; 
-  rankPos?: number; 
+const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, activeBubbleId, onAvatarClick, showAvatars = false }: {
+  student: UserData;
+  size: number;
+  rankPos?: number;
   equippedItems: EquippedItem[];
   activeBubbleId: string | null;
   onAvatarClick?: () => void;
@@ -54,14 +55,14 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
   const avatarState = getProfileAvatarState(student);
   const show3D = rankPos <= 3 || isHovered;
   const rank = getRankForXp(student.xp || 0, student.classId);
-  
+
   let finalAnimation = show3D ? (avatarState.animation as any) : 'idle';
   if (rankPos === 1 && show3D) {
     finalAnimation = 'cheer';
   }
 
   return (
-    <div 
+    <div
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={onAvatarClick}
@@ -85,12 +86,12 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
       {showAvatars && (
         <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%' }}>
           {student.avatarConfig ? (
-            <LazyAnimatedAvatar 
+            <LazyAnimatedAvatar
               id={`ranking-${student.uid}`}
-              config={student.avatarConfig} 
-              equippedItems={equippedItems} 
-              size={size} 
-              animation={finalAnimation} 
+              config={student.avatarConfig}
+              equippedItems={equippedItems}
+              size={size}
+              animation={finalAnimation}
               faceCamera={true}
             />
           ) : (
@@ -105,7 +106,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
 export default function Dashboard() {
   const { showAlert, showConfirm, showToast, showPrompt } = useDialog();
   const { userData, toggleStudentView, updateUserDataLocally, ranksLoaded } = useAuth();
-  const { tenant, tenantId, isSuperAdmin } = useTenant();
+  const { tenantId } = useTenant();
   if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
@@ -221,7 +222,7 @@ export default function Dashboard() {
     window.addEventListener('select-inventory-tab', handleOpenInventory);
     return () => window.removeEventListener('select-inventory-tab', handleOpenInventory);
   }, []);
-  
+
   // Rankings state
   const [showRankingAvatars, setShowRankingAvatars] = useState(false);
   const [allStudents, setAllStudents] = useState<UserData[]>([]);
@@ -235,11 +236,10 @@ export default function Dashboard() {
   // Enrollment flow state
   const [enrollmentStep, setEnrollmentStep] = useState<'school' | 'class' | 'pending' | 'complete'>('school');
   const [selectedSchool, setSelectedSchool] = useState<any>(null);
-  const [selectedClassName, setSelectedClassName] = useState<string>('');
 
   // Monitorar se o aluno foi aprovado (role muda de pending_student para student com tenant/class)
   useEffect(() => {
-    const shouldMonitor = userData?.role === 'pending_student' || 
+    const shouldMonitor = userData?.role === 'pending_student' ||
       (userData?.role === 'student' && (!userData?.tenantId || !userData?.classId));
 
     if (!shouldMonitor || !userData?.uid) return;
@@ -253,24 +253,35 @@ export default function Dashboard() {
           .maybeSingle();
 
         if (data && data.role === 'student' && data.tenant_id && data.class_id) {
-          // Foi aprovado! Recarregar para atualizar todos os dados
-          console.log('Aluno aprovado! Recarregando...');
-          window.location.reload();
+          updateUserDataLocally({
+            role: 'student',
+            tenantId: data.tenant_id,
+            classId: data.class_id,
+            pendingClassName: undefined
+          });
+          setEnrollmentStep('complete');
+          showToast('Sua matrícula foi aprovada pelo administrador! Bem-vindo!', 'success');
         }
       } catch (err) {
-        console.error('Erro ao verificar aprovação:', err);
+        console.error('Erro ao verificar aprovação de matrícula:', err);
       }
     };
 
-    // Verificar imediatamente e depois a cada 5 segundos
-    checkApproval();
-    const interval = setInterval(checkApproval, 5000);
-
+    // Verificar a cada 10 segundos
+    const interval = setInterval(checkApproval, 10000);
     return () => clearInterval(interval);
   }, [userData?.uid, userData?.role, userData?.tenantId, userData?.classId]);
+
+  // Se for aluno pendente sem escola/turma, redirecionar para fluxo de matrícula
+  useEffect(() => {
+    if (userData?.role === 'pending_student' && !userData?.tenantId) {
+      setEnrollmentStep('school');
+    }
+  }, [userData?.role, userData?.tenantId]);
+
   const [rankingEquippedItems, setRankingEquippedItems] = useState<Record<string, EquippedItem[]>>({});
   const [rankingHistory, setRankingHistory] = useState<RankingHistory | null>(null);
-  const [publicProfileUser, setPublicProfileUser] = useState<{user: UserData, rankPos: number} | null>(null);
+  const [publicProfileUser, setPublicProfileUser] = useState<{ user: UserData, rankPos: number } | null>(null);
 
   // Avatar State
   const [isCustomizingAvatar, setIsCustomizingAvatar] = useState(false);
@@ -282,7 +293,7 @@ export default function Dashboard() {
 
   // Level Up Animation State
   const [showLevelUp, setShowLevelUp] = useState(false);
-  const [levelUpData, setLevelUpData] = useState<{oldRank: RankDef | null, newRank: RankDef} | null>(null);
+  const [levelUpData, setLevelUpData] = useState<{ oldRank: RankDef | null, newRank: RankDef } | null>(null);
 
   // Rank Up Chest State
   const [showRankUpChest, setShowRankUpChest] = useState(false);
@@ -298,16 +309,12 @@ export default function Dashboard() {
 
   // Status Bubbles
   const [activeBubbleId, setActiveBubbleId] = useState<string | null>(null);
-  
+
   const [isEditingStatus, setIsEditingStatus] = useState(false);
   const [statusInputValue, setStatusInputValue] = useState('');
 
   const [currentHpVisual, setCurrentHpVisual] = useState(0);
   const [nextHeartProgress, setNextHeartProgress] = useState(0);
-
-  // Character Name
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [renameInput, setRenameInput] = useState('');
 
   // Configurações do Sistema
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -348,7 +355,7 @@ export default function Dashboard() {
         fetchThemes();
       })
       .subscribe();
-      
+
     return () => { supabase.removeChannel(channel); };
   }, []);
 
@@ -361,7 +368,7 @@ export default function Dashboard() {
       'retro': { heading: "'Press Start 2P', cursive", body: "'VT323', monospace" },
       'clean': { heading: "'Oswald', sans-serif", body: "'Open Sans', sans-serif" }
     };
-    
+
     const selected = fonts[appFonts] || fonts['default'];
     document.documentElement.style.setProperty('--font-heading', selected.heading);
     document.documentElement.style.setProperty('--font-body', selected.body);
@@ -422,103 +429,116 @@ export default function Dashboard() {
   }, [isIdle, cubeAutoRotate, cubeRotateInterval, pendingTips.length]);
 
   useEffect(() => {
-    if (!userData || userData.role !== 'student' || !equippedItemsLoaded) return;
-    
+    if (!userData || !equippedItemsLoaded) return;
+
     const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
     const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
     const dbHearts = userData.hp !== undefined ? Number(userData.hp) : maxHearts;
-    
+
     // STAFF (admin/teacher/coordinator): HP sempre no máximo da patente.
-    // Não recarrega por tempo — se o banco estiver abaixo (ex: 3), sobe para o max.
     const isStaff = userData?.role === 'admin' || userData?.role === 'teacher' || userData?.role === 'coordinator';
     if (isStaff) {
       setCurrentHpVisual(maxHearts);
+      setNextHeartProgress(0);
       if (dbHearts !== maxHearts) {
         supabase.from('users').update({ hp: maxHearts, hp_recovery_start_timestamp: null }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
-        if (userData) userData.hp = maxHearts;
+        if (userData) {
+          userData.hp = maxHearts;
+          userData.hpRecoveryStartTimestamp = null;
+        }
       }
       return;
     }
 
-    // A UI visual nunca deve mostrar mais do que o max atual
-    setCurrentHpVisual(Math.min(dbHearts, maxHearts));
-    
     if (dbHearts > maxHearts) {
-      supabase.from('users').update({ 
+      supabase.from('users').update({
         hp: maxHearts,
-        hp_recovery_start_timestamp: null 
-      }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
+        hp_recovery_start_timestamp: null
+      }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
+      setCurrentHpVisual(maxHearts);
       setNextHeartProgress(0);
       return;
     }
 
     // Se está com vida cheia, zera qualquer timer
     if (dbHearts === maxHearts) {
+      setCurrentHpVisual(maxHearts);
       setNextHeartProgress(0);
       if (userData.hpRecoveryStartTimestamp) {
-        supabase.from('users').update({ hp_recovery_start_timestamp: null }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
+        supabase.from('users').update({ hp_recovery_start_timestamp: null }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
+        userData.hpRecoveryStartTimestamp = null;
       }
       return;
     }
 
-    if (dbHearts < maxHearts && !userData.hpRecoveryStartTimestamp) {
-      const initialTimestamp = typeof userData.hpRecoveryStartTimestamp === 'string' ? new Date().toISOString() : Date.now();
-      supabase.from('users').update({ hp_recovery_start_timestamp: initialTimestamp }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
-      setNextHeartProgress(0);
-      return;
+    // Inicializa o timestamp de recuperação se estiver faltando
+    let startMs: number;
+    if (!userData.hpRecoveryStartTimestamp) {
+      startMs = Date.now();
+      supabase.from('users').update({ hp_recovery_start_timestamp: startMs }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
+      userData.hpRecoveryStartTimestamp = startMs;
+    } else {
+      startMs = typeof userData.hpRecoveryStartTimestamp === 'string'
+        ? new Date(userData.hpRecoveryStartTimestamp).getTime()
+        : Number(userData.hpRecoveryStartTimestamp);
     }
 
-    const RECOVERY_TIME_MS = 30 * 60 * 1000;
-    
-    const interval = setInterval(async () => {
+    // Calcula redução de tempo de recarga (Equipamentos + Buff Consumível Ativo)
+    const nowTime = Date.now();
+    const equippedReduction = equippedItems
+      .filter(item => (item as any).gameEffect === 'reduce_hp_cooldown')
+      .reduce((acc, item) => acc + Number((item as any).hpCooldownReductionMinutes || 0), 0);
+
+    const isBuffActive = userData.hpCooldownReductionUntil && userData.hpCooldownReductionUntil > nowTime;
+    const buffReduction = isBuffActive ? Number(userData.hpCooldownReductionMinutes || 0) : 0;
+
+    const totalReductionMinutes = Math.min(29, equippedReduction + buffReduction);
+    const effectiveMinutes = Math.max(1, 30 - totalReductionMinutes);
+    const RECOVERY_TIME_MS = effectiveMinutes * 60 * 1000;
+
+    const updateHpTick = async () => {
       const now = Date.now();
-      const startTimestampRaw = userData.hpRecoveryStartTimestamp;
-      const startMs = typeof startTimestampRaw === 'string' 
-        ? new Date(startTimestampRaw).getTime() 
-        : Number(startTimestampRaw);
-      
-      const timePassed = now - startMs;
-      
-      if (timePassed < 0) return;
+      const timePassed = Math.max(0, now - startMs);
 
       const recoveredHearts = Math.floor(timePassed / RECOVERY_TIME_MS);
       const remainderMs = timePassed % RECOVERY_TIME_MS;
-      
+
       const newHp = Math.min(maxHearts, dbHearts + recoveredHearts);
       setCurrentHpVisual(newHp);
-      
+
       if (newHp < maxHearts) {
         setNextHeartProgress((remainderMs / RECOVERY_TIME_MS) * 100);
       } else {
         setNextHeartProgress(0);
       }
-      
+
       if (recoveredHearts > 0 && newHp > dbHearts) {
         try {
-          const updates: any = { hp: newHp };
-          if (newHp < maxHearts) {
-            const nextTimestampMs = startMs + (recoveredHearts * RECOVERY_TIME_MS);
-            // Salva como bigint ou ISO string baseado no que chegou
-            updates.hp_recovery_start_timestamp = typeof startTimestampRaw === 'string' 
-              ? new Date(nextTimestampMs).toISOString() 
-              : nextTimestampMs;
-          } else {
-            updates.hp_recovery_start_timestamp = null;
-          }
+          const nextTimestampMs = newHp < maxHearts ? (startMs + (recoveredHearts * RECOVERY_TIME_MS)) : null;
+          const updates: any = {
+            hp: newHp,
+            hp_recovery_start_timestamp: nextTimestampMs
+          };
+          userData.hp = newHp;
+          userData.hpRecoveryStartTimestamp = nextTimestampMs;
+          updateUserDataLocally({ hp: newHp, hpRecoveryStartTimestamp: nextTimestampMs });
           await supabase.from('users').update(updates).eq('id', userData.uid);
         } catch (e) {
           console.error(e);
         }
       }
-    }, 1000);
+    };
+
+    updateHpTick();
+    const interval = setInterval(updateHpTick, 1000);
 
     return () => clearInterval(interval);
-  }, [userData, equippedItemsLoaded, inventoryRefresh]);
+  }, [userData?.hp, userData?.hpRecoveryStartTimestamp, userData?.role, userData?.hpCooldownReductionUntil, userData?.hpCooldownReductionMinutes, equippedItemsLoaded, equippedItems, inventoryRefresh]);
 
   useEffect(() => {
     if (userData?.uid) {
       const fetchHistory = async () => {
-        // Verifica o cache primeiro — histórico raramente muda durante a sessão
+        // Verifica o cache primeiro — histórico de conquistas
         const cacheKey = CACHE_KEYS.xpHistory(userData.uid);
         const cached = sessionCache.get<any[]>(cacheKey);
         if (cached) {
@@ -526,42 +546,23 @@ export default function Dashboard() {
           setLoadingHistory(false);
           return;
         }
-        const { data: snap } = await supabase.from('xp_logs').select('*').eq('student_id', userData.uid).order('created_at', { ascending: false });
-        const logs = snap ? snap.map((d: any) => {
-          let eName = d.reason || d.eval_name || 'Recompensa';
-          let img = '';
-          if (!d.eval_name && d.reason && d.reason.includes(' | ')) {
-             const parts = d.reason.split(' | ');
-             eName = parts[0].trim();
-             img = parts[1] ? parts[1].trim() : '';
-          } else if (d.eval_name && d.eval_name.includes(' | ')) {
-             const parts = d.eval_name.split(' | ');
-             eName = parts[0].trim();
-             img = parts[1] ? parts[1].trim() : '';
-          }
-          return { 
-            timestamp: { seconds: new Date(d.created_at).getTime() / 1000 }, 
-            xpGained: d.amount !== undefined ? d.amount : d.xp_gained, 
-            evalName: eName,
-            imageUrl: img
-          };
-        }) : [];
-        sessionCache.set(cacheKey, logs, CACHE_TTL.XP_HISTORY);
-        setXpHistory(logs);
+        const items = await fetchStudentAchievementHistory(userData.uid, tenantId);
+        sessionCache.set(cacheKey, items, CACHE_TTL.XP_HISTORY);
+        setXpHistory(items);
         setLoadingHistory(false);
       };
       fetchHistory();
 
       const fetchQuests = async () => {
         setLoadingQuests(true);
-        
+
         // Buscar tentativas concluídas (com cache)
         const attemptsCacheKey = CACHE_KEYS.questAttempts(userData.uid);
         let completedIds: string[] = [];
         let completedDates: Record<string, number> = {};
-        
-        const cachedAttempts = sessionCache.get<{ids: string[], dates: Record<string, number>}>(attemptsCacheKey);
-        
+
+        const cachedAttempts = sessionCache.get<{ ids: string[], dates: Record<string, number> }>(attemptsCacheKey);
+
         if (cachedAttempts && cachedAttempts.ids) {
           completedIds = cachedAttempts.ids;
           completedDates = cachedAttempts.dates;
@@ -590,18 +591,18 @@ export default function Dashboard() {
             questsQuery = questsQuery.eq('tenant_id', tenantId);
           }
           const { data: snap } = await questsQuery;
-          fetched = snap ? snap.map((d: any) => ({ 
-            ...d, 
+          fetched = snap ? snap.map((d: any) => ({
+            ...d,
             id: d.id,
             coverImageUrl: d.cover_image_url || d.coverImageUrl,
             baseXp: d.base_xp || d.baseXp,
             allowRetries: d.allow_retries !== undefined ? d.allow_retries : d.allowRetries,
             targetClasses: d.target_classes || d.targetClasses || [],
-            createdAt: { seconds: new Date(d.created_at || d.id).getTime() / 1000 } 
+            createdAt: { seconds: new Date(d.created_at || d.id).getTime() / 1000 }
           })) : [];
           sessionCache.set(questsCacheKey, fetched, CACHE_TTL.QUESTS);
         }
-        
+
         // Filtrar por turmas alvo
         const filteredQuests = fetched.filter((quest: any) => {
           if (!quest.targetClasses || quest.targetClasses.length === 0) return true;
@@ -634,12 +635,12 @@ export default function Dashboard() {
             if (data && data.avatarPart && (data.itemImageUrl || data.minecraftHeadValue || data.gameModelUrl)) {
               let parsedAdds = [];
               if (data.adds) {
-                try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch(e){}
+                try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch (e) { }
               }
-              eq.push({ 
+              eq.push({
                 docId: d.id,
                 itemId: d.item_id,
-                imageUrl: data.itemImageUrl, 
+                imageUrl: data.itemImageUrl,
                 avatarPart: data.avatarPart as any,
                 itemTitle: data.itemTitle,
                 itemCategory: data.itemCategory,
@@ -704,7 +705,7 @@ export default function Dashboard() {
     const channelUsers = supabase.channel('dashboard_users')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: 'role=eq.student' }, () => fetchUsers())
       .subscribe();
-      
+
     const channelLiveQuests = supabase.channel('dashboard_live_quests')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'live_quests' }, () => fetchLiveQuests())
       .subscribe();
@@ -717,7 +718,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (allStudents.length === 0) return;
-    
+
     const checkAndSyncRankings = async () => {
       try {
         const { data: snap } = await supabase.from('system_collections').select('data').eq('type', 'rankings').single();
@@ -725,9 +726,9 @@ export default function Dashboard() {
         if (snap && snap.data) {
           history = snap.data as RankingHistory;
         }
-        
+
         let changed = false;
-        
+
         // General ranks
         allStudents.forEach((student, index) => {
           const rank = index + 1;
@@ -741,7 +742,7 @@ export default function Dashboard() {
             changed = true;
           }
         });
-        
+
         // Class ranks
         const studentsByClass: Record<string, UserData[]> = {};
         allStudents.forEach(s => {
@@ -750,12 +751,12 @@ export default function Dashboard() {
             studentsByClass[s.classId].push(s);
           }
         });
-        
+
         if (!history.classes) history.classes = {};
-        
+
         Object.entries(studentsByClass).forEach(([classId, students]) => {
           if (!history.classes[classId]) history.classes[classId] = {};
-          
+
           students.forEach((student, index) => {
             const rank = index + 1;
             const currentData = history.classes[classId][student.uid];
@@ -769,7 +770,7 @@ export default function Dashboard() {
             }
           });
         });
-        
+
         if (changed) {
           await supabase.from('system_collections').upsert({ type: 'rankings', data: history }, { onConflict: 'type' });
         }
@@ -778,7 +779,7 @@ export default function Dashboard() {
         console.error("Erro ao sincronizar rankings:", err);
       }
     };
-    
+
     // Pequeno delay para não atolar o Firestore caso vários usuários carreguem ao mesmo tempo
     const timeoutId = setTimeout(checkAndSyncRankings, 2000);
     return () => clearTimeout(timeoutId);
@@ -789,10 +790,10 @@ export default function Dashboard() {
       const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
       const top10General = allStudents.slice(0, 10);
       const studentIds = new Set<string>();
-      
+
       classStudents.forEach(s => studentIds.add(s.uid));
       top10General.forEach(s => studentIds.add(s.uid));
-      
+
       if (studentIds.size === 0) return;
 
       // Verifica o cache — itens do ranking mudam raramente
@@ -802,11 +803,11 @@ export default function Dashboard() {
         setRankingEquippedItems(cached);
         return;
       }
-      
+
       try {
         const { data: snap } = await supabase.from('user_items').select('*').eq('equipped', true).in('student_id', Array.from(studentIds));
         const newRankingItems: Record<string, EquippedItem[]> = {};
-        
+
         if (snap) {
           snap.forEach((d: any) => {
             const data = d.data;
@@ -830,14 +831,14 @@ export default function Dashboard() {
             }
           });
         }
-        
+
         sessionCache.set(cacheKey, newRankingItems, CACHE_TTL.RANKING_ITEMS);
         setRankingEquippedItems(newRankingItems);
       } catch (e) {
         console.error(e);
       }
     };
-    
+
     fetchRankingItems();
   }, [allStudents, userData?.classId, userData?.studentViewActive]);
 
@@ -855,32 +856,32 @@ export default function Dashboard() {
     const scheduleNextBubble = () => {
       // Tempo aleatório entre 60.000ms (1 min) e 120.000ms (2 min)
       const delay = Math.floor(Math.random() * (120000 - 60000 + 1)) + 60000;
-      
+
       timeoutId = setTimeout(() => {
         const studentsWithStatus = allStudents.filter(s => s.customStatusText && s.customStatusText.trim() !== '');
         if (studentsWithStatus.length > 0) {
           let available = studentsWithStatus.filter(s => !recentBubblesRef.current.includes(s.uid));
-          
+
           if (available.length === 0) {
             recentBubblesRef.current = [];
             available = studentsWithStatus;
           }
-          
+
           const randomStudent = available[Math.floor(Math.random() * available.length)];
           setActiveBubbleId(randomStudent.uid);
           recentBubblesRef.current.push(randomStudent.uid);
-          
+
           setTimeout(() => {
             setActiveBubbleId(prev => prev === randomStudent.uid ? null : prev);
           }, 4000);
         }
-        
+
         scheduleNextBubble();
       }, delay);
     };
 
     scheduleNextBubble();
-    
+
     return () => clearTimeout(timeoutId);
   }, [allStudents]);
 
@@ -889,7 +890,7 @@ export default function Dashboard() {
   // Transition rank images for admins and teachers
   useEffect(() => {
     if (!userData || (userData.role !== 'admin' && userData.role !== 'teacher')) return;
-    
+
     const originalRank = RANKS.find(r => r.name === currentRank.name) || currentRank;
     const allImages = [originalRank.imageUrl, ...(originalRank.variants?.map(v => v.imageUrl) || [])].filter(Boolean) as string[];
 
@@ -905,7 +906,7 @@ export default function Dashboard() {
   const originalRank = RANKS.find(r => r.name === currentRank.name) || currentRank;
   const allRankImages = [originalRank.imageUrl, ...(originalRank.variants?.map(v => v.imageUrl) || [])].filter(Boolean) as string[];
   const isAdminOrTeacher = userData?.role === 'admin' || userData?.role === 'teacher';
-  
+
   let currentDisplayImage = currentRank.imageUrl;
   if (isAdminOrTeacher && allRankImages.length > 1) {
     currentDisplayImage = allRankImages[rankImageIndex % allRankImages.length] || currentRank.imageUrl;
@@ -914,7 +915,7 @@ export default function Dashboard() {
   // Verificar se subiu de patente
   useEffect(() => {
     if (!userData || userData.role !== 'student' || !ranksLoaded) return;
-    
+
     // Se não tem lastSeenRank e o rank é Iniciante, apenas salva silenciosamente.
     if (!userData.lastSeenRank) {
       if (currentRank.name !== RANKS[0].name) {
@@ -931,7 +932,7 @@ export default function Dashboard() {
     if (userData.lastSeenRank !== currentRank.name) {
       const oldRankIndex = RANKS.findIndex(r => r.name === userData.lastSeenRank);
       const newRankIndex = RANKS.findIndex(r => r.name === currentRank.name);
-      
+
       // Subiu de rank!
       if (newRankIndex > oldRankIndex) {
         setLevelUpData({ oldRank: RANKS[oldRankIndex], newRank: currentRank });
@@ -939,28 +940,28 @@ export default function Dashboard() {
       } else {
         // Caiu de rank (ex: punição).
         const newPrefs = { ...(userData.inventoryPreferences || {}), lastSeenRank: currentRank.name };
-        
+
         // Verifica se tem mais pontos distribuídos do que a patente atual permite
         const totalEarnedPoints = newRankIndex * 4;
         const confirmedStats = userData.distributedStats || {};
         const totalConfirmedPoints = Object.values(confirmedStats).reduce((sum: any, val: any) => sum + (val || 0), 0) as number;
-        
+
         let updateData: any = { inventory_preferences: newPrefs };
-        
+
         if (totalConfirmedPoints > totalEarnedPoints) {
           const pointsToRemove = totalConfirmedPoints - totalEarnedPoints;
           let removed = 0;
           let newStats = { ...confirmedStats };
-          
+
           while (removed < pointsToRemove) {
-             const availableKeys = Object.keys(newStats).filter(k => newStats[k] > 0);
-             if (availableKeys.length === 0) break;
-             
-             const keyToReduce = availableKeys[0];
-             newStats[keyToReduce] -= 1;
-             removed++;
+            const availableKeys = Object.keys(newStats).filter(k => newStats[k] > 0);
+            if (availableKeys.length === 0) break;
+
+            const keyToReduce = availableKeys[0];
+            newStats[keyToReduce] -= 1;
+            removed++;
           }
-          
+
           updateData.distributed_stats = newStats;
           showToast(`Sua patente caiu para ${currentRank.name}. ${pointsToRemove} ponto(s) de atributo foram removidos.`, 'error');
         }
@@ -975,41 +976,35 @@ export default function Dashboard() {
     if (userData) {
       const highest = userData.inventoryPreferences?.highestRankIndex || 0;
       const newRankIndex = RANKS.findIndex(r => r.name === levelUpData?.newRank?.name);
-      
+
       const newPrefs = { ...(userData.inventoryPreferences || {}), lastSeenRank: currentRank.name };
-      
+
       if (levelUpData?.newRank && newRankIndex > highest) {
         newPrefs.highestRankIndex = newRankIndex;
-        // Salva a conquista no histórico de XP
-        await supabase.from('xp_logs').insert({
-          student_id: userData.uid,
-          amount: 0,
-          reason: `Alcançou a Patente ${levelUpData.newRank.name} | ${levelUpData.newRank.imageUrl || ''} | Parabéns por alcançar a patente ${levelUpData.newRank.name} pela primeira vez!`
-        });
-        
-        // Invalida o cache do histórico
+
+        // Invalida o cache do histórico de conquistas
         const cacheKey = CACHE_KEYS.xpHistory(userData.uid);
         sessionCache.invalidate(cacheKey);
-        
+
         // Atualiza o estado local para forçar recarregamento se voltar na aba
         setXpHistory([]);
 
         // Verificar se deve mostrar baú de patente
         try {
           const econ = await fetchEconomySettings(tenantId);
-          const rankChestItems = (levelUpData?.newRank?.rankUpChestItems || []) as {itemId: string, quantity: number}[];
+          const rankChestItems = (levelUpData?.newRank?.rankUpChestItems || []) as { itemId: string, quantity: number }[];
           // Só distribui se o checkbox global estiver ativo E a patente alcançada tiver itens configurados
           if (econ.rankUpChestEnabled && rankChestItems.length > 0) {
             // Carregar itens do baú da patente alcançada
             const chestItems = rankChestItems;
             const itemIds = chestItems.map(i => i.itemId).filter(id => id);
-            
+
             if (itemIds.length > 0) {
               const { data: storeItems } = await supabase.from('store_items').select('id, data').in('id', itemIds);
-              
+
               if (storeItems) {
                 const itemsToShow: any[] = [];
-                
+
                 chestItems.forEach(chestItem => {
                   if (!chestItem.itemId) return;
                   const storeItem = storeItems.find(s => s.id === chestItem.itemId);
@@ -1024,7 +1019,7 @@ export default function Dashboard() {
                     });
                   }
                 });
-                
+
                 if (itemsToShow.length > 0) {
                   // Agrupar itens empilháveis
                   const grouped = new Map<string, any>();
@@ -1036,7 +1031,7 @@ export default function Dashboard() {
                       grouped.set(key, { ...item });
                     }
                   });
-                  
+
                   setRankUpChestItems(Array.from(grouped.values()));
                   // Carregar a arte do baú de patente (Moldes 3D → Baús de Recompensa), se configurada
                   const rankChestModelId = (levelUpData?.newRank as any)?.rankUpChestModelId;
@@ -1052,7 +1047,7 @@ export default function Dashboard() {
           console.error("Erro ao verificar baú de patente:", err);
         }
       }
-      
+
       await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
     }
   };
@@ -1074,13 +1069,13 @@ export default function Dashboard() {
           obtainedAt: Date.now()
         }
       }));
-      
+
       await supabase.from('user_items').insert(inserts);
     }
     setShowRankUpChest(false);
     setRankUpChestItems([]);
     setRankUpChestModel(null);
-    
+
     // Agora salvar as preferências
     if (userData) {
       const highest = userData.inventoryPreferences?.highestRankIndex || 0;
@@ -1101,15 +1096,15 @@ export default function Dashboard() {
     const baseConfig = liveAvatarConfig || userData?.avatarConfig;
     if (!baseConfig) return;
     const currentHidden = baseConfig.hiddenSlots || [];
-    const newHidden = currentHidden.includes(slotId) 
-      ? currentHidden.filter(id => id !== slotId) 
+    const newHidden = currentHidden.includes(slotId)
+      ? currentHidden.filter(id => id !== slotId)
       : [...currentHidden, slotId];
-    
+
     const newConfig = { ...baseConfig, hiddenSlots: newHidden };
-    
+
     // Update live preview immediately
     setLiveAvatarConfig(newConfig);
-    
+
     if (userData && newConfig) {
       await supabase.from('users').update({ avatar_config: newConfig }).eq('id', userData.uid);
     }
@@ -1140,12 +1135,12 @@ export default function Dashboard() {
 
   const handleUpdateStatus = async (status: string) => {
     if (status === userData?.customStatusText) return;
-    
+
     if (hasProfanity(status)) {
       await showAlert('Sua mensagem contém palavras inadequadas e não foi salva.');
       return;
     }
-    
+
     if (status.length > 50) {
       await showAlert('Sua mensagem é muito longa! Use no máximo 50 caracteres.');
       return;
@@ -1156,27 +1151,27 @@ export default function Dashboard() {
 
   const handleRenameCharacter = async () => {
     if (!userData) return;
-    
+
     const isFreeCreation = !userData.characterName;
     const canRenameFreely = isAdminOrTeacher || isFreeCreation;
-    
+
     if (!canRenameFreely) {
       const { data: items } = await supabase.from('user_items')
         .select('*')
         .eq('student_id', userData.uid)
         .eq('item_type', 'consumable');
-      
+
       const hasRenameItem = (items || []).some(i => {
         const data = i.data || {};
         return data.gameEffect === 'rename_character' && (i.count || 0) > 0;
       });
-      
+
       if (!hasRenameItem) {
         showToast('Você precisa de uma Carta de Troca de Nome para renomear seu personagem. Compre na loja!', 'error');
         return;
       }
     }
-    
+
     const newName = await showPrompt(
       isFreeCreation
         ? 'Escolha um nome para seu personagem (até 12 caracteres, sem acentos/espaços/símbolos):'
@@ -1184,46 +1179,46 @@ export default function Dashboard() {
       userData.characterName || '',
       isFreeCreation ? 'Criar Nome do Personagem' : 'Renomear Personagem'
     );
-    
+
     if (!newName || newName.trim() === (userData.characterName || '')) return;
-    
+
     const validation = validateCharacterName(newName);
     if (!validation.valid) {
       showToast(validation.error!, 'error');
       return;
     }
-    
+
     const { data: existing } = await supabase.from('users')
       .select('id, character_name')
       .not('id', 'eq', userData.uid)
       .not('character_name', 'is', null);
-    
+
     if (existing) {
       const normalizedNew = normalizeForComparison(newName);
       const conflict = existing.find(u => {
         const existingNorm = normalizeForComparison(u.character_name || '');
-        return existingNorm === normalizedNew || 
-               existingNorm.includes(normalizedNew) || 
-               normalizedNew.includes(existingNorm);
+        return existingNorm === normalizedNew ||
+          existingNorm.includes(normalizedNew) ||
+          normalizedNew.includes(existingNorm);
       });
-      
+
       if (conflict) {
         showToast('Este nome já está em uso ou é muito similar ao de outro personagem. Escolha outro nome.', 'error');
         return;
       }
     }
-    
+
     if (!canRenameFreely) {
       const { data: renameItems } = await supabase.from('user_items')
         .select('*')
         .eq('student_id', userData.uid)
         .eq('item_type', 'consumable');
-      
+
       const renameItem = (renameItems || []).find(i => {
         const data = i.data || {};
         return data.gameEffect === 'rename_character' && (i.count || 0) > 0;
       });
-      
+
       if (renameItem) {
         const newCount = (renameItem.count || 1) - 1;
         if (newCount <= 0) {
@@ -1233,7 +1228,7 @@ export default function Dashboard() {
         }
       }
     }
-    
+
     await supabase.from('users').update({ character_name: newName.trim() }).eq('id', userData.uid);
     updateUserDataLocally({ characterName: newName.trim() });
     showToast(`Nome do personagem definido como "${newName.trim()}"!`, 'success');
@@ -1242,7 +1237,7 @@ export default function Dashboard() {
   // Calcular progresso para a próxima patente
   const currentIndex = RANKS.findIndex(r => r.name === currentRank.name);
   const nextRank = currentIndex < RANKS.length - 1 ? RANKS[currentIndex + 1] : null;
-  
+
   let progressPercentage = 100;
   if (nextRank) {
     const xpIntoCurrentRank = (userData?.xp || 0) - currentRank.minXp;
@@ -1266,34 +1261,34 @@ export default function Dashboard() {
       if (!rankingHistory) return null;
       const historyData = type === 'general' ? rankingHistory.general[student.uid] : rankingHistory.classes?.[student.classId || '']?.[student.uid];
       if (!historyData) return null;
-      
+
       const daysSince = (Date.now() - historyData.rankSince) / (1000 * 60 * 60 * 24);
       if (daysSince > 15) return null;
-      
+
       const diff = historyData.previousRank - historyData.currentRank;
       if (diff === 0) return null;
-      
+
       const isUp = diff > 0;
       const color = isUp ? '#4CAF50' : '#F44336';
       const arrow = isUp ? '▲' : '▼';
-      
+
       let timeStr = '';
       if (daysSince < 1) {
-         const hours = Math.floor(daysSince * 24);
-         const mins = Math.floor(daysSince * 24 * 60);
-         if (hours < 1) {
-           timeStr = mins <= 1 ? 'menos de 1 min' : `${mins} min`;
-         } else {
-           timeStr = hours === 1 ? '1 hora' : `${hours} horas`;
-         }
+        const hours = Math.floor(daysSince * 24);
+        const mins = Math.floor(daysSince * 24 * 60);
+        if (hours < 1) {
+          timeStr = mins <= 1 ? 'menos de 1 min' : `${mins} min`;
+        } else {
+          timeStr = hours === 1 ? '1 hora' : `${hours} horas`;
+        }
       } else {
-         const d = Math.floor(daysSince);
-         timeStr = d === 1 ? '1 dia' : `${d} dias`;
+        const d = Math.floor(daysSince);
+        timeStr = d === 1 ? '1 dia' : `${d} dias`;
       }
 
       return (
-        <span 
-          style={{ color, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'help', fontWeight: 'bold' }} 
+        <span
+          style={{ color, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'help', fontWeight: 'bold' }}
           title={`Nesta posição há ${timeStr}`}
         >
           {arrow} {Math.abs(diff)}
@@ -1306,14 +1301,14 @@ export default function Dashboard() {
         {list.map((student, index) => {
           const rankPos = index + 1;
           const sRank = getRankForXp(student.xp || 0, student.classId);
-          
+
           let medalColor = 'var(--text-secondary)';
           let bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.02)';
           let borderStyle = student.uid === userData?.uid ? '1px solid var(--gold-primary)' : '1px solid transparent';
           let avatarSize = 40;
           let fontSizeTitle = '0.95rem';
           let fontSizeXp = '1.1rem';
-          
+
           if (rankPos === 1) {
             medalColor = '#fbbf24'; // Gold
             avatarSize = 60;
@@ -1338,8 +1333,8 @@ export default function Dashboard() {
           }
 
           return (
-            <div key={student.uid} className="glass-panel" style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 1rem', 
+            <div key={student.uid} className="glass-panel" style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 1rem',
               background: bgStyle,
               border: borderStyle,
               boxShadow: rankPos === 1 ? '0 0 15px rgba(251, 191, 36, 0.2)' : 'none'
@@ -1348,25 +1343,25 @@ export default function Dashboard() {
                 <div style={{ width: '30px', textAlign: 'center', fontSize: rankPos <= 3 ? '1.2rem' : '1rem', fontWeight: 'bold', color: medalColor }}>
                   {rankPos}º
                 </div>
-                
+
                 <div style={{ padding: '2px', borderRadius: '50%', border: `2px solid ${medalColor}`, boxShadow: rankPos === 1 ? '0 0 10px rgba(251,191,36,0.5)' : 'none' }}>
-                      <RankingAvatar 
-                        student={student} 
-                        size={avatarSize} 
-                        rankPos={rankPos} 
-                        activeBubbleId={activeBubbleId}
-                        equippedItems={rankingEquippedItems[student.uid] || []}
-                        showAvatars={showRankingAvatars}
-                        onAvatarClick={() => {
-                          if (student.customStatusText) {
-                            setActiveBubbleId(student.uid);
-                            setTimeout(() => setActiveBubbleId(null), 3000);
-                          }
-                          setPublicProfileUser({ user: student, rankPos });
-                        }}
-                      />
+                  <RankingAvatar
+                    student={student}
+                    size={avatarSize}
+                    rankPos={rankPos}
+                    activeBubbleId={activeBubbleId}
+                    equippedItems={rankingEquippedItems[student.uid] || []}
+                    showAvatars={showRankingAvatars}
+                    onAvatarClick={() => {
+                      if (student.customStatusText) {
+                        setActiveBubbleId(student.uid);
+                        setTimeout(() => setActiveBubbleId(null), 3000);
+                      }
+                      setPublicProfileUser({ user: student, rankPos });
+                    }}
+                  />
                 </div>
-                
+
                 <div>
                   <h4 style={{ margin: 0, fontSize: fontSizeTitle, display: 'flex', alignItems: 'center', gap: '0.5rem', color: rankPos === 1 ? '#fbbf24' : 'var(--text-primary)' }}>
                     {student.characterName || student.name} {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
@@ -1381,9 +1376,9 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-              
+
               <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-                  {getArrow(student)}
+                {getArrow(student)}
               </div>
 
               <div style={{ fontSize: fontSizeXp, fontWeight: 'bold', color: 'var(--gold-primary)' }}>
@@ -1435,7 +1430,7 @@ export default function Dashboard() {
   if (userData?.role === 'student' && (!userData?.tenantId || !userData?.classId)) {
     if (enrollmentStep === 'school') {
       return (
-        <SchoolSelectorModal 
+        <SchoolSelectorModal
           onSelect={(school) => {
             setSelectedSchool(school);
             setEnrollmentStep('class');
@@ -1443,15 +1438,13 @@ export default function Dashboard() {
         />
       );
     }
-    
+
     if (enrollmentStep === 'class' && selectedSchool) {
       return (
-        <ClassSelectorModal 
+        <ClassSelectorModal
           tenantId={selectedSchool.id}
           schoolName={selectedSchool.name}
           onSelect={async (cls) => {
-            setSelectedClassName(cls.name);
-            
             // Verificar se o aluno está na lista pré-autorizada
             // Busca candidatos da escola (ou globais) e compara nome/turma de forma tolerante
             const { data: preAuthRows } = await supabase
@@ -1468,31 +1461,31 @@ export default function Dashboard() {
 
             if (preAuth) {
               // Auto-aprovar - associar à escola e turma
-              await supabase.from('users').update({ 
+              await supabase.from('users').update({
                 tenant_id: selectedSchool.id,
-                class_id: cls.name 
+                class_id: cls.name
               }).eq('id', userData.uid);
-              
+
               await supabase.from('tenant_users').upsert({
                 tenant_id: selectedSchool.id,
                 user_id: userData.uid,
                 role: 'student'
               });
-              
-              updateUserDataLocally({ 
+
+              updateUserDataLocally({
                 tenantId: selectedSchool.id,
-                classId: cls.name 
+                classId: cls.name
               });
-              
+
               setEnrollmentStep('complete');
             } else {
               // Enviar para aprovação - salvar escola/turma escolhidas diretamente no usuário
-              await supabase.from('users').update({ 
+              await supabase.from('users').update({
                 role: 'pending_student',
                 tenant_id: selectedSchool.id,
                 pending_class_name: cls.name
               }).eq('id', userData.uid);
-              
+
               // Também criar registro na tabela de solicitações (para backup/relatórios)
               try {
                 await supabase.from('enrollment_requests').insert({
@@ -1504,13 +1497,13 @@ export default function Dashboard() {
               } catch (e) {
                 console.error('Erro ao criar solicitação de matrícula (opcional):', e);
               }
-              
-              updateUserDataLocally({ 
+
+              updateUserDataLocally({
                 tenantId: selectedSchool.id,
                 pendingClassName: cls.name,
                 role: 'pending_student'
               });
-              
+
               setEnrollmentStep('pending');
             }
           }}
@@ -1521,7 +1514,7 @@ export default function Dashboard() {
         />
       );
     }
-    
+
     if (enrollmentStep === 'pending') {
       return (
         <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
@@ -1551,10 +1544,10 @@ export default function Dashboard() {
   return (
     <div className="app-container">
       {showLevelUp && levelUpData && (
-        <LevelUpModal 
-          oldRank={levelUpData.oldRank} 
-          newRank={levelUpData.newRank} 
-          onClose={handleCloseLevelUp} 
+        <LevelUpModal
+          oldRank={levelUpData.oldRank}
+          newRank={levelUpData.newRank}
+          onClose={handleCloseLevelUp}
           isMaxRank={levelUpData.newRank.minXp === Math.max(...RANKS.map(r => r.minXp))}
           avatarConfig={liveAvatarConfig || userData.avatarConfig}
           equippedItems={equippedItems}
@@ -1565,7 +1558,7 @@ export default function Dashboard() {
         <div style={{ position: 'fixed', inset: 0, zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)' }} />
           <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '600px', padding: '2rem' }}>
-            <ChestReveal 
+            <ChestReveal
               title="Baú de Patente!"
               subtitle={`Parabéns por alcançar a patente ${levelUpData?.newRank?.name || 'novo'}!`}
               onOpen={handleOpenRankUpChest}
@@ -1602,20 +1595,20 @@ export default function Dashboard() {
                 </h3>
               </div>
               <div style={{ padding: '1rem 0', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <button 
+                <button
                   onClick={() => setSettingsTab('cube')}
                   style={{ background: settingsTab === 'cube' ? 'rgba(251, 191, 36, 0.1)' : 'transparent', color: settingsTab === 'cube' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', padding: '1rem', textAlign: 'left', cursor: 'pointer', borderLeft: settingsTab === 'cube' ? '3px solid var(--gold-primary)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: settingsTab === 'cube' ? 'bold' : 'normal' }}
                 >
                   <Box size={18} /> Cubo 3D
                 </button>
-                <button 
+                <button
                   onClick={() => setSettingsTab('theme')}
                   style={{ background: settingsTab === 'theme' ? 'rgba(251, 191, 36, 0.1)' : 'transparent', color: settingsTab === 'theme' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', padding: '1rem', textAlign: 'left', cursor: 'pointer', borderLeft: settingsTab === 'theme' ? '3px solid var(--gold-primary)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: settingsTab === 'theme' ? 'bold' : 'normal' }}
                 >
                   <Palette size={18} /> Temas
                 </button>
                 {(userData?.role !== 'student' || userData?.studentViewActive) && (
-                  <button 
+                  <button
                     onClick={() => setSettingsTab('debug')}
                     style={{ background: settingsTab === 'debug' ? 'rgba(251, 191, 36, 0.1)' : 'transparent', color: settingsTab === 'debug' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', padding: '1rem', textAlign: 'left', cursor: 'pointer', borderLeft: settingsTab === 'debug' ? '3px solid var(--gold-primary)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: settingsTab === 'debug' ? 'bold' : 'normal', marginTop: 'auto' }}
                   >
@@ -1641,8 +1634,8 @@ export default function Dashboard() {
                     </div>
                     <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                       <input type="checkbox" checked={cubeAutoRotate} onChange={e => {
-                          setCubeAutoRotate(e.target.checked);
-                          localStorage.setItem('cubeAutoRotate', JSON.stringify(e.target.checked));
+                        setCubeAutoRotate(e.target.checked);
+                        localStorage.setItem('cubeAutoRotate', JSON.stringify(e.target.checked));
                       }} style={{ display: 'none' }} />
                       <div style={{ width: '40px', height: '20px', background: cubeAutoRotate ? 'var(--gold-primary)' : 'rgba(255,255,255,0.2)', borderRadius: '10px', position: 'relative', transition: '0.3s' }}>
                         <div style={{ position: 'absolute', top: '2px', left: cubeAutoRotate ? '22px' : '2px', width: '16px', height: '16px', background: cubeAutoRotate ? 'black' : 'white', borderRadius: '50%', transition: '0.3s' }} />
@@ -1654,30 +1647,30 @@ export default function Dashboard() {
                     <>
                       <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tempo de Ociosidade (segundos)</label>
-                        <input 
-                          type="number" 
-                          min="5" 
+                        <input
+                          type="number"
+                          min="5"
                           max="300"
                           value={cubeIdleTime}
                           onChange={e => {
-                              const val = Math.max(5, parseInt(e.target.value) || 60);
-                              setCubeIdleTime(val);
-                              localStorage.setItem('cubeIdleTime', val.toString());
+                            const val = Math.max(5, parseInt(e.target.value) || 60);
+                            setCubeIdleTime(val);
+                            localStorage.setItem('cubeIdleTime', val.toString());
                           }}
                           style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
                         />
                       </div>
                       <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Intervalo de Giro (segundos)</label>
-                        <input 
-                          type="number" 
-                          min="1" 
+                        <input
+                          type="number"
+                          min="1"
                           max="60"
                           value={cubeRotateInterval}
                           onChange={e => {
-                              const val = Math.max(1, parseInt(e.target.value) || 5);
-                              setCubeRotateInterval(val);
-                              localStorage.setItem('cubeRotateInterval', val.toString());
+                            const val = Math.max(1, parseInt(e.target.value) || 5);
+                            setCubeRotateInterval(val);
+                            localStorage.setItem('cubeRotateInterval', val.toString());
                           }}
                           style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
                         />
@@ -1691,15 +1684,15 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left', flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 1rem 0' }}>
                     <h4 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>Temas do Sistema</h4>
-                    <button 
+                    <button
                       onClick={() => {
                         let tData = DEFAULT_FANTASY_THEME;
                         if (appTheme === 'custom_local') {
-                           const saved = localStorage.getItem('currentCustomThemeData');
-                           if (saved) tData = JSON.parse(saved);
+                          const saved = localStorage.getItem('currentCustomThemeData');
+                          if (saved) tData = JSON.parse(saved);
                         } else if (appTheme.startsWith('custom_')) {
-                           const gt = globalThemes.find(g => g.id === appTheme);
-                           if (gt) tData = gt;
+                          const gt = globalThemes.find(g => g.id === appTheme);
+                          if (gt) tData = gt;
                         }
                         setEditingTheme(tData);
                         setShowCustomThemeModal(true);
@@ -1710,26 +1703,26 @@ export default function Dashboard() {
                       <Palette size={16} /> Personalizar
                     </button>
                   </div>
-                  
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
                     {[
                       { id: 'default', name: 'Padrão (Dark RPG)', color: '#0f172a', isCustom: false },
                       { id: 'light', name: 'Amanhecer (Claro)', color: '#f8fafc', isCustom: false },
                       ...globalThemes.map(gt => ({ id: gt.id, name: gt.name, color: gt.colors.bgDark, isCustom: true, data: gt })),
-                      { 
-                        id: 'custom_local', 
-                        name: (localStorage.getItem('currentCustomThemeData') ? JSON.parse(localStorage.getItem('currentCustomThemeData') || '{}').name : 'Meu Tema') + ' (Pessoal)', 
-                        color: '#7dd3fc', 
-                        isCustom: true 
+                      {
+                        id: 'custom_local',
+                        name: (localStorage.getItem('currentCustomThemeData') ? JSON.parse(localStorage.getItem('currentCustomThemeData') || '{}').name : 'Meu Tema') + ' (Pessoal)',
+                        color: '#7dd3fc',
+                        isCustom: true
                       }
                     ].map(t => (
-                      <div 
-                        key={t.id} 
+                      <div
+                        key={t.id}
                         onClick={() => {
                           setAppTheme(t.id);
                           localStorage.setItem('appTheme', t.id);
                           document.body.setAttribute('data-theme', t.id);
-                          
+
                           if (t.isCustom) {
                             if (t.id === 'custom_local') {
                               const localData = localStorage.getItem('currentCustomThemeData');
@@ -1752,19 +1745,19 @@ export default function Dashboard() {
                         <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: t.color, border: '2px solid var(--border-glass)' }} />
                         <span style={{ fontWeight: appTheme === t.id ? 'bold' : 'normal', color: appTheme === t.id ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{t.name}</span>
                         {appTheme === t.id && <CheckCircle size={18} color="var(--gold-primary)" style={{ marginLeft: 'auto' }} />}
-                        
+
                         {t.isCustom && appTheme === t.id && (
-                           <button 
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               setEditingTheme((t as any).data || (localStorage.getItem('currentCustomThemeData') ? JSON.parse(localStorage.getItem('currentCustomThemeData')!) : DEFAULT_FANTASY_THEME));
-                               setShowCustomThemeModal(true);
-                             }}
-                             style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0.25rem' }}
-                             title="Editar Tema"
-                           >
-                             <Edit3 size={18} />
-                           </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTheme((t as any).data || (localStorage.getItem('currentCustomThemeData') ? JSON.parse(localStorage.getItem('currentCustomThemeData')!) : DEFAULT_FANTASY_THEME));
+                              setShowCustomThemeModal(true);
+                            }}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0.25rem' }}
+                            title="Editar Tema"
+                          >
+                            <Edit3 size={18} />
+                          </button>
                         )}
                       </div>
                     ))}
@@ -1780,8 +1773,8 @@ export default function Dashboard() {
                       { id: 'retro', name: 'Retrô (Pixel Art)', desc: 'Press Start 2P & VT323' },
                       { id: 'clean', name: 'Limpo (Corporativo)', desc: 'Oswald & Open Sans' }
                     ].map(f => (
-                      <div 
-                        key={f.id} 
+                      <div
+                        key={f.id}
                         onClick={() => {
                           setAppFonts(f.id);
                           localStorage.setItem('appFonts', f.id);
@@ -1803,7 +1796,7 @@ export default function Dashboard() {
               {settingsTab === 'debug' && (userData?.role !== 'student' || userData?.studentViewActive) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left', flex: 1 }}>
                   <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>Modo Debug (Staff)</h4>
-                  
+
                   <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--accent-red)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
                     <strong>Visão de Aluno (Mundo Paralelo)</strong>
                     <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.4' }}>
@@ -1817,22 +1810,22 @@ export default function Dashboard() {
                     </div>
                     <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                       <input type="checkbox" checked={!!userData.studentViewActive} onChange={async () => {
-                          if (toggleStudentView) {
-                            try {
-                              await toggleStudentView();
-                              const nextMode = !userData.studentViewActive;
-                              showToast(
-                                nextMode
-                                  ? '🎮 Modo Aluno ativado! Recarregando...'
-                                  : '🔓 Modo Admin restaurado! Recarregando...',
-                                'success'
-                              );
-                              setTimeout(() => window.location.reload(), 1500);
-                            } catch (err: any) {
-                              console.error(err);
-                              alert('Erro ao alternar modo: ' + err.message);
-                            }
+                        if (toggleStudentView) {
+                          try {
+                            await toggleStudentView();
+                            const nextMode = !userData.studentViewActive;
+                            showToast(
+                              nextMode
+                                ? '🎮 Modo Aluno ativado! Recarregando...'
+                                : '🔓 Modo Admin restaurado! Recarregando...',
+                              'success'
+                            );
+                            setTimeout(() => window.location.reload(), 1500);
+                          } catch (err: any) {
+                            console.error(err);
+                            alert('Erro ao alternar modo: ' + err.message);
                           }
+                        }
                       }} style={{ display: 'none' }} />
                       <div style={{ width: '40px', height: '20px', background: userData.studentViewActive ? 'var(--gold-primary)' : 'rgba(255,255,255,0.2)', borderRadius: '10px', position: 'relative', transition: '0.3s' }}>
                         <div style={{ position: 'absolute', top: '2px', left: userData.studentViewActive ? '22px' : '2px', width: '16px', height: '16px', background: userData.studentViewActive ? 'black' : 'white', borderRadius: '50%', transition: '0.3s' }} />
@@ -1895,28 +1888,28 @@ export default function Dashboard() {
             // Restore previous active theme
             const cur = localStorage.getItem('appTheme') || 'default';
             if (cur.startsWith('custom_')) {
-               const saved = localStorage.getItem('currentCustomThemeData');
-               if (saved) applyCustomTheme(JSON.parse(saved));
+              const saved = localStorage.getItem('currentCustomThemeData');
+              if (saved) applyCustomTheme(JSON.parse(saved));
             } else {
-               applyCustomTheme(null);
+              applyCustomTheme(null);
             }
           }}
           onSave={async (theme) => {
             if (theme.isGlobal && userData?.role !== 'student') {
-               const newId = theme.id.startsWith('custom_local') ? 'custom_' + Date.now() : theme.id;
-               theme.id = newId;
-               await supabase.from('system_collections').upsert({ id: newId, type: 'themes', data: theme as any });
-               setAppTheme(newId);
-               localStorage.setItem('appTheme', newId);
-               localStorage.setItem('currentCustomThemeData', JSON.stringify(theme));
-               applyCustomTheme(theme);
+              const newId = theme.id.startsWith('custom_local') ? 'custom_' + Date.now() : theme.id;
+              theme.id = newId;
+              await supabase.from('system_collections').upsert({ id: newId, type: 'themes', data: theme as any });
+              setAppTheme(newId);
+              localStorage.setItem('appTheme', newId);
+              localStorage.setItem('currentCustomThemeData', JSON.stringify(theme));
+              applyCustomTheme(theme);
             } else {
-               theme.id = 'custom_local';
-               theme.isGlobal = false;
-               setAppTheme('custom_local');
-               localStorage.setItem('appTheme', 'custom_local');
-               localStorage.setItem('currentCustomThemeData', JSON.stringify(theme));
-               applyCustomTheme(theme);
+              theme.id = 'custom_local';
+              theme.isGlobal = false;
+              setAppTheme('custom_local');
+              localStorage.setItem('appTheme', 'custom_local');
+              localStorage.setItem('currentCustomThemeData', JSON.stringify(theme));
+              applyCustomTheme(theme);
             }
             setShowCustomThemeModal(false);
           }}
@@ -1952,108 +1945,108 @@ export default function Dashboard() {
       )}
 
       <div style={{ position: 'sticky', top: 0, zIndex: 100, margin: '-1rem -2rem 0 -2rem', padding: '1rem 2rem 0.5rem 2rem', background: 'transparent', backdropFilter: 'blur(12px)' }}>
-      <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '1rem' }}>
-        <div className="logo-container" onClick={handleLogoClick} style={{ cursor: 'pointer', userSelect: 'none' }} title="Clique 3x para ver o Sobre">
-          <div style={{ width: 64, height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} alt="Math Mastery" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem', minWidth: 0 }}>
-            <h1 className="title-glow">Painel do Aluno</h1>
-            <div className="tenant-switcher-desktop" style={{ position: 'relative', zIndex: 99999 }}>
-              <TenantSwitcher />
+        <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '1rem' }}>
+          <div className="logo-container" onClick={handleLogoClick} style={{ cursor: 'pointer', userSelect: 'none' }} title="Clique 3x para ver o Sobre">
+            <div style={{ width: 64, height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} alt="Math Mastery" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem', minWidth: 0 }}>
+              <h1 className="title-glow">Painel do Aluno</h1>
+              <div className="tenant-switcher-desktop" style={{ position: 'relative', zIndex: 99999 }}>
+                <TenantSwitcher />
+              </div>
             </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          
-          {(userData?.role === 'admin' || userData?.role === 'teacher') && !userData?.studentViewActive && (
-            <button 
-              className="login-btn hide-text-mobile" 
-              onClick={() => navigate('/admin')}
-              style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)' }}
-              title={userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}
-            >
-              <ShieldAlert size={18} color="var(--gold-primary)" />
-              <span style={{ color: 'var(--gold-primary)' }}>{userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}</span>
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
 
-          <div className="tenant-switcher-mobile" style={{ position: 'relative' }}>
-            <button className="login-btn mobile-menu-btn" onClick={() => setStudentMobileMenuOpen(o => !o)} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Menu">
-              <Menu size={20} />
-            </button>
-            {studentMobileMenuOpen && (
-              <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setStudentMobileMenuOpen(false)} />
-                <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', background: 'var(--bg-panel)', border: '1px solid var(--border-glass)', borderRadius: '12px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)', padding: '0.5rem', minWidth: '240px', zIndex: 1000 }}>
-                  <TenantSwitcher variant="menu" />
-                </div>
-              </>
+            {(userData?.role === 'admin' || userData?.role === 'teacher') && !userData?.studentViewActive && (
+              <button
+                className="login-btn hide-text-mobile"
+                onClick={() => navigate('/admin')}
+                style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)' }}
+                title={userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}
+              >
+                <ShieldAlert size={18} color="var(--gold-primary)" />
+                <span style={{ color: 'var(--gold-primary)' }}>{userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}</span>
+              </button>
             )}
-          </div>
 
-          <button 
-            onClick={() => setIsSettingsModalOpen(true)}
-            style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.5rem' }}
-            className="hover-brightness"
-            title="Configurações do Sistema"
-          >
-            <Settings size={24} />
-          </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-              {userData && (
-                <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
-                  <AvatarCharacter config={liveAvatarConfig || userData.avatarConfig} size={36} interactive={false} animation="none" />
-                </div>
+            <div className="tenant-switcher-mobile" style={{ position: 'relative' }}>
+              <button className="login-btn mobile-menu-btn" onClick={() => setStudentMobileMenuOpen(o => !o)} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Menu">
+                <Menu size={20} />
+              </button>
+              {studentMobileMenuOpen && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setStudentMobileMenuOpen(false)} />
+                  <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', background: 'var(--bg-panel)', border: '1px solid var(--border-glass)', borderRadius: '12px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)', padding: '0.5rem', minWidth: '240px', zIndex: 1000 }}>
+                    <TenantSwitcher variant="menu" />
+                  </div>
+                </>
               )}
-              <span style={{ fontWeight: 'bold' }}>{userData?.name?.split(' ')[0]}</span>
             </div>
+
+            <button
+              onClick={() => setIsSettingsModalOpen(true)}
+              style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.5rem' }}
+              className="hover-brightness"
+              title="Configurações do Sistema"
+            >
+              <Settings size={24} />
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                {userData && (
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
+                    <AvatarCharacter config={liveAvatarConfig || userData.avatarConfig} size={36} interactive={false} animation="none" />
+                  </div>
+                )}
+                <span style={{ fontWeight: 'bold' }}>{userData?.name?.split(' ')[0]}</span>
+              </div>
+            </div>
+            <button className="login-btn" onClick={handleLogout} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
+              <LogOut size={20} />
+            </button>
           </div>
-          <button className="login-btn" onClick={handleLogout} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
-            <LogOut size={20} />
+        </nav>
+
+        {/* Navegação de Abas do Aluno */}
+        <div className="scrollable-menu-container" style={{ background: 'transparent', margin: '0 -2rem 0 -2rem', padding: '0.5rem 2rem' }}>
+          <button
+            onClick={() => setActiveTab('quests')}
+            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          >
+            <Swords size={20} /> Central de Missões
+          </button>
+          <button
+            onClick={() => setActiveTab('profile')}
+            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'profile' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          >
+            <Star size={20} /> Meu Perfil
+          </button>
+          <button
+            onClick={() => setActiveTab('ranking_class')}
+            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_class' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          >
+            <Users size={20} /> Ranking da Turma
+          </button>
+          <button
+            onClick={() => setActiveTab('ranking_general')}
+            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_general' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          >
+            <TrendingUp size={20} /> Ranking Geral
+          </button>
+          <button
+            onClick={() => setActiveTab('store')}
+            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+          >
+            <Store size={20} /> Mercado
           </button>
         </div>
-      </nav>
-
-      {/* Navegação de Abas do Aluno */}
-      <div className="scrollable-menu-container" style={{ background: 'transparent', margin: '0 -2rem 0 -2rem', padding: '0.5rem 2rem' }}>
-        <button 
-          onClick={() => setActiveTab('quests')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
-        >
-          <Swords size={20} /> Central de Missões
-        </button>
-        <button 
-          onClick={() => setActiveTab('profile')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'profile' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
-        >
-          <Star size={20} /> Meu Perfil
-        </button>
-        <button 
-          onClick={() => setActiveTab('ranking_class')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_class' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
-        >
-          <Users size={20} /> Ranking da Turma
-        </button>
-        <button 
-          onClick={() => setActiveTab('ranking_general')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_general' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
-        >
-          <TrendingUp size={20} /> Ranking Geral
-        </button>
-        <button 
-          onClick={() => setActiveTab('store')}
-          style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
-        >
-          <Store size={20} /> Mercado
-        </button>
-      </div>
       </div>
 
       <main className="main-content">
-        
+
         {activeTab === 'quests' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             <div className="compact-header" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -2076,23 +2069,23 @@ export default function Dashboard() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1.5rem' }}>
                 {activeQuests.map(quest => {
                   const isCompleted = completedQuestIds.includes(quest.id);
-                  
+
                   return (
-                    <div 
-                      key={quest.id} 
-                      className="glass-panel" 
-                      style={{ 
-                        padding: 0, 
-                        overflow: 'hidden', 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        transition: 'transform 0.2s', 
+                    <div
+                      key={quest.id}
+                      className="glass-panel"
+                      style={{
+                        padding: 0,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        transition: 'transform 0.2s',
                         cursor: 'pointer',
                         opacity: isCompleted ? 0.7 : 1,
                         filter: isCompleted ? 'grayscale(30%)' : 'none'
-                      }} 
-                      onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'} 
-                      onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'} 
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                      onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                       onClick={() => {
                         if (quest.mode === 'live') {
                           // Don't navigate to a completed or inactive live quest
@@ -2112,7 +2105,7 @@ export default function Dashboard() {
                           </div>
                         )}
                         <div style={{ position: 'absolute', top: '10px', right: '10px', background: isCompleted ? 'rgba(16, 185, 129, 0.9)' : 'var(--bg-badge)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${isCompleted ? 'var(--accent-green)' : 'var(--gold-primary)'}`, color: isCompleted ? 'var(--text-on-gold, #000000)' : 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          {isCompleted ? <CheckCircle size={16} /> : <Star size={16} />} 
+                          {isCompleted ? <CheckCircle size={16} /> : <Star size={16} />}
                           {isCompleted ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.1 }}>
                               <span>Concluída</span>
@@ -2132,55 +2125,55 @@ export default function Dashboard() {
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1.5rem', flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                           {quest.description || 'Uma missão misteriosa aguarda você...'}
                         </p>
-                        
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <ShieldAlert size={14} style={{ flexShrink: 0 }} /> 
+                              <ShieldAlert size={14} style={{ flexShrink: 0 }} />
                               <span>{quest.allowRetries ? 'Vidas Extras' : 'Hardcore'}</span>
                             </span>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <Clock size={14} style={{ flexShrink: 0 }} /> 
+                              <Clock size={14} style={{ flexShrink: 0 }} />
                               <span>{quest.randomQuestionSelection && quest.randomQuestionCount ? quest.randomQuestionCount : (quest.questions?.length || 0)} Desafios</span>
                             </span>
                           </div>
-                            <button 
-                              className="login-btn" 
-                              disabled={quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)}
-                              style={{ 
-                                background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--btn-bg)' : 'var(--gold-primary)', 
-                                color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--text-primary)' : 'var(--text-on-gold, #000000)', 
-                                border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? '1px solid var(--border-glass)' : 'none', 
-                                padding: '0.5rem 1.5rem', 
-                                fontSize: '1rem',
-                                opacity: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 0.6 : 1,
-                                cursor: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 'not-allowed' : 'pointer'
-                              }} 
-                              onClick={async (e) => { 
-                                e.stopPropagation(); 
-                                // Block access to inactive live quests if NOT completed
-                                if (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) return;
-                                // Require avatar if in student mode or is a student
-                                const isActingAsStudent = userData?.role === 'student' || !!userData?.studentViewActive;
-                                if (isActingAsStudent && !userData?.avatarConfig) {
-                                  await showAlert('Você precisa criar o seu avatar antes de jogar uma missão!');
-                                  return;
-                                }
-                                if (!isCompleted && currentHpVisual < 1 && isActingAsStudent) {
-                                  await showAlert('Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.');
-                                  return;
-                                }
-                                if (quest.mode === 'live' && !isCompleted) {
-                                  navigate(`/live/${quest.id}`);
-                                } else {
-                                  navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`); 
-                                }
-                              }}
-                            >
-                              {quest.mode === 'live' && !isCompleted
-                                 ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : 'Não Iniciada') 
-                                 : (isCompleted ? 'Revisar' : 'Jogar Agora')}
-                            </button>
+                          <button
+                            className="login-btn"
+                            disabled={quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)}
+                            style={{
+                              background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--btn-bg)' : 'var(--gold-primary)',
+                              color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--text-primary)' : 'var(--text-on-gold, #000000)',
+                              border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? '1px solid var(--border-glass)' : 'none',
+                              padding: '0.5rem 1.5rem',
+                              fontSize: '1rem',
+                              opacity: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 0.6 : 1,
+                              cursor: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 'not-allowed' : 'pointer'
+                            }}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              // Block access to inactive live quests if NOT completed
+                              if (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) return;
+                              // Require avatar if in student mode or is a student
+                              const isActingAsStudent = userData?.role === 'student' || !!userData?.studentViewActive;
+                              if (isActingAsStudent && !userData?.avatarConfig) {
+                                await showAlert('Você precisa criar o seu avatar antes de jogar uma missão!');
+                                return;
+                              }
+                              if (!isCompleted && currentHpVisual < 1 && isActingAsStudent) {
+                                await showAlert('Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.');
+                                return;
+                              }
+                              if (quest.mode === 'live' && !isCompleted) {
+                                navigate(`/live/${quest.id}`);
+                              } else {
+                                navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`);
+                              }
+                            }}
+                          >
+                            {quest.mode === 'live' && !isCompleted
+                              ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : 'Não Iniciada')
+                              : (isCompleted ? 'Revisar' : 'Jogar Agora')}
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -2194,17 +2187,17 @@ export default function Dashboard() {
         {activeTab === 'profile' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             <div style={{ display: 'flex', gap: '1rem', padding: '0.5rem 0', marginBottom: '0.5rem', justifyContent: 'center', position: 'sticky', top: '60px', zIndex: 95, background: 'transparent', backdropFilter: 'blur(12px)' }}>
-              <button 
+              <button
                 onClick={() => setProfileTab('overview')}
                 className="login-btn"
-                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'overview'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'overview' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
               >
                 <Star size={20} /> {(userData?.role === 'student' || userData?.studentViewActive) ? 'Personagem e Histórico' : 'Personagem'}
               </button>
-              <button 
+              <button
                 onClick={() => setProfileTab('inventory')}
                 className="login-btn"
-                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'inventory'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'inventory' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
               >
                 <Package size={20} /> Mochila
               </button>
@@ -2213,354 +2206,400 @@ export default function Dashboard() {
             <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center' }}>
               {/* Perfil do Aluno (Esquerda) */}
               <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 400px' : '0 1 500px', padding: '1.5rem 2rem 5vh 1.5rem', textAlign: 'center', position: 'relative', minHeight: '60vh', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', alignSelf: 'flex-start' }}>
-              
-              <div style={{ flexShrink: 0, paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem', height: '100%' }}>
-              <div 
-                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', perspective: '1000px', width: '100%' }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-                  <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
-                    {'<'}
-                  </button>
-                  
-                  <div className="cube-container" style={{ position: 'relative', zIndex: 100 }}>
-                    <div className="cube" style={{ transform: `rotateY(${cubeRotation}deg)` }}>
-                      {/* Frente: Avatar */}
-                      <div className="cube-face cube-face-front" style={{ 
-                        border: `3px solid ${currentRank.color}`, 
-                        boxShadow: `0 0 20px ${currentRank.color}40`, 
-                        flexDirection: 'column',
-                        background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))'
-                      }} title="Clique para personalizar seu personagem">
-                        
-                        {/* Rock Pedestal/Shadow */}
-                        <div style={{
-                          position: 'absolute',
-                          bottom: '0',
-                          left: '0',
-                          width: '100%',
-                          height: '35%',
-                          background: 'radial-gradient(ellipse at top, rgba(255, 255, 255, 0.15) 0%, rgba(0, 0, 0, 0.5) 50%, rgba(0, 0, 0, 0) 80%)',
-                          borderTopLeftRadius: '50% 100%',
-                          borderTopRightRadius: '50% 100%',
-                          borderBottomLeftRadius: '12px',
-                          borderBottomRightRadius: '12px',
-                          zIndex: 0
-                        }} />
 
-                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          {userData?.characterName || 'Personagem'}
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleRenameCharacter(); }}
-                            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', opacity: 0.7 }}
-                            title={userData?.characterName ? 'Renomear personagem' : 'Criar nome do personagem'}
-                          >
-                            <Edit3 size={12} />
-                          </button>
-                        </div>
-                        {(liveAvatarConfig || userData?.avatarConfig) ? (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 20 }} onClick={() => setIsCustomizingAvatar(true)}>
-                            {(activeTab === 'ranking_class' || activeTab === 'ranking_general') ? (
-                              <AvatarPrint 
-                                config={liveAvatarConfig || userData.avatarConfig} 
-                                equippedItems={equippedItems} 
-                                size={90} 
-                              />
+                <div style={{ flexShrink: 0, paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem', height: '100%' }}>
+                  <div
+                    style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', perspective: '1000px', width: '100%' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                      <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
+                        {'<'}
+                      </button>
+
+                      <div className="cube-container" style={{ position: 'relative', zIndex: 100 }}>
+                        <div className="cube" style={{ transform: `rotateY(${cubeRotation}deg)` }}>
+                          {/* Frente: Avatar */}
+                          <div className="cube-face cube-face-front" style={{
+                            border: `3px solid ${currentRank.color}`,
+                            boxShadow: `0 0 20px ${currentRank.color}40`,
+                            flexDirection: 'column',
+                            background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))'
+                          }} title="Clique para personalizar seu personagem">
+
+                            {/* Rock Pedestal/Shadow */}
+                            <div style={{
+                              position: 'absolute',
+                              bottom: '0',
+                              left: '0',
+                              width: '100%',
+                              height: '35%',
+                              background: 'radial-gradient(ellipse at top, rgba(255, 255, 255, 0.15) 0%, rgba(0, 0, 0, 0.5) 50%, rgba(0, 0, 0, 0) 80%)',
+                              borderTopLeftRadius: '50% 100%',
+                              borderTopRightRadius: '50% 100%',
+                              borderBottomLeftRadius: '12px',
+                              borderBottomRightRadius: '12px',
+                              zIndex: 0
+                            }} />
+
+                            <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              {userData?.characterName || 'Personagem'}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRenameCharacter(); }}
+                                style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', opacity: 0.7 }}
+                                title={userData?.characterName ? 'Renomear personagem' : 'Criar nome do personagem'}
+                              >
+                                <Edit3 size={12} />
+                              </button>
+                            </div>
+                            {(liveAvatarConfig || userData?.avatarConfig) ? (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 20 }} onClick={() => setIsCustomizingAvatar(true)}>
+                                <AvatarCharacter
+                                  config={(liveAvatarConfig || userData.avatarConfig)}
+                                  size={90}
+                                  equippedItems={equippedItems}
+                                  interactive={false}
+                                  animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any}
+                                  expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any}
+                                  showSlots={true}
+                                  actionPoses={(liveAvatarConfig || userData.avatarConfig)?.actionPoses}
+                                  faceCamera={true}
+                                  onAvatarClick={() => setIsCustomizingAvatar(true)}
+                                  onSlotClick={handleUnequipItem}
+                                  onToggleSlotVisibility={handleToggleSlotVisibility}
+                                />
+                              </div>
                             ) : (
-                              <AvatarCharacter 
-                                config={(liveAvatarConfig || userData.avatarConfig)} 
-                                size={90} 
-                                equippedItems={equippedItems} 
-                                interactive={false} 
-                                animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} 
-                                expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} 
-                                showSlots={true} 
-                                actionPoses={(liveAvatarConfig || userData.avatarConfig)?.actionPoses}
-                                faceCamera={true}
-                                onAvatarClick={() => setIsCustomizingAvatar(true)} 
-                                onSlotClick={handleUnequipItem} 
-                                onToggleSlotVisibility={handleToggleSlotVisibility} 
-                              />
+                              <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px', cursor: 'pointer' }} />
                             )}
                           </div>
-                        ) : (
-                          <img onClick={() => setIsCustomizingAvatar(true)} src={userData?.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px', cursor: 'pointer' }} />
-                        )}
-                      </div>
 
-                      {/* Trás: Patente */}
-                      <div className="cube-face cube-face-back" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))' }}>
-                        {currentDisplayImage ? (
-                          <CachedImage key={currentDisplayImage} src={currentDisplayImage} alt={currentRank.name} style={{ width: 170, height: 170, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
-                        ) : (
-                          <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: currentRank.color }}>{currentRank.name}</div>
-                        )}
-                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
-                          {currentRank.name}
-                        </div>
-                      </div>
-
-                      {/* Direita: Pet */}
-                      <div className="cube-face cube-face-right" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))' }}>
-                        {(() => {
-                          const equippedPet = equippedItems.find(item => item.avatarPart === 'pet');
-                          return equippedPet ? (
-                            <CachedImage src={equippedPet.imageUrl} alt="Pet" style={{ width: 140, height: 140, objectFit: 'contain', animation: 'float 3s ease-in-out infinite' }} />
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: 0.5 }}>
-                              <div style={{ width: 100, height: 100, border: '3px dashed var(--border-glass)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-                                <span style={{ fontSize: '3rem' }}>🐾</span>
-                              </div>
-                              <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', fontWeight: 'bold' }}>Nenhum Pet</span>
+                          {/* Trás: Patente */}
+                          <div className="cube-face cube-face-back" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))' }}>
+                            {currentDisplayImage ? (
+                              <CachedImage key={currentDisplayImage} src={currentDisplayImage} alt={currentRank.name} style={{ width: 170, height: 170, objectFit: 'contain', filter: `drop-shadow(0 0 20px ${currentRank.color}80)`, animation: 'epicZoom 1s ease-out' }} />
+                            ) : (
+                              <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: currentRank.color }}>{currentRank.name}</div>
+                            )}
+                            <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                              {currentRank.name}
                             </div>
-                          );
-                        })()}
-                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
-                          Companheiro
-                        </div>
-                      </div>
-
-                      {/* Esquerda: Status Integrado */}
-                      <div className="cube-face cube-face-left" style={{ 
-                        border: `3px solid ${currentRank.color}`, 
-                        boxShadow: `0 0 20px ${currentRank.color}40`, 
-                        flexDirection: 'column',
-                        background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))',
-                        padding: '12px',
-                        justifyContent: 'center'
-                      }}>
-                        
-                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          
-                          {(!userData?.studentViewActive && userData?.role !== 'student') ? null : (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '2px' }}>
-                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>Turma</span>
-                              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{userData?.classId || 'N/A'}</span>
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '2px' }}>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>Experiência Total</span>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>{userData?.xp || 0} XP</span>
                           </div>
 
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '2px' }}>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>HP</span>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', maxWidth: '100%' }}>
+                          {/* Direita: Pet */}
+                          <div className="cube-face cube-face-right" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))' }}>
+                            {(() => {
+                              const equippedPet = equippedItems.find(item => item.avatarPart === 'pet');
+                              return equippedPet ? (
+                                <CachedImage src={equippedPet.imageUrl} alt="Pet" style={{ width: 140, height: 140, objectFit: 'contain', animation: 'float 3s ease-in-out infinite' }} />
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: 0.5 }}>
+                                  <div style={{ width: 100, height: 100, border: '3px dashed var(--border-glass)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                                    <span style={{ fontSize: '3rem' }}>🐾</span>
+                                  </div>
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', fontWeight: 'bold' }}>Nenhum Pet</span>
+                                </div>
+                              );
+                            })()}
+                            <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                              Companheiro
+                            </div>
+                          </div>
+
+                          {/* Esquerda: Status Integrado */}
+                          <div className="cube-face cube-face-left" style={{
+                            border: `3px solid ${currentRank.color}`,
+                            boxShadow: `0 0 20px ${currentRank.color}40`,
+                            flexDirection: 'column',
+                            background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))',
+                            padding: '12px',
+                            justifyContent: 'center'
+                          }}>
+
+                            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+
+                              {(!userData?.studentViewActive && userData?.role !== 'student') ? null : (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '2px' }}>
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>Turma</span>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{userData?.classId || 'N/A'}</span>
+                                </div>
+                              )}
+
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '2px' }}>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>Experiência Total</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>{userData?.xp || 0} XP</span>
+                              </div>
+
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '2px' }}>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>HP</span>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', maxWidth: '100%' }}>
+                                  {(() => {
+                                    const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
+                                    const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
+                                    const displayHp = userData?.role === 'admin' || userData?.role === 'teacher' ? maxHearts : currentHpVisual;
+
+                                    const nowTime = Date.now();
+                                    const equippedRed = equippedItems
+                                      .filter(item => (item as any).gameEffect === 'reduce_hp_cooldown')
+                                      .reduce((acc, item) => acc + Number((item as any).hpCooldownReductionMinutes || 0), 0);
+                                    const isBuffAct = userData.hpCooldownReductionUntil && userData.hpCooldownReductionUntil > nowTime;
+                                    const buffRed = isBuffAct ? Number(userData.hpCooldownReductionMinutes || 0) : 0;
+                                    const effMin = Math.max(1, 30 - Math.min(29, equippedRed + buffRed));
+                                    const totalCycleMs = effMin * 60 * 1000;
+
+                                    return (
+                                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                          {Array.from({ length: maxHearts }).map((_, i) => {
+                                            let fillPct = 0;
+                                            if (i < displayHp) {
+                                              fillPct = 100;
+                                            } else if (i === displayHp && displayHp < maxHearts) {
+                                              fillPct = nextHeartProgress;
+                                            }
+                                            const isCharging = i === displayHp && displayHp < maxHearts;
+                                            const remainingMs = totalCycleMs - ((nextHeartProgress / 100) * totalCycleMs);
+                                            const remainingMin = Math.max(1, Math.ceil(remainingMs / 60000));
+                                            const tooltip = isCharging
+                                              ? `Regenerando coração (${Math.round(fillPct)}%) — ~${remainingMin} min restantes${effMin < 30 ? ` (Acelerado: ${effMin} min/coração)` : ''}`
+                                              : (i < displayHp ? 'Coração Cheio' : 'Coração Vazio');
+
+                                            return (
+                                              <span key={i} title={tooltip} style={{ display: 'inline-flex' }}>
+                                                <NintendoHeart
+                                                  fillPercentage={fillPct}
+                                                  size={12}
+                                                  title={tooltip}
+                                                />
+                                              </span>
+                                            );
+                                          })}
+                                        </div>
+                                        {effMin < 30 && displayHp < maxHearts && (
+                                          <span style={{ fontSize: '0.6rem', color: '#f87171', fontWeight: 'bold' }}>
+                                            ⚡ {effMin}m / coração
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+
+                              {/* Progress */}
+                              {nextRank ? (
+                                <div style={{ margin: '2px 0' }}>
+                                  <div style={{ width: '100%', height: '4px', background: 'rgba(0,0,0,0.3)', borderRadius: '2px', overflow: 'hidden', marginBottom: '2px' }}>
+                                    <div style={{ height: '100%', width: `${progressPercentage}%`, background: `linear-gradient(90deg, ${currentRank.color}, ${nextRank.color})`, borderRadius: '2px', transition: 'width 1s ease-in-out' }}></div>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                                    <span>{currentRank.name}</span>
+                                    <span>Faltam {nextRank.minXp - (userData?.xp || 0)} XP</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '0.7rem', textAlign: 'center', margin: '2px 0' }}>
+                                  Patente Máxima Alcançada!
+                                </div>
+                              )}
+
+                              {/* Character Stats Section */}
                               {(() => {
                                 const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
-                                const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
-                                const displayHp = userData?.role === 'admin' || userData?.role === 'teacher' ? maxHearts : currentHpVisual;
+                                const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRank.name));
+                                const totalEarnedPoints = rankIndex * 4;
+                                const confirmedStats = userData?.distributedStats || {};
+                                const totalConfirmedPoints = Object.values(confirmedStats).reduce((sum: any, val: any) => sum + (val || 0), 0) as number;
+                                const unspentPoints = totalEarnedPoints - totalConfirmedPoints;
+
                                 return (
-                                  <>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'flex-end' }}>
-                                      {Array.from({ length: maxHearts }).map((_, i) => {
-                                        const isCharging = i === displayHp && displayHp < maxHearts;
-                                        const remainingMs = 1800000 - ((nextHeartProgress / 100) * 1800000);
-                                        const remainingMin = Math.ceil(remainingMs / 60000);
+                                  <div style={{ marginTop: '2px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                      <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', margin: 0 }}>Estatísticas</h4>
+                                      {unspentPoints > 0 && (
+                                        <button
+                                          onClick={() => setShowStatDistributionModal(true)}
+                                          className="glow-effect hover-brightness"
+                                          style={{
+                                            background: 'var(--gold-primary)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)',
+                                            borderRadius: '4px', padding: '0.1rem 0.3rem', fontSize: '0.65rem', fontWeight: 'bold',
+                                            display: 'flex', alignItems: 'center', gap: '2px', cursor: 'pointer',
+                                            boxShadow: '0 0 5px var(--gold-primary)'
+                                          }}
+                                        >
+                                          <Plus size={10} /> <span style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{unspentPoints} pts</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '4px' }}>
+                                      {Object.entries(stats).map(([key, value]) => {
+                                        if (value === 0 && key !== 'attack' && key !== 'defense' && key !== 'vitality') return null;
+                                        const labelInfo = ATTRIBUTE_LABELS[key] || ATTRIBUTE_LABELS['none'];
+                                        let displayValue = `+${value}`;
+                                        if (key === 'xp' || key === 'coins') displayValue += '%';
+
                                         return (
-                                          <span key={i} title={isCharging ? `Carregando... (~${remainingMin}m restantes)` : undefined} style={{ display: 'flex' }}>
-                                            <Heart 
-                                              size={10} 
-                                              fill={i < displayHp ? "#ef4444" : "transparent"} 
-                                              color={i < displayHp ? "#ef4444" : "rgba(255,255,255,0.2)"} 
-                                              style={isCharging ? { animation: 'pulse-weak 2s ease-in-out infinite', opacity: 0.5 } : {}}
-                                            />
-                                          </span>
+                                          <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '2px 4px', borderRadius: '4px', gap: '2px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', minWidth: 0 }}>
+                                              <span style={{ fontSize: '0.8rem', flexShrink: 0 }} title={labelInfo.label}>{labelInfo.icon}</span>
+                                              <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{labelInfo.label}</span>
+                                            </div>
+                                            <span style={{ fontSize: '0.65rem', color: labelInfo.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)', flexShrink: 0 }}>
+                                              {displayValue}
+                                            </span>
+                                          </div>
                                         );
                                       })}
                                     </div>
-                                    {displayHp < maxHearts && (
-                                      <div style={{ width: '100%', height: '2px', background: 'rgba(0,0,0,0.3)', borderRadius: '1px', overflow: 'hidden' }}>
-                                        <div style={{ height: '100%', width: `${nextHeartProgress}%`, background: '#ef4444', transition: 'width 1s linear' }} />
-                                      </div>
-                                    )}
-                                  </>
+                                  </div>
                                 );
                               })()}
+
+                            </div>
+
+                            <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
+                              Status
                             </div>
                           </div>
-
-                          {/* Progress */}
-                          {nextRank ? (
-                            <div style={{ margin: '2px 0' }}>
-                              <div style={{ width: '100%', height: '4px', background: 'rgba(0,0,0,0.3)', borderRadius: '2px', overflow: 'hidden', marginBottom: '2px' }}>
-                                <div style={{ height: '100%', width: `${progressPercentage}%`, background: `linear-gradient(90deg, ${currentRank.color}, ${nextRank.color})`, borderRadius: '2px', transition: 'width 1s ease-in-out' }}></div>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
-                                <span>{currentRank.name}</span>
-                                <span>Faltam {nextRank.minXp - (userData?.xp || 0)} XP</span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '0.7rem', textAlign: 'center', margin: '2px 0' }}>
-                              Patente Máxima Alcançada!
-                            </div>
-                          )}
-
-                          {/* Character Stats Section */}
-                          {(() => {
-                            const stats = calculateTotalStats(equippedItems, userData?.distributedStats);
-                            const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRank.name));
-                            const totalEarnedPoints = rankIndex * 4;
-                            const confirmedStats = userData?.distributedStats || {};
-                            const totalConfirmedPoints = Object.values(confirmedStats).reduce((sum: any, val: any) => sum + (val || 0), 0) as number;
-                            const unspentPoints = totalEarnedPoints - totalConfirmedPoints;
-                            
-                            return (
-                              <div style={{ marginTop: '2px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                  <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', margin: 0 }}>Estatísticas</h4>
-                                  {unspentPoints > 0 && (
-                                    <button 
-                                      onClick={() => setShowStatDistributionModal(true)}
-                                      className="glow-effect hover-brightness"
-                                      style={{ 
-                                        background: 'var(--gold-primary)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)', 
-                                        borderRadius: '4px', padding: '0.1rem 0.3rem', fontSize: '0.65rem', fontWeight: 'bold',
-                                        display: 'flex', alignItems: 'center', gap: '2px', cursor: 'pointer',
-                                        boxShadow: '0 0 5px var(--gold-primary)'
-                                      }}
-                                    >
-                                      <Plus size={10} /> <span style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{unspentPoints} pts</span>
-                                    </button>
-                                  )}
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '4px' }}>
-                                  {Object.entries(stats).map(([key, value]) => {
-                                    if (value === 0 && key !== 'attack' && key !== 'defense' && key !== 'vitality') return null;
-                                    const labelInfo = ATTRIBUTE_LABELS[key] || ATTRIBUTE_LABELS['none'];
-                                    let displayValue = `+${value}`;
-                                    if (key === 'xp' || key === 'coins') displayValue += '%';
-                                    
-                                    return (
-                                      <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '2px 4px', borderRadius: '4px', gap: '2px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', minWidth: 0 }}>
-                                          <span style={{ fontSize: '0.8rem', flexShrink: 0 }} title={labelInfo.label}>{labelInfo.icon}</span>
-                                          <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{labelInfo.label}</span>
-                                        </div>
-                                        <span style={{ fontSize: '0.65rem', color: labelInfo.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)', flexShrink: 0 }}>
-                                          {displayValue}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })()}
-
-                        </div>
-
-                        <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10 }}>
-                          Status
                         </div>
                       </div>
+
+                      <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
+                        {'>'}
+                      </button>
                     </div>
+
+                    {/* Balão do companheiro (boneco) */}
+                    {bubble && (Math.round((((cubeRotation % 360) + 360) % 360) / 90) % 4) === 0 && (
+                      <div className="companion-bubble" onClick={handleBubbleClick} title="Clique para continuar">
+                        {companionTips.find(t => t.id === bubble.tipId)?.lines[bubble.step]}
+                      </div>
+                    )}
                   </div>
 
-                  <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
-                    {'>'}
-                  </button>
-                </div>
-
-                {/* Balão do companheiro (boneco) */}
-                {bubble && (Math.round((((cubeRotation % 360) + 360) % 360) / 90) % 4) === 0 && (
-                  <div className="companion-bubble" onClick={handleBubbleClick} title="Clique para continuar">
-                    {companionTips.find(t => t.id === bubble.tipId)?.lines[bubble.step]}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
+                    <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', margin: 0 }}>{userData?.name}</h2>
                   </div>
-                )}
-              </div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
-                <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', margin: 0 }}>{userData?.name}</h2>
-              </div>
-              
-              {isEditingStatus ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', width: '100%', maxWidth: '400px' }}>
-                  <MessageCircle size={16} color="var(--text-secondary)" />
-                  <input 
-                    autoFocus
-                    value={statusInputValue}
-                    onChange={e => setStatusInputValue(e.target.value)}
-                    onKeyDown={async (e) => {
-                      if (e.key === 'Enter') {
-                        await handleUpdateStatus(statusInputValue);
-                        setIsEditingStatus(false);
-                      }
-                      if (e.key === 'Escape') {
-                        setIsEditingStatus(false);
-                      }
-                    }}
-                    onBlur={async () => {
-                      await handleUpdateStatus(statusInputValue);
-                      setIsEditingStatus(false);
-                    }}
-                    placeholder="Escreva seu status..."
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', flex: 1, outline: 'none', fontStyle: 'italic', width: '100%', fontSize: '0.9rem' }}
-                  />
+
+                  {isEditingStatus ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', width: '100%', maxWidth: '400px' }}>
+                      <MessageCircle size={16} color="var(--text-secondary)" />
+                      <input
+                        autoFocus
+                        value={statusInputValue}
+                        onChange={e => setStatusInputValue(e.target.value)}
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            await handleUpdateStatus(statusInputValue);
+                            setIsEditingStatus(false);
+                          }
+                          if (e.key === 'Escape') {
+                            setIsEditingStatus(false);
+                          }
+                        }}
+                        onBlur={async () => {
+                          await handleUpdateStatus(statusInputValue);
+                          setIsEditingStatus(false);
+                        }}
+                        placeholder="Escreva seu status..."
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', flex: 1, outline: 'none', fontStyle: 'italic', width: '100%', fontSize: '0.9rem' }}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', color: 'var(--text-secondary)', minHeight: '36px', width: '100%', maxWidth: '400px', fontSize: '0.9rem' }}>
+                      <MessageCircle size={16} />
+                      <span style={{ fontStyle: 'italic', flex: 1 }}>{userData?.customStatusText ? `"${userData.customStatusText}"` : "Escreva seu status..."}</span>
+                      <button onClick={() => { setStatusInputValue(userData?.customStatusText || ''); setIsEditingStatus(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0 0.25rem', display: 'flex' }} className="hover-brightness" title="Editar Status">
+                        <Edit3 size={16} />
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', color: 'var(--text-secondary)', minHeight: '36px', width: '100%', maxWidth: '400px', fontSize: '0.9rem' }}>
-                  <MessageCircle size={16} />
-                  <span style={{ fontStyle: 'italic', flex: 1 }}>{userData?.customStatusText ? `"${userData.customStatusText}"` : "Escreva seu status..."}</span>
-                  <button onClick={() => { setStatusInputValue(userData?.customStatusText || ''); setIsEditingStatus(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0 0.25rem', display: 'flex' }} className="hover-brightness" title="Editar Status">
-                    <Edit3 size={16} />
-                  </button>
+              </div>
+              {/* Coluna Direita Alternável (Histórico ou Mochila) */}
+              {(userData?.role === 'student' || userData?.studentViewActive) && profileTab === 'overview' && (
+                <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
+                    <History size={24} color="var(--gold-primary)" />
+                    <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Histórico de Conquistas</h3>
+                  </div>
+
+                  <div style={{ flex: 1, overflowY: 'auto', maxHeight: '600px', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {loadingHistory ? (
+                      <p style={{ color: 'var(--text-secondary)' }}>Carregando suas conquistas...</p>
+                    ) : xpHistory.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
+                        <Star size={48} style={{ opacity: 0.5, margin: '0 auto 1rem auto' }} />
+                        <p>Você ainda não recebeu XP.<br />Complete desafios e atividades para subir de patente!</p>
+                      </div>
+                    ) : (
+                      xpHistory.map((item: any, index: number) => {
+                        const isRank = item.type === 'rank_up';
+                        const isItem = item.type === 'item';
+                        const isNegative = item.badgeType === 'xp_negative';
+
+                        let borderColor = 'var(--gold-primary)';
+                        let badgeBg = 'rgba(251, 191, 36, 0.15)';
+                        let badgeColor = 'var(--gold-primary)';
+
+                        if (isRank) {
+                          borderColor = '#a855f7';
+                          badgeBg = 'rgba(168, 85, 247, 0.2)';
+                          badgeColor = '#c084fc';
+                        } else if (isItem) {
+                          borderColor = '#3b82f6';
+                          badgeBg = 'rgba(59, 130, 246, 0.15)';
+                          badgeColor = '#60a5fa';
+                        } else if (isNegative) {
+                          borderColor = 'var(--accent-red)';
+                          badgeBg = 'rgba(239, 68, 68, 0.15)';
+                          badgeColor = 'var(--accent-red)';
+                        }
+
+                        const dateObj = item.timestamp ? (typeof item.timestamp === 'number' ? new Date(item.timestamp) : (item.timestamp.seconds ? new Date(item.timestamp.seconds * 1000) : new Date(item.timestamp))) : new Date();
+
+                        return (
+                          <div key={item.id || index} style={{ padding: '1.1rem 1.25rem', background: 'rgba(0,0,0,0.25)', borderRadius: '12px', borderLeft: `4px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: 1 }}>
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} alt="" style={{ width: '42px', height: '42px', objectFit: 'contain', borderRadius: '8px', flexShrink: 0 }} />
+                              ) : (
+                                <div style={{ width: '42px', height: '42px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  {isRank ? <Trophy size={22} color="#c084fc" /> : isItem ? <Package size={22} color="#60a5fa" /> : <Star size={22} color="var(--gold-primary)" />}
+                                </div>
+                              )}
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <h4 style={{ fontSize: '1.05rem', margin: '0 0 0.2rem 0', fontWeight: 'bold', color: 'var(--text-primary)', whiteSpace: 'normal' }}>
+                                  {item.title || item.evalName}
+                                </h4>
+                                {item.subtitle && (
+                                  <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                    {item.subtitle}
+                                  </p>
+                                )}
+                                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>
+                                  Data: {dateObj.toLocaleDateString('pt-BR')} | Hora: {dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: badgeColor, background: badgeBg, padding: '0.4rem 0.9rem', borderRadius: '20px', whiteSpace: 'nowrap', border: `1px solid ${borderColor}40` }}>
+                              {item.badgeText || (item.xpGained !== undefined ? `${item.xpGained > 0 ? '+' : ''}${item.xpGained} XP` : 'Conquista')}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               )}
-              </div>
-            </div>
-{/* Coluna Direita Alternável (Histórico ou Mochila) */}
-            {(userData?.role === 'student' || userData?.studentViewActive) && profileTab === 'overview' && (
-              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
-                <History size={24} color="var(--gold-primary)" />
-                <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Histórico de Conquistas</h3>
-              </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', maxHeight: '600px', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {loadingHistory ? (
-                  <p style={{ color: 'var(--text-secondary)' }}>Carregando suas conquistas...</p>
-                ) : xpHistory.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-                    <Star size={48} style={{ opacity: 0.5, margin: '0 auto 1rem auto' }} />
-                    <p>Você ainda não recebeu XP.<br/>Complete desafios e atividades para subir de patente!</p>
-                  </div>
-                ) : (
-                  xpHistory.map((log, index) => (
-                    <div key={index} style={{ padding: '1.25rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', borderLeft: `4px solid ${log.xpGained >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        {log.imageUrl && (
-                          <img src={log.imageUrl} alt="Badge" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
-                        )}
-                        <div>
-                          <h4 style={{ fontSize: '1.1rem', margin: '0 0 0.25rem 0' }}>
-                            {log.evalName}
-                          </h4>
-                          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                            Data: {log.timestamp ? new Date(log.timestamp.seconds * 1000).toLocaleDateString('pt-BR') : 'Hoje'} | Hora: {log.timestamp ? new Date(log.timestamp.seconds * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                          </span>
-                        </div>
-                      </div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: log.xpGained >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)', background: log.xpGained >= 0 ? 'rgba(251, 191, 36, 0.1)' : 'rgba(239, 68, 68, 0.1)', padding: '0.5rem 1rem', borderRadius: '20px' }}>
-                        {log.xpGained > 0 ? '+' : ''}{log.xpGained} XP
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              </div>
-            )}
-            
-            {profileTab === 'inventory' && (
-              <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
-                {userData && <StudentInventory userData={userData} onEquip={() => {
-                  setInventoryRefresh(r => r + 1);
-                  setCubeRotation(prev => prev % 360 !== 0 ? Math.round(prev / 360) * 360 : prev);
-                }} inventoryRefresh={inventoryRefresh} />}
-              </div>
-            )}
+              {profileTab === 'inventory' && (
+                <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
+                  {userData && <StudentInventory userData={userData} onEquip={() => {
+                    setInventoryRefresh(r => r + 1);
+                    setCubeRotation(prev => prev % 360 !== 0 ? Math.round(prev / 360) * 360 : prev);
+                  }} inventoryRefresh={inventoryRefresh} />}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2574,8 +2613,8 @@ export default function Dashboard() {
                 {isAdminOrTeacher ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Ver turma:</span>
-                    <select 
-                      value={targetClassRanking} 
+                    <select
+                      value={targetClassRanking}
                       onChange={(e) => setSelectedClassForRanking(e.target.value)}
                       style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
                     >
@@ -2592,7 +2631,7 @@ export default function Dashboard() {
                   <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Sua sala: {userData?.classId || 'Não definida'}</p>
                 )}
               </div>
-              <button 
+              <button
                 onClick={() => setShowRankingAvatars(!showRankingAvatars)}
                 className="login-btn hide-text-mobile"
                 style={{ background: 'transparent', border: '1px solid var(--gold-primary)', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
@@ -2616,7 +2655,7 @@ export default function Dashboard() {
                 <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Top 10 Geral</h2>
                 <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Os maiores pontuadores de toda a escola.</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowRankingAvatars(!showRankingAvatars)}
                 className="login-btn hide-text-mobile"
                 style={{ background: 'transparent', border: '1px solid var(--gold-primary)', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}

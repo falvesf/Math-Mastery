@@ -30,12 +30,14 @@ interface UserItem {
   giftedBy?: string;
   count?: number;
   docIds?: string[];
+  hpCooldownReductionMinutes?: number;
+  buffDurationHours?: number;
 }
 
 export default function QuestGameplay() {
   const { questId } = useParams();
   const { userData, updateUserDataLocally } = useAuth();
-  const { tenant, tenantId, isSuperAdmin } = useTenant();
+  const { tenantId } = useTenant();
   const navigate = useNavigate();
   const { showAlert, showConfirm } = useDialog();
 
@@ -129,8 +131,8 @@ export default function QuestGameplay() {
 
   // Economia Dinâmica
   const [economySettings, setEconomySettings] = useState<any>(null);
-  const [coinsToRescue, setCoinsToRescue] = useState<number | null>(null);
-const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
+  const [, setCoinsToRescue] = useState<number | null>(null);
+  const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [coinPops, setCoinPops] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [, setLostCoinsDisplay] = useState<number | null>(null);
   const alreadyCompletedRef = useRef(false);
@@ -482,8 +484,22 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
     const currentHp = userData.hp !== undefined ? userData.hp : maxHearts;
     if (currentHp >= maxHearts && newHearts < maxHearts) {
       updates.hp_recovery_start_timestamp = Date.now();
+    } else if (newHearts >= maxHearts) {
+      updates.hp_recovery_start_timestamp = null;
     }
+    
     userData.hp = newHearts;
+    if (updates.hp_recovery_start_timestamp !== undefined) {
+      userData.hpRecoveryStartTimestamp = updates.hp_recovery_start_timestamp;
+    }
+    
+    updateUserDataLocally({ 
+      hp: newHearts, 
+      hpRecoveryStartTimestamp: updates.hp_recovery_start_timestamp !== undefined 
+        ? updates.hp_recovery_start_timestamp 
+        : userData.hpRecoveryStartTimestamp 
+    });
+
     await supabase.from('users').update(updates).eq('id', userData.uid);
   };
 
@@ -1063,7 +1079,7 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
           earnedCoins += finalRewards.coins;
           
           const wonSlots: { id: string, quantity: number }[] = [];
-          const slotCount = selectedChestModel?.slot_count || quest?.chestConfig?.slotCount || 4;
+          const slotCount = selectedChestModel?.slot_count || (quest?.chestConfig as any)?.slotCount || 4;
           for (let i = 0; i < slotCount; i++) {
             const itemId = quest.chestConfig.itemIds?.[i];
             if (!itemId || itemId.trim() === '') continue;
@@ -1180,14 +1196,6 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
         
         if (actualXpGained > 0) {
           updates.xp = (userData?.xp || 0) + actualXpGained;
-          const { error: xpErr } = await supabase.from('xp_logs').insert({
-            student_id: userData!.uid,
-            reason: `Missão: ${quest?.title}`,
-            amount: actualXpGained,
-            type: 'quest'
-          });
-          if (xpErr) console.error("Falha ao registrar xp_logs (possível bloqueio de RLS):", xpErr);
-          
           // Invalida o cache de histórico para que o Dashboard mostre a nova entrada
           sessionCache.invalidate(CACHE_KEYS.xpHistory(userData!.uid));
         }
@@ -1232,6 +1240,12 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
         }
         
         await supabase.from('users').update(updates).eq('id', userData.uid);
+      }
+
+      // Garantir que o HP final do jogo seja gravado em users e updateUserDataLocally
+      if (!isStudyMode && (userData?.role === 'student' || !!userData?.studentViewActive)) {
+        const finalHp = isWin ? currentHearts : 0;
+        await updateUserHearts(finalHp);
       }
     }
 

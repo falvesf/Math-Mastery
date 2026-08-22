@@ -65,6 +65,8 @@ export interface EquippedItem {
   rarity?: string;
   backColor?: string;
   customAnimation?: ItemAnimation;
+  gameEffect?: string;
+  hpCooldownReductionMinutes?: number;
 }
 
 export interface BoneTransform {

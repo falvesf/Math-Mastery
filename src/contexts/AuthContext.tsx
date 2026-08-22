@@ -6,7 +6,7 @@ import { initRanks } from '../lib/ranks';
 import { connectPresence, disconnectPresence } from '../lib/onlinePresence';
 import type { AvatarConfig } from '../components/AvatarCharacter';
 
-export type UserRole = 'student' | 'teacher' | 'coordinator' | 'admin' | 'superadmin' | 'pending_teacher';
+export type UserRole = 'student' | 'teacher' | 'coordinator' | 'admin' | 'superadmin' | 'pending_teacher' | 'pending_student';
 
 export interface UserData {
   uid: string;
@@ -29,15 +29,17 @@ export interface UserData {
   stunnedUntil?: number | null;
   happyBuffUntil?: number | null;
   happyBuffDuration?: number | null;
+  hpCooldownReductionUntil?: number | null;
+  hpCooldownReductionMinutes?: number | null;
   customStatusText?: string;
   isProfilePublic?: boolean;
   characterName?: string;
   unlockedSkins?: Record<string, number>;
   inventoryPreferences?: {
-    viewMode: string;
+    viewMode?: string;
     activeCategory?: string;
-    filterRarity: string;
-    sortBy: string;
+    filterRarity?: string;
+    sortBy?: string;
     lastSeenRank?: string;
     highestRankIndex?: number;
     onboarding?: Record<string, boolean>;
@@ -64,6 +66,8 @@ export const mapUserToClient = (dbUser: any): UserData => {
     stunnedUntil: dbUser.stunned_until,
     happyBuffUntil: dbUser.happy_buff_until,
     happyBuffDuration: dbUser.happy_buff_duration,
+    hpCooldownReductionUntil: dbUser.hp_cooldown_reduction_until,
+    hpCooldownReductionMinutes: dbUser.hp_cooldown_reduction_minutes,
     customStatusText: dbUser.custom_status_text,
     isProfilePublic: dbUser.is_profile_public,
     characterName: dbUser.character_name,
@@ -291,8 +295,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .from('users')
         .update({ last_seen_at: new Date().toISOString() })
         .eq('id', uid)
-        .then(({ error }) => { if (error) console.error('Heartbeat:', error); })
-        .catch(() => {});
+        .then(
+          ({ error }) => { if (error) console.error('Heartbeat:', error); },
+          () => {}
+        );
     };
     beat();
     const int = setInterval(beat, 30 * 1000);

@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, Move, MessageCircle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -18,14 +18,15 @@ import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import ArenaBgEditor from '../components/ArenaBgEditor';
 import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
+import QuestionBankModal from '../components/QuestionBankModal';
+import QuestQuestionsEditor from '../components/QuestQuestionsEditor';
+import QuestConfigModal from '../components/QuestConfigModal';
 import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
 import PreAuthorizedStudentsManager from '../components/PreAuthorizedStudentsManager';
-import RichTextEditor from '../components/RichTextEditor';
 import { useDialog } from '../contexts/DialogContext';
 import { validateCharacterName, normalizeForComparison } from '../lib/nameValidation';
 import { normalizeCombatCoinDrop } from '../lib/utils';
-import { fetchModelsByCategory } from '../lib/model3d';
 
 export interface ClassDef {
   id: string;
@@ -514,6 +515,10 @@ export default function AdminDashboard() {
   const [questQuestions, setQuestQuestions] = useState<QuestQuestion[]>([
     { title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }
   ]);
+  const [showQuestionBank, setShowQuestionBank] = useState(false);
+  const [showQuestQuestionsEditor, setShowQuestQuestionsEditor] = useState(false);
+  const [showQuestConfig, setShowQuestConfig] = useState(false);
+  const [bankGalleryResult, setBankGalleryResult] = useState<{ type: 'question' | 'option'; optIndex?: number; url: string } | null>(null);
 
   // Sidebar Mobile State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -773,30 +778,36 @@ export default function AdminDashboard() {
   const loadStudentHistoryLocally = async (studentUid: string) => {
     setLoadingHistory(true);
     const { data: snap } = await supabase.from('xp_logs').select('*').eq('student_id', studentUid);
-    let logs = (snap || []).map(d => {
-      let eName = d.eval_name || d.reason || 'Avaliação';
-      let just = d.justification || '';
-      let img = '';
-      if (!d.eval_name && d.reason && d.reason.includes(' | ')) {
-         const parts = d.reason.split(' | ');
-         eName = parts[0].trim();
-         img = parts[1] ? parts[1].trim() : '';
-         just = parts[2] ? parts[2].trim() : '';
-      } else if (d.eval_name && d.eval_name.includes(' | ')) {
-         const parts = d.eval_name.split(' | ');
-         eName = parts[0].trim();
-         img = parts[1] ? parts[1].trim() : '';
-      }
-      
-      return {
-        logId: d.id, 
-        evalName: eName,
-        imageUrl: img,
-        xpGained: d.xp_gained !== undefined ? d.xp_gained : (d.amount || 0),
-        justification: just,
-        ...d 
-      };
-    });
+    let logs = (snap || [])
+      .filter(d => {
+        const eName = d.eval_name || d.reason || '';
+        // Histórico de XP no painel master: exclusivamente registros de atribuição/dedução manual do professor
+        return !eName.startsWith('Missão:') && !eName.startsWith('Subiu de Patente:') && !eName.startsWith('Compra na Loja:');
+      })
+      .map(d => {
+        let eName = d.eval_name || d.reason || 'Avaliação';
+        let just = d.justification || '';
+        let img = '';
+        if (!d.eval_name && d.reason && d.reason.includes(' | ')) {
+           const parts = d.reason.split(' | ');
+           eName = parts[0].trim();
+           img = parts[1] ? parts[1].trim() : '';
+           just = parts[2] ? parts[2].trim() : '';
+        } else if (d.eval_name && d.eval_name.includes(' | ')) {
+           const parts = d.eval_name.split(' | ');
+           eName = parts[0].trim();
+           img = parts[1] ? parts[1].trim() : '';
+        }
+        
+        return {
+          logId: d.id, 
+          evalName: eName,
+          imageUrl: img,
+          xpGained: d.xp_gained !== undefined ? d.xp_gained : (d.amount || 0),
+          justification: just,
+          ...d 
+        };
+      });
     logs.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     setXpHistory(logs);
 
@@ -1152,45 +1163,6 @@ export default function AdminDashboard() {
     fetchStudents();
   };
 
-  // Missões Handlers
-  const handleAddQuestion = async () => {
-    if (questQuestions.length > 0) {
-      const lastQ = questQuestions[questQuestions.length - 1];
-      const hasTextOrImage = lastQ.title.trim() !== '' || (lastQ.imageUrl || '').trim() !== '';
-      
-      const filledOptions = lastQ.options.map((opt, idx) => {
-        const isFilled = (opt.text || '').trim() !== '' || (opt.imageUrl || '').trim() !== '';
-        return { idx, isFilled };
-      }).filter(o => o.isFilled);
-      
-      if (!hasTextOrImage) {
-        await showAlert("Preencha o título ou adicione uma imagem na última questão antes de criar uma nova.");
-        return;
-      }
-      if (filledOptions.length < 2) {
-        await showAlert("A última questão precisa de pelo menos 2 alternativas preenchidas antes de criar uma nova.");
-        return;
-      }
-      if (!filledOptions.some(o => o.idx === lastQ.correctIndex)) {
-        await showAlert("A resposta correta da última questão aponta para uma alternativa vazia. Marque uma alternativa preenchida como correta.");
-        return;
-      }
-    }
-    setQuestQuestions([...questQuestions, { title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
-  };
-
-  const handleUpdateQuestion = (index: number, field: keyof QuestQuestion, value: any) => {
-    const updated = [...questQuestions];
-    updated[index] = { ...updated[index], [field]: value };
-    setQuestQuestions(updated);
-  };
-
-  const handleUpdateOption = (qIndex: number, optIndex: number, field: keyof QuestOption, value: string) => {
-    const updated = [...questQuestions];
-    updated[qIndex].options[optIndex] = { ...updated[qIndex].options[optIndex], [field]: value };
-    setQuestQuestions(updated);
-  };
-
   const handleSaveQuest = async () => {
     if (!questTitle || !questTitle.trim() || questQuestions.length === 0) {
       await showAlert("Preencha o título da missão e adicione perguntas!");
@@ -1218,6 +1190,10 @@ export default function AdminDashboard() {
         return;
       }
     }
+
+    // Perguntas digitadas manualmente (sem vínculo com o banco) vão para o banco global
+    // de perguntas. Importações NÃO duplicam. (Fire-and-forget, não bloqueia o save)
+    questQuestions.forEach((q, index) => { saveQuestionToBank(q, index); });
 
     if (questChestConfig?.itemIds) {
       const ids = questChestConfig.itemIds.filter(id => id.trim() !== '');
@@ -1278,19 +1254,24 @@ export default function AdminDashboard() {
     const sanitizedQuest = JSON.parse(JSON.stringify(newQuest));
 
     try {
-      // Tenta salvar com as colunas de seleção aleatória
-      try {
-        await supabase.from('quests').upsert({ id: questId, ...sanitizedQuest });
-      } catch (upsertErr: any) {
-        // Se as colunas randomQuestionSelection/Count não existirem na tabela,
-        // o Supabase rejeita. Salva sem esses campos para não perder as imagens.
-        const errMsg = upsertErr?.message || '';
-        if (errMsg.includes('randomQuestionSelection') || errMsg.includes('randomQuestionCount') || errMsg.includes('Could not find')) {
-          const { randomQuestionSelection, randomQuestionCount, ...questWithoutRandom } = sanitizedQuest;
-          await supabase.from('quests').upsert({ id: questId, ...questWithoutRandom });
-        } else {
-          throw upsertErr;
-        }
+      // Tenta salvar com todas as colunas. Se alguma coluna não existir na
+      // tabela (ex: combatCoinDrop), o PostgREST retorna erro SEM lançar
+      // exceção. Detectamos o erro e removemos a coluna ausente para não
+      // perder o restante do save silenciosamente.
+      let payload = sanitizedQuest;
+      let upsertRes = await supabase.from('quests').upsert({ id: questId, ...payload });
+      let upsertErr = upsertRes.error;
+      while (upsertErr && /Could not find the '([^']+)' column/.test(upsertErr.message || '')) {
+        const missing = (upsertErr.message.match(/Could not find the '([^']+)' column/) || [])[1];
+        if (!missing) break;
+        const { [missing]: _dropped, ...rest } = payload;
+        payload = rest;
+        upsertRes = await supabase.from('quests').upsert({ id: questId, ...payload });
+        upsertErr = upsertRes.error;
+      }
+      if (upsertErr) {
+        await showAlert("Erro ao salvar a missão: " + (upsertErr.message || 'Erro desconhecido. Verifique se todos os campos estão preenchidos.'));
+        return;
       }
       setIsCreatingQuest(false);
       setEditingQuestId(null);
@@ -1420,6 +1401,11 @@ export default function AdminDashboard() {
     } else if (galleryTarget?.startsWith('option-')) {
       const [, qIndexStr, optIndexStr] = galleryTarget.split('-');
       handleUpdateOption(parseInt(qIndexStr), parseInt(optIndexStr), 'imageUrl', url);
+    } else if (galleryTarget === 'bank-question') {
+      setBankGalleryResult({ type: 'question', url });
+    } else if (galleryTarget?.startsWith('bank-option-')) {
+      const optIndex = parseInt(galleryTarget.split('-')[2]);
+      setBankGalleryResult({ type: 'option', optIndex, url });
     }
     setGalleryTarget(null);
   };
@@ -2419,429 +2405,68 @@ export default function AdminDashboard() {
 
                     </div>
 
-                    <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--border-glass)', marginTop: '2rem' }}>
-                      <h4 style={{ color: 'var(--accent-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Swords size={20} /> Configurar Monstro / Oponente</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                        <div>
-                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome do Monstro</label>
-                          <input type="text" value={questMonsterName} onChange={e => setQuestMonsterName(e.target.value)} placeholder="Ex: Golem de Pedra" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
-                        </div>
-                        <div style={{ gridColumn: '1 / -1' }}>
-                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Selecionar Monstro da Galeria</label>
-                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                            <select 
-                              value={availableMonsters.find(m => m.name === questMonsterName)?.id || ''} 
-                              onChange={e => {
-                                const selected = availableMonsters.find(m => m.id === e.target.value);
-                                if (selected) {
-                                  setQuestMonsterName(selected.name);
-                                  setQuestMonsterConfig(selected.config || null);
-                                  
-                                  if (selected.config?.customModelUrl) {
-                                    setQuestMonsterModelUrl(selected.config.customModelUrl);
-                                  } else if (selected.baseModelId) {
-                                    const rawModel = available3DModels.find(m => m.id === selected.baseModelId);
-                                    if (rawModel) setQuestMonsterModelUrl(rawModel.url);
-                                    else setQuestMonsterModelUrl('');
-                                  } else {
-                                    setQuestMonsterModelUrl('');
-                                  }
-                                } else {
-                                  setQuestMonsterName('');
-                                  setQuestMonsterConfig(null);
-                                  setQuestMonsterModelUrl('');
-                                }
-                              }} 
-                              style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
-                            >
-                              <option value="">(Personalizar um novo Monstro...)</option>
-                              {availableMonsters.map(monster => (
-                                <option key={monster.id} value={monster.id}>{monster.name}</option>
-                              ))}
-                            </select>
-
-                            <div style={{ width: '100px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                               {(questMonsterConfig || questMonsterModelUrl) ? (
-                                  <AvatarCharacter 
-                                    config={questMonsterConfig || (questMonsterModelUrl ? { customModelUrl: questMonsterModelUrl } as AvatarConfig : null)} 
-                                    size={90} 
-                                    interactive={false} 
-                                    animation="idle" 
-                                    role="monster" 
-                                  />
-                               ) : (
-                                  <Swords size={32} color="var(--text-secondary)" opacity={0.5} />
-                               )}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'flex-end', gridColumn: '1 / -1' }}>
-                          <button onClick={() => setIsCustomizingMonster(true)} style={{ width: '100%', padding: '1rem', background: questMonsterConfig ? 'var(--gold-primary)' : 'rgba(59, 130, 246, 0.2)', color: questMonsterConfig ? 'var(--text-on-gold, #000000)' : 'var(--accent-primary)', border: `1px solid ${questMonsterConfig ? 'var(--gold-primary)' : 'var(--accent-primary)'}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            {questMonsterConfig ? 'Editar Aparência deste Monstro' : 'Criar Monstro 3D Personalizado'}
-                          </button>
-                        </div>
+                    {/* Configurações avançadas do desafio (Monstro, Arena, Recompensas) */}
+                    <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginTop: '2rem' }}>
+                      <div style={{ flex: 1, minWidth: '250px' }}>
+                        <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1.05rem', color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Swords size={18} /> Monstro / Oponente
+                        </h4>
+                        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          {questMonsterName ? `Monstro: ${questMonsterName}` : 'Nenhum monstro personalizado (padrão do jogo)'}
+                          {' · '}{questMonsterDrops.length > 0 ? `${questMonsterDrops.length} drop(s) de derrota` : 'sem drops de derrota'}
+                        </p>
+                        <h4 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.05rem', color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <ImageIcon size={18} /> Arena
+                        </h4>
+                        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          {questBattleBgUrl ? 'Fundo personalizado definido' : 'Fundo padrão do jogo'}
+                        </p>
+                        <h4 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.05rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Gift size={18} /> Recompensas
+                        </h4>
+                        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          Moedas em combate: {questCombatCoinMin}-{questCombatCoinMax} ({questCombatCoinMinValue}-{questCombatCoinMaxValue}/moeda)
+                          {questChestConfig?.maxCoins ? ` · Baú final: até ${questChestConfig.maxCoins} moedas` : ' · Baú final: sem moedas'}
+                          {questMode === 'live' ? ' · Baús do pódio (1º/2º/3º) configuráveis' : ''}
+                        </p>
                       </div>
-
-
-                      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
-                        <h5 style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1.1rem' }}>Falas do Monstro (Opcional - Separe por ; para sortear)</h5>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                          <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-green)', fontSize: '0.9rem' }}>HP 100% a 80%</label>
-                            <input type="text" value={questMonsterQuotes.hp100_80 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp100_80: e.target.value})} placeholder="Ex: Vou te esmagar!; Renda-se!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
-                          </div>
-                          <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>HP 79% a 50%</label>
-                            <input type="text" value={questMonsterQuotes.hp79_50 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp79_50: e.target.value})} placeholder="Ex: Você é mais forte do que parece..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
-                          </div>
-                          <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-primary)', fontSize: '0.9rem' }}>HP 49% a 25%</label>
-                            <input type="text" value={questMonsterQuotes.hp49_25 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp49_25: e.target.value})} placeholder="Ex: Isso não vai ficar assim!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
-                          </div>
-                          <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-red)', fontSize: '0.9rem' }}>HP Menor que 24%</label>
-                            <input type="text" value={questMonsterQuotes.hp24_0 || ''} onChange={e => setQuestMonsterQuotes({...questMonsterQuotes, hp24_0: e.target.value})} placeholder="Ex: Maldição!; Como posso perder?!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
-                          </div>
-                        </div>
-
-                        <div style={{ marginTop: '1.5rem' }}>
-                          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 'bold' }}>Falas de Derrota (Quando o jogador der o Golpe Final)</label>
-                          <input type="text" value={questMonsterDefeatQuotes} onChange={e => setQuestMonsterDefeatQuotes(e.target.value)} placeholder="Ex: NÃO PODE SER!; Fui derrotado...; AHHH!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }} />
-                        </div>
-                      </div>
-
-                      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
-                        <h5 style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1.1rem' }}>Recompensas de Derrota do Monstro (Drops)</h5>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>Adicione itens que o monstro pode dropar ao ser derrotado. A chance padrão é definida pela raridade do item (Comum: 60%, Incomum: 40%, Raro: 20%, Épico: 5%, Lendário: 1%), mas você pode alterá-la.</p>
-                        
-                        {questMonsterDrops.map((drop, index) => {
-                          return (
-                            <div key={index} style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
-                              <StoreItemSelect
-                                value={drop.itemId}
-                                onChange={(id, item) => {
-                                  const newDrops = [...questMonsterDrops];
-                                  let defaultChance = 60;
-                                  if (item?.rarity === 'uncommon') defaultChance = 40;
-                                  if (item?.rarity === 'rare') defaultChance = 20;
-                                  if (item?.rarity === 'epic') defaultChance = 5;
-                                  if (item?.rarity === 'legendary') defaultChance = 1;
-                                  newDrops[index] = { itemId: id, dropChance: defaultChance };
-                                  setQuestMonsterDrops(newDrops);
-                                }}
-                                items={availableStoreItems}
-                                placeholder="(Selecione um Item)"
-                              />
-                              
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Chance:</label>
-                                <input 
-                                  type="number" 
-                                  min="0" max="100" 
-                                  value={drop.dropChance} 
-                                  onChange={e => {
-                                    const newDrops = [...questMonsterDrops];
-                                    newDrops[index].dropChance = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
-                                    setQuestMonsterDrops(newDrops);
-                                  }}
-                                  style={{ width: '80px', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
-                                />
-                                <span style={{ color: 'var(--text-secondary)' }}>%</span>
-                              </div>
-                              
-                              <button 
-                                onClick={() => {
-                                  const newDrops = questMonsterDrops.filter((_, i) => i !== index);
-                                  setQuestMonsterDrops(newDrops);
-                                }}
-                                style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }}
-                                title="Remover Drop"
-                              >
-                                <Trash2 size={20} />
-                              </button>
-                            </div>
-                          );
-                        })}
-                        
-                        <button 
-                          onClick={() => setQuestMonsterDrops([...questMonsterDrops, { itemId: '', dropChance: 60 }])}
-                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-blue)', border: '1px solid var(--accent-blue)', borderRadius: '8px', cursor: 'pointer', marginTop: '1rem' }}
-                        >
-                          <Plus size={18} /> Adicionar Item de Drop
-                        </button>
-                      </div>
-
+                      <button
+                        className="login-btn"
+                        onClick={() => setShowQuestConfig(true)}
+                        style={{ padding: '0.75rem 1.5rem', background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem', flexShrink: 0 }}
+                      >
+                        <Settings size={18} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} /> Configurações do Desafio
+                      </button>
                     </div>
-
-                    {/* Fundo da Arena de Batalha */}
-                    <div style={{ background: 'rgba(139, 92, 246, 0.05)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.3)', marginTop: '1rem' }}>
-                      <h4 style={{ color: '#8b5cf6', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <ImageIcon size={20} /> Fundo da Arena de Batalha
-                      </h4>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                        Escolha uma imagem de fundo personalizada para a arena de batalha. Se não selecionar, será usado o fundo padrão.
-                      </p>
-                      
-                      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        {/* Preview do fundo atual */}
-                        <div style={{ width: '200px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', flexShrink: 0 }}>
-                          {questBattleBgUrl ? (
-                            <div style={{ 
-                              width: '100%', 
-                              height: '100%', 
-                              backgroundImage: `url(${questBattleBgUrl})`,
-                              backgroundSize: `${questBattleBgScale * 100}%`,
-                              backgroundPosition: `${questBattleBgPosX}% ${questBattleBgPosY}%`,
-                              backgroundRepeat: 'no-repeat'
-                            }} />
-                          ) : (
-                            <div style={{ width: '100%', height: '100%', background: 'url(/battle_bg.png) center/cover', opacity: 0.5 }} />
-                          )}
-                        </div>
-                        
-                        <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                          {/* Botões de ação */}
-                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            <button 
-                              onClick={() => setGalleryTarget('arena')}
-                              style={{ padding: '0.5rem 1rem', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}
-                            >
-                              <Search size={16} /> Galeria
-                            </button>
-                            <DirectUploadButton 
-                              folder="arena-backgrounds" 
-                              onUploadComplete={(url) => setQuestBattleBgUrl(url)} 
-                              buttonStyle={{ padding: '0.5rem 1rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }} 
-                            />
-                            {questBattleBgUrl && (
-                              <button 
-                                onClick={() => setShowArenaBgEditor(true)}
-                                style={{ padding: '0.5rem 1rem', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-blue)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}
-                              >
-                                <Move size={16} /> Ajustar Posição
-                              </button>
-                            )}
-                            <button 
-                              onClick={() => { setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); }}
-                              style={{ padding: '0.5rem 1rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}
-                            >
-                              Usar Padrão
-                            </button>
-                          </div>
-                          
-                          {/* Position Info */}
-                          {questBattleBgUrl && (questBattleBgPosX !== 50 || questBattleBgPosY !== 50 || questBattleBgScale !== 1.2) && (
-                            <div style={{ 
-                              display: 'flex', gap: '1rem', 
-                              background: 'rgba(59, 130, 246, 0.1)', 
-                              padding: '0.5rem 0.75rem', 
-                              borderRadius: '6px',
-                              fontSize: '0.75rem',
-                              color: 'var(--accent-blue)'
-                            }}>
-                              <span>X: {questBattleBgPosX.toFixed(0)}%</span>
-                              <span>Y: {questBattleBgPosY.toFixed(0)}%</span>
-                              <span>Zoom: {questBattleBgScale.toFixed(2)}x</span>
-                            </div>
-                          )}
-                          
-                          {/* Input manual de URL */}
-                          <input 
-                            type="text" 
-                            value={questBattleBgUrl} 
-                            onChange={e => setQuestBattleBgUrl(e.target.value)} 
-                            placeholder="Ou cole a URL da imagem aqui..."
-                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Drop de Moedas em Combate */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '2rem', padding: '1.5rem', border: '1px solid var(--gold-primary)', borderRadius: '12px', background: 'rgba(251, 191, 36, 0.05)' }}>
-                      <h3 style={{ fontSize: '1.2rem', color: 'var(--gold-primary)', margin: 0 }}>Drop de Moedas em Combate</h3>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
-                        Moedas caem do monstro a cada acerto, e o jogador clica para coletar. Vale quando a economia é "Moedas de Ouro" e "Moedas visíveis nos desafios" está ativa (também nas revisões). O baú e itens grandes só caem na 1ª conclusão.
-                      </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
-                        <div>
-                          <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Qtd. mínima de moedas</label>
-                          <input type="number" min="1" value={questCombatCoinMin} onChange={e => setQuestCombatCoinMin(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Qtd. máxima de moedas</label>
-                          <input type="number" min="1" value={questCombatCoinMax} onChange={e => setQuestCombatCoinMax(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Valor mín. por moeda</label>
-                          <input type="number" min="1" value={questCombatCoinMinValue} onChange={e => setQuestCombatCoinMinValue(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Valor máx. por moeda</label>
-                          <input type="number" min="1" value={questCombatCoinMaxValue} onChange={e => setQuestCombatCoinMaxValue(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
-                        </div>
-                      </div>
-                    </div>
-
-                    {renderChestConfig(
-                      questMode === 'classic' ? 'Baú de Recompensas (Final da Missão)' : 'Baú de Revisão (Final da Missão Normal)',
-                      'O jogador terá 100% de chance de receber Moedas aleatórias (entre 10% e o valor máximo). Cada item tem uma chance definida por slot (padrão: 50%, 25%, 10%, 5%) que pode ser ajustada abaixo. O próximo slot só é sorteado se o anterior for ganho.',
-                      questChestConfig,
-                      setQuestChestConfig,
-                      true
-                    )}
-                    
-                    {questMode === 'live' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '2rem', padding: '1.5rem', border: '1px solid var(--gold-primary)', borderRadius: '12px', background: 'rgba(251, 191, 36, 0.05)' }}>
-                        <h3 style={{ fontSize: '1.5rem', color: 'var(--gold-primary)', margin: 0 }}>Baús de Recompensa (Pódio Ao Vivo)</h3>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No modo ao vivo, as chances de itens são sempre 100%. Configure um baú para o 1º, 2º e 3º colocado (que será entregue imediatamente no encerramento da batalha).</p>
-                        
-                        {renderChestConfig('Baú do 1º Lugar', '', questLiveChest1st, setQuestLiveChest1st, false)}
-                        {renderChestConfig('Baú do 2º Lugar', '', questLiveChest2nd, setQuestLiveChest2nd, false)}
-                        {renderChestConfig('Baú do 3º Lugar', '', questLiveChest3rd, setQuestLiveChest3rd, false)}
-                      </div>
-                    )}
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Perguntas do Desafio</h3>
                     <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.9rem' }}>Deixe o texto e a imagem em branco se quiser ocultar uma opção (mínimo de 2 opções).</p>
                   </div>
-                  
-                  {questQuestions.map((q, qIndex) => (
-                    <div key={qIndex} className="glass-panel" style={{ padding: '2.5rem 2rem 2rem 2rem', marginBottom: '2rem', position: 'relative' }}>
-                      <div style={{ position: 'absolute', top: '-15px', left: '20px', background: 'var(--accent-blue)', padding: '0.2rem 1.5rem', borderRadius: '20px', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span>Pergunta {qIndex + 1}</span>
-                        {questQuestions.length > 1 && (
-                          <button
-                            onClick={async () => {
-                              const confirm = await showConfirm(`Tem certeza que deseja excluir a Pergunta ${qIndex + 1}?`);
-                              if (confirm) {
-                                const newQs = [...questQuestions];
-                                newQs.splice(qIndex, 1);
-                                setQuestQuestions(newQs);
-                              }
-                            }}
-                            title="Excluir pergunta"
-                            style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: '0 0 0 0.5rem', display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}
-                            onMouseEnter={e => e.currentTarget.style.color = 'var(--accent-red)'}
-                            onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.7)'}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
-                      </div>
 
-                      {/* Configurações da Pergunta: Texto, Tempo e Imagem */}
-                      <div style={{ marginBottom: '1.5rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                          <label style={{ color: 'var(--text-secondary)', fontWeight: 'bold', fontSize: '0.9rem' }}>Enunciado da Pergunta</label>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                              <Clock size={16} /> Tempo (seg)
-                            </label>
-                            <input 
-                              type="number" 
-                              value={q.timeLimit} 
-                              onChange={e => handleUpdateQuestion(qIndex, 'timeLimit', parseInt(e.target.value) || 0)} 
-                              style={{ width: '70px', padding: '0.5rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit', fontSize: '1rem', textAlign: 'center' }} 
-                            />
-                          </div>
-                        </div>
-                        <RichTextEditor
-                          value={q.title}
-                          onChange={(html) => handleUpdateQuestion(qIndex, 'title', html)}
-                          placeholder="Digite o enigma ou pergunta aqui... Use a toolbar para formatar e adicionar símbolos matemáticos."
-                        />
-                        
-                        {/* Imagem da pergunta */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
-                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Imagem:</span>
-                          <button 
-                            onClick={() => setGalleryTarget(`question-${qIndex}`)} 
-                            style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold' }}
-                          >
-                            <Search size={14} /> Galeria
-                          </button>
-                          <DirectUploadButton folder="quests" onUploadComplete={(url) => handleUpdateQuestion(qIndex, 'imageUrl', url)} buttonStyle={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }} />
-                          {q.imageUrl && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '0.5rem' }}>
-                              <img src={q.imageUrl} alt="" style={{ width: '32px', height: '32px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border-glass)' }} />
-                              <button 
-                                onClick={() => handleUpdateQuestion(qIndex, 'imageUrl', '')} 
-                                style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}
-                                title="Remover imagem"
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {q.imageUrl && (
-                        <div style={{ width: '100%', maxHeight: '200px', marginBottom: '1.5rem', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-glass)' }}>
-                          <img src={q.imageUrl} alt="Imagem da pergunta" style={{ width: '100%', height: '100%', objectFit: 'contain', background: 'rgba(0,0,0,0.5)' }} />
-                        </div>
-                      )}
-
-                      {/* Opções */}
-                      <h4 style={{ marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Alternativas (Mínimo de 2)</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
-                        {q.options.map((opt, optIndex) => (
-                          <div key={optIndex} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: q.correctIndex === optIndex ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '8px', border: q.correctIndex === optIndex ? '2px solid var(--accent-green)' : '1px solid transparent' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <input 
-                                type="radio" 
-                                name={`correct-${qIndex}`} 
-                                checked={q.correctIndex === optIndex}
-                                onChange={() => handleUpdateQuestion(qIndex, 'correctIndex', optIndex)}
-                                style={{ width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0 }}
-                                title="Marcar como correta"
-                              />
-                              <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '0.9rem', flexShrink: 0, width: '20px', textAlign: 'center' }}>{['A', 'B', 'C', 'D'][optIndex]}</span>
-                              <input 
-                                type="text" 
-                                value={opt.text} 
-                                onChange={e => handleUpdateOption(qIndex, optIndex, 'text', e.target.value)}
-                                placeholder={`Texto da Opção ${['A', 'B', 'C', 'D'][optIndex]}`}
-                                style={{ flex: 1, padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.9rem', minWidth: 0 }}
-                              />
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', paddingLeft: '2.5rem' }}>
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', flexShrink: 0 }}>Img:</span>
-                              <button 
-                                onClick={() => setGalleryTarget(`option-${qIndex}-${optIndex}`)} 
-                                style={{ background: 'rgba(245, 158, 11, 0.1)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '0.3rem 0.5rem', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', fontWeight: 'bold', flexShrink: 0 }}
-                              >
-                                <Search size={12} /> Galeria
-                              </button>
-                              <DirectUploadButton folder="quests" onUploadComplete={(url) => handleUpdateOption(qIndex, optIndex, 'imageUrl', url)} buttonStyle={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem' }} />
-                              {opt.imageUrl && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginLeft: 'auto' }}>
-                                  <img src={opt.imageUrl} alt="" style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '3px', border: '1px solid var(--border-glass)' }} />
-                                  <button 
-                                    onClick={() => handleUpdateOption(qIndex, optIndex, 'imageUrl', '')} 
-                                    style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.1rem', display: 'flex' }}
-                                    title="Remover imagem"
-                                  >
-                                    <X size={12} />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                  {/* Card resumo + botão abrir editor */}
+                  <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem', color: 'var(--gold-primary)' }}>
+                        {questQuestions.length} pergunta{questQuestions.length !== 1 ? 's' : ''} configurada{questQuestions.length !== 1 ? 's' : ''}
+                      </h4>
+                      <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Clique em "Editar Perguntas" para abrir o editor completo (lista à esquerda, edição à direita).
+                      </p>
                     </div>
-                  ))}
+                    <button
+                      className="login-btn"
+                      onClick={() => setShowQuestQuestionsEditor(true)}
+                      style={{ padding: '0.75rem 1.5rem', background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem' }}
+                    >
+                      <Edit2 size={18} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} /> Editar Perguntas
+                    </button>
+                  </div>
 
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                    <button className="login-btn" onClick={handleAddQuestion} style={{ flex: 1, background: 'rgba(255,255,255,0.1)', border: '1px dashed var(--border-glass)' }}>
-                      <Plus size={18} style={{ marginRight: '0.5rem' }} /> Adicionar Nova Pergunta
-                    </button>
-                    <button className="login-btn" onClick={handleSaveQuest} style={{ flex: 2, background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
-                      <Save size={18} style={{ marginRight: '0.5rem' }} /> Salvar Missão
+                    <button className="login-btn" onClick={handleSaveQuest} style={{ flex: 1, padding: '1rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', fontWeight: 'bold', fontSize: '1.05rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                      <Save size={20} /> Salvar Missão
                     </button>
                   </div>
                 </div>
@@ -3321,6 +2946,88 @@ export default function AdminDashboard() {
         <ImageGalleryModal 
           onClose={() => setGalleryTarget(null)}
           onSelectImage={handleGallerySelect}
+        />
+      )}
+
+      {showQuestionBank && (
+        <QuestionBankModal
+          isOpen={showQuestionBank}
+          onClose={() => setShowQuestionBank(false)}
+          onSelect={handleImportQuestionFromBank}
+        />
+      )}
+
+      {showQuestQuestionsEditor && (
+        <QuestQuestionsEditor
+          isOpen={showQuestQuestionsEditor}
+          onClose={() => setShowQuestQuestionsEditor(false)}
+          questions={questQuestions}
+          setQuestions={setQuestQuestions}
+          onGalleryForQuestion={(qIndex) => setGalleryTarget(`question-${qIndex}`)}
+          onGalleryForOption={(qIndex, optIndex) => setGalleryTarget(`option-${qIndex}-${optIndex}`)}
+          onBankGalleryForQuestion={() => setGalleryTarget('bank-question')}
+          onBankGalleryForOption={(optIndex) => setGalleryTarget(`bank-option-${optIndex}`)}
+          bankGalleryResult={bankGalleryResult}
+        />
+      )}
+
+      {showQuestConfig && (
+        <QuestConfigModal
+          isOpen={showQuestConfig}
+          onClose={() => setShowQuestConfig(false)}
+          questMonsterName={questMonsterName}
+          setQuestMonsterName={setQuestMonsterName}
+          questMonsterConfig={questMonsterConfig}
+          setQuestMonsterConfig={setQuestMonsterConfig}
+          questMonsterModelUrl={questMonsterModelUrl}
+          setQuestMonsterModelUrl={setQuestMonsterModelUrl}
+          questMonsterQuotes={questMonsterQuotes}
+          setQuestMonsterQuotes={setQuestMonsterQuotes}
+          questMonsterDefeatQuotes={questMonsterDefeatQuotes}
+          setQuestMonsterDefeatQuotes={setQuestMonsterDefeatQuotes}
+          questMonsterDrops={questMonsterDrops}
+          setQuestMonsterDrops={setQuestMonsterDrops}
+          availableMonsters={availableMonsters}
+          available3DModels={available3DModels}
+          availableStoreItems={availableStoreItems}
+          onCustomizeMonster={() => setIsCustomizingMonster(true)}
+          questBattleBgUrl={questBattleBgUrl}
+          setQuestBattleBgUrl={setQuestBattleBgUrl}
+          questBattleBgPosX={questBattleBgPosX}
+          setQuestBattleBgPosX={setQuestBattleBgPosX}
+          questBattleBgPosY={questBattleBgPosY}
+          setQuestBattleBgPosY={setQuestBattleBgPosY}
+          questBattleBgScale={questBattleBgScale}
+          setQuestBattleBgScale={setQuestBattleBgScale}
+          questBattleBgMoveEnabled={questBattleBgMoveEnabled}
+          setQuestBattleBgMoveEnabled={setQuestBattleBgMoveEnabled}
+          questBattleBgMoveDirection={questBattleBgMoveDirection}
+          setQuestBattleBgMoveDirection={setQuestBattleBgMoveDirection}
+          questBattleBgMoveSpeed={questBattleBgMoveSpeed}
+          setQuestBattleBgMoveSpeed={setQuestBattleBgMoveSpeed}
+          questBattleBgMoveDuration={questBattleBgMoveDuration}
+          setQuestBattleBgMoveDuration={setQuestBattleBgMoveDuration}
+          onGalleryArena={() => setGalleryTarget('arena')}
+          onOpenArenaEditor={() => setShowArenaBgEditor(true)}
+          questCombatCoinMin={questCombatCoinMin}
+          setQuestCombatCoinMin={setQuestCombatCoinMin}
+          questCombatCoinMax={questCombatCoinMax}
+          setQuestCombatCoinMax={setQuestCombatCoinMax}
+          questCombatCoinMinValue={questCombatCoinMinValue}
+          setQuestCombatCoinMinValue={setQuestCombatCoinMinValue}
+          questCombatCoinMaxValue={questCombatCoinMaxValue}
+          setQuestCombatCoinMaxValue={setQuestCombatCoinMaxValue}
+          questMode={questMode}
+          questChestConfig={questChestConfig}
+          setQuestChestConfig={setQuestChestConfig}
+          questLiveChest1st={questLiveChest1st}
+          setQuestLiveChest1st={setQuestLiveChest1st}
+          questLiveChest2nd={questLiveChest2nd}
+          setQuestLiveChest2nd={setQuestLiveChest2nd}
+          questLiveChest3rd={questLiveChest3rd}
+          setQuestLiveChest3rd={setQuestLiveChest3rd}
+          availableChests={availableChests}
+          renderChestConfig={renderChestConfig}
         />
       )}
 

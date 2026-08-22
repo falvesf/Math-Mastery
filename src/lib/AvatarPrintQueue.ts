@@ -1,7 +1,7 @@
 import { SkinViewer, IdleAnimation } from 'skinview3d';
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { generateMinecraftSkinUrl } from './SkinGenerator';
-import type { EquippedItem } from '../components/AvatarCharacter';
+import { type EquippedItem, resolveModelTransform } from '../components/AvatarCharacter';
 
 let globalViewer: SkinViewer | null = null;
 let queue: { config: any, equippedItems: EquippedItem[], resolve: (url: string) => void }[] = [];
@@ -54,6 +54,10 @@ async function processQueue() {
     // 3. Load equipped items
     if (task.equippedItems && task.equippedItems.length > 0) {
       const loader = new GLTFLoader();
+      const isLeftHanded = task.config?.handedness === 'left';
+      const gender = task.config?.gender;
+      const inv = isLeftHanded ? -1 : 1;
+
       const loadPromises = task.equippedItems.map(item => {
         return new Promise<void>((res) => {
           if (!item.gameModelUrl || item.gameModelUrl.trim() === '') {
@@ -74,32 +78,61 @@ async function processQueue() {
             const model = gltf.scene;
             model.userData.isItem = true;
             
-            if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand') {
-              const isDefense = item.itemCategory === 'defense';
-              const isLeftHanded = task.config?.handedness === 'left';
-              const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
-              const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
-              
-              const targetArm = isDefense ? nonDominantArm : dominantArm;
-              
-              if (isDefense) {
-                const isRightArm = targetArm === player.skin.rightArm;
-                model.scale.set(10, 10, 10);
-                model.position.set(isRightArm ? -3.5 : 3.5, -6, 0); 
-                model.rotation.set(0, isRightArm ? Math.PI / 2 : -Math.PI / 2, 0); 
+            const isDefense = item.itemCategory === 'defense' || item.avatarPart === 'leftHand';
+            const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
+            const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
+            const targetArm = isDefense ? nonDominantArm : dominantArm;
+
+            const transform = resolveModelTransform(item, gender, task.config?.handedness, false) || item.modelTransforms?.common;
+
+            if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
+              if (transform) {
+                model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
+                model.position.set(transform.posX * inv, transform.posY, transform.posZ);
+                model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
+                model.position.y = transform.posY;
+                model.translateY(transform.slide);
               } else {
-                model.scale.set(10, 10, 10);
-                model.position.set(0, -12, 0); 
-                model.rotation.set(Math.PI / 2, 0, 0);
+                if (isDefense) {
+                  const isRightArm = targetArm === player.skin.rightArm;
+                  model.scale.set(10, 10, 10);
+                  model.position.set(isRightArm ? -3.5 : 3.5, -6, 0); 
+                  model.rotation.set(0, isRightArm ? Math.PI / 2 : -Math.PI / 2, 0); 
+                } else {
+                  model.scale.set(10, 10, 10);
+                  model.position.set(0, -12, 0); 
+                  model.rotation.set(Math.PI / 2, 0, 0);
+                }
               }
-              
               targetArm.add(model);
-            } else if (item.avatarPart === 'head') {
+            } else if (item.avatarPart === 'head' || item.avatarPart === 'face') {
               const head = player.skin.head;
-              model.scale.set(16, 16, 16);
-              model.position.set(0, 0, 0);
-              model.rotation.set(0, Math.PI, 0);
+              const defaultHeadScale = item.minecraftHeadValue ? 9.2 : 16;
+              if (transform) {
+                model.scale.set(transform.scale ?? defaultHeadScale, transform.scale ?? defaultHeadScale, (transform.scale ?? defaultHeadScale) * (transform.thickness ?? 1));
+                model.position.set(transform.posX, transform.posY, transform.posZ);
+                model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+                model.position.y = transform.posY;
+                model.translateY(transform.slide);
+              } else {
+                model.scale.set(defaultHeadScale, defaultHeadScale, defaultHeadScale);
+                model.position.set(0, 0, 0);
+                model.rotation.set(0, Math.PI, 0);
+              }
               head.add(model);
+            } else if (item.avatarPart === 'body' || item.avatarPart === 'back' || item.avatarPart === 'accessory') {
+              const body = player.skin.body;
+              if (transform) {
+                model.scale.set(transform.scale ?? 16, transform.scale ?? 16, (transform.scale ?? 16) * (transform.thickness ?? 1));
+                model.position.set(transform.posX, transform.posY, transform.posZ);
+                model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+                model.position.y = transform.posY;
+                model.translateY(transform.slide);
+              } else {
+                model.scale.set(16, 16, 16);
+                model.position.set(0, 0, 0);
+              }
+              body.add(model);
             }
             res();
           }, undefined, () => res());

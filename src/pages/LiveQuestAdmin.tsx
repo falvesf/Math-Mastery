@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { supabase } from '../lib/supabase';
 
-import { Loader2, Play, CheckCircle, ChevronRight, Swords, Crown, Skull, Package } from 'lucide-react';
+import { Loader2, Play, CheckCircle, ChevronRight, Swords, Crown, Skull, Package, Trophy, Medal, SkipForward } from 'lucide-react';
 import type { QuestDef } from './AdminDashboard';
 import AvatarPrint from '../components/AvatarPrint';
 import CustomModelViewer from '../components/CustomModelViewer';
@@ -47,7 +47,7 @@ export interface LiveSession {
 export default function LiveQuestAdmin() {
   const { sessionId } = useParams(); // Using questId as sessionId for simplicity
   const { userData } = useAuth();
-  const { tenant, tenantId, isSuperAdmin } = useTenant();
+  const { tenantId, isSuperAdmin } = useTenant();
   const { showConfirm } = useDialog();
   const navigate = useNavigate();
   const location = useLocation();
@@ -65,6 +65,111 @@ export default function LiveQuestAdmin() {
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
   const [monsterDirection, setMonsterDirection] = useState<'left' | 'right'>('left');
 
+  const [podiumStep, setPodiumStep] = useState<number>(0);
+  const [teacherCutsceneStage, setTeacherCutsceneStage] = useState<'none' | 'enter' | 'approach' | 'hit' | 'victory'>('none');
+  const fireworksCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Suspense reveal sequence when game finishes
+  useEffect(() => {
+    if (session?.status === 'finished') {
+      setPodiumStep(0);
+      const t1 = setTimeout(() => setPodiumStep(1), 2000);  // 3º Lugar sobe após 2s
+      const t2 = setTimeout(() => setPodiumStep(2), 6500);  // 2º Lugar sobe após mais 4.5s
+      const t3 = setTimeout(() => setPodiumStep(3), 11000); // 1º Lugar sobe com fogos após mais 4.5s
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    }
+  }, [session?.status]);
+
+  // Particle fireworks canvas loop when 1st place is revealed
+  useEffect(() => {
+    if (session?.status !== 'finished' || podiumStep < 3) return;
+    const canvas = fireworksCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animId: number;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const handleResize = () => {
+      if (canvas) {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    interface Particle {
+      x: number; y: number; vx: number; vy: number; color: string; size: number; alpha: number; decay: number;
+    }
+    const particles: Particle[] = [];
+    const colors = ['#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6', '#ffffff', '#ffd700'];
+
+    const createFirework = (targetX: number, targetY: number) => {
+      const count = 45;
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+        const speed = Math.random() * 7 + 2;
+        particles.push({
+          x: targetX,
+          y: targetY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: Math.random() * 4 + 2,
+          alpha: 1,
+          decay: Math.random() * 0.015 + 0.008
+        });
+      }
+    };
+
+    let lastFirework = 0;
+    const loop = (time: number) => {
+      ctx.clearRect(0, 0, width, height);
+
+      if (time - lastFirework > 600) {
+        lastFirework = time;
+        createFirework(
+          Math.random() * (width * 0.8) + width * 0.1,
+          Math.random() * (height * 0.4) + height * 0.1
+        );
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.07;
+        p.alpha -= p.decay;
+
+        if (p.alpha <= 0) {
+          particles.splice(i, 1);
+        } else {
+          ctx.save();
+          ctx.globalAlpha = p.alpha;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      animId = requestAnimationFrame(loop);
+    };
+    animId = requestAnimationFrame(loop);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animId);
+    };
+  }, [session?.status, podiumStep]);
+
   // Reset processed answers on new question
   useEffect(() => {
     if (session?.status === 'question') {
@@ -75,25 +180,27 @@ export default function LiveQuestAdmin() {
     }
   }, [session?.currentQuestionIndex, session?.status]);
   useEffect(() => {
-    if (session?.status !== 'question' || !session.questionStartTime || !quest) return;
+    const qStartTime = session?.questionStartTime || (session as any)?.questionstarttime || (session as any)?.question_start_time;
+    if (session?.status !== 'question' || !qStartTime || !quest) return;
     
     const currentQOriginalIndex = session.activeQuestions[session.currentQuestionIndex];
     const question = quest.questions[currentQOriginalIndex];
     const limit = question?.timeLimit || 30;
 
     const interval = setInterval(() => {
-       const elapsed = Math.floor((Date.now() - session.questionStartTime!) / 1000);
+       const elapsed = Math.floor((Date.now() - qStartTime) / 1000);
        const remaining = Math.max(0, limit - elapsed);
        setTimeLeft(remaining);
 
-       const activePlayers = Object.values(session.players).filter(p => p.hp === undefined || p.hp > 0);
+       const allPlayersList = Object.values(session.players || {});
+       const activePlayers = allPlayersList.filter(p => p.hp === undefined || p.hp > 0);
        const activePlayersCount = activePlayers.length;
        const ansCount = activePlayers.filter(p => p.currentAnswer !== null && p.currentAnswer !== undefined).length;
 
-       if (remaining === 0 || (activePlayersCount > 0 && ansCount >= activePlayersCount)) {
+       if (remaining === 0 || (activePlayersCount > 0 && ansCount >= activePlayersCount) || (activePlayersCount === 0 && allPlayersList.length > 0)) {
           clearInterval(interval);
-          const correctCount = activePlayers.filter(p => p.currentAnswer === question.correctIndex).length;
-          // Só considera "ninguém acertou" se PELO MENOS UM jogador tiver tentado responder.
+          const correctCount = activePlayers.filter(p => p.currentAnswer === question?.correctIndex).length;
+          // Só considera "ninguém acertou" se PELO MENOS UM jogador tiver tentado responder e ainda houver jogadores vivos.
           // Se ansCount === 0, significa que estão todos AFK/desconectados. Não repete a pergunta para evitar loop infinito.
           const nobodyCorrect = activePlayersCount > 0 && correctCount === 0 && ansCount > 0;
           
@@ -110,7 +217,7 @@ export default function LiveQuestAdmin() {
     return () => clearInterval(interval);
   }, [session, quest, sessionId]);
 
-  const activePlayers = session ? Object.values(session.players).filter(p => p.hp === undefined || p.hp > 0) : [];
+  const activePlayers = session ? Object.values(session.players || {}).filter(p => p.hp === undefined || p.hp > 0) : [];
 
   const activePlayersCount = activePlayers.length;
   const answersCount = activePlayers.filter(p => p.currentAnswer !== null && p.currentAnswer !== undefined).length;
@@ -163,10 +270,13 @@ export default function LiveQuestAdmin() {
   // Reveal to Ranking transition
   useEffect(() => {
     if (session?.status === 'reveal' && sessionId) {
-       const t = setTimeout(() => {
-          supabase.from('live_quests').update({ status: 'ranking' }).eq('id', sessionId);
+       const t = setTimeout(async () => {
+          // Busca o estado mais recente dos jogadores para garantir que o ranking mostre todos os pontos
+          const { data: latest } = await supabase.from('live_quests').select('*').eq('id', sessionId).single();
+          const latestPlayers = latest?.players || session.players;
+          await supabase.from('live_quests').update({ status: 'ranking' }).eq('id', sessionId);
           // Atualiza estado local imediatamente
-          setSession(prev => prev ? { ...prev, status: 'ranking' } : prev);
+          setSession(prev => prev ? { ...prev, ...latest, players: latestPlayers, status: 'ranking' } : prev);
        }, 5000);
        return () => clearTimeout(t);
     }
@@ -186,6 +296,14 @@ export default function LiveQuestAdmin() {
         return;
       }
       const qData = { id: qDocData.id, ...qDocData } as QuestDef;
+      // Isolamento por escola (Superadmin pode acessar qualquer missão)
+      if (tenantId && !isSuperAdmin) {
+        const questTenant = (qDocData as any).tenant_id;
+        if (questTenant && questTenant !== tenantId) {
+          navigate('/admin');
+          return;
+        }
+      }
       setQuest(qData);
 
       // Create or Load Session
@@ -418,148 +536,182 @@ export default function LiveQuestAdmin() {
     );
   }
 
-  const handleNextQuestion = async () => {
-    if (!sessionId) return;
-    if (session.currentQuestionIndex + 1 >= session.activeQuestions.length || session.monsterHp <= 0) {
-      // End game
-      try {
-        const sortedPlayers = Object.values(session.players).sort((a, b) => (b.score || 0) - (a.score || 0));
-        const promises: any[] = [];
-        const sessionUpdates: any = { status: 'finished' };
+  const executeEndGame = async () => {
+    if (!sessionId || !session) return;
+    try {
+      const sortedPlayers = Object.values(session.players || {}).sort((a, b) => (b.score || 0) - (a.score || 0));
+      const promises: any[] = [];
+      const updatedPlayers = { ...(session.players || {}) };
 
-        const processReward = async (playerUid: string, chestConfig: any, place: number) => {
-          if (!chestConfig) return;
-          const userUpdates: any = {};
-          let itemsWon: any[] = [];
+      const processReward = async (playerUid: string, chestConfig: any, place: number) => {
+        if (!chestConfig) return;
+        const userUpdates: any = {};
+        let itemsWon: any[] = [];
 
-          if (chestConfig.maxCoins && chestConfig.maxCoins > 0) {
-             const { data: uData } = await supabase.from('users').select('coins').eq('id', playerUid).single();
-             userUpdates.coins = (uData?.coins || 0) + chestConfig.maxCoins;
-          }
+        if (chestConfig.maxCoins && chestConfig.maxCoins > 0) {
+           const { data: uData } = await supabase.from('users').select('coins').eq('id', playerUid).single();
+           userUpdates.coins = (uData?.coins || 0) + chestConfig.maxCoins;
+        }
 
-          if (chestConfig.itemIds && chestConfig.itemIds.length > 0) {
-             const validIds = chestConfig.itemIds.filter((id: string) => id.trim() !== '');
-             if (validIds.length > 0) {
-               const { data: snap } = await supabase.from('store_items').select('*').in('id', validIds);
-               const storeItemsMap = new Map();
-               if (snap) snap.forEach(d => storeItemsMap.set(d.id, { id: d.id, ...d.data }));
+        if (chestConfig.itemIds && chestConfig.itemIds.length > 0) {
+           const validIds = chestConfig.itemIds.filter((id: string) => id.trim() !== '');
+           if (validIds.length > 0) {
+             const { data: snap } = await supabase.from('store_items').select('*').in('id', validIds);
+             const storeItemsMap = new Map();
+             if (snap) snap.forEach(d => storeItemsMap.set(d.id, { id: d.id, ...d.data }));
 
-               for (let i = 0; i < chestConfig.itemIds.length; i++) {
-                 const itemId = chestConfig.itemIds[i];
-                 const qty = chestConfig.itemQuantities ? chestConfig.itemQuantities[i] || 1 : 1;
-                 const item = storeItemsMap.get(itemId);
-                 if (item) {
-                   itemsWon.push({ ...item, quantity: qty });
-                   const itemData = {
-                      studentId: playerUid,
-                      itemId: item.id,
-                      itemTitle: item.title,
-                      itemType: item.type,
-                      itemImageUrl: item.imageUrl || '',
-                      gameEffect: item.gameEffect || 'none',
-                      usableInQuest: item.usableInQuest || false,
-                      gameModelUrl: item.gameModelUrl || '',
-                      modelTextureUrl: item.modelTextureUrl || '',
-                      minecraftHeadValue: item.minecraftHeadValue || '',
-                      quantity: qty,
-                      equipped: false,
-                      purchasedAt: new Date().toISOString(),
-                      giftedBy: `Recompensa ${place}º Lugar`,
-                      avatarPart: item.avatarPart || null,
-                      itemCategory: item.itemCategory || 'none',
-                      baseAttributeType: item.baseAttributeType || 'none',
-                      baseAttributeValue: item.baseAttributeValue || 0,
-                      modelTransforms: item.modelTransforms || null,
-                      adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : []
-                   };
-                   promises.push(supabase.from('user_items').insert({ student_id: playerUid, item_id: item.id, equipped: false, data: itemData }));
-                 }
+             for (let i = 0; i < chestConfig.itemIds.length; i++) {
+               const itemId = chestConfig.itemIds[i];
+               const qty = chestConfig.itemQuantities ? chestConfig.itemQuantities[i] || 1 : 1;
+               const item = storeItemsMap.get(itemId);
+               if (item) {
+                 itemsWon.push({ ...item, quantity: qty });
+                 const itemData = {
+                    studentId: playerUid,
+                    itemId: item.id,
+                    itemTitle: item.title,
+                    itemType: item.type,
+                    itemImageUrl: item.imageUrl || '',
+                    gameEffect: item.gameEffect || 'none',
+                    usableInQuest: item.usableInQuest || false,
+                    gameModelUrl: item.gameModelUrl || '',
+                    modelTextureUrl: item.modelTextureUrl || '',
+                    minecraftHeadValue: item.minecraftHeadValue || '',
+                    quantity: qty,
+                    equipped: false,
+                    purchasedAt: new Date().toISOString(),
+                    giftedBy: `Recompensa ${place}º Lugar`,
+                    avatarPart: item.avatarPart || null,
+                    itemCategory: item.itemCategory || 'none',
+                    baseAttributeType: item.baseAttributeType || 'none',
+                    baseAttributeValue: item.baseAttributeValue || 0,
+                    modelTransforms: item.modelTransforms || null,
+                    adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : []
+                 };
+                 promises.push(supabase.from('user_items').insert({ student_id: playerUid, item_id: item.id, equipped: false, data: itemData }));
                }
              }
-          }
-          
-          if (Object.keys(userUpdates).length > 0) {
-             promises.push(supabase.from('users').update(userUpdates).eq('id', playerUid));
-          }
+           }
+        }
+        
+        if (Object.keys(userUpdates).length > 0) {
+           promises.push(supabase.from('users').update(userUpdates).eq('id', playerUid));
+        }
 
-          if (itemsWon.length > 0 || (chestConfig.maxCoins && chestConfig.maxCoins > 0)) {
-             sessionUpdates[`players.${playerUid}.wonChest`] = { place, coins: chestConfig.maxCoins || 0, items: itemsWon };
-          }
-        };
+        if (itemsWon.length > 0 || (chestConfig.maxCoins && chestConfig.maxCoins > 0)) {
+           if (updatedPlayers[playerUid]) {
+             updatedPlayers[playerUid] = {
+               ...updatedPlayers[playerUid],
+               wonChest: { place, coins: chestConfig.maxCoins || 0, items: itemsWon }
+             };
+           }
+        }
+      };
 
-        const globalGachaConfig = await fetchGlobalGachaConfig();
+      const globalGachaConfig = await fetchGlobalGachaConfig();
 
-        if (sortedPlayers.length > 0) await processReward(sortedPlayers[0].uid, quest.liveChest1stPlace, 1);
-        if (sortedPlayers.length > 1) await processReward(sortedPlayers[1].uid, quest.liveChest2ndPlace, 2);
-        if (sortedPlayers.length > 2) await processReward(sortedPlayers[2].uid, quest.liveChest3rdPlace, 3);
+      if (sortedPlayers.length > 0) await processReward(sortedPlayers[0].uid, quest?.liveChest1stPlace, 1);
+      if (sortedPlayers.length > 1) await processReward(sortedPlayers[1].uid, quest?.liveChest2ndPlace, 2);
+      if (sortedPlayers.length > 2) await processReward(sortedPlayers[2].uid, quest?.liveChest3rdPlace, 3);
 
-        const playerUpdatePromises = Object.keys(session.players).map(async uid => {
-          const player = session.players[uid];
-          const earnedXp = player.sessionEarnedXp || 0;
+      const playerUpdatePromises = Object.keys(session.players || {}).map(async uid => {
+        const player = session.players[uid];
+        const earnedXp = player.sessionEarnedXp || 0;
+        const survived = player.hp === undefined || player.hp > 0;
 
-          const survived = player.hp === undefined || player.hp > 0;
+        // Somente jogadores que sobreviveram ganham o XP acumulado e o status 'completed'
+        if (survived && quest) {
+          promises.push(
+            supabase.from('quest_attempts').insert({
+              quest_id: quest.id,
+              student_id: uid,
+              status: 'completed',
+              tenant_id: quest.tenant_id || tenantId,
+              data: { answers: [], earned_xp: earnedXp, isStudyMode: false, isLiveQuest: true },
+              created_at: new Date().toISOString()
+            })
+          );
 
-          // Somente jogadores que sobreviveram ganham o XP acumulado e o status 'completed'
-          if (survived) {
-            promises.push(
-              supabase.from('quest_attempts').insert({
-                quest_id: quest.id,
-                student_id: uid,
-                status: 'completed',
-                data: { answers: [], earned_xp: earnedXp },
-                created_at: new Date().toISOString(),
-                is_study_mode: false,
-                is_live_quest: true
-              })
-            );
-
-            if (earnedXp > 0) {
-              // Agora sim creditamos o XP oficialmente
-              const { data: u } = await supabase.from('users').select('xp').eq('id', uid).single();
-              if (u) {
-                promises.push(
-                  supabase.from('users').update({ xp: (u.xp || 0) + earnedXp }).eq('id', uid)
-                );
-              }
-
-              // Save to history log
+          if (earnedXp > 0) {
+            // Agora sim creditamos o XP oficialmente
+            const { data: u } = await supabase.from('users').select('xp').eq('id', uid).single();
+            if (u) {
               promises.push(
-                supabase.from('xp_logs').insert({
-                  student_id: uid,
-                  student_name: player.name,
-                  xp_gained: earnedXp,
-                  eval_name: `Missão: ${quest.title}`,
-                  created_at: new Date().toISOString()
-                })
+                supabase.from('users').update({ xp: (u.xp || 0) + earnedXp }).eq('id', uid)
               );
             }
           }
-        });
+        }
+      });
 
-        await Promise.all(playerUpdatePromises);
+      await Promise.all(playerUpdatePromises);
 
-        promises.push(supabase.from('live_quests').update(sessionUpdates).eq('id', sessionId));
-        
-        await Promise.all(promises);
-      } catch (err) {
-        console.error("Erro ao registrar recompensas/historico da missão ao vivo:", err);
+      const finishUpdates = { status: 'finished' as const, players: updatedPlayers };
+      promises.push(supabase.from('live_quests').update(finishUpdates).eq('id', sessionId));
+      
+      await Promise.all(promises);
+      setSession(prev => prev ? { ...prev, ...finishUpdates } : prev);
+    } catch (err) {
+      console.error("Erro ao registrar recompensas/historico da missão ao vivo:", err);
+    }
+  };
+
+  const handleNextQuestion = async () => {
+    if (!sessionId || !session) return;
+    
+    // Busca dados atualizados da sessão para verificar lista de perguntas (inclusive as repetidas) e HP do monstro
+    const { data: freshSession } = await supabase.from('live_quests').select('activeQuestions, active_questions, monsterHp, monster_hp, maxMonsterHp, max_monster_hp, players').eq('id', sessionId).single();
+    const activeQ = freshSession?.activeQuestions || freshSession?.active_questions || session.activeQuestions || [];
+    const currentPlayers = freshSession?.players || session.players || {};
+    const allPlayers = Object.values(currentPlayers);
+    const activeAlivePlayers = allPlayers.filter((p: any) => p.hp === undefined || p.hp > 0);
+    const hasPlayers = allPlayers.length > 0;
+    const isAllDead = hasPlayers && activeAlivePlayers.length === 0;
+
+    const currMonsterHp = freshSession?.monsterHp ?? freshSession?.monster_hp ?? session.monsterHp ?? (session as any).monster_hp;
+    const currMaxMonsterHp = freshSession?.maxMonsterHp ?? freshSession?.max_monster_hp ?? session.maxMonsterHp ?? (session as any).max_monster_hp;
+    const isMonsterDead = typeof currMonsterHp === 'number' && typeof currMaxMonsterHp === 'number' && currMaxMonsterHp > 0 && currMonsterHp <= 0;
+    const isLastQuestion = session.currentQuestionIndex + 1 >= activeQ.length;
+
+    const isGameOver = isLastQuestion || isMonsterDead || isAllDead;
+
+    if (isGameOver) {
+      // Se acabou as perguntas mas o monstro ainda está vivo e há sobreviventes, o professor executa a intervenção épica (Fatality)!
+      if (isLastQuestion && !isMonsterDead && !isAllDead && teacherCutsceneStage === 'none') {
+        setTeacherCutsceneStage('enter');
+        setTimeout(() => setTeacherCutsceneStage('approach'), 2500);
+        setTimeout(async () => {
+          setTeacherCutsceneStage('hit');
+          setMonsterAnim('hurt');
+          await supabase.from('live_quests').update({ monsterHp: 0, monster_hp: 0 }).eq('id', sessionId);
+          setSession(prev => prev ? { ...prev, monsterHp: 0 } : prev);
+        }, 5000);
+        setTimeout(() => setTeacherCutsceneStage('victory'), 7500);
+        setTimeout(async () => {
+          setTeacherCutsceneStage('none');
+          await executeEndGame();
+        }, 11000);
+        return;
       }
+
+      await executeEndGame();
     } else {
       // Próxima pergunta: busca o estado atual dos jogadores do banco e reseta as respostas
       const nextIndex = session.currentQuestionIndex + 1;
       const { data: curr } = await supabase.from('live_quests').select('players').eq('id', sessionId).single();
-      const currentPlayers = curr?.players || session.players;
+      const currentPlayers = curr?.players || session.players || {};
       
-      // Reseta respostas dos jogadores corretamente (sem dot notation que não funciona em JSONB)
+      // Reseta respostas dos jogadores corretamente
       const resetPlayers: Record<string, any> = {};
       Object.entries(currentPlayers).forEach(([uid, p]) => {
         resetPlayers[uid] = { ...(p as any), currentAnswer: null, isCorrect: null, answerTime: null };
       });
       
-      const updates: any = {
-        status: 'question',
+      const now = Date.now();
+      const updates = {
+        status: 'question' as const,
         currentQuestionIndex: nextIndex,
-        questionStartTime: Date.now(),
+        questionStartTime: now,
         players: resetPlayers
       };
       await supabase.from('live_quests').update(updates).eq('id', sessionId);
@@ -638,6 +790,84 @@ export default function LiveQuestAdmin() {
         {/* MIDDLE AREA: 3D VIEWER & AVATARS - HIDE ON RANKING */}
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', opacity: (session.status === 'ranking' || session.status === 'finished') ? 0 : 1, transition: 'opacity 0.3s', pointerEvents: 'none' }}>
           
+          {/* TEACHER FATALITY CUTSCENE */}
+          {teacherCutsceneStage !== 'none' && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '2rem', background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.9) 100%)', pointerEvents: 'auto' }}>
+              
+              {/* Top Cutscene Banner */}
+              <div style={{ background: 'rgba(0,0,0,0.85)', border: '2px solid var(--gold-primary)', borderRadius: '20px', padding: '0.8rem 2.5rem', textAlign: 'center', boxShadow: '0 0 30px rgba(245, 158, 11, 0.7)', animation: 'popIn 0.4s ease-out', zIndex: 70 }}>
+                {teacherCutsceneStage === 'enter' && (
+                  <div style={{ color: 'var(--gold-primary)', fontSize: '1.6rem', fontWeight: 'bold' }}>
+                    ⚡ Uma presença misteriosa surge no campo de batalha...
+                  </div>
+                )}
+                {teacherCutsceneStage === 'approach' && (
+                  <div style={{ color: '#f59e0b', fontSize: '1.8rem', fontWeight: '900', textShadow: '0 0 15px #f59e0b' }}>
+                    💥 "Deixem comigo, turma! GOLPE FINAL ÉPICO!"
+                  </div>
+                )}
+                {teacherCutsceneStage === 'hit' && (
+                  <div style={{ color: '#ef4444', fontSize: '2rem', fontWeight: '900', textShadow: '0 0 20px #ef4444' }}>
+                    🔥 IMPACTO CRÍTICO! O MONSTRO FOI DERROTADO!
+                  </div>
+                )}
+                {teacherCutsceneStage === 'victory' && (
+                  <div style={{ color: '#ffd700', fontSize: '2rem', fontWeight: '900', textShadow: '0 0 25px #ffd700' }}>
+                    ✨ VITÓRIA ÉPICA! O PROFESSOR SALVOU O DIA!
+                  </div>
+                )}
+              </div>
+
+              {/* Center Stage with Teacher Avatar */}
+              <div style={{ position: 'relative', width: '100%', height: '320px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                
+                {/* Teacher Avatar */}
+                <div style={{
+                  position: 'absolute',
+                  left: teacherCutsceneStage === 'enter' ? '25%' : (teacherCutsceneStage === 'approach' || teacherCutsceneStage === 'hit' ? '52%' : '50%'),
+                  transform: teacherCutsceneStage === 'victory' ? 'translateX(-50%)' : 'none',
+                  transition: teacherCutsceneStage === 'approach' ? 'all 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  filter: 'drop-shadow(0 0 25px rgba(245, 158, 11, 0.9))',
+                  zIndex: 70
+                }}>
+                  <div style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.3rem', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
+                    PROFESSOR
+                  </div>
+                  {userData?.avatarConfig ? (
+                    <AvatarCharacter
+                      config={userData.avatarConfig}
+                      size={220}
+                      animation={teacherCutsceneStage === 'approach' || teacherCutsceneStage === 'hit' ? 'attack-fatal' : (teacherCutsceneStage === 'victory' ? 'cheer' : 'idle')}
+                      interactive={false}
+                      role="player"
+                    />
+                  ) : (
+                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--gold-primary)' }} />
+                  )}
+                </div>
+
+                {/* Hit Impact Flash */}
+                {teacherCutsceneStage === 'hit' && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(255, 215, 0, 0.4)', mixBlendMode: 'overlay', animation: 'pulse 0.3s infinite', pointerEvents: 'none' }} />
+                )}
+              </div>
+
+              {/* Skip Cutscene */}
+              <button
+                onClick={() => {
+                  setTeacherCutsceneStage('none');
+                  executeEndGame();
+                }}
+                style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', color: 'white', padding: '0.4rem 1.2rem', borderRadius: '20px', cursor: 'pointer', fontSize: '0.85rem', zIndex: 70 }}
+              >
+                Pular Animação ➔
+              </button>
+            </div>
+          )}
+
           <div 
             className={monsterAnim === 'hurt' ? 'anim-hurt' : ''}
             style={{ 
@@ -701,31 +931,40 @@ export default function LiveQuestAdmin() {
           )}
 
           {session.status === 'ranking' && (
-            <div style={{ pointerEvents: 'auto', background: 'rgba(0,0,0,0.8)', padding: '1.5rem', borderRadius: '16px', width: '100%', maxWidth: '600px', border: '1px solid var(--gold-primary)', backdropFilter: 'blur(10px)', marginTop: '0.5rem' }}>
+            <div style={{ pointerEvents: 'auto', background: 'rgba(0,0,0,0.85)', padding: '1.5rem', borderRadius: '16px', width: '100%', maxWidth: '650px', border: '1px solid var(--gold-primary)', backdropFilter: 'blur(10px)', marginTop: '0.5rem' }}>
                <h2 style={{ textAlign: 'center', color: 'var(--gold-primary)', fontSize: '1.8rem', marginBottom: '1.5rem', marginTop: 0 }}>Ranking Provisório</h2>
-               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                 {sortedPlayers.slice(0, 5).map((p, index) => (
-                   <div key={p.uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}>
-                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: index === 0  ? 'var(--gold-primary)'  : 'var(--text-primary)' }}>#{index + 1}</span>
-                        <span style={{ fontSize: '1.2rem' }}>{p.name}</span>
+               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                 {sortedPlayers.slice(0, 5).map((p, index) => {
+                   const isPlayerEliminated = p.hp !== undefined && p.hp <= 0;
+                   return (
+                     <div key={p.uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.8rem 1.2rem', background: isPlayerEliminated ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255,255,255,0.1)', borderRadius: '8px', border: isPlayerEliminated ? '1px solid rgba(239, 68, 68, 0.4)' : 'none' }}>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                          <span style={{ fontSize: '1.4rem', fontWeight: 'bold', color: index === 0 ? 'var(--gold-primary)' : 'var(--text-primary)' }}>#{index + 1}</span>
+                          <span style={{ fontSize: '1.1rem', textDecoration: isPlayerEliminated ? 'line-through' : 'none', opacity: isPlayerEliminated ? 0.7 : 1 }}>{p.name}</span>
+                          {isPlayerEliminated && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(239, 68, 68, 0.25)', color: '#f87171', padding: '0.15rem 0.5rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                              <Skull size={13} color="#f87171" /> Eliminado
+                            </span>
+                          )}
+                       </div>
+                       <span style={{ fontWeight: 'bold', color: isPlayerEliminated ? '#94a3b8' : 'var(--accent-blue)', fontSize: '1.1rem' }}>{p.score} pts</span>
                      </div>
-                     <span style={{ fontWeight: 'bold', color: 'var(--accent-blue)', fontSize: '1.2rem' }}>{p.score} pts</span>
-                   </div>
-                 ))}
+                   );
+                 })}
                </div>
             </div>
           )}
 
-          {/* QUESTION TEXT */}
+          {/* QUESTION TEXT (FORMATTED HTML) */}
           {(session.status === 'question' || session.status === 'reveal') && (
             <div style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 100%)', padding: '1rem', borderRadius: '16px', pointerEvents: 'auto', width: '100%', maxWidth: '800px', border: '1px solid var(--border-glass)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', display: 'flex', flexWrap: 'wrap', flexDirection: question.imageUrl ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
               {question.imageUrl && (
                 <img src={question.imageUrl} alt="Questão" style={{ maxHeight: '80px', maxWidth: '200px', objectFit: 'contain', borderRadius: '8px' }} />
               )}
-              <h2 style={{ fontSize: question.imageUrl ? '1.3rem' : '1.5rem', margin: 0, flex: 1, textAlign: question.imageUrl ? 'left' : 'center', textShadow: '0 2px 4px rgba(0,0,0,0.8)', color: 'white' }}>
-                {question.title || (question as any).question || 'Sem título'}
-              </h2>
+              <h2
+                style={{ fontSize: question.imageUrl ? '1.3rem' : '1.5rem', margin: 0, flex: 1, textAlign: question.imageUrl ? 'left' : 'center', textShadow: '0 2px 4px rgba(0,0,0,0.8)', color: 'white' }}
+                dangerouslySetInnerHTML={{ __html: question.title || (question as any).question || 'Sem título' }}
+              />
             </div>
           )}
         </div>
@@ -763,75 +1002,284 @@ export default function LiveQuestAdmin() {
                     <div style={{ width: '40px', height: '40px', background: 'rgba(0,0,0,0.3)', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1.5rem', flexShrink: 0 }}>
                       {['A', 'B', 'C', 'D'][idx]}
                     </div>
-                    <span style={{ flex: 1 }}>{typeof opt === 'string' ? opt : (opt.text || '')}</span>
+                    <span style={{ flex: 1 }} dangerouslySetInnerHTML={{ __html: typeof opt === 'string' ? opt : (opt.text || '') }} />
                     {isReveal && isCorrect && <CheckCircle size={32} color="white" />}
                   </div>
                 );
               })}
             </div>
           )}
-          {/* FINISHED CONTENT */}
+          {/* FINISHED CONTENT - KAHOOT STYLE PODIUM */}
           {session.status === 'finished' && (
-            <div style={{ pointerEvents: 'auto', position: 'absolute', bottom: '2rem', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', padding: '3rem', borderRadius: '24px', width: '100%', maxWidth: '800px', border: '2px solid var(--gold-primary)', backdropFilter: 'blur(10px)', textAlign: 'center' }}>
-               <h1 style={{ color: 'var(--gold-primary)', fontSize: '3rem', marginBottom: '0.5rem', textShadow: '0 4px 8px rgba(0,0,0,0.5)' }}>Missão Concluída!</h1>
-               {session.monsterHp <= 0 ? (
-                 <div style={{ color: 'var(--accent-green)', fontSize: '1.5rem', marginBottom: '2rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}><Skull /> Monstro Derrotado! Vitória Épica!</div>
-               ) : (
-                 <div style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', marginBottom: '2rem' }}>Fim das perguntas. Veja quem se destacou!</div>
-               )}
-               
-               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: '2rem', marginBottom: '3rem', height: '200px' }}>
-                 {/* 2nd Place */}
-                 {sortedPlayers[1] && (
-                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                     {sortedPlayers[1].wonChest && (
-                        <div style={{ marginBottom: '0.5rem', animation: 'bounce 2s infinite' }}>
-                           <Package size={32} color="silver" style={{ filter: 'drop-shadow(0 0 10px rgba(192,192,192,0.8))' }} />
+            <div style={{ pointerEvents: 'auto', position: 'fixed', inset: 0, zIndex: 80, background: 'radial-gradient(ellipse at center, rgba(30, 27, 75, 0.96) 0%, rgba(10, 10, 20, 0.99) 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 2rem', overflow: 'hidden' }}>
+              <canvas ref={fireworksCanvasRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 95 }} />
+
+              {/* Header & Controls */}
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 100, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <Crown size={32} color="var(--gold-primary)" />
+                  <span style={{ fontSize: '1.8rem', fontWeight: '900', letterSpacing: '2px', background: 'linear-gradient(135deg, #f59e0b 0%, #ffd700 50%, #ffffff 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', textShadow: '0 0 20px rgba(245, 158, 11, 0.5)' }}>
+                    PÓDIO DOS CAMPEÕES
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  {podiumStep < 3 && (
+                    <button
+                      onClick={() => setPodiumStep(3)}
+                      style={{
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.3)',
+                        color: 'white',
+                        padding: '0.5rem 1.2rem',
+                        borderRadius: '20px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        fontWeight: 'bold',
+                        fontSize: '0.9rem',
+                        transition: 'all 0.2s'
+                      }}
+                      title="Pular suspense e revelar o grande campeão"
+                    >
+                      <SkipForward size={16} /> Revelar Tudo
+                    </button>
+                  )}
+                  <button
+                    onClick={handleEndSession}
+                    style={{
+                      background: 'var(--gold-primary)',
+                      color: 'var(--text-on-gold, #000000)',
+                      border: 'none',
+                      padding: '0.5rem 1.5rem',
+                      borderRadius: '20px',
+                      fontWeight: 'bold',
+                      fontSize: '1rem',
+                      cursor: 'pointer',
+                      boxShadow: '0 0 15px rgba(245, 158, 11, 0.5)',
+                      transition: 'transform 0.2s'
+                    }}
+                  >
+                    Finalizar Missão
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Announcement */}
+              <div style={{ textAlign: 'center', margin: '0.5rem 0', zIndex: 100 }}>
+                {podiumStep === 0 && (
+                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--text-secondary)', animation: 'pulse 1s infinite' }}>
+                    E os vencedores são...
+                  </div>
+                )}
+                {podiumStep === 1 && (
+                  <div style={{ fontSize: '2.2rem', fontWeight: '900', color: '#cd7f32', textShadow: '0 0 15px rgba(205,127,50,0.8)', animation: 'popIn 0.4s ease-out' }}>
+                    🥉 3º LUGAR REVELADO!
+                  </div>
+                )}
+                {podiumStep === 2 && (
+                  <div style={{ fontSize: '2.2rem', fontWeight: '900', color: '#e2e8f0', textShadow: '0 0 15px rgba(226,232,240,0.8)', animation: 'popIn 0.4s ease-out' }}>
+                    🥈 2º LUGAR REVELADO!
+                  </div>
+                )}
+                {podiumStep >= 3 && (
+                  <div style={{ fontSize: '2.5rem', fontWeight: '900', color: '#ffd700', textShadow: '0 0 25px rgba(255,215,0,1)', animation: 'popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+                    👑 1º LUGAR — O GRANDE CAMPEÃO! 🏆
+                  </div>
+                )}
+              </div>
+
+              {/* MAIN PODIUM STAGE */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '1.2rem', width: '100%', maxWidth: '1200px', flex: '1', zIndex: 90, position: 'relative', paddingBottom: '0.5rem' }}>
+                
+                {/* 5º LUGAR (Far Left) */}
+                {sortedPlayers[4] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: podiumStep >= 1 ? 1 : 0.2, transition: 'all 0.5s', transform: podiumStep >= 1 ? 'scale(1)' : 'scale(0.8)' }}>
+                    <div style={{ width: '110px', height: '140px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                      <AvatarCharacter config={sortedPlayers[4].avatarConfig} equippedItems={sortedPlayers[4].equippedItems || []} size={110} animation={podiumStep >= 1 ? 'cheer' : 'idle'} interactive={false} role="player" />
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '10px 10px 0 0', width: '100px', height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.3rem' }}>
+                      <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#94a3b8' }}>5º</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'white', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sortedPlayers[4].name}</span>
+                      <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{sortedPlayers[4].score} pts</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2º LUGAR (Left Center) */}
+                {sortedPlayers[1] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', transition: 'all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+                    {podiumStep >= 2 ? (
+                      <div style={{ animation: 'slideUpFade 0.6s ease-out', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        {sortedPlayers[1].wonChest && (
+                          <div style={{ marginBottom: '0.3rem', animation: 'bounce 2s infinite' }}>
+                            <Package size={32} color="#e2e8f0" style={{ filter: 'drop-shadow(0 0 10px rgba(226,232,240,0.8))' }} />
+                          </div>
+                        )}
+                        <Medal size={30} color="#e2e8f0" style={{ filter: 'drop-shadow(0 0 10px rgba(226,232,240,0.9))', marginBottom: '0.2rem' }} />
+                        <div style={{ width: '150px', height: '170px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                          <AvatarCharacter config={sortedPlayers[1].avatarConfig} equippedItems={sortedPlayers[1].equippedItems || []} size={150} animation="cheer" interactive={false} role="player" />
                         </div>
-                     )}
-                     <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>{sortedPlayers[1].name}</div>
-                     <div style={{ width: '120px', height: '120px', background: 'silver', borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '1rem', color: 'black', fontWeight: 'bold', fontSize: '1.5rem', boxShadow: 'inset 0 4px 10px rgba(255,255,255,0.5)' }}>
-                       2º
-                     </div>
-                     <div style={{ marginTop: '0.5rem', color: 'silver', fontWeight: 'bold' }}>{sortedPlayers[1].score} pts</div>
-                   </div>
-                 )}
-                 {/* 1st Place */}
-                 {sortedPlayers[0] && (
-                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                     {sortedPlayers[0].wonChest && (
-                        <div style={{ marginBottom: '0.5rem', animation: 'bounce 2s infinite', animationDelay: '0.2s' }}>
-                           <Package size={48} color="var(--gold-primary)" style={{ filter: 'drop-shadow(0 0 15px rgba(255,215,0,0.8))' }} />
+                      </div>
+                    ) : (
+                      <div style={{ width: '150px', height: '170px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', color: 'rgba(255,255,255,0.2)', fontWeight: 'bold' }}>
+                        ?
+                      </div>
+                    )}
+                    {/* Silver Pillar */}
+                    <div style={{
+                      background: 'linear-gradient(180deg, #e2e8f0 0%, #94a3b8 50%, #475569 100%)',
+                      border: '2px solid #ffffff',
+                      borderRadius: '16px 16px 0 0',
+                      width: '150px',
+                      height: podiumStep >= 2 ? '150px' : '50px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      paddingTop: '0.8rem',
+                      boxShadow: '0 0 25px rgba(226,232,240,0.4), inset 0 4px 10px rgba(255,255,255,0.6)',
+                      transition: 'height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                    }}>
+                      <span style={{ fontSize: '2.2rem', fontWeight: '900', color: '#0f172a' }}>2º</span>
+                      {podiumStep >= 2 && (
+                        <>
+                          <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#0f172a', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.2rem' }}>{sortedPlayers[1].name}</span>
+                          <span style={{ fontSize: '0.9rem', fontWeight: '900', color: '#0284c7' }}>{sortedPlayers[1].score} pts</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 1º LUGAR (Center - Grande Campeão) */}
+                {sortedPlayers[0] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 95, transition: 'all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+                    {podiumStep >= 3 ? (
+                      <div style={{ animation: 'slideUpFade 0.6s ease-out', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        {sortedPlayers[0].wonChest && (
+                          <div style={{ marginBottom: '0.3rem', animation: 'bounce 2s infinite' }}>
+                            <Package size={42} color="#ffd700" style={{ filter: 'drop-shadow(0 0 15px rgba(255,215,0,0.9))' }} />
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                          <Crown size={40} color="#ffd700" style={{ filter: 'drop-shadow(0 0 15px rgba(255,215,0,1))', animation: 'spin 6s linear infinite' }} />
+                          <Trophy size={40} color="#ffd700" style={{ filter: 'drop-shadow(0 0 15px rgba(255,215,0,1))' }} />
                         </div>
-                     )}
-                     <Crown size={48} color="var(--gold-primary)" style={{ marginBottom: '0.5rem' }} />
-                     <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginBottom: '0.5rem' }}>{sortedPlayers[0].name}</div>
-                     <div style={{ width: '140px', height: '160px', background: 'var(--gold-primary)', borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '1rem', color: 'var(--text-on-gold, #000000)', fontWeight: 'bold', fontSize: '2rem', boxShadow: 'inset 0 4px 10px rgba(255,255,255,0.5)' }}>
-                       1º
-                     </div>
-                     <div style={{ marginTop: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1.2rem' }}>{sortedPlayers[0].score} pts</div>
-                   </div>
-                 )}
-                 {/* 3rd Place */}
-                 {sortedPlayers[2] && (
-                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                     {sortedPlayers[2].wonChest && (
-                        <div style={{ marginBottom: '0.5rem', animation: 'bounce 2s infinite', animationDelay: '0.4s' }}>
-                           <Package size={24} color="#cd7f32" style={{ filter: 'drop-shadow(0 0 10px rgba(205,127,50,0.8))' }} />
+                        <div style={{ width: '180px', height: '200px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                          <AvatarCharacter config={sortedPlayers[0].avatarConfig} equippedItems={sortedPlayers[0].equippedItems || []} size={180} animation="cheer" interactive={false} role="player" />
                         </div>
-                     )}
-                     <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>{sortedPlayers[2].name}</div>
-                     <div style={{ width: '120px', height: '100px', background: '#cd7f32', borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '1rem', color: 'black', fontWeight: 'bold', fontSize: '1.5rem', boxShadow: 'inset 0 4px 10px rgba(255,255,255,0.5)' }}>
-                       3º
-                     </div>
-                     <div style={{ marginTop: '0.5rem', color: '#cd7f32', fontWeight: 'bold' }}>{sortedPlayers[2].score} pts</div>
-                   </div>
-                 )}
-               </div>
-               
-               <button onClick={handleEndSession} className="login-btn" style={{ padding: '1rem 3rem', fontSize: '1.2rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)' }}>
-                 Finalizar Missão
-               </button>
+                      </div>
+                    ) : (
+                      <div style={{ width: '180px', height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '4rem', color: 'rgba(255,215,0,0.3)', fontWeight: 'bold' }}>
+                        ?
+                      </div>
+                    )}
+                    {/* Gold Pillar */}
+                    <div style={{
+                      background: 'linear-gradient(180deg, #ffd700 0%, #f59e0b 50%, #b45309 100%)',
+                      border: '3px solid #ffffff',
+                      borderRadius: '20px 20px 0 0',
+                      width: '180px',
+                      height: podiumStep >= 3 ? '210px' : '60px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      paddingTop: '0.8rem',
+                      boxShadow: '0 0 40px rgba(255,215,0,0.7), inset 0 6px 15px rgba(255,255,255,0.8)',
+                      transition: 'height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                    }}>
+                      <span style={{ fontSize: '2.8rem', fontWeight: '900', color: '#000000', textShadow: '0 2px 4px rgba(255,255,255,0.5)' }}>1º</span>
+                      {podiumStep >= 3 && (
+                        <>
+                          <span style={{ fontSize: '1.1rem', fontWeight: '900', color: '#000000', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.2rem' }}>{sortedPlayers[0].name}</span>
+                          <span style={{ fontSize: '1rem', fontWeight: '900', color: '#7c2d12' }}>{sortedPlayers[0].score} pts</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3º LUGAR (Right Center) */}
+                {sortedPlayers[2] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', transition: 'all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+                    {podiumStep >= 1 ? (
+                      <div style={{ animation: 'slideUpFade 0.6s ease-out', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        {sortedPlayers[2].wonChest && (
+                          <div style={{ marginBottom: '0.3rem', animation: 'bounce 2s infinite' }}>
+                            <Package size={28} color="#cd7f32" style={{ filter: 'drop-shadow(0 0 10px rgba(205,127,50,0.8))' }} />
+                          </div>
+                        )}
+                        <Medal size={28} color="#cd7f32" style={{ filter: 'drop-shadow(0 0 10px rgba(205,127,50,0.9))', marginBottom: '0.2rem' }} />
+                        <div style={{ width: '140px', height: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                          <AvatarCharacter config={sortedPlayers[2].avatarConfig} equippedItems={sortedPlayers[2].equippedItems || []} size={140} animation="cheer" interactive={false} role="player" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ width: '140px', height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', color: 'rgba(255,255,255,0.2)', fontWeight: 'bold' }}>
+                        ?
+                      </div>
+                    )}
+                    {/* Bronze Pillar */}
+                    <div style={{
+                      background: 'linear-gradient(180deg, #d97706 0%, #b45309 50%, #78350f 100%)',
+                      border: '2px solid #fed7aa',
+                      borderRadius: '16px 16px 0 0',
+                      width: '140px',
+                      height: podiumStep >= 1 ? '120px' : '45px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      paddingTop: '0.8rem',
+                      boxShadow: '0 0 25px rgba(217,119,6,0.4), inset 0 4px 10px rgba(255,255,255,0.5)',
+                      transition: 'height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                    }}>
+                      <span style={{ fontSize: '2rem', fontWeight: '900', color: '#ffffff' }}>3º</span>
+                      {podiumStep >= 1 && (
+                        <>
+                          <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#ffffff', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.2rem' }}>{sortedPlayers[2].name}</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: '900', color: '#fed7aa' }}>{sortedPlayers[2].score} pts</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4º LUGAR (Far Right) */}
+                {sortedPlayers[3] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: podiumStep >= 1 ? 1 : 0.2, transition: 'all 0.5s', transform: podiumStep >= 1 ? 'scale(1)' : 'scale(0.8)' }}>
+                    <div style={{ width: '110px', height: '140px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                      <AvatarCharacter config={sortedPlayers[3].avatarConfig} equippedItems={sortedPlayers[3].equippedItems || []} size={110} animation={podiumStep >= 1 ? 'cheer' : 'idle'} interactive={false} role="player" />
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '10px 10px 0 0', width: '100px', height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.3rem' }}>
+                      <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#94a3b8' }}>4º</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'white', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sortedPlayers[3].name}</span>
+                      <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{sortedPlayers[3].score} pts</span>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
+              {/* SPECTATORS / CROWD (6º LUGAR EM DIANTE) */}
+              {sortedPlayers.length > 5 && (
+                <div style={{ width: '100%', maxWidth: '1200px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '1rem', overflowX: 'auto', zIndex: 90, scrollbarWidth: 'thin' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-secondary)', flexShrink: 0, textTransform: 'uppercase' }}>Torcida:</span>
+                  {sortedPlayers.slice(5).map((p, idx) => (
+                    <div key={p.uid} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, minWidth: '85px' }}>
+                      <div style={{ width: '70px', height: '90px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                        <AvatarCharacter config={p.avatarConfig} equippedItems={p.equippedItems || []} size={80} animation="cheer" interactive={false} role="player" />
+                      </div>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'white', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>#{idx + 6} {p.name.split(' ')[0]}</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--gold-primary)' }}>{p.score} pts</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
             </div>
           )}
         </div>
