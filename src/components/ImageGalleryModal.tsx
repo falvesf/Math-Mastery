@@ -354,7 +354,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
     }
   };
 
-  const renderImageGrid = (images: GalleryImage[], showDelete: boolean = true, deletePath?: string) => {
+  const renderImageGrid = (images: GalleryImage[], showDelete: boolean = true, deletePath?: string, openTilesetPicker: boolean = false) => {
     if (images.length === 0) {
       return (
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginTop: '2rem' }}>
@@ -375,8 +375,12 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
             onMouseEnter={(e) => e.currentTarget.style.border = '2px solid var(--gold-primary)'}
             onMouseLeave={(e) => e.currentTarget.style.border = '2px solid transparent'}
             onClick={() => {
-              onSelectImage(img.url);
-              onClose();
+              if (openTilesetPicker) {
+                setSelectedTileset({ url: img.url, refPath: img.refPath });
+              } else {
+                onSelectImage(img.url);
+                onClose();
+              }
             }}
             title={img.name}
           >
@@ -598,7 +602,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
                   <Loader2 className="spin" size={32} color="var(--gold-primary)" />
                 </div>
               ) : (
-                renderImageGrid(savedTilesets)
+                renderImageGrid(savedTilesets, true, undefined, true)
               )}
             </div>
           )}

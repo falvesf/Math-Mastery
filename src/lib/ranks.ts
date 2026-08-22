@@ -13,6 +13,7 @@ export interface RankDef {
   audioUrl?: string;
   variants?: RankVariant[];
   rankUpChestItems?: { itemId: string; quantity: number }[];
+  rankUpChestModelId?: string;
 }
 
 export const RANKS: RankDef[] = [
@@ -32,6 +33,9 @@ export const RANKS: RankDef[] = [
   { name: 'Mestre', minXp: 8000, color: '#f43f5e' },
   { name: 'Lendário', minXp: 10000, color: '#a855f7' },
 ];
+
+// Cópia das patentes padrão (para semear o banco de patentes globais)
+export const DEFAULT_RANKS: RankDef[] = RANKS.map(r => ({ ...r }));
 
 export function getRankForXp(xp: number, classId?: string): RankDef {
   let currentRank = RANKS[0];
@@ -85,3 +89,33 @@ export const initRanks = async (tenantId?: string) => {
     console.error("Failed to load custom ranks", e);
   }
 };
+
+/**
+ * Garante que as patentes padrão existam como GLOBAIS no banco (banco de patentes).
+ * Assim toda escola tem uma base global para copiar/importar.
+ */
+export async function ensureGlobalRanks(): Promise<void> {
+  try {
+    const { data } = await supabase.from('custom_ranks').select('id').eq('is_global', true).limit(1);
+    if (data && data.length > 0) return; // já existe base global
+
+    const rows = DEFAULT_RANKS.map((r, i) => ({
+      id: `default_global_${i}`,
+      name: r.name,
+      minXp: r.minXp,
+      color: r.color,
+      imageUrl: r.imageUrl || '',
+      audioUrl: r.audioUrl || '',
+      variants: r.variants || [],
+      rankUpChestItems: r.rankUpChestItems || [],
+      rankUpChestModelId: r.rankUpChestModelId || '',
+      tenant_id: null,
+      is_global: true
+    }));
+
+    const { error } = await supabase.from('custom_ranks').insert(rows);
+    if (error) console.error('Erro ao semear patentes globais padrão:', error);
+  } catch (e) {
+    console.error('Erro em ensureGlobalRanks:', e);
+  }
+}

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useTenant } from '../contexts/TenantContext';
 import { useDialog } from '../contexts/DialogContext';
-import { X, Search, Download, Copy, Eye, Package, Loader2 } from 'lucide-react';
+import { X, Search, Download, Copy, Eye, Package, Loader2, Edit2, Trash2, Check, CheckCheck } from 'lucide-react';
+import ItemIcon from './ItemIcon';
 
 interface StoreItemData {
   id: string;
@@ -23,11 +24,14 @@ interface ItemBankModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImport: (item: StoreItemData, copyMode: 'direct' | 'customize') => void;
+  onImportMultiple?: (items: StoreItemData[]) => void;
+  onEditGlobal?: (item: StoreItemData) => void;
+  localItems?: StoreItemData[];
 }
 
-export default function ItemBankModal({ isOpen, onClose, onImport }: ItemBankModalProps) {
-  const { tenantId } = useTenant();
-  const { showAlert } = useDialog();
+export default function ItemBankModal({ isOpen, onClose, onImport, onImportMultiple, onEditGlobal, localItems }: ItemBankModalProps) {
+  const { isSuperAdmin } = useTenant();
+  const { showAlert, showConfirm } = useDialog();
   const [items, setItems] = useState<StoreItemData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,26 +39,44 @@ export default function ItemBankModal({ isOpen, onClose, onImport }: ItemBankMod
   const [filterRarity, setFilterRarity] = useState<string>('all');
   const [selectedItem, setSelectedItem] = useState<StoreItemData | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [importingMultiple, setImportingMultiple] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       fetchItems();
+      setSelectedIds([]);
     }
   }, [isOpen]);
+
+  // IDs de itens globais já importados na loja local desta escola
+  const importedSourceIds = new Set(
+    (localItems || [])
+      .map(i => (i as any).importedFromId)
+      .filter(Boolean) as string[]
+  );
+
+  // Fallback para itens importados antes desta feature (sem importedFromId):
+  // considera importado se existir item local com o mesmo título.
+  const localTitles = new Set(
+    (localItems || [])
+      .map(i => String((i as any).title || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  const isImported = (item: StoreItemData) =>
+    importedSourceIds.has(item._rawId) ||
+    localTitles.has(String(item.title || '').trim().toLowerCase());
 
   const fetchItems = async () => {
     setLoading(true);
     try {
-      // Buscar itens da tabela store_items
-      // Inclui itens globais (is_global = true) e itens da escola atual
-      let itemsQuery = supabase
+      // Banco de itens: apenas os itens GLOBAIS (base), para a escola importar/copiar
+      const itemsQuery = supabase
         .from('store_items')
         .select('*')
-        .eq('active', true);
-
-      if (tenantId) {
-        itemsQuery = itemsQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
-      }
+        .eq('active', true)
+        .eq('is_global', true);
 
       const { data, error } = await itemsQuery;
 
@@ -105,6 +127,49 @@ export default function ItemBankModal({ isOpen, onClose, onImport }: ItemBankMod
     }
   };
 
+  const toggleSelect = (id: string) => {
+    // Itens já importados não podem ser selecionados para reimportação
+    const item = items.find(i => i.id === id);
+    if (item && isImported(item)) return;
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const toggleSelectAll = () => {
+    const visibleIds = filteredItems.filter(i => !isImported(i)).map(i => i.id);
+    const allVisibleSelected = visibleIds.every(id => selectedIds.includes(id));
+    if (allVisibleSelected) {
+      setSelectedIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedIds(prev => [...new Set([...prev, ...visibleIds])]);
+    }
+  };
+
+  const handleImportMultiple = async () => {
+    const selectedItems = items.filter(i => selectedIds.includes(i.id));
+    if (selectedItems.length === 0 || !onImportMultiple) return;
+    setImportingMultiple(true);
+    try {
+      await onImportMultiple(selectedItems);
+      setSelectedIds([]);
+      fetchItems();
+    } finally {
+      setImportingMultiple(false);
+    }
+  };
+
+  const handleDeleteGlobal = async (item: StoreItemData) => {
+    if (!isSuperAdmin) return;
+    const confirmed = await showConfirm('Excluir item global do banco?', `Apagar "${item.title}" do banco de itens? Isso não afeta as cópias locais já importadas pelas escolas.`);
+    if (!confirmed) return;
+    const { error } = await supabase.from('store_items').delete().eq('id', item._rawId);
+    if (error) {
+      console.error('Erro ao excluir item global:', error);
+      showAlert('Erro', 'Não foi possível excluir o item global.');
+      return;
+    }
+    setItems(prev => prev.filter(i => i.id !== item.id));
+  };
+
   const filteredItems = items.filter(item => {
     const matchesSearch = !searchQuery || 
       (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -149,9 +214,21 @@ export default function ItemBankModal({ isOpen, onClose, onImport }: ItemBankMod
           <h2 style={{ margin: 0, fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gold-primary)' }}>
             <Package color="var(--gold-primary)" /> Banco de Itens
           </h2>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
-            <X size={24} />
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {selectedIds.length > 0 && (
+              <button
+                onClick={handleImportMultiple}
+                disabled={importingMultiple}
+                style={{ padding: '0.5rem 1rem', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                {importingMultiple ? <Loader2 className="animate-spin" size={16} /> : <CheckCheck size={16} />}
+                Importar Selecionados ({selectedIds.length})
+              </button>
+            )}
+            <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -187,6 +264,12 @@ export default function ItemBankModal({ isOpen, onClose, onImport }: ItemBankMod
             <option value="epic">Épico</option>
             <option value="legendary">Lendário</option>
           </select>
+          <button
+            onClick={toggleSelectAll}
+            style={{ padding: '0.5rem 0.75rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+          >
+            <Check size={14} /> Selecionar todos visíveis
+          </button>
         </div>
 
         {/* Lista de Itens */}
@@ -202,7 +285,10 @@ export default function ItemBankModal({ isOpen, onClose, onImport }: ItemBankMod
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
-              {filteredItems.map(item => (
+              {filteredItems.map(item => {
+                const imported = isImported(item);
+                const selected = selectedIds.includes(item.id);
+                return (
                 <div
                   key={item.id}
                   className="glass-panel"
@@ -210,22 +296,24 @@ export default function ItemBankModal({ isOpen, onClose, onImport }: ItemBankMod
                     padding: '1rem',
                     cursor: 'pointer',
                     transition: 'all 0.2s',
-                    border: '1px solid var(--border-glass)',
+                    border: imported ? '1px solid rgba(16, 185, 129, 0.5)' : (selected ? '1px solid #8b5cf6' : '1px solid var(--border-glass)'),
+                    background: imported ? 'rgba(16, 185, 129, 0.06)' : (selected ? 'rgba(139, 92, 246, 0.08)' : undefined),
                   }}
                   onClick={() => handleImportClick(item)}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--gold-primary)')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-glass)')}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = imported ? 'rgba(16, 185, 129, 0.8)' : 'var(--gold-primary)')}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = imported ? 'rgba(16, 185, 129, 0.5)' : (selected ? '#8b5cf6' : 'var(--border-glass)'))}
                 >
-                  <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                    {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.title} style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Package size={24} color="var(--text-secondary)" />
-                      </div>
-                    )}
+                  <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem', alignItems: 'center' }}>
+                    <ItemIcon item={item} size={48} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h4 style={{ margin: 0, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</h4>
+                        {imported && (
+                          <span title="Item já importado para a loja local" style={{ color: '#10b981', display: 'inline-flex', flexShrink: 0 }}>
+                            <Check size={16} strokeWidth={3} />
+                          </span>
+                        )}
+                      </div>
                       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
                         <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: item.type === 'consumable' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: item.type === 'consumable' ? '#10b981' : '#3b82f6' }}>
                           {item.type === 'consumable' ? 'Consumível' : 'Equipável'}
@@ -235,22 +323,49 @@ export default function ItemBankModal({ isOpen, onClose, onImport }: ItemBankMod
                         </span>
                       </div>
                     </div>
+                    <div onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={imported}
+                        onChange={() => toggleSelect(item.id)}
+                        style={{ width: '18px', height: '18px', cursor: imported ? 'not-allowed' : 'pointer', opacity: imported ? 0.35 : 1 }}
+                        title={imported ? 'Item já importado' : 'Selecionar para importação múltipla'}
+                      />
+                    </div>
                   </div>
                   {item.description && (
                     <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                       {item.description}
                     </p>
                   )}
-                  <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                    {isSuperAdmin && (
+                      <>
+                        <button
+                          onClick={e => { e.stopPropagation(); onEditGlobal && onEditGlobal(item); onClose(); }}
+                          style={{ padding: '0.35rem 0.75rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                        >
+                          <Edit2 size={14} /> Editar
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleDeleteGlobal(item); }}
+                          style={{ padding: '0.35rem 0.75rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                        >
+                          <Trash2 size={14} /> Excluir
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={e => { e.stopPropagation(); handleImportClick(item); }}
-                      style={{ padding: '0.35rem 0.75rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                      style={{ padding: '0.35rem 0.75rem', background: imported ? 'rgba(16, 185, 129, 0.15)' : 'rgba(139, 92, 246, 0.2)', color: imported ? '#10b981' : '#8b5cf6', border: imported ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                     >
-                      <Download size={14} /> Importar
+                      <Download size={14} /> {imported ? 'Importado' : 'Importar'}
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

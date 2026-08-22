@@ -8,18 +8,22 @@ import GachaConfigModal from './GachaConfigModal';
 import ItemBankModal from './ItemBankModal';
 import SkinBuffIcon from '../components/SkinBuffIcon';
 import CachedImage from './CachedImage';
+import ItemIcon from './ItemIcon';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomyType, fetchEconomySettings, saveEconomySettings } from '../lib/economy';
 import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
+import { v4 as uuidv4 } from 'uuid';
 
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 
 export interface StoreItem {
   id: string;
+  _isGlobal?: boolean;
+  _tenantId?: string | null;
   title: string;
   description: string;
   imageUrl?: string;
@@ -46,6 +50,7 @@ export interface StoreItem {
   unlockedSkinId?: string;
   buffDurationDays?: number;
   backColor?: string;
+  importedFromId?: string;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -61,7 +66,7 @@ const getRarityLabel = (rarity?: string) => {
 
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
   const { showAlert, showConfirm } = useDialog();
-  const { tenantId } = useTenant();
+  const { tenantId, isSuperAdmin } = useTenant();
   const [items, setItems] = useState<StoreItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
@@ -71,6 +76,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // true = veio do "Importar e Personalizar" do banco: salva SÓ a cópia local
+  const [isImportCustomize, setIsImportCustomize] = useState(false);
   const [formData, setFormData] = useState<Partial<StoreItem>>({
     title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common'
   });
@@ -103,19 +110,24 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   const fetchData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
-    // Fetch Economy Type (por escola)
-    const econType = await fetchEconomyType(tenantId);
-    setEconomyType(econType);
+    try {
+      // Fetch Economy Type (por escola)
+      const econType = await fetchEconomyType(tenantId);
+      setEconomyType(econType);
 
-    // Fetch Items (globais + da escola atual)
-    let itemsQuery = supabase.from('store_items').select('*');
-    if (tenantId) {
-      itemsQuery = itemsQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
-    }
-    const { data: snap } = await itemsQuery;
-    const loaded: StoreItem[] = [];
-    (snap || []).forEach(row => loaded.push({ id: row.id, ...row.data } as StoreItem));
-    setItems(loaded);
+      // Fetch SOMENTE os itens locais da escola (os globais ficam no Banco de Itens)
+      let itemsQuery = supabase.from('store_items').select('*');
+      if (tenantId) {
+        itemsQuery = itemsQuery.eq('tenant_id', tenantId);
+      } else {
+        // Sem tenant definido: não listar itens órfãos de outras escolas (evita o "limbo")
+        itemsQuery = itemsQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
+      }
+      const { data: snap, error: snapErr } = await itemsQuery;
+      if (snapErr) console.error('Erro ao buscar itens da loja:', snapErr);
+      const loaded: StoreItem[] = [];
+      (snap || []).forEach(row => loaded.push({ id: row.id, _isGlobal: row.is_global ?? false, _tenantId: row.tenant_id ?? null, ...row.data } as StoreItem));
+      setItems(loaded);
     
     try {
       const { data: gachaSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'gacha').single();
@@ -143,8 +155,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       });
       setPresetSkins(loadedSkins);
     } catch (e) { console.error(e); }
-    
-    setLoading(false);
+    } catch (err) {
+      console.error('Erro em fetchData:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSaveEconomy = async (type: 'xp' | 'coins') => {
@@ -166,18 +181,36 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       rarity: item.rarity || 'common',
       active: true,
       minRankRequired: 0,
-      usableInQuest: false,
-      gameEffect: 'none',
+      usableInQuest: !!item.usableInQuest,
+      gameEffect: item.gameEffect || 'none',
+      unlockedSkinId: item.unlockedSkinId || '',
+      buffDurationDays: item.buffDurationDays,
+      avatarPart: item.avatarPart,
+      itemCategory: item.itemCategory,
+      baseAttributeType: item.baseAttributeType,
+      baseAttributeValue: item.baseAttributeValue,
+      fixedAttributes: item.fixedAttributes,
+      backColor: item.backColor,
     };
 
     if (copyMode === 'direct') {
-      // Importar direto - salvar no banco
+      // Importar direto - salvar no banco (cópia LOCAL, sem duplicar)
       const itemData = {
         ...newItem,
         cost: Number(newItem.cost),
         minRankRequired: 0,
         minSalePrice: 0,
+        importedFromId: item._rawId || null,
       };
+
+      // DEDUP: se esta escola já importou este item, não duplicar
+      const already = (items || []).find((i: any) =>
+        (i as any).importedFromId && (i as any).importedFromId === item._rawId
+      );
+      if (already) {
+        await showAlert('Item já importado', `"${item.title}" já existe na loja desta escola. Para evitar duplicatas, ele não foi importado de novo.`);
+        return;
+      }
 
       await supabase.from('store_items').insert({
         name: itemData.title,
@@ -195,15 +228,93 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       await showAlert('Sucesso', `Item "${item.title}" importado com sucesso!`);
       fetchData(false);
     } else {
-      // Importar e personalizar - abrir editor
-      setFormData(newItem);
+      // Importar e personalizar - abrir editor (cópia local, NÃO cria global)
+      setIsImportCustomize(true);
+      setFormData({ ...newItem, importedFromId: item._rawId || null });
       setEditingId(null);
       setIsEditing(true);
     }
   };
 
+  // Importar vários itens do banco de itens de uma vez (cópia direta)
+  const handleImportMultipleFromBank = async (items: any[]) => {
+    if (items.length === 0) return;
+    let imported = 0;
+    let errors = 0;
+    let skipped = 0;
+    for (const item of items) {
+      try {
+        // DEDUP: pular itens já importados por esta escola
+        const already = (items || []).find((i: any) =>
+          (i as any).importedFromId && (i as any).importedFromId === item._rawId
+        );
+        if (already) {
+          skipped++;
+          continue;
+        }
+        const itemData = {
+          title: item.title || 'Sem nome',
+          description: item.description || '',
+          cost: Number(item.cost) || 100,
+          type: item.type || 'consumable',
+          imageUrl: item.imageUrl || '',
+          gameModelUrl: item.gameModelUrl || '',
+          modelTextureUrl: item.modelTextureUrl || '',
+          minecraftHeadValue: item.minecraftHeadValue || '',
+          rarity: item.rarity || 'common',
+          active: true,
+          minRankRequired: 0,
+          usableInQuest: !!item.usableInQuest,
+          gameEffect: item.gameEffect || 'none',
+          unlockedSkinId: item.unlockedSkinId || '',
+          buffDurationDays: item.buffDurationDays,
+          avatarPart: item.avatarPart,
+          itemCategory: item.itemCategory,
+          baseAttributeType: item.baseAttributeType,
+          baseAttributeValue: item.baseAttributeValue,
+          fixedAttributes: item.fixedAttributes,
+          backColor: item.backColor,
+          minSalePrice: 0,
+          importedFromId: item._rawId || null,
+        };
+        const { error } = await supabase.from('store_items').insert({
+          name: itemData.title,
+          description: itemData.description,
+          type: itemData.type,
+          price: itemData.cost,
+          image_url: itemData.imageUrl,
+          active: itemData.active,
+          rarity: itemData.rarity,
+          data: itemData,
+          tenant_id: tenantId || null,
+          is_global: false
+        });
+        if (error) {
+          console.error('Erro ao importar item:', item.title, error);
+          errors++;
+        } else {
+          imported++;
+        }
+      } catch (e) {
+        console.error('Erro ao importar item:', item.title, e);
+        errors++;
+      }
+    }
+    await showAlert('Importação concluída', `${imported} item(ns) importado(s) com sucesso.${skipped > 0 ? ` ${skipped} já estavam importados e foram ignorados.` : ''}${errors > 0 ? ` ${errors} falharam.` : ''}`);
+    fetchData(false);
+  };
+
   const handleSaveItem = async () => {
     if (!formData.title || !formData.cost) return;
+
+    // Itens globais (sem tenant) só podem ser editados pelo superadmin
+    if (editingId) {
+      const editingItem = items.find(i => i.id === editingId);
+      if (editingItem?._isGlobal && !editingItem?._tenantId && !isSuperAdmin) {
+        await showAlert('Item global (somente leitura)', 'Itens globais pertencem ao banco de itens e só podem ser editados pelo superadmin. Use "Importar da Loja" para criar uma cópia local para a sua escola.');
+        return;
+      }
+    }
 
     const itemData = {
       ...formData,
@@ -250,6 +361,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       await Promise.all(updatePromises);
       
     } else {
+      // Cópia local (da escola) — editável pelo admin local
       await supabase.from('store_items').insert({
         name: itemData.title, description: itemData.description, type: itemData.type,
         price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
@@ -257,15 +369,33 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         tenant_id: tenantId || null,
         is_global: false
       });
+      // Só a CRIAÇÃO MANUAL cria também a cópia-base GLOBAL (banco de itens).
+      // Importações (importadoFromId presente) NÃO geram global.
+      if (!itemData.importedFromId && !isImportCustomize) {
+        await supabase.from('store_items').insert({
+          id: uuidv4(),
+          name: itemData.title, description: itemData.description, type: itemData.type,
+          price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
+          rarity: itemData.rarity, avatar_part: itemData.avatarPart, data: itemData,
+          tenant_id: null,
+          is_global: true
+        });
+      }
     }
 
     setIsEditing(false);
     setEditingId(null);
+    setIsImportCustomize(false);
     setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', minRankRequired: 0, active: true, imageUrl: '' });
     fetchData(false);
   };
 
   const handleDeleteItem = async (id: string) => {
+    const target = items.find(i => i.id === id);
+    if (target?._isGlobal && !target?._tenantId && !isSuperAdmin) {
+      await showAlert('Item global (somente leitura)', 'Itens globais só podem ser excluídos pelo superadmin.');
+      return;
+    }
     const confirmed = await showConfirm('Tem certeza que deseja apagar este item?');
     if (confirmed) {
       await supabase.from('store_items').delete().eq('id', id);
@@ -276,6 +406,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const openEdit = (item: StoreItem) => {
     setFormData(item);
     setEditingId(item.id);
+    setIsEditing(true);
+  };
+
+  // Superadmin edita um item GLOBAL do banco (abre o mesmo editor; salvar atualiza o global)
+  const openEditGlobal = (item: any) => {
+    setFormData({ ...item, id: item._rawId, _isGlobal: true } as StoreItem);
+    setEditingId(item._rawId);
     setIsEditing(true);
   };
 
@@ -370,6 +507,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               return sortedItems.map(item => {
                 const isGridIcon = layoutMode === 'small-icons' || layoutMode === 'large-icons';
                 const imgSize = layoutMode === 'small-icons' ? '80px' : layoutMode === 'large-icons' ? '140px' : '50px';
+                const isGlobalReadonly = item._isGlobal && !item._tenantId;
                 
                 return (
                   <div key={item.id} 
@@ -381,15 +519,18 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       </div>
                       {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
                         <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={parseInt(imgSize)} />
-                      ) : item.imageUrl ? (
-                        <CachedImage src={item.imageUrl} alt={item.title} style={{ width: imgSize, height: imgSize, borderRadius: '8px', objectFit: 'contain' }} />
                       ) : (
-                        <div style={{ width: imgSize, height: imgSize, borderRadius: '8px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Box size={isGridIcon ? 32 : 24} color="var(--text-secondary)" />
-                        </div>
+                        <ItemIcon item={item} size={parseInt(imgSize)} />
                       )}
                       <div style={{ flex: 1, width: isGridIcon ? '100%' : 'auto' }}>
-                        <h4 style={{ margin: '0 0 0.25rem 0', fontSize: isGridIcon ? '0.95rem' : '1.1rem', whiteSpace: isGridIcon ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis', color: `var(--rarity-${item.rarity || 'common'})` }}>{item.title}</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <h4 style={{ margin: '0', fontSize: isGridIcon ? '0.95rem' : '1.1rem', whiteSpace: isGridIcon ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis', color: `var(--rarity-${item.rarity || 'common'})` }}>{item.title}</h4>
+                          {item._isGlobal && !item._tenantId && (
+                            <span style={{ fontSize: '0.7rem', background: 'rgba(139,92,246,0.2)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', padding: '0.1rem 0.5rem', borderRadius: '10px', whiteSpace: 'nowrap' }} title="Item do banco global (somente leitura para esta escola)">
+                              Global
+                            </span>
+                          )}
+                        </div>
                         {!isGridIcon && (
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                             <span>Custo: <strong style={{ color: 'var(--gold-primary)' }}>{item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}</strong></span>
@@ -405,8 +546,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: isGridIcon ? '0.75rem' : '0' }}>
-                      <button onClick={() => openEdit(item)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.4rem', display: 'flex' }} title="Editar"><Edit2 size={16} /></button>
-                      <button onClick={() => handleDeleteItem(item.id)} style={{ background: 'transparent', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.4rem', display: 'flex' }} title="Excluir"><Trash2 size={16} /></button>
+                      <button onClick={() => openEdit(item)} disabled={isGlobalReadonly && !isSuperAdmin} style={{ background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: isGlobalReadonly && !isSuperAdmin ? 'not-allowed' : 'pointer', padding: '0.4rem', display: 'flex', opacity: isGlobalReadonly && !isSuperAdmin ? 0.4 : 1 }} title={isGlobalReadonly && !isSuperAdmin ? 'Global (somente leitura) — importe para criar uma cópia local' : 'Editar'}><Edit2 size={16} /></button>
+                      <button onClick={() => handleDeleteItem(item.id)} disabled={isGlobalReadonly && !isSuperAdmin} style={{ background: 'transparent', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: 'var(--accent-red)', cursor: isGlobalReadonly && !isSuperAdmin ? 'not-allowed' : 'pointer', padding: '0.4rem', display: 'flex', opacity: isGlobalReadonly && !isSuperAdmin ? 0.4 : 1 }} title={isGlobalReadonly && !isSuperAdmin ? 'Global (somente leitura)' : 'Excluir'}><Trash2 size={16} /></button>
                     </div>
                   </div>
                 );
@@ -659,9 +800,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <SkinBuffIcon skinUrl={formData.unlockedSkinId} durationDays={formData.buffDurationDays || 7} size={100} />
                 </div>
-              ) : formData.imageUrl ? (
-                <CachedImage src={formData.imageUrl} alt="Preview" style={{ width: '100px', height: '100px', borderRadius: '8px', objectFit: 'cover' }} />
-              ) : null}
+              ) : (
+                <ItemIcon item={formData} size={100} />
+              )}
             </div>
 
             {formData.type === 'equippable' && (
@@ -792,6 +933,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           isOpen={showItemBank}
           onClose={() => setShowItemBank(false)}
           onImport={handleImportFromBank}
+          onImportMultiple={handleImportMultipleFromBank}
+          onEditGlobal={openEditGlobal}
+          localItems={items}
         />
       )}
     </div>

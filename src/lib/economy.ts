@@ -8,6 +8,7 @@ export interface EconomySettings {
   coinToXPRatio: number;
   rankUpChestEnabled: boolean;
   rankUpChestItems: { itemId: string; quantity: number }[];
+  bazarCommerceScope: 'all' | 'school' | 'class';
 }
 
 export const DEFAULT_ECONOMY: EconomySettings = {
@@ -18,6 +19,7 @@ export const DEFAULT_ECONOMY: EconomySettings = {
   coinToXPRatio: 10,
   rankUpChestEnabled: false,
   rankUpChestItems: [],
+  bazarCommerceScope: 'all',
 };
 
 /**
@@ -56,6 +58,7 @@ export async function fetchEconomySettings(tenantId?: string | null): Promise<Ec
         coinToXPRatio: d.coinToXPRatio ?? 10,
         rankUpChestEnabled: d.rankUpChestEnabled ?? false,
         rankUpChestItems: d.rankUpChestItems ?? [],
+        bazarCommerceScope: (d.bazarCommerceScope as EconomySettings['bazarCommerceScope']) || 'all',
       };
     }
 

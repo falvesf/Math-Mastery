@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { X, Shield, Swords, Heart, Trophy, Crosshair, Skull } from 'lucide-react';
+import { X, Shield, Swords, Heart, Trophy, Crosshair, Skull, UserPlus, UserMinus } from 'lucide-react';
 import AvatarCharacter, { type EquippedItem } from './AvatarCharacter';
 import { type UserData } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
 interface PublicProfileModalProps {
@@ -80,6 +81,36 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
 
   const petItem = equippedItems.find(i => (i.itemCategory as string) === 'pet');
 
+  const { userData: currentUser } = useAuth();
+  const [isContact, setIsContact] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !user.uid || !currentUser?.uid) return;
+    const check = async () => {
+      const { data } = await supabase
+        .from('user_friends')
+        .select('friend_id')
+        .eq('user_id', currentUser.uid)
+        .eq('friend_id', user.uid)
+        .maybeSingle();
+      setIsContact(!!data);
+    };
+    check();
+  }, [isOpen, user.uid, currentUser?.uid]);
+
+  const handleAddContact = async () => {
+    if (!currentUser?.uid || !user.uid || currentUser.uid === user.uid) return;
+    if (isContact) {
+      const { error } = await supabase.from('user_friends').delete().eq('user_id', currentUser.uid).eq('friend_id', user.uid);
+      if (!error) setIsContact(false);
+    } else {
+      const { error } = await supabase
+        .from('user_friends')
+        .upsert({ user_id: currentUser.uid, friend_id: user.uid }, { onConflict: 'user_id,friend_id' });
+      if (!error) setIsContact(true);
+    }
+  };
+
   const stats = calculateTotalStats(equippedItems, user.distributedStats);
   const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === rankName) || 0) / 2) + Math.floor(stats.vitality / 30);
   
@@ -143,6 +174,19 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                 <Heart key={i} size={20} fill={i < visualHp ? "var(--accent-red)" : "none"} color={i < visualHp ? "var(--accent-red)" : "rgba(255,255,255,0.2)"} />
               ))}
             </div>
+            <button
+              onClick={handleAddContact}
+              style={{
+                marginTop: '1rem', padding: '0.5rem 1.2rem', borderRadius: '20px',
+                background: isContact ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.2)',
+                border: isContact ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(16,185,129,0.5)',
+                color: isContact ? '#f87171' : '#10b981', cursor: 'pointer',
+                fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem'
+              }}
+            >
+              {isContact ? <UserMinus size={16} /> : <UserPlus size={16} />}
+              {isContact ? 'Remover dos contatos' : 'Adicionar aos contatos'}
+            </button>
           </div>
 
           {/* Lado Direito: Informações e Status */}

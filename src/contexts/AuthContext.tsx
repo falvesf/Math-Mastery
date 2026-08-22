@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { initRanks } from '../lib/ranks';
+import { connectPresence, disconnectPresence } from '../lib/onlinePresence';
 import type { AvatarConfig } from '../components/AvatarCharacter';
 
 export type UserRole = 'student' | 'teacher' | 'coordinator' | 'admin' | 'superadmin' | 'pending_teacher';
@@ -16,6 +17,7 @@ export interface UserData {
   tenantId?: string;
   classId?: string;
   pendingClassName?: string;
+  selectedTenantId?: string;
   xp?: number;
   coins?: number;
   lastSeenRank?: string;
@@ -38,6 +40,7 @@ export interface UserData {
     sortBy: string;
     lastSeenRank?: string;
     highestRankIndex?: number;
+    onboarding?: Record<string, boolean>;
   };
   avatarConfig?: AvatarConfig;
   studentViewActive?: boolean;
@@ -54,6 +57,7 @@ export const mapUserToClient = (dbUser: any): UserData => {
     tenantId: dbUser.tenant_id,
     classId: dbUser.class_id,
     pendingClassName: dbUser.pending_class_name,
+    selectedTenantId: dbUser.selected_tenant_id,
     hpRecoveryStartTimestamp: dbUser.hp_recovery_start_timestamp,
     lastHeartRegen: dbUser.last_heart_regen,
     extraInventorySpace: dbUser.extra_inventory_space,
@@ -233,8 +237,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setTimeout(() => fetchUserData(sessionUser), 1500);
       }
 
-      if (realtimeSubscription) supabase.removeChannel(realtimeSubscription);
-      realtimeSubscription = supabase.channel(`public:users:${sessionUser.id}`)
+      if (realtimeSubscription) {
+        try { await supabase.removeChannel(realtimeSubscription); } catch (e) { console.warn('Erro ao remover canal antigo:', e); }
+        realtimeSubscription = null;
+      }
+      // Nome de canal único por sessão para evitar o erro
+      // "cannot add postgres_changes callbacks after subscribe()"
+      realtimeSubscription = supabase.channel(`public:users:${sessionUser.id}_${Date.now()}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${sessionUser.id}` }, (payload) => {
            if (isMounted) {
              setUserData(prev => {
@@ -269,6 +278,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Presença ONLINE via Realtime (presence channel) + heartbeat de reforço.
+  // Usa userData.uid (mapeado de users.id) — currentUser.uid do supabase NÃO existe.
+  useEffect(() => {
+    if (!userData?.uid) return;
+    const uid = userData.uid;
+
+    // Heartbeat: atualiza last_seen_at (fonte principal de "online")
+    const beat = () => {
+      supabase
+        .from('users')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', uid)
+        .then(({ error }) => { if (error) console.error('Heartbeat:', error); })
+        .catch(() => {});
+    };
+    beat();
+    const int = setInterval(beat, 30 * 1000);
+    const onVisible = () => { if (document.visibilityState === 'visible') beat(); };
+    const onFocus = () => beat();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+
+    // Presence (bônus, em tempo real) — isolado para não quebrar o heartbeat
+    try {
+      connectPresence(uid, { name: userData?.name, role: userData?.role, classId: userData?.classId });
+    } catch (e) {
+      console.error('Presence error:', e);
+    }
+
+    return () => {
+      clearInterval(int);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      disconnectPresence();
+    };
+  }, [userData?.uid]);
+
+  // Motor de visitas do PROFESSOR: roda apenas para TEACHERS (são os que têm
+// contato direto com os alunos). Superadmin/administradores ficam de fora.
+  // Sorteia um aluno online, grava no banco e repete a cada ~15s (o motor só
+  // sorteia de novo quando a visita atual passou de 60s). Assim o professor
+  // visita UMA tela por vez, sem parar.
+  const isTeacherRole = userData?.role === 'teacher';
+  useEffect(() => {
+    if (!userData?.uid || !isTeacherRole || !userData?.tenantId) return;
+    let cancelled = false;
+    const engine = async () => {
+      if (cancelled) return;
+      try {
+        const { runVisitEngine } = await import('../lib/teacherVisit');
+        await runVisitEngine(userData.uid, userData.name || 'Professor(a)', userData.tenantId);
+      } catch (e) {
+        console.error('Erro no motor de visitas:', e);
+      }
+    };
+    engine();
+    const int = setInterval(engine, 15 * 1000);
+    return () => { cancelled = true; clearInterval(int); };
+  }, [userData?.uid, isTeacherRole, userData?.tenantId]);
 
   const updateUserDataLocally = (updates: Partial<UserData>) => {
     setUserData(prev => prev ? { ...prev, ...updates } : prev);

@@ -1,15 +1,32 @@
 import { useState } from 'react';
 import CustomModelViewer from './CustomModelViewer';
+import { isImageUrl } from '../lib/model3d';
 
 interface ChestRevealProps {
   onOpen: () => void;
   title?: string;
   subtitle?: string;
+  chestModelUrl?: string;
+  chestOpenUrl?: string;
+  rarity?: string;
 }
 
-export default function ChestReveal({ onOpen, title = "Baú de Recompensas", subtitle = "Clique no baú para abri-lo!" }: ChestRevealProps) {
+const RARITY_COLORS: Record<string, string> = {
+  common: '#9ca3af',
+  uncommon: '#4ade80',
+  rare: '#60a5fa',
+  epic: '#c084fc',
+  legendary: '#fbbf24',
+};
+
+export default function ChestReveal({ onOpen, title = "Baú de Recompensas", subtitle = "Clique no baú para abri-lo!", chestModelUrl, chestOpenUrl, rarity }: ChestRevealProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
+
+  const usePngChest = chestModelUrl ? isImageUrl(chestModelUrl) : false;
+  const displayUrl = chestOpenUrl && isOpen ? chestOpenUrl : chestModelUrl;
+
+  const rarityColor = rarity ? (RARITY_COLORS[rarity] || '#fbbf24') : 'var(--gold-primary)';
 
   const handleOpen = () => {
     if (isOpen || isOpening) return;
@@ -35,8 +52,8 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
       <h2 style={{
         fontSize: '2rem',
         fontWeight: 'bold',
-        color: 'var(--gold-primary)',
-        textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+        color: rarityColor,
+        textShadow: `0 2px 4px rgba(0,0,0,0.5)`,
         marginBottom: '0.5rem',
         animation: 'pulse 2s infinite'
       }}>
@@ -56,7 +73,7 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
           cursor: isOpen ? 'default' : 'pointer',
           transform: isOpening ? 'scale(1.1)' : 'scale(1)',
           transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-          background: 'radial-gradient(circle, rgba(251, 191, 36, 0.2) 0%, transparent 70%)',
+          background: `radial-gradient(circle, ${rarityColor}33 0%, transparent 70%)`,
           borderRadius: '50%',
           padding: '1rem',
           width: '180px',
@@ -68,13 +85,40 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
         }}
         className={!isOpen ? 'hover-pulse' : ''}
       >
-        <div style={{ maxWidth: '120px', maxHeight: '120px' }}>
-          <CustomModelViewer 
-            modelUrl="/models/minecraft_chest.glb"
-            animation={isOpen ? 'open' : 'none'}
-            size={120}
-          />
-        </div>
+        {chestModelUrl ? (
+          usePngChest ? (
+            <div style={{ width: '120px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img
+                src={displayUrl || chestModelUrl}
+                alt="Baú"
+                style={{
+                  maxWidth: '120px',
+                  maxHeight: '120px',
+                  objectFit: 'contain',
+                  transform: isOpening ? 'scale(1.15)' : 'scale(1)',
+                  transition: 'transform 0.3s ease-out',
+                  animation: isOpen ? 'chestOpen 0.6s ease-out' : 'none',
+                }}
+              />
+            </div>
+          ) : (
+            <div style={{ maxWidth: '120px', maxHeight: '120px' }}>
+              <CustomModelViewer 
+                modelUrl={chestModelUrl}
+                animation={isOpen ? 'open' : 'none'}
+                size={120}
+              />
+            </div>
+          )
+        ) : (
+          <div style={{ maxWidth: '120px', maxHeight: '120px' }}>
+            <CustomModelViewer 
+              modelUrl="/models/minecraft_chest.glb"
+              animation={isOpen ? 'open' : 'none'}
+              size={120}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

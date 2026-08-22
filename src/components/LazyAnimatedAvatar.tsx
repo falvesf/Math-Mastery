@@ -40,9 +40,10 @@ interface LazyAnimatedAvatarProps {
   equippedItems: any[];
   size: number;
   animation?: string;
+  faceCamera?: boolean;
 }
 
-export default function LazyAnimatedAvatar({ id, config, equippedItems, size, animation = 'idle' }: LazyAnimatedAvatarProps) {
+export default function LazyAnimatedAvatar({ id, config, equippedItems, size, animation = 'idle', faceCamera }: LazyAnimatedAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   // Rastreia se este componente está registrado como "visível"
@@ -86,6 +87,8 @@ export default function LazyAnimatedAvatar({ id, config, equippedItems, size, an
           size={size}
           interactive={false}
           animation={animation as any}
+          faceCamera={faceCamera}
+          actionPoses={config.actionPoses}
         />
       ) : (
         <div style={{ width: size, height: size, borderRadius: '50%', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

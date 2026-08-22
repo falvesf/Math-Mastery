@@ -14,3 +14,15 @@ export function getSafeUrl(url?: string | null): string | undefined {
   
   return safeUrl;
 }
+
+export function normalizeCombatCoinDrop(raw: any): { minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number } {
+  if (!raw) return {};
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) || {};
+    } catch {
+      return {};
+    }
+  }
+  return raw as { minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number };
+}

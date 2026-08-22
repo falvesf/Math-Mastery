@@ -112,7 +112,8 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       if (tenantId) {
         query = query.eq('tenant_id', tenantId).eq('is_global', false);
       } else {
-        query = query.is('tenant_id', null).eq('is_global', false);
+        // Sem tenant: não listar patentes locais órfãs de outras escolas (evita o "limbo")
+        query = query.eq('tenant_id', '00000000-0000-0000-0000-000000000001').eq('is_global', false);
       }
       const { data: snap } = await query;
       let loadedRanks: (RankDef & { _isGlobal?: boolean })[] = [];

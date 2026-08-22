@@ -43,6 +43,8 @@ export interface AvatarConfig {
   savedPreSkinConfig?: Partial<AvatarConfig>;
   savedOppositeGenderConfig?: Partial<AvatarConfig>;
   hiddenSlots?: string[];
+  /** Poses customizadas que substituem as ações base, por ação */
+  actionPoses?: Partial<Record<'idle' | 'walk' | 'run' | 'attack', CharacterPose>>;
 }
 
 export interface EquippedItem {
@@ -103,6 +105,39 @@ export interface ModelTransformsConfig {
   battle?: ModelTransform;
   common_left?: ModelTransform;
   battle_left?: ModelTransform;
+  common_female?: ModelTransform;
+  battle_female?: ModelTransform;
+  common_left_female?: ModelTransform;
+  battle_left_female?: ModelTransform;
+}
+
+// Resolve o transform correto de um item considerando gênero, mão dominante e estado de batalha.
+// As variantes femininas (corpo slim) têm prioridade quando o personagem é feminino, com fallback para a comum.
+export function resolveModelTransform(
+  item: { modelTransforms?: ModelTransformsConfig },
+  gender: 'male' | 'female' | undefined,
+  handedness: string | undefined,
+  isBattle: boolean
+): ModelTransform | undefined {
+  const mt = item.modelTransforms;
+  if (!mt) return undefined;
+  const isLeft = handedness === 'left';
+
+  if (gender === 'female') {
+    if (isLeft && isBattle && mt.battle_left_female) return mt.battle_left_female;
+    if (isLeft && !isBattle && mt.common_left_female) return mt.common_left_female;
+    if (!isLeft && isBattle && mt.battle_female) return mt.battle_female;
+    if (!isLeft && !isBattle && mt.common_female) return mt.common_female;
+    if (isLeft && isBattle && mt.battle_left) return mt.battle_left;
+    if (isLeft && !isBattle && mt.common_left) return mt.common_left;
+    if (isBattle && mt.battle) return mt.battle;
+    return mt.common;
+  }
+
+  if (isLeft && isBattle && mt.battle_left) return mt.battle_left;
+  if (isLeft && !isBattle && mt.common_left) return mt.common_left;
+  if (isBattle && mt.battle) return mt.battle;
+  return mt.common;
 }
 
 const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boolean = false) => {
@@ -160,11 +195,20 @@ export interface AvatarCharacterProps {
   debugItemId?: string | null;
   debugPose?: CharacterPose;
   debugAnimationFrames?: CharacterPose[];
+  debugPreviewAnim?: boolean;
+  /** Poses customizadas que substituem as ações base (idle/walk/run/attack) */
+  actionPoses?: Partial<Record<'idle' | 'walk' | 'run' | 'attack', CharacterPose>>;
+  /** Quando true, o personagem fica de frente para a câmera nas animações de ataque (ex.: edição e rankings) */
+  faceCamera?: boolean;
+  /** Duração em segundos de cada frame no preview de animação (padrão 0.5s) */
+  debugAnimationDuration?: number;
+  /** Esconde os modelos 3D de cabelo/acessórios gerados a partir do config (ex.: ao visualizar uma skin completa) */
+  hideConfigAddons?: boolean;
 }
 
 import CustomModelViewer from './CustomModelViewer';
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, hideConfigAddons }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
@@ -373,10 +417,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                   appliedTransform = true;
                 } else if (item.modelTransforms) {
                   const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
-                  let transform = isLeftHanded && isBattle && item.modelTransforms.battle_left ? item.modelTransforms.battle_left 
-                                : isLeftHanded && !isBattle && item.modelTransforms.common_left ? item.modelTransforms.common_left 
-                                : isBattle && item.modelTransforms.battle ? item.modelTransforms.battle 
-                                : item.modelTransforms.common;
+                  let transform = resolveModelTransform(item, config.gender, config.handedness, isBattle);
                   if (transform) {
                     model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
                     model.position.set(transform.posX * inv, transform.posY, transform.posZ);
@@ -420,7 +461,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
               } else if (item.modelTransforms && item.modelTransforms.common) {
-                const t = item.modelTransforms.common;
+                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
                 model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
                 model.position.set(t.posX, t.posY, t.posZ);
                 model.rotation.set(t.rotX, t.rotY, t.rotZ);
@@ -468,7 +509,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
               } else if (item.modelTransforms && item.modelTransforms.common) {
-                const t = item.modelTransforms.common;
+                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
                 model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
                 model.position.set(t.posX, t.posY, t.posZ);
                 model.rotation.set(t.rotX, t.rotY, t.rotZ);
@@ -524,8 +565,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
              curveX = debugItemTransform.curveX || 0;
              curveY = debugItemTransform.curveY || 0;
            } else if (item.modelTransforms && item.modelTransforms.common) {
-             curveX = item.modelTransforms.common.curveX || 0;
-             curveY = item.modelTransforms.common.curveY || 0;
+             const curveT = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
+             curveX = curveT.curveX || 0;
+             curveY = curveT.curveY || 0;
            }
 
             const normalizedAvatarPart = item.avatarPart ? String(item.avatarPart).toLowerCase().trim() : '';
@@ -738,7 +780,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             mesh.translateY(debugItemTransform.slide);
             appliedTransform = true;
           } else if (item.modelTransforms && item.modelTransforms.common) {
-            const t = item.modelTransforms.common;
+            const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
             mesh.position.set(t.posX, t.posY, t.posZ);
             mesh.rotation.set(t.rotX, t.rotY, t.rotZ);
             mesh.translateY(t.slide);
@@ -828,16 +870,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         } else if (item.modelTransforms) {
           const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
           
-          let transform = null;
-          if (isLeftHanded) {
-             if (isBattle && item.modelTransforms.battle_left) transform = item.modelTransforms.battle_left;
-             else if (isBattle && item.modelTransforms.battle) transform = item.modelTransforms.battle;
-             else if (item.modelTransforms.common_left) transform = item.modelTransforms.common_left;
-             else transform = item.modelTransforms.common;
-          } else {
-             if (isBattle && item.modelTransforms.battle) transform = item.modelTransforms.battle;
-             else transform = item.modelTransforms.common;
-          }
+          let transform = resolveModelTransform(item, config.gender, config.handedness, isBattle);
           
           if (transform) {
             model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
@@ -879,7 +912,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           model.translateY(debugItemTransform.slide);
           appliedTransform = true;
         } else if (item.modelTransforms && item.modelTransforms.common) {
-          const t = item.modelTransforms.common;
+          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
           model.scale.set(t.scale ?? defaultHeadScale, t.scale ?? defaultHeadScale, (t.scale ?? defaultHeadScale) * (t.thickness ?? 1));
           model.position.set(t.posX, t.posY, t.posZ);
           model.rotation.set(t.rotX, t.rotY, t.rotZ);
@@ -907,7 +940,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           model.translateY(debugItemTransform.slide);
           appliedTransform = true;
         } else if (item.modelTransforms && item.modelTransforms.common) {
-          const t = item.modelTransforms.common;
+          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
           model.position.set(t.posX, t.posY, t.posZ);
           model.rotation.set(t.rotX, t.rotY, t.rotZ);
           model.position.y = t.posY;
@@ -929,7 +962,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY + baseRotY, debugItemTransform.rotZ);
           model.translateY(debugItemTransform.slide);
         } else if (item.modelTransforms && item.modelTransforms.common) {
-          const t = item.modelTransforms.common;
+          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
           model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
           model.position.set(t.posX, t.posY, t.posZ);
           
@@ -945,6 +978,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !viewer.playerObject) return;
+
+    // Ao visualizar uma skin completa (hideConfigAddons), não gerar cabelo/acessórios 3D do config
+    if (hideConfigAddons) return;
 
     if (customHairRef.current) {
       viewer.playerObject.skin.head.remove(customHairRef.current);
@@ -1147,7 +1183,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       viewer.playerObject.skin.head.add(addonsGroup);
       customHairRef.current = addonsGroup;
     }
-  }, [config?.hairStyle, config?.hairColor, config?.hairTieColor, config?.shirtColor, config?.ponytailLength, config?.ponytailThickness, config?.ponytailAngle, config?.hairAccessories, config?.hairAccessory, config?.accessoryColor, config?.accessoryColors, equippedItemsJson, config?.hiddenSlots?.join(',')]);
+  }, [config?.hairStyle, config?.hairColor, config?.hairTieColor, config?.shirtColor, config?.ponytailLength, config?.ponytailThickness, config?.ponytailAngle, config?.hairAccessories, config?.hairAccessory, config?.accessoryColor, config?.accessoryColors, equippedItemsJson, config?.hiddenSlots?.join(','), hideConfigAddons]);
 
   // 4. Generate skins when config changes
   useEffect(() => {
@@ -1318,13 +1354,13 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         if (pose.rightLeg) { player.skin.rightLeg.rotation.x = pose.rightLeg.rx; player.skin.rightLeg.rotation.y = pose.rightLeg.ry; player.skin.rightLeg.rotation.z = pose.rightLeg.rz; }
     };
 
-    const applyInterpolatedPose = (player: any, frames: CharacterPose[], time: number) => {
+    const applyInterpolatedPose = (player: any, frames: CharacterPose[], time: number, durationPerFrame: number = 0.5) => {
         if (frames.length === 1) {
             applyPose(player, frames[0]);
             return;
         }
         
-        const frameDuration = 0.5;
+        const frameDuration = durationPerFrame;
         const totalDuration = frames.length * frameDuration;
         const loopedTime = time % totalDuration;
         const currentFrameIdx = Math.floor(loopedTime / frameDuration);
@@ -1352,12 +1388,29 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         applyPose(player, interpolatedPose);
     };
 
-    const customAnimItem = equippedItems.find(i => i.customAnimation && i.customAnimation.frames.length > 0);
-    const hasCustomBattleAnim = customAnimItem && (animation === 'attack' || animation === 'attack-fatal');
+    // Itens com animação própria, classificados por uso em batalha:
+    //   - arma de ataque: itemCategory 'attack' OU avatarPart de mão (hand/two_handed/rightHand/leftHand)
+    //   - escudo de defesa: itemCategory 'defense'
+    const isAttackAnim = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
+    const isHurtAnim = animation === 'hurt' || animation === 'exhausted';
+    const isAttackItem = (i: EquippedItem) =>
+      !!i.customAnimation && i.customAnimation.frames.length > 0 &&
+      (i.itemCategory === 'attack' ||
+        (i.itemCategory !== 'defense' && (i.avatarPart === 'hand' || i.avatarPart === 'two_handed' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand')));
+    const isDefenseItem = (i: EquippedItem) =>
+      !!i.customAnimation && i.customAnimation.frames.length > 0 &&
+      i.itemCategory === 'defense';
 
-    if (debugAnimationFrames && debugAnimationFrames.length > 0) {
+    // Animação do item relevante para a ação atual (arma no ataque; escudo no dano)
+    const battleItemAnim =
+      isAttackAnim ? equippedItems.find(isAttackItem)?.customAnimation :
+      isHurtAnim ? equippedItems.find(isDefenseItem)?.customAnimation :
+      undefined;
+    const hasCustomBattleAnim = !!battleItemAnim;
+
+    if (debugAnimationFrames && debugAnimationFrames.length > 0 && debugPreviewAnim) {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
-          applyInterpolatedPose(player, debugAnimationFrames, time);
+          applyInterpolatedPose(player, debugAnimationFrames, time, debugAnimationDuration ?? 0.5);
       });
       return;
     } else if (debugPose && Object.keys(debugPose).length > 0) {
@@ -1365,9 +1418,33 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           applyPose(player, debugPose);
       });
       return;
-    } else if (hasCustomBattleAnim) {
+    } else if (debugAnimationFrames && debugAnimationFrames.length > 0) {
+      // Modo edição (sem preview): mostra o primeiro frame estático
+      viewerRef.current.animation = new FunctionAnimation((player: any) => {
+          applyPose(player, debugAnimationFrames[0]);
+      });
+      return;
+    } else if (hasCustomBattleAnim && battleItemAnim) {
+      // Animação atrelada ao item (arma no ataque / escudo no dano) tem prioridade
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
-          applyInterpolatedPose(player, customAnimItem.customAnimation!.frames, time);
+        if (faceCamera && isAttackAnim) {
+          player.rotation.y = 0;
+        }
+        applyInterpolatedPose(player, battleItemAnim.frames, time);
+      });
+      return;
+    }
+
+    // Poses customizadas que substituem as ações base (Parado/Andando/Correndo/Luta)
+    // Aplicam quando NÃO existe animação de item relevante para a ação atual.
+    const actionKey = animation?.startsWith('attack') ? 'attack' : animation as 'idle' | 'walk' | 'run' | 'attack';
+    const customActionPose = actionPoses && actionKey ? actionPoses[actionKey] : undefined;
+    if (customActionPose && Object.keys(customActionPose).length > 0) {
+      viewerRef.current.animation = new FunctionAnimation((player: any) => {
+        if (faceCamera && actionKey === 'attack') {
+          player.rotation.y = 0;
+        }
+        applyPose(player, customActionPose);
       });
       return;
     }
@@ -1544,8 +1621,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       });
     } else if (animation?.startsWith('attack')) {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
-        // Encarar o oponente
-        player.rotation.y = targetRotation;
+        // Encarar o oponente (de lado na batalha; de frente na edição/ranking quando faceCamera)
+        player.rotation.y = faceCamera ? 0 : targetRotation;
         // Manter a cabeça reta (evita que fique torta de animações anteriores)
         player.skin.head.rotation.x = 0;
         player.skin.head.rotation.y = 0;
@@ -1665,7 +1742,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         }
       });
     }
-  }, [animation, config?.handedness, equippedItemsJson, JSON.stringify(debugPose), JSON.stringify(debugAnimationFrames)]);
+  }, [animation, config?.handedness, equippedItemsJson, JSON.stringify(debugPose), JSON.stringify(debugAnimationFrames), debugPreviewAnim, debugAnimationDuration]);
   const handItems = equippedItems.filter(i => i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'hand');
 
 

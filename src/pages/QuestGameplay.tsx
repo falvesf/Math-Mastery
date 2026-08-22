@@ -14,8 +14,9 @@ import ChestReveal from '../components/ChestReveal';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
-import { getSafeUrl } from '../lib/utils';
+import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
+import { fetchModel3DById, fetchActiveCoin } from '../lib/model3d';
 
 interface UserItem {
   id: string;
@@ -72,6 +73,8 @@ export default function QuestGameplay() {
 
   const [showChest, setShowChest] = useState(false);
   const [chestOpened, setChestOpened] = useState(false);
+  const [selectedChestModel, setSelectedChestModel] = useState<any>(null);
+  const [activeCoinModel, setActiveCoinModel] = useState<any>(null);
   const [criticalHits, setCriticalHits] = useState(0);
   const [playerBubble, setPlayerBubble] = useState<string>('');
   const [monsterBubble, setMonsterBubble] = useState<string>('');
@@ -128,6 +131,7 @@ export default function QuestGameplay() {
   const [economySettings, setEconomySettings] = useState<any>(null);
   const [coinsToRescue, setCoinsToRescue] = useState<number | null>(null);
 const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
+  const [coinPops, setCoinPops] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [, setLostCoinsDisplay] = useState<number | null>(null);
   const alreadyCompletedRef = useRef(false);
   const combatCoinConfigRef = useRef<{ minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number }>({});
@@ -272,7 +276,7 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
           });
         }
         alreadyCompletedRef.current = alreadyCompleted;
-        combatCoinConfigRef.current = qData.combatCoinDrop || {};
+        combatCoinConfigRef.current = normalizeCombatCoinDrop(qData.combatCoinDrop);
 
         if (alreadyCompleted && userData.role !== 'admin' && !isStudyMode) {
           setErrorMessage('Você já completou esta missão com sucesso!');
@@ -328,6 +332,16 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
         setQuest(qData);
         setCurrentXp(qData.baseXp);
         setGameState('intro');
+
+        // Load selected chest model & active coin for this quest
+        if (qData.chestConfig?.chestModelId) {
+          const chestModel = await fetchModel3DById(qData.chestConfig.chestModelId, tenantId);
+          setSelectedChestModel(chestModel);
+        } else {
+          setSelectedChestModel(null);
+        }
+        const coinModel = await fetchActiveCoin(tenantId);
+        setActiveCoinModel(coinModel);
 
         // Fetch Powerups & Equipped Items
         if (userData?.uid) {
@@ -474,7 +488,11 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
   };
 
   const startGame = async () => {
-    const initialHearts = Math.min(userData?.hp ?? calculatedMaxHearts, calculatedMaxHearts);
+    // STAFF (admin/teacher/coordinator): sempre inicia com o HP máximo da patente
+    const isStaffUser = userData?.role === 'admin' || userData?.role === 'teacher' || userData?.role === 'coordinator';
+    const initialHearts = isStaffUser
+      ? calculatedMaxHearts
+      : Math.min(userData?.hp ?? calculatedMaxHearts, calculatedMaxHearts);
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
       await showAlert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
@@ -1044,24 +1062,20 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
           finalRewards.coins = Math.floor(Math.random() * (max - min + 1)) + min;
           earnedCoins += finalRewards.coins;
           
-          const slots: { id: string, quantity: number }[] = [];
-          for (let i = 0; i < 4; i++) {
+          const wonSlots: { id: string, quantity: number }[] = [];
+          const slotCount = selectedChestModel?.slot_count || quest?.chestConfig?.slotCount || 4;
+          for (let i = 0; i < slotCount; i++) {
             const itemId = quest.chestConfig.itemIds?.[i];
-            if (itemId && itemId.trim() !== '') {
-              slots.push({ id: itemId, quantity: quest.chestConfig.itemQuantities?.[i] || 1 });
+            if (!itemId || itemId.trim() === '') continue;
+            const configured = quest.chestConfig.slotChances?.[i];
+            const defaultChance = i === 0 ? 50 : i === 1 ? 25 : i === 2 ? 10 : 5;
+            const chance = Math.max(0.01, (configured ?? defaultChance) / 100);
+            if (Math.random() <= chance) {
+              wonSlots.push({ id: itemId, quantity: quest.chestConfig.itemQuantities?.[i] || 1 });
+            } else {
+              break;
             }
           }
-
-          if (slots.length > 0) {
-            const chances = [0.5, 0.25, 0.1, 0.05];
-            const wonSlots: typeof slots = [];
-            for (let i = 0; i < slots.length; i++) {
-              if (Math.random() <= chances[i]) {
-                wonSlots.push(slots[i]);
-              } else {
-                break;
-              }
-            }
             
             if (wonSlots.length > 0) {
               const wonItemIds = wonSlots.map(s => s.id);
@@ -1107,8 +1121,7 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
             }
           }
         }
-      }
-    
+      
     // Monster Drops (só na 1ª conclusão)
     if (isWin && !alreadyCompletedRef.current && quest?.monsterDrops && quest.monsterDrops.length > 0) {
       const dropItemIds = quest.monsterDrops.map(d => d.itemId);
@@ -1268,13 +1281,14 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
     }
   };
 
-  const collectCoin = (coinId: number, value: number) => {
+  const collectCoin = (coin: { id: number; x: number; y: number; value: number }) => {
     if (!userData) return;
     const currentCoins = userData.coins || 0;
-    const newCoins = currentCoins + value;
+    const newCoins = currentCoins + coin.value;
     supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
     userData.coins = newCoins;
-    setDroppedCoins(prev => prev.filter(c => c.id !== coinId));
+    setDroppedCoins(prev => prev.filter(c => c.id !== coin.id));
+    setCoinPops(prev => [...prev, { id: Date.now() + Math.random(), x: coin.x, y: coin.y, value: coin.value }]);
   };
 
   const dropCoins = () => {
@@ -1297,11 +1311,14 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
     const maxV = Math.max(minV, cfg.maxValue ?? minV);
     coinValue = Math.floor(Math.random() * (maxV - minV + 1)) + minV;
 
-    // Moedas caem perto dos pés do monstro (lado direito), com variação aleatória
+    // Moedas caem no chão, aos pés do monstro (lado direito), com variação curta
+    const arenaW = arenaRef.current?.offsetWidth || arenaWidth || 900;
+    const arenaH = arenaRef.current?.offsetHeight || 380;
+    const groundY = ((arenaH - 50) / arenaH) * 100;
     const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
       id: Date.now() + i,
-      x: 55 + Math.random() * 40, // lado direito (monstro)
-      y: 55 + Math.random() * 25, // perto do chão
+      x: ((arenaW - 205 + Math.random() * 155) / arenaW) * 100,
+      y: Math.min(90, groundY - 7 + Math.random() * 12),
       value: coinValue
     }));
     setDroppedCoins(prev => [...prev, ...newCoins]);
@@ -1498,29 +1515,47 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
                 {droppedCoins.map(coin => (
                   <button
                     key={coin.id}
-                    onClick={() => collectCoin(coin.id, coin.value)}
+                    onClick={() => collectCoin(coin)}
                     title="Coletar moeda"
                     style={{
                       position: 'absolute',
                       left: `${coin.x}%`,
                       top: `${coin.y}%`,
                       pointerEvents: 'auto',
-                      background: 'rgba(245, 158, 11, 0.2)',
-                      border: '2px solid var(--gold-primary)',
+                      background: activeCoinModel ? 'transparent' : 'rgba(245, 158, 11, 0.2)',
+                      border: activeCoinModel ? 'none' : '2px solid var(--gold-primary)',
                       borderRadius: '50%',
-                      width: '44px',
-                      height: '44px',
+                      width: '30px',
+                      height: '30px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
                       animation: 'coin-pop 0.4s ease-out',
                       zIndex: 40,
-                      boxShadow: '0 0 15px rgba(245, 158, 11, 0.6)'
+                      boxShadow: activeCoinModel ? 'none' : '0 0 12px rgba(245, 158, 11, 0.6)'
                     }}
                   >
-                    <Coins size={22} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
+                    {activeCoinModel ? (
+                      activeCoinModel.open_url ? (
+                        <img src={activeCoinModel.open_url} alt="Moeda" style={{ width: '26px', height: '26px', objectFit: 'contain', animation: 'coin-bounce 0.8s infinite' }} />
+                      ) : (
+                        <img src={activeCoinModel.url} alt="Moeda" style={{ width: '26px', height: '26px', objectFit: 'contain', animation: 'coin-bounce 0.8s infinite' }} />
+                      )
+                    ) : (
+                      <Coins size={15} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
+                    )}
                   </button>
+                ))}
+                {coinPops.map(pop => (
+                  <div
+                    key={pop.id}
+                    className="coin-value-pop"
+                    style={{ left: `${pop.x}%`, top: `${pop.y}%` }}
+                    onAnimationEnd={() => setCoinPops(prev => prev.filter(p => p.id !== pop.id))}
+                  >
+                    +{pop.value}
+                  </div>
                 ))}
               </div>
             )}
@@ -1776,7 +1811,12 @@ const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: num
           {showChest && (
             <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               {!chestOpened ? (
-                <ChestReveal onOpen={() => setChestOpened(true)} />
+                <ChestReveal
+                  onOpen={() => setChestOpened(true)}
+                  chestModelUrl={selectedChestModel?.url}
+                  chestOpenUrl={selectedChestModel?.open_url}
+                  rarity={selectedChestModel?.rarity}
+                />
               ) : (
                 <div style={{ textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
                   <h2 style={{ fontSize: '3rem', color: 'var(--gold-primary)', marginBottom: '3rem', textShadow: '0 0 20px var(--gold-primary)' }}>Recompensas Adquiridas!</h2>

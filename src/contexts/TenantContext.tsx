@@ -22,6 +22,7 @@ interface TenantContextType {
   tenant: Tenant | null;
   tenantId: string | null;
   tenants: Tenant[];
+  userTenants: Tenant[];
   loading: boolean;
   isSuperAdmin: boolean;
   noTenants: boolean;
@@ -36,6 +37,7 @@ const TenantContext = createContext<TenantContextType>({
   tenant: null,
   tenantId: null,
   tenants: [],
+  userTenants: [],
   loading: true,
   isSuperAdmin: false,
   noTenants: false,
@@ -52,167 +54,216 @@ const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 export const TenantProvider = ({ children }: { children: ReactNode }) => {
   const { currentUser, userData } = useAuth();
+  // uid confiável: o User do supabase tem `id`, mas o código usava `uid`
+  const uid = currentUser?.id || userData?.uid || undefined;
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [userTenants, setUserTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tenantId, setTenantId] = useState<string | null>(null);
+// Inicializa o tenantId SINCRONAMENTE da URL (?tenant=) ou do cache (localStorage),
+// como no projeto agendamentochromes. Assim, no primeiro render (inclusive após reload)
+// a escola salva/visitada já está selecionada.
+  const [tenantId, setTenantId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const t = new URLSearchParams(window.location.search).get('tenant');
+      if (t) return t;
+      const saved =
+        localStorage.getItem('superadmin_selected_tenant') ||
+        (uid ? localStorage.getItem(`user_selected_tenant_${uid}`) : null);
+      if (saved) return saved;
+    }
+    return null;
+  });
   const [noTenants, setNoTenants] = useState(false);
 
   const isSuperAdmin = userData?.role === 'superadmin' || userData?.email === 'fabio.feitoza@eaportal.org';
 
   // Carregar tenant do usuário atual
   const loadUserTenant = useCallback(async () => {
-    if (!currentUser || !currentUser.uid) {
-      setTenant(null);
-      setTenantId(null);
+    // 1) Deep-link: escola vinda da URL (?tenant=<id>)
+    const urlTenant = new URLSearchParams(window.location.search).get('tenant');
+    if (urlTenant) {
+      try {
+        history.replaceState(null, '', window.location.pathname);
+      } catch (e) {
+        console.warn('Não foi possível limpar a URL:', e);
+      }
+      const { data } = await supabase.from('tenants').select('*').eq('id', urlTenant).single();
+      setTenant((data as Tenant) || { id: urlTenant, name: 'Escola', slug: '' });
+      setNoTenants(false);
       setLoading(false);
       return;
     }
 
-    try {
-      // Para superadmin, resolver a escola visitada:
-      // 1º localStorage (última escola), 2º banco (primeira escola), 3º modal de criação
-      const isUserSuperAdmin = userData?.role === 'superadmin' || userData?.email === 'fabio.feitoza@eaportal.org';
-      if (isUserSuperAdmin) {
-        const savedTenantId = localStorage.getItem('superadmin_selected_tenant');
-        if (savedTenantId) {
-          // Carregar dados do tenant salvo
-          const { data: tenantData, error: tenantError } = await supabase
-            .from('tenants')
-            .select('*')
-            .eq('id', savedTenantId)
-            .single();
+    // 2) tenantId já inicializado do cache (localStorage) no useState: garante o objeto
+    if (tenantId) {
+      if (!tenant) {
+        const { data } = await supabase.from('tenants').select('*').eq('id', tenantId).single();
+        if (data) {
+          setTenant(data as Tenant);
+          setLoading(false);
+          return;
+        }
+        // Escola salva não existe mais (foi excluída): limpar cache e resolver normalmente
+        localStorage.removeItem('superadmin_selected_tenant');
+        if (uid) localStorage.removeItem(`user_selected_tenant_${uid}`);
+        setTenantId(null);
+      } else {
+        setLoading(false);
+        return;
+      }
+    }
 
-          if (!tenantError && tenantData) {
+    // 3) Sem usuário autenticado: não há tenant a resolver (e não trava o loading)
+    if (!currentUser || !uid) {
+      setLoading(false);
+      return;
+    }
+
+    // 4) Aguarda o userData carregar, a menos que seja superadmin por email
+    const isSuperByEmail = currentUser?.email === 'fabio.feitoza@eaportal.org';
+    if (!userData && !isSuperByEmail) {
+      setLoading(true);
+      return;
+    }
+
+    try {
+      const isUserSuperAdmin =
+        userData?.role === 'superadmin' ||
+        userData?.email === 'fabio.feitoza@eaportal.org' ||
+        currentUser?.email === 'fabio.feitoza@eaportal.org';
+
+      if (isUserSuperAdmin) {
+        // Escola ativa: lê de qualquer chave de cache (superadmin ou por usuário)
+        const savedTenantId =
+          localStorage.getItem('superadmin_selected_tenant') ||
+          (uid ? localStorage.getItem(`user_selected_tenant_${uid}`) : null);
+        if (savedTenantId) {
+          const { data: tenantData } = await supabase.from('tenants').select('*').eq('id', savedTenantId).single();
+          if (tenantData) {
             setTenant(tenantData as Tenant);
             setTenantId(savedTenantId);
             setNoTenants(false);
             setLoading(false);
             return;
           }
+          // Escola salva não existe mais (foi excluída): limpar do cache
+          localStorage.removeItem('superadmin_selected_tenant');
+          if (uid) localStorage.removeItem(`user_selected_tenant_${uid}`);
         }
 
-        // localStorage vazio ou escola inexistente: buscar no banco
-        const { data: allTenants, error: allTenantsError } = await supabase
-          .from('tenants')
-          .select('*')
-          .order('name');
-
-        if (allTenantsError) {
-          console.error('Erro ao buscar escolas:', allTenantsError);
+        // Cache vazio ou escola inexistente: primeira escola (e atualiza o cache)
+        const { data: allTenants } = await supabase.from('tenants').select('*').order('name');
+        if (allTenants && allTenants.length > 0) {
+          const firstTenant = allTenants[0] as Tenant;
+          setTenant(firstTenant);
+          setTenantId(firstTenant.id);
+          setNoTenants(false);
+          localStorage.setItem('superadmin_selected_tenant', firstTenant.id);
+          if (uid) localStorage.setItem(`user_selected_tenant_${uid}`, firstTenant.id);
           setLoading(false);
           return;
         }
 
-        if (!allTenants || allTenants.length === 0) {
-          // Nenhuma escola cadastrada: sinalizar para abrir o modal de criação
-          setTenant(null);
-          setTenantId(null);
-          setNoTenants(true);
-          setLoading(false);
-          return;
-        }
-
-        // Usar a primeira escola cadastrada e salvar como "última visitada"
-        const firstTenant = allTenants[0] as Tenant;
-        setTenant(firstTenant);
-        setTenantId(firstTenant.id);
-        setNoTenants(false);
-        localStorage.setItem('superadmin_selected_tenant', firstTenant.id);
+        setTenant(null);
+        setTenantId(null);
+        setNoTenants(true);
         setLoading(false);
         return;
       }
 
-      // Buscar tenant do usuário
-      const { data: tenantUserData, error: tenantUserError } = await supabase
+      // Usuário comum: tenants do usuário
+      const { data: tenantUserRows } = await supabase
         .from('tenant_users')
-        .select('tenant_id, role')
-        .eq('user_id', currentUser.uid)
-        .limit(1)
-        .maybeSingle();
+        .select('tenant_id')
+        .eq('user_id', uid);
 
-      if (tenantUserError || !tenantUserData) {
-        // Usuário sem tenant - usar padrão
+      if (!tenantUserRows || tenantUserRows.length === 0) {
         console.warn('Usuário sem tenant, usando padrão');
         await assignDefaultTenant();
         return;
       }
 
-      const currentTenantId = tenantUserData.tenant_id;
-      setTenantId(currentTenantId);
+      const tenantIds = tenantUserRows.map((r: any) => r.tenant_id);
+      const { data: resolvedTenantsData } = await supabase.from('tenants').select('*').in('id', tenantIds);
 
-      // Carregar dados do tenant (sem RPC - RLS desabilitado)
-      const { data: tenantData, error: tenantError } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('id', currentTenantId)
-        .single();
-
-      if (tenantError || !tenantData) {
-        console.error('Erro ao carregar tenant:', tenantError);
+      if (!resolvedTenantsData || resolvedTenantsData.length === 0) {
         await assignDefaultTenant();
         return;
       }
 
-      setTenant(tenantData as Tenant);
+      const resolvedTenants = resolvedTenantsData as Tenant[];
+      setUserTenants(resolvedTenants);
+
+      // Preferência salva OU escola padrão do usuário (users.tenant_id) OU primeira
+      const savedPref = localStorage.getItem(`user_selected_tenant_${uid}`);
+      // Escola padrão definida pelo superadmin (users.tenant_id) tem prioridade
+      // apenas quando o usuário ainda não escolheu manualmente (sem cache salvo).
+      const primaryPref = userData?.tenantId && resolvedTenants.some(t => t.id === userData.tenantId) ? userData.tenantId : null;
+      const chosenTenant = resolvedTenants.find(t => t.id === savedPref) || resolvedTenants.find(t => t.id === primaryPref) || resolvedTenants[0];
+      setTenant(chosenTenant);
+      setTenantId(chosenTenant.id);
     } catch (err) {
       console.error('Erro ao carregar tenant do usuário:', err);
       await assignDefaultTenant();
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, userData?.role, userData?.email]);
 
-  // Atribuir tenant padrão ao usuário
+  // Atribuir tenant ao usuário que não possui um (sem criar "tenant fantasma")
   const assignDefaultTenant = async () => {
-    if (!currentUser || !currentUser.uid) return;
+    if (!currentUser || !uid) return;
 
     try {
-      // Verificar se tenant padrão existe
-      const { data: defaultTenant, error: fetchError } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('id', DEFAULT_TENANT_ID)
-        .single();
-
-      if (fetchError || !defaultTenant) {
-        // Criar tenant padrão se não existir
-        const { data: newTenant, error: createError } = await supabase
-          .from('tenants')
-          .insert({
-            id: DEFAULT_TENANT_ID,
-            name: 'Escola Padrão',
-            slug: 'escola-padrao',
-            status: 'active',
-            config: { isDefault: true }
-          })
-          .select()
-          .single();
-
-        if (createError) {
-          console.error('Erro ao criar tenant padrão:', createError);
+      // 1) Se o usuário já tem tenant_id em users, usar esse
+      if (userData?.tenantId) {
+        const { data: userTenant } = await supabase.from('tenants').select('*').eq('id', userData.tenantId).single();
+        if (userTenant) {
+          setTenant(userTenant as Tenant);
+          setTenantId(userData.tenantId);
+          setUserTenants([userTenant as Tenant]);
+          await supabase
+            .from('tenant_users')
+            .upsert({
+              tenant_id: userData.tenantId,
+              user_id: uid,
+              role: userData?.role === 'admin' ? 'admin' :
+                    userData?.role === 'teacher' ? 'teacher' :
+                    userData?.role === 'coordinator' ? 'coordinator' : 'student'
+            }, { onConflict: 'tenant_id,user_id' });
           return;
         }
-
-        setTenant(newTenant as Tenant);
-      } else {
-        setTenant(defaultTenant as Tenant);
       }
 
-      setTenantId(DEFAULT_TENANT_ID);
+      // 2) Fallback: primeira escola real ativa (nunca criar tenant fantasma)
+      const { data: realTenants } = await supabase.from('tenants').select('*').eq('status', 'active').order('name');
+      const firstReal = (realTenants || []).find(t => t.id !== DEFAULT_TENANT_ID) as Tenant | undefined;
+      if (firstReal) {
+        setTenant(firstReal);
+        setTenantId(firstReal.id);
+        setUserTenants([firstReal]);
+        // Grava no banco: users.tenant_id + tenant_users
+        await supabase.from('users').update({ tenant_id: firstReal.id }).eq('id', uid);
+        await supabase
+          .from('tenant_users')
+          .upsert({
+            tenant_id: firstReal.id,
+            user_id: uid,
+            role: userData?.role === 'admin' ? 'admin' :
+                  userData?.role === 'teacher' ? 'teacher' :
+                  userData?.role === 'coordinator' ? 'coordinator' : 'student'
+          }, { onConflict: 'tenant_id,user_id' });
+        return;
+      }
 
-      // Criar relação tenant_users
-      await supabase
-        .from('tenant_users')
-        .upsert({
-          tenant_id: DEFAULT_TENANT_ID,
-          user_id: currentUser.uid,
-          role: userData?.role === 'admin' ? 'admin' : 
-                userData?.role === 'teacher' ? 'teacher' : 'student'
-        }, { onConflict: 'tenant_id,user_id' });
-
+      // 3) Sem nenhuma escola real: não criar fantasma, apenas estado vazio
+      setTenant(null);
+      setTenantId(null);
+      setUserTenants([]);
+      setNoTenants(true);
     } catch (err) {
-      console.error('Erro ao atribuir tenant padrão:', err);
+      console.error('Erro ao atribuir tenant:', err);
     }
   };
 
@@ -238,18 +289,23 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isSuperAdmin]);
 
-  // Trocar de tenant (superadmin)
+  // Trocar de tenant (superadmin ou usuário com múltiplas escolas)
   const switchTenant = useCallback(async (newTenantId: string) => {
-    if (!isSuperAdmin) {
-      console.error('Apenas superadmin pode trocar de tenant');
+    // Superadmin pode trocar para qualquer escola; demais só para as que pertencem
+    const allowed = isSuperAdmin || userTenants.some(t => t.id === newTenantId);
+    if (!allowed) {
+      console.error('Acesso negado: usuário não pertence a esta escola.');
       return;
     }
 
     try {
       setLoading(true);
 
-      // Salvar preferência no localStorage para superadmin
+      // Persistir preferência (cache) — em ambas as chaves para ser robusto
       localStorage.setItem('superadmin_selected_tenant', newTenantId);
+      if (uid) {
+        localStorage.setItem(`user_selected_tenant_${uid}`, newTenantId);
+      }
 
       // Carregar dados do novo tenant
       const { data: tenantData, error: tenantError } = await supabase
@@ -263,17 +319,16 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
+      // Seta o estado NO LUGAR: o contexto muda, e os efeitos de dados
+      // que dependem do tenantId re-executam (padrão do agendamentochromes)
       setTenant(tenantData as Tenant);
       setTenantId(newTenantId);
-
-      // Recarregar página para atualizar todos os dados
-      window.location.reload();
     } catch (err) {
       console.error('Erro ao trocar de tenant:', err);
     } finally {
       setLoading(false);
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, userTenants, currentUser]);
 
   // Refresh tenants
   const refreshTenants = useCallback(async () => {
@@ -465,6 +520,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       tenant,
       tenantId,
       tenants,
+      userTenants,
       loading,
       isSuperAdmin,
       noTenants,

@@ -2,25 +2,49 @@ import { useState, useEffect } from 'react';
 import { Coins, Star, Save, Loader2, ShieldAlert, Gift, Building2 } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import { fetchEconomySettings, saveEconomySettings, DEFAULT_ECONOMY, type EconomySettings } from '../lib/economy';
 
 export default function AdminEconomySettings() {
   const { showAlert } = useDialog();
   const { tenantId, tenant } = useTenant();
+  const { userData } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [effectiveTenantName, setEffectiveTenantName] = useState('');
 
   const [settings, setSettings] = useState<EconomySettings>(DEFAULT_ECONOMY);
   const [rankUpChestEnabled, setRankUpChestEnabled] = useState(false);
   const [rankUpChestItems, setRankUpChestItems] = useState<{ itemId: string; quantity: number }[]>([]);
 
+  // Tenant efetivo: usa o tenantId do contexto; se não resolver (ex.: cache de
+  // sessão antigo), cai no tenant_id do próprio usuário — assim as configurações
+  // NUNCA são salvas no "limbo/global" quando o usuário tem escola definida.
+  const effectiveTenantId = tenantId || userData?.tenantId || null;
+
   useEffect(() => {
     fetchSettings();
-  }, [tenantId]);
+  }, [effectiveTenantId]);
+
+  useEffect(() => {
+    // Resolver o nome do tenant efetivo (quando o contexto ainda não carregou)
+    const resolveName = async () => {
+      if (tenant?.name) {
+        setEffectiveTenantName(tenant.name);
+      } else if (effectiveTenantId) {
+        const { data } = await supabase.from('tenants').select('name').eq('id', effectiveTenantId).single();
+        setEffectiveTenantName((data as any)?.name || '');
+      } else {
+        setEffectiveTenantName('');
+      }
+    };
+    resolveName();
+  }, [effectiveTenantId, tenant?.name]);
 
   const fetchSettings = async () => {
     setLoading(true);
-    const econ = await fetchEconomySettings(tenantId);
+    const econ = await fetchEconomySettings(effectiveTenantId);
     setSettings(econ);
     setRankUpChestEnabled(econ.rankUpChestEnabled);
     setRankUpChestItems(econ.rankUpChestItems);
@@ -35,7 +59,7 @@ export default function AdminEconomySettings() {
         rankUpChestEnabled,
         rankUpChestItems,
       };
-      const ok = await saveEconomySettings(tenantId, payload);
+      const ok = await saveEconomySettings(effectiveTenantId, payload);
       if (ok) {
         showAlert('Configurações de economia salvas com sucesso!');
       } else {
@@ -69,11 +93,16 @@ export default function AdminEconomySettings() {
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(139, 92, 246, 0.08)' }}>
         <Building2 size={18} color="#8b5cf6" />
         <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Escola ativa: <strong style={{ color: 'var(--text-primary)' }}>{tenant?.name || (tenantId ? tenantId : 'Global (sem escola específica)')}</strong>
+          Escola ativa: <strong style={{ color: 'var(--text-primary)' }}>{effectiveTenantName || (effectiveTenantId ? effectiveTenantId : 'Global (sem escola específica)')}</strong>
         </span>
-        {!tenantId && (
+        {!effectiveTenantId && (
           <span style={{ fontSize: '0.8rem', color: '#f59e0b' }}>
             As alterações serão salvas na configuração GLOBAL.
+          </span>
+        )}
+        {!effectiveTenantId && userData?.tenantId && (
+          <span style={{ fontSize: '0.8rem', color: '#ef4444' }}>
+            ⚠️ Você tem escola definida, mas o contexto ainda não a resolveu. As alterações serão salvas na sua escola.
           </span>
         )}
       </div>
@@ -124,6 +153,34 @@ export default function AdminEconomySettings() {
             <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><ShieldAlert size={20} /> Gasto de XP</h3>
             <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>Gasta o próprio XP. Pode perder patentes.</p>
           </div>
+        </div>
+      </div>
+
+      {/* Comércio no Bazar */}
+      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+        <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-primary)', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Star size={18} color="var(--gold-primary)" /> Comércio no Bazar
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', margin: '0 0 1rem 0', fontSize: '0.85rem' }}>
+          Define com quem os alunos podem negociar os itens à venda no Bazar de Jogadores.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>Alcance das vendas</label>
+          <select
+            value={settings.bazarCommerceScope}
+            onChange={(e) => update({ bazarCommerceScope: e.target.value as EconomySettings['bazarCommerceScope'] })}
+            style={{ padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.9rem' }}
+          >
+            <option value="all">Livre (todas as escolas)</option>
+            <option value="school">Entre alunos da mesma escola</option>
+            <option value="class">Entre alunos da mesma turma</option>
+          </select>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            {settings.bazarCommerceScope === 'all' && 'Qualquer aluno pode ver e comprar os itens à venda, independente da escola.'}
+            {settings.bazarCommerceScope === 'school' && 'Somente alunos da mesma escola conseguem ver e comprar os itens à venda.'}
+            {settings.bazarCommerceScope === 'class' && 'Somente alunos da mesma turma (ex.: 6º ano B) conseguem ver e comprar os itens à venda.'}
+          </span>
         </div>
       </div>
 

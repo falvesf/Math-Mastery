@@ -1,0 +1,283 @@
+import { supabase } from './supabase';
+import { sanitizeMessage } from './chatFilter';
+
+export interface ChatMessage {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface ChatContact {
+  uid: string;
+  name: string;
+  photoURL?: string;
+  online: boolean;
+  isFriend: boolean;
+  classId?: string;
+  characterName?: string;
+  last_seen_at?: string | null;
+  hasUnread?: boolean;
+}
+
+const ONLINE_WINDOW_MS = 5 * 60 * 1000; // 5 min (abas em background podem atrasar o heartbeat) // considera online quem atualizou há <90s
+
+export function isOnlineTimestamp(ts?: string | null): boolean {
+  if (!ts) return false;
+  const t = new Date(ts).getTime();
+  if (isNaN(t)) return false;
+  return Date.now() - t < ONLINE_WINDOW_MS;
+}
+
+export function getPresenceKey(uid: string) {
+  return `chat_presence_${uid}`;
+}
+
+/** Atualiza o last_seen_at do usuário (heartbeat de presença) */
+export async function heartbeatPresence(uid: string | undefined) {
+  if (!uid) return;
+  try {
+    await supabase.from('users').update({ last_seen_at: new Date().toISOString() }).eq('id', uid);
+  } catch (e) {
+    // silencioso — não bloquear o chat por falha de heartbeat
+  }
+}
+
+/** Extrai a série de uma turma (ex: "6º Ano A" -> "6º ano"; "8º ano" -> "8º ano") */
+export function extractSeries(classId?: string | null): string {
+  if (!classId) return '';
+  return classId
+    .trim()
+    .replace(/[\s_-]*[A-Za-z]$/, '') // remove a última letra (A, B, C...)
+    .toLowerCase()
+    .trim();
+}
+
+/** Busca amigos + colegas da mesma série + professores, para a lista de contatos.
+ *  Staff (admin/teacher/coordinator) vê TODOS os alunos da escola.
+ *  Alunos veem apenas a própria série (mais amigos e staff). */
+export async function fetchContacts(uid: string, classId?: string, tenantId?: string | null, myRole?: string): Promise<ChatContact[]> {
+  // 1. Amigos explícitos
+  const { data: friendRows } = await supabase
+    .from('user_friends')
+    .select('friend_id')
+    .eq('user_id', uid);
+
+  const friendIds = (friendRows || []).map(r => r.friend_id);
+
+  // 2. Colegas (usuários com mesmo tenant)
+  let usersQuery = supabase
+    .from('users')
+    .select('id, name, photo_url, class_id, character_name, last_seen_at, role');
+
+  if (tenantId) {
+    usersQuery = usersQuery.eq('tenant_id', tenantId);
+  }
+
+  const { data: users } = await usersQuery;
+
+  const mySeries = extractSeries(classId);
+  const isStaff = myRole !== 'student' && myRole !== 'pending_student';
+  const contacts: ChatContact[] = (users || [])
+    .filter((u: any) => u.id !== uid)
+    .map((u: any) => {
+      const isFriend = friendIds.includes(u.id);
+      const otherIsStaff = u.role !== 'student' && u.role !== 'pending_student';
+      const otherSeries = extractSeries(u.class_id);
+      const sameSeries = !!mySeries && otherSeries === mySeries;
+      // Staff vê todos os alunos; aluno vê mesma série + amigos + staff
+      const show = isStaff ? true : (isFriend || sameSeries || otherIsStaff);
+      return {
+        uid: u.id,
+        name: u.name || 'Sem nome',
+        photoURL: u.photo_url || '',
+        online: isOnlineTimestamp(u.last_seen_at),
+        isFriend,
+        classId: u.class_id,
+        characterName: u.character_name,
+        last_seen_at: u.last_seen_at,
+        _show: show,
+      } as ChatContact & { _show: boolean };
+    })
+    .filter(c => c._show)
+    .sort((a: any, b: any) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
+
+  return contacts;
+}
+
+/** Adiciona aos contatos */
+export async function addFriend(uid: string, friendId: string): Promise<boolean> {
+  if (!uid || !friendId || uid === friendId) return false;
+  const { error } = await supabase
+    .from('user_friends')
+    .upsert({ user_id: uid, friend_id: friendId }, { onConflict: 'user_id,friend_id' });
+  if (error) {
+    console.error('Erro ao adicionar contato:', error);
+    return false;
+  }
+  return true;
+}
+
+/** Remove dos contatos */
+export async function removeFriend(uid: string, friendId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('user_friends')
+    .delete()
+    .eq('user_id', uid)
+    .eq('friend_id', friendId);
+  if (error) {
+    console.error('Erro ao remover contato:', error);
+    return false;
+  }
+  return true;
+}
+
+/** Envia uma mensagem (com filtro de palavras/links) */
+export async function sendMessage(senderId: string, recipientId: string, rawBody: string): Promise<ChatMessage | null> {
+  if (!senderId || !recipientId) return null;
+  const { text } = sanitizeMessage(rawBody);
+  if (!text) return null;
+
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert({
+      sender_id: senderId,
+      recipient_id: recipientId,
+      body: text,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao enviar mensagem:', error);
+    return null;
+  }
+
+  // Atualizar conversas (remetente e destinatário)
+  const now = new Date().toISOString();
+  await supabase
+    .from('chat_conversations')
+    .upsert(
+      {
+        user_id: recipientId,
+        peer_id: senderId,
+        last_message: text,
+        last_message_at: now,
+        updated_at: now,
+      },
+      { onConflict: 'user_id,peer_id' }
+    );
+  await supabase
+    .from('chat_conversations')
+    .upsert(
+      {
+        user_id: senderId,
+        peer_id: recipientId,
+        last_message: text,
+        last_message_at: now,
+        updated_at: now,
+      },
+      { onConflict: 'user_id,peer_id' }
+    );
+
+  // Incrementar não-lidos do destinatário (busca atual + 1)
+  const { data: conv } = await supabase
+    .from('chat_conversations')
+    .select('unread_count')
+    .eq('user_id', recipientId)
+    .eq('peer_id', senderId)
+    .maybeSingle();
+  const currentUnread = conv?.unread_count || 0;
+  await supabase
+    .from('chat_conversations')
+    .update({ unread_count: currentUnread + 1 })
+    .eq('user_id', recipientId)
+    .eq('peer_id', senderId);
+
+  return data as ChatMessage;
+}
+
+/** Marca mensagens como lidas */
+export async function markRead(uid: string, peerId: string) {
+  try {
+    await supabase
+      .from('chat_messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('sender_id', peerId)
+      .eq('recipient_id', uid)
+      .is('read_at', null);
+
+    await supabase
+      .from('chat_conversations')
+      .update({ unread_count: 0 })
+      .eq('user_id', uid)
+      .eq('peer_id', peerId);
+  } catch (e) {
+    console.error('Erro ao marcar lido:', e);
+  }
+}
+
+/** Busca o histórico de uma conversa */
+export async function fetchConversation(uid: string, peerId: string): Promise<ChatMessage[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .or(`sender_id.eq.${uid},recipient_id.eq.${uid}`)
+    .or(`sender_id.eq.${peerId},recipient_id.eq.${peerId}`)
+    .order('created_at', { ascending: true })
+    .limit(100);
+
+  if (error) {
+    console.error('Erro ao buscar conversa:', error);
+    return [];
+  }
+
+  return (data || []).filter(
+    (m: any) =>
+      (m.sender_id === uid && m.recipient_id === peerId) ||
+      (m.sender_id === peerId && m.recipient_id === uid)
+  ) as ChatMessage[];
+}
+
+/** Soma os não-lidos de todas as conversas */
+export async function fetchTotalUnread(uid: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('chat_conversations')
+    .select('unread_count')
+    .eq('user_id', uid);
+
+  if (error) return 0;
+  return (data || []).reduce((sum: number, r: any) => sum + (r.unread_count || 0), 0);
+}
+
+/** Busca remetentes de mensagens não-lidas (para exibi-los na lista mesmo sem amizade/série) */
+export async function fetchPendingSenders(uid: string): Promise<ChatContact[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('sender_id')
+    .eq('recipient_id', uid)
+    .is('read_at', null);
+
+  if (error) return [];
+  const senderIds = [...new Set((data || []).map((m: any) => m.sender_id))];
+  if (senderIds.length === 0) return [];
+
+  const { data: users } = await supabase
+    .from('users')
+    .select('id, name, photo_url, class_id, character_name, last_seen_at, role')
+    .in('id', senderIds);
+
+  return (users || []).map((u: any) => ({
+    uid: u.id,
+    name: u.name || 'Sem nome',
+    photoURL: u.photo_url || '',
+    online: isOnlineTimestamp(u.last_seen_at),
+    isFriend: false,
+    classId: u.class_id,
+    characterName: u.character_name,
+    last_seen_at: u.last_seen_at,
+    hasUnread: true,
+  }));
+}

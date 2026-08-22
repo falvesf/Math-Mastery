@@ -20,14 +20,20 @@ import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
-import { Edit3, MessageCircle, X, Box, Palette } from 'lucide-react';
+import { Edit3, MessageCircle, X, Box, Palette, Menu } from 'lucide-react';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import OnboardingModal from '../components/OnboardingModal';
 import SchoolSelectorModal from '../components/SchoolSelectorModal';
 import ClassSelectorModal from '../components/ClassSelectorModal';
 import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../components/CustomThemeModal';
 import { applyCustomTheme } from '../lib/theme';
-import { validateCharacterName, normalizeForComparison } from '../lib/nameValidation';
+import { validateCharacterName, normalizeForComparison, normalizeNameForMatch } from '../lib/nameValidation';
+import { fetchModel3DById } from '../lib/model3d';
+import { COMPANION_TIPS, fetchCompanionTips } from '../lib/companionTips';
+import ChatWidget from '../components/ChatWidget';
+import TeacherWanderer from '../components/TeacherWanderer';
+import AboutModal from '../components/AboutModal';
+import TenantSwitcher from '../components/TenantSwitcher';
 import StatDistributionModal from '../components/StatDistributionModal';
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
@@ -85,6 +91,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
               equippedItems={equippedItems} 
               size={size} 
               animation={finalAnimation} 
+              faceCamera={true}
             />
           ) : (
             <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
@@ -105,6 +112,106 @@ export default function Dashboard() {
   const [profileTab, setProfileTab] = useState('overview');
   const [xpHistory, setXpHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+
+  // Companion (boneco) - dicas para iniciantes
+  const [onboarding, setOnboarding] = useState<Record<string, boolean>>(userData?.inventoryPreferences?.onboarding || {});
+  const [bubble, setBubble] = useState<{ tipId: string; step: number } | null>(null);
+  const [companionTips, setCompanionTips] = useState<typeof COMPANION_TIPS>(COMPANION_TIPS);
+  const prevTabRef = useRef(activeTab);
+
+  // Carregar dicas salvas pelo superadmin (com fallback para o padrão)
+  useEffect(() => {
+    fetchCompanionTips().then(tips => setCompanionTips(tips));
+  }, []);
+
+  const isPlayerView = userData?.role === 'student' || userData?.studentViewActive;
+  const pendingTips = isPlayerView
+    ? [...companionTips].filter(t => !onboarding[t.id]).sort((a, b) => a.priority - b.priority)
+    : [];
+
+  const persistOnboarding = (next: Record<string, boolean>) => {
+    if (!userData?.uid) return;
+    const prefs = { ...(userData.inventoryPreferences || {}), onboarding: next };
+    supabase.from('users').update({ inventory_preferences: prefs }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
+    updateUserDataLocally({ inventoryPreferences: prefs });
+  };
+
+  const markTipSeen = (tipId: string) => {
+    if (onboarding[tipId]) return;
+    const next = { ...onboarding, [tipId]: true };
+    setOnboarding(next);
+    persistOnboarding(next);
+  };
+
+  const handleBubbleClick = () => {
+    if (!bubble) return;
+    const tip = companionTips.find(t => t.id === bubble.tipId);
+    if (!tip) return;
+    if (tip.id === 'intro') {
+      const nextTip = pendingTips.find(t => t.id !== 'intro');
+      if (nextTip) {
+        setBubble({ tipId: nextTip.id, step: 0 });
+      } else {
+        setBubble({ tipId: tip.id, step: (bubble.step + 1) % tip.lines.length });
+      }
+    } else {
+      markTipSeen(tip.id);
+    }
+  };
+
+  // Primeiro acesso: levar direto para a guia Personagem (só na primeira vez)
+  useEffect(() => {
+    if (isPlayerView && userData && !userData.inventoryPreferences?.onboarding) {
+      setActiveTab('profile');
+      const next = { ...onboarding, redirected: true };
+      setOnboarding(next);
+      persistOnboarding(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Marcar dica como vista quando a área é acessada pela primeira vez
+  useEffect(() => {
+    if (!isPlayerView) return;
+    if (prevTabRef.current !== activeTab) {
+      companionTips.forEach(t => {
+        if (t.seenOnTabs?.includes(activeTab)) markTipSeen(t.id);
+      });
+    }
+    prevTabRef.current = activeTab;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Selecionar qual dica o boneco fala (prioridade: intro -> ordem definida)
+  useEffect(() => {
+    if (!isPlayerView || pendingTips.length === 0) {
+      setBubble(null);
+      return;
+    }
+    setBubble(prev => (prev && prev.tipId === pendingTips[0].id ? prev : { tipId: pendingTips[0].id, step: 0 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, onboarding]);
+
+  // Avançar estrofes da dica atual (max 3 linhas, troca a cada ~3s)
+  useEffect(() => {
+    if (!bubble) return;
+    const tip = companionTips.find(t => t.id === bubble.tipId);
+    if (!tip) return;
+    const timer = setTimeout(() => {
+      const next = bubble.step + 1;
+      if (next >= tip.lines.length) {
+        if (tip.id === 'intro') {
+          setBubble({ tipId: tip.id, step: 0 });
+        } else {
+          markTipSeen(tip.id);
+        }
+      } else {
+        setBubble({ ...bubble, step: next });
+      }
+    }, 3200);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bubble]);
 
   useEffect(() => {
     const handleOpenInventory = () => {
@@ -167,6 +274,7 @@ export default function Dashboard() {
 
   // Avatar State
   const [isCustomizingAvatar, setIsCustomizingAvatar] = useState(false);
+  const [studentMobileMenuOpen, setStudentMobileMenuOpen] = useState(false);
   const [equippedItems, setEquippedItems] = useState<EquippedItem[]>([]);
   const [equippedItemsLoaded, setEquippedItemsLoaded] = useState(false);
   const [liveAvatarConfig, setLiveAvatarConfig] = useState<any>(null);
@@ -179,6 +287,7 @@ export default function Dashboard() {
   // Rank Up Chest State
   const [showRankUpChest, setShowRankUpChest] = useState(false);
   const [rankUpChestItems, setRankUpChestItems] = useState<any[]>([]);
+  const [rankUpChestModel, setRankUpChestModel] = useState<any>(null);
 
   // Quests State
   const [activeQuests, setActiveQuests] = useState<any[]>([]);
@@ -203,6 +312,20 @@ export default function Dashboard() {
   // Configurações do Sistema
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [showStatDistributionModal, setShowStatDistributionModal] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  const logoClicksRef = useRef(0);
+  const logoClickTimerRef = useRef<any>(null);
+
+  // Triplo clique na logo abre a tela "Sobre o Sistema"
+  const handleLogoClick = () => {
+    logoClicksRef.current += 1;
+    if (logoClickTimerRef.current) clearTimeout(logoClickTimerRef.current);
+    logoClickTimerRef.current = setTimeout(() => { logoClicksRef.current = 0; }, 800);
+    if (logoClicksRef.current >= 3) {
+      logoClicksRef.current = 0;
+      setShowAboutModal(true);
+    }
+  };
   const [settingsTab, setSettingsTab] = useState<'cube' | 'theme' | 'debug'>('cube');
   const [appTheme, setAppTheme] = useState(() => localStorage.getItem('appTheme') || 'default');
   const [appFonts, setAppFonts] = useState(() => localStorage.getItem('appFonts') || 'default');
@@ -289,14 +412,14 @@ export default function Dashboard() {
     };
   }, [isIdle, cubeIdleTime]);
 
-  // Giro automático do cubo quando ocioso
+  // Giro automático do cubo quando ocioso (pausado enquanto houver dicas do companheiro)
   useEffect(() => {
-    if (!cubeAutoRotate || !isIdle) return;
+    if (!cubeAutoRotate || !isIdle || pendingTips.length > 0) return;
     const rotateInterval = setInterval(() => {
       setCubeRotation(prev => prev - 90);
     }, cubeRotateInterval * 1000); // Gira a cada X segundos
     return () => clearInterval(rotateInterval);
-  }, [isIdle, cubeAutoRotate, cubeRotateInterval]);
+  }, [isIdle, cubeAutoRotate, cubeRotateInterval, pendingTips.length]);
 
   useEffect(() => {
     if (!userData || userData.role !== 'student' || !equippedItemsLoaded) return;
@@ -305,6 +428,18 @@ export default function Dashboard() {
     const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === currentRank.name) || 0) / 2) + Math.floor(stats.vitality / 30);
     const dbHearts = userData.hp !== undefined ? Number(userData.hp) : maxHearts;
     
+    // STAFF (admin/teacher/coordinator): HP sempre no máximo da patente.
+    // Não recarrega por tempo — se o banco estiver abaixo (ex: 3), sobe para o max.
+    const isStaff = userData?.role === 'admin' || userData?.role === 'teacher' || userData?.role === 'coordinator';
+    if (isStaff) {
+      setCurrentHpVisual(maxHearts);
+      if (dbHearts !== maxHearts) {
+        supabase.from('users').update({ hp: maxHearts, hp_recovery_start_timestamp: null }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
+        if (userData) userData.hp = maxHearts;
+      }
+      return;
+    }
+
     // A UI visual nunca deve mostrar mais do que o max atual
     setCurrentHpVisual(Math.min(dbHearts, maxHearts));
     
@@ -485,7 +620,7 @@ export default function Dashboard() {
       };
       fetchQuests();
     }
-  }, [userData?.uid, userData?.classId, userData?.role]);
+  }, [userData?.uid, userData?.classId, userData?.role, tenantId]);
 
   useEffect(() => {
     if (!userData) return;
@@ -496,7 +631,7 @@ export default function Dashboard() {
         if (snapEquip) {
           snapEquip.forEach((d: any) => {
             const data = d.data;
-            if (data && data.itemImageUrl && data.avatarPart) {
+            if (data && data.avatarPart && (data.itemImageUrl || data.minecraftHeadValue || data.gameModelUrl)) {
               let parsedAdds = [];
               if (data.adds) {
                 try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch(e){}
@@ -515,7 +650,8 @@ export default function Dashboard() {
                 modelTextureUrl: data.modelTextureUrl,
                 minecraftHeadValue: data.minecraftHeadValue,
                 modelTransforms: data.modelTransforms,
-                backColor: data.backColor || ''
+                backColor: data.backColor || '',
+                customAnimation: data.customAnimation,
               });
             }
           });
@@ -533,9 +669,12 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchUsers = async () => {
       let usersQuery = supabase.from('users').select('*').eq('role', 'student');
-      // Filtrar por tenant_id (superadmin vê a escola selecionada, outros veem sua escola)
+      // Filtrar por tenant_id (superadmin vê a escola selecionada, outros veem sua escola).
+      // Sem tenantId não listamos alunos de todas as escolas (evita o "limbo").
       if (tenantId) {
         usersQuery = usersQuery.eq('tenant_id', tenantId);
+      } else {
+        usersQuery = usersQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
       }
       const { data } = await usersQuery;
       if (data) {
@@ -574,7 +713,7 @@ export default function Dashboard() {
       supabase.removeChannel(channelUsers);
       supabase.removeChannel(channelLiveQuests);
     };
-  }, [userData?.classId]);
+  }, [userData?.classId, tenantId]);
 
   useEffect(() => {
     if (allStudents.length === 0) return;
@@ -671,7 +810,7 @@ export default function Dashboard() {
         if (snap) {
           snap.forEach((d: any) => {
             const data = d.data;
-            if (studentIds.has(d.student_id) && data && data.itemImageUrl && data.avatarPart) {
+            if (studentIds.has(d.student_id) && data && data.avatarPart && (data.itemImageUrl || data.minecraftHeadValue || data.gameModelUrl)) {
               if (!newRankingItems[d.student_id]) newRankingItems[d.student_id] = [];
               newRankingItems[d.student_id].push({
                 itemId: d.item_id,
@@ -899,6 +1038,10 @@ export default function Dashboard() {
                   });
                   
                   setRankUpChestItems(Array.from(grouped.values()));
+                  // Carregar a arte do baú de patente (Moldes 3D → Baús de Recompensa), se configurada
+                  const rankChestModelId = (levelUpData?.newRank as any)?.rankUpChestModelId;
+                  const rankChestModel = rankChestModelId ? await fetchModel3DById(rankChestModelId, tenantId) : null;
+                  setRankUpChestModel(rankChestModel);
                   setShowRankUpChest(true);
                   return; // Sair aqui para mostrar o baú antes de fechar
                 }
@@ -936,6 +1079,7 @@ export default function Dashboard() {
     }
     setShowRankUpChest(false);
     setRankUpChestItems([]);
+    setRankUpChestModel(null);
     
     // Agora salvar as preferências
     if (userData) {
@@ -1309,13 +1453,18 @@ export default function Dashboard() {
             setSelectedClassName(cls.name);
             
             // Verificar se o aluno está na lista pré-autorizada
-            const { data: preAuth } = await supabase
+            // Busca candidatos da escola (ou globais) e compara nome/turma de forma tolerante
+            const { data: preAuthRows } = await supabase
               .from('pre_authorized_students')
               .select('*')
-              .eq('tenant_id', selectedSchool.id)
-              .eq('class_name', cls.name)
-              .eq('name', userData.name)
-              .single();
+              .or(`tenant_id.eq.${selectedSchool.id},tenant_id.is.null`);
+
+            const normName = normalizeNameForMatch(userData.name || '');
+            const normClass = normalizeNameForMatch(cls.name);
+            const preAuth = (preAuthRows || []).find((row: any) =>
+              normalizeNameForMatch(row.name || '') === normName &&
+              normalizeNameForMatch(row.class_name || '') === normClass
+            );
 
             if (preAuth) {
               // Auto-aprovar - associar à escola e turma
@@ -1420,6 +1569,9 @@ export default function Dashboard() {
               title="Baú de Patente!"
               subtitle={`Parabéns por alcançar a patente ${levelUpData?.newRank?.name || 'novo'}!`}
               onOpen={handleOpenRankUpChest}
+              chestModelUrl={rankUpChestModel?.url}
+              chestOpenUrl={rankUpChestModel?.open_url}
+              rarity={rankUpChestModel?.rarity}
             />
             {rankUpChestItems.map((item, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', marginBottom: '0.5rem' }}>
@@ -1781,6 +1933,7 @@ export default function Dashboard() {
           onSave={(newConfig) => {
             setLiveAvatarConfig(newConfig);
             setIsCustomizingAvatar(false);
+            markTipSeen('intro');
           }}
           onPositionsSaved={() => setInventoryRefresh(prev => prev + 1)}
         />
@@ -1800,11 +1953,16 @@ export default function Dashboard() {
 
       <div style={{ position: 'sticky', top: 0, zIndex: 100, margin: '-1rem -2rem 0 -2rem', padding: '1rem 2rem 0.5rem 2rem', background: 'transparent', backdropFilter: 'blur(12px)' }}>
       <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '1rem' }}>
-        <div className="logo-container">
+        <div className="logo-container" onClick={handleLogoClick} style={{ cursor: 'pointer', userSelect: 'none' }} title="Clique 3x para ver o Sobre">
           <div style={{ width: 64, height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <img src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} alt="Math Mastery" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
-          <h1 className="title-glow">Painel do Aluno</h1>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem', minWidth: 0 }}>
+            <h1 className="title-glow">Painel do Aluno</h1>
+            <div className="tenant-switcher-desktop" style={{ position: 'relative', zIndex: 99999 }}>
+              <TenantSwitcher />
+            </div>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
           
@@ -1820,7 +1978,19 @@ export default function Dashboard() {
             </button>
           )}
 
-
+          <div className="tenant-switcher-mobile" style={{ position: 'relative' }}>
+            <button className="login-btn mobile-menu-btn" onClick={() => setStudentMobileMenuOpen(o => !o)} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Menu">
+              <Menu size={20} />
+            </button>
+            {studentMobileMenuOpen && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setStudentMobileMenuOpen(false)} />
+                <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', background: 'var(--bg-panel)', border: '1px solid var(--border-glass)', borderRadius: '12px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)', padding: '0.5rem', minWidth: '240px', zIndex: 1000 }}>
+                  <TenantSwitcher variant="menu" />
+                </div>
+              </>
+            )}
+          </div>
 
           <button 
             onClick={() => setIsSettingsModalOpen(true)}
@@ -2105,6 +2275,8 @@ export default function Dashboard() {
                                 animation={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).animation as any} 
                                 expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any} 
                                 showSlots={true} 
+                                actionPoses={(liveAvatarConfig || userData.avatarConfig)?.actionPoses}
+                                faceCamera={true}
                                 onAvatarClick={() => setIsCustomizingAvatar(true)} 
                                 onSlotClick={handleUnequipItem} 
                                 onToggleSlotVisibility={handleToggleSlotVisibility} 
@@ -2291,6 +2463,13 @@ export default function Dashboard() {
                     {'>'}
                   </button>
                 </div>
+
+                {/* Balão do companheiro (boneco) */}
+                {bubble && (Math.round((((cubeRotation % 360) + 360) % 360) / 90) % 4) === 0 && (
+                  <div className="companion-bubble" onClick={handleBubbleClick} title="Clique para continuar">
+                    {companionTips.find(t => t.id === bubble.tipId)?.lines[bubble.step]}
+                  </div>
+                )}
               </div>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
@@ -2464,6 +2643,29 @@ export default function Dashboard() {
         onClose={() => setShowStatDistributionModal(false)}
         userData={userData}
       />
+
+      <AboutModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
+
+      <TeacherWanderer
+        myUid={userData?.uid}
+        tenantId={tenantId || userData?.tenantId || null}
+        isRankingView={activeTab === 'ranking_class' || activeTab === 'ranking_general'}
+        top3Names={(activeTab === 'ranking_class' ? classStudents : top10General).slice(0, 3).map(s => s.characterName || s.name)}
+        onOpenTeacherProfile={async (profileUid) => {
+          let student = allStudents.find(s => s.uid === profileUid);
+          if (!student) {
+            // Professor não está em allStudents (só alunos): buscar do banco
+            const { data } = await supabase.from('users').select('*').eq('id', profileUid).single();
+            if (data) student = mapUserToClient(data);
+          }
+          if (student) setPublicProfileUser({ user: student, rankPos: 0 });
+        }}
+      />
+
+      <ChatWidget onOpenProfile={(profileUid) => {
+        const student = allStudents.find(s => s.uid === profileUid);
+        if (student) setPublicProfileUser({ user: student, rankPos: 0 });
+      }} />
     </div>
   );
 }

@@ -1,29 +1,65 @@
 import { useState, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, Edit2, Save, X, Box, Globe, Building2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Box, Globe, Building2, Swords, Package, Coins, Check, Image as ImageIcon } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import DirectUploadButton from './DirectUploadButton';
+import ImageGalleryModal from './ImageGalleryModal';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 export interface Model3D {
   id: string;
   name: string;
   url: string;
+  category?: 'skin' | 'chest' | 'coin';
+  rarity?: string;
+  open_url?: string;
+  slot_count?: number;
+  is_active?: boolean;
   _isGlobal?: boolean;
 }
+
+export type ModelCategory = 'skin' | 'chest' | 'coin';
+
+const RARITIES: { value: string; label: string }[] = [
+  { value: 'common', label: 'Comum' },
+  { value: 'uncommon', label: 'Incomum' },
+  { value: 'rare', label: 'Raro' },
+  { value: 'epic', label: 'Épico' },
+  { value: 'legendary', label: 'Lendário' },
+];
+
+const CATEGORY_LABELS: Record<ModelCategory, string> = {
+  skin: 'Skins de Monstros e Pets',
+  chest: 'Baús de Recompensa',
+  coin: 'Moedas',
+};
+
+const CATEGORY_COLORS: Record<ModelCategory, string> = {
+  skin: '#10b981',
+  chest: '#f59e0b',
+  coin: '#fbbf24',
+};
 
 export default function Admin3DModelsManager() {
   const { showAlert, showConfirm } = useDialog();
   const { tenantId, isSuperAdmin } = useTenant();
   const [models, setModels] = useState<Model3D[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [activeTab, setActiveTab] = useState<ModelCategory>('skin');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
+
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
+  const [category, setCategory] = useState<ModelCategory>('skin');
+  const [rarity, setRarity] = useState<string>('common');
+  const [openUrl, setOpenUrl] = useState('');
+  const [slotCount, setSlotCount] = useState(4);
+  const [isActive, setIsActive] = useState(false);
+  const [galleryTarget, setGalleryTarget] = useState<'url' | 'openUrl' | null>(null);
 
   const fetchModels = async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -37,7 +73,15 @@ export default function Admin3DModelsManager() {
         console.error('Supabase fetch error:', error);
         showAlert(`Erro do Supabase: ${error.message}`);
       } else if (snap) {
-        setModels((snap as any[]).map((m: any) => ({ ...m, _isGlobal: m.is_global ?? false })));
+        setModels((snap as any[]).map((m: any) => ({
+          ...m,
+          category: m.category || 'skin',
+          rarity: m.rarity || undefined,
+          open_url: m.open_url || undefined,
+          slot_count: m.slot_count ?? 4,
+          is_active: m.is_active ?? false,
+          _isGlobal: m.is_global ?? false,
+        })));
       }
     } catch (e: any) {
       console.error(e);
@@ -51,47 +95,102 @@ export default function Admin3DModelsManager() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
+  const filteredModels = models.filter(m => (m.category || 'skin') === activeTab);
+
   const handleOpenModal = (model?: Model3D) => {
     if (model) {
       setEditingId(model.id);
       setName(model.name);
       setUrl(model.url);
+      setCategory((model.category || 'skin') as ModelCategory);
+      setRarity(model.rarity || 'common');
+      setOpenUrl(model.open_url || '');
+      setSlotCount(model.slot_count ?? 4);
+      setIsActive(model.is_active ?? false);
     } else {
       setEditingId(null);
       setName('');
       setUrl('');
+      setCategory(activeTab);
+      setRarity('common');
+      setOpenUrl('');
+      setSlotCount(4);
+      setIsActive(false);
     }
     setIsModalOpen(true);
   };
 
   const handleSave = async () => {
     if (!name.trim() || !url.trim()) {
-      showAlert('Preencha o nome e a URL do modelo (.glb).');
+      showAlert('Preencha o nome e a URL do modelo (.glb, .gltf, .png).');
       return;
     }
 
     const urlLower = url.toLowerCase();
     const isGlbOrGltf = urlLower.includes('.glb') || urlLower.includes('.gltf') || url.startsWith('data:');
+    const isImage = urlLower.includes('.png') || urlLower.includes('.jpg') || urlLower.includes('.jpeg') || urlLower.includes('.webp') || url.startsWith('data:image/');
 
-    if (!isGlbOrGltf) {
+    if (!isGlbOrGltf && !isImage) {
       const confirm = await showConfirm(
-        'A URL não parece conter .glb ou .gltf. Você tem certeza que é um modelo 3D válido? Deseja salvar mesmo assim?'
+        'A URL não parece conter .glb/.gltf ou uma imagem (.png/.jpg). Você tem certeza que é um modelo válido? Deseja salvar mesmo assim?'
       );
       if (!confirm) return;
     }
 
     try {
-      const data: any = { name: name.trim(), url: url.trim(), tenant_id: tenantId || null, is_global: false };
+      const data: any = {
+        name: name.trim(),
+        url: url.trim(),
+        category,
+        tenant_id: tenantId || null,
+        is_global: false,
+      };
+
+      if (category === 'chest') {
+        data.rarity = rarity || null;
+        data.open_url = openUrl.trim() || null;
+        data.slot_count = Math.max(1, Math.min(10, slotCount || 4));
+      } else if (category === 'coin') {
+        data.open_url = openUrl.trim() || null;
+        data.is_active = isActive;
+        if (isActive) {
+          if (tenantId) {
+            await supabase.from('3d_models').update({ is_active: false }).eq('category', 'coin').eq('tenant_id', tenantId);
+          } else {
+            await supabase.from('3d_models').update({ is_active: false }).eq('category', 'coin').is('tenant_id', null);
+          }
+          await supabase.from('3d_models').update({ is_active: false }).eq('category', 'coin').is('tenant_id', null);
+        }
+      }
+
       if (editingId) {
         const editingModel = models.find(m => m.id === editingId);
         if (editingModel?._isGlobal && !isSuperAdmin) {
           showAlert('Modelos globais só podem ser editados pelo superadmin.');
           return;
         }
-        await supabase.from('3d_models').update(data).eq('id', editingId);
+        const { error: updateError } = await supabase.from('3d_models').update(data).eq('id', editingId);
+        if (updateError) {
+          console.error('Erro ao atualizar modelo:', updateError);
+          if ((updateError.message || '').includes('category') || (updateError.message || '').includes('does not exist')) {
+            showAlert('Faltam colunas novas na tabela 3d_models. Rode o migration_3d_models_categories.sql no Supabase.');
+          } else {
+            showAlert(`Erro ao atualizar o modelo: ${updateError.message}`);
+          }
+          return;
+        }
         showAlert('Modelo atualizado com sucesso!');
       } else {
-        await supabase.from('3d_models').insert(data);
+        const { error: insertError } = await supabase.from('3d_models').insert({ id: uuidv4(), ...data });
+        if (insertError) {
+          console.error('Erro ao inserir modelo:', insertError);
+          if ((insertError.message || '').includes('category') || (insertError.message || '').includes('does not exist')) {
+            showAlert('Faltam colunas novas na tabela 3d_models. Rode o migration_3d_models_categories.sql no Supabase.');
+          } else {
+            showAlert(`Erro ao salvar o modelo: ${insertError.message}`);
+          }
+          return;
+        }
         showAlert('Modelo adicionado com sucesso!');
       }
       sessionCache.invalidate(CACHE_KEYS.models3d());
@@ -122,6 +221,60 @@ export default function Admin3DModelsManager() {
     }
   };
 
+  const handleActivateCoin = async (model: Model3D) => {
+    if (model._isGlobal && !isSuperAdmin) {
+      showAlert('Modelos globais só podem ser editados pelo superadmin.');
+      return;
+    }
+    try {
+      const { error: e1 } = tenantId
+          ? await supabase.from('3d_models').update({ is_active: false }).eq('category', 'coin').eq('tenant_id', tenantId)
+          : await supabase.from('3d_models').update({ is_active: false }).eq('category', 'coin').is('tenant_id', null);
+      const { error: e2 } = await supabase.from('3d_models').update({ is_active: false }).eq('category', 'coin').is('tenant_id', null);
+      const { error: e3 } = await supabase.from('3d_models').update({ is_active: true }).eq('id', model.id);
+      const err = e1 || e2 || e3;
+      if (err) {
+        console.error('Erro ao ativar moeda:', err);
+        if ((err.message || '').includes('category') || (err.message || '').includes('does not exist')) {
+          showAlert('Faltam colunas novas na tabela 3d_models. Rode o migration_3d_models_categories.sql no Supabase.');
+        } else {
+          showAlert(`Erro ao ativar moeda: ${err.message}`);
+        }
+        return;
+      }
+      sessionCache.invalidate(CACHE_KEYS.models3d());
+      fetchModels(false);
+      showAlert(`Moeda "${model.name}" ativada!`);
+    } catch (e) {
+      console.error(e);
+      showAlert('Erro ao ativar moeda.');
+    }
+  };
+
+  const renderIcon = (cat: ModelCategory) => {
+    switch (cat) {
+      case 'chest': return <Package size={24} color="#f59e0b" />;
+      case 'coin': return <Coins size={24} color="#fbbf24" />;
+      default: return <Box size={24} color="#10b981" />;
+    }
+  };
+
+  const renderRarityBadge = (model: Model3D) => {
+    if (model.category !== 'chest' || !model.rarity) return null;
+    const rarityColors: Record<string, string> = {
+      common: '#9ca3af',
+      uncommon: '#4ade80',
+      rare: '#60a5fa',
+      epic: '#c084fc',
+      legendary: '#fbbf24',
+    };
+    return (
+      <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', background: 'rgba(0,0,0,0.4)', color: rarityColors[model.rarity] || '#9ca3af', border: `1px solid ${rarityColors[model.rarity] || '#9ca3af'}`, textTransform: 'capitalize' }}>
+        {model.rarity}
+      </span>
+    );
+  };
+
   return (
     <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-color)', marginTop: '2rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -129,11 +282,36 @@ export default function Admin3DModelsManager() {
           <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Box size={20} color="var(--accent-primary)" /> Moldes 3D Customizados
           </h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Cadastre os moldes (.glb) que as skins de monstros e pets podem usar. Moldes globais (🌐) são somente leitura.</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Cadastre moldes (.glb) para skins, baús de recompensa e moedas de batalha. Moldes globais (🌐) são somente leitura.</p>
         </div>
         <button onClick={() => handleOpenModal()} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Plus size={18} /> Novo Molde
         </button>
+      </div>
+
+      {/* Tabs de categoria */}
+      <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        {(Object.keys(CATEGORY_LABELS) as ModelCategory[]).map(cat => {
+          const color = CATEGORY_COLORS[cat];
+          return (
+            <button
+              key={cat}
+              onClick={() => setActiveTab(cat)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '0.5rem 1.25rem', borderRadius: '8px',
+                color: activeTab === cat ? color : 'var(--text-secondary)',
+                backgroundColor: activeTab === cat ? `${color}1a` : 'transparent',
+                fontWeight: activeTab === cat ? 'bold' : 'normal',
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                transition: 'all 0.2s'
+              }}
+            >
+              {cat === 'skin' ? <Swords size={16} /> : cat === 'chest' ? <Package size={16} /> : <Coins size={16} />}
+              {CATEGORY_LABELS[cat]}
+            </button>
+          );
+        })}
       </div>
 
       {isModalOpen ? (
@@ -147,33 +325,155 @@ export default function Admin3DModelsManager() {
           
           <div style={{ padding: '1.5rem' }}>
             <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Categoria</label>
+              <select
+                value={category}
+                onChange={e => setCategory(e.target.value as ModelCategory)}
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+              >
+                <option value="skin">Skins de Monstros e Pets</option>
+                <option value="chest">Baús de Recompensa</option>
+                <option value="coin">Moedas</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome do Molde</label>
               <input 
                 type="text" 
                 value={name} 
                 onChange={e => setName(e.target.value)} 
-                placeholder="Ex: Iron Golem" 
+                placeholder={category === 'chest' ? "Ex: Baú Lendário" : category === 'coin' ? "Ex: Moeda de Ouro" : "Ex: Iron Golem"} 
                 style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} 
               />
             </div>
             
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL do Modelo (.glb)</label>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                URL do Modelo ({category === 'skin' ? '.glb' : '.glb ou .png'})
+              </label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <input 
                   type="text" 
                   value={url} 
                   onChange={e => setUrl(e.target.value)} 
-                  placeholder="https://meusite.com/golem.glb" 
+                  placeholder={category === 'skin' ? "https://meusite.com/golem.glb" : category === 'chest' ? "https://meusite.com/baú_fechado.png" : "https://meusite.com/moeda.png"} 
                   style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} 
                 />
                 <DirectUploadButton 
                   onUploadComplete={setUrl} 
-                  folder="3d_models" 
-                  accept=".glb,.gltf"
+                  folder={category === 'skin' ? '3d_models' : category === 'chest' ? 'chests' : 'coins'} 
+                  accept={category === 'skin' ? '.glb,.gltf' : '.glb,.gltf,.png,.jpg,.jpeg,.webp'}
                 />
+                <button
+                  onClick={() => setGalleryTarget('url')}
+                  title="Escolher imagem da galeria"
+                  style={{
+                    background: 'rgba(139, 92, 246, 0.2)',
+                    color: '#a78bfa',
+                    border: '1px solid rgba(139, 92, 246, 0.4)',
+                    borderRadius: '8px',
+                    padding: '0 1rem',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    fontSize: '0.8rem',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <ImageIcon size={18} /> Galeria
+                </button>
               </div>
             </div>
+
+            {(category === 'chest' || category === 'coin') && (
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                  URL do Modelo Aberto ({category === 'chest' ? 'baú aberto' : 'moeda animada'} — .png opcional)
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input 
+                    type="text" 
+                    value={openUrl} 
+                    onChange={e => setOpenUrl(e.target.value)} 
+                    placeholder={category === 'chest' ? "https://meusite.com/baú_aberto.png" : "https://meusite.com/moeda_aberta.png"} 
+                    style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} 
+                  />
+                  <DirectUploadButton 
+                    onUploadComplete={setOpenUrl} 
+                    folder={category === 'chest' ? 'chests' : 'coins'} 
+                    accept=".png,.jpg,.jpeg,.webp"
+                  />
+                  <button
+                    onClick={() => setGalleryTarget('openUrl')}
+                    title="Escolher imagem da galeria"
+                    style={{
+                      background: 'rgba(139, 92, 246, 0.2)',
+                      color: '#a78bfa',
+                      border: '1px solid rgba(139, 92, 246, 0.4)',
+                      borderRadius: '8px',
+                      padding: '0 1rem',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontSize: '0.8rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <ImageIcon size={18} /> Galeria
+                  </button>
+                </div>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', display: 'block', marginTop: '0.35rem' }}>
+                  Para PNG: use a URL fechado no campo acima e o aberto aqui — a animação simula o baú/moeda abrindo.
+                </span>
+              </div>
+            )}
+
+            {category === 'chest' && (
+              <>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Raridade do Baú</label>
+                  <select
+                    value={rarity}
+                    onChange={e => setRarity(e.target.value)}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                  >
+                    {RARITIES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  </select>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', display: 'block', marginTop: '0.35rem' }}>
+                    Quanto maior a raridade, melhores os itens dentro do baú.
+                  </span>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Quantidade de Slots (itens no baú)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={slotCount}
+                    onChange={e => setSlotCount(parseInt(e.target.value) || 4)}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                  />
+                </div>
+              </>
+            )}
+
+            {category === 'coin' && (
+              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={e => setIsActive(e.target.checked)}
+                  style={{ width: '20px', height: '20px' }}
+                />
+                <label style={{ color: 'var(--text-primary)' }}>Marcar como moeda ativa nas batalhas</label>
+              </div>
+            )}
 
             <button 
               onClick={handleSave} 
@@ -188,24 +488,42 @@ export default function Admin3DModelsManager() {
         <>
           {loading ? (
             <p style={{ color: 'var(--text-secondary)' }}>Carregando moldes...</p>
-          ) : models.length === 0 ? (
+          ) : filteredModels.length === 0 ? (
             <div style={{ padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px dashed var(--border-color)' }}>
-              <p style={{ color: 'var(--text-secondary)' }}>Nenhum molde 3D cadastrado.</p>
+              <p style={{ color: 'var(--text-secondary)' }}>
+                {activeTab === 'skin' ? 'Nenhum molde 3D de skin cadastrado.' : activeTab === 'chest' ? 'Nenhum baú de recompensa cadastrado.' : 'Nenhuma moeda cadastrada.'}
+              </p>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-              {models.map(model => (
+              {filteredModels.map(model => (
                 <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                   <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: 'var(--bg-card)', border: '1px solid var(--border-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Box size={24} color="var(--accent-primary)" />
+                    {renderIcon(model.category || 'skin')}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h4 style={{ fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       {model.name}
                       {model._isGlobal ? <span title="Global (somente leitura)"><Globe size={14} color="var(--text-secondary)" /></span> : <span title="Local (editável)"><Building2 size={14} color="#10b981" /></span>}
                     </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {renderRarityBadge(model)}
+                      {model.category === 'chest' && model.slot_count && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{model.slot_count} slots</span>
+                      )}
+                      {model.category === 'coin' && model.is_active && (
+                        <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', background: 'rgba(251, 191, 36, 0.2)', color: '#fbbf24', border: '1px solid #fbbf24', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <Check size={11} /> Ativa
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                    {model.category === 'coin' && !model.is_active && (
+                      <button onClick={() => handleActivateCoin(model)} disabled={model._isGlobal && !isSuperAdmin} title="Ativar moeda" style={{ padding: '0.5rem', color: '#fbbf24', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
+                        <Check size={16} />
+                      </button>
+                    )}
                     <button onClick={() => handleOpenModal(model)} disabled={model._isGlobal && !isSuperAdmin} style={{ padding: '0.5rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
                       <Edit2 size={16} />
                     </button>
@@ -218,6 +536,16 @@ export default function Admin3DModelsManager() {
             </div>
           )}
         </>
+      )}
+
+      {galleryTarget && (
+        <ImageGalleryModal
+          onSelectImage={(imageUrl) => {
+            if (galleryTarget === 'url') setUrl(imageUrl);
+            else setOpenUrl(imageUrl);
+          }}
+          onClose={() => setGalleryTarget(null)}
+        />
       )}
     </div>
   );

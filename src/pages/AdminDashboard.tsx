@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, Move } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Clock, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, Move, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -11,6 +11,8 @@ import DirectUploadButton from '../components/DirectUploadButton';
 import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
 import AdminEntitiesManager from '../components/AdminEntitiesManager';
+import AdminCompanionTipsManager from '../components/AdminCompanionTipsManager';
+import TenantSwitcher from '../components/TenantSwitcher';
 import AdminEconomySettings from '../components/AdminEconomySettings';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import ArenaBgEditor from '../components/ArenaBgEditor';
@@ -22,6 +24,8 @@ import PreAuthorizedStudentsManager from '../components/PreAuthorizedStudentsMan
 import RichTextEditor from '../components/RichTextEditor';
 import { useDialog } from '../contexts/DialogContext';
 import { validateCharacterName, normalizeForComparison } from '../lib/nameValidation';
+import { normalizeCombatCoinDrop } from '../lib/utils';
+import { fetchModelsByCategory } from '../lib/model3d';
 
 export interface ClassDef {
   id: string;
@@ -66,7 +70,9 @@ export interface QuestDef {
     maxCoins?: number;
     itemIds?: string[];
     itemQuantities?: number[];
+    slotChances?: number[];
     dropChance?: number;
+    chestModelId?: string;
   };
   mode?: 'classic' | 'live';
   liveChest1stPlace?: { maxCoins?: number; itemIds?: string[]; itemQuantities?: number[]; };
@@ -450,6 +456,10 @@ export default function AdminDashboard() {
   const [editClass, setEditClass] = useState('');
   const [editRole, setEditRole] = useState('student');
   const [editCharacterName, setEditCharacterName] = useState('');
+  const [editUserTenantIds, setEditUserTenantIds] = useState<string[]>([]);
+  const [originalUserTenantIds, setOriginalUserTenantIds] = useState<string[]>([]);
+  const [editUserTenantAdd, setEditUserTenantAdd] = useState('');
+  const [editUserPrimaryTenantId, setEditUserPrimaryTenantId] = useState<string>('');
 
   // Novos States - Filtros e Seleção em Massa
   const [studentSearch, setStudentSearch] = useState('');
@@ -523,7 +533,7 @@ export default function AdminDashboard() {
   const [questBattleBgMoveSpeed, setQuestBattleBgMoveSpeed] = useState(10);
   const [questBattleBgMoveDuration, setQuestBattleBgMoveDuration] = useState(30);
   const [showArenaBgEditor, setShowArenaBgEditor] = useState(false);
-  const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], dropChance?: number}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+  const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], slotChances?: number[], dropChance?: number, chestModelId?: string}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
   const [questCombatCoinMin, setQuestCombatCoinMin] = useState(2);
   const [questCombatCoinMax, setQuestCombatCoinMax] = useState(6);
   const [questCombatCoinMinValue, setQuestCombatCoinMinValue] = useState(1);
@@ -532,6 +542,7 @@ export default function AdminDashboard() {
   const [questLiveChest2nd, setQuestLiveChest2nd] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
   const [questLiveChest3rd, setQuestLiveChest3rd] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[]}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
   const [available3DModels, setAvailable3DModels] = useState<any[]>([]);
+  const [availableChests, setAvailableChests] = useState<any[]>([]);
   const [availableMonsters, setAvailableMonsters] = useState<any[]>([]);
   const [availableStoreItems, setAvailableStoreItems] = useState<any[]>([]);
   const [isCustomizingMonster, setIsCustomizingMonster] = useState(false);
@@ -564,6 +575,9 @@ export default function AdminDashboard() {
     let classesQuery = supabase.from('classes').select('*');
     if (tenantId) {
       classesQuery = classesQuery.eq('tenant_id', tenantId);
+    } else {
+      // Sem tenant definido: não listar turmas de todas as escolas
+      classesQuery = classesQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
     }
     const { data: snap } = await classesQuery;
     const loaded: ClassDef[] = (snap as ClassDef[]) || [];
@@ -575,6 +589,9 @@ export default function AdminDashboard() {
     let questsQuery = supabase.from('quests').select('*');
     if (tenantId) {
       questsQuery = questsQuery.eq('tenant_id', tenantId);
+    } else {
+      // Sem tenant definido: não listar missões de todas as escolas
+      questsQuery = questsQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
     }
     const { data: snap } = await questsQuery;
     const loaded: QuestDef[] = snap ? snap.map((d: any) => ({
@@ -660,6 +677,7 @@ export default function AdminDashboard() {
       avatarPart: d.avatar_part || d.avatarPart
     })) : [];
     setAvailable3DModels(loaded);
+    setAvailableChests(loaded.filter((m: any) => (m.category || 'skin') === 'chest'));
   };
 
   const fetchMonsters = async () => {
@@ -700,10 +718,14 @@ export default function AdminDashboard() {
   const fetchStudents = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     
-    // Buscar usuários - incluir alunos do tenant atual OU alunos sem tenant (pendentes de aprovação)
+    // Buscar usuários - somente alunos do tenant atual (superadmin vê a escola selecionada).
+    // Não misturar usuários órfãos/sem tenant de outras escolas.
     let usersQuery = supabase.from('users').select('*');
     if (tenantId) {
-      usersQuery = usersQuery.or(`tenant_id.eq.${tenantId},tenant_id.is.null,role.eq.pending_student,role.eq.pending_teacher`);
+      usersQuery = usersQuery.or(`tenant_id.eq.${tenantId},role.eq.pending_student,role.eq.pending_teacher`);
+    } else {
+      // Sem tenant definido: não listar alunos de todas as escolas (evita o "limbo")
+      usersQuery = usersQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001').eq('role', 'pending_student');
     }
     const { data: querySnapshot } = await usersQuery;
     
@@ -715,6 +737,9 @@ export default function AdminDashboard() {
     let itemsQuery = supabase.from('user_items').select('*').eq('equipped', true);
     if (tenantId) {
       itemsQuery = itemsQuery.eq('tenant_id', tenantId);
+    } else {
+      // Sem tenant: não buscar itens de todas as escolas
+      itemsQuery = itemsQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
     }
     const { data: itemsSnap } = await itemsQuery;
     const itemsMap: Record<string, any[]> = {};
@@ -808,7 +833,8 @@ export default function AdminDashboard() {
     fetchMonsters();
     fetchStudents();
     fetchStoreItems();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
 
   useEffect(() => {
     if (activeTab === 'users') {
@@ -966,6 +992,26 @@ export default function AdminDashboard() {
     setEditClass(student.classId || '');
     setEditRole(student.role || 'student');
     setEditCharacterName(student.characterName || '');
+    setEditUserPrimaryTenantId(student.tenantId || '');
+    // Carregar escolas de acesso atuais do usuário (para superadmin atribuir tenants)
+    loadUserAccessTenants(student.uid);
+  };
+
+  const loadUserAccessTenants = async (uid: string) => {
+    try {
+      const { data: rows } = await supabase.from('tenant_users').select('tenant_id').eq('user_id', uid);
+      const ids = (rows || []).map((r: any) => r.tenant_id).filter(Boolean);
+      setOriginalUserTenantIds(ids);
+      setEditUserTenantIds(ids);
+      setEditUserTenantAdd('');
+      // Se o usuário já tem tenant_id em users, usar como padrão; senão, a primeira escola de acesso
+      setEditUserPrimaryTenantId(prev => prev || (ids[0] || ''));
+    } catch (e) {
+      console.error('Erro ao carregar escolas de acesso:', e);
+      setOriginalUserTenantIds([]);
+      setEditUserTenantIds([]);
+      setEditUserTenantAdd('');
+    }
   };
 
   const handleSaveStudent = async () => {
@@ -1013,7 +1059,45 @@ export default function AdminDashboard() {
       updateData.coins = Math.max(50000, editingStudent.coins || 0);
     }
     
+    // Sincronizar escolas de acesso (superadmin) ANTES de salvar o usuário,
+    // para também gravar users.tenant_id com a primeira escola de acesso.
+    const added = editUserTenantIds.filter(id => !originalUserTenantIds.includes(id));
+    const removed = originalUserTenantIds.filter(id => !editUserTenantIds.includes(id));
+
+    if (added.length > 0) {
+      const tenantRole = editRole === 'admin' ? 'admin' : editRole === 'coordinator' ? 'coordinator' : editRole === 'teacher' ? 'teacher' : 'student';
+      for (const tid of added) {
+        await supabase.from('tenant_users').upsert({
+          tenant_id: tid,
+          user_id: editingStudent.uid,
+          role: tenantRole
+        }, { onConflict: 'tenant_id,user_id' });
+      }
+    }
+    if (removed.length > 0) {
+      for (const tid of removed) {
+        await supabase.from('tenant_users').delete().eq('tenant_id', tid).eq('user_id', editingStudent.uid);
+      }
+    }
+
+    // Atualizar users.tenant_id conforme a escola padrão definida:
+    // - Se o superadmin marcou uma escola padrão (dentro das de acesso), usa ela.
+    // - Se é admin/teacher sendo gerenciado pelo superadmin sem escolas explícitas,
+    //   usa a escola atual do superadmin.
+    // - Caso contrário, preserva o tenant_id atual (não zera aluno existente).
+    if (editUserPrimaryTenantId && editUserTenantIds.includes(editUserPrimaryTenantId)) {
+      updateData.tenant_id = editUserPrimaryTenantId;
+    } else if (editUserTenantIds.length > 0) {
+      updateData.tenant_id = editUserTenantIds[0];
+    } else if (editRole !== 'student' && tenantId && isSuperAdmin) {
+      updateData.tenant_id = tenantId;
+    } else {
+      // Preservar tenant_id atual
+      delete updateData.tenant_id;
+    }
+    
     await supabase.from('users').update(updateData).eq('id', editingStudent.uid);
+
     setEditingStudent(null);
     fetchStudents();
   };
@@ -1211,7 +1295,7 @@ export default function AdminDashboard() {
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
       setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -1249,11 +1333,12 @@ export default function AdminDashboard() {
     setQuestBattleBgMoveDirection(quest.battleBgMoveDirection ?? 'diagonal');
     setQuestBattleBgMoveSpeed(quest.battleBgMoveSpeed ?? 10);
     setQuestBattleBgMoveDuration(quest.battleBgMoveDuration ?? 30);
-    setQuestCombatCoinMin(quest.combatCoinDrop?.minCoins ?? 2);
-    setQuestCombatCoinMax(quest.combatCoinDrop?.maxCoins ?? 6);
-    setQuestCombatCoinMinValue(quest.combatCoinDrop?.minValue ?? 1);
-    setQuestCombatCoinMaxValue(quest.combatCoinDrop?.maxValue ?? 3);
-    setQuestChestConfig(quest.chestConfig || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], dropChance: 100 });
+    const combatCoinDropConfig = normalizeCombatCoinDrop(quest.combatCoinDrop);
+    setQuestCombatCoinMin(combatCoinDropConfig.minCoins ?? 2);
+    setQuestCombatCoinMax(combatCoinDropConfig.maxCoins ?? 6);
+    setQuestCombatCoinMinValue(combatCoinDropConfig.minValue ?? 1);
+    setQuestCombatCoinMaxValue(combatCoinDropConfig.maxValue ?? 3);
+    setQuestChestConfig(quest.chestConfig || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
     setQuestMode(quest.mode || 'classic');
     setQuestLiveChest1st(quest.liveChest1stPlace || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
     setQuestLiveChest2nd(quest.liveChest2ndPlace || { itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -1348,11 +1433,34 @@ export default function AdminDashboard() {
     setChestConfig: (c: any) => void,
     showDropChance: boolean
   ) => {
+    const selectedChest = availableChests.find((c: any) => c.id === chestConfig?.chestModelId);
+    const slotCount = selectedChest?.slot_count || chestConfig?.slotCount || 4;
+    const slots = Array.from({ length: slotCount }, (_, i) => i);
     return (
       <div style={{ background: 'rgba(255, 215, 0, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(255, 215, 0, 0.3)', marginTop: '2rem' }}>
         <h4 style={{ color: 'var(--gold-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Package size={20} /> {title}</h4>
         {desc && <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>{desc}</p>}
-        
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Baú Visual (opcional)</label>
+          <select
+            value={chestConfig?.chestModelId || ''}
+            onChange={e => {
+              const chest = availableChests.find((c: any) => c.id === e.target.value);
+              setChestConfig({ ...chestConfig, chestModelId: e.target.value || undefined, slotCount: chest?.slot_count || 4 });
+            }}
+            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1rem' }}
+          >
+            <option value="">(Baú padrão do jogo)</option>
+            {availableChests.map((c: any) => (
+              <option key={c.id} value={c.id}>{c.name}{c.rarity ? ` — ${c.rarity}` : ''}</option>
+            ))}
+          </select>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', display: 'block', marginTop: '0.35rem' }}>
+            {selectedChest ? `Este baú possui ${slotCount} slots de recompensa.` : 'Selecione um baú cadastrado na aba "Moldes 3D → Baús de Recompensa" para usá-lo na revelação.'}
+          </span>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Máximo de Moedas {showDropChance && '(Obrigatório para ativar o baú)'}</label>
@@ -1367,18 +1475,38 @@ export default function AdminDashboard() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          {[0, 1, 2, 3].map((slot) => {
+          {slots.map((slot) => {
             const selectedItem = availableStoreItems.find(i => i.id === chestConfig?.itemIds?.[slot]);
             const isConsumable = selectedItem?.type === 'consumable';
+            const defaultChance = slot === 0 ? 50 : slot === 1 ? 25 : slot === 2 ? 10 : 5;
+            const slotChance = chestConfig?.slotChances?.[slot] ?? defaultChance;
             
             return (
               <div key={slot} style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Item {slot + 1} {showDropChance ? (slot === 0 ? '(50% de chance)' : slot === 1 ? '(25% de chance)' : slot === 2 ? '(10% de chance)' : '(5% de chance)') : '(100% de chance)'}</label>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Item {slot + 1} {showDropChance ? `(${slotChance}% de chance)` : '(100% de chance)'}</label>
+                {showDropChance && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Chance de cair:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={slotChance}
+                      onChange={e => {
+                        const newChances = [...(chestConfig?.slotChances || [])];
+                        newChances[slot] = Math.min(100, Math.max(1, parseInt(e.target.value) || 1));
+                        setChestConfig({ ...chestConfig, slotChances: newChances });
+                      }}
+                      style={{ width: '70px', padding: '0.4rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>%</span>
+                  </div>
+                )}
                 <StoreItemSelect
                   value={chestConfig?.itemIds?.[slot] || ''}
                   onChange={(id, item) => {
-                    const newIds = [...(chestConfig?.itemIds || ['', '', '', ''])];
-                    const newQuants = [...(chestConfig?.itemQuantities || [1, 1, 1, 1])];
+                    const newIds = [...(chestConfig?.itemIds || [])];
+                    const newQuants = [...(chestConfig?.itemQuantities || [])];
                     newIds[slot] = id;
                     if (item?.type === 'equippable') newQuants[slot] = 1;
                     setChestConfig({ ...chestConfig, itemIds: newIds, itemQuantities: newQuants });
@@ -1397,7 +1525,7 @@ export default function AdminDashboard() {
                       max="99"
                       value={chestConfig?.itemQuantities?.[slot] || 1}
                       onChange={e => {
-                        const newQuants = [...(chestConfig?.itemQuantities || [1, 1, 1, 1])];
+                        const newQuants = [...(chestConfig?.itemQuantities || [])];
                         newQuants[slot] = Math.max(1, parseInt(e.target.value) || 1);
                         setChestConfig({ ...chestConfig, itemQuantities: newQuants });
                       }}
@@ -1421,9 +1549,14 @@ export default function AdminDashboard() {
           <div style={{ width: 64, height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <img src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} alt="Math Mastery" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
-          <h1 className="title-glow">
-            {userData?.role === 'admin' ? 'Painel Master (Admin)' : 'Painel do Professor'}
-          </h1>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem', minWidth: 0 }}>
+            <h1 className="title-glow">
+              {userData?.role === 'admin' ? 'Painel Master (Admin)' : 'Painel do Professor'}
+            </h1>
+            <div className="tenant-switcher-desktop" style={{ position: 'relative', zIndex: 99999 }}>
+              <TenantSwitcher />
+            </div>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
           <button className="login-btn mobile-menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Menu">
@@ -1457,6 +1590,9 @@ export default function AdminDashboard() {
         
         {/* Sidebar */}
         <div className={`glass-panel admin-sidebar ${isSidebarOpen ? 'open' : ''}`} style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', flexShrink: 0, alignSelf: 'flex-start', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)' }}>
+          <div className="tenant-switcher-mobile" style={{ flexDirection: 'column', gap: '0.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
+            <TenantSwitcher variant="menu" />
+          </div>
           <button className={`login-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'users' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Users size={20} /> Alunos & Notas
           </button>
@@ -1493,6 +1629,11 @@ export default function AdminDashboard() {
           {isSuperAdmin && (
             <button className={`login-btn ${activeTab === 'tenants' ? 'active' : ''}`} onClick={() => setActiveTab('tenants')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'tenants' ? '1px solid #8b5cf6' : '1px solid transparent', background: activeTab === 'tenants' ? 'rgba(139, 92, 246, 0.1)' : 'transparent' }}>
               <GraduationCap size={20} /> Escolas (Multi-tenant)
+            </button>
+          )}
+          {isSuperAdmin && (
+            <button className={`login-btn ${activeTab === 'companion' ? 'active' : ''}`} onClick={() => setActiveTab('companion')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'companion' ? '1px solid #fbbf24' : '1px solid transparent', background: activeTab === 'companion' ? 'rgba(251, 191, 36, 0.1)' : 'transparent' }}>
+              <MessageCircle size={20} /> Companheiro (Dicas)
             </button>
           )}
         </div>
@@ -1599,6 +1740,22 @@ export default function AdminDashboard() {
         {activeTab === 'entities' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             <AdminEntitiesManager />
+          </div>
+        )}
+
+        {/* Aba de Dicas do Companheiro - Apenas Superadmin */}
+        {activeTab === 'companion' && isSuperAdmin && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <MessageCircle size={28} color="#fbbf24" />
+                Companheiro — Dicas para Iniciantes
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                Personalize as falas do personagem que aparece no cubo do jogador.
+              </p>
+            </div>
+            <AdminCompanionTipsManager />
           </div>
         )}
 
@@ -1937,6 +2094,7 @@ export default function AdminDashboard() {
                                   equippedItems={allUserItems[student.uid] || []}
                                   size={48}
                                   animation={student.avatarConfig?.animationState as any || 'idle'}
+                                  faceCamera={true}
                                 />
                               </div>
                             ) : (
@@ -2527,7 +2685,7 @@ export default function AdminDashboard() {
 
                     {renderChestConfig(
                       questMode === 'classic' ? 'Baú de Recompensas (Final da Missão)' : 'Baú de Revisão (Final da Missão Normal)',
-                      'O jogador terá 100% de chance de receber Moedas aleatórias (entre 10% e o valor máximo). O Item 1 terá 50% de chance, Item 2 terá 25% (se o 1 vier), Item 3 terá 10% e Item 4 terá 5%.',
+                      'O jogador terá 100% de chance de receber Moedas aleatórias (entre 10% e o valor máximo). Cada item tem uma chance definida por slot (padrão: 50%, 25%, 10%, 5%) que pode ser ajustada abaixo. O próximo slot só é sorteado se o anterior for ganho.',
                       questChestConfig,
                       setQuestChestConfig,
                       true
@@ -2853,6 +3011,72 @@ export default function AdminDashboard() {
                 </>
               )}
             </div>
+
+            {isSuperAdmin && (
+              <div style={{ marginBottom: '2rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Escolas de Acesso</label>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  {editUserTenantIds.length === 0 && (
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic' }}>Nenhuma escola de acesso.</span>
+                  )}
+                  {editUserTenantIds.map(tid => {
+                    const t = tenants.find(tt => tt.id === tid);
+                    return (
+                      <div key={tid} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.35)', borderRadius: '20px', padding: '0.25rem 0.6rem 0.25rem 0.75rem', fontSize: '0.85rem' }}>
+                        <span>{t?.name || tid}</span>
+                        <button onClick={() => setEditUserTenantIds(prev => prev.filter(id => id !== tid))} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 0, display: 'flex' }} title="Remover acesso">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <select
+                  value={editUserTenantAdd}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val) {
+                      setEditUserTenantIds(prev => [...prev, val]);
+                      setEditUserTenantAdd('');
+                      if (!editUserPrimaryTenantId) setEditUserPrimaryTenantId(val);
+                    }
+                  }}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                >
+                  <option value="">+ Adicionar acesso a uma escola...</option>
+                  {tenants
+                    .filter(t => !editUserTenantIds.includes(t.id))
+                    .map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                </select>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  O usuário poderá alternar entre as escolas pelo seletor no cabeçalho.
+                </div>
+
+                {editUserTenantIds.length > 0 && (
+                  <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(139,92,246,0.08)', border: '1px dashed rgba(139,92,246,0.4)', borderRadius: '8px' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                      Escola Padrão (é a escola inicial ao entrar no sistema)
+                    </label>
+                    <select
+                      value={editUserPrimaryTenantId}
+                      onChange={e => setEditUserPrimaryTenantId(e.target.value)}
+                      style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                    >
+                      {editUserTenantIds.map(tid => {
+                        const t = tenants.find(tt => tt.id === tid);
+                        return (
+                          <option key={tid} value={tid}>{t?.name || tid}</option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
 
             <button className="login-btn" onClick={handleSaveStudent} style={{ width: '100%', justifyContent: 'center', background: 'var(--accent-blue)', color: 'white', border: 'none' }}>
               Salvar Alterações

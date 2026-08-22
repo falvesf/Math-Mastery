@@ -10,7 +10,7 @@ import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calc
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
-import CachedImage from './CachedImage';
+import ItemIcon from './ItemIcon';
 
 interface MarketItem {
   id: string;
@@ -111,7 +111,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   useEffect(() => {
     fetchStoreData();
-  }, []);
+  }, [tenantId]);
 
   const fetchStoreData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -119,11 +119,13 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     setEconomyType(econ.currencyType);
     setEconomySettings(econ);
 
-    // Buscar itens da loja com filtro de tenant
+    // Buscar itens da loja: APENAS os locais da escola (catálogo montado pelo admin)
     let storeQuery = supabase.from('store_items').select('*').eq('active', true);
-    // Buscar itens globais OU itens da escola atual
     if (tenantId) {
-      storeQuery = storeQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      storeQuery = storeQuery.eq('tenant_id', tenantId);
+    } else {
+      // Sem tenant: não listar itens órfãos de outras escolas (evita o "limbo")
+      storeQuery = storeQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
     }
     const { data: storeSnap } = await storeQuery;
     const loaded: StoreItem[] = [];
@@ -183,6 +185,15 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     const { data: marketSnap } = await supabase.from('user_items').select('*').eq('data->>forSale', 'true');
     const loadedMarket: MarketItem[] = [];
     (marketSnap || []).forEach(d => {
+      // Filtrar conforme o alcance configurado no Bazar (economia da escola)
+      const scope = econ.bazarCommerceScope || 'all';
+      if (scope === 'school' && tenantId && d.tenant_id !== tenantId) return;
+      if (scope === 'class') {
+        const sellerClass = (d.data as any)?.sellerClassName || '';
+        const myClass = userData?.classId || '';
+        if (tenantId && d.tenant_id !== tenantId) return;
+        if (myClass && sellerClass && sellerClass !== myClass) return;
+      }
       const data = d.data as MarketItem;
       const originalStoreItem = loaded.find(si => si.id === d.item_id);
       const patchedRarity = data.rarity || originalStoreItem?.rarity || 'common';
@@ -614,7 +625,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 let previewEquipped = [];
                 
                 const type = (previewItem as StoreItem).type || (previewItem as MarketItem).itemType;
-                if (previewItem.gameEffect === 'unlock_skin') {
+                const isSkinPreview = previewItem.gameEffect === 'unlock_skin';
+                if (isSkinPreview) {
                   previewConfig.customSkinUrl = previewItem.unlockedSkinId || '';
                 } else if (type === 'equippable') {
                   previewEquipped.push({
@@ -637,7 +649,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   previewAnimation = "walk";
                 }
                 
-                return <AvatarCharacter config={previewConfig} equippedItems={previewEquipped} size={300} animation={previewAnimation as any} />;
+                return <AvatarCharacter config={previewConfig} equippedItems={previewEquipped} size={300} animation={previewAnimation as any} hideConfigAddons={isSkinPreview} />;
               })()}
             </div>
             <p style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontSize: '0.85rem', textAlign: 'center' }}>
@@ -806,10 +818,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               <div style={{ position: 'relative', width: isList ? '90px' : '100%', aspectRatio: isList ? 'none' : '1', minHeight: isList ? '90px' : undefined, background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
                   <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={60} />
-                ) : item.imageUrl ? (
-                  <CachedImage src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 ) : (
-                  <Package size={36} color="var(--text-secondary)" />
+                  <ItemIcon item={item} size={isList ? 90 : 120} />
                 )}
                 {item.type === 'equippable' && (
                   <div style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.8)', padding: '2px', borderRadius: '3px' }}>
@@ -1107,13 +1117,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           return (
             <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
               <div style={{ width: '80px', height: '80px', background: 'rgba(0,0,0,0.5)', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-glass)', flexShrink: 0 }}>
-                {item.itemImageUrl ? (
-                  <CachedImage src={item.itemImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Package size={32} color="var(--text-secondary)" />
-                  </div>
-                )}
+                <ItemIcon item={item} size={80} />
               </div>
               <div className={`rarity-badge ${item.rarity || 'common'}`}>
                 {getRarityLabel(item.rarity)}
@@ -1258,8 +1262,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             <h3 style={{ marginTop: 0, color: 'var(--gold-primary)', fontSize: '1.5rem' }}>Confirmar Compra</h3>
             <div className="glass-panel" style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.3)' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-              {marketBuyModalItem.itemImageUrl ? (
-                <CachedImage src={marketBuyModalItem.itemImageUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+              {marketBuyModalItem.itemImageUrl || marketBuyModalItem.minecraftHeadValue ? (
+                <ItemIcon item={marketBuyModalItem} size={40} />
               ) : (
                 <Package size={20} color="var(--text-secondary)" />
               )}

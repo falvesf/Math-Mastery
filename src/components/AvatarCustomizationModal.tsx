@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight, BookMarked, Trash2, Accessibility as PoseIcon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
-import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose } from './AvatarCharacter';
+import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose, resolveModelTransform } from './AvatarCharacter';
+import { fetchSavedPoses, saveSavedPoses, type SavedPose } from '../lib/savedPoses';
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import Admin3DModelsManager from './Admin3DModelsManager';
@@ -23,6 +24,13 @@ interface AvatarCustomizationModalProps {
   isAdmin?: boolean;
   inline?: boolean;
 }
+
+const ACTION_LABELS: Record<'idle' | 'walk' | 'run' | 'attack', string> = {
+  idle: 'Parado',
+  walk: 'Andando',
+  run: 'Correndo',
+  attack: 'Lutando',
+};
 
 export interface PresetSkin {
   id: string;
@@ -223,7 +231,7 @@ const HorizontalScrollList = ({ children }: { children: React.ReactNode }) => {
 };
 
 export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, onPositionsSaved, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
-  const { userData } = useAuth();
+  const { userData, updateUserDataLocally } = useAuth();
   const { tenantId } = useTenant();
   const { showAlert, showToast } = useDialog();
   const [config, setConfig] = useState<AvatarConfig>({
@@ -273,10 +281,110 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     slide: -18,
     scale: 16
   });
+
+  // Retorna um transform padrão (por parte do corpo) quando não existe
+  // configuração salva específica para o gênero atual — para que um gênero
+  // não "vaze" as configurações do outro.
+  const getDebugDefaultTransform = (item?: any): ModelTransform => {
+    const part = item?.avatarPart;
+    if (part === 'legs') return { posX: 0, posY: -15, posZ: 0, rotX: 0, rotY: 0, rotZ: 0, slide: 0, scale: 16, thickness: 1 };
+    if (part === 'feet') return { posX: 0, posY: -22, posZ: 0, rotX: 0, rotY: 0, rotZ: 0, slide: 0, scale: 16, thickness: 1 };
+    if (part === 'body') return { posX: 0, posY: -6, posZ: 0, rotX: 0, rotY: Math.PI, rotZ: 0, slide: 0, scale: 16, thickness: 1 };
+    if (part === 'head') {
+      const isMinecraft = !!item?.minecraftHeadValue;
+      return { posX: 0, posY: isMinecraft ? 4 : 0, posZ: 0, rotX: 0, rotY: isMinecraft ? 0 : Math.PI, rotZ: 0, slide: 0, scale: isMinecraft ? 9.2 : 16, thickness: 1 };
+    }
+    return {
+      posX: 0, posY: -11, posZ: 0,
+      rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
+      slide: -18,
+      scale: 16,
+      thickness: 1
+    };
+  };
+
+  // Carregar poses salvas da escola
+  const loadSavedPoses = async () => {
+    const poses = await fetchSavedPoses(tenantId);
+    setSavedPoses(poses);
+  };
+
+  const handleSavePose = async () => {
+    const name = newPoseName.trim();
+    if (!name) {
+      showAlert('Erro', 'Digite um nome para a pose.');
+      return;
+    }
+    const poseToSave: SavedPose = {
+      id: `pose_${Date.now()}`,
+      name,
+      pose: JSON.parse(JSON.stringify(debugPose)),
+      updatedAt: Date.now(),
+    };
+    const updated = [...savedPoses, poseToSave];
+    const ok = await saveSavedPoses(tenantId, updated);
+    if (ok) {
+      setSavedPoses(updated);
+      setNewPoseName('');
+      setPoseModalTab('list');
+      showAlert('Sucesso', `Pose "${name}" salva!`);
+    } else {
+      showAlert('Erro', 'Não foi possível salvar a pose.');
+    }
+  };
+
+  const handleDeletePose = async (poseId: string) => {
+    const updated = savedPoses.filter(p => p.id !== poseId);
+    const ok = await saveSavedPoses(tenantId, updated);
+    if (ok) {
+      setSavedPoses(updated);
+      showAlert('Sucesso', 'Pose removida.');
+    } else {
+      showAlert('Erro', 'Não foi possível remover a pose.');
+    }
+  };
+
+  // Aplicar uma pose salva: carrega no debugPose para edição
+  const handleLoadPose = (pose: SavedPose) => {
+    setDebugPose(JSON.parse(JSON.stringify(pose.pose)));
+    setDebugPreviewAnim(false);
+    setShowPoseModal(false);
+  };
+
+  // Equipar uma pose salva numa ação base (Parado/Andando/Correndo/Luta)
+  const handleEquipPoseAction = async (pose: SavedPose, action: 'idle' | 'walk' | 'run' | 'attack') => {
+    const actionPoses = { ...(config.actionPoses || {}) };
+    if (actionPoses[action]) {
+      // Já existe uma pose equipada nesta ação: remover (volta a base)
+      delete actionPoses[action];
+    } else {
+      actionPoses[action] = JSON.parse(JSON.stringify(pose.pose));
+    }
+    const newConfig = { ...config, actionPoses };
+    setConfig(newConfig);
+    // Persistir imediatamente no banco para não perder o vínculo ao fechar/reabrir
+    try {
+      await supabase.from('users').update({ avatar_config: newConfig }).eq('id', userData?.uid);
+      updateUserDataLocally({ avatarConfig: newConfig });
+    } catch (e) {
+      console.error('Erro ao persistir actionPoses:', e);
+    }
+    showAlert('Sucesso', actionPoses[action]
+      ? `Pose "${pose.name}" equipada na ação "${ACTION_LABELS[action]}".`
+      : `Ação "${ACTION_LABELS[action]}" voltou para a animação padrão.`);
+  };
+
   const [debugTab, setDebugTab] = useState<'item' | 'pose'>('item');
   const [debugBodyPart, setDebugBodyPart] = useState<keyof CharacterPose>('rightArm');
   const [debugPose, setDebugPose] = useState<CharacterPose>({});
   const [debugAnimationFrames, setDebugAnimationFrames] = useState<CharacterPose[]>([]);
+  const [debugPreviewAnim, setDebugPreviewAnim] = useState(false);
+  const [debugFrameDuration, setDebugFrameDuration] = useState(0.5);
+  const [copiedDebugTransform, setCopiedDebugTransform] = useState<ModelTransform | null>(null);
+  const [savedPoses, setSavedPoses] = useState<SavedPose[]>([]);
+  const [showPoseModal, setShowPoseModal] = useState(false);
+  const [poseModalTab, setPoseModalTab] = useState<'list' | 'save'>('list');
+  const [newPoseName, setNewPoseName] = useState('');
   const [activeTab, setActiveTab] = useState<'features' | 'hair' | 'clothes'>('features');
 
   const fetchPresetSkins = async (forceRefresh = false) => {
@@ -453,25 +561,19 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
       const item = equippedItems.find(i => (i.itemId || i.docId) === debugItemId);
       if (!item) return;
       
-      const isLeftHanded = config.handedness === 'left';
       const isBattle = config.animationState === 'attack';
       
-      let loadedTransform = null;
-      if (isLeftHanded) {
-         if (isBattle && item.modelTransforms?.battle_left) loadedTransform = item.modelTransforms.battle_left;
-         else if (isBattle && item.modelTransforms?.battle) loadedTransform = item.modelTransforms.battle;
-         else if (item.modelTransforms?.common_left) loadedTransform = item.modelTransforms.common_left;
-         else loadedTransform = item.modelTransforms?.common;
-      } else {
-         if (isBattle && item.modelTransforms?.battle) loadedTransform = item.modelTransforms.battle;
-         else loadedTransform = item.modelTransforms?.common;
-      }
+      let loadedTransform = resolveModelTransform(item, config.gender, config.handedness, isBattle);
       
+      // Se não houver transform específico para este gênero, usar um padrão
+      // (para não herdar a configuração do outro gênero).
       if (loadedTransform) {
         setDebugTransform(loadedTransform);
+      } else {
+        setDebugTransform(getDebugDefaultTransform(item));
       }
     }
-  }, [config.handedness, config.animationState, debugItemId, debugMode, equippedItems]);
+  }, [config.handedness, config.animationState, config.gender, debugItemId, debugMode, equippedItems]);
 
   const handleGenderSwap = (targetGender: 'male' | 'female') => {
     if (config.gender === targetGender) return;
@@ -725,7 +827,25 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             <DraggableWidget id="debug_panel" defaultPos={{x: 250, y: 20}}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem', fontSize: '0.9rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <p style={{ margin: 0, color: '#f59e0b', fontWeight: 'bold' }}>🔧 Debug {debugTab === 'item' ? 'Transform' : 'Pose'}</p>
-                <div style={{ display: 'flex', gap: '0.25rem' }}>
+                <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                   <button
+                     onClick={() => setConfig(prev => {
+                       const newGender = prev.gender === 'female' ? 'male' : 'female';
+                       const newId = debugItemId;
+                       if (newId) {
+                         const item = equippedItems.find(i => (i.itemId || i.docId) === newId);
+                         const isBattle = prev.animationState === 'attack';
+                         const t = resolveModelTransform(item, newGender, prev.handedness, isBattle);
+                         if (t) setDebugTransform(t);
+                         else setDebugTransform(getDebugDefaultTransform(item));
+                       }
+                       return { ...prev, gender: newGender };
+                     })}
+                     style={{ padding: '0.25rem 0.5rem', background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', border: '1px solid #8b5cf6', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
+                     title="Alternar gênero da configuração 3D"
+                   >
+                     👤 {config.gender === 'female' ? 'Feminino' : 'Masculino'}
+                   </button>
                    <button onClick={() => setDebugTab('item')} style={{ padding: '0.25rem 0.5rem', background: debugTab === 'item' ? '#f59e0b' : 'transparent', color: debugTab === 'item' ? '#000' : '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗡️ Item</button>
                    <button onClick={() => setDebugTab('pose')} style={{ padding: '0.25rem 0.5rem', background: debugTab === 'pose' ? '#f59e0b' : 'transparent', color: debugTab === 'pose' ? '#000' : '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🧍 Pose</button>
                 </div>
@@ -741,36 +861,14 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         setDebugItemId(newId);
                         if (newId) {
                           const item = equippedItems.find(i => (i.itemId || i.docId) === newId);
-                          const isLeftHanded = config.handedness === 'left';
                           const isBattle = config.animationState === 'attack';
-                          const loadKey = isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common');
                           
-                          let loadedTransform = item?.modelTransforms?.[loadKey];
-                          if (!loadedTransform && isLeftHanded) {
-                            loadedTransform = item?.modelTransforms?.[isBattle ? 'battle' : 'common'];
-                          }
+                          let loadedTransform = resolveModelTransform(item, config.gender, config.handedness, isBattle);
                           
                           if (loadedTransform) {
                             setDebugTransform(loadedTransform);
                           } else {
-                            if (item.avatarPart === 'legs') {
-                              setDebugTransform({ posX: 0, posY: -15, posZ: 0, rotX: 0, rotY: 0, rotZ: 0, slide: 0, scale: 16, thickness: 1 });
-                            } else if (item.avatarPart === 'feet') {
-                              setDebugTransform({ posX: 0, posY: -22, posZ: 0, rotX: 0, rotY: 0, rotZ: 0, slide: 0, scale: 16, thickness: 1 });
-                            } else if (item.avatarPart === 'body') {
-                              setDebugTransform({ posX: 0, posY: -6, posZ: 0, rotX: 0, rotY: Math.PI, rotZ: 0, slide: 0, scale: 16, thickness: 1 });
-                            } else if (item.avatarPart === 'head') {
-                              const isMinecraft = !!item.minecraftHeadValue;
-                              setDebugTransform({ posX: 0, posY: isMinecraft ? 4 : 0, posZ: 0, rotX: 0, rotY: isMinecraft ? 0 : Math.PI, rotZ: 0, slide: 0, scale: isMinecraft ? 9.2 : 16, thickness: 1 });
-                            } else {
-                              setDebugTransform({
-                                posX: 0, posY: -11, posZ: 0,
-                                rotX: Math.PI / 2.2, rotY: 0, rotZ: -Math.PI / 20,
-                                slide: -18,
-                                scale: 16,
-                                thickness: 1
-                              });
-                            }
+                            setDebugTransform(getDebugDefaultTransform(item));
                           }
                         }
                       }}
@@ -811,12 +909,38 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                     <button
                       onClick={() => {
                         const code = `posX: ${debugTransform.posX}, posY: ${debugTransform.posY}, posZ: ${debugTransform.posZ}, rotX: ${debugTransform.rotX.toFixed(4)}, rotY: ${debugTransform.rotY.toFixed(4)}, rotZ: ${debugTransform.rotZ.toFixed(4)}, slide: ${debugTransform.slide}, scale: ${debugTransform.scale}, thickness: ${debugTransform.thickness}, curveX: ${debugTransform.curveX || 0}, curveY: ${debugTransform.curveY || 0}`;
-                        navigator.clipboard.writeText(code);
-                        showAlert('Valores copiados para a área de transferência!');
+                        navigator.clipboard.writeText(code).catch(() => {});
+                        setCopiedDebugTransform({ ...debugTransform });
+                        showAlert('Valores copiados! Use "Colar Valores" em outro item.');
                       }}
                       style={{ flex: 1, padding: '0.5rem', background: 'var(--bg-card)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
                     >
                       📋 Copiar Valores
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Colar do estado copiado (ou tentar ler o clipboard de texto)
+                        if (copiedDebugTransform) {
+                          setDebugTransform({ ...copiedDebugTransform });
+                          showAlert('Valores colados a partir da última cópia!');
+                          return;
+                        }
+                        navigator.clipboard.readText().then(text => {
+                          const match = text.match(/posX:\s*(-?[\d.]+).*?posY:\s*(-?[\d.]+).*?posZ:\s*(-?[\d.]+).*?rotX:\s*(-?[\d.]+).*?rotY:\s*(-?[\d.]+).*?rotZ:\s*(-?[\d.]+).*?slide:\s*(-?[\d.]+).*?scale:\s*(-?[\d.]+).*?thickness:\s*(-?[\d.]+).*?curveX:\s*(-?[\d.]+).*?curveY:\s*(-?[\d.]+)/s);
+                          if (match) {
+                            const [, posX, posY, posZ, rotX, rotY, rotZ, slide, scale, thickness, curveX, curveY] = match.map(Number);
+                            setDebugTransform({ posX, posY, posZ, rotX, rotY, rotZ, slide, scale, thickness, curveX, curveY });
+                            showAlert('Valores colados a partir do clipboard!');
+                          } else {
+                            showAlert('Nenhum valor no clipboard no formato esperado. Copie primeiro.');
+                          }
+                        }).catch(() => {
+                          showAlert('Copie os valores primeiro (botão "Copiar Valores") para poder colar.');
+                        });
+                      }}
+                      style={{ flex: 1, padding: '0.5rem', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid #10b981', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                    >
+                      📥 Colar Valores
                     </button>
                     <button
                       onClick={async () => {
@@ -834,7 +958,9 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         try {
                           const isBattle = config.animationState === 'attack';
                           const isLeftHanded = config.handedness === 'left';
-                          const transformKey = isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common');
+                          const transformKey = config.gender === 'female'
+                            ? (isBattle ? (isLeftHanded ? 'battle_left_female' : 'battle_female') : (isLeftHanded ? 'common_left_female' : 'common_female'))
+                            : (isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common'));
                           
                           // 1. Save to store_items
                           // 1. Save to store_items
@@ -910,6 +1036,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                               [key]: val
                             }
                           }));
+                          setDebugPreviewAnim(false);
                         }}
                         style={{ flex: 1, accentColor: '#f59e0b' }}
                       />
@@ -922,7 +1049,10 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                     <p style={{ margin: '0 0 0.5rem 0', color: '#f59e0b', fontSize: '0.8rem', fontWeight: 'bold' }}>Animação de Batalha (Frames: {debugAnimationFrames.length})</p>
                     <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.5rem' }}>
                       <button 
-                        onClick={() => setDebugAnimationFrames([...debugAnimationFrames, JSON.parse(JSON.stringify(debugPose))])}
+                        onClick={() => {
+                          setDebugAnimationFrames([...debugAnimationFrames, JSON.parse(JSON.stringify(debugPose))]);
+                          setDebugPreviewAnim(false);
+                        }}
                         style={{ flex: 1, padding: '0.25rem', background: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
                       >+ Add Frame</button>
                       <button 
@@ -931,14 +1061,40 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                             const newFrames = [...debugAnimationFrames];
                             newFrames.pop();
                             setDebugAnimationFrames(newFrames);
+                            setDebugPreviewAnim(false);
                           }
                         }}
                         style={{ padding: '0.25rem', background: '#eab308', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
                       >Desfazer</button>
                       <button 
-                        onClick={() => setDebugAnimationFrames([])}
+                        onClick={() => {
+                          setDebugAnimationFrames([]);
+                          setDebugPreviewAnim(false);
+                        }}
                         style={{ padding: '0.25rem', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
                       >Limpar</button>
+                      <button 
+                        onClick={() => setDebugPreviewAnim(prev => !prev)}
+                        style={{ flex: 1, padding: '0.25rem', background: debugPreviewAnim ? '#8b5cf6' : 'transparent', color: debugPreviewAnim ? '#fff' : '#a78bfa', border: '1px solid #8b5cf6', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                        title="Alternar entre editar a pose e visualizar a animação dos frames"
+                      >
+                        {debugPreviewAnim ? '⏹ Parar Preview' : '▶ Preview'}
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <span style={{ color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>Tempo/frame</span>
+                      <input 
+                        type="range" 
+                        min={0.1} max={3} step={0.1}
+                        value={debugFrameDuration}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setDebugFrameDuration(val);
+                          setDebugPreviewAnim(false);
+                        }}
+                        style={{ flex: 1, accentColor: '#f59e0b' }}
+                      />
+                      <span style={{ width: '50px', textAlign: 'right', color: '#fbbf24', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}>{debugFrameDuration.toFixed(1)}s</span>
                     </div>
                   </div>
 
@@ -950,13 +1106,9 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         const item = equippedItems.find(i => (i.itemId === e.target.value || i.docId === e.target.value));
                         if (item) {
                           const isBattle = config.animationState === 'attack';
-                          const isLeftHanded = config.handedness === 'left';
-                          const loadKey = isLeftHanded ? (isBattle ? 'battle_left' : 'common_left') : (isBattle ? 'battle' : 'common');
-                          let loadedTransform = item?.modelTransforms?.[loadKey];
-                          if (!loadedTransform && isLeftHanded) {
-                            loadedTransform = item?.modelTransforms?.[isBattle ? 'battle' : 'common'];
-                          }
+                          let loadedTransform = resolveModelTransform(item, config.gender, config.handedness, isBattle);
                           if (loadedTransform) setDebugTransform(loadedTransform);
+                          else setDebugTransform(getDebugDefaultTransform(item));
                         }
                       }}
                       style={{ flex: 1, background: 'rgba(0,0,0,0.5)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', padding: '0.25rem' }}
@@ -971,21 +1123,33 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                         let targetItem = null;
                         if (debugItemId) {
                           targetItem = equippedItems.find(i => (i.itemId === debugItemId || i.docId === debugItemId));
-                        } else {
-                          showAlert('Selecione um item na lista acima para vincular a animação!');
-                          return;
                         }
                         
-                        if (!targetItem || !targetItem.itemId) {
+                        // Se tiver frames, salva como animação, se não salva apenas a pose atual como 1 frame
+                        const framesToSave = debugAnimationFrames.length > 0 ? debugAnimationFrames : [JSON.parse(JSON.stringify(debugPose))];
+                        const customAnimation = { frames: framesToSave, loop: false, duration: 1000 };
+
+                        // SEM item selecionado → vincular a animação ao PERSONAGEM (ação Lutando)
+                        if (!targetItem) {
+                          const actionPoses = { ...(config.actionPoses || {}) };
+                          actionPoses.attack = framesToSave[0];
+                          const newConfig = { ...config, actionPoses };
+                          setConfig(newConfig);
+                          try {
+                            await supabase.from('users').update({ avatar_config: newConfig }).eq('id', userData?.uid);
+                            updateUserDataLocally({ avatarConfig: newConfig });
+                          } catch (e) {
+                            console.error('Erro ao persistir animação do personagem:', e);
+                          }
+                          showAlert('Animaça/pose de Luta vinculada ao PERSONAGEM.');
+                          return;
+                        }
+
+                        if (!targetItem.itemId) {
                           showAlert('Item inválido!');
                           return;
                         }
                         try {
-                          // Se tiver frames, salva como animação, se não salva apenas a pose atual como 1 frame
-                          const framesToSave = debugAnimationFrames.length > 0 ? debugAnimationFrames : [JSON.parse(JSON.stringify(debugPose))];
-                          const customAnimation = { frames: framesToSave, loop: false, duration: 1000 };
-                          
-                          // 1. Save to store_items
                           // 1. Save to store_items
                           const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
                           if (storeItemSnap) {
@@ -1002,7 +1166,8 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                             }
                           }
                           
-                          showAlert(`Pose/Animação de Batalha salva com sucesso no item!`);
+                          const isDefenseItem = targetItem.itemCategory === 'defense';
+                          showAlert(`Animaça/pose salva no item "${targetItem.itemTitle || targetItem.itemId}" (${isDefenseItem ? 'defesa — dispara ao levar dano' : 'ataque — dispara ao atacar'}).`);
                           if (onPositionsSaved) onPositionsSaved();
                         } catch (e) {
                           console.error(e);
@@ -1011,6 +1176,16 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                       }}
                       style={{ padding: '0.5rem', background: '#f59e0b', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
                     >💾 Salvar Animação no BD</button>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <button
+                        onClick={() => { setPoseModalTab('save'); setShowPoseModal(true); }}
+                        style={{ flex: 1, padding: '0.5rem', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid #10b981', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                      >📥 Salvar Pose</button>
+                      <button
+                        onClick={() => { loadSavedPoses(); setPoseModalTab('list'); setShowPoseModal(true); }}
+                        style={{ flex: 1, padding: '0.5rem', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', border: '1px solid #8b5cf6', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                      >📚 Poses Salvas</button>
+                    </div>
                   </div>
                 </>
               )}
@@ -1043,7 +1218,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               if (activeModel) {
                 return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={250} />;
               }
-              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={250} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} />;
+              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={250} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
             })()}
             
             {/* Draggable Controls Widget */}
@@ -1662,6 +1837,109 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             </button>
             <h2 style={{ marginTop: 0, marginBottom: '2rem' }}>Gerenciar Moldes 3D (Administrador)</h2>
             <Admin3DModelsManager />
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Poses Salvas */}
+      {showPoseModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 11000,
+          padding: '1rem'
+        }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '700px', maxHeight: '85vh', overflowY: 'auto', position: 'relative', padding: '1.5rem' }}>
+            <button
+              onClick={() => setShowPoseModal(false)}
+              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem', zIndex: 10 }}
+            >
+              <X size={22} />
+            </button>
+            <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#a78bfa' }}>
+              <BookMarked size={20} /> Poses Salvas da Escola
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
+              As poses são salvas por escola e podem ser reutilizadas em qualquer personagem. Equipe uma pose em uma ação base (Parado/Andando/Correndo/Lutando) — a animação padrão não é perdida e pode ser restaurada.
+            </p>
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <button
+                onClick={() => setPoseModalTab('list')}
+                style={{ padding: '0.4rem 1rem', background: poseModalTab === 'list' ? '#8b5cf6' : 'transparent', color: poseModalTab === 'list' ? '#fff' : '#a78bfa', border: '1px solid #8b5cf6', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}
+              >📚 Biblioteca</button>
+              <button
+                onClick={() => setPoseModalTab('save')}
+                style={{ padding: '0.4rem 1rem', background: poseModalTab === 'save' ? '#10b981' : 'transparent', color: poseModalTab === 'save' ? '#fff' : '#10b981', border: '1px solid #10b981', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}
+              >📥 Salvar Pose Atual</button>
+            </div>
+
+            {poseModalTab === 'save' && (
+              <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '1rem' }}>
+                <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontSize: '0.85rem' }}>Nome da pose (ex: "Ataque Espada de Frente")</label>
+                <input
+                  type="text"
+                  value={newPoseName}
+                  onChange={e => setNewPoseName(e.target.value)}
+                  placeholder="Nome da pose..."
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', marginBottom: '0.75rem' }}
+                />
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                  A pose atual (braços, pernas, corpo, cabeça) será salva. Você pode carregá-la depois para editar ou equipá-la em uma ação.
+                </div>
+                <button
+                  onClick={handleSavePose}
+                  style={{ padding: '0.5rem 1rem', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                >💾 Salvar Pose</button>
+              </div>
+            )}
+
+            {poseModalTab === 'list' && (
+              savedPoses.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Nenhuma pose salva ainda. Salve a pose atual no modo "Salvar Pose Atual".</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {savedPoses.map(pose => (
+                    <div key={pose.id} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '160px' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(139,92,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a78bfa' }}>
+                          <PoseIcon size={18} />
+                        </div>
+                        <div>
+                          <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{pose.name}</strong>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            {pose.updatedAt ? new Date(pose.updatedAt).toLocaleString('pt-BR') : ''}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleLoadPose(pose)} style={{ padding: '0.3rem 0.6rem', background: 'rgba(59,130,246,0.2)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }} title="Carregar no editor para ajustar">
+                          Carregar
+                        </button>
+                        {(['idle', 'walk', 'run', 'attack'] as const).map(action => {
+                          const equipped = config.actionPoses?.[action];
+                          return (
+                            <button
+                              key={action}
+                              onClick={() => handleEquipPoseAction(pose, action)}
+                              style={{ padding: '0.3rem 0.6rem', background: equipped ? 'rgba(16,185,129,0.25)' : 'transparent', color: equipped ? '#10b981' : 'var(--text-secondary)', border: equipped ? '1px solid rgba(16,185,129,0.5)' : '1px solid var(--border-glass)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                              title={equipped ? `Remover pose da ação ${ACTION_LABELS[action]}` : `Equipar nesta ação (${ACTION_LABELS[action]})`}
+                            >
+                              {ACTION_LABELS[action]}{equipped ? ' ✓' : ''}
+                            </button>
+                          );
+                        })}
+                        <button onClick={() => handleDeletePose(pose.id)} style={{ padding: '0.3rem 0.6rem', background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.75rem' }} title="Excluir pose">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
           </div>
         </div>
       )}

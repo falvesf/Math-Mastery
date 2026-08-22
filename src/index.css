@@ -186,9 +186,34 @@ h3 {
   100% { transform: scale(1); opacity: 1; }
 }
 
+@keyframes chestOpen {
+  0% { transform: scale(0.8) rotate(-10deg); opacity: 0; }
+  50% { transform: scale(1.2) rotate(5deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
 @keyframes coin-bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
+}
+
+@keyframes coin-value-rise {
+  0% { opacity: 0; transform: translate(-50%, -10px) scale(0.6); }
+  15% { opacity: 1; transform: translate(-50%, -30px) scale(1.15); }
+  100% { opacity: 0; transform: translate(-50%, -110px) scale(1); }
+}
+
+.coin-value-pop {
+  position: absolute;
+  pointer-events: none;
+  z-index: 60;
+  color: var(--gold-primary);
+  font-weight: bold;
+  font-size: 1.35rem;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: 0 0 10px rgba(245, 158, 11, 0.9), 0 2px 4px rgba(0, 0, 0, 0.8);
+  animation: coin-value-rise 0.9s ease-out forwards;
 }
 
 @keyframes slideUp {
@@ -520,6 +545,40 @@ h3 {
 
 .speech-bubble.monster {
   margin-left: 20px;
+}
+
+.companion-bubble {
+  position: absolute;
+  top: -58px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  color: #1e293b;
+  padding: 0.7rem 1.1rem;
+  border-radius: 16px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  white-space: normal;
+  max-width: 210px;
+  min-width: 130px;
+  text-align: center;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.45);
+  animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  z-index: 110;
+  cursor: pointer;
+  user-select: none;
+}
+
+.companion-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 9px;
+  border-style: solid;
+  border-color: white transparent transparent transparent;
 }
 
 @keyframes popIn {
@@ -896,6 +955,24 @@ h3 {
 /* Admin Sidebar Responsive */
 .mobile-menu-btn {
   display: none !important;
+}
+
+/* Seletor de escola no cabeçalho: dropdown no desktop, menu no mobile */
+.tenant-switcher-desktop {
+  display: flex;
+}
+
+.tenant-switcher-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .tenant-switcher-desktop {
+    display: none;
+  }
+  .tenant-switcher-mobile {
+    display: flex;
+  }
 }
 
 .admin-sidebar {
@@ -1304,4 +1381,82 @@ h3 {
     transform: scale(1.1);
     opacity: 0.8;
   }
+}
+
+@keyframes monsterShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  75% { transform: translateX(8px); }
+}
+
+@keyframes heroLunge {
+  0% { transform: translateY(-50%) scale(1.4) translateX(0); }
+  50% { transform: translateY(-50%) scale(1.4) translateX(60px); }
+  100% { transform: translateY(-50%) scale(1.4) translateX(0); }
+}
+
+@keyframes adminClap {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes fatalFlashAnim {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ===== Chat Widget ===== */
+.chat-fab {
+  font-family: var(--font-body);
+  background: var(--gold-primary);
+  color: var(--text-on-gold, #000000);
+  box-shadow: 0 6px 20px var(--gold-glow);
+}
+.chat-fab:hover {
+  filter: brightness(1.15);
+}
+.chat-window {
+  font-family: var(--font-body);
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  backdrop-filter: blur(14px);
+}
+.chat-header {
+  font-family: var(--font-heading);
+  background: var(--gold-primary);
+  color: var(--text-on-gold, #000000);
+  letter-spacing: 0.5px;
+}
+.chat-contact-row {
+  font-family: var(--font-body);
+}
+.chat-contact-row.has-unread {
+  background: var(--gold-glow);
+  border-left: 3px solid var(--gold-primary);
+}
+.chat-contact-row.has-unread .chat-contact-name {
+  color: var(--gold-primary);
+  font-weight: 800;
+}
+.chat-msg-mine {
+  background: var(--gold-primary);
+  color: var(--text-on-gold, #000000);
+}
+.chat-msg-theirs {
+  background: var(--btn-bg);
+  color: var(--text-primary);
+}
+.chat-input {
+  font-family: var(--font-body);
+  background: var(--btn-bg);
+  border: 1px solid var(--border-glass);
+  color: var(--text-primary);
+}
+.chat-input::placeholder {
+  color: var(--text-secondary);
+}
+.chat-divider {
+  font-family: var(--font-body);
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }

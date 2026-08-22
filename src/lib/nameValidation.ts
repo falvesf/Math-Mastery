@@ -85,3 +85,12 @@ export function validateCharacterName(name: string): NameValidationResult {
 export function normalizeForComparison(name: string): string {
   return normalizeL33t(name.toLowerCase().trim());
 }
+
+export function normalizeNameForMatch(name: string): string {
+  return (name || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '');
+}

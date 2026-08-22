@@ -14,9 +14,11 @@ import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
 import { Package, Coins } from 'lucide-react';
 import { RANKS, getRankForXp } from '../lib/ranks';
+import { normalizeCombatCoinDrop } from '../lib/utils';
 import { useDialog } from '../contexts/DialogContext';
 import { calculateTotalStats } from '../lib/gacha';
 import type { GameEffectType } from '../components/AdminStoreManager';
+import { fetchModel3DById, fetchActiveCoin } from '../lib/model3d';
 
 interface UserItem {
   id: string;
@@ -46,6 +48,8 @@ export default function LiveQuestStudent() {
   const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
   const { showAlert, showConfirm } = useDialog();
   const [chestOpened, setChestOpened] = useState(false);
+  const [selectedChestModel, setSelectedChestModel] = useState<any>(null);
+  const [activeCoinModel, setActiveCoinModel] = useState<any>(null);
   const [isEditingAvatar, setIsEditingAvatar] = useState(false);
   const [studentAnim, setStudentAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
@@ -54,6 +58,7 @@ export default function LiveQuestStudent() {
   const [economySettings, setEconomySettings] = useState<any>(null);
   const [coinsToRescue, setCoinsToRescue] = useState<number>(0);
   const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
+  const [coinPops, setCoinPops] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [lostCoinsDisplay, setLostCoinsDisplay] = useState<number>(0);
 
   const arenaRef = useRef<HTMLDivElement>(null);
@@ -92,6 +97,17 @@ export default function LiveQuestStudent() {
           }
         }
         setQuest(qDoc as QuestDef);
+
+        // Load selected chest model & active coin for this live quest
+        const chestModelId = (qDoc as any)?.chestConfig?.chestModelId;
+        if (chestModelId) {
+          const chestModel = await fetchModel3DById(chestModelId, tenantId);
+          setSelectedChestModel(chestModel);
+        } else {
+          setSelectedChestModel(null);
+        }
+        const coinModel = await fetchActiveCoin(tenantId);
+        setActiveCoinModel(coinModel);
 
         // Check Session
         const { data: sDoc } = await supabase.from('live_quests').select('*').eq('id', sessionId).maybeSingle();
@@ -390,7 +406,10 @@ export default function LiveQuestStudent() {
 
   const me = session.players[userData.uid];
   const totalEquippedStats = me?.equippedItems ? calculateTotalStats(me.equippedItems, userData?.distributedStats) : { attack: 0, defense: 0, xp: 0, coins: 0, vitality: 0, fortitude: 0, persuasion: 0 };
-    const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
+  // Staff (admin/teacher/coordinator) sempre na última patente: usa getRankForXp
+  const isStaff = userData.role === 'admin' || userData.role === 'teacher' || userData.role === 'coordinator';
+  const rankObj = isStaff ? getRankForXp(userData.xp || 50000) : RANKS.find(r => r.name === userData.lastSeenRank) || RANKS[0];
+  const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === rankObj.name));
   const maxHearts = Math.max(3, 3 + Math.floor(rankIndex / 2)) + Math.floor(totalEquippedStats.vitality / 30);
 
   if (session.status === 'lobby') {
@@ -454,12 +473,13 @@ export default function LiveQuestStudent() {
     );
   }
 
-  const collectCoin = (coinId: number, value: number) => {
+  const collectCoin = (coin: { id: number; x: number; y: number; value: number }) => {
     if (!userData?.uid) return;
     const currentCoins = userData.coins || 0;
-    supabase.from('users').update({ coins: currentCoins + value }).eq('id', userData.uid).then();
-    userData.coins = currentCoins + value;
-    setDroppedCoins(prev => prev.filter(c => c.id !== coinId));
+    supabase.from('users').update({ coins: currentCoins + coin.value }).eq('id', userData.uid).then();
+    userData.coins = currentCoins + coin.value;
+    setDroppedCoins(prev => prev.filter(c => c.id !== coin.id));
+    setCoinPops(prev => [...prev, { id: Date.now() + Math.random(), x: coin.x, y: coin.y, value: coin.value }]);
   };
 
   const handleAnswerSubmit = async (answerIndex: number) => {
@@ -512,18 +532,27 @@ export default function LiveQuestStudent() {
         newMonsterHp = (newMonsterHp || 0) - power;
         
         if (economySettings?.coinsDropInCombat) {
-          const dmg = 1;
-          const rankObj = getRankForXp(userData?.xp || 0);
-          const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
-          const maxCoins = rankIndex * dmg;
-          const dropped = Math.floor(Math.random() * maxCoins) + 1;
+          const cfg = normalizeCombatCoinDrop(quest?.combatCoinDrop);
+          let dropped: number;
+          if (cfg.minCoins && cfg.maxCoins) {
+            const minC = Math.max(1, cfg.minCoins);
+            const maxC = Math.max(minC, cfg.maxCoins);
+            dropped = Math.floor(Math.random() * (maxC - minC + 1)) + minC;
+          } else {
+            const rankObj = getRankForXp(userData?.xp || 0);
+            const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+            dropped = Math.floor(Math.random() * rankIndex) + 1;
+          }
+          const minV = Math.max(1, cfg.minValue ?? 1);
+          const maxV = Math.max(minV, cfg.maxValue ?? minV);
+          const coinValue = Math.floor(Math.random() * (maxV - minV + 1)) + minV;
           setCoinsToRescue(dropped);
-          // Cria moedas individuais espalhadas perto do monstro
+          // Cria moedas individuais no chão, aos pés do monstro (lado direito)
           const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
             id: Date.now() + i,
-            x: 55 + Math.random() * 40, // lado direito (monstro)
-            y: 55 + Math.random() * 25, // perto do chão
-            value: 1
+            x: 74 + Math.random() * 18, // lado direito (monstro)
+            y: 70 + Math.random() * 15, // no chão
+            value: coinValue
           }));
           setDroppedCoins(prev => [...prev, ...newCoins]);
         }
@@ -785,29 +814,47 @@ export default function LiveQuestStudent() {
                     {droppedCoins.map(coin => (
                       <button
                         key={coin.id}
-                        onClick={() => collectCoin(coin.id, coin.value)}
+                        onClick={() => collectCoin(coin)}
                         title="Coletar moeda"
                         style={{
                           position: 'absolute',
                           left: `${coin.x}%`,
                           top: `${coin.y}%`,
                           pointerEvents: 'auto',
-                          background: 'rgba(245, 158, 11, 0.2)',
-                          border: '2px solid var(--gold-primary)',
+                          background: activeCoinModel ? 'transparent' : 'rgba(245, 158, 11, 0.2)',
+                          border: activeCoinModel ? 'none' : '2px solid var(--gold-primary)',
                           borderRadius: '50%',
-                          width: '40px',
-                          height: '40px',
+                          width: '30px',
+                          height: '30px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           cursor: 'pointer',
                           animation: 'coin-pop 0.4s ease-out',
                           zIndex: 100,
-                          boxShadow: '0 0 15px rgba(245, 158, 11, 0.6)'
+                          boxShadow: activeCoinModel ? 'none' : '0 0 12px rgba(245, 158, 11, 0.6)'
                         }}
                       >
-                        <Coins size={20} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
+                        {activeCoinModel ? (
+                          activeCoinModel.open_url ? (
+                            <img src={activeCoinModel.open_url} alt="Moeda" style={{ width: '26px', height: '26px', objectFit: 'contain', animation: 'coin-bounce 0.8s infinite' }} />
+                          ) : (
+                            <img src={activeCoinModel.url} alt="Moeda" style={{ width: '26px', height: '26px', objectFit: 'contain', animation: 'coin-bounce 0.8s infinite' }} />
+                          )
+                        ) : (
+                          <Coins size={15} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
+                        )}
                       </button>
+                    ))}
+                    {coinPops.map(pop => (
+                      <div
+                        key={pop.id}
+                        className="coin-value-pop"
+                        style={{ left: `${pop.x}%`, top: `${pop.y}%` }}
+                        onAnimationEnd={() => setCoinPops(prev => prev.filter(p => p.id !== pop.id))}
+                      >
+                        +{pop.value}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -967,7 +1014,7 @@ export default function LiveQuestStudent() {
                 }
               } catch(e) { console.error(e); }
               setChestOpened(true);
-            }} title={`Parabéns pelo ${me.wonChest.place}º Lugar!`} />
+            }} title={`Parabéns pelo ${me.wonChest.place}º Lugar!`} chestModelUrl={selectedChestModel?.url} chestOpenUrl={selectedChestModel?.open_url} rarity={selectedChestModel?.rarity} />
           ) : (
             <div style={{ textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
               <h2 style={{ fontSize: '3rem', color: 'var(--gold-primary)', marginBottom: '3rem', textShadow: '0 0 20px var(--gold-primary)' }}>Recompensas Adquiridas!</h2>
