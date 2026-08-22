@@ -235,7 +235,17 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
     }
   };
 
+  const isStudent = userData?.role === 'student' || !!userData?.studentViewActive;
+  const isStudentWithoutClass = isStudent && (!userData?.classId || !userData?.classId.trim());
+  const isChatDisabled = isStudentWithoutClass;
+
+  const baseContacts = showFriendsOnly ? contacts.filter(c => c.isFriend) : contacts;
+  const onlineList = baseContacts.filter(c => c.online).sort((a, b) => a.name.localeCompare(b.name));
+  const offlineList = baseContacts.filter(c => !c.online).sort((a, b) => a.name.localeCompare(b.name));
+  const hasAnyOnline = contacts.some(c => c.online);
+
   const handleOpenWidget = () => {
+    if (isChatDisabled) return;
     const next = !open;
     setOpen(next);
     if (next) {
@@ -250,9 +260,17 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
     }
   };
 
-  const baseContacts = showFriendsOnly ? contacts.filter(c => c.isFriend) : contacts;
-  const onlineList = baseContacts.filter(c => c.online).sort((a, b) => a.name.localeCompare(b.name));
-  const offlineList = baseContacts.filter(c => !c.online).sort((a, b) => a.name.localeCompare(b.name));
+  const getFabClass = () => {
+    if (isChatDisabled) return 'chat-fab disabled-state';
+    if (!hasAnyOnline) return 'chat-fab offline-state';
+    return 'chat-fab';
+  };
+
+  const getFabTitle = () => {
+    if (isChatDisabled) return 'Chat bloqueado: você ainda não possui uma turma cadastrada.';
+    if (!hasAnyOnline) return 'Chat (Nenhum contato online no momento)';
+    return 'Chat';
+  };
 
   const renderContactRow = (contact: ChatContact) => {
     const contactUnread = unreadByPeer[contact.uid] || 0;
@@ -322,26 +340,28 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
   };
 
   return (
-    <div ref={widgetRef} style={{ position: 'fixed', bottom: 0, right: 0, zIndex: 9999 }}>
+    <div ref={widgetRef} style={{ position: 'fixed', bottom: 0, right: 0, zIndex: 9999, pointerEvents: 'none' }}>
       {/* Botão flutuante com badge */}
       <button
         onClick={handleOpenWidget}
-        className="chat-fab"
+        disabled={isChatDisabled}
+        className={getFabClass()}
         style={{
-          position: 'absolute', bottom: '1.5rem', right: '1.5rem',
-          width: '58px', height: '58px', borderRadius: '50%',
-          border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', transition: 'filter 0.2s'
+          position: 'fixed', bottom: '1.5rem', right: '1.5rem',
+          width: '56px', height: '56px', borderRadius: '50%',
+          border: 'none', cursor: isChatDisabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'all 0.25s ease',
+          pointerEvents: 'auto', zIndex: 10000
         }}
-        title="Chat"
+        title={getFabTitle()}
       >
         {open ? <X size={26} /> : <MessageCircle size={26} />}
-        {!open && totalUnread > 0 && (
+        {!open && totalUnread > 0 && !isChatDisabled && (
           <span style={{
-            position: 'absolute', top: '-4px', right: '-4px', minWidth: '22px', height: '22px',
-            borderRadius: '50%', background: 'var(--accent-red)', color: '#fff', fontSize: '0.75rem',
+            position: 'absolute', top: '-4px', right: '-4px', minWidth: '20px', height: '20px',
+            borderRadius: '50%', background: 'var(--accent-red)', color: '#fff', fontSize: '0.7rem',
             fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 5px', border: '2px solid var(--bg-dark)'
+            padding: '0 4px', border: '2px solid var(--bg-dark)'
           }}>
             {totalUnread > 99 ? '99+' : totalUnread}
           </span>
@@ -351,10 +371,10 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
       {/* Janela flutuante */}
       {open && (
         <div className="chat-window" style={{
-          position: 'absolute', bottom: '5.5rem', right: '1.5rem',
-          width: '380px', maxWidth: 'calc(100vw - 2rem)', height: '540px', maxHeight: 'calc(100vh - 7rem)',
+          position: 'fixed', bottom: '5.5rem', right: '1.5rem',
+          width: '360px', maxWidth: 'calc(100vw - 1.5rem)', height: '520px', maxHeight: 'calc(100dvh - 7rem)',
           borderRadius: '16px', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.5)'
+          boxShadow: '0 12px 40px rgba(0,0,0,0.6)', pointerEvents: 'auto', zIndex: 9999
         }}>
           {/* Header */}
           <div className="chat-header" style={{

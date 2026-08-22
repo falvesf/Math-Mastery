@@ -1028,10 +1028,6 @@ h3 {
   margin: 0 !important;
 }
 
-.compact-nav .logo-icon {
-  /* Removido - agora controlado pelo CSS responsivo em App.css */
-}
-
 .scrollable-menu-container {
   display: flex;
   gap: 1rem;
@@ -1225,7 +1221,7 @@ h3 {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: 20000 !important;
   padding: 1rem;
 }
 
@@ -1412,7 +1408,19 @@ h3 {
   color: var(--text-on-gold, #000000);
   box-shadow: 0 6px 20px var(--gold-glow);
 }
-.chat-fab:hover {
+.chat-fab.offline-state {
+  background: #64748b !important;
+  color: #e2e8f0 !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25) !important;
+}
+.chat-fab.disabled-state {
+  background: #334155 !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}
+.chat-fab:hover:not(.disabled-state) {
   filter: brightness(1.15);
 }
 .chat-window {
@@ -1459,4 +1467,357 @@ h3 {
   font-family: var(--font-body);
   letter-spacing: 1px;
   text-transform: uppercase;
-}
+}
+
+/* ===== Global Responsive & Mobile Optimization ===== */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+}
+
+#root {
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+}
+
+.scrollable-menu-container {
+  display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+.scrollable-menu-container::-webkit-scrollbar {
+  display: none;
+}
+
+.responsive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.responsive-grid-sm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .glass-panel {
+    padding: 1rem;
+    border-radius: 12px;
+  }
+  
+  .compact-nav {
+    padding: 0.5rem 0.75rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  .compact-nav .logo-container img {
+    width: 40px !important;
+    height: 40px !important;
+  }
+  
+  .compact-nav h1 {
+    font-size: 1.1rem !important;
+  }
+  
+  .hide-on-mobile {
+    display: none !important;
+  }
+  
+  .hide-text-mobile span {
+    display: none !important;
+  }
+
+  .category-tab-text {
+    display: none !important;
+  }
+
+  .compact-tab-row button {
+    padding: 0.35rem 0.55rem !important;
+  }
+  
+  .scrollable-menu-container {
+    margin: 0 !important;
+    padding: 0.35rem 0.5rem !important;
+    gap: 0.35rem !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    overflow-x: visible !important;
+  }
+  
+  .scrollable-menu-container button {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    padding: 0.65rem 0.25rem !important;
+    font-size: 0.85rem !important;
+    border-radius: 10px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .scrollable-menu-container .tab-text {
+    display: none !important;
+  }
+
+  .dashboard-header-sticky {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 500 !important;
+  }
+  
+  .admin-sidebar {
+    position: fixed !important;
+    left: -280px;
+    top: 0 !important;
+    bottom: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    width: 260px !important;
+    z-index: 10000 !important;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 0 30px rgba(0,0,0,0.8) !important;
+  }
+  
+  .admin-sidebar.open {
+    left: 0 !important;
+  }
+  
+  .admin-sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+  }
+}
+
+@media (max-width: 600px) {
+  .responsive-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+  
+  .responsive-grid-sm {
+    grid-template-columns: 1fr !important;
+    gap: 0.6rem !important;
+  }
+  
+  .responsive-stack-mobile {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  
+  .chat-fab {
+    bottom: 1rem !important;
+    right: 1rem !important;
+    width: 48px !important;
+    height: 48px !important;
+  }
+  
+  .chat-window {
+    position: fixed !important;
+    bottom: calc(1rem + 54px) !important;
+    right: 0.5rem !important;
+    left: 0.5rem !important;
+    width: auto !important;
+    max-width: calc(100vw - 1rem) !important;
+    height: calc(100dvh - 110px) !important;
+    max-height: 80vh !important;
+    border-radius: 12px !important;
+  }
+
+  /* Loja no modo Lista: forçar 2 colunas no mobile */
+  .store-grid-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.4rem !important;
+  }
+
+  .store-list-card {
+    flex-direction: column !important;
+  }
+
+  .store-list-card-media {
+    width: 100% !important;
+    height: 70px !important;
+    min-height: 70px !important;
+  }
+
+  /* Modal de Ajustes e Temas responsivo no mobile */
+  .settings-modal-container {
+    flex-direction: column !important;
+    width: 95vw !important;
+    max-height: 90vh !important;
+    height: 90vh !important;
+  }
+
+  .settings-modal-sidebar {
+    width: 100% !important;
+    flex-direction: row !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-glass) !important;
+    flex-shrink: 0 !important;
+  }
+
+  .settings-modal-sidebar-header {
+    display: none !important;
+  }
+
+  .settings-modal-sidebar-nav {
+    padding: 0.5rem !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    width: 100% !important;
+    gap: 0.35rem !important;
+  }
+
+  .settings-modal-tab-btn {
+    border-left: none !important;
+    border-bottom: 3px solid transparent !important;
+    padding: 0.45rem 0.75rem !important;
+    font-size: 0.82rem !important;
+    border-radius: 8px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .settings-modal-tab-btn.active {
+    border-bottom: 3px solid var(--gold-primary) !important;
+  }
+
+  .settings-modal-content {
+    padding: 1rem !important;
+  }
+
+  /* Nomes abreviados de alunos no mobile */
+  .student-name-desktop {
+    display: none !important;
+  }
+  .student-name-mobile {
+    display: inline !important;
+  }
+}
+
+.settings-modal-container {
+  width: 800px;
+  max-width: 95vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  position: relative;
+  min-height: 400px;
+  padding: 0;
+}
+
+.settings-modal-sidebar {
+  width: 200px;
+  background: rgba(0,0,0,0.2);
+  border-right: 1px solid var(--border-glass);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.settings-modal-sidebar-header {
+  padding: 1.5rem 1rem;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.settings-modal-sidebar-nav {
+  padding: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-modal-tab-btn {
+  border: none;
+  padding: 1rem;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+  background: transparent;
+  color: var(--text-secondary);
+  border-left: 3px solid transparent;
+}
+
+.settings-modal-tab-btn.active {
+  background: rgba(251, 191, 36, 0.1);
+  color: var(--gold-primary);
+  font-weight: bold;
+  border-left: 3px solid var(--gold-primary);
+}
+
+.settings-modal-content {
+  flex: 1;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.student-name-desktop {
+  display: inline;
+}
+.student-name-mobile {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .glass-panel {
+    padding: 0.75rem;
+    border-radius: 10px;
+  }
+}
+
+/* Live Quest Podium Responsiveness & Stage Layout */
+.podium-stage-container {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 1200px;
+  margin: auto 0 4rem; /* Elevado verticalmente com respiro para torcida */
+  position: relative;
+  z-index: 90;
+}
+
+.podium-desktop-only {
+  display: flex !important;
+}
+
+.podium-crowd-container {
+  display: flex !important;
+}
+
+@media (max-width: 768px), (orientation: portrait) {
+  .podium-desktop-only {
+    display: none !important;
+  }
+  .podium-crowd-container {
+    display: none !important;
+  }
+  .podium-stage-container {
+    gap: 0.6rem;
+    margin: auto 0;
+    transform: scale(0.85);
+    transform-origin: bottom center;
+  }
+}
+

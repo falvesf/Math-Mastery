@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Shield, Swords, Heart, Trophy, Crosshair, Skull, UserPlus, UserMinus, History, Package, Star } from 'lucide-react';
+import { X, Shield, Swords, Trophy, Crosshair, Skull, UserPlus, UserMinus, History, Package, Star } from 'lucide-react';
 import AvatarCharacter, { type EquippedItem } from './AvatarCharacter';
 import { type UserData } from '../contexts/AuthContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,7 +21,6 @@ interface PublicProfileModalProps {
 
 export default function PublicProfileModal({ isOpen, onClose, user, equippedItems, rankName, rankColor, rankPos }: PublicProfileModalProps) {
   const [questStats, setQuestStats] = useState({ participations: 0, wins: 0, defeats: 0 });
-  const [recentQuests, setRecentQuests] = useState<any[]>([]);
   const [achievements, setAchievements] = useState<AchievementItem[]>([]);
   const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
   const [loading, setLoading] = useState(true);
@@ -40,25 +39,12 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
         let wins = 0;
         let defeats = 0;
         const uniqueQuests = new Set<string>();
-        const recentAttempts = (snap || []).slice(0, 10);
 
         (snap || []).forEach((row: any) => {
           uniqueQuests.add(row.quest_id);
           if (row.status === 'completed') wins++;
           if (row.status === 'failed') defeats++;
         });
-
-        const questsToFetch = Array.from(new Set(recentAttempts.map(a => a.quest_id)));
-        const { data: questsData } = questsToFetch.length > 0 
-          ? await supabase.from('quests').select('id, title').in('id', questsToFetch)
-          : { data: [] };
-          
-        const questsMap = new Map((questsData || []).map(q => [q.id, q.title]));
-
-        setRecentQuests(recentAttempts.map(a => ({
-          ...a,
-          title: questsMap.get(a.quest_id) || 'Missão Desconhecida'
-        })));
 
         setQuestStats({
           participations: uniqueQuests.size,

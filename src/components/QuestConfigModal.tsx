@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, Package, ChevronDown, Settings } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy } from 'lucide-react';
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
 import DirectUploadButton from './DirectUploadButton';
 
@@ -125,6 +125,7 @@ function StoreItemSelect({ value, onChange, items, placeholder = '(Nenhum Item)'
           <div style={{ padding: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', position: 'sticky', top: 0, background: 'rgba(25, 30, 40, 0.98)', zIndex: 2 }}>
             <input
               autoFocus
+              type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Buscar item..."
@@ -145,22 +146,22 @@ function StoreItemSelect({ value, onChange, items, placeholder = '(Nenhum Item)'
   );
 }
 
-interface QuestConfigModalProps {
+export interface QuestConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // Monstro
+  // Monstro / Oponente
   questMonsterName: string;
   setQuestMonsterName: (v: string) => void;
   questMonsterConfig: AvatarConfig | null;
-  setQuestMonsterConfig: (v: AvatarConfig | null) => void;
+  setQuestMonsterConfig: (c: AvatarConfig | null) => void;
   questMonsterModelUrl: string;
   setQuestMonsterModelUrl: (v: string) => void;
   questMonsterQuotes: { hp100_80?: string; hp79_50?: string; hp49_25?: string; hp24_0?: string };
-  setQuestMonsterQuotes: (v: any) => void;
+  setQuestMonsterQuotes: (q: any) => void;
   questMonsterDefeatQuotes: string;
   setQuestMonsterDefeatQuotes: (v: string) => void;
   questMonsterDrops: { itemId: string; dropChance: number }[];
-  setQuestMonsterDrops: (v: any[]) => void;
+  setQuestMonsterDrops: (d: any) => void;
   availableMonsters: any[];
   available3DModels: any[];
   availableStoreItems: any[];
@@ -184,6 +185,10 @@ interface QuestConfigModalProps {
   setQuestBattleBgMoveDuration: (v: number) => void;
   onGalleryArena: () => void;
   onOpenArenaEditor: () => void;
+  // Pódio
+  questPodiumBgUrl?: string;
+  setQuestPodiumBgUrl?: (v: string) => void;
+  onGalleryPodium?: () => void;
   // Recompensas
   questCombatCoinMin: number;
   setQuestCombatCoinMin: (v: number) => void;
@@ -203,7 +208,7 @@ interface QuestConfigModalProps {
   questLiveChest3rd: any;
   setQuestLiveChest3rd: (c: any) => void;
   availableChests: any[];
-  renderChestConfig: (title: string, desc: string, chestConfig: any, setChestConfig: (c: any) => void, showDropChance: boolean) => JSX.Element;
+  renderChestConfig: (title: string, desc: string, chestConfig: any, setChestConfig: (c: any) => void, showDropChance: boolean) => React.JSX.Element;
 }
 
 type ConfigTab = 'monster' | 'arena' | 'rewards';
@@ -523,6 +528,72 @@ function ArenaTab(p: QuestConfigModalProps) {
             value={p.questBattleBgUrl}
             onChange={e => p.setQuestBattleBgUrl(e.target.value)}
             placeholder="Ou cole a URL da imagem aqui..."
+            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
+          />
+        </div>
+      </div>
+
+      {/* SEÇÃO DO CENÁRIO DO PÓDIO */}
+      <hr style={{ borderColor: 'rgba(255, 255, 255, 0.1)', margin: '1.5rem 0' }} />
+
+      <h4 style={{ color: 'var(--gold-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <Trophy size={20} /> Fundo do Pódio dos Campeões
+      </h4>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+        Escolha uma imagem de fundo para a consagração dos vencedores e pódio no Modo Ao Vivo. Fica incrível com as explosões de fogos!
+      </p>
+
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* Preview do fundo do pódio atual */}
+        <div style={{ width: '200px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', flexShrink: 0 }}>
+          {p.questPodiumBgUrl ? (
+            <div style={{
+              width: '100%',
+              height: '100%',
+              backgroundImage: `url(${p.questPodiumBgUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat'
+            }} />
+          ) : (
+            <div style={{ width: '100%', height: '100%', background: 'radial-gradient(ellipse at center, rgba(30, 27, 75, 0.9) 0%, rgba(10, 10, 20, 0.98) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '0.75rem', fontWeight: 'bold' }}>
+              Fundo Padrão Cósmico
+            </div>
+          )}
+        </div>
+
+        <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {/* Botões de ação */}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {p.onGalleryPodium && (
+              <button
+                onClick={p.onGalleryPodium}
+                style={{ padding: '0.5rem 1rem', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}
+              >
+                <Search size={16} /> Galeria
+              </button>
+            )}
+            <DirectUploadButton
+              folder="podium-backgrounds"
+              onUploadComplete={(url) => p.setQuestPodiumBgUrl && p.setQuestPodiumBgUrl(url)}
+              buttonStyle={{ padding: '0.5rem 1rem', background: 'rgba(245, 158, 11, 0.2)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.3)' }}
+            />
+            {p.questPodiumBgUrl && (
+              <button
+                onClick={() => p.setQuestPodiumBgUrl && p.setQuestPodiumBgUrl('')}
+                style={{ padding: '0.5rem 1rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                Usar Padrão
+              </button>
+            )}
+          </div>
+
+          {/* Input manual de URL */}
+          <input
+            type="text"
+            value={p.questPodiumBgUrl || ''}
+            onChange={e => p.setQuestPodiumBgUrl && p.setQuestPodiumBgUrl(e.target.value)}
+            placeholder="Ou cole a URL da imagem do pódio aqui..."
             style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
           />
         </div>

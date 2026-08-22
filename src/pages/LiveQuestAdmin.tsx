@@ -22,6 +22,7 @@ export interface LivePlayer {
   equippedItems?: any[];
   score: number;
   isDead: boolean;
+  hasSurrendered?: boolean;
   currentAnswer?: number | null;
   isCorrect?: boolean | null;
   answerTime?: number | null;
@@ -539,7 +540,8 @@ export default function LiveQuestAdmin() {
   const executeEndGame = async () => {
     if (!sessionId || !session) return;
     try {
-      const sortedPlayers = Object.values(session.players || {}).sort((a, b) => (b.score || 0) - (a.score || 0));
+      const allPlayers = Object.values(session.players || {});
+      const alivePlayers = allPlayers.filter(p => (p.hp === undefined || p.hp > 0) && !p.hasSurrendered).sort((a, b) => (b.score || 0) - (a.score || 0));
       const promises: any[] = [];
       const updatedPlayers = { ...(session.players || {}) };
 
@@ -610,9 +612,9 @@ export default function LiveQuestAdmin() {
 
       const globalGachaConfig = await fetchGlobalGachaConfig();
 
-      if (sortedPlayers.length > 0) await processReward(sortedPlayers[0].uid, quest?.liveChest1stPlace, 1);
-      if (sortedPlayers.length > 1) await processReward(sortedPlayers[1].uid, quest?.liveChest2ndPlace, 2);
-      if (sortedPlayers.length > 2) await processReward(sortedPlayers[2].uid, quest?.liveChest3rdPlace, 3);
+      if (alivePlayers.length > 0) await processReward(alivePlayers[0].uid, quest?.liveChest1stPlace, 1);
+      if (alivePlayers.length > 1) await processReward(alivePlayers[1].uid, quest?.liveChest2ndPlace, 2);
+      if (alivePlayers.length > 2) await processReward(alivePlayers[2].uid, quest?.liveChest3rdPlace, 3);
 
       const playerUpdatePromises = Object.keys(session.players || {}).map(async uid => {
         const player = session.players[uid];
@@ -722,7 +724,10 @@ export default function LiveQuestAdmin() {
 
   const currentQOriginalIndex = session.activeQuestions[session.currentQuestionIndex];
   const question = quest.questions[currentQOriginalIndex];
-  const sortedPlayers = Object.values(session.players).sort((a, b) => (b.score || 0) - (a.score || 0));
+  const allPlayersList = Object.values(session.players || {});
+  const alivePlayers = allPlayersList.filter(p => (p.hp === undefined || p.hp > 0) && !p.hasSurrendered).sort((a, b) => (b.score || 0) - (a.score || 0));
+  const eliminatedPlayers = allPlayersList.filter(p => (p.hp !== undefined && p.hp <= 0) || p.hasSurrendered).sort((a, b) => (b.score || 0) - (a.score || 0));
+  const sortedPlayers = alivePlayers; // Apenas sobreviventes sobem nos pilares do pódio
 
   const OPTION_COLORS = ['#e21b3c', '#1368ce', '#d89e00', '#26890c']; // Red, Blue, Yellow, Green
 
@@ -732,17 +737,25 @@ export default function LiveQuestAdmin() {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 30, position: 'relative' }}>
         <h1 style={{ margin: 0, color: 'var(--gold-primary)', fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '200px' }}>
           <Swords size={24} /> {quest.title}
-        </h1>
-        
-        {/* CENTER QUESTION COUNTER */}
-        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', textAlign: 'center' }}>
-          {(session.status === 'question' || session.status === 'reveal') && (
-            <span style={{ color: 'var(--gold-primary)', fontSize: '1.2rem', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 'bold' }}>
-              Pergunta {session.currentQuestionIndex + 1} de {session.activeQuestions.length}
+          {session.status === 'finished' && (
+            <span style={{ fontSize: '0.85rem', background: 'rgba(251, 191, 36, 0.2)', border: '1px solid var(--gold-primary)', color: 'var(--gold-primary)', padding: '0.2rem 0.8rem', borderRadius: '20px', marginLeft: '0.5rem' }}>
+              🏆 Pódio Final
             </span>
           )}
-        </div>
-        <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
+        </h1>
+        
+        {/* CENTER QUESTION COUNTER (Apenas durante perguntas) */}
+        {session.status !== 'finished' && (
+          <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', textAlign: 'center' }}>
+            {(session.status === 'question' || session.status === 'reveal') && (
+              <span style={{ color: 'var(--gold-primary)', fontSize: '1.2rem', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 'bold' }}>
+                Pergunta {session.currentQuestionIndex + 1} de {session.activeQuestions.length}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
           {session.status === 'question' && (
             <div style={{ textAlign: 'center', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1.5rem', borderRadius: '12px', border: `2px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--gold-primary)'}` }}>
               <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Tempo Restante</span>
@@ -754,13 +767,18 @@ export default function LiveQuestAdmin() {
               Próxima Etapa <ChevronRight style={{ display: 'inline', marginLeft: '0.5rem' }} />
             </button>
           )}
-          <div style={{ textAlign: 'center' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Respostas</span>
-            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{answersCount} / {activePlayersCount}</div>
-          </div>
-          <button onClick={handleEndSession} style={{ background: 'transparent', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer' }}>
-            Abortar
-          </button>
+
+          {session.status !== 'finished' && (
+            <>
+              <div style={{ textAlign: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Respostas</span>
+                <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{answersCount} / {activePlayersCount}</div>
+              </div>
+              <button onClick={handleEndSession} style={{ background: 'transparent', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer' }}>
+                Abortar
+              </button>
+            </>
+          )}
         </div>
       </div>
       
@@ -1011,7 +1029,21 @@ export default function LiveQuestAdmin() {
           )}
           {/* FINISHED CONTENT - KAHOOT STYLE PODIUM */}
           {session.status === 'finished' && (
-            <div style={{ pointerEvents: 'auto', position: 'fixed', inset: 0, zIndex: 80, background: 'radial-gradient(ellipse at center, rgba(30, 27, 75, 0.96) 0%, rgba(10, 10, 20, 0.99) 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 2rem', overflow: 'hidden' }}>
+            <div style={{
+              pointerEvents: 'auto',
+              position: 'fixed',
+              inset: 0,
+              zIndex: 80,
+              background: quest?.podiumBgUrl
+                ? `linear-gradient(rgba(10, 10, 25, 0.5), rgba(10, 10, 25, 0.7)), url(${quest.podiumBgUrl}) center / cover no-repeat`
+                : 'radial-gradient(ellipse at center, rgba(30, 27, 75, 0.96) 0%, rgba(10, 10, 20, 0.99) 100%)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '1rem 2rem 1.5rem',
+              overflow: 'hidden'
+            }}>
               <canvas ref={fireworksCanvasRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 95 }} />
 
               {/* Header & Controls */}
@@ -1067,7 +1099,7 @@ export default function LiveQuestAdmin() {
               </div>
 
               {/* Status Announcement */}
-              <div style={{ textAlign: 'center', margin: '0.5rem 0', zIndex: 100 }}>
+              <div style={{ textAlign: 'center', margin: '0.3rem 0', zIndex: 100 }}>
                 {podiumStep === 0 && (
                   <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--text-secondary)', animation: 'pulse 1s infinite' }}>
                     E os vencedores são...
@@ -1090,16 +1122,16 @@ export default function LiveQuestAdmin() {
                 )}
               </div>
 
-              {/* MAIN PODIUM STAGE */}
-              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '1.2rem', width: '100%', maxWidth: '1200px', flex: '1', zIndex: 90, position: 'relative', paddingBottom: '0.5rem' }}>
+              {/* MAIN PODIUM STAGE (ELEVADO & RESPONSIVO) */}
+              <div className="podium-stage-container">
                 
-                {/* 5º LUGAR (Far Left) */}
+                {/* 5º LUGAR (Desktop/Paisagem apenas) */}
                 {sortedPlayers[4] && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: podiumStep >= 1 ? 1 : 0.2, transition: 'all 0.5s', transform: podiumStep >= 1 ? 'scale(1)' : 'scale(0.8)' }}>
-                    <div style={{ width: '110px', height: '140px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                      <AvatarCharacter config={sortedPlayers[4].avatarConfig} equippedItems={sortedPlayers[4].equippedItems || []} size={110} animation={podiumStep >= 1 ? 'cheer' : 'idle'} interactive={false} role="player" />
+                  <div className="podium-desktop-only" style={{ flexDirection: 'column', alignItems: 'center', opacity: podiumStep >= 1 ? 1 : 0.2, transition: 'all 0.5s', transform: podiumStep >= 1 ? 'scale(1)' : 'scale(0.8)' }}>
+                    <div style={{ width: '110px', height: '140px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '-32px', position: 'relative', zIndex: 2 }}>
+                      <AvatarCharacter config={sortedPlayers[4].avatarConfig} equippedItems={sortedPlayers[4].equippedItems || []} size={110} animation="idle" expression="happy" interactive={false} role="player" />
                     </div>
-                    <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '10px 10px 0 0', width: '100px', height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.3rem' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '10px 10px 0 0', width: '100px', height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.3rem', position: 'relative', zIndex: 1 }}>
                       <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#94a3b8' }}>5º</span>
                       <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'white', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sortedPlayers[4].name}</span>
                       <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{sortedPlayers[4].score} pts</span>
@@ -1118,8 +1150,8 @@ export default function LiveQuestAdmin() {
                           </div>
                         )}
                         <Medal size={30} color="#e2e8f0" style={{ filter: 'drop-shadow(0 0 10px rgba(226,232,240,0.9))', marginBottom: '0.2rem' }} />
-                        <div style={{ width: '150px', height: '170px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                          <AvatarCharacter config={sortedPlayers[1].avatarConfig} equippedItems={sortedPlayers[1].equippedItems || []} size={150} animation="cheer" interactive={false} role="player" />
+                        <div style={{ width: '150px', height: '170px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '-35px', position: 'relative', zIndex: 2 }}>
+                          <AvatarCharacter config={sortedPlayers[1].avatarConfig} equippedItems={sortedPlayers[1].equippedItems || []} size={150} animation="raise-hand" expression="happy" interactive={false} role="player" />
                         </div>
                       </div>
                     ) : (
@@ -1140,7 +1172,9 @@ export default function LiveQuestAdmin() {
                       justifyContent: 'flex-start',
                       paddingTop: '0.8rem',
                       boxShadow: '0 0 25px rgba(226,232,240,0.4), inset 0 4px 10px rgba(255,255,255,0.6)',
-                      transition: 'height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                      transition: 'height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                      position: 'relative',
+                      zIndex: 1
                     }}>
                       <span style={{ fontSize: '2.2rem', fontWeight: '900', color: '#0f172a' }}>2º</span>
                       {podiumStep >= 2 && (
@@ -1167,8 +1201,8 @@ export default function LiveQuestAdmin() {
                           <Crown size={40} color="#ffd700" style={{ filter: 'drop-shadow(0 0 15px rgba(255,215,0,1))', animation: 'spin 6s linear infinite' }} />
                           <Trophy size={40} color="#ffd700" style={{ filter: 'drop-shadow(0 0 15px rgba(255,215,0,1))' }} />
                         </div>
-                        <div style={{ width: '180px', height: '200px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                          <AvatarCharacter config={sortedPlayers[0].avatarConfig} equippedItems={sortedPlayers[0].equippedItems || []} size={180} animation="cheer" interactive={false} role="player" />
+                        <div style={{ width: '180px', height: '200px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '-38px', position: 'relative', zIndex: 2 }}>
+                          <AvatarCharacter config={sortedPlayers[0].avatarConfig} equippedItems={sortedPlayers[0].equippedItems || []} size={180} animation="cheer" expression="happy" interactive={false} role="player" />
                         </div>
                       </div>
                     ) : (
@@ -1189,7 +1223,9 @@ export default function LiveQuestAdmin() {
                       justifyContent: 'flex-start',
                       paddingTop: '0.8rem',
                       boxShadow: '0 0 40px rgba(255,215,0,0.7), inset 0 6px 15px rgba(255,255,255,0.8)',
-                      transition: 'height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                      transition: 'height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                      position: 'relative',
+                      zIndex: 1
                     }}>
                       <span style={{ fontSize: '2.8rem', fontWeight: '900', color: '#000000', textShadow: '0 2px 4px rgba(255,255,255,0.5)' }}>1º</span>
                       {podiumStep >= 3 && (
@@ -1213,8 +1249,8 @@ export default function LiveQuestAdmin() {
                           </div>
                         )}
                         <Medal size={28} color="#cd7f32" style={{ filter: 'drop-shadow(0 0 10px rgba(205,127,50,0.9))', marginBottom: '0.2rem' }} />
-                        <div style={{ width: '140px', height: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                          <AvatarCharacter config={sortedPlayers[2].avatarConfig} equippedItems={sortedPlayers[2].equippedItems || []} size={140} animation="cheer" interactive={false} role="player" />
+                        <div style={{ width: '140px', height: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '-35px', position: 'relative', zIndex: 2 }}>
+                          <AvatarCharacter config={sortedPlayers[2].avatarConfig} equippedItems={sortedPlayers[2].equippedItems || []} size={140} animation="idle" expression="happy" interactive={false} role="player" />
                         </div>
                       </div>
                     ) : (
@@ -1235,7 +1271,9 @@ export default function LiveQuestAdmin() {
                       justifyContent: 'flex-start',
                       paddingTop: '0.8rem',
                       boxShadow: '0 0 25px rgba(217,119,6,0.4), inset 0 4px 10px rgba(255,255,255,0.5)',
-                      transition: 'height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                      transition: 'height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                      position: 'relative',
+                      zIndex: 1
                     }}>
                       <span style={{ fontSize: '2rem', fontWeight: '900', color: '#ffffff' }}>3º</span>
                       {podiumStep >= 1 && (
@@ -1248,13 +1286,13 @@ export default function LiveQuestAdmin() {
                   </div>
                 )}
 
-                {/* 4º LUGAR (Far Right) */}
+                {/* 4º LUGAR (Desktop/Paisagem apenas) */}
                 {sortedPlayers[3] && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: podiumStep >= 1 ? 1 : 0.2, transition: 'all 0.5s', transform: podiumStep >= 1 ? 'scale(1)' : 'scale(0.8)' }}>
-                    <div style={{ width: '110px', height: '140px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                      <AvatarCharacter config={sortedPlayers[3].avatarConfig} equippedItems={sortedPlayers[3].equippedItems || []} size={110} animation={podiumStep >= 1 ? 'cheer' : 'idle'} interactive={false} role="player" />
+                  <div className="podium-desktop-only" style={{ flexDirection: 'column', alignItems: 'center', opacity: podiumStep >= 1 ? 1 : 0.2, transition: 'all 0.5s', transform: podiumStep >= 1 ? 'scale(1)' : 'scale(0.8)' }}>
+                    <div style={{ width: '110px', height: '140px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '-32px', position: 'relative', zIndex: 2 }}>
+                      <AvatarCharacter config={sortedPlayers[3].avatarConfig} equippedItems={sortedPlayers[3].equippedItems || []} size={110} animation="idle" expression="happy" interactive={false} role="player" />
                     </div>
-                    <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '10px 10px 0 0', width: '100px', height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.3rem' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '10px 10px 0 0', width: '100px', height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.3rem', position: 'relative', zIndex: 1 }}>
                       <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#94a3b8' }}>4º</span>
                       <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'white', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sortedPlayers[3].name}</span>
                       <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{sortedPlayers[3].score} pts</span>
@@ -1264,19 +1302,58 @@ export default function LiveQuestAdmin() {
 
               </div>
 
-              {/* SPECTATORS / CROWD (6º LUGAR EM DIANTE) */}
-              {sortedPlayers.length > 5 && (
-                <div style={{ width: '100%', maxWidth: '1200px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '1rem', overflowX: 'auto', zIndex: 90, scrollbarWidth: 'thin' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-secondary)', flexShrink: 0, textTransform: 'uppercase' }}>Torcida:</span>
-                  {sortedPlayers.slice(5).map((p, idx) => (
-                    <div key={p.uid} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, minWidth: '85px' }}>
-                      <div style={{ width: '70px', height: '90px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                        <AvatarCharacter config={p.avatarConfig} equippedItems={p.equippedItems || []} size={80} animation="cheer" interactive={false} role="player" />
+              {/* TORCIDA & GUERREIROS NATURAIS NO RODAPÉ DA TELA (Desktop/Paisagem) */}
+              {(sortedPlayers.length > 5 || eliminatedPlayers.length > 0) && (
+                <div
+                  className="podium-crowd-container"
+                  style={{
+                    position: 'absolute',
+                    bottom: '0.5rem',
+                    left: 0,
+                    right: 0,
+                    justifyContent: 'center',
+                    alignItems: 'flex-end',
+                    gap: '1.2rem',
+                    flexWrap: 'wrap',
+                    padding: '0 1rem',
+                    zIndex: 95,
+                    pointerEvents: 'auto'
+                  }}
+                >
+                  {/* Sobreviventes além do 5º lugar */}
+                  {sortedPlayers.slice(5).map((p, idx) => {
+                    const isLeftSide = idx % 2 === 0;
+                    return (
+                      <div key={p.uid} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                        <div style={{ width: '70px', height: '90px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transform: isLeftSide ? 'scaleX(1)' : 'scaleX(-1)' }}>
+                          <AvatarCharacter config={p.avatarConfig} equippedItems={p.equippedItems || []} size={80} animation="idle" expression="happy" interactive={false} role="player" />
+                        </div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'white', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                          {p.name.split(' ')[0]}
+                        </span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>{p.score} pts</span>
                       </div>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'white', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>#{idx + 6} {p.name.split(' ')[0]}</span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--gold-primary)' }}>{p.score} pts</span>
-                    </div>
-                  ))}
+                    );
+                  })}
+
+                  {/* Jogadores Eliminados (Machucados mas Felizes vibrando pela vitória do time!) */}
+                  {eliminatedPlayers.map((p, idx) => {
+                    const isLeftSide = idx % 2 === 1;
+                    return (
+                      <div key={p.uid} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, opacity: 0.95 }}>
+                        <div style={{ width: '70px', height: '90px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', position: 'relative', transform: isLeftSide ? 'scaleX(1)' : 'scaleX(-1)' }}>
+                          <AvatarCharacter config={p.avatarConfig} equippedItems={p.equippedItems || []} size={80} animation="idle" expression="happy" hurt={true} interactive={false} role="player" />
+                          <div style={{ position: 'absolute', top: '0', right: '0', background: 'rgba(239,68,68,0.85)', borderRadius: '50%', padding: '2px', display: 'flex', transform: isLeftSide ? 'none' : 'scaleX(-1)' }} title="Abatido na batalha, mas comemorando a vitória!">
+                            <Skull size={12} color="white" />
+                          </div>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#fca5a5', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                          {p.name.split(' ')[0]}
+                        </span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--accent-red)', fontWeight: 'bold' }}>Abatido</span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

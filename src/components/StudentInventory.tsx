@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword } from 'lucide-react';
+import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword, Filter } from 'lucide-react';
 import CachedImage from './CachedImage';
 import SkinBuffIcon from './SkinBuffIcon';
 import ItemIcon from './ItemIcon';
@@ -75,7 +75,10 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const [economyType, setEconomyType] = useState<'xp'|'coins'>('coins');
   const [economySettings, setEconomySettings] = useState<any>(null);
 
-  const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(userData.inventoryPreferences?.viewMode as any || 'grid-large');
+  const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(
+    (userData.inventoryPreferences?.viewMode as any) || (localStorage.getItem('inventory_viewMode') as any) || 'list'
+  );
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRarity, setFilterRarity] = useState<string>(userData.inventoryPreferences?.filterRarity || 'all');
   
@@ -846,7 +849,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   return (
     <div 
       ref={inventoryRef}
-      style={{ animation: 'fadeIn 0.3s ease-out', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 300px)' }}
+      style={{ animation: 'fadeIn 0.3s ease-out', display: 'flex', flexDirection: 'column', minHeight: '400px', height: 'auto' }}
       onDragOver={(e) => { e.preventDefault(); }}
       onDrop={(e) => { e.preventDefault(); }}
     >
@@ -884,25 +887,34 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         .inventory-tabs-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
       `}</style>
 
-      <div style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-glass)', marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <div style={{ paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-glass)', marginBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <Package size={24} color="var(--gold-primary)" />
-            <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Minha Mochila</h3>
+            <h3 style={{ fontSize: '1.4rem', margin: 0 }}>Minha Mochila</h3>
           </div>
-          <div style={{ color: 'var(--text-secondary)', fontSize: '1rem', background: 'rgba(0,0,0,0.3)', padding: '0.5rem 1rem', borderRadius: '12px' }}>
-            Espaço: <strong style={{ color: currentSpaceOccupied >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{currentSpaceOccupied}</strong> / {maxInventorySpace}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', background: 'rgba(0,0,0,0.3)', padding: '0.35rem 0.75rem', borderRadius: '12px' }}>
+              Espaço: <strong style={{ color: currentSpaceOccupied >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{currentSpaceOccupied}</strong> / {maxInventorySpace}
+            </div>
+            <button
+              onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.35rem 0.65rem', background: isFiltersOpen ? 'var(--btn-hover)' : 'var(--btn-bg)', color: 'var(--text-primary)', borderRadius: '8px', border: '1px solid var(--border-glass)', cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.85rem' }}
+              title="Mostrar / Ocultar Filtros"
+            >
+              <Filter size={16} />
+            </button>
           </div>
         </div>
 
-        {/* Barra de Filtros */}
-        <div className="inventory-tabs-container" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'nowrap', overflowX: 'auto', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.25rem' }}>
+        {/* Categorias Rápidas */}
+        <div className="inventory-tabs-container" style={{ display: 'flex', gap: '0.4rem', flexWrap: 'nowrap', overflowX: 'auto', alignItems: 'center', marginBottom: isFiltersOpen ? '0.75rem' : '0.25rem', paddingBottom: '0.25rem' }}>
           {[
-            { id: 'Todos', icon: <Sparkles size={16} /> },
-            { id: 'Consumíveis', icon: <FlaskConical size={16} /> },
-            { id: 'Ataque', icon: <Sword size={16} /> },
-            { id: 'Defesa', icon: <Shield size={16} /> },
-            { id: 'Outros', icon: <Package size={16} /> },
+            { id: 'Todos', icon: <Sparkles size={14} /> },
+            { id: 'Consumíveis', icon: <FlaskConical size={14} /> },
+            { id: 'Ataque', icon: <Sword size={14} /> },
+            { id: 'Defesa', icon: <Shield size={14} /> },
+            { id: 'Outros', icon: <Package size={14} /> },
           ].map(tab => (
             <button
               key={tab.id}
@@ -913,13 +925,13 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               }}
               className="inventory-tab-btn"
               style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                padding: '0.4rem 0.8rem',
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                padding: '0.35rem 0.7rem',
                 borderRadius: '999px',
                 border: 'none',
                 cursor: 'pointer',
                 fontWeight: 600,
-                fontSize: '0.85rem',
+                fontSize: '0.8rem',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s ease',
                 background: activeCategory === tab.id ? 'var(--gold-primary)' : 'var(--btn-bg)',
@@ -931,35 +943,38 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ flex: 1, minWidth: '150px', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.5rem' }}>
-            <Search size={16} color="var(--text-secondary)" />
-            <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.5rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem' }} />
+        {/* Barra de Filtros Retrátil */}
+        {isFiltersOpen && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', animation: 'fadeIn 0.2s ease-out' }}>
+            <div style={{ flex: 1, minWidth: '130px', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.5rem' }}>
+              <Search size={14} color="var(--text-secondary)" />
+              <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.4rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', fontSize: '0.85rem' }} />
+            </div>
+            <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+              <option value="all">Raridades</option>
+              <option value="common">Comum</option>
+              <option value="uncommon">Incomum</option>
+              <option value="rare">Raro</option>
+              <option value="epic">Épico</option>
+              <option value="legendary">Lendário</option>
+            </select>
+            
+            <div style={{ display: 'flex', gap: '0.2rem', background: 'rgba(0,0,0,0.3)', padding: '0.2rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+              <button onClick={() => { setViewMode('grid-large'); localStorage.setItem('inventory_viewMode', 'grid-large'); }} style={{ padding: '0.35rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={15} /></button>
+              <button onClick={() => { setViewMode('grid-small'); localStorage.setItem('inventory_viewMode', 'grid-small'); }} style={{ padding: '0.35rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={15} /></button>
+              <button onClick={() => { setViewMode('list'); localStorage.setItem('inventory_viewMode', 'list'); }} style={{ padding: '0.35rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={15} /></button>
+            </div>
           </div>
-          <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-            <option value="all">Raridades</option>
-            <option value="common">Comum</option>
-            <option value="uncommon">Incomum</option>
-            <option value="rare">Raro</option>
-            <option value="epic">Épico</option>
-            <option value="legendary">Lendário</option>
-          </select>
-          
-          <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.3)', padding: '0.25rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-            <button onClick={() => setViewMode('grid-large')} style={{ padding: '0.25rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={16} /></button>
-            <button onClick={() => setViewMode('grid-small')} style={{ padding: '0.25rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={16} /></button>
-            <button onClick={() => setViewMode('list')} style={{ padding: '0.25rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={16} /></button>
-          </div>
-        </div>
+        )}
       </div>
 
       <div className="inventory-items-col" style={{ 
         flex: 1, 
         overflowY: 'auto', 
-        paddingRight: '0.5rem',
+        paddingRight: '0.25rem',
         display: 'grid', 
-        gridTemplateColumns: viewMode === 'list' ? '1fr' : (viewMode === 'grid-small' ? 'repeat(auto-fill, minmax(75px, 1fr))' : 'repeat(auto-fill, minmax(100px, 1fr))'), 
-        gap: '1rem',
+        gridTemplateColumns: viewMode === 'list' ? '1fr' : (viewMode === 'grid-small' ? 'repeat(auto-fill, minmax(65px, 1fr))' : 'repeat(auto-fill, minmax(85px, 1fr))'), 
+        gap: '0.65rem',
         alignContent: 'start'
       }}>
           {slots.map((item, index) => {

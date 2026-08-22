@@ -1,17 +1,16 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Coins, Plus, Edit2, Trash2, ShieldAlert, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Box, Package } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import GachaConfigModal from './GachaConfigModal';
 import ItemBankModal from './ItemBankModal';
 import SkinBuffIcon from '../components/SkinBuffIcon';
-import CachedImage from './CachedImage';
 import ItemIcon from './ItemIcon';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
-import { fetchEconomyType, fetchEconomySettings, saveEconomySettings } from '../lib/economy';
+import { fetchEconomyType } from '../lib/economy';
 import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
@@ -73,7 +72,6 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [loading, setLoading] = useState(true);
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [globalGachaConfig, setGlobalGachaConfig] = useState<GachaConfig | null>(null);
-  const [isEconomyOpen, setIsEconomyOpen] = useState(false);
   const [presetSkins, setPresetSkins] = useState<{id: string, name: string, url: string, type?: string}[]>([]);
   
   const [isEditing, setIsEditing] = useState(false);
@@ -162,12 +160,6 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSaveEconomy = async (type: 'xp' | 'coins') => {
-    setEconomyType(type);
-    await saveEconomySettings(tenantId, { ...(await fetchEconomySettings(tenantId)), currencyType: type });
-    await showAlert('Configuração de economia salva com sucesso!');
   };
 
   const handleImportFromBank = async (item: any, copyMode: 'direct' | 'customize') => {

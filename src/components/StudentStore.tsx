@@ -595,13 +595,13 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const processedMarketItems = getProcessedMarketItems();
 
   const getGridStyle = () => {
-    if (viewMode === 'grid-small') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem' };
-    if (viewMode === 'list') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' };
-    return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' };
+    if (viewMode === 'grid-small') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.5rem' };
+    if (viewMode === 'list') return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))', gap: '0.5rem' };
+    return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.5rem' };
   };
 
   return (
-    <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)', minHeight: '520px', animation: 'fadeIn 0.3s ease-out' }}>
       {previewItem && (
         <div className="modal-overlay">
           <div className="glass-panel modal-content modal-content-sm" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--bg-dark)', border: '2px solid var(--border-color)', borderRadius: '16px' }}>
@@ -654,50 +654,73 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         </div>
       )}
 
-      <div style={{ position: 'sticky', top: '75px', zIndex: 10, background: 'transparent', backdropFilter: 'blur(12px)', paddingBottom: '0.5rem', paddingTop: '0.5rem', borderBottom: '1px solid var(--border-glass)', marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <h2 style={{ fontSize: '1.5rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Store size={28} color="var(--gold-primary)" /> Lojas do Acampamento
+      <div style={{ flexShrink: 0, background: 'var(--bg-panel)', backdropFilter: 'blur(16px)', padding: '0.65rem 0.85rem', border: '1px solid var(--border-glass)', borderRadius: '14px', marginBottom: '0.75rem', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <h2 style={{ fontSize: '1.3rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Store size={24} color="var(--gold-primary)" /> Lojas do Acampamento
           </h2>
+          
+          {/* Saldo Permanente de Moedas e XP */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-badge)', padding: '0.35rem 0.75rem', borderRadius: '20px', border: '1px solid var(--gold-primary)', marginLeft: 'auto' }}>
+            {economyType === 'xp' ? (
+              <>
+                <Star size={16} color="var(--gold-primary)" />
+                <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginRight: '0.5rem' }}>
+                  {(userData.role !== 'student' && !userData.studentViewActive) ? 'Staff' : `${userData.xp || 0} XP`}
+                </span>
+                <Coins size={16} color="var(--gold-primary)" />
+                <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                  {userData.role !== 'student' ? '' : `${userData.coins || 0} M`}
+                </span>
+              </>
+            ) : (
+              <>
+                <Coins size={16} color="var(--gold-primary)" />
+                <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                  {(userData.role !== 'student' && !userData.studentViewActive) ? 'Staff' : `${userData.coins || 0} Moedas`}
+                </span>
+              </>
+            )}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
           <button 
             onClick={() => setActiveTab('official')}
             className="login-btn"
-            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'official' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'official' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+            style={{ flex: 1, padding: '0.4rem', background: activeTab === 'official' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'official' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem', justifyContent: 'center' }}
           >
             Loja Oficial
           </button>
           <button 
             onClick={() => setActiveTab('market')}
             className="login-btn"
-            style={{ flex: 1, padding: '0.5rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+            style={{ flex: 1, padding: '0.4rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem', justifyContent: 'center' }}
           >
-            Bazar de Jogadores
+            Bazar
           </button>
           <button
             onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: isFiltersOpen ? 'var(--btn-hover)' : 'var(--btn-bg)', color: 'var(--text-primary)', borderRadius: '8px', border: '1px solid var(--border-glass)', cursor: 'pointer', transition: 'all 0.2s' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.4rem 0.75rem', background: isFiltersOpen ? 'var(--btn-hover)' : 'var(--btn-bg)', color: 'var(--text-primary)', borderRadius: '8px', border: '1px solid var(--border-glass)', cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.85rem' }}
             title="Mostrar / Ocultar Filtros"
           >
-            <Filter size={18} />
+            <Filter size={16} />
           </button>
         </div>
 
         {/* Barra de Filtros */}
         {isFiltersOpen && (
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', background: 'var(--bg-badge)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.5rem' }}>
-              <Search size={16} color="var(--text-secondary)" />
-              <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none' }} />
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap', animation: 'fadeIn 0.2s ease-out' }}>
+            <div style={{ flex: 1, minWidth: '130px', display: 'flex', alignItems: 'center', background: 'var(--bg-badge)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 0.5rem' }}>
+              <Search size={14} color="var(--text-secondary)" />
+              <input type="text" placeholder="Buscar item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none' }} />
             </div>
-            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
               <option value="all">Todos os Tipos</option>
               <option value="consumable">Consumível</option>
               <option value="equippable">Equipável</option>
             </select>
-            <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+            <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
               <option value="all">Qualquer Raridade</option>
               <option value="common">Comum</option>
               <option value="uncommon">Incomum</option>
@@ -705,7 +728,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               <option value="epic">Épico</option>
               <option value="legendary">Lendário</option>
             </select>
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
               <option value="name-asc">A-Z</option>
               <option value="name-desc">Z-A</option>
               <option value="price-asc">Menor Preço</option>
@@ -713,543 +736,475 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               <option value="rarity-desc">Raridade (Maior)</option>
               <option value="rarity-asc">Raridade (Menor)</option>
             </select>
-            
-            <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-badge)', padding: '0.25rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-              <button onClick={() => setViewMode('grid-large')} style={{ padding: '0.5rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={20} /></button>
-              <button onClick={() => setViewMode('grid-small')} style={{ padding: '0.5rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={20} /></button>
-              <button onClick={() => setViewMode('list')} style={{ padding: '0.5rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={20} /></button>
+            <div style={{ display: 'flex', gap: '0.2rem', background: 'var(--bg-badge)', padding: '0.2rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+              <button onClick={() => { setViewMode('grid-large'); localStorage.setItem('store_viewMode', 'grid-large'); }} style={{ padding: '0.35rem', background: viewMode === 'grid-large' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-large'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Grande"><LayoutGrid size={16} /></button>
+              <button onClick={() => { setViewMode('grid-small'); localStorage.setItem('store_viewMode', 'grid-small'); }} style={{ padding: '0.35rem', background: viewMode === 'grid-small' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'grid-small'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Grid Pequeno"><Grid size={16} /></button>
+              <button onClick={() => { setViewMode('list'); localStorage.setItem('store_viewMode', 'list'); }} style={{ padding: '0.35rem', background: viewMode === 'list' ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: viewMode === 'list'  ? 'var(--text-primary)' : 'var(--text-secondary)' }} title="Lista"><ListIcon size={16} /></button>
             </div>
           </div>
         )}
 
-        {/* Barra Inferior: Filtros/Categorias + Mochila/Moedas */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', paddingTop: '0.25rem', paddingBottom: '0.25rem' }}>
+        {/* Barra Inferior: Categorias Rápidas + Espaço da Mochila */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', paddingTop: '0.25rem' }}>
           <div>
             {activeTab === 'official' && !isFiltersOpen && (
-              <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto' }}>
+              <div className="compact-tab-row" style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto' }}>
                 <button 
                   onClick={() => setOfficialCategoryTab('all')}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'all' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                  title="Todos"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.35rem 0.65rem', fontSize: '0.8rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'all' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'all' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
                 >
-                  <Sparkles size={18} /> Todos
+                  <Sparkles size={14} /> <span className="category-tab-text">Todos</span>
                 </button>
                 <button 
                   onClick={() => setOfficialCategoryTab('consumable')}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'consumable' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                  title="Consumíveis"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.35rem 0.65rem', fontSize: '0.8rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'consumable' ? 'var(--gold-primary)' : 'var(--bg-card)', color: officialCategoryTab === 'consumable' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
                 >
-                  <FlaskConical size={18} /> Consumíveis
+                  <FlaskConical size={14} /> <span className="category-tab-text">Consumíveis</span>
                 </button>
                 <button 
                   onClick={() => setOfficialCategoryTab('attack')}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'attack'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                  title="Ataque"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.35rem 0.65rem', fontSize: '0.8rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'attack' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'attack'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
                 >
-                  <Sword size={18} /> Ataque
+                  <Sword size={14} /> <span className="category-tab-text">Ataque</span>
                 </button>
                 <button 
                   onClick={() => setOfficialCategoryTab('defense')}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'defense'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                  title="Defesa"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.35rem 0.65rem', fontSize: '0.8rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'defense' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'defense'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
                 >
-                  <Shield size={18} /> Defesa
+                  <Shield size={14} /> <span className="category-tab-text">Defesa</span>
                 </button>
                 <button 
                   onClick={() => setOfficialCategoryTab('other')}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'other'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                  title="Outros"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.35rem 0.65rem', fontSize: '0.8rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'other' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'other'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
                 >
-                  <Package size={18} /> Outros
+                  <Package size={14} /> <span className="category-tab-text">Outros</span>
                 </button>
               </div>
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            <div style={{ color: 'var(--text-secondary)', background: 'var(--bg-badge)', padding: '0.5rem 0.75rem', borderRadius: '12px', fontSize: '0.9rem' }}>
-               Mochila: <strong style={{ color: myInventoryCount >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{myInventoryCount}</strong> / {maxInventorySpace}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-badge)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--gold-primary)' }}>
-              {economyType === 'xp' ? (
-                <>
-                  <Star size={18} color="var(--gold-primary)" />
-                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginRight: '1rem' }}>
-                    {(userData.role !== 'student' && !userData.studentViewActive) ? 'Infinito (Staff)' : `${userData.xp || 0} XP`}
-                  </span>
-                  <Coins size={18} color="var(--gold-primary)" />
-                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
-                    {userData.role !== 'student' ? '' : `${userData.coins || 0} Moedas`}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Coins size={18} color="var(--gold-primary)" />
-                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
-                    {(userData.role !== 'student' && !userData.studentViewActive) ? 'Infinito (Staff)' : `${userData.coins || 0} Moedas`}
-                  </span>
-                </>
-              )}
-            </div>
+          <div style={{ color: 'var(--text-secondary)', background: 'var(--bg-badge)', padding: '0.35rem 0.65rem', borderRadius: '12px', fontSize: '0.8rem', marginLeft: 'auto' }}>
+            Mochila: <strong style={{ color: myInventoryCount >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{myInventoryCount}</strong> / {maxInventorySpace}
           </div>
         </div>
       </div>
 
-      {activeTab === 'official' && (
-        <div style={getGridStyle()}>
-        {processedItems.map(item => {
-          const isStaff = userData.role !== 'student' && !userData.studentViewActive;
-          const itemQty = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
-          const discountMultiplier = Math.max(0.5, 1 - (totalEquippedStats.persuasion / 100));
-          const totalCost = Math.floor(item.cost * discountMultiplier) * itemQty;
-          const ratio = economyType === 'xp' ? (economySettings?.coinToXPRatio || 10) : 1;
-          const totalCostCoins = Math.floor(item.cost * ratio * discountMultiplier) * itemQty;
-          
-          const canAfford = isStaff || currentBalance >= (economyType === 'xp' ? totalCost : totalCostCoins);
-          const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
-          const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-          const meetsRank = isStaff || currentRankIndex >= item.minRankRequired;
-          const isGiftingThis = giftingItemId === item.id;
+      {/* Container Rolável Exclusivo dos Itens */}
+      <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.25rem' }}>
+        {activeTab === 'official' && (
+          <div className={viewMode === 'list' ? 'store-grid-list' : ''} style={getGridStyle()}>
+          {processedItems.map(item => {
+            const isStaff = userData.role !== 'student' && !userData.studentViewActive;
+            const itemQty = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
+            const discountMultiplier = Math.max(0.5, 1 - (totalEquippedStats.persuasion / 100));
+            const totalCost = Math.floor(item.cost * discountMultiplier) * itemQty;
+            const ratio = economyType === 'xp' ? (economySettings?.coinToXPRatio || 10) : 1;
+            const totalCostCoins = Math.floor(item.cost * ratio * discountMultiplier) * itemQty;
+            
+            const canAfford = isStaff || currentBalance >= (economyType === 'xp' ? totalCost : totalCostCoins);
+            const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
+            const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
+            const meetsRank = isStaff || currentRankIndex >= item.minRankRequired;
+            const isGiftingThis = giftingItemId === item.id;
 
-          const isList = viewMode === 'list';
+            const isList = viewMode === 'list';
 
-          return (
-            <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
-              <div style={{ position: 'relative', width: isList ? '90px' : '100%', aspectRatio: isList ? 'none' : '1', minHeight: isList ? '90px' : undefined, background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
-                  <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={60} />
-                ) : (
-                  <ItemIcon item={item} size={isList ? 90 : 120} />
-                )}
-                {item.type === 'equippable' && (
-                  <div style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.8)', padding: '2px', borderRadius: '3px' }}>
-                    <Swords size={11} color="var(--gold-primary)" />
-                  </div>
-                )}
-                {(item.type === 'equippable' || item.gameEffect === 'unlock_skin') && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setPreviewItem(item); }}
-                    title="Ver no Personagem"
-                    style={{
+            return (
+              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
+                <div className={isList ? 'store-list-card-media' : ''} style={{ position: 'relative', width: isList ? '75px' : '100%', aspectRatio: isList ? 'none' : '1', minHeight: isList ? '75px' : undefined, background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
+                    <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={50} />
+                  ) : (
+                    <ItemIcon item={item} size={isList ? 70 : 120} />
+                  )}
+                  {item.type === 'equippable' && (
+                    <div style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.8)', padding: '2px', borderRadius: '3px' }}>
+                      <Swords size={11} color="var(--gold-primary)" />
+                    </div>
+                  )}
+                  {(item.type === 'equippable' || item.gameEffect === 'unlock_skin') && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPreviewItem(item); }}
+                      title="Ver no Personagem"
+                      style={{
+                        position: 'absolute',
+                        bottom: '4px',
+                        right: '4px',
+                        background: 'rgba(0,0,0,0.7)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '3px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-secondary)',
+                        zIndex: 6
+                      }}
+                    >
+                      <Eye size={12} />
+                    </button>
+                  )}
+                  {item.type === 'consumable' && (
+                    <div style={{
                       position: 'absolute',
                       bottom: '4px',
-                      right: '4px',
-                      background: 'rgba(0,0,0,0.7)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      padding: '3px',
-                      cursor: 'pointer',
+                      left: '4px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--text-secondary)',
+                      gap: '2px',
+                      background: 'rgba(0,0,0,0.7)',
+                      borderRadius: '4px',
+                      padding: '2px 4px',
                       zIndex: 6
-                    }}
-                  >
-                    <Eye size={12} />
-                  </button>
-                )}
-                {item.type === 'consumable' && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '4px',
-                    left: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '2px',
-                    background: 'rgba(0,0,0,0.7)',
-                    borderRadius: '4px',
-                    padding: '2px 4px',
-                    zIndex: 6
-                  }}>
-                    <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Qtd:</span>
-                    <input 
-                      type="number" 
-                      min="1" 
-                      max="999" 
-                      value={quantities[item.id] || 1} 
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => setQuantities({...quantities, [item.id]: Math.max(1, Math.min(999, parseInt(e.target.value) || 1))})}
-                      style={{ width: '32px', padding: '1px 2px', borderRadius: '4px', background: 'rgba(255,255,255,0.15)', color: 'white', border: 'none', fontSize: '0.65rem', textAlign: 'center' }}
-                    />
+                    }}>
+                      <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Qtd:</span>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        max="999" 
+                        value={quantities[item.id] || 1} 
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setQuantities({...quantities, [item.id]: Math.max(1, Math.min(999, parseInt(e.target.value) || 1))})}
+                        style={{ width: '32px', padding: '1px 2px', borderRadius: '4px', background: 'rgba(255,255,255,0.15)', color: 'white', border: 'none', fontSize: '0.65rem', textAlign: 'center' }}
+                      />
+                    </div>
+                  )}
+                  <div className={`rarity-badge ${item.rarity || 'common'}`}>
+                    {getRarityLabel(item.rarity)}
                   </div>
-                )}
-                <div className={`rarity-badge ${item.rarity || 'common'}`}>
-                  {getRarityLabel(item.rarity)}
-                </div>
-                {viewMode !== 'list' && (
-                  <div style={{ position: 'absolute', top: '4px', right: '4px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.7rem' }}>
-                     {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
-                  </div>
-                )}
-              </div>
-              <div style={{ padding: '0.6rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.3rem', minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
-                  <h3 style={{ fontSize: '0.85rem', margin: 0, wordBreak: 'break-word', flex: 1, lineHeight: 1.2 }}>{item.title}</h3>
-                  {isList && (
-                    <div style={{ flexShrink: 0, background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.7rem' }}>
+                  {viewMode !== 'list' && (
+                    <div style={{ position: 'absolute', top: '4px', right: '4px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.7rem' }}>
                        {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' Moedas'}`}
                     </div>
                   )}
                 </div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: 0, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: viewMode === 'list' ? 2 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                  {item.description}
-                </p>
-                
-                {!meetsRank ? (
-                  <div style={{ padding: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--accent-red)', borderRadius: '8px', color: 'var(--accent-red)', fontSize: '0.9rem', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                    <ShieldAlert size={16} /> Requer Patente: {RANKS[item.minRankRequired]?.name}
+                <div style={{ padding: '0.5rem 0.65rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.25rem', minWidth: 0, justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
+                    <h3 title={item.title} style={{ fontSize: '0.85rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, lineHeight: 1.2, fontWeight: 'bold' }}>{item.title}</h3>
+                    {isList && (
+                      <div style={{ flexShrink: 0, background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.7rem' }}>
+                         {isStaff ? 'Grátis' : `${economyType === 'xp' ? totalCost + ' XP' : totalCostCoins + ' M'}`}
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    {!isGiftingThis ? (
-                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                        
-                        <div style={{ display: 'flex', gap: '0.3rem', flex: 1, flexWrap: 'wrap' }}>
-                        {economyType === 'xp' ? (
-                           <>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', margin: 0, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {item.description}
+                  </p>
+                  
+                  {!meetsRank ? (
+                    <div style={{ padding: '0.4rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--accent-red)', borderRadius: '6px', color: 'var(--accent-red)', fontSize: '0.75rem', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
+                      <ShieldAlert size={14} /> Requer Patente: {RANKS[item.minRankRequired]?.name}
+                    </div>
+                  ) : (
+                    <>
+                      {!isGiftingThis ? (
+                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'nowrap', alignItems: 'center', marginTop: '0.2rem' }}>
+                          
+                          <div style={{ display: 'flex', gap: '0.3rem', flex: 1 }}>
+                          {economyType === 'xp' ? (
+                             <>
+                              <button 
+                                className="login-btn hover-brightness" 
+                                disabled={!canAfford || purchasing === item.id}
+                                title={canAfford ? 'Comprar com XP' : 'Sem XP'}
+                                onClick={() => handlePurchase(item, false, 'xp')}
+                                style={{ 
+                                  flex: 1,
+                                  background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
+                                  color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
+                                  border: 'none', 
+                                  padding: '0.3rem 0.4rem',
+                                  opacity: canAfford ? 1 : 0.5,
+                                  cursor: canAfford ? 'pointer' : 'not-allowed',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '0.25rem'
+                                }}
+                              >
+                                {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
+                                  <>
+                                    <Star size={13} fill="currentColor" />
+                                    <span style={{ fontWeight: 'bold', fontSize: '0.75rem' }}>{totalCost}</span>
+                                  </>
+                                )}
+                              </button>
+                              {economySettings?.coinsCanBuyItems && (
+                                <button 
+                                  className="login-btn hover-brightness" 
+                                  disabled={isStaff ? false : ((userData.coins || 0) < totalCostCoins) || purchasing === item.id}
+                                  title={(isStaff || (userData.coins || 0) >= totalCostCoins) ? 'Comprar com Moedas' : 'Sem Moedas'}
+                                  onClick={() => handlePurchase(item, false, 'coins')}
+                                  style={{ 
+                                    flex: 1,
+                                    background: (isStaff || (userData.coins || 0) >= totalCostCoins) ? 'var(--btn-bg)' : 'rgba(255,255,255,0.05)', 
+                                    color: (isStaff || (userData.coins || 0) >= totalCostCoins) ? 'var(--gold-primary)' : 'var(--text-secondary)', 
+                                    border: '1px solid var(--border-glass)', 
+                                    padding: '0.3rem 0.4rem',
+                                    opacity: (isStaff || (userData.coins || 0) >= totalCostCoins) ? 1 : 0.5,
+                                    cursor: (isStaff || (userData.coins || 0) >= totalCostCoins) ? 'pointer' : 'not-allowed',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.25rem'
+                                  }}
+                                >
+                                  {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
+                                    <>
+                                      <Coins size={13} />
+                                      <span style={{ fontWeight: 'bold', fontSize: '0.75rem' }}>{totalCostCoins}</span>
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                             </>
+                          ) : (
                             <button 
                               className="login-btn hover-brightness" 
                               disabled={!canAfford || purchasing === item.id}
-                              title={canAfford ? 'Comprar com XP' : 'Sem XP'}
-                              onClick={() => handlePurchase(item, false, 'xp')}
+                              title={canAfford ? 'Comprar com Moedas' : 'Sem Moedas'}
+                              onClick={() => handlePurchase(item, false, 'coins')}
                               style={{ 
                                 flex: 1,
                                 background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
                                 color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
                                 border: 'none', 
-                                padding: '0.35rem 0.5rem',
+                                padding: '0.3rem 0.4rem',
                                 opacity: canAfford ? 1 : 0.5,
                                 cursor: canAfford ? 'pointer' : 'not-allowed',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '0.3rem'
+                                gap: '0.25rem'
                               }}
                             >
                               {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
                                 <>
-                                  <Star size={14} fill="currentColor" />
-                                  <span style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>{totalCost}</span>
+                                  <Coins size={13} />
+                                  <span style={{ fontWeight: 'bold', fontSize: '0.75rem' }}>{totalCostCoins}</span>
                                 </>
                               )}
                             </button>
-                            {economySettings?.coinsCanBuyItems && (
-                              <button 
-                                className="login-btn hover-brightness" 
-                                title={(isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'Comprar com Moedas' : 'Sem Moedas'}
-                                disabled={(isStaff ? false : ((userData.coins || 0) < totalCostCoins)) || purchasing === item.id}
-                                onClick={() => handlePurchase(item, false, 'coins')}
-                                style={{ 
-                                  flex: 1,
-                                  background: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? '#fbbf24' : 'rgba(255,255,255,0.1)', 
-                                  color: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'black' : 'var(--text-secondary)', 
-                                  border: 'none', 
-                                  padding: '0.35rem 0.5rem',
-                                  opacity: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 1 : 0.5,
-                                  cursor: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'pointer' : 'not-allowed',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  gap: '0.3rem'
-                                }}
-                              >
-                                {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
-                                  <>
-                                    <Coins size={14} fill="currentColor" />
-                                    <span style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>{totalCostCoins}</span>
-                                  </>
-                                )}
-                              </button>
-                            )}
-                           </>
-                        ) : economyType === 'coins' ? (
-                            <button 
-                              className="login-btn hover-brightness" 
-                              title={(isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'Comprar com Moedas' : 'Sem Moedas'}
-                              disabled={(isStaff ? false : ((userData.coins || 0) < totalCostCoins)) || purchasing === item.id}
-                              onClick={() => handlePurchase(item, false, 'coins')}
-                              style={{ 
-                                flex: 1,
-                                background: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? '#fbbf24' : 'rgba(255,255,255,0.1)', 
-                                color: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'black' : 'var(--text-secondary)', 
-                                border: 'none', 
-                                padding: '0.35rem 0.5rem',
-                                opacity: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 1 : 0.5,
-                                cursor: (isStaff ? true : ((userData.coins || 0) >= totalCostCoins)) ? 'pointer' : 'not-allowed',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '0.3rem'
-                              }}
-                            >
-                              {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
-                                <>
-                                  <Coins size={14} fill="currentColor" />
-                                  <span style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>{totalCostCoins}</span>
-                                </>
-                              )}
-                            </button>
-                        ) : (
-                          <button 
-                            className="login-btn hover-brightness" 
-                            title={canAfford ? 'Comprar' : 'Sem Saldo'}
-                            disabled={!canAfford || purchasing === item.id}
-                            onClick={() => handlePurchase(item, false)}
-                            style={{ 
-                              flex: 1,
-                              background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
-                              color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
-                              border: 'none', 
-                              padding: '0.35rem 0.5rem',
-                              opacity: canAfford ? 1 : 0.5,
-                              cursor: canAfford ? 'pointer' : 'not-allowed',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '0.3rem'
-                            }}
-                          >
-                            {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : (
-                                <>
-                                  <ShoppingCart size={14} />
-                                  <span style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>Comprar</span>
-                                </>
-                              )}
-                          </button>
-                        )}
-                          {(userData.role !== 'student' && !userData.studentViewActive || giftWrapItemIds.length > 0) && (
-                            <button 
-                              className="login-btn hover-brightness"
-                              disabled={false}
-                              title="Dar de Presente"
+                          )}
+                          </div>
+
+                          {((userData.role !== 'student' && !userData.studentViewActive) || giftWrapItemIds.length > 0) && (
+                            <button
                               onClick={() => setGiftingItemId(item.id)}
-                              style={{ 
-                                flex: 1,
-                                maxWidth: '40px',
-                                background: 'rgba(251, 191, 36, 0.1)', 
-                                color: 'var(--gold-primary)', 
-                                border: '1px solid var(--gold-primary)', 
-                                padding: '0.35rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer'
-                              }}
+                              className="login-btn hover-brightness"
+                              title="Presentear um Colega (Gasta 1 Embalagem)"
+                              style={{ padding: '0.3rem 0.45rem', background: 'rgba(168, 85, 247, 0.2)', border: '1px solid #a855f7', color: '#c084fc', borderRadius: '8px' }}
                             >
-                              <Gift size={14} />
+                              <Gift size={13} />
                             </button>
                           )}
                         </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <select 
-                          value={selectedGiftRecipient} 
-                          onChange={(e) => setSelectedGiftRecipient(e.target.value)}
-                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
-                        >
-                          <option value="">Selecione o Aluno...</option>
-                          {students.filter(s => s.uid !== userData.uid).map(s => (
-                            <option key={s.uid} value={s.uid}>{s.name} ({s.classId || 'Sem Turma'})</option>
-                          ))}
-                        </select>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button onClick={() => { setGiftingItemId(null); setSelectedGiftRecipient(''); }} style={{ flex: 1, background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', borderRadius: '8px', padding: '0.5rem' }}>Cancelar</button>
-                          {economyType === 'xp' ? (
-                            <>
-                              <button 
-                                disabled={!selectedGiftRecipient || (!canAfford && !isStaff) || purchasing === item.id} 
-                                onClick={() => handlePurchase(item, true, 'xp')} 
-                                style={{ flex: 1, background: 'var(--gold-primary)', border: 'none', color: 'var(--text-on-gold, #000000)', borderRadius: '8px', padding: '0.5rem', fontWeight: 'bold' }}
-                              >
-                                Enviar ({item.cost} XP)
-                              </button>
-                              {economySettings?.coinsCanBuyItems && (
-                                <button 
-                                  disabled={!selectedGiftRecipient || (!isStaff && (userData.coins || 0) < totalCostCoins) || purchasing === item.id} 
-                                  onClick={() => handlePurchase(item, true, 'coins')} 
-                                  style={{ flex: 1, background: '#fbbf24', border: 'none', color: 'black', borderRadius: '8px', padding: '0.5rem', fontWeight: 'bold' }}
-                                >
-                                  Enviar ({totalCostCoins} Moedas)
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <button 
-                              disabled={!selectedGiftRecipient || (!canAfford && !isStaff) || purchasing === item.id} 
-                              onClick={() => handlePurchase(item, true)} 
-                              style={{ flex: 1, background: 'var(--gold-primary)', border: 'none', color: 'var(--text-on-gold, #000000)', borderRadius: '8px', padding: '0.5rem', fontWeight: 'bold' }}
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', background: 'rgba(0,0,0,0.4)', padding: '0.4rem', borderRadius: '8px', border: '1px solid #a855f7', marginTop: '0.2rem' }}>
+                          <span style={{ fontSize: '0.7rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <Gift size={11} /> Escolha o colega:
+                          </span>
+                          <select
+                            value={selectedGiftRecipient}
+                            onChange={(e) => setSelectedGiftRecipient(e.target.value)}
+                            style={{ width: '100%', padding: '0.25rem', borderRadius: '4px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.75rem' }}
+                          >
+                            <option value="">Selecione um aluno...</option>
+                            {students.filter(s => s.uid !== userData.uid).map(s => (
+                              <option key={s.uid} value={s.uid}>{s.name} ({s.classId || 'Sem Turma'})</option>
+                            ))}
+                          </select>
+                          <div style={{ display: 'flex', gap: '0.25rem' }}>
+                            <button
+                              onClick={() => { setGiftingItemId(null); setSelectedGiftRecipient(''); }}
+                              style={{ flex: 1, padding: '0.25rem', borderRadius: '4px', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', fontSize: '0.7rem', cursor: 'pointer' }}
                             >
-                              Enviar
+                              Cancelar
                             </button>
-                          )}
+                            <button
+                              disabled={!selectedGiftRecipient || !canAfford || purchasing === item.id}
+                              onClick={() => handlePurchase(item, true, economyType)}
+                              style={{ flex: 1, padding: '0.25rem', borderRadius: '4px', background: selectedGiftRecipient && canAfford ? '#a855f7' : 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '0.7rem', cursor: selectedGiftRecipient && canAfford ? 'pointer' : 'not-allowed' }}
+                            >
+                              {purchasing === item.id ? '...' : 'Enviar'}
+                            </button>
+                          </div>
                         </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {processedItems.length === 0 && (
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
+              <Store size={48} style={{ margin: '0 auto 1rem auto', opacity: 0.5 }} />
+              <p>Nenhum item encontrado.</p>
+            </div>
+          )}
+        </div>
+        )}
+
+        {activeTab === 'market' && (
+        <div className={viewMode === 'list' ? 'store-grid-list' : ''} style={getGridStyle()}>
+          {processedMarketItems.length === 0 && (
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
+              Nenhum item encontrado no Bazar.
+            </div>
+          )}
+          {processedMarketItems.map(item => {
+            const isStaff = userData.role !== 'student' && !userData.studentViewActive;
+            const canAfford = isStaff || currentBalance >= (item.price || 0);
+            const isList = viewMode === 'list';
+            
+            return (
+              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
+                <div className={isList ? 'store-list-card-media' : ''} style={{ width: isList ? '75px' : '100%', height: isList ? '75px' : undefined, aspectRatio: isList ? 'none' : '1', background: 'rgba(0,0,0,0.5)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-glass)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ItemIcon item={item} size={isList ? 70 : 80} />
+                </div>
+                <div className={`rarity-badge ${item.rarity || 'common'}`}>
+                  {getRarityLabel(item.rarity)}
+                </div>
+                {item.quantity && item.quantity > 1 && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '5px',
+                    right: '5px',
+                    color: 'white',
+                    textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
+                    fontSize: '1.1rem',
+                    fontWeight: 'bold',
+                    zIndex: 2,
+                    pointerEvents: 'none',
+                    lineHeight: 1
+                  }}>
+                    {item.quantity}
+                  </div>
+                )}
+                {!isList && (
+                  <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                    {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}
+                  </div>
+                )}
+                <div style={{ padding: '0.5rem 0.65rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.25rem', minWidth: 0, justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
+                    <h3 title={item.itemTitle} style={{ fontSize: viewMode === 'grid-small' ? '0.85rem' : '0.95rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, lineHeight: 1.2, fontWeight: 'bold' }}>{item.itemTitle}</h3>
+                    {isList && (
+                      <div style={{ flexShrink: 0, background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.75rem' }}>
+                        {item.price || 0} {economyType === 'xp' ? 'XP' : 'M'}
                       </div>
                     )}
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        {processedItems.length === 0 && (
-          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-            <Store size={48} style={{ margin: '0 auto 1rem auto', opacity: 0.5 }} />
-            <p>Nenhum item encontrado.</p>
-          </div>
-        )}
-      </div>
-      )}
-
-      {activeTab === 'market' && (
-      <div style={getGridStyle()}>
-        {processedMarketItems.length === 0 && (
-          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-            Nenhum item encontrado no Bazar.
-          </div>
-        )}
-        {processedMarketItems.map(item => {
-          const isStaff = userData.role !== 'student' && !userData.studentViewActive;
-          const canAfford = isStaff || currentBalance >= (item.price || 0);
-          const isList = viewMode === 'list';
-          
-          return (
-            <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
-              <div style={{ width: '80px', height: '80px', background: 'rgba(0,0,0,0.5)', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-glass)', flexShrink: 0 }}>
-                <ItemIcon item={item} size={80} />
-              </div>
-              <div className={`rarity-badge ${item.rarity || 'common'}`}>
-                {getRarityLabel(item.rarity)}
-              </div>
-              {item.quantity && item.quantity > 1 && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '5px',
-                  right: '5px',
-                  color: 'white',
-                  textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
-                  fontSize: '1.1rem',
-                  fontWeight: 'bold',
-                  zIndex: 2,
-                  pointerEvents: 'none',
-                  lineHeight: 1
-                }}>
-                  {item.quantity}
-                </div>
-              )}
-              {!isList && (
-                <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                  {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}
-                </div>
-              )}
-              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.5rem', minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                  <h3 style={{ fontSize: viewMode === 'grid-small' ? '1rem' : '1.25rem', margin: 0, wordBreak: 'break-word', flex: 1 }}>{item.itemTitle}</h3>
-                  {isList && (
-                    <div style={{ flexShrink: 0, background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                      {item.price || 0} {economyType === 'xp' ? 'XP' : 'M'}
-                    </div>
-                  )}
-                </div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-                  Vendido por: <strong style={{ color: 'var(--gold-primary)' }}>
-                    {item.sellerName?.split(' ')[0]} 
-                    {item.sellerClassName && <span style={{ color: item.sellerClassColor || 'inherit' }}> | {item.sellerClassName}</span>}
-                  </strong>
-                </p>
-                {viewMode !== 'grid-small' && items.find(si => si.id === item.itemId)?.description && (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0 0 0.5rem 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {items.find(si => si.id === item.itemId)?.description}
-                  </p>
-                )}
-                <div style={{ flex: 1, marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
-                      {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
-                    </span>
                   </div>
-                  {item.itemType === 'equippable' && item.baseAttributeType && item.baseAttributeType !== 'none' && (
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem' }}>
-                      <div style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                        <strong style={{ color: 'var(--gold-primary)' }}>+{item.baseAttributeValue}</strong> {getAttributeName(item.baseAttributeType)}
-                      </div>
-                      {item.adds && item.adds.length > 0 && item.adds.map((add, idx) => (
-                        <div key={idx} style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <span style={{ color: 'var(--border-glass)' }}>|</span>
-                          <span><strong style={{ color: '#60A5FA' }}>+{add.value}</strong> {getAttributeName(add.type)}</span>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    Vendido por: <strong style={{ color: 'var(--gold-primary)' }}>
+                      {item.sellerName?.split(' ')[0]} 
+                      {item.sellerClassName && <span style={{ color: item.sellerClassColor || 'inherit' }}> | {item.sellerClassName}</span>}
+                    </strong>
+                  </p>
+                  {viewMode !== 'grid-small' && items.find(si => si.id === item.itemId)?.description && (
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {items.find(si => si.id === item.itemId)?.description}
+                    </p>
+                  )}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.2rem' }}>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
+                        {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
+                      </span>
+                    </div>
+                    {item.itemType === 'equippable' && item.baseAttributeType && item.baseAttributeType !== 'none' && (
+                      <div style={{ fontSize: '0.75rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem' }}>
+                        <div style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                          <strong style={{ color: 'var(--gold-primary)' }}>+{item.baseAttributeValue}</strong> {getAttributeName(item.baseAttributeType)}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                
-                <div style={{ display: 'flex', gap: '0.5rem', width: '100%', marginTop: 'auto', flexWrap: 'wrap' }}>
-                  {item.studentId === userData.uid ? (
-                    <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
-                      <button 
-                        className="login-btn hover-brightness" 
-                        onClick={() => handleEditPrice(item)}
-                        title="Editar Preço"
-                        style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '0.5rem' }}
-                      >
-                        <Edit3 size={18} />
-                      </button>
-                      <button 
-                        className="login-btn hover-brightness" 
-                        onClick={() => handleCancelSale(item)}
-                        title="Cancelar Venda"
-                        style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.5rem' }}
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button 
-                      className="login-btn hover-brightness" 
-                      disabled={!canAfford || purchasing === item.id}
-                      onClick={() => {
-                        setMarketBuyModalItem(item);
-                        setMarketBuyQuantity(1);
-                        setMarketBuyPaymentMethod('xp');
-                      }}
-                      title={canAfford ? 'Comprar' : 'Sem Saldo'}
-                      style={{ 
-                        flex: 1,
-                        display: 'flex', justifyContent: 'center', alignItems: 'center',
-                        background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
-                        color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
-                        border: 'none', 
-                        padding: '0.5rem',
-                        opacity: canAfford ? 1 : 0.5,
-                        cursor: canAfford ? 'pointer' : 'not-allowed'
-                      }}
-                    >
-                      {purchasing === item.id ? <span style={{ fontSize: '0.8rem' }}>...</span> : <ShoppingCart size={18} />}
-                    </button>
-                  )}
+                        {item.adds && item.adds.length > 0 && item.adds.map((add, idx) => (
+                          <div key={idx} style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <span style={{ color: 'var(--border-glass)' }}>|</span>
+                            <span><strong style={{ color: '#60A5FA' }}>+{add.value}</strong> {getAttributeName(add.type)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   
-                  {(item.itemType === 'equippable' || item.gameEffect === 'unlock_skin') && (
-                    <button
-                      className="login-btn hover-brightness"
-                      onClick={() => setPreviewItem(item)}
-                      title="Ver no Personagem"
-                      style={{
-                        flex: 1,
-                        background: 'var(--btn-bg)',
-                        color: 'var(--text-primary)',
-                        border: '1px solid var(--border-glass)',
-                        padding: '0.5rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <Eye size={18} />
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', gap: '0.3rem', width: '100%', marginTop: '0.2rem', alignItems: 'center' }}>
+                    {item.studentId === userData.uid ? (
+                      <div style={{ display: 'flex', gap: '0.3rem', flex: 1 }}>
+                        <button 
+                          className="login-btn hover-brightness" 
+                          onClick={() => handleEditPrice(item)}
+                          title="Editar Preço"
+                          style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '0.35rem' }}
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <button 
+                          className="login-btn hover-brightness" 
+                          onClick={() => handleCancelSale(item)}
+                          title="Cancelar Venda"
+                          style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.35rem' }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        className="login-btn hover-brightness" 
+                        disabled={!canAfford || purchasing === item.id}
+                        onClick={() => {
+                          setMarketBuyModalItem(item);
+                          setMarketBuyQuantity(1);
+                          setMarketBuyPaymentMethod('xp');
+                        }}
+                        title={canAfford ? 'Comprar' : 'Sem Saldo'}
+                        style={{ 
+                          flex: 1,
+                          display: 'flex', justifyContent: 'center', alignItems: 'center',
+                          background: canAfford ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)', 
+                          color: canAfford ? 'var(--text-on-gold, #000000)' : 'var(--text-secondary)', 
+                          border: 'none', 
+                          padding: '0.35rem',
+                          opacity: canAfford ? 1 : 0.5,
+                          cursor: canAfford ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        {purchasing === item.id ? <span style={{ fontSize: '0.75rem' }}>...</span> : <ShoppingCart size={15} />}
+                      </button>
+                    )}
+                    
+                    {(item.itemType === 'equippable' || item.gameEffect === 'unlock_skin') && (
+                      <button
+                        className="login-btn hover-brightness"
+                        onClick={() => setPreviewItem(item)}
+                        title="Ver no Personagem"
+                        style={{
+                          background: 'var(--btn-bg)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-glass)',
+                          padding: '0.35rem 0.5rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Eye size={15} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+        )}
       </div>
-      )}
 
       {marketBuyModalItem && (
         <div className="modal-overlay">

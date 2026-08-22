@@ -718,26 +718,69 @@ export default function LiveQuestStudent() {
     await supabase.from('user_items').delete().eq('id', item.id);
   };
 
-  if (session.status === 'question' || session.status === 'reveal') {
-    const hasAnswered = me.currentAnswer !== null && me.currentAnswer !== undefined;
     const currentHp = me.hp !== undefined ? me.hp : (userData?.hp || maxHearts);
-    const isEliminated = currentHp <= 0;
-    const hpPercentage = (currentHp / maxHearts) * 100;
-    const stressLevel = Math.max(0, (maxHearts - currentHp) / maxHearts);
-    const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
+    const isEliminated = currentHp <= 0 || !!me.hasSurrendered;
 
-    let baseAnim: 'idle' | 'exhausted' | 'dead' = 'idle';
-    let baseExp: 'normal' | 'serious' | 'sad' = 'normal';
-    if (isEliminated) {
-      baseAnim = 'dead';
-      baseExp = 'sad';
-    } else if (hpPercentage < 50) {
-      baseAnim = 'exhausted';
-      baseExp = hpPercentage < 25 ? 'sad' : 'serious';
-    } else if (hpPercentage < 75) {
-      baseAnim = 'idle';
-      baseExp = 'serious';
+    // Estado CONGELADO para jogador eliminado: não pisca nem muda de tela entre perguntas
+    if (isEliminated && session.status !== 'finished') {
+      return (
+        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '2rem', background: 'var(--bg-primary)' }}>
+          <div style={{ background: 'rgba(239, 68, 68, 0.12)', border: '2px solid var(--accent-red)', padding: '2.5rem 2rem', borderRadius: '24px', maxWidth: '550px', width: '100%', boxShadow: '0 0 40px rgba(239, 68, 68, 0.25)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            
+            <div style={{ height: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '1rem' }}>
+              {me.avatarConfig && (
+                <AvatarCharacter
+                  config={me.avatarConfig}
+                  equippedItems={me.equippedItems || []}
+                  size={140}
+                  interactive={false}
+                  animation="death-fall"
+                  expression="sad"
+                  role="player"
+                  hurt={true}
+                />
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-red)', marginBottom: '0.5rem' }}>
+              <Skull size={32} />
+              <h2 style={{ fontSize: '2rem', margin: 0, fontWeight: 'bold' }}>Abatido em Combate</h2>
+            </div>
+
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: '0.5rem 0 1.5rem 0', lineHeight: '1.5' }}>
+              Seus corações se esgotaram. Acompanhe a batalha pelo telão! Quando a missão terminar, você se juntará aos seus colegas no pódio.
+            </p>
+
+            <button 
+              onClick={handleSurrender} 
+              style={{ background: 'transparent', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.2)', padding: '0.6rem 1.5rem', borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer', transition: '0.2s' }}
+              className="hover-brightness"
+            >
+              Abandonar Batalha
+            </button>
+          </div>
+        </div>
+      );
     }
+
+    if (session.status === 'question' || session.status === 'reveal') {
+      const hasAnswered = me.currentAnswer !== null && me.currentAnswer !== undefined;
+      const hpPercentage = (currentHp / maxHearts) * 100;
+      const stressLevel = Math.max(0, (maxHearts - currentHp) / maxHearts);
+      const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
+
+      let baseAnim: 'idle' | 'exhausted' | 'death-fall' = 'idle';
+      let baseExp: 'normal' | 'serious' | 'sad' = 'normal';
+      if (isEliminated) {
+        baseAnim = 'death-fall';
+        baseExp = 'sad';
+      } else if (hpPercentage < 50) {
+        baseAnim = 'exhausted';
+        baseExp = hpPercentage < 25 ? 'sad' : 'serious';
+      } else if (hpPercentage < 75) {
+        baseAnim = 'idle';
+        baseExp = 'serious';
+      }
     const activeStudentAnim = (studentAnim === 'attack' || studentAnim === 'hurt') ? studentAnim : baseAnim;
 
     return (
@@ -1020,7 +1063,7 @@ export default function LiveQuestStudent() {
                 <h2 style={{ color: 'var(--text-secondary)' }}>Aguardando o tempo da rodada acabar...</h2>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '1rem', height: '100%', padding: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '0.75rem', height: '100%', padding: '0.5rem', boxSizing: 'border-box' }}>
                 {[0, 1, 2, 3].map((idx) => {
                   const isEliminatedOpt = eliminatedOptions.includes(idx);
                   return (
@@ -1032,11 +1075,15 @@ export default function LiveQuestStudent() {
                         border: isEliminatedOpt ? '1px solid var(--border-glass)' : 'none',
                         borderRadius: '16px',
                         color: isEliminatedOpt  ? 'rgba(255,255,255,0.2)'  : 'var(--text-primary)',
-                        fontSize: '4rem',
+                        fontSize: 'clamp(2.5rem, 7vw, 4rem)',
                         fontWeight: 'bold',
                         cursor: isEliminatedOpt ? 'not-allowed' : 'pointer',
-                        boxShadow: isEliminatedOpt ? 'none' : '0 8px 0 rgba(0,0,0,0.3)',
+                        boxShadow: isEliminatedOpt ? 'none' : '0 6px 0 rgba(0,0,0,0.3)',
                         transition: 'transform 0.1s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minHeight: '60px'
                       }}
                       onMouseDown={(e) => { if (!isEliminatedOpt) e.currentTarget.style.transform = 'translateY(4px)'; }}
                       onMouseUp={(e) => { if (!isEliminatedOpt) e.currentTarget.style.transform = 'none'; }}
@@ -1114,20 +1161,12 @@ export default function LiveQuestStudent() {
   }
 
   if (session.status === 'finished') {
-    if (me.wonChest && !chestOpened) {
-      // Immediately clear wonChest from Firestore to prevent re-claiming on revisit
-      supabase.from('live_quests').select('players').eq('id', sessionId!).single().then(({ data: sess }) => {
-        if (sess && sess.players && sess.players[userData!.uid]) {
-          delete sess.players[userData!.uid].wonChest;
-          supabase.from('live_quests').update({ players: sess.players }).eq('id', sessionId!).then();
-        }
-      });
-
+    if (me?.wonChest && !chestOpened) {
       return (
-        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
-          {!chestOpened ? (
-            <ChestReveal onOpen={async () => {
-              // Remove wonChest from Firestore so re-entering the page doesn't show chest again
+        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', padding: '1rem' }}>
+          <ChestReveal 
+            onOpen={async () => {
+              // Somente após o jogador abrir o baú, removemos a pendência
               try {
                 const { data: sess } = await supabase.from('live_quests').select('players').eq('id', sessionId!).single();
                 if (sess && sess.players && sess.players[userData!.uid]) {
@@ -1136,59 +1175,72 @@ export default function LiveQuestStudent() {
                 }
               } catch(e) { console.error(e); }
               setChestOpened(true);
-            }} title={`Parabéns pelo ${me.wonChest.place}º Lugar!`} chestModelUrl={selectedChestModel?.url} chestOpenUrl={selectedChestModel?.open_url} rarity={selectedChestModel?.rarity} />
-          ) : (
-            <div style={{ textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
-              <h2 style={{ fontSize: '3rem', color: 'var(--gold-primary)', marginBottom: '3rem', textShadow: '0 0 20px var(--gold-primary)' }}>Recompensas Adquiridas!</h2>
-              
-              {me.wonChest.coins > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'rgba(251, 191, 36, 0.1)', border: '1px solid var(--gold-primary)', padding: '1rem 2rem', borderRadius: '12px', marginBottom: '2rem' }}>
-                  <Coins size={40} color="var(--gold-primary)" />
-                  <span style={{ fontSize: '2rem', color: 'white', fontWeight: 'bold' }}>+{me.wonChest.coins} Moedas</span>
-                </div>
-              )}
+            }} 
+            title={`Parabéns pelo ${me.wonChest.place}º Lugar!`} 
+            subtitle="Abra o seu baú para resgatar os prêmios conquistados no pódio!"
+            chestModelUrl={selectedChestModel?.url} 
+            chestOpenUrl={selectedChestModel?.open_url} 
+            rarity={selectedChestModel?.rarity} 
+          />
+        </div>
+      );
+    }
 
-              {me.wonChest.items && me.wonChest.items.length > 0 && (
-                <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '3rem' }}>
-                  {me.wonChest.items.map((item, i) => (
-                    <div key={i} style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '180px' }}>
-                      {item.imageUrl ? (
-                        <img src={item.imageUrl} alt="" style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: '8px', marginBottom: '1rem' }} />
-                      ) : (
-                        <Package size={80} color="var(--gold-primary)" style={{ marginBottom: '1rem' }} />
-                      )}
-                      <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem' }}>{item.title}</span>
-                      <span style={{ color: 'var(--text-secondary)' }}>Quantidade: {item.quantity || 1}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>Acompanhe o pódio na tela do professor!</p>
-              <button 
-                onClick={() => {
-                  if (userData?.uid) sessionCache.invalidate(CACHE_KEYS.questAttempts(userData.uid));
-                  navigate('/dashboard');
-                }} 
-                style={{ marginTop: '2rem', padding: '1rem 3rem', background: 'var(--gold-primary)', color: 'var(--bg-primary)', fontSize: '1.5rem', borderRadius: '12px', fontWeight: 'bold' }}
-              >
-                Voltar ao Início
-              </button>
-            </div>
-          )}
+    if (me?.wonChest && chestOpened) {
+      return (
+        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
+          <div style={{ textAlign: 'center', animation: 'epicZoom 0.5s ease-out', maxWidth: '600px', width: '100%' }}>
+            <h2 style={{ fontSize: '2.5rem', color: 'var(--gold-primary)', marginBottom: '1.5rem', textShadow: '0 0 20px var(--gold-primary)' }}>Recompensas Resgatadas!</h2>
+            
+            {me.wonChest.coins > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'rgba(251, 191, 36, 0.1)', border: '1px solid var(--gold-primary)', padding: '1rem 2rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
+                <Coins size={36} color="var(--gold-primary)" />
+                <span style={{ fontSize: '1.8rem', color: 'white', fontWeight: 'bold' }}>+{me.wonChest.coins} Moedas</span>
+              </div>
+            )}
+
+            {me.wonChest.items && me.wonChest.items.length > 0 && (
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '2rem' }}>
+                {me.wonChest.items.map((item: any, i: number) => (
+                  <div key={i} style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '150px' }}>
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} alt="" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: '8px', marginBottom: '0.5rem' }} />
+                    ) : (
+                      <Package size={60} color="var(--gold-primary)" style={{ marginBottom: '0.5rem' }} />
+                    )}
+                    <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', fontSize: '1rem', marginBottom: '0.25rem', textAlign: 'center' }}>{item.title}</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Qtd: {item.quantity || 1}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>Acompanhe o pódio na tela do professor!</p>
+            <button 
+              onClick={() => {
+                if (userData?.uid) sessionCache.invalidate(CACHE_KEYS.questAttempts(userData.uid));
+                navigate('/dashboard');
+              }} 
+              className="login-btn"
+              style={{ marginTop: '1.5rem', padding: '0.8rem 2.5rem', background: 'var(--gold-primary)', color: 'var(--bg-primary)', fontSize: '1.2rem', borderRadius: '12px', fontWeight: 'bold' }}
+            >
+              Voltar ao Início
+            </button>
+          </div>
         </div>
       );
     }
     
     return (
-      <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
-        <h1 style={{ color: 'var(--gold-primary)', fontSize: '4rem', textShadow: '0 4px 8px rgba(0,0,0,0.5)' }}>Missão Concluída!</h1>
-        <p style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>Olhe para o telão para ver o pódio final.</p>
+      <div className="app-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', padding: '2rem', textAlign: 'center' }}>
+        <h1 style={{ color: 'var(--gold-primary)', fontSize: '3.5rem', textShadow: '0 4px 8px rgba(0,0,0,0.5)', margin: '0 0 1rem 0' }}>Missão Concluída!</h1>
+        <p style={{ fontSize: '1.3rem', color: 'var(--text-secondary)', margin: '0 0 2rem 0' }}>Olhe para o telão para ver a celebração e o pódio final.</p>
         <button 
           onClick={() => {
             if (userData?.uid) sessionCache.invalidate(CACHE_KEYS.questAttempts(userData.uid));
             navigate('/dashboard');
           }} 
-          style={{ marginTop: '3rem', padding: '1rem 3rem', background: 'var(--gold-primary)', color: 'var(--bg-primary)', fontSize: '1.5rem', borderRadius: '12px', fontWeight: 'bold' }}
+          className="login-btn"
+          style={{ padding: '0.8rem 2.5rem', background: 'var(--gold-primary)', color: 'var(--bg-primary)', fontSize: '1.2rem', borderRadius: '12px', fontWeight: 'bold' }}
         >
           Voltar ao Início
         </button>

@@ -5,6 +5,14 @@
   padding: 1rem 2rem;
   max-width: 1200px;
   margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    padding: 0.5rem 0.75rem;
+  }
 }
 
 .navbar {
@@ -18,6 +26,14 @@
   z-index: 50;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 1rem;
+    top: 0.5rem;
+  }
 }
 
 .logo-container {

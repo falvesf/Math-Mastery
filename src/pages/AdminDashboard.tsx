@@ -25,7 +25,7 @@ import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
 import PreAuthorizedStudentsManager from '../components/PreAuthorizedStudentsManager';
 import { useDialog } from '../contexts/DialogContext';
-import { validateCharacterName, normalizeForComparison } from '../lib/nameValidation';
+import { validateCharacterName, normalizeForComparison, formatFirstAndLastName } from '../lib/nameValidation';
 import { normalizeCombatCoinDrop } from '../lib/utils';
 
 export interface ClassDef {
@@ -91,6 +91,10 @@ export interface QuestDef {
   battleBgMoveDirection?: 'horizontal' | 'vertical' | 'diagonal';
   battleBgMoveSpeed?: number;
   battleBgMoveDuration?: number;
+  podiumBgUrl?: string;
+  podiumBgPosX?: number;
+  podiumBgPosY?: number;
+  podiumBgScale?: number;
   combatCoinDrop?: {
     minCoins?: number;
     maxCoins?: number;
@@ -537,6 +541,7 @@ export default function AdminDashboard() {
   const [questBattleBgMoveDirection, setQuestBattleBgMoveDirection] = useState<'horizontal' | 'vertical' | 'diagonal'>('diagonal');
   const [questBattleBgMoveSpeed, setQuestBattleBgMoveSpeed] = useState(10);
   const [questBattleBgMoveDuration, setQuestBattleBgMoveDuration] = useState(30);
+  const [questPodiumBgUrl, setQuestPodiumBgUrl] = useState('');
   const [showArenaBgEditor, setShowArenaBgEditor] = useState(false);
   const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], slotChances?: number[], dropChance?: number, chestModelId?: string}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
   const [questCombatCoinMin, setQuestCombatCoinMin] = useState(2);
@@ -1228,6 +1233,7 @@ export default function AdminDashboard() {
       battleBgMoveDirection: questBattleBgMoveDirection,
       battleBgMoveSpeed: questBattleBgMoveSpeed,
       battleBgMoveDuration: questBattleBgMoveDuration,
+      podiumBgUrl: questPodiumBgUrl || undefined,
       combatCoinDrop: {
         minCoins: questCombatCoinMin,
         maxCoins: questCombatCoinMax,
@@ -1276,7 +1282,7 @@ export default function AdminDashboard() {
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
+      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestPodiumBgUrl(''); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
       setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -1314,6 +1320,7 @@ export default function AdminDashboard() {
     setQuestBattleBgMoveDirection(quest.battleBgMoveDirection ?? 'diagonal');
     setQuestBattleBgMoveSpeed(quest.battleBgMoveSpeed ?? 10);
     setQuestBattleBgMoveDuration(quest.battleBgMoveDuration ?? 30);
+    setQuestPodiumBgUrl(quest.podiumBgUrl || '');
     const combatCoinDropConfig = normalizeCombatCoinDrop(quest.combatCoinDrop);
     setQuestCombatCoinMin(combatCoinDropConfig.minCoins ?? 2);
     setQuestCombatCoinMax(combatCoinDropConfig.maxCoins ?? 6);
@@ -1392,9 +1399,71 @@ export default function AdminDashboard() {
     }
   };
 
+  const saveQuestionToBank = async (q: QuestQuestion, _index: number) => {
+    if (!q.title?.trim()) return;
+    try {
+      const { data: existing } = await supabase
+        .from('question_bank')
+        .select('id')
+        .eq('title', q.title.trim())
+        .limit(1);
+      if (existing && existing.length > 0) return;
+      await supabase.from('question_bank').insert({
+        title: q.title.trim(),
+        image_url: q.imageUrl || '',
+        options: q.options.map(o => ({ text: o.text || '', imageUrl: o.imageUrl || '' })),
+        correct_index: q.correctIndex,
+        time_limit: q.timeLimit || 30,
+        category: 'geral',
+        difficulty: 'medio',
+        tags: [],
+        tenant_id: null,
+      });
+    } catch (e) {
+      console.error('Erro ao salvar no banco global:', e);
+    }
+  };
+
+  const handleUpdateQuestion = (qIndex: number, field: keyof QuestQuestion, value: any) => {
+    setQuestQuestions(prev => {
+      const next = [...prev];
+      if (next[qIndex]) {
+        next[qIndex] = { ...next[qIndex], [field]: value };
+      }
+      return next;
+    });
+  };
+
+  const handleUpdateOption = (qIndex: number, optIndex: number, field: keyof QuestOption, value: any) => {
+    setQuestQuestions(prev => {
+      const next = [...prev];
+      if (next[qIndex] && next[qIndex].options && next[qIndex].options[optIndex]) {
+        const nextOptions = [...next[qIndex].options];
+        nextOptions[optIndex] = { ...nextOptions[optIndex], [field]: value };
+        next[qIndex] = { ...next[qIndex], options: nextOptions };
+      }
+      return next;
+    });
+  };
+
+  const handleImportQuestionFromBank = (importedQuestion: any) => {
+    setQuestQuestions(prev => [
+      ...prev,
+      {
+        title: importedQuestion.title || '',
+        imageUrl: importedQuestion.image_url || '',
+        timeLimit: importedQuestion.time_limit || 30,
+        options: importedQuestion.options || [{ text: '' }, { text: '' }, { text: '' }, { text: '' }],
+        correctIndex: importedQuestion.correct_index ?? 0
+      }
+    ]);
+    setShowQuestionBank(false);
+  };
+
   const handleGallerySelect = (url: string) => {
     if (galleryTarget === 'cover') setQuestCover(url);
     else if (galleryTarget === 'arena') setQuestBattleBgUrl(url);
+    else if (galleryTarget === 'podium') setQuestPodiumBgUrl(url);
     else if (galleryTarget?.startsWith('question-')) {
       const qIndex = parseInt(galleryTarget.split('-')[1]);
       handleUpdateQuestion(qIndex, 'imageUrl', url);
@@ -1574,58 +1643,57 @@ export default function AdminDashboard() {
           <div className="admin-sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>
         )}
         
-        {/* Sidebar */}
         <div className={`glass-panel admin-sidebar ${isSidebarOpen ? 'open' : ''}`} style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', flexShrink: 0, alignSelf: 'flex-start', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)' }}>
           <div className="tenant-switcher-mobile" style={{ flexDirection: 'column', gap: '0.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
             <TenantSwitcher variant="menu" />
           </div>
-          <button className={`login-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'users' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+          <button className={`login-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { setActiveTab('users'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'users' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Users size={20} /> Alunos & Notas
           </button>
-          <button className={`login-btn ${activeTab === 'quests' ? 'active' : ''}`} onClick={() => setActiveTab('quests')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'quests' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'quests' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+          <button className={`login-btn ${activeTab === 'quests' ? 'active' : ''}`} onClick={() => { setActiveTab('quests'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'quests' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'quests' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Swords size={20} /> Missões (Quizzes)
           </button>
-          <button className={`login-btn ${activeTab === 'store' ? 'active' : ''}`} onClick={() => setActiveTab('store')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'store' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'store' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+          <button className={`login-btn ${activeTab === 'store' ? 'active' : ''}`} onClick={() => { setActiveTab('store'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'store' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'store' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Store size={20} /> Loja de Itens
           </button>
-          <button className={`login-btn ${activeTab === 'economy' ? 'active' : ''}`} onClick={() => setActiveTab('economy')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'economy' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'economy' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+          <button className={`login-btn ${activeTab === 'economy' ? 'active' : ''}`} onClick={() => { setActiveTab('economy'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'economy' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'economy' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <CircleDollarSign size={20} /> Economia (Ajustes)
           </button>
           {userData?.role === 'admin' && (
             <>
-              <button className={`login-btn ${activeTab === 'classes' ? 'active' : ''}`} onClick={() => setActiveTab('classes')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'classes' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'classes' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+              <button className={`login-btn ${activeTab === 'classes' ? 'active' : ''}`} onClick={() => { setActiveTab('classes'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'classes' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'classes' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
                 <BookOpen size={20} /> Turmas
               </button>
-              <button className={`login-btn ${activeTab === 'approvals' ? 'active' : ''}`} onClick={() => setActiveTab('approvals')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'approvals' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'approvals' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+              <button className={`login-btn ${activeTab === 'approvals' ? 'active' : ''}`} onClick={() => { setActiveTab('approvals'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'approvals' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'approvals' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
                 <UserCheck size={20} /> Solicitações
               </button>
-              <button className={`login-btn ${activeTab === 'config' ? 'active' : ''}`} onClick={() => setActiveTab('config')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'config' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'config' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+              <button className={`login-btn ${activeTab === 'config' ? 'active' : ''}`} onClick={() => { setActiveTab('config'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'config' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'config' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
                 <Settings size={20} /> Tipos de Avaliação
               </button>
             </>
           )}
-          <button className={`login-btn ${activeTab === 'ranks' ? 'active' : ''}`} onClick={() => setActiveTab('ranks')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'ranks' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'ranks' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+          <button className={`login-btn ${activeTab === 'ranks' ? 'active' : ''}`} onClick={() => { setActiveTab('ranks'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'ranks' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'ranks' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
             <Medal size={20} /> Patentes (Artes)
           </button>
           {userData?.role === 'admin' && (
-            <button className={`login-btn ${activeTab === 'entities' ? 'active' : ''}`} onClick={() => setActiveTab('entities')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'entities' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'entities' ? 'rgba(239, 68, 68, 0.1)' : 'transparent', marginTop: 'auto' }}>
+            <button className={`login-btn ${activeTab === 'entities' ? 'active' : ''}`} onClick={() => { setActiveTab('entities'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'entities' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'entities' ? 'rgba(239, 68, 68, 0.1)' : 'transparent', marginTop: 'auto' }}>
               <Box size={20} /> Entidades (3D)
             </button>
           )}
           {isSuperAdmin && (
-            <button className={`login-btn ${activeTab === 'tenants' ? 'active' : ''}`} onClick={() => setActiveTab('tenants')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'tenants' ? '1px solid #8b5cf6' : '1px solid transparent', background: activeTab === 'tenants' ? 'rgba(139, 92, 246, 0.1)' : 'transparent' }}>
+            <button className={`login-btn ${activeTab === 'tenants' ? 'active' : ''}`} onClick={() => { setActiveTab('tenants'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'tenants' ? '1px solid #8b5cf6' : '1px solid transparent', background: activeTab === 'tenants' ? 'rgba(139, 92, 246, 0.1)' : 'transparent' }}>
               <GraduationCap size={20} /> Escolas (Multi-tenant)
             </button>
           )}
           {isSuperAdmin && (
-            <button className={`login-btn ${activeTab === 'companion' ? 'active' : ''}`} onClick={() => setActiveTab('companion')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'companion' ? '1px solid #fbbf24' : '1px solid transparent', background: activeTab === 'companion' ? 'rgba(251, 191, 36, 0.1)' : 'transparent' }}>
+            <button className={`login-btn ${activeTab === 'companion' ? 'active' : ''}`} onClick={() => { setActiveTab('companion'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'companion' ? '1px solid #fbbf24' : '1px solid transparent', background: activeTab === 'companion' ? 'rgba(251, 191, 36, 0.1)' : 'transparent' }}>
               <MessageCircle size={20} /> Companheiro (Dicas)
             </button>
           )}
         </div>
 
         {/* Content */}
-        <div className="glass-panel" id="admin-content-scroll" style={{ flex: 1, padding: '2rem', overflowY: 'auto', position: 'relative' }}>
+        <div className="glass-panel" id="admin-content-scroll" style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
           
         {/* Aba de Solicitações (Approvals) */}
         {activeTab === 'approvals' && (
@@ -2092,8 +2160,20 @@ export default function AdminDashboard() {
                               />
                             )}
                             <div>
-                              <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                {student.name}
+                              <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                {student.characterName ? (
+                                  <>
+                                    <span>{student.characterName}</span>
+                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 'normal' }}>
+                                      (<span className="student-name-desktop">{student.name}</span><span className="student-name-mobile">{student.name && student.name.length > 24 ? formatFirstAndLastName(student.name) : student.name}</span>)
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="student-name-desktop">{student.name}</span>
+                                    <span className="student-name-mobile">{student.name && student.name.length > 24 ? formatFirstAndLastName(student.name) : student.name}</span>
+                                  </>
+                                )}
                                 {student.role !== 'student' && (
                                   <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.5rem', background: 'var(--accent-red)', borderRadius: '12px', color: 'white', textTransform: 'uppercase' }}>
                                     {student.role === 'admin' ? 'Admin' : student.role === 'teacher' ? 'Professor' : 'Coord.'}
@@ -3009,6 +3089,9 @@ export default function AdminDashboard() {
           setQuestBattleBgMoveDuration={setQuestBattleBgMoveDuration}
           onGalleryArena={() => setGalleryTarget('arena')}
           onOpenArenaEditor={() => setShowArenaBgEditor(true)}
+          questPodiumBgUrl={questPodiumBgUrl}
+          setQuestPodiumBgUrl={setQuestPodiumBgUrl}
+          onGalleryPodium={() => setGalleryTarget('podium')}
           questCombatCoinMin={questCombatCoinMin}
           setQuestCombatCoinMin={setQuestCombatCoinMin}
           questCombatCoinMax={questCombatCoinMax}

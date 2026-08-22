@@ -186,7 +186,7 @@ export interface AvatarCharacterProps {
   size?: number;
   interactive?: boolean;
   animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'cheer' | 'raise-hand' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice' | 'victory-easy' | 'victory-mid' | 'victory-hard';
-  expression?: 'normal' | 'serious' | 'sad';
+  expression?: 'normal' | 'serious' | 'sad' | 'happy' | 'smile';
   role?: 'player' | 'monster';
   showSlots?: boolean;
   hurt?: boolean;
@@ -1203,9 +1203,12 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                     serious: { base: finalUrl, blink: finalUrl },
                     sad: { base: finalUrl, blink: finalUrl }
                 });
-            } else {
                 const normalUrl = await generateMinecraftSkinUrl(config, false);
                 const normalBlinkUrl = await generateMinecraftSkinUrl(config, true);
+
+                const happyConfig = { ...config, mouthStyle: 'smile' as any };
+                const happyUrl = await generateMinecraftSkinUrl(happyConfig, false);
+                const happyBlinkUrl = await generateMinecraftSkinUrl(happyConfig, true);
                 
                 const seriousConfig = { ...config, mouthStyle: 'neutral' as any };
                 const seriousUrl = await generateMinecraftSkinUrl(seriousConfig, false);
@@ -1218,6 +1221,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 if (isMounted) {
                     setSkinUrls({ 
                         normal: { base: normalUrl, blink: normalBlinkUrl },
+                        happy: { base: happyUrl, blink: happyBlinkUrl },
+                        smile: { base: happyUrl, blink: happyBlinkUrl },
                         serious: { base: seriousUrl, blink: seriousBlinkUrl },
                         sad: { base: sadUrl, blink: sadBlinkUrl }
                     });

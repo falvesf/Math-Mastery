@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus } from 'lucide-react';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
@@ -26,7 +27,7 @@ import SchoolSelectorModal from '../components/SchoolSelectorModal';
 import ClassSelectorModal from '../components/ClassSelectorModal';
 import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../components/CustomThemeModal';
 import { applyCustomTheme } from '../lib/theme';
-import { validateCharacterName, normalizeForComparison, normalizeNameForMatch } from '../lib/nameValidation';
+import { validateCharacterName, normalizeForComparison, normalizeNameForMatch, formatFirstAndLastName } from '../lib/nameValidation';
 import { fetchModel3DById } from '../lib/model3d';
 import { COMPANION_TIPS, fetchCompanionTips } from '../lib/companionTips';
 import ChatWidget from '../components/ChatWidget';
@@ -340,6 +341,19 @@ export default function Dashboard() {
   const [globalThemes, setGlobalThemes] = useState<CustomTheme[]>([]);
   const [showCustomThemeModal, setShowCustomThemeModal] = useState(false);
   const [editingTheme, setEditingTheme] = useState<CustomTheme | undefined>(undefined);
+  const [questChestToOpen, setQuestChestToOpen] = useState<{ quest: any; chestModel?: any } | null>(null);
+
+  const handleOpenQuestChestModal = async (e: React.MouseEvent, q: any) => {
+    e.stopPropagation();
+    let chestModel = null;
+    const chestModelId = q.chestConfig?.chestModelId || q.liveChest1stPlace?.chestModelId;
+    if (chestModelId) {
+      try {
+        chestModel = await fetchModel3DById(chestModelId, tenantId);
+      } catch(err) { console.error(err); }
+    }
+    setQuestChestToOpen({ quest: q, chestModel });
+  };
 
   useEffect(() => {
     const fetchThemes = async () => {
@@ -1364,11 +1378,21 @@ export default function Dashboard() {
 
                 <div>
                   <h4 style={{ margin: 0, fontSize: fontSizeTitle, display: 'flex', alignItems: 'center', gap: '0.5rem', color: rankPos === 1 ? '#fbbf24' : 'var(--text-primary)' }}>
-                    {student.characterName || student.name} {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
+                    {student.characterName ? (
+                      student.characterName
+                    ) : (
+                      <>
+                        <span className="student-name-desktop">{student.name}</span>
+                        <span className="student-name-mobile">
+                          {student.name && student.name.length > 24 ? formatFirstAndLastName(student.name) : student.name}
+                        </span>
+                      </>
+                    )}
+                    {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
                   </h4>
                   {student.characterName && (
                     <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
-                      ({student.name})
+                      (<span className="student-name-desktop">{student.name}</span><span className="student-name-mobile">{student.name && student.name.length > 24 ? formatFirstAndLastName(student.name) : student.name}</span>)
                     </div>
                   )}
                   <div style={{ fontSize: '0.75rem', color: sRank.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
@@ -1583,34 +1607,60 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Modal de Reabertura de Baú da Missão */}
+      {questChestToOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 25000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} onClick={() => setQuestChestToOpen(null)} />
+          <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '600px', padding: '1.5rem' }}>
+            <button 
+              onClick={() => setQuestChestToOpen(null)} 
+              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '50%', padding: '0.4rem', color: 'var(--text-secondary)', cursor: 'pointer', zIndex: 10, display: 'flex' }}
+            >
+              <X size={20} />
+            </button>
+            <ChestReveal
+              title={`Baú da Missão: ${questChestToOpen.quest.title}`}
+              subtitle="Recompensa de conquista da missão!"
+              onOpen={async () => {
+                showAlert('Recompensas do baú resgatadas com sucesso!');
+              }}
+              chestModelUrl={questChestToOpen.chestModel?.url}
+              chestOpenUrl={questChestToOpen.chestModel?.open_url}
+              rarity={questChestToOpen.chestModel?.rarity}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Modal de Configuração do Sistema */}
       {isSettingsModalOpen && (
         <div className="modal-overlay">
-          <div className="glass-panel" style={{ width: '800px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', overflow: 'hidden', animation: 'slideUp 0.3s ease-out', position: 'relative', minHeight: '400px', padding: 0 }}>
-            {/* Sidebar do Modal */}
-            <div style={{ width: '200px', background: 'rgba(0,0,0,0.2)', borderRight: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '1.5rem 1rem', borderBottom: '1px solid var(--border-glass)' }}>
+          <div className="glass-panel settings-modal-container" style={{ animation: 'slideUp 0.3s ease-out' }}>
+            {/* Sidebar / Abas do Modal */}
+            <div className="settings-modal-sidebar">
+              <div className="settings-modal-sidebar-header">
                 <h3 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Settings size={20} color="var(--gold-primary)" /> Ajustes
                 </h3>
               </div>
-              <div style={{ padding: '1rem 0', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div className="settings-modal-sidebar-nav">
                 <button
                   onClick={() => setSettingsTab('cube')}
-                  style={{ background: settingsTab === 'cube' ? 'rgba(251, 191, 36, 0.1)' : 'transparent', color: settingsTab === 'cube' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', padding: '1rem', textAlign: 'left', cursor: 'pointer', borderLeft: settingsTab === 'cube' ? '3px solid var(--gold-primary)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: settingsTab === 'cube' ? 'bold' : 'normal' }}
+                  className={`settings-modal-tab-btn ${settingsTab === 'cube' ? 'active' : ''}`}
                 >
                   <Box size={18} /> Cubo 3D
                 </button>
                 <button
                   onClick={() => setSettingsTab('theme')}
-                  style={{ background: settingsTab === 'theme' ? 'rgba(251, 191, 36, 0.1)' : 'transparent', color: settingsTab === 'theme' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', padding: '1rem', textAlign: 'left', cursor: 'pointer', borderLeft: settingsTab === 'theme' ? '3px solid var(--gold-primary)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: settingsTab === 'theme' ? 'bold' : 'normal' }}
+                  className={`settings-modal-tab-btn ${settingsTab === 'theme' ? 'active' : ''}`}
                 >
                   <Palette size={18} /> Temas
                 </button>
                 {(userData?.role !== 'student' || userData?.studentViewActive) && (
                   <button
                     onClick={() => setSettingsTab('debug')}
-                    style={{ background: settingsTab === 'debug' ? 'rgba(251, 191, 36, 0.1)' : 'transparent', color: settingsTab === 'debug' ? 'var(--gold-primary)' : 'var(--text-secondary)', border: 'none', padding: '1rem', textAlign: 'left', cursor: 'pointer', borderLeft: settingsTab === 'debug' ? '3px solid var(--gold-primary)' : '3px solid transparent', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: settingsTab === 'debug' ? 'bold' : 'normal', marginTop: 'auto' }}
+                    className={`settings-modal-tab-btn ${settingsTab === 'debug' ? 'active' : ''}`}
+                    style={{ marginTop: 'auto' }}
                   >
                     <ShieldAlert size={18} /> Debug (Staff)
                   </button>
@@ -1619,9 +1669,14 @@ export default function Dashboard() {
             </div>
 
             {/* Conteúdo Principal do Modal */}
-            <div style={{ flex: 1, padding: '1.5rem', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-              <button onClick={() => setIsSettingsModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }} className="hover-brightness">
-                <X size={24} />
+            <div className="settings-modal-content">
+              <button 
+                onClick={() => setIsSettingsModalOpen(false)} 
+                style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '50%', padding: '0.35rem', color: 'var(--text-secondary)', cursor: 'pointer', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                className="hover-brightness"
+                title="Fechar"
+              >
+                <X size={20} />
               </button>
 
               {settingsTab === 'cube' && (
@@ -1944,10 +1999,10 @@ export default function Dashboard() {
         />
       )}
 
-      <div style={{ position: 'sticky', top: 0, zIndex: 100, margin: '-1rem -2rem 0 -2rem', padding: '1rem 2rem 0.5rem 2rem', background: 'transparent', backdropFilter: 'blur(12px)' }}>
-        <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '1rem' }}>
+      <div className="dashboard-header-sticky">
+        <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '0.5rem' }}>
           <div className="logo-container" onClick={handleLogoClick} style={{ cursor: 'pointer', userSelect: 'none' }} title="Clique 3x para ver o Sobre">
-            <div style={{ width: 64, height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 48, height: 48, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <img src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} alt="Math Mastery" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem', minWidth: 0 }}>
@@ -1957,90 +2012,167 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'flex-end' }}>
 
             {(userData?.role === 'admin' || userData?.role === 'teacher') && !userData?.studentViewActive && (
               <button
-                className="login-btn hide-text-mobile"
+                className="login-btn hide-on-mobile"
                 onClick={() => navigate('/admin')}
-                style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)' }}
+                style={{ padding: '0.4rem 0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)', fontSize: '0.85rem' }}
                 title={userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}
               >
-                <ShieldAlert size={18} color="var(--gold-primary)" />
+                <ShieldAlert size={16} color="var(--gold-primary)" />
                 <span style={{ color: 'var(--gold-primary)' }}>{userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}</span>
               </button>
             )}
 
-            <div className="tenant-switcher-mobile" style={{ position: 'relative' }}>
-              <button className="login-btn mobile-menu-btn" onClick={() => setStudentMobileMenuOpen(o => !o)} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Menu">
-                <Menu size={20} />
-              </button>
-              {studentMobileMenuOpen && (
-                <>
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setStudentMobileMenuOpen(false)} />
-                  <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', background: 'var(--bg-panel)', border: '1px solid var(--border-glass)', borderRadius: '12px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)', padding: '0.5rem', minWidth: '240px', zIndex: 1000 }}>
-                    <TenantSwitcher variant="menu" />
+            <button
+              onClick={() => setIsSettingsModalOpen(true)}
+              className="hover-brightness hide-on-mobile"
+              style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.4rem' }}
+              title="Configurações do Sistema"
+            >
+              <Settings size={22} />
+            </button>
+
+            <div className="hide-on-mobile" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.35rem 0.75rem', borderRadius: '50px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {userData && (
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
+                    <AvatarCharacter config={liveAvatarConfig || userData.avatarConfig} size={32} interactive={false} animation="none" />
                   </div>
-                </>
+                )}
+                <span style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{userData?.name?.split(' ')[0]}</span>
+              </div>
+            </div>
+
+            <button className="login-btn hide-on-mobile" onClick={handleLogout} style={{ padding: '0.5rem', borderRadius: '50%' }} title="Sair">
+              <LogOut size={18} />
+            </button>
+
+            {/* Menu Hambúrguer Mobile com todas as ações acopladas */}
+            <div className="tenant-switcher-mobile">
+              <button className="login-btn mobile-menu-btn" onClick={() => setStudentMobileMenuOpen(o => !o)} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Menu">
+                <Menu size={22} />
+              </button>
+              {studentMobileMenuOpen && typeof document !== 'undefined' && createPortal(
+                <>
+                  <div 
+                    style={{ position: 'fixed', inset: 0, zIndex: 99999998, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} 
+                    onClick={() => setStudentMobileMenuOpen(false)} 
+                  />
+                  <div style={{ 
+                    position: 'fixed', 
+                    right: '12px', 
+                    top: '64px', 
+                    background: 'var(--bg-panel, #18181b)', 
+                    border: '1px solid var(--border-glass, rgba(255,255,255,0.15))', 
+                    borderRadius: '16px', 
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.95)', 
+                    padding: '0.85rem', 
+                    minWidth: '270px', 
+                    maxWidth: 'calc(100vw - 24px)', 
+                    zIndex: 99999999, 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '0.65rem' 
+                  }}>
+                    
+                    {/* Usuário no Menu Mobile */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.4rem', borderBottom: '1px solid var(--border-glass)' }}>
+                      {userData && (
+                        <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)', border: '1px solid var(--gold-primary)' }}>
+                          <AvatarCharacter config={liveAvatarConfig || userData.avatarConfig} size={38} interactive={false} animation="none" />
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userData?.name}</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--gold-primary)' }}>{userData?.classId || 'Sem Turma'}</span>
+                      </div>
+                    </div>
+
+                    {/* Troca de Escola */}
+                    <div style={{ borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Escola / Unidade:</span>
+                      <TenantSwitcher variant="menu" />
+                    </div>
+
+                    {/* Acesso Staff */}
+                    {(userData?.role === 'admin' || userData?.role === 'teacher') && !userData?.studentViewActive && (
+                      <button
+                        className="login-btn"
+                        onClick={() => { setStudentMobileMenuOpen(false); navigate('/admin'); }}
+                        style={{ width: '100%', justifyContent: 'flex-start', padding: '0.5rem 0.75rem', gap: '0.5rem', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)', fontSize: '0.85rem' }}
+                      >
+                        <ShieldAlert size={16} color="var(--gold-primary)" />
+                        <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>{userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}</span>
+                      </button>
+                    )}
+
+                    {/* Ajustes e Temas */}
+                    <button
+                      className="login-btn"
+                      onClick={() => { setStudentMobileMenuOpen(false); setIsSettingsModalOpen(true); }}
+                      style={{ width: '100%', justifyContent: 'flex-start', padding: '0.5rem 0.75rem', gap: '0.5rem', background: 'var(--btn-bg)', fontSize: '0.85rem' }}
+                    >
+                      <Settings size={16} color="var(--gold-primary)" />
+                      <span>Temas & Ajustes</span>
+                    </button>
+
+                    {/* Sair */}
+                    <button
+                      className="login-btn"
+                      onClick={() => { setStudentMobileMenuOpen(false); handleLogout(); }}
+                      style={{ width: '100%', justifyContent: 'flex-start', padding: '0.5rem 0.75rem', gap: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', color: 'var(--accent-red)', fontSize: '0.85rem' }}
+                    >
+                      <LogOut size={16} />
+                      <span>Sair da Conta</span>
+                    </button>
+                  </div>
+                </>,
+                document.body
               )}
             </div>
 
-            <button
-              onClick={() => setIsSettingsModalOpen(true)}
-              style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.5rem' }}
-              className="hover-brightness"
-              title="Configurações do Sistema"
-            >
-              <Settings size={24} />
-            </button>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-                {userData && (
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
-                    <AvatarCharacter config={liveAvatarConfig || userData.avatarConfig} size={36} interactive={false} animation="none" />
-                  </div>
-                )}
-                <span style={{ fontWeight: 'bold' }}>{userData?.name?.split(' ')[0]}</span>
-              </div>
-            </div>
-            <button className="login-btn" onClick={handleLogout} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
-              <LogOut size={20} />
-            </button>
           </div>
         </nav>
 
         {/* Navegação de Abas do Aluno */}
-        <div className="scrollable-menu-container" style={{ background: 'transparent', margin: '0 -2rem 0 -2rem', padding: '0.5rem 2rem' }}>
+        <div className="scrollable-menu-container">
           <button
             onClick={() => setActiveTab('quests')}
-            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+            title="Central de Missões"
+            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
           >
-            <Swords size={20} /> Central de Missões
+            <Swords size={20} /> <span className="tab-text">Central de Missões</span>
           </button>
           <button
             onClick={() => setActiveTab('profile')}
-            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'profile' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+            title="Meu Perfil"
+            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'profile' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
           >
-            <Star size={20} /> Meu Perfil
+            <Star size={20} /> <span className="tab-text">Meu Perfil</span>
           </button>
           <button
             onClick={() => setActiveTab('ranking_class')}
-            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_class' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+            title="Ranking da Turma"
+            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_class' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
           >
-            <Users size={20} /> Ranking da Turma
+            <Users size={20} /> <span className="tab-text">Ranking Turma</span>
           </button>
           <button
             onClick={() => setActiveTab('ranking_general')}
-            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_general' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+            title="Ranking Geral"
+            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_general' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
           >
-            <TrendingUp size={20} /> Ranking Geral
+            <TrendingUp size={20} /> <span className="tab-text">Ranking Geral</span>
           </button>
           <button
             onClick={() => setActiveTab('store')}
-            style={{ flex: 1, minWidth: '200px', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.3s' }}
+            title="Mercado"
+            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
           >
-            <Store size={20} /> Mercado
+            <Store size={20} /> <span className="tab-text">Mercado</span>
           </button>
         </div>
       </div>
@@ -2137,43 +2269,67 @@ export default function Dashboard() {
                               <span>{quest.randomQuestionSelection && quest.randomQuestionCount ? quest.randomQuestionCount : (quest.questions?.length || 0)} Desafios</span>
                             </span>
                           </div>
-                          <button
-                            className="login-btn"
-                            disabled={quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)}
-                            style={{
-                              background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--btn-bg)' : 'var(--gold-primary)',
-                              color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--text-primary)' : 'var(--text-on-gold, #000000)',
-                              border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? '1px solid var(--border-glass)' : 'none',
-                              padding: '0.5rem 1.5rem',
-                              fontSize: '1rem',
-                              opacity: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 0.6 : 1,
-                              cursor: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 'not-allowed' : 'pointer'
-                            }}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              // Block access to inactive live quests if NOT completed
-                              if (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) return;
-                              // Require avatar if in student mode or is a student
-                              const isActingAsStudent = userData?.role === 'student' || !!userData?.studentViewActive;
-                              if (isActingAsStudent && !userData?.avatarConfig) {
-                                await showAlert('Você precisa criar o seu avatar antes de jogar uma missão!');
-                                return;
-                              }
-                              if (!isCompleted && currentHpVisual < 1 && isActingAsStudent) {
-                                await showAlert('Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.');
-                                return;
-                              }
-                              if (quest.mode === 'live' && !isCompleted) {
-                                navigate(`/live/${quest.id}`);
-                              } else {
-                                navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`);
-                              }
-                            }}
-                          >
-                            {quest.mode === 'live' && !isCompleted
-                              ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : 'Não Iniciada')
-                              : (isCompleted ? 'Revisar' : 'Jogar Agora')}
-                          </button>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            {isCompleted && (quest.chestConfig?.enabled || (quest as any).liveChest1stPlace) && (
+                              <button
+                                className="login-btn"
+                                onClick={(e) => handleOpenQuestChestModal(e, quest)}
+                                style={{
+                                  background: 'linear-gradient(45deg, #f59e0b, #fbbf24)',
+                                  color: '#000000',
+                                  border: 'none',
+                                  padding: '0.5rem 0.8rem',
+                                  fontSize: '0.9rem',
+                                  fontWeight: 'bold',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.4rem',
+                                  borderRadius: '8px',
+                                  boxShadow: '0 0 10px rgba(245, 158, 11, 0.4)'
+                                }}
+                                title="Abrir Baú de Recompensa da Missão"
+                              >
+                                <Package size={16} /> Baú
+                              </button>
+                            )}
+                            <button
+                              className="login-btn"
+                              disabled={quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)}
+                              style={{
+                                background: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--btn-bg)' : 'var(--gold-primary)',
+                                color: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--text-primary)' : 'var(--text-on-gold, #000000)',
+                                border: (isCompleted || (quest.mode === 'live' && !activeLiveQuests[quest.id] && !isCompleted)) ? '1px solid var(--border-glass)' : 'none',
+                                padding: '0.5rem 1.2rem',
+                                fontSize: '1rem',
+                                opacity: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 0.6 : 1,
+                                cursor: (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) ? 'not-allowed' : 'pointer'
+                              }}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                // Block access to inactive live quests if NOT completed
+                                if (quest.mode === 'live' && (!activeLiveQuests[quest.id] && !isCompleted)) return;
+                                // Require avatar if in student mode or is a student
+                                const isActingAsStudent = userData?.role === 'student' || !!userData?.studentViewActive;
+                                if (isActingAsStudent && !userData?.avatarConfig) {
+                                  await showAlert('Você precisa criar o seu avatar antes de jogar uma missão!');
+                                  return;
+                                }
+                                if (!isCompleted && currentHpVisual < 1 && isActingAsStudent) {
+                                  await showAlert('Você precisa de pelo menos 1 coração (vida) para jogar um desafio! Espere regenerar ou use um item de cura.');
+                                  return;
+                                }
+                                if (quest.mode === 'live' && !isCompleted) {
+                                  navigate(`/live/${quest.id}`);
+                                } else {
+                                  navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`);
+                                }
+                              }}
+                            >
+                              {quest.mode === 'live' && !isCompleted
+                                ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : 'Não Iniciada')
+                                : (isCompleted ? 'Revisar' : 'Jogar Agora')}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2203,9 +2359,9 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center' }}>
-              {/* Perfil do Aluno (Esquerda) */}
-              <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 400px' : '0 1 500px', padding: '1.5rem 2rem 5vh 1.5rem', textAlign: 'center', position: 'relative', minHeight: '60vh', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', alignSelf: 'flex-start' }}>
+            <div className="responsive-stack-mobile" style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center', width: '100%' }}>
+              {/* Perfil do Aluno (Esquerda - Fixo ao rolar) */}
+              <div className="glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 min(100%, 380px)' : '0 1 500px', width: '100%', maxWidth: '100%', padding: '1.25rem', textAlign: 'center', position: 'sticky', top: '115px', zIndex: 15, minHeight: 'auto', display: 'flex', flexDirection: 'column', overflow: 'hidden', alignSelf: 'flex-start', boxSizing: 'border-box', backdropFilter: 'blur(16px)' }}>
 
                 <div style={{ flexShrink: 0, paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem', height: '100%' }}>
                   <div
@@ -2517,13 +2673,13 @@ export default function Dashboard() {
               </div>
               {/* Coluna Direita Alternável (Histórico ou Mochila) */}
               {(userData?.role === 'student' || userData?.studentViewActive) && profileTab === 'overview' && (
-                <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
+                <div className="glass-panel" style={{ flex: '2 1 450px', width: '100%', padding: '1.25rem', display: 'flex', flexDirection: 'column', minHeight: '450px', maxHeight: '80vh', overflow: 'hidden' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
                     <History size={24} color="var(--gold-primary)" />
                     <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Histórico de Conquistas</h3>
                   </div>
 
-                  <div style={{ flex: 1, overflowY: 'auto', maxHeight: '600px', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {loadingHistory ? (
                       <p style={{ color: 'var(--text-secondary)' }}>Carregando suas conquistas...</p>
                     ) : xpHistory.length === 0 ? (
@@ -2558,30 +2714,30 @@ export default function Dashboard() {
                         const dateObj = item.timestamp ? (typeof item.timestamp === 'number' ? new Date(item.timestamp) : (item.timestamp.seconds ? new Date(item.timestamp.seconds * 1000) : new Date(item.timestamp))) : new Date();
 
                         return (
-                          <div key={item.id || index} style={{ padding: '1.1rem 1.25rem', background: 'rgba(0,0,0,0.25)', borderRadius: '12px', borderLeft: `4px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: 1 }}>
+                          <div key={item.id || index} style={{ padding: '0.9rem 1.1rem', background: 'rgba(0,0,0,0.25)', borderRadius: '12px', borderLeft: `4px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
                               {item.imageUrl ? (
-                                <img src={item.imageUrl} alt="" style={{ width: '42px', height: '42px', objectFit: 'contain', borderRadius: '8px', flexShrink: 0 }} />
+                                <img src={item.imageUrl} alt="" style={{ width: '38px', height: '38px', objectFit: 'contain', borderRadius: '8px', flexShrink: 0 }} />
                               ) : (
-                                <div style={{ width: '42px', height: '42px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                  {isRank ? <Trophy size={22} color="#c084fc" /> : isItem ? <Package size={22} color="#60a5fa" /> : <Star size={22} color="var(--gold-primary)" />}
+                                <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  {isRank ? <Trophy size={20} color="#c084fc" /> : isItem ? <Package size={20} color="#60a5fa" /> : <Star size={20} color="var(--gold-primary)" />}
                                 </div>
                               )}
                               <div style={{ minWidth: 0, flex: 1 }}>
-                                <h4 style={{ fontSize: '1.05rem', margin: '0 0 0.2rem 0', fontWeight: 'bold', color: 'var(--text-primary)', whiteSpace: 'normal' }}>
+                                <h4 style={{ fontSize: '0.95rem', margin: '0 0 0.15rem 0', fontWeight: 'bold', color: 'var(--text-primary)', whiteSpace: 'normal' }}>
                                   {item.title || item.evalName}
                                 </h4>
                                 {item.subtitle && (
-                                  <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                  <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                                     {item.subtitle}
                                   </p>
                                 )}
-                                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>
-                                  Data: {dateObj.toLocaleDateString('pt-BR')} | Hora: {dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
+                                  Data: {dateObj.toLocaleDateString('pt-BR')} | {dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               </div>
                             </div>
-                            <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: badgeColor, background: badgeBg, padding: '0.4rem 0.9rem', borderRadius: '20px', whiteSpace: 'nowrap', border: `1px solid ${borderColor}40` }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: badgeColor, background: badgeBg, padding: '0.35rem 0.75rem', borderRadius: '20px', whiteSpace: 'nowrap', border: `1px solid ${borderColor}40` }}>
                               {item.badgeText || (item.xpGained !== undefined ? `${item.xpGained > 0 ? '+' : ''}${item.xpGained} XP` : 'Conquista')}
                             </div>
                           </div>
@@ -2593,7 +2749,7 @@ export default function Dashboard() {
               )}
 
               {profileTab === 'inventory' && (
-                <div className="glass-panel" style={{ flex: '2 1 500px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', height: '71vh', overflow: 'hidden' }}>
+                <div className="glass-panel" style={{ flex: '2 1 450px', width: '100%', padding: '1.25rem', display: 'flex', flexDirection: 'column', minHeight: '450px', maxHeight: '80vh', overflow: 'hidden' }}>
                   {userData && <StudentInventory userData={userData} onEquip={() => {
                     setInventoryRefresh(r => r + 1);
                     setCubeRotation(prev => prev % 360 !== 0 ? Math.round(prev / 360) * 360 : prev);

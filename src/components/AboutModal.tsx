@@ -230,10 +230,15 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
   const monsterPos = monsterState === 'attack' ? '38%' : monsterState === 'hit' ? '52%' : '18%';
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 12000, padding: '1rem' }}>
-      <div className="glass-panel" style={{ width: '100%', maxWidth: '900px', maxHeight: '92vh', overflowY: 'auto', position: 'relative', padding: '2rem' }}>
-        <button onClick={onClose} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem', zIndex: 10 }}>
-          <X size={24} />
+    <div className="modal-overlay" style={{ zIndex: 25000, padding: '1rem' }}>
+      <div className="glass-panel" style={{ width: '100%', maxWidth: '900px', maxHeight: '92vh', overflowY: 'auto', position: 'relative', padding: '1.5rem' }}>
+        <button 
+          onClick={onClose} 
+          style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '50%', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.4rem', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          className="hover-brightness"
+          title="Fechar"
+        >
+          <X size={20} />
         </button>
 
         <h2 style={{ margin: '0 0 1.5rem 0', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>

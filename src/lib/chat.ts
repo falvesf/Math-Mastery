@@ -55,10 +55,16 @@ export function extractSeries(classId?: string | null): string {
     .trim();
 }
 
-/** Busca amigos + colegas da mesma série + professores, para a lista de contatos.
- *  Staff (admin/teacher/coordinator) vê TODOS os alunos da escola.
- *  Alunos veem apenas a própria série (mais amigos e staff). */
+/** Busca amigos + colegas da mesma turma + professores, para a lista de contatos.
+ *  Staff (admin/teacher/coordinator) vê TODOS os alunos da escola. */
 export async function fetchContacts(uid: string, classId?: string, tenantId?: string | null, myRole?: string): Promise<ChatContact[]> {
+  const isStaff = myRole !== 'student' && myRole !== 'pending_student';
+
+  // Aluno sem turma não tem contatos no chat
+  if (!isStaff && (!classId || !classId.trim())) {
+    return [];
+  }
+
   // 1. Amigos explícitos
   const { data: friendRows } = await supabase
     .from('user_friends')
@@ -78,17 +84,15 @@ export async function fetchContacts(uid: string, classId?: string, tenantId?: st
 
   const { data: users } = await usersQuery;
 
-  const mySeries = extractSeries(classId);
-  const isStaff = myRole !== 'student' && myRole !== 'pending_student';
   const contacts: ChatContact[] = (users || [])
     .filter((u: any) => u.id !== uid)
     .map((u: any) => {
       const isFriend = friendIds.includes(u.id);
       const otherIsStaff = u.role !== 'student' && u.role !== 'pending_student';
-      const otherSeries = extractSeries(u.class_id);
-      const sameSeries = !!mySeries && otherSeries === mySeries;
-      // Staff vê todos os alunos; aluno vê mesma série + amigos + staff
-      const show = isStaff ? true : (isFriend || sameSeries || otherIsStaff);
+      const sameClass = !!classId && u.class_id === classId;
+      
+      // Regra: Staff vê todos os usuários; Aluno com turma vê apenas contatos da sua própria turma (e staff)
+      const show = isStaff ? true : (sameClass || otherIsStaff);
       return {
         uid: u.id,
         name: u.name || 'Sem nome',
