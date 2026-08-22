@@ -1203,6 +1203,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                     serious: { base: finalUrl, blink: finalUrl },
                     sad: { base: finalUrl, blink: finalUrl }
                 });
+            } else {
                 const normalUrl = await generateMinecraftSkinUrl(config, false);
                 const normalBlinkUrl = await generateMinecraftSkinUrl(config, true);
 
