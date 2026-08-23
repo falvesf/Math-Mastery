@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { supabase } from '../lib/supabase';
 
 export interface ModelTransform {
   scale: number;
@@ -106,23 +105,26 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   monsterBubbleAlwaysOn: false,
   modelConfigs: {},
   selectedModelUrl: '',
-  showBoxes: false,
 };
 
-const DraggableWidget = ({ id, defaultPos, children }: { id: string; defaultPos: { x: number; y: number }; children: React.ReactNode }) => {
+const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; defaultPos: { x: number; y: number }; children: React.ReactNode; deviceKey?: string }) => {
   const [pos, setPos] = useState(() => {
-    const saved = localStorage.getItem(`arenaDebug_widgetPos_${id}`);
-    return saved ? JSON.parse(saved) : defaultPos;
+    try {
+      const saved = localStorage.getItem(`arenaDebug_widgetPos_${id}`);
+      return saved ? JSON.parse(saved) : defaultPos;
+    } catch (e) {
+      return defaultPos;
+    }
   });
   const [isMinimized, setIsMinimized] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [widgetHeight, setWidgetHeight] = useState(() => {
     const saved = localStorage.getItem(`arenaDebug_widgetH_${id}`);
-    return saved ? parseInt(saved) : 420;
+    return saved && !isNaN(parseInt(saved)) ? parseInt(saved) : 420;
   });
   const [widgetWidth, setWidgetWidth] = useState(() => {
     const saved = localStorage.getItem(`arenaDebug_widgetW_${id}`);
-    return saved ? parseInt(saved) : 260;
+    return saved && !isNaN(parseInt(saved)) ? parseInt(saved) : 260;
   });
   const dragStart = useRef({ x: 0, y: 0 });
 
@@ -147,13 +149,16 @@ const DraggableWidget = ({ id, defaultPos, children }: { id: string; defaultPos:
   return createPortal(
     <div
       style={{
-        position: 'fixed', left: Math.min(pos.x, window.innerWidth - 100), top: Math.min(pos.y, window.innerHeight - 50), zIndex: 99999,
+        position: 'fixed', 
+        left: Math.max(0, Math.min(typeof pos?.x === 'number' && !isNaN(pos.x) ? pos.x : defaultPos.x, window.innerWidth - 100)), 
+        top: Math.max(0, Math.min(typeof pos?.y === 'number' && !isNaN(pos.y) ? pos.y : defaultPos.y, window.innerHeight - 50)), 
+        zIndex: 99999,
         background: 'rgba(30, 35, 45, 0.95)', backdropFilter: 'blur(10px)',
         padding: isMinimized ? '0.4rem 0.8rem' : '0.5rem',
         borderRadius: '16px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
         border: '1px solid rgba(255,255,255,0.1)',
         width: `${widgetWidth}px`, maxWidth: 'min(90vw, 500px)', minWidth: '200px',
-        display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
         maxHeight: isMinimized ? 'none' : `min(${widgetHeight}px, calc(100vh - 20px))`,
       }}
       onPointerDown={(e) => {
@@ -166,7 +171,7 @@ const DraggableWidget = ({ id, defaultPos, children }: { id: string; defaultPos:
       onPointerUp={() => setIsDragging(false)}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'move', flexShrink: 0, paddingBottom: '0.3rem' }}>
-        <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.7rem' }}>🏟️ Arena Debug</span>
+        <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.7rem' }}>🏟️ Arena Debug {deviceKey && <span style={{ fontSize: '0.6rem', color: deviceKey === 'mobile' ? '#10b981' : '#3b82f6', background: deviceKey === 'mobile' ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px', marginLeft: '0.3rem' }}>{deviceKey === 'mobile' ? '📱 Mobile' : '🖥️ Desktop'}</span>}</span>
         <button onClick={() => setIsMinimized(v => !v)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.7rem', padding: '0 0.2rem' }}>
           {isMinimized ? '▼' : '▲'}
         </button>
@@ -218,6 +223,7 @@ interface ArenaDebugPanelProps {
   onTestPlayerBubble: () => void;
   onTestMonsterBubble: () => void;
   isAdmin: boolean;
+  deviceKey?: string;
 }
 
 const Toggle = ({ label, value, onChange: onToggle }: { label: string; value: boolean; onChange: (v: boolean) => void }) => (
@@ -229,7 +235,7 @@ const Toggle = ({ label, value, onChange: onToggle }: { label: string; value: bo
   </div>
 );
 
-export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayerBubble, onTestMonsterBubble, isAdmin }: ArenaDebugPanelProps) {
+export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayerBubble, onTestMonsterBubble, isAdmin, deviceKey }: ArenaDebugPanelProps) {
   const [tab, setTab] = useState<'player' | 'monster' | 'arena' | 'combat' | 'visual'>('player');
 
   // Garantir que campos novos existam (compatibilidade com cache antigo)
@@ -262,9 +268,9 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
   ];
 
   return (
-    <DraggableWidget id="arena_debug" defaultPos={{ x: 20, y: 80 }}>
+    <DraggableWidget id="arena_debug" defaultPos={{ x: 20, y: 80 }} deviceKey={deviceKey}>
       {/* Tab bar */}
-      <div style={{ display: 'flex', gap: '0.2rem', marginBottom: '0.4rem', flexShrink: 0, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '0.2rem', marginBottom: '0.4rem', flexShrink: 0, alignItems: 'center', position: 'sticky', top: 0, zIndex: 5, background: 'rgba(30, 35, 45, 0.95)', paddingTop: '0.2rem', paddingBottom: '0.2rem' }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: '0.3rem 0.2rem', background: tab === t.id ? t.color : 'rgba(255,255,255,0.05)', border: `1px solid ${tab === t.id ? t.color : 'transparent'}`, borderRadius: '6px', color: tab === t.id ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'center' }}>
             {t.label}
