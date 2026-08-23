@@ -1693,7 +1693,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Content */}
-        <div className="glass-panel" id="admin-content-scroll" style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+        <div className="glass-panel" id="admin-content-scroll" style={{ flex: 1, padding: '1.5rem', overflowY: 'auto', position: 'relative' }}>
           
         {/* Aba de Solicitações (Approvals) */}
         {activeTab === 'approvals' && (
