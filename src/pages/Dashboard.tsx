@@ -304,6 +304,7 @@ export default function Dashboard() {
   // Quests State
   const [activeQuests, setActiveQuests] = useState<any[]>([]);
   const [completedQuestIds, setCompletedQuestIds] = useState<string[]>([]);
+  const [claimedChestIds, setClaimedChestIds] = useState<Set<string>>(new Set());
   const [completedQuestDates, setCompletedQuestDates] = useState<Record<string, number>>({});
   const [loadingQuests, setLoadingQuests] = useState(true);
   const [activeLiveQuests, setActiveLiveQuests] = useState<Record<string, boolean>>({});
@@ -344,6 +345,7 @@ export default function Dashboard() {
   const [editingTheme, setEditingTheme] = useState<CustomTheme | undefined>(undefined);
   const MAX_USER_THEMES = 10;
   const [questChestToOpen, setQuestChestToOpen] = useState<{ quest: any; chestModel?: any } | null>(null);
+  const [questChestWonItems, setQuestChestWonItems] = useState<{ title: string; imageUrl?: string; quantity: number }[]>([]);
 
   const handleOpenQuestChestModal = async (e: React.MouseEvent, q: any) => {
     e.stopPropagation();
@@ -682,14 +684,17 @@ export default function Dashboard() {
           completedIds = cachedAttempts.ids;
           completedDates = cachedAttempts.dates;
         } else {
-          const { data: attemptSnap } = await supabase.from('quest_attempts').select('quest_id, created_at').eq('student_id', userData.uid).eq('status', 'completed');
-          if (attemptSnap) {
-            attemptSnap.forEach((data: any) => {
-              if (data.quest_id) {
-                completedIds.push(data.quest_id);
-                completedDates[data.quest_id] = new Date(data.created_at).getTime();
-              }
-            });
+            const { data: attemptSnap } = await supabase.from('quest_attempts').select('quest_id, created_at, chest_claimed').eq('student_id', userData.uid).eq('status', 'completed');
+            if (attemptSnap) {
+              const claimed = new Set<string>();
+              attemptSnap.forEach((data: any) => {
+                if (data.quest_id) {
+                  completedIds.push(data.quest_id);
+                  completedDates[data.quest_id] = new Date(data.created_at).getTime();
+                  if (data.chest_claimed) claimed.add(data.quest_id);
+                }
+              });
+              setClaimedChestIds(claimed);
           }
           sessionCache.set(attemptsCacheKey, { ids: completedIds, dates: completedDates }, CACHE_TTL.QUEST_ATTEMPTS);
         }
@@ -713,6 +718,8 @@ export default function Dashboard() {
             baseXp: d.base_xp || d.baseXp,
             allowRetries: d.allow_retries !== undefined ? d.allow_retries : d.allowRetries,
             targetClasses: d.target_classes || d.targetClasses || [],
+            chestConfig: d.chestconfig || d.chestConfig || null,
+            combatCoinDrop: d.combatcoindrop || d.combatCoinDrop || null,
             createdAt: { seconds: new Date(d.created_at || d.id).getTime() / 1000 }
           })) : [];
           sessionCache.set(questsCacheKey, fetched, CACHE_TTL.QUESTS);
@@ -1714,7 +1721,7 @@ export default function Dashboard() {
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} onClick={() => setQuestChestToOpen(null)} />
           <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '600px', padding: '1.5rem' }}>
             <button 
-              onClick={() => setQuestChestToOpen(null)} 
+              onClick={() => { setQuestChestToOpen(null); setQuestChestWonItems([]); }} 
               style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '50%', padding: '0.4rem', color: 'var(--text-secondary)', cursor: 'pointer', zIndex: 10, display: 'flex' }}
             >
               <X size={20} />
@@ -1723,12 +1730,84 @@ export default function Dashboard() {
               title={`Baú da Missão: ${questChestToOpen.quest.title}`}
               subtitle="Recompensa de conquista da missão!"
               onOpen={async () => {
-                showAlert('Recompensas do baú resgatadas com sucesso!');
+                const cc = questChestToOpen.quest.chestConfig;
+                if (!cc) return;
+                const wonItems: { title: string; imageUrl?: string; quantity: number }[] = [];
+                // Dar moedas
+                const maxCoins = Math.max(0, Math.min(10000, parseInt(cc.maxCoins) || 0));
+                if (maxCoins > 0) {
+                  const coins = Math.floor(Math.random() * maxCoins) + 1;
+                  if (userData?.uid) {
+                    const newCoins = (userData.coins || 0) + coins;
+                    await supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid);
+                    updateUserDataLocally({ coins: newCoins });
+                  }
+                  wonItems.push({ title: `${coins} Moedas`, quantity: 1 });
+                }
+                // Dar itens por slot
+                if (cc.itemIds) {
+                  const validIds = cc.itemIds.filter((id: string) => id);
+                  let storeItemsData: any[] = [];
+                  if (validIds.length > 0) {
+                    const { data } = await supabase.from('store_items').select('id, data').in('id', validIds);
+                    storeItemsData = data || [];
+                  }
+                  for (let i = 0; i < cc.itemIds.length; i++) {
+                    const itemId = cc.itemIds[i];
+                    if (!itemId) continue;
+                    const chance = cc.slotChances?.[i] ?? 100;
+                    if (Math.random() * 100 > chance) continue;
+                    const storeItem = storeItemsData.find((s: any) => s.id === itemId);
+                    if (!storeItem) continue;
+                    const itemData = storeItem.data || {};
+                    const qty = cc.itemQuantities?.[i] || 1;
+                    if (userData?.uid) {
+                      await supabase.from('user_items').insert({
+                        user_id: userData.uid,
+                        item_id: itemId,
+                        item_title: itemData.title || 'Item',
+                        item_image_url: itemData.itemImageUrl || itemData.imageUrl || '',
+                        quantity: qty,
+                        item_type: itemData.type || 'consumable',
+                        tenant_id: tenantId,
+                      });
+                    }
+                    wonItems.push({ title: itemData.title || 'Item', imageUrl: itemData.itemImageUrl || itemData.imageUrl, quantity: qty });
+                  }
+                }
+                setQuestChestWonItems(wonItems);
+                // Marcar baú como resgatado
+                if (userData?.uid) {
+                  await supabase.from('quest_attempts')
+                    .update({ chest_claimed: true })
+                    .eq('student_id', userData.uid)
+                    .eq('quest_id', questChestToOpen.quest.id)
+                    .eq('status', 'completed');
+                  setClaimedChestIds(prev => new Set([...prev, questChestToOpen.quest.id]));
+                }
               }}
               chestModelUrl={questChestToOpen.chestModel?.url}
               chestOpenUrl={questChestToOpen.chestModel?.open_url}
               rarity={questChestToOpen.chestModel?.rarity}
             />
+            {/* Itens ganhos */}
+            {questChestWonItems.length > 0 && (
+              <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {questChestWonItems.map((item, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} alt={item.title} style={{ width: '32px', height: '32px', borderRadius: '4px', objectFit: 'cover' }} />
+                    ) : (
+                      <Package size={32} color="var(--text-secondary)" />
+                    )}
+                    <span style={{ flex: 1, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{item.title}</span>
+                    {item.quantity > 1 && (
+                      <span style={{ color: 'var(--gold-primary)', fontSize: '0.85rem', fontWeight: 'bold' }}>x{item.quantity}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2537,7 +2616,7 @@ export default function Dashboard() {
                             </span>
                           </div>
                           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            {isCompleted && (quest.chestConfig?.enabled || (quest as any).liveChest1stPlace) && (
+                            {isCompleted && !claimedChestIds.has(quest.id) && ((quest.chestConfig?.itemIds?.some((id: string) => id) || quest.chestConfig?.maxCoins) || (quest as any).liveChest1stPlace) && (
                               <button
                                 className="login-btn"
                                 onClick={(e) => handleOpenQuestChestModal(e, quest)}

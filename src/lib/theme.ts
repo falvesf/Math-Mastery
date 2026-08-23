@@ -73,8 +73,12 @@ export const applyCustomTheme = (theme: CustomTheme | null) => {
   }
 
   const userFontOverride = localStorage.getItem('appFonts');
-  if (theme.fontFamily && (!userFontOverride || userFontOverride === 'default')) {
+  if (theme.fontFamily) {
     applyFontPreset(theme.fontFamily);
+    // Se o usuário tinha override manual, limpar para o tema prevalecer
+    if (userFontOverride && userFontOverride !== 'default') {
+      localStorage.setItem('appFonts', 'default');
+    }
   }
 
   const scale = theme.fontScale ?? 1;

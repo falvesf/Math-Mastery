@@ -176,8 +176,9 @@ h3 {
 
 @keyframes coin-fall {
   0% { opacity: 0; transform: translateY(-40px) rotate(0deg); }
-  15% { opacity: 1; }
-  100% { opacity: 0; transform: translateY(120px) rotate(360deg); }
+  10% { opacity: 1; }
+  80% { opacity: 0.8; }
+  100% { opacity: 0; transform: translateY(calc(100vh)) rotate(720deg); }
 }
 
 @keyframes coin-pop {
@@ -519,7 +520,13 @@ h3 {
   font-weight: bold;
   font-size: 0.95rem;
   white-space: normal;
+  width: fit-content;
   max-width: 200px;
+  min-width: 60px;
+  min-height: 2.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   box-shadow: 0 4px 15px rgba(0,0,0,0.4);
   animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -545,6 +552,14 @@ h3 {
 
 .speech-bubble.monster {
   margin-left: 20px;
+}
+
+.speech-bubble.debug-bubble {
+  width: fit-content;
+  min-width: 60px;
+  max-width: var(--bubble-max-w, 200px) !important;
+  font-size: var(--bubble-font, 14px) !important;
+  rotate: var(--bubble-rotate, 0deg);
 }
 
 .companion-bubble {
@@ -719,9 +734,16 @@ h3 {
     padding: 0.5rem 0.8rem;
   }
   .quest-question-overlay .quest-option-btn {
-    padding: 0.4rem 0.6rem;
-    font-size: 0.8rem;
-    min-width: 100px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    min-width: 0;
+    flex: 1 1 calc(50% - 0.3rem);
+    max-width: calc(50% - 0.3rem);
+  }
+  .quest-question-overlay .quest-options-compact {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    max-width: 100%;
   }
 }
 
@@ -1074,6 +1096,19 @@ h3 {
     padding-right: 1.5rem !important;
   }
 
+  .user-action-btns {
+    gap: 0.25rem !important;
+  }
+
+  .user-action-btns button {
+    padding: 0.3rem !important;
+  }
+
+  .user-action-btns button svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
   .quest-card {
     flex-direction: column !important;
     align-items: flex-start !important;
@@ -1177,6 +1212,7 @@ h3 {
 
   #admin-content-scroll {
     padding: 0.75rem !important;
+    overflow-x: hidden !important;
   }
 }
 
@@ -1304,13 +1340,34 @@ h3 {
 
 /* Mobile & Tablets (Narrow Screens) */
 @media (max-width: 768px) {
-  .quest-arena {
-    padding: 1.5rem 1rem 0.5rem 1rem;
+  .quest-gameplay-container {
+    max-width: 100% !important;
+    overflow: hidden !important;
   }
-  
-  .quest-arena-avatars {
-    transform: scale(0.65);
-    transform-origin: bottom center;
+
+  .app-container {
+    overflow: hidden !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+  }
+
+  html:has(.quest-gameplay-container) {
+    overflow: hidden !important;
+  }
+
+  .quest-arena {
+    justify-content: center !important;
+    gap: 0 !important;
+    padding: 0.5rem !important;
+    overflow: hidden !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .battle-arena-bg-image {
+    width: 100% !important;
+    height: 100% !important;
+    background-size: cover !important;
   }
 
   .quest-options-grid {

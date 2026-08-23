@@ -615,6 +615,8 @@ export default function AdminDashboard() {
       baseXp: d.base_xp || d.baseXp,
       allowRetries: d.allow_retries !== undefined ? d.allow_retries : d.allowRetries,
       targetClasses: d.target_classes || d.targetClasses || [],
+      chestConfig: d.chestconfig || d.chestConfig || null,
+      combatCoinDrop: d.combatcoindrop || d.combatCoinDrop || null,
       createdAt: { seconds: new Date(d.created_at || d.id).getTime() / 1000 }
     })) as QuestDef[] : [];
     setQuests(loaded);
@@ -1238,13 +1240,13 @@ export default function AdminDashboard() {
       battleBgMoveSpeed: questBattleBgMoveSpeed,
       battleBgMoveDuration: questBattleBgMoveDuration,
       podiumBgUrl: questPodiumBgUrl || undefined,
-      combatCoinDrop: {
+      combatcoindrop: {
         minCoins: questCombatCoinMin,
         maxCoins: questCombatCoinMax,
         minValue: questCombatCoinMinValue,
         maxValue: questCombatCoinMaxValue,
       },
-      chestConfig: questChestConfig,
+      chestconfig: questChestConfig,
       mode: questMode,
       liveChest1stPlace: questLiveChest1st,
       liveChest2ndPlace: questLiveChest2nd,
@@ -1280,9 +1282,14 @@ export default function AdminDashboard() {
         upsertErr = upsertRes.error;
       }
       if (upsertErr) {
-        await showAlert("Erro ao salvar a missão: " + (upsertErr.message || 'Erro desconhecido. Verifique se todos os campos estão preenchidos.'));
+        await showAlert("Erro ao salvar a missão: " + (upsertErr.message || 'Erro desconhecido.'));
         return;
       }
+      // Garantir que chestconfig seja salvo mesmo se o upsert não atualizar
+      if (questChestConfig) {
+        await supabase.from('quests').update({ chestconfig: questChestConfig }).eq('id', questId);
+      }
+      await showAlert("✅ Missão salva com sucesso!");
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
@@ -1995,6 +2002,18 @@ export default function AdminDashboard() {
                   }} style={{ background: 'transparent', border: 'none', color: showAvatars3D ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.35rem', display: 'flex', alignItems: 'center', borderRadius: '6px' }} title={showAvatars3D ? 'Ocultar Avatares 3D' : 'Mostrar Avatares 3D'}>
                     {showAvatars3D ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
+                  <div style={{ width: '1px', height: '16px', background: 'var(--border-glass)' }} />
+                  <button onClick={() => {
+                    const studentIds = students.filter(s => s.role === 'student').map(s => s.uid);
+                    const allSelected = studentIds.length > 0 && studentIds.every(id => selectedStudentIds.includes(id));
+                    if (allSelected) {
+                      setSelectedStudentIds([]);
+                    } else {
+                      setSelectedStudentIds(studentIds);
+                    }
+                  }} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.35rem', display: 'flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.75rem', gap: '0.25rem' }} title="Selecionar/Desselecionar Todos os Alunos">
+                    <Users size={14} />
+                  </button>
                 </div>
                 
                 {selectedStudentIds.length > 0 && (
@@ -2021,7 +2040,7 @@ export default function AdminDashboard() {
               {isUserFiltersOpen && (
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <div style={{ position: 'relative', flex: '1 1 300px', display: 'flex', alignItems: 'center' }}>
+                  <div style={{ position: 'relative', flex: '1 1 150px', display: 'flex', alignItems: 'center', minWidth: 0 }}>
                     <Search size={16} style={{ position: 'absolute', right: '0.75rem', color: 'var(--text-secondary)' }} />
                     <input 
                       type="text" 
@@ -2045,7 +2064,7 @@ export default function AdminDashboard() {
                     style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', height: '36px', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}
                     title="Alterar Direção"
                   >
-                    {studentSortOrder === 'desc' ? 'A→Z' : 'Z→A'}
+                    {studentSortOrder === 'asc' ? 'A→Z' : 'Z→A'}
                   </button>
                 </div>
                 
@@ -2056,13 +2075,13 @@ export default function AdminDashboard() {
                   <div className="compact-tab-row class-tabs-scroll" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
                   <button 
                     onClick={() => setSelectedClassTab('all')}
-                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'all' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: selectedClassTab === 'all'  ? 'black'  : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
+                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: `1px solid ${selectedClassTab === 'all' ? 'var(--gold-primary)' : 'var(--border-glass)'}`, background: selectedClassTab === 'all' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: selectedClassTab === 'all' ? '#000' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem', textShadow: selectedClassTab === 'all' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none' }}
                   >
                     Todos
                   </button>
                   <button 
                     onClick={() => setSelectedClassTab('staff')}
-                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'staff' ? 'var(--accent-red)' : 'var(--btn-bg)', color: selectedClassTab === 'staff'  ? 'var(--text-primary)' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
+                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: `1px solid ${selectedClassTab === 'staff' ? 'var(--accent-red)' : 'var(--border-glass)'}`, background: selectedClassTab === 'staff' ? 'var(--accent-red)' : 'var(--btn-bg)', color: selectedClassTab === 'staff' ? '#fff' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem', textShadow: selectedClassTab === 'staff' ? '0 1px 2px rgba(0,0,0,0.5)' : 'none' }}
                   >
                     Equipe (Prof/Admin)
                   </button>
@@ -2070,14 +2089,14 @@ export default function AdminDashboard() {
                     <button 
                       key={cls.id}
                       onClick={() => setSelectedClassTab(cls.name)}
-                      style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: `1px solid ${cls.color}`, background: selectedClassTab === cls.name ? cls.color : 'var(--btn-bg)', color: selectedClassTab === cls.name ? 'black' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
+                      style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: `1px solid ${cls.color}`, background: selectedClassTab === cls.name ? cls.color : 'var(--btn-bg)', color: selectedClassTab === cls.name ? '#fff' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem', textShadow: selectedClassTab === cls.name ? '0 1px 2px rgba(0,0,0,0.5)' : 'none' }}
                     >
                       {cls.name}
                     </button>
                   ))}
                   <button 
                     onClick={() => setSelectedClassTab('unassigned')}
-                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--text-secondary)', background: selectedClassTab === 'unassigned' ? 'var(--text-secondary)' : 'var(--btn-bg)', color: selectedClassTab === 'unassigned' ? 'black' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
+                    style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: `1px solid ${selectedClassTab === 'unassigned' ? 'var(--text-secondary)' : 'var(--border-glass)'}`, background: selectedClassTab === 'unassigned' ? 'var(--text-secondary)' : 'var(--btn-bg)', color: selectedClassTab === 'unassigned' ? '#fff' : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem', textShadow: selectedClassTab === 'unassigned' ? '0 1px 2px rgba(0,0,0,0.5)' : 'none' }}
                   >
                     Sem Turma
                   </button>
@@ -2148,7 +2167,7 @@ export default function AdminDashboard() {
 
                       return (
                         <div key={student.uid} className="glass-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', background: isSelected ? 'rgba(251, 191, 36, 0.05)' : 'rgba(255,255,255,0.02)', border: isSelected ? '1px solid var(--gold-primary)' : '1px solid transparent' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', minWidth: 0, flex: 1 }}>
                             <input 
                               type="checkbox" 
                               checked={isSelected}
@@ -2156,12 +2175,12 @@ export default function AdminDashboard() {
                                 if (e.target.checked) setSelectedStudentIds([...selectedStudentIds, student.uid]);
                                 else setSelectedStudentIds(selectedStudentIds.filter(id => id !== student.uid));
                               }}
-                              style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                              style={{ width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0 }}
                             />
                             {student.avatarConfig && showAvatars3D ? (
                               <div 
                                 onClick={() => setViewingProfileUser(student)}
-                                style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}
+                                style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', flexShrink: 0, aspectRatio: '1' }}
                               >
                                 <LazyAnimatedAvatar
                                   id={student.uid}
@@ -2175,7 +2194,7 @@ export default function AdminDashboard() {
                             ) : (
                               <div
                                 onClick={() => setViewingProfileUser(student)}
-                                style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', overflow: 'hidden' }}
+                                style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', overflow: 'hidden', flexShrink: 0, aspectRatio: '1' }}
                               >
                                 {student.photoURL ? (
                                   <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -2228,32 +2247,32 @@ export default function AdminDashboard() {
                               </div>
                             </div>
                           </div>
-                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <div className="user-action-btns" style={{ display: 'flex', gap: '0.35rem', flexShrink: 0, flexWrap: 'nowrap' }}>
                             {student.uid !== userData?.uid && student.role !== 'admin' && (
                               <button 
                                 className="login-btn" 
                                 onClick={() => openEditModal(student)}
-                                style={{ padding: '0.5rem', background: 'var(--btn-bg)', borderColor: 'transparent' }}
+                                style={{ padding: '0.4rem', background: 'var(--btn-bg)', borderColor: 'transparent', flexShrink: 0 }}
                                 title="Editar/Promover Usuário"
                               >
-                                <Edit2 size={18} />
+                                <Edit2 size={16} />
                               </button>
                             )}
                             {student.role === 'student' && (
                               <button 
                                 className="login-btn" 
                                 onClick={() => { setModalMode('add'); setXpMode('grade'); setSelectedStudent(student); }}
-                                style={{ borderColor: 'var(--gold-primary)', color: 'var(--gold-primary)', background: 'rgba(251, 191, 36, 0.1)' }}
+                                style={{ padding: '0.4rem', borderColor: 'var(--gold-primary)', color: 'var(--gold-primary)', background: 'rgba(251, 191, 36, 0.1)', flexShrink: 0 }}
                                 title="Gerenciar XP"
                               >
-                                <Star size={18} />
+                                <Star size={16} />
                               </button>
                             )}
                             {student.uid !== userData?.uid && student.role !== 'admin' && (
                               <button 
                                 className="login-btn" 
                                 onClick={() => setDeletingStudent(student)}
-                                style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', borderColor: 'transparent' }}
+                                style={{ padding: '0.4rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', borderColor: 'transparent', flexShrink: 0 }}
                                 title="Excluir Usuário"
                               >
                                 <Trash2 size={18} />

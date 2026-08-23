@@ -7,6 +7,7 @@ import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import QuestGameplay from './pages/QuestGameplay';
+import QuestGameplayMobile from './pages/QuestGameplayMobile';
 import LiveQuestAdmin from './pages/LiveQuestAdmin';
 import LiveQuestStudent from './pages/LiveQuestStudent';
 import { Loader2 } from 'lucide-react';
@@ -83,7 +84,7 @@ function AppRoutes() {
         path="/quest/:questId"
         element={
           <PrivateRoute>
-            <QuestGameplay />
+            {window.innerWidth <= 768 ? <QuestGameplayMobile /> : <QuestGameplay />}
           </PrivateRoute>
         }
       />

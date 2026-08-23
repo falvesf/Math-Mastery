@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
 
 const MAX_ANIMATED = 8;
+
+// Cache global de snapshots (id → dataURL)
+const snapshotCache = new Map<string, string>();
 
 // Estado global compartilhado entre TODAS as instâncias do componente na mesma página
 const activeIds = new Set<string>();
@@ -12,21 +15,18 @@ function tryActivate(id: string, activate: () => void) {
     activeIds.add(id);
     activate();
   } else {
-    // Ainda não há slot livre: entra na fila
     pendingCallbacks.push({ id, activate });
   }
 }
 
 function releaseSlot(id: string, deactivate: () => void) {
   if (!activeIds.has(id)) {
-    // Pode estar na fila pendente — remove da fila sem precisar liberar slot
     const idx = pendingCallbacks.findIndex(p => p.id === id);
     if (idx !== -1) pendingCallbacks.splice(idx, 1);
     return;
   }
   activeIds.delete(id);
   deactivate();
-  // Libera o próximo da fila de espera
   if (pendingCallbacks.length > 0) {
     const next = pendingCallbacks.shift()!;
     activeIds.add(next.id);
@@ -45,9 +45,22 @@ interface LazyAnimatedAvatarProps {
 
 export default function LazyAnimatedAvatar({ id, config, equippedItems, size, animation = 'idle', faceCamera }: LazyAnimatedAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasCaptureRef = useRef<HTMLDivElement>(null);
   const [isAnimating, setIsAnimating] = useState(false);
-  // Rastreia se este componente está registrado como "visível"
+  const [snapshot, setSnapshot] = useState<string | null>(snapshotCache.get(id) || null);
   const visibleRef = useRef(false);
+
+  // Capturar snapshot quando o avatar3D estiver renderizado
+  const captureSnapshot = useCallback(() => {
+    if (!canvasCaptureRef.current) return;
+    const canvas = canvasCaptureRef.current.querySelector('canvas');
+    if (!canvas || canvas.width === 0) return;
+    try {
+      const url = canvas.toDataURL('image/png');
+      snapshotCache.set(id, url);
+      setSnapshot(url);
+    } catch {}
+  }, [id]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -70,7 +83,6 @@ export default function LazyAnimatedAvatar({ id, config, equippedItems, size, an
 
     return () => {
       observer.disconnect();
-      // Ao desmontar, libera o slot se estava ativo
       if (visibleRef.current) {
         releaseSlot(id, () => {});
         visibleRef.current = false;
@@ -78,17 +90,32 @@ export default function LazyAnimatedAvatar({ id, config, equippedItems, size, an
     };
   }, [id]);
 
+  // Quando o avatar3D aparece, capturar snapshot após um tempo
+  useEffect(() => {
+    if (!isAnimating) return;
+    const timer = setTimeout(captureSnapshot, 1500);
+    return () => clearTimeout(timer);
+  }, [isAnimating, captureSnapshot]);
+
   return (
     <div ref={containerRef} style={{ width: size, height: size }}>
       {isAnimating ? (
-        <AvatarCharacter
-          config={config}
-          equippedItems={equippedItems}
-          size={size}
-          interactive={false}
-          animation={animation as any}
-          faceCamera={faceCamera}
-          actionPoses={config.actionPoses}
+        <div ref={canvasCaptureRef} style={{ width: size, height: size }}>
+          <AvatarCharacter
+            config={config}
+            equippedItems={equippedItems}
+            size={size}
+            interactive={false}
+            animation={animation as any}
+            faceCamera={faceCamera}
+            actionPoses={config.actionPoses}
+          />
+        </div>
+      ) : snapshot ? (
+        <img
+          src={snapshot}
+          alt=""
+          style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover' }}
         />
       ) : (
         <div style={{ width: size, height: size, borderRadius: '50%', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
