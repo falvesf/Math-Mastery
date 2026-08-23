@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Image as ImageIcon } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
+import { applyFontPreset } from '../lib/theme';
 
 export interface CustomTheme {
   id: string;
   name: string;
   isGlobal?: boolean;
+  fontFamily?: string;
+  fontScale?: number;
   colors: {
     bgDark: string;
     bgDarkOpacity?: number;
@@ -88,6 +91,11 @@ export default function CustomThemeModal({ initialTheme, isAdmin, onSave, onClos
   // Update preview live whenever theme changes
   useEffect(() => {
     onPreview(theme);
+    if (theme.fontFamily) {
+      applyFontPreset(theme.fontFamily);
+    }
+    const scale = theme.fontScale ?? 1;
+    document.documentElement.style.fontSize = `${scale * 100}%`;
   }, [theme, onPreview]);
 
   const handleColorChange = (key: keyof CustomTheme['colors'], value: string | number) => {
@@ -172,6 +180,45 @@ export default function CustomThemeModal({ initialTheme, isAdmin, onSave, onClos
             </label>
           </div>
         )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Fonte do Tema</label>
+          <select
+            value={theme.fontFamily || 'default'}
+            onChange={(e) => setTheme({...theme, fontFamily: e.target.value})}
+            style={{ padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+          >
+            <option value="default">Padrão (Épico) — Cinzel & Outfit</option>
+            <option value="classic">Clássico (Medieval) — Playfair & Lora</option>
+            <option value="scifi">Ficção (Moderno) — Orbitron & Roboto</option>
+            <option value="casual">Casual (Divertido) — Fredoka & Nunito</option>
+            <option value="retro">Retrô (Pixel Art) — Press Start 2P & VT323</option>
+            <option value="clean">Limpo (Corporativo) — Oswald & Open Sans</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+          <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Escala do Texto</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', minWidth: '2rem' }}>A-</span>
+            <input
+              type="range"
+              min="0.8"
+              max="1.3"
+              step="0.05"
+              value={theme.fontScale ?? 1}
+              onChange={(e) => setTheme({...theme, fontScale: parseFloat(e.target.value)})}
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-secondary)', minWidth: '2rem', textAlign: 'right' }}>A+</span>
+            <span style={{ fontSize: '0.85rem', color: 'var(--gold-primary)', minWidth: '35px', textAlign: 'right' }}>
+              {Math.round((theme.fontScale ?? 1) * 100)}%
+            </span>
+          </div>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+            * Ajusta o tamanho base de todo o texto do sistema.
+          </p>
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

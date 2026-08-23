@@ -296,7 +296,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
   // 1. Initialize and dispose viewer
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || size <= 0) return;
     
     let viewer: SkinViewer;
     try {
@@ -1284,18 +1284,18 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               blinkInterval = setInterval(() => {
                   if (!viewerRef.current || !isMounted) return;
                   if (activeUrls.blink === activeUrls.base) return; 
-                  viewerRef.current.loadSkin(activeUrls.blink, { model: modelType }).then(forceNearestFilter);
+                  viewerRef.current.loadSkin(activeUrls.blink, { model: modelType }).then(forceNearestFilter).catch(() => {});
                   
                   blinkTimeout = setTimeout(() => {
                       if (viewerRef.current && isMounted) {
-                          viewerRef.current.loadSkin(activeUrls.base, { model: modelType }).then(forceNearestFilter);
+                          viewerRef.current.loadSkin(activeUrls.base, { model: modelType }).then(forceNearestFilter).catch(() => {});
                       }
                   }, 150);
               }, 3500 + Math.random() * 2000);
           }
       };
 
-      applySkins();
+      applySkins().catch(() => {});
 
       return () => {
           isMounted = false;

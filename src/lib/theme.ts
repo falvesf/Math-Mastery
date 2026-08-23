@@ -1,8 +1,22 @@
 import type { CustomTheme } from '../components/CustomThemeModal';
 
+const FONT_PRESETS: Record<string, { heading: string; body: string }> = {
+  'default': { heading: "'Cinzel', serif", body: "'Outfit', system-ui, sans-serif" },
+  'classic': { heading: "'Playfair Display', serif", body: "'Lora', serif" },
+  'scifi': { heading: "'Orbitron', sans-serif", body: "'Roboto', sans-serif" },
+  'casual': { heading: "'Fredoka', sans-serif", body: "'Nunito', sans-serif" },
+  'retro': { heading: "'Press Start 2P', cursive", body: "'VT323', monospace" },
+  'clean': { heading: "'Oswald', sans-serif", body: "'Open Sans', sans-serif" },
+};
+
+export const applyFontPreset = (fontId: string) => {
+  const selected = FONT_PRESETS[fontId] || FONT_PRESETS['default'];
+  document.documentElement.style.setProperty('--font-heading', selected.heading);
+  document.documentElement.style.setProperty('--font-body', selected.body);
+};
+
 export const applyCustomTheme = (theme: CustomTheme | null) => {
   if (!theme) {
-    // Limpar variáveis customizadas para voltar aos temas padrões do CSS
     const vars = [
       '--bg-dark', '--bg-panel', '--bg-card', '--btn-bg', '--btn-hover', 
       '--text-primary', '--text-secondary', '--text-on-gold', '--bg-badge', '--gold-primary', '--gold-glow', 
@@ -13,7 +27,6 @@ export const applyCustomTheme = (theme: CustomTheme | null) => {
     return;
   }
 
-  // Converter HEX para RGBA
   const hexToRgba = (hex: string, alpha: number) => {
     let r = 0, g = 0, b = 0;
     if (hex.length === 4) {
@@ -49,7 +62,7 @@ export const applyCustomTheme = (theme: CustomTheme | null) => {
     const g = parseInt(colors.bgDark.substring(3, 5), 16) || 0;
     const b = parseInt(colors.bgDark.substring(5, 7), 16) || 0;
     const op = backgroundOpacity;
-    const opBottom = Math.min(1, op + 0.15); // Ligeiramente mais escuro embaixo
+    const opBottom = Math.min(1, op + 0.15);
     
     document.body.style.setProperty(
       'background-image', 
@@ -58,4 +71,13 @@ export const applyCustomTheme = (theme: CustomTheme | null) => {
   } else {
     document.body.style.removeProperty('background-image');
   }
+
+  const userFontOverride = localStorage.getItem('appFonts');
+  if (theme.fontFamily && (!userFontOverride || userFontOverride === 'default')) {
+    applyFontPreset(theme.fontFamily);
+  }
+
+  const scale = theme.fontScale ?? 1;
+  document.documentElement.style.setProperty('--font-scale', scale.toString());
+  document.documentElement.style.fontSize = `${scale * 100}%`;
 };

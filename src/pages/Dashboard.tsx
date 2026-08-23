@@ -20,13 +20,13 @@ import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
 import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
-import { Edit3, MessageCircle, X, Box, Palette, Menu } from 'lucide-react';
+import { Edit3, MessageCircle, X, Box, Palette, Menu, Trash2 } from 'lucide-react';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import OnboardingModal from '../components/OnboardingModal';
 import SchoolSelectorModal from '../components/SchoolSelectorModal';
 import ClassSelectorModal from '../components/ClassSelectorModal';
 import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../components/CustomThemeModal';
-import { applyCustomTheme } from '../lib/theme';
+import { applyCustomTheme, applyFontPreset } from '../lib/theme';
 import { validateCharacterName, normalizeForComparison, normalizeNameForMatch, formatFirstAndLastName } from '../lib/nameValidation';
 import { fetchModel3DById } from '../lib/model3d';
 import { COMPANION_TIPS, fetchCompanionTips } from '../lib/companionTips';
@@ -339,8 +339,10 @@ export default function Dashboard() {
   const [appFonts, setAppFonts] = useState(() => localStorage.getItem('appFonts') || 'default');
 
   const [globalThemes, setGlobalThemes] = useState<CustomTheme[]>([]);
+  const [userThemes, setUserThemes] = useState<CustomTheme[]>([]);
   const [showCustomThemeModal, setShowCustomThemeModal] = useState(false);
   const [editingTheme, setEditingTheme] = useState<CustomTheme | undefined>(undefined);
+  const MAX_USER_THEMES = 10;
   const [questChestToOpen, setQuestChestToOpen] = useState<{ quest: any; chestModel?: any } | null>(null);
 
   const handleOpenQuestChestModal = async (e: React.MouseEvent, q: any) => {
@@ -355,38 +357,137 @@ export default function Dashboard() {
     setQuestChestToOpen({ quest: q, chestModel });
   };
 
+  const getCurrentThemeData = (): CustomTheme | null => {
+    if (appTheme === 'custom_local') {
+      const saved = localStorage.getItem('currentCustomThemeData');
+      return saved ? JSON.parse(saved) : null;
+    }
+    if (appTheme.startsWith('user_')) {
+      return userThemes.find(t => t.id === appTheme) || null;
+    }
+    if (appTheme.startsWith('global_') || appTheme.startsWith('custom_')) {
+      return globalThemes.find(t => t.id === appTheme) || null;
+    }
+    return null;
+  };
+
+  const getComputedTheme = (): CustomTheme => {
+    const cs = getComputedStyle(document.body);
+    const getVar = (v: string) => cs.getPropertyValue(v).trim();
+
+    const parseColor = (val: string): { hex: string; opacity: number } => {
+      if (!val) return { hex: '#000000', opacity: 1 };
+      val = val.trim();
+      // HEX direto
+      if (val.startsWith('#')) {
+        return { hex: val.length === 4 ? '#' + val[1]+val[1]+val[2]+val[2]+val[3]+val[3] : val, opacity: 1 };
+      }
+      // rgba(r, g, b, a) ou rgb(r, g, b)
+      const m = val.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);
+      if (m) {
+        const hex = '#' + [m[1], m[2], m[3]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+        const opacity = m[4] !== undefined ? parseFloat(m[4]) : 1;
+        return { hex, opacity };
+      }
+      return { hex: '#000000', opacity: 1 };
+    };
+
+    const parseShadowColor = (val: string): { hex: string; opacity: number } => {
+      // "0 8px 32px 0 rgba(0, 0, 0, 0.37)" -> extrair a cor
+      const m = val.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);
+      if (m) {
+        const hex = '#' + [m[1], m[2], m[3]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+        const opacity = m[4] !== undefined ? parseFloat(m[4]) : 1;
+        return { hex, opacity };
+      }
+      return { hex: '#000000', opacity: 0.37 };
+    };
+
+    const bgDark = parseColor(getVar('--bg-dark'));
+    const bgPanel = parseColor(getVar('--bg-panel'));
+    const bgCard = parseColor(getVar('--bg-card'));
+    const btnBg = parseColor(getVar('--btn-bg'));
+    const btnHover = parseColor(getVar('--btn-hover'));
+    const textPrimary = parseColor(getVar('--text-primary'));
+    const textSecondary = parseColor(getVar('--text-secondary'));
+    const goldPrimary = parseColor(getVar('--gold-primary'));
+    const goldGlow = parseColor(getVar('--gold-glow'));
+    const borderGlass = parseColor(getVar('--border-glass'));
+    const shadowGlass = parseShadowColor(getVar('--shadow-glass'));
+    const textOnGold = parseColor(getVar('--text-on-gold') || '#000000');
+    const bgBadge = parseColor(getVar('--bg-badge') || 'rgba(0,0,0,0.5)');
+
+    // Extrair URL do background-image do body
+    const bgImage = document.body.style.backgroundImage || '';
+    let bgUrl = '';
+    const urlMatch = bgImage.match(/url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/);
+    if (urlMatch) bgUrl = urlMatch[1];
+
+    // Extrair opacidade do gradient overlay
+    let bgOpacity = 0.85;
+    const gradMatch = bgImage.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/);
+    if (gradMatch) bgOpacity = parseFloat(gradMatch[1]);
+
+    return {
+      id: 'new_' + Date.now(),
+      name: 'Novo Tema',
+      colors: {
+        bgDark: bgDark.hex, bgDarkOpacity: bgDark.opacity,
+        bgPanel: bgPanel.hex, bgPanelOpacity: bgPanel.opacity,
+        bgCard: bgCard.hex, bgCardOpacity: bgCard.opacity,
+        btnBg: btnBg.hex, btnBgOpacity: btnBg.opacity,
+        btnHover: btnHover.hex, btnHoverOpacity: btnHover.opacity,
+        textPrimary: textPrimary.hex, textPrimaryOpacity: textPrimary.opacity,
+        textSecondary: textSecondary.hex, textSecondaryOpacity: textSecondary.opacity,
+        textOnGold: textOnGold.hex, textOnGoldOpacity: textOnGold.opacity,
+        bgBadge: bgBadge.hex, bgBadgeOpacity: bgBadge.opacity,
+        goldPrimary: goldPrimary.hex, goldPrimaryOpacity: goldPrimary.opacity,
+        goldGlow: goldGlow.hex, goldGlowOpacity: goldGlow.opacity,
+        borderGlass: borderGlass.hex, borderGlassOpacity: borderGlass.opacity,
+        shadowGlass: shadowGlass.hex, shadowGlassOpacity: shadowGlass.opacity,
+      },
+      backgroundImageUrl: bgUrl,
+      backgroundOpacity: bgOpacity,
+    };
+  };
+
   useEffect(() => {
     const fetchThemes = async () => {
-      const { data } = await supabase.from('system_collections').select('*').eq('type', 'themes');
+      const { data } = await supabase.from('system_collections').select('*').eq('collection_name', 'themes');
       if (data) {
         setGlobalThemes(data.map(d => ({ id: d.id, ...(d.data as any) } as CustomTheme)));
       }
     };
     fetchThemes();
-
-    const channel = supabase.channel('themes_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_collections', filter: 'type=eq.themes' }, () => {
-        fetchThemes();
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
   }, []);
 
   useEffect(() => {
-    const fonts: Record<string, { heading: string, body: string }> = {
-      'default': { heading: "'Cinzel', serif", body: "'Outfit', system-ui, sans-serif" },
-      'classic': { heading: "'Playfair Display', serif", body: "'Lora', serif" },
-      'scifi': { heading: "'Orbitron', sans-serif", body: "'Roboto', sans-serif" },
-      'casual': { heading: "'Fredoka', sans-serif", body: "'Nunito', sans-serif" },
-      'retro': { heading: "'Press Start 2P', cursive", body: "'VT323', monospace" },
-      'clean': { heading: "'Oswald', sans-serif", body: "'Open Sans', sans-serif" }
+    const fetchUserThemes = async () => {
+      if (!userData?.uid) return;
+      const { data } = await supabase
+        .from('user_themes')
+        .select('*')
+        .eq('user_id', userData.uid)
+        .order('created_at', { ascending: true });
+      if (data) {
+        setUserThemes(data.map(d => ({ id: d.id, ...(d.data as any) } as CustomTheme)));
+      }
     };
+    fetchUserThemes();
+  }, [userData?.uid]);
 
-    const selected = fonts[appFonts] || fonts['default'];
-    document.documentElement.style.setProperty('--font-heading', selected.heading);
-    document.documentElement.style.setProperty('--font-body', selected.body);
-  }, [appFonts]);
+  useEffect(() => {
+    if (appFonts === 'default') {
+      const currentThemeData = getCurrentThemeData();
+      if (currentThemeData?.fontFamily) {
+        applyFontPreset(currentThemeData.fontFamily);
+      } else {
+        applyFontPreset('default');
+      }
+    } else {
+      applyFontPreset(appFonts);
+    }
+  }, [appFonts, appTheme]);
   const [cubeAutoRotate, setCubeAutoRotate] = useState(() => {
     const saved = localStorage.getItem('cubeAutoRotate');
     return saved !== null ? saved === 'true' : true;
@@ -1737,91 +1838,202 @@ export default function Dashboard() {
 
               {settingsTab === 'theme' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left', flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 1rem 0' }}>
-                    <h4 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>Temas do Sistema</h4>
-                    <button
-                      onClick={() => {
-                        let tData = DEFAULT_FANTASY_THEME;
-                        if (appTheme === 'custom_local') {
-                          const saved = localStorage.getItem('currentCustomThemeData');
-                          if (saved) tData = JSON.parse(saved);
-                        } else if (appTheme.startsWith('custom_')) {
-                          const gt = globalThemes.find(g => g.id === appTheme);
-                          if (gt) tData = gt;
-                        }
-                        setEditingTheme(tData);
-                        setShowCustomThemeModal(true);
-                      }}
-                      style={{ padding: '0.4rem 0.75rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', borderRadius: '8px', border: 'none', fontWeight: 'bold', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
-                      className="hover-brightness"
-                    >
-                      <Palette size={16} /> Personalizar
-                    </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 0.5rem 0' }}>
+                    <h4 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>Temas</h4>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => {
+                          if (userThemes.length >= MAX_USER_THEMES) {
+                            alert(`Limite de ${MAX_USER_THEMES} temas pessoais atingido.`);
+                            return;
+                          }
+                          const baseTheme = getComputedTheme();
+                          baseTheme.name = 'Novo Tema';
+                          setEditingTheme(baseTheme);
+                          setShowCustomThemeModal(true);
+                        }}
+                        style={{ padding: '0.4rem 0.75rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.4)', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
+                        className="hover-brightness"
+                      >
+                        <Plus size={16} /> Novo Tema
+                      </button>
+                      <button
+                        onClick={() => {
+                          let tData: CustomTheme;
+                          if (appTheme.startsWith('user_')) {
+                            const ut = userThemes.find(t => t.id === appTheme);
+                            tData = ut ? { ...ut } : getComputedTheme();
+                          } else if (appTheme.startsWith('global_') || appTheme.startsWith('custom_')) {
+                            const gt = globalThemes.find(g => g.id === appTheme);
+                            tData = gt ? { ...gt } : getComputedTheme();
+                          } else {
+                            tData = getComputedTheme();
+                          }
+                          tData.id = 'new_' + Date.now();
+                          setEditingTheme(tData);
+                          setShowCustomThemeModal(true);
+                        }}
+                        style={{ padding: '0.4rem 0.75rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', borderRadius: '8px', border: 'none', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
+                        className="hover-brightness"
+                      >
+                        <Palette size={16} /> Personalizar
+                      </button>
+                    </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
                     {[
                       { id: 'default', name: 'Padrão (Dark RPG)', color: '#0f172a', isCustom: false },
                       { id: 'light', name: 'Amanhecer (Claro)', color: '#f8fafc', isCustom: false },
-                      ...globalThemes.map(gt => ({ id: gt.id, name: gt.name, color: gt.colors.bgDark, isCustom: true, data: gt })),
-                      {
-                        id: 'custom_local',
-                        name: (localStorage.getItem('currentCustomThemeData') ? JSON.parse(localStorage.getItem('currentCustomThemeData') || '{}').name : 'Meu Tema') + ' (Pessoal)',
-                        color: '#7dd3fc',
-                        isCustom: true
-                      }
                     ].map(t => (
                       <div
                         key={t.id}
                         onClick={() => {
                           setAppTheme(t.id);
                           localStorage.setItem('appTheme', t.id);
+                          localStorage.removeItem('appThemeType');
                           document.body.setAttribute('data-theme', t.id);
-
-                          if (t.isCustom) {
-                            if (t.id === 'custom_local') {
-                              const localData = localStorage.getItem('currentCustomThemeData');
-                              if (localData) {
-                                applyCustomTheme(JSON.parse(localData));
-                              } else {
-                                applyCustomTheme(DEFAULT_FANTASY_THEME);
-                              }
-                            } else if ((t as any).data) {
-                              localStorage.setItem('currentCustomThemeData', JSON.stringify((t as any).data));
-                              applyCustomTheme((t as any).data as CustomTheme);
-                            }
-                          } else {
-                            applyCustomTheme(null);
-                          }
+                          applyCustomTheme(null);
                         }}
-                        style={{ padding: '1rem', border: appTheme === t.id ? '2px solid var(--gold-primary)' : '2px solid transparent', background: 'var(--bg-card)', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', transition: '0.2s' }}
+                        style={{ padding: '0.75rem 1rem', border: appTheme === t.id ? '2px solid var(--gold-primary)' : '2px solid transparent', background: 'var(--bg-card)', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', transition: '0.2s' }}
                         className="hover-brightness"
                       >
-                        <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: t.color, border: '2px solid var(--border-glass)' }} />
-                        <span style={{ fontWeight: appTheme === t.id ? 'bold' : 'normal', color: appTheme === t.id ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{t.name}</span>
-                        {appTheme === t.id && <CheckCircle size={18} color="var(--gold-primary)" style={{ marginLeft: 'auto' }} />}
-
-                        {t.isCustom && appTheme === t.id && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingTheme((t as any).data || (localStorage.getItem('currentCustomThemeData') ? JSON.parse(localStorage.getItem('currentCustomThemeData')!) : DEFAULT_FANTASY_THEME));
-                              setShowCustomThemeModal(true);
-                            }}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0.25rem' }}
-                            title="Editar Tema"
-                          >
-                            <Edit3 size={18} />
-                          </button>
-                        )}
+                        <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: t.color, border: '2px solid var(--border-glass)', flexShrink: 0 }} />
+                        <span style={{ fontWeight: appTheme === t.id ? 'bold' : 'normal', color: appTheme === t.id ? 'var(--gold-primary)' : 'var(--text-primary)', fontSize: '0.9rem' }}>{t.name}</span>
+                        {appTheme === t.id && <CheckCircle size={16} color="var(--gold-primary)" style={{ marginLeft: 'auto' }} />}
                       </div>
                     ))}
                   </div>
 
+                  {globalThemes.length > 0 && (
+                    <>
+                      <h4 style={{ margin: '0.5rem 0 0 0', fontSize: '1rem', color: 'var(--text-secondary)' }}>Temas Globais</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
+                        {globalThemes.map(gt => (
+                          <div
+                            key={gt.id}
+                            onClick={() => {
+                              setAppTheme(gt.id);
+                              localStorage.setItem('appTheme', gt.id);
+                              localStorage.setItem('appThemeType', 'global');
+                              document.body.setAttribute('data-theme', gt.id);
+                              applyCustomTheme(gt);
+                            }}
+                            style={{ padding: '0.75rem 1rem', border: appTheme === gt.id ? '2px solid var(--gold-primary)' : '2px solid transparent', background: 'var(--bg-card)', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', transition: '0.2s' }}
+                            className="hover-brightness"
+                          >
+                            <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: gt.colors.bgDark, border: '2px solid var(--border-glass)', flexShrink: 0 }} />
+                            <span style={{ fontWeight: appTheme === gt.id ? 'bold' : 'normal', color: appTheme === gt.id ? 'var(--gold-primary)' : 'var(--text-primary)', fontSize: '0.9rem', flex: 1 }}>{gt.name}</span>
+                            {appTheme === gt.id && <CheckCircle size={16} color="var(--gold-primary)" />}
+                            {userData?.role !== 'student' && (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingTheme({ ...gt });
+                                    setShowCustomThemeModal(true);
+                                  }}
+                                  style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0.25rem' }}
+                                  title="Editar"
+                                >
+                                  <Edit3 size={16} />
+                                </button>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!confirm(`Excluir o tema global "${gt.name}"?`)) return;
+                                    await supabase.from('system_collections').delete().eq('id', gt.id);
+                                    setGlobalThemes(prev => prev.filter(t => t.id !== gt.id));
+                                    if (appTheme === gt.id) {
+                                      setAppTheme('default');
+                                      localStorage.setItem('appTheme', 'default');
+                                      localStorage.removeItem('appThemeType');
+                                      document.body.setAttribute('data-theme', 'default');
+                                      applyCustomTheme(null);
+                                    }
+                                  }}
+                                  style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.25rem' }}
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {userThemes.length > 0 && (
+                    <>
+                      <h4 style={{ margin: '0.5rem 0 0 0', fontSize: '1rem', color: 'var(--text-secondary)' }}>Meus Temas ({userThemes.length}/{MAX_USER_THEMES})</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
+                        {userThemes.map(t => (
+                          <div
+                            key={t.id}
+                            onClick={() => {
+                              setAppTheme(t.id);
+                              localStorage.setItem('appTheme', t.id);
+                              localStorage.setItem('appThemeType', 'user');
+                              document.body.setAttribute('data-theme', t.id);
+                              applyCustomTheme(t);
+                            }}
+                            style={{ padding: '0.75rem 1rem', border: appTheme === t.id ? '2px solid var(--gold-primary)' : '2px solid transparent', background: 'var(--bg-card)', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', transition: '0.2s' }}
+                            className="hover-brightness"
+                          >
+                            <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: t.colors.bgDark, border: '2px solid var(--border-glass)', flexShrink: 0 }} />
+                            <span style={{ fontWeight: appTheme === t.id ? 'bold' : 'normal', color: appTheme === t.id ? 'var(--gold-primary)' : 'var(--text-primary)', fontSize: '0.9rem', flex: 1 }}>{t.name}</span>
+                            {appTheme === t.id && <CheckCircle size={16} color="var(--gold-primary)" />}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingTheme(t);
+                                setShowCustomThemeModal(true);
+                              }}
+                              style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0.25rem' }}
+                              title="Editar"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!confirm(`Excluir o tema "${t.name}"?`)) return;
+                                await supabase.from('user_themes').delete().eq('id', t.id);
+                                setUserThemes(prev => prev.filter(ut => ut.id !== t.id));
+                                if (appTheme === t.id) {
+                                  setAppTheme('default');
+                                  localStorage.setItem('appTheme', 'default');
+                                  document.body.setAttribute('data-theme', 'default');
+                                  applyCustomTheme(null);
+                                }
+                              }}
+                              style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.25rem' }}
+                              title="Excluir"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {userThemes.length === 0 && (
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0, textAlign: 'center', padding: '1rem' }}>
+                      Clique em "Novo Tema" ou "Personalizar" para criar seu primeiro tema pessoal.
+                    </p>
+                  )}
+
                   <h4 style={{ margin: '1.5rem 0 1rem 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>Estilo de Fonte</h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0' }}>
+                    "Padrão do Tema" usa a fonte definida pelo tema selecionado. Escolha uma fonte específica para sobrescrever.
+                  </p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }} className="custom-scrollbar">
                     {[
-                      { id: 'default', name: 'Padrão (Épico)', desc: 'Cinzel & Outfit' },
+                      { id: 'default', name: 'Padrão do Tema', desc: 'Usa a fonte definida pelo tema selecionado' },
+                      { id: 'epic', name: 'Épico (Cinzel)', desc: 'Cinzel & Outfit' },
                       { id: 'classic', name: 'Clássico (Medieval)', desc: 'Playfair & Lora' },
                       { id: 'scifi', name: 'Ficção (Moderno)', desc: 'Orbitron & Roboto' },
                       { id: 'casual', name: 'Casual (Divertido)', desc: 'Fredoka & Nunito' },
@@ -1940,33 +2152,84 @@ export default function Dashboard() {
           }}
           onClose={() => {
             setShowCustomThemeModal(false);
-            // Restore previous active theme
             const cur = localStorage.getItem('appTheme') || 'default';
-            if (cur.startsWith('custom_')) {
-              const saved = localStorage.getItem('currentCustomThemeData');
-              if (saved) applyCustomTheme(JSON.parse(saved));
+            if (cur.startsWith('user_') || cur.startsWith('global_') || cur.startsWith('custom_')) {
+              const themeData = getCurrentThemeData();
+              if (themeData) applyCustomTheme(themeData);
+              else applyCustomTheme(null);
             } else {
               applyCustomTheme(null);
             }
           }}
           onSave={async (theme) => {
-            if (theme.isGlobal && userData?.role !== 'student') {
-              const newId = theme.id.startsWith('custom_local') ? 'custom_' + Date.now() : theme.id;
-              theme.id = newId;
-              await supabase.from('system_collections').upsert({ id: newId, type: 'themes', data: theme as any });
-              setAppTheme(newId);
-              localStorage.setItem('appTheme', newId);
-              localStorage.setItem('currentCustomThemeData', JSON.stringify(theme));
-              applyCustomTheme(theme);
-            } else {
-              theme.id = 'custom_local';
-              theme.isGlobal = false;
-              setAppTheme('custom_local');
-              localStorage.setItem('appTheme', 'custom_local');
-              localStorage.setItem('currentCustomThemeData', JSON.stringify(theme));
-              applyCustomTheme(theme);
+            try {
+              if (theme.isGlobal && userData?.role !== 'student') {
+                const isNew = theme.id.startsWith('new_');
+                const newId = isNew ? crypto.randomUUID() : theme.id;
+                theme.id = newId;
+                let globalErr;
+                if (isNew) {
+                  const res = await supabase.from('system_collections').insert({
+                    id: newId,
+                    collection_name: 'themes',
+                    doc_id: newId,
+                    data: theme as any,
+                  });
+                  globalErr = res.error;
+                } else {
+                  const res = await supabase.from('system_collections')
+                    .update({ data: theme as any })
+                    .eq('id', newId);
+                  globalErr = res.error;
+                }
+                if (globalErr) { console.error('Erro ao salvar tema global:', globalErr); return; }
+                setGlobalThemes(prev => {
+                  const existing = prev.findIndex(t => t.id === newId);
+                  if (existing >= 0) {
+                    const updated = [...prev];
+                    updated[existing] = theme;
+                    return updated;
+                  }
+                  return [...prev, theme];
+                });
+                setAppTheme(newId);
+                localStorage.setItem('appTheme', newId);
+                localStorage.setItem('appThemeType', 'global');
+                applyCustomTheme(theme);
+              } else {
+                const isNew = theme.id.startsWith('new_');
+                const newId = isNew ? 'user_' + Date.now() : theme.id;
+                theme.id = newId;
+                theme.isGlobal = false;
+                const payload: any = {
+                  id: newId,
+                  user_id: userData!.uid,
+                  name: theme.name,
+                  data: theme,
+                  is_global: false,
+                };
+                if (tenantId) payload.tenant_id = tenantId;
+                console.log('Salvando tema pessoal:', payload);
+                const { error } = await supabase.from('user_themes').upsert(payload, { onConflict: 'id' });
+                if (error) { console.error('Erro ao salvar tema pessoal:', error); return; }
+                setUserThemes(prev => {
+                  const existing = prev.findIndex(t => t.id === newId);
+                  if (existing >= 0) {
+                    const updated = [...prev];
+                    updated[existing] = theme;
+                    return updated;
+                  }
+                  return [...prev, theme];
+                });
+                setAppTheme(newId);
+                localStorage.setItem('appTheme', newId);
+                localStorage.setItem('appThemeType', 'user');
+                applyCustomTheme(theme);
+              }
+              setShowCustomThemeModal(false);
+            } catch (err) {
+              console.error('Erro inesperado ao salvar tema:', err);
             }
-            setShowCustomThemeModal(false);
           }}
         />
       )}
@@ -2027,7 +2290,11 @@ export default function Dashboard() {
             )}
 
             <button
-              onClick={() => setIsSettingsModalOpen(true)}
+              onClick={async () => {
+                setIsSettingsModalOpen(true);
+                const { data } = await supabase.from('system_collections').select('*').eq('collection_name', 'themes');
+                if (data) setGlobalThemes(data.map(d => ({ id: d.id, ...(d.data as any) } as CustomTheme)));
+              }}
               className="hover-brightness hide-on-mobile"
               style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.4rem' }}
               title="Configurações do Sistema"
@@ -2112,7 +2379,7 @@ export default function Dashboard() {
                     {/* Ajustes e Temas */}
                     <button
                       className="login-btn"
-                      onClick={() => { setStudentMobileMenuOpen(false); setIsSettingsModalOpen(true); }}
+                      onClick={async () => { setStudentMobileMenuOpen(false); setIsSettingsModalOpen(true); const { data } = await supabase.from('system_collections').select('*').eq('collection_name', 'themes'); if (data) setGlobalThemes(data.map(d => ({ id: d.id, ...(d.data as any) } as CustomTheme))); }}
                       style={{ width: '100%', justifyContent: 'flex-start', padding: '0.5rem 0.75rem', gap: '0.5rem', background: 'var(--btn-bg)', fontSize: '0.85rem' }}
                     >
                       <Settings size={16} color="var(--gold-primary)" />

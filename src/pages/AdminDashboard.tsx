@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -527,6 +527,10 @@ export default function AdminDashboard() {
   // Sidebar Mobile State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isUserFiltersOpen, setIsUserFiltersOpen] = useState(true);
+  const [showAvatars3D, setShowAvatars3D] = useState(() => {
+    const saved = localStorage.getItem('showAvatars3D');
+    return saved !== null ? saved === 'true' : true;
+  });
   const [questMonsterName, setQuestMonsterName] = useState('');
   const [questMonsterConfig, setQuestMonsterConfig] = useState<AvatarConfig | null>(null);
   const [questMonsterModelUrl, setQuestMonsterModelUrl] = useState('');
@@ -1978,10 +1982,18 @@ export default function AdminDashboard() {
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '0.5rem 2rem', margin: '-2rem -2rem 0.5rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div className="compact-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Gerenciamento de Usuários</h2>
-                  <button className="retractable-toggle-btn" onClick={() => setIsUserFiltersOpen(!isUserFiltersOpen)} style={{ background: 'transparent', border: 'none', color: isUserFiltersOpen ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center', borderRadius: '6px' }} title={isUserFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros'}>
-                    <Filter size={18} />
+                <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Gerenciamento de Usuários</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem 0.5rem', borderRadius: '8px' }}>
+                  <button onClick={() => setIsUserFiltersOpen(!isUserFiltersOpen)} style={{ background: 'transparent', border: 'none', color: isUserFiltersOpen ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.35rem', display: 'flex', alignItems: 'center', borderRadius: '6px' }} title={isUserFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros'}>
+                    <Filter size={16} />
+                  </button>
+                  <div style={{ width: '1px', height: '16px', background: 'var(--border-glass)' }} />
+                  <button onClick={() => {
+                    const next = !showAvatars3D;
+                    setShowAvatars3D(next);
+                    localStorage.setItem('showAvatars3D', String(next));
+                  }} style={{ background: 'transparent', border: 'none', color: showAvatars3D ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.35rem', display: 'flex', alignItems: 'center', borderRadius: '6px' }} title={showAvatars3D ? 'Ocultar Avatares 3D' : 'Mostrar Avatares 3D'}>
+                    {showAvatars3D ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
                 </div>
                 
@@ -2146,7 +2158,7 @@ export default function AdminDashboard() {
                               }}
                               style={{ width: '20px', height: '20px', cursor: 'pointer' }}
                             />
-                            {student.avatarConfig ? (
+                            {student.avatarConfig && showAvatars3D ? (
                               <div 
                                 onClick={() => setViewingProfileUser(student)}
                                 style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}
@@ -2161,12 +2173,16 @@ export default function AdminDashboard() {
                                 />
                               </div>
                             ) : (
-                              <img 
-                                src={student.photoURL} 
+                              <div
                                 onClick={() => setViewingProfileUser(student)}
-                                alt="" 
-                                style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, objectFit: 'cover', cursor: 'pointer' }} 
-                              />
+                                style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', overflow: 'hidden' }}
+                              >
+                                {student.photoURL ? (
+                                  <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: currentRank.color }}>{student.name?.charAt(0)?.toUpperCase() || '?'}</span>
+                                )}
+                              </div>
                             )}
                             <div>
                               <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>

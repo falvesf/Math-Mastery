@@ -112,13 +112,31 @@ function App() {
     const theme = localStorage.getItem('appTheme') || 'default';
     document.body.setAttribute('data-theme', theme);
 
-    if (theme.startsWith('custom_')) {
+    if (theme.startsWith('user_')) {
+      import('./lib/supabase').then(({ supabase }) => {
+        supabase.from('user_themes').select('data').eq('id', theme).single().then(({ data }) => {
+          if (data) {
+            import('./lib/theme').then(({ applyCustomTheme }) => {
+              try { applyCustomTheme(data.data as any); } catch(e) {}
+            });
+          }
+        });
+      });
+    } else if (theme.startsWith('global_') || localStorage.getItem('appThemeType') === 'global') {
+      import('./lib/supabase').then(({ supabase }) => {
+        supabase.from('system_collections').select('data').eq('id', theme).single().then(({ data }) => {
+          if (data) {
+            import('./lib/theme').then(({ applyCustomTheme }) => {
+              try { applyCustomTheme(data.data as any); } catch(e) {}
+            });
+          }
+        });
+      });
+    } else if (theme.startsWith('custom_')) {
       const customData = localStorage.getItem('currentCustomThemeData');
       if (customData) {
         import('./lib/theme').then(({ applyCustomTheme }) => {
-          try {
-            applyCustomTheme(JSON.parse(customData));
-          } catch(e) {}
+          try { applyCustomTheme(JSON.parse(customData)); } catch(e) {}
         });
       }
     }
