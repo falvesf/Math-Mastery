@@ -985,25 +985,198 @@ h3 {
   }
   .admin-sidebar {
     position: fixed !important;
-    top: 0;
-    left: 0;
-    height: 100vh;
-    z-index: 1000;
-    transform: translateX(-100%);
+    left: -280px;
+    top: 0 !important;
+    bottom: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    width: 260px !important;
+    z-index: 10000 !important;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 0 30px rgba(0,0,0,0.8) !important;
     background: var(--bg-dark) !important;
   }
   .admin-sidebar.open {
-    transform: translateX(0);
+    left: 0 !important;
   }
   .admin-sidebar-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0,0,0,0.7);
-    z-index: 999;
-    animation: fadeIn 0.3s;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+  }
+
+  .admin-sidebar .login-btn {
+    justify-content: flex-start !important;
+    padding: 0.6rem 0.75rem !important;
+    font-size: 0.82rem !important;
+    gap: 0.5rem !important;
+  }
+
+  .admin-navbar-right .login-btn:not(.mobile-menu-btn):not(.back-btn) {
+    display: none !important;
+  }
+
+  .admin-navbar-right .back-btn {
+    display: flex !important;
+  }
+
+  .admin-navbar-right .mobile-menu-btn {
+    display: flex !important;
+  }
+
+  .admin-navbar-right .user-info-pill {
+    display: none !important;
+  }
+
+  .admin-navbar-right .logout-btn {
+    display: flex !important;
+  }
+
+  .xp-modal-content {
+    flex-direction: column !important;
+    max-width: 95vw !important;
+    padding: 1rem !important;
+  }
+
+  .xp-modal-content > div {
+    min-width: 100% !important;
+  }
+
+  .modal-content {
+    max-width: 95vw !important;
+    margin: 0.5rem !important;
+  }
+
+  .class-tabs-scroll {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding-bottom: 0.25rem !important;
+  }
+
+  .class-tabs-scroll::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .class-tabs-scroll button {
+    flex-shrink: 0 !important;
+  }
+
+  .class-tabs-arrow {
+    display: flex !important;
+  }
+
+  .class-tabs-scroll {
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+  }
+
+  .quest-card {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    padding: 1rem !important;
+    gap: 0.75rem !important;
+    position: relative !important;
+  }
+
+  .quest-card .quest-card-info {
+    width: 100% !important;
+    gap: 0.75rem !important;
+  }
+
+  .quest-card .quest-card-img {
+    width: 50px !important;
+    height: 50px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .quest-card .quest-card-mode-badge {
+    position: absolute !important;
+    top: 0.5rem !important;
+    right: 0.5rem !important;
+    font-size: 0.65rem !important;
+    padding: 0.15rem 0.5rem !important;
+    z-index: 2 !important;
+  }
+
+  .quest-card .quest-card-actions {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 0.35rem !important;
+    align-items: center !important;
+    overflow-x: auto !important;
+  }
+
+  .quest-card .quest-card-actions button {
+    font-size: 0.7rem !important;
+    padding: 0.35rem 0.5rem !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .quest-card .quest-card-actions .quest-card-btn-text {
+    display: none !important;
+  }
+
+  .quest-edit-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  .quest-edit-grid > div {
+    min-width: 0 !important;
+  }
+
+  .quest-edit-grid .quest-edit-right {
+    border-left: none !important;
+    border-top: 1px solid var(--border-glass) !important;
+    padding-left: 0 !important;
+    padding-top: 1rem !important;
+  }
+
+  .quest-edit-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.75rem !important;
+  }
+
+  .quest-edit-header h2 {
+    font-size: 1.2rem !important;
+  }
+
+  .quest-edit-header > div {
+    width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+  }
+
+  .xp-modal-close-top {
+    position: absolute !important;
+    top: 0.75rem !important;
+    right: 0.75rem !important;
+    z-index: 10 !important;
+  }
+
+  .dashboard-header-sticky {
+    padding: 0.75rem 1rem !important;
+    margin: -0.75rem -0.75rem 0.75rem -0.75rem !important;
+  }
+
+  .dashboard-header-sticky h2 {
+    font-size: 1.1rem !important;
+  }
+
+  .dashboard-header-sticky .login-btn {
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.75rem !important;
+  }
+
+  #admin-content-scroll {
+    padding: 0.75rem !important;
   }
 }
 
@@ -1525,6 +1698,20 @@ html, body {
     width: 40px !important;
     height: 40px !important;
   }
+
+  .compact-nav .logo-container h1 {
+    font-size: 0.9rem !important;
+  }
+
+  .compact-nav .login-btn {
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.75rem !important;
+  }
+
+  .compact-nav .login-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
   
   .compact-nav h1 {
     font-size: 1.1rem !important;
@@ -1574,31 +1761,6 @@ html, body {
     position: sticky !important;
     top: 0 !important;
     z-index: 500 !important;
-  }
-  
-  .admin-sidebar {
-    position: fixed !important;
-    left: -280px;
-    top: 0 !important;
-    bottom: 0 !important;
-    height: 100vh !important;
-    max-height: 100vh !important;
-    width: 260px !important;
-    z-index: 10000 !important;
-    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    box-shadow: 0 0 30px rgba(0,0,0,0.8) !important;
-  }
-  
-  .admin-sidebar.open {
-    left: 0 !important;
-  }
-  
-  .admin-sidebar-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(4px);
-    z-index: 9999;
   }
 }
 

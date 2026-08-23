@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy } from 'lucide-react';
+import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy, Menu } from 'lucide-react';
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
 import DirectUploadButton from './DirectUploadButton';
 
@@ -221,6 +221,7 @@ type ConfigTab = 'monster' | 'arena' | 'rewards';
 export default function QuestConfigModal(props: QuestConfigModalProps) {
   const { isOpen, onClose } = props;
   const [activeTab, setActiveTab] = useState<ConfigTab>('monster');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   if (!isOpen) return null;
 
@@ -236,41 +237,51 @@ export default function QuestConfigModal(props: QuestConfigModalProps) {
 
         {/* Header */}
         <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <h2 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Settings color="var(--gold-primary)" /> Configurações do Desafio
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.4rem', display: 'flex', alignItems: 'center' }} title="Menu de Abas">
+              <Menu size={18} />
+            </button>
+            <h2 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Settings color="var(--gold-primary)" /> Configurações do Desafio
+            </h2>
+          </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
             <X size={24} />
           </button>
         </div>
 
         {/* Corpo: esquerda (menu) + direita (conteúdo) */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          {/* ESQUERDA — menu de abas */}
-          <div style={{ width: '230px', borderRight: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem' }}>
-              {tabs.map(tab => {
-                const Icon = tab.icon;
-                const active = activeTab === tab.id;
-                return (
-                  <div
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.6rem',
-                      padding: '0.8rem 0.9rem', marginBottom: '0.4rem', borderRadius: '8px', cursor: 'pointer',
-                      background: active ? 'rgba(255,255,255,0.07)' : 'transparent',
-                      border: active ? '1px solid var(--gold-primary)' : '1px solid transparent',
-                      fontWeight: active ? 'bold' : 'normal',
-                    }}
-                  >
-                    <Icon size={18} color={tab.color} />
-                    <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{tab.label}</span>
-                  </div>
-                );
-              })}
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+          {/* ESQUERDA — menu de abas (overlay) */}
+          {sidebarOpen && (
+          <>
+            <div onClick={() => setSidebarOpen(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10 }} />
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '230px', background: 'var(--bg-dark, #1a1a2e)', borderRight: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', flexShrink: 0, zIndex: 11, boxShadow: '4px 0 20px rgba(0,0,0,0.5)' }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem' }}>
+                {tabs.map(tab => {
+                  const Icon = tab.icon;
+                  const active = activeTab === tab.id;
+                  return (
+                    <div
+                      key={tab.id}
+                      onClick={() => { setActiveTab(tab.id); setSidebarOpen(false); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.6rem',
+                        padding: '0.8rem 0.9rem', marginBottom: '0.4rem', borderRadius: '8px', cursor: 'pointer',
+                        background: active ? 'rgba(255,255,255,0.07)' : 'transparent',
+                        border: active ? '1px solid var(--gold-primary)' : '1px solid transparent',
+                        fontWeight: active ? 'bold' : 'normal',
+                      }}
+                    >
+                      <Icon size={18} color={tab.color} />
+                      <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{tab.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          </>
+          )}
 
           {/* DIREITA — conteúdo da aba */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>

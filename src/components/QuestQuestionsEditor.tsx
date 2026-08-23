@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, BookOpen, Trash2, Clock, Search, Save, Pencil, CheckCircle, Download, Eye, EyeOff } from 'lucide-react';
+import { X, Plus, BookOpen, Trash2, Clock, Search, Save, Pencil, CheckCircle, Download, Eye, EyeOff, Menu } from 'lucide-react';
 import { useTenant } from '../contexts/TenantContext';
 import { useDialog } from '../contexts/DialogContext';
 import { supabase } from '../lib/supabase';
@@ -52,6 +52,7 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
   const [editingBankOptions, setEditingBankOptions] = useState<QOption[]>([]);
   // Toggle da imagem grande da pergunta no modal do desafio
   const [showQImage, setShowQImage] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   // Índice da pergunta recém-adicionada/importada que deve receber foco no enunciado
   const [pendingFocus, setPendingFocus] = useState<number | null>(null);
 
@@ -250,9 +251,14 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
 
         {/* Header */}
         <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <h2 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Pencil color="var(--gold-primary)" /> Perguntas do Desafio ({questions.length})
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.4rem', display: 'flex', alignItems: 'center' }} title="Lista de Perguntas">
+              <Menu size={18} />
+            </button>
+            <h2 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Pencil color="var(--gold-primary)" /> Perguntas do Desafio ({questions.length})
+            </h2>
+          </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button onClick={openBank} style={{ padding: '0.5rem 1rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <BookOpen size={16} /> Banco de Perguntas
@@ -264,16 +270,19 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
         </div>
 
         {/* Corpo: esquerda (lista) + direita (edição) */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          {/* ESQUERDA — lista de perguntas */}
-          <div style={{ width: '220px', borderRight: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-            <div style={{ padding: '0.75rem', borderBottom: '1px solid var(--border-glass)' }}>
-              <button
-                onClick={() => setAddMenu(addMenu === 'new' ? null : 'new')}
-                style={{ width: '100%', padding: '0.6rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold,#000)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
-              >
-                <Plus size={16} /> Adicionar Pergunta
-              </button>
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+          {/* ESQUERDA — lista de perguntas (overlay) */}
+          {sidebarOpen && (
+          <>
+            <div onClick={() => setSidebarOpen(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10 }} />
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '220px', background: 'var(--bg-dark, #1a1a2e)', borderRight: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', flexShrink: 0, zIndex: 11, boxShadow: '4px 0 20px rgba(0,0,0,0.5)' }}>
+              <div style={{ padding: '0.75rem', borderBottom: '1px solid var(--border-glass)' }}>
+                <button
+                  onClick={() => setAddMenu(addMenu === 'new' ? null : 'new')}
+                  style={{ width: '100%', padding: '0.6rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold,#000)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                >
+                  <Plus size={16} /> Adicionar Pergunta
+                </button>
               {addMenu === 'new' && (
                 <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                   <button onClick={addNewQuestion} style={{ padding: '0.5rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>
@@ -308,6 +317,8 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
               ))}
             </div>
           </div>
+          </>
+          )}
 
           {/* DIREITA — edição da pergunta ativa */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>

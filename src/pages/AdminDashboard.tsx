@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -526,7 +526,7 @@ export default function AdminDashboard() {
 
   // Sidebar Mobile State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isUserFiltersOpen, setIsUserFiltersOpen] = useState(false);
+  const [isUserFiltersOpen, setIsUserFiltersOpen] = useState(true);
   const [questMonsterName, setQuestMonsterName] = useState('');
   const [questMonsterConfig, setQuestMonsterConfig] = useState<AvatarConfig | null>(null);
   const [questMonsterModelUrl, setQuestMonsterModelUrl] = useState('');
@@ -1598,10 +1598,10 @@ export default function AdminDashboard() {
 
   return (
     <div className="app-container" style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
-      <div style={{ position: 'sticky', top: 0, zIndex: 100, padding: '0.5rem 1.5rem', background: 'transparent', backdropFilter: 'blur(12px)' }}>
+      <div className="dashboard-header-sticky">
       <nav className="navbar glass-panel compact-nav" style={{ position: 'static', marginBottom: '0.5rem' }}>
         <div className="logo-container">
-          <div style={{ width: 64, height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 48, height: 48, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <img src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} alt="Math Mastery" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem', minWidth: 0 }}>
@@ -1613,14 +1613,14 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+        <div className="admin-navbar-right" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button className="login-btn back-btn" onClick={() => navigate('/dashboard')} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Voltar ao Painel do Aluno">
+            <ArrowLeft size={20} />
+          </button>
           <button className="login-btn mobile-menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Menu">
             <Menu size={20} />
           </button>
-          <button className="login-btn" onClick={() => navigate('/dashboard')} style={{ padding: '0.5rem 1rem' }}>
-            <ArrowLeft size={18} style={{ marginRight: '0.5rem' }} /> Voltar
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
+          <div className="user-info-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '50px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
               {userData && (
                 <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
@@ -1630,64 +1630,65 @@ export default function AdminDashboard() {
               <span style={{ fontWeight: 'bold' }}>{userData?.name?.split(' ')[0]}</span>
             </div>
           </div>
-          <button className="login-btn" onClick={() => supabase.auth.signOut()} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
+          <button className="login-btn logout-btn" onClick={() => supabase.auth.signOut()} style={{ padding: '0.75rem', borderRadius: '50%' }} title="Sair">
             <LogOut size={20} />
           </button>
         </div>
       </nav>
       </div>
 
-      <div style={{ display: 'flex', gap: '1.5rem', flex: 1, overflow: 'hidden' }}>
+      <div className="admin-layout" style={{ display: 'flex', gap: '1.5rem', flex: 1, overflow: 'hidden' }}>
         {/* Overlay for Mobile */}
         {isSidebarOpen && (
           <div className="admin-sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>
         )}
         
         <div className={`glass-panel admin-sidebar ${isSidebarOpen ? 'open' : ''}`} style={{ width: '250px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', flexShrink: 0, alignSelf: 'flex-start', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)' }}>
+
           <div className="tenant-switcher-mobile" style={{ flexDirection: 'column', gap: '0.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
             <TenantSwitcher variant="menu" />
           </div>
           <button className={`login-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { setActiveTab('users'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'users' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <Users size={20} /> Alunos & Notas
+            <Users size={20} /> <span className="sidebar-btn-text">Alunos & Notas</span>
           </button>
           <button className={`login-btn ${activeTab === 'quests' ? 'active' : ''}`} onClick={() => { setActiveTab('quests'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'quests' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'quests' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <Swords size={20} /> Missões (Quizzes)
+            <Swords size={20} /> <span className="sidebar-btn-text">Missões (Quizzes)</span>
           </button>
           <button className={`login-btn ${activeTab === 'store' ? 'active' : ''}`} onClick={() => { setActiveTab('store'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'store' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'store' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <Store size={20} /> Loja de Itens
+            <Store size={20} /> <span className="sidebar-btn-text">Loja de Itens</span>
           </button>
           <button className={`login-btn ${activeTab === 'economy' ? 'active' : ''}`} onClick={() => { setActiveTab('economy'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'economy' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'economy' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <CircleDollarSign size={20} /> Economia (Ajustes)
+            <CircleDollarSign size={20} /> <span className="sidebar-btn-text">Economia (Ajustes)</span>
           </button>
           {userData?.role === 'admin' && (
             <>
               <button className={`login-btn ${activeTab === 'classes' ? 'active' : ''}`} onClick={() => { setActiveTab('classes'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'classes' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'classes' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-                <BookOpen size={20} /> Turmas
+                <BookOpen size={20} /> <span className="sidebar-btn-text">Turmas</span>
               </button>
               <button className={`login-btn ${activeTab === 'approvals' ? 'active' : ''}`} onClick={() => { setActiveTab('approvals'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'approvals' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'approvals' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-                <UserCheck size={20} /> Solicitações
+                <UserCheck size={20} /> <span className="sidebar-btn-text">Solicitações</span>
               </button>
               <button className={`login-btn ${activeTab === 'config' ? 'active' : ''}`} onClick={() => { setActiveTab('config'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'config' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'config' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-                <Settings size={20} /> Tipos de Avaliação
+                <Settings size={20} /> <span className="sidebar-btn-text">Tipos de Avaliação</span>
               </button>
             </>
           )}
           <button className={`login-btn ${activeTab === 'ranks' ? 'active' : ''}`} onClick={() => { setActiveTab('ranks'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'ranks' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'ranks' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <Medal size={20} /> Patentes (Artes)
+            <Medal size={20} /> <span className="sidebar-btn-text">Patentes (Artes)</span>
           </button>
           {userData?.role === 'admin' && (
             <button className={`login-btn ${activeTab === 'entities' ? 'active' : ''}`} onClick={() => { setActiveTab('entities'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'entities' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'entities' ? 'rgba(239, 68, 68, 0.1)' : 'transparent', marginTop: 'auto' }}>
-              <Box size={20} /> Entidades (3D)
+              <Box size={20} /> <span className="sidebar-btn-text">Entidades (3D)</span>
             </button>
           )}
           {isSuperAdmin && (
             <button className={`login-btn ${activeTab === 'tenants' ? 'active' : ''}`} onClick={() => { setActiveTab('tenants'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'tenants' ? '1px solid #8b5cf6' : '1px solid transparent', background: activeTab === 'tenants' ? 'rgba(139, 92, 246, 0.1)' : 'transparent' }}>
-              <GraduationCap size={20} /> Escolas (Multi-tenant)
+              <GraduationCap size={20} /> <span className="sidebar-btn-text">Escolas (Multi-tenant)</span>
             </button>
           )}
           {isSuperAdmin && (
             <button className={`login-btn ${activeTab === 'companion' ? 'active' : ''}`} onClick={() => { setActiveTab('companion'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'companion' ? '1px solid #fbbf24' : '1px solid transparent', background: activeTab === 'companion' ? 'rgba(251, 191, 36, 0.1)' : 'transparent' }}>
-              <MessageCircle size={20} /> Companheiro (Dicas)
+              <MessageCircle size={20} /> <span className="sidebar-btn-text">Companheiro (Dicas)</span>
             </button>
           )}
         </div>
@@ -1962,7 +1963,7 @@ export default function AdminDashboard() {
         {/* Aba de Economia */}
         {activeTab === 'economy' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+            <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Ajustes da Economia</h2>
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Configure taxas, quedas de moedas e regras do comércio.</span>
@@ -1975,11 +1976,13 @@ export default function AdminDashboard() {
         {/* Aba de Usuários */}
         {activeTab === 'users' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '0.5rem 2rem', margin: '-2rem -2rem 0.5rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+              <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '0.5rem 2rem', margin: '-2rem -2rem 0.5rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div className="compact-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Gerenciamento de Usuários</h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Controle de alunos, turmas e equipe escolar.</p>
+                  <button className="retractable-toggle-btn" onClick={() => setIsUserFiltersOpen(!isUserFiltersOpen)} style={{ background: 'transparent', border: 'none', color: isUserFiltersOpen ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center', borderRadius: '6px' }} title={isUserFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros'}>
+                    <Filter size={18} />
+                  </button>
                 </div>
                 
                 {selectedStudentIds.length > 0 && (
@@ -2003,10 +2006,8 @@ export default function AdminDashboard() {
               </div>
 
               {/* Filtros e Busca */}
-              <button className="retractable-toggle-btn" onClick={() => setIsUserFiltersOpen(!isUserFiltersOpen)}>
-                {isUserFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros e Turmas'}
-              </button>
-              <div className={`compact-filters retractable-content ${isUserFiltersOpen ? 'open' : ''}`} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexDirection: 'column' }}>
+              {isUserFiltersOpen && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   <div style={{ position: 'relative', flex: '1 1 300px', display: 'flex', alignItems: 'center' }}>
                     <Search size={16} style={{ position: 'absolute', right: '0.75rem', color: 'var(--text-secondary)' }} />
@@ -2027,17 +2028,20 @@ export default function AdminDashboard() {
                     <option value="name">Por Nome</option>
                     <option value="class">Por Turma</option>
                   </select>
-                  <select 
-                    value={studentSortOrder} 
-                    onChange={e => setStudentSortOrder(e.target.value as any)}
-                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', height: '36px', fontSize: '0.9rem' }}
+                  <button 
+                    onClick={() => setStudentSortOrder(studentSortOrder === 'desc' ? 'asc' : 'desc')}
+                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', height: '36px', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}
+                    title="Alterar Direção"
                   >
-                    <option value="desc">Descendente</option>
-                    <option value="asc">Ascendente</option>
-                  </select>
+                    {studentSortOrder === 'desc' ? 'A→Z' : 'Z→A'}
+                  </button>
                 </div>
                 
-                <div className="compact-tab-row" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <button className="class-tabs-arrow class-tabs-arrow-left" onClick={() => { const el = document.querySelector('.class-tabs-scroll'); if (el) el.scrollBy({ left: -120, behavior: 'smooth' }); }} style={{ display: 'none', position: 'absolute', left: 0, zIndex: 5, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)', padding: 0, flexShrink: 0 }}>
+                    <ChevronDown size={14} style={{ transform: 'rotate(90deg)' }} />
+                  </button>
+                  <div className="compact-tab-row class-tabs-scroll" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
                   <button 
                     onClick={() => setSelectedClassTab('all')}
                     style={{ padding: '0.25rem 1rem', borderRadius: '16px', border: '1px solid var(--border-glass)', background: selectedClassTab === 'all' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: selectedClassTab === 'all'  ? 'black'  : 'var(--text-primary)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '0.85rem' }}
@@ -2066,7 +2070,12 @@ export default function AdminDashboard() {
                     Sem Turma
                   </button>
                 </div>
+                  <button className="class-tabs-arrow class-tabs-arrow-right" onClick={() => { const el = document.querySelector('.class-tabs-scroll'); if (el) el.scrollBy({ left: 120, behavior: 'smooth' }); }} style={{ display: 'none', position: 'absolute', right: 0, zIndex: 5, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)', padding: 0, flexShrink: 0 }}>
+                    <ChevronDown size={14} style={{ transform: 'rotate(-90deg)' }} />
+                  </button>
                 </div>
+                </div>
+              )}
               </div>
 
               {loading ? (
@@ -2249,7 +2258,7 @@ export default function AdminDashboard() {
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               {!isCreatingQuest ? (
                 <>
-                  <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Central de Missões</h2>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Crie desafios ao estilo Kahoot para os alunos faturarem XP.</p>
@@ -2273,19 +2282,19 @@ export default function AdminDashboard() {
                     }).map(quest => {
                       const isOwnerOrAdmin = userData?.role === 'admin' || quest.createdBy === userData?.uid;
                       return (
-                      <div key={quest.id} className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderLeft: `4px solid ${quest.active ? 'var(--accent-green)' : 'var(--text-secondary)'}` }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                      <div key={quest.id} className="glass-panel quest-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderLeft: `4px solid ${quest.active ? 'var(--accent-green)' : 'var(--text-secondary)'}` }}>
+                        <div className="quest-card-info" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                           {quest.coverImageUrl ? (
-                            <img src={quest.coverImageUrl} alt="Capa" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }} />
+                            <img src={quest.coverImageUrl} alt="Capa" className="quest-card-img" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }} />
                           ) : (
-                            <div style={{ width: '80px', height: '80px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                            <div className="quest-card-img" style={{ width: '80px', height: '80px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.1)' }}>
                               <Swords size={32} color="var(--text-secondary)" />
                             </div>
                           )}
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
                               <h3 style={{ fontSize: '1.3rem', margin: 0 }}>{quest.title}</h3>
-                              <span style={{ padding: '0.2rem 0.6rem', background: quest.mode === 'live' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: quest.mode === 'live' ? 'var(--gold-primary)' : 'var(--accent-blue)', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              <span className="quest-card-mode-badge" style={{ padding: '0.2rem 0.6rem', background: quest.mode === 'live' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: quest.mode === 'live' ? 'var(--gold-primary)' : 'var(--accent-blue)', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                 {quest.mode === 'live' ? 'Tempo Real' : 'Atividade'}
                               </span>
                             </div>
@@ -2297,7 +2306,7 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <div className="quest-card-actions" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                           {quest.mode === 'live' && (
                             <button onClick={() => navigate(`/live-admin/${quest.id}`, { state: { reset: true } })} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }} title="Iniciar Sessão Ao Vivo">
                               <Play size={18} fill="black" /> Iniciar Ao Vivo
@@ -2326,8 +2335,8 @@ export default function AdminDashboard() {
                   </div>
                 </>
               ) : (
-                <div style={{ animation: 'slideUp 0.3s ease-out' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                <div style={{ animation: 'slideUp 0.3s ease-out', display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <div className="quest-edit-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexShrink: 0, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', padding: '0.75rem 0', borderBottom: '1px solid var(--border-glass)' }}>
                     <h2 style={{ fontSize: '1.8rem', margin: 0 }}>{editingQuestId ? 'Editar Missão' : 'Criar Nova Missão (Estilo Kahoot)'}</h2>
                     <div style={{ display: 'flex', gap: '1rem' }}>
                       {editingQuestId && (
@@ -2342,7 +2351,7 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+                    <div className="quest-edit-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
                       
                       {/* Lado Esquerdo: Textos */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -2407,7 +2416,7 @@ export default function AdminDashboard() {
                       </div>
 
                       {/* Lado Direito: Imagem e Configs */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                      <div className="quest-edit-right" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                         <div>
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Imagem de Capa (Opcional - Cole uma URL de imagem)</label>
                           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
@@ -2544,7 +2553,7 @@ export default function AdminDashboard() {
                     </button>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                  <div className="quest-edit-footer" style={{ display: 'flex', gap: '1rem', marginTop: 'auto', flexShrink: 0, position: 'sticky', bottom: 0, zIndex: 10, background: 'var(--bg-card)', padding: '0.75rem 0', borderTop: '1px solid var(--border-glass)' }}>
                     <button className="login-btn" onClick={handleSaveQuest} style={{ flex: 1, padding: '1rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', fontWeight: 'bold', fontSize: '1.05rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                       <Save size={20} /> Salvar Missão
                     </button>
@@ -2557,7 +2566,7 @@ export default function AdminDashboard() {
           {/* Aba de Turmas */}
           {activeTab === 'classes' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+              <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
                   <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Gerenciamento de Turmas</h2>
                   <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Crie turmas para agrupar os alunos e gerar Rankings exclusivos.</span>
@@ -2611,16 +2620,12 @@ export default function AdminDashboard() {
           {/* Aba de Configurações */}
           {activeTab === 'config' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Configurações do Sistema</h2>
+                  <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Tipos de Avaliação</h2>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Ajuste pesos das notas e integrações externas.</p>
                 </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Tipos de Avaliação</h3>
                 <button 
                   className="login-btn" 
                   onClick={() => { setEditingEvalId(null); setNewEvalName(''); setNewEvalWeight(''); setIsEvalModalOpen(true); }}
@@ -2628,8 +2633,8 @@ export default function AdminDashboard() {
                 >
                   <Plus size={18} style={{ marginRight: '0.5rem' }} /> Adicionar
                 </button>
+                </div>
               </div>
-            </div>
 
               <div style={{ display: 'grid', gap: '1rem' }}>
                 {evaluations.map(ev => (
@@ -2793,7 +2798,10 @@ export default function AdminDashboard() {
       {/* Modal de Gerenciar XP e Histórico */}
       {selectedStudent && (
         <div className="modal-overlay" style={{ zIndex: 100 }}>
-          <div className="glass-panel xp-modal-content modal-content" style={{ maxWidth: '800px', display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
+          <div className="glass-panel xp-modal-content modal-content" style={{ maxWidth: '800px', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '2rem', position: 'relative' }}>
+            <button className="xp-modal-close-top" onClick={() => setSelectedStudent(null)} style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', zIndex: 10 }}>
+              <X size={24} />
+            </button>
             
             {/* Lado Esquerdo: Formulário */}
             <div style={{ flex: 1 }}>
@@ -2902,9 +2910,6 @@ export default function AdminDashboard() {
                 <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <History size={18} /> Histórico de XP
                 </h3>
-                <button onClick={() => setSelectedStudent(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                  <X size={24} />
-                </button>
               </div>
 
               <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
