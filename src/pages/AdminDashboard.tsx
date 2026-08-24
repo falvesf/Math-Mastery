@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -11,6 +11,8 @@ import DirectUploadButton from '../components/DirectUploadButton';
 import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
 import AdminEntitiesManager from '../components/AdminEntitiesManager';
+import AdminRolesManager from '../components/AdminRolesManager';
+import { usePermissions } from '../lib/permissions';
 import AdminCompanionTipsManager from '../components/AdminCompanionTipsManager';
 import TenantSwitcher from '../components/TenantSwitcher';
 import AdminEconomySettings from '../components/AdminEconomySettings';
@@ -463,8 +465,10 @@ export default function AdminDashboard() {
   const { showAlert, showConfirm, showToast } = useDialog();
   const { userData } = useAuth();
   const { tenant, tenantId, tenants, isSuperAdmin, noTenants, switchTenant, createTenant, updateTenant, deleteTenant, refreshTenants } = useTenant();
+  const { can: canView } = usePermissions();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('users');
+  const [activeTab, setActiveTab] = useState('general');
+  const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'ranks' | 'roles' | 'tenants' | 'companion'>('users');
   const [students, setStudents] = useState<UserData[]>([]);
   const [allUserItems, setAllUserItems] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(false);
@@ -896,10 +900,10 @@ export default function AdminDashboard() {
   }, [tenantId]);
 
   useEffect(() => {
-    if (activeTab === 'users') {
+    if (activeTab === 'general' && generalTab === 'users') {
       fetchStudents();
     }
-  }, [activeTab]);
+  }, [activeTab, generalTab]);
 
   useEffect(() => {
     if (selectedStudent) {
@@ -1696,54 +1700,68 @@ export default function AdminDashboard() {
           <div className="tenant-switcher-mobile" style={{ flexDirection: 'column', gap: '0.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
             <TenantSwitcher variant="menu" />
           </div>
-          <button className={`login-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { setActiveTab('users'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'users' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <Users size={20} /> <span className="sidebar-btn-text">Alunos & Notas</span>
-          </button>
-          <button className={`login-btn ${activeTab === 'quests' ? 'active' : ''}`} onClick={() => { setActiveTab('quests'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'quests' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'quests' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <Swords size={20} /> <span className="sidebar-btn-text">Missões (Quizzes)</span>
-          </button>
-          <button className={`login-btn ${activeTab === 'store' ? 'active' : ''}`} onClick={() => { setActiveTab('store'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'store' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'store' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <Store size={20} /> <span className="sidebar-btn-text">Loja de Itens</span>
-          </button>
-          <button className={`login-btn ${activeTab === 'economy' ? 'active' : ''}`} onClick={() => { setActiveTab('economy'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'economy' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'economy' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <CircleDollarSign size={20} /> <span className="sidebar-btn-text">Economia (Ajustes)</span>
-          </button>
-          {userData?.role === 'admin' && (
-            <>
-              <button className={`login-btn ${activeTab === 'classes' ? 'active' : ''}`} onClick={() => { setActiveTab('classes'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'classes' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'classes' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-                <BookOpen size={20} /> <span className="sidebar-btn-text">Turmas</span>
-              </button>
-              <button className={`login-btn ${activeTab === 'approvals' ? 'active' : ''}`} onClick={() => { setActiveTab('approvals'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'approvals' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'approvals' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-                <UserCheck size={20} /> <span className="sidebar-btn-text">Solicitações</span>
-              </button>
-              <button className={`login-btn ${activeTab === 'config' ? 'active' : ''}`} onClick={() => { setActiveTab('config'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'config' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'config' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-                <Settings size={20} /> <span className="sidebar-btn-text">Tipos de Avaliação</span>
-              </button>
-            </>
-          )}
-          <button className={`login-btn ${activeTab === 'ranks' ? 'active' : ''}`} onClick={() => { setActiveTab('ranks'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'ranks' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'ranks' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-            <Medal size={20} /> <span className="sidebar-btn-text">Patentes (Artes)</span>
-          </button>
-          {userData?.role === 'admin' && (
-            <button className={`login-btn ${activeTab === 'entities' ? 'active' : ''}`} onClick={() => { setActiveTab('entities'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'entities' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'entities' ? 'rgba(239, 68, 68, 0.1)' : 'transparent', marginTop: 'auto' }}>
-              <Box size={20} /> <span className="sidebar-btn-text">Entidades (3D)</span>
+{canView('users', 'view') && (
+            <button className={`login-btn ${activeTab === 'general' ? 'active' : ''}`} onClick={() => { setActiveTab('general'); setGeneralTab('users'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'general' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'general' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+              <Users size={20} /> <span className="sidebar-btn-text">Geral</span>
             </button>
           )}
-          {isSuperAdmin && (
-            <button className={`login-btn ${activeTab === 'tenants' ? 'active' : ''}`} onClick={() => { setActiveTab('tenants'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'tenants' ? '1px solid #8b5cf6' : '1px solid transparent', background: activeTab === 'tenants' ? 'rgba(139, 92, 246, 0.1)' : 'transparent' }}>
-              <GraduationCap size={20} /> <span className="sidebar-btn-text">Escolas (Multi-tenant)</span>
+          {canView('quests_admin', 'view') && (
+            <button className={`login-btn ${activeTab === 'quests' ? 'active' : ''}`} onClick={() => { setActiveTab('quests'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'quests' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'quests' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+              <Swords size={20} /> <span className="sidebar-btn-text">Missões</span>
             </button>
           )}
-          {isSuperAdmin && (
-            <button className={`login-btn ${activeTab === 'companion' ? 'active' : ''}`} onClick={() => { setActiveTab('companion'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'companion' ? '1px solid #fbbf24' : '1px solid transparent', background: activeTab === 'companion' ? 'rgba(251, 191, 36, 0.1)' : 'transparent' }}>
-              <MessageCircle size={20} /> <span className="sidebar-btn-text">Companheiro (Dicas)</span>
+          {canView('items', 'view') && (
+            <button className={`login-btn ${activeTab === 'store' ? 'active' : ''}`} onClick={() => { setActiveTab('store'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'store' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'store' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+              <Store size={20} /> <span className="sidebar-btn-text">Catálogo de Itens</span>
+            </button>
+          )}
+          {canView('economy', 'view') && (
+            <button className={`login-btn ${activeTab === 'economy' ? 'active' : ''}`} onClick={() => { setActiveTab('economy'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'economy' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'economy' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+              <CircleDollarSign size={20} /> <span className="sidebar-btn-text">Economia</span>
+            </button>
+          )}
+          {canView('approvals', 'view') && (
+            <button className={`login-btn ${activeTab === 'approvals' ? 'active' : ''}`} onClick={() => { setActiveTab('approvals'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'approvals' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'approvals' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+              <UserCheck size={20} /> <span className="sidebar-btn-text">Solicitações</span>
+            </button>
+          )}
+          {canView('entities', 'view') && (
+            <button className={`login-btn ${activeTab === 'entities' ? 'active' : ''}`} onClick={() => setActiveTab('entities')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'entities' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'entities' ? 'rgba(239, 68, 68, 0.1)' : 'transparent', marginTop: 'auto' }}>
+              <Box size={20} /> Entidades (3D)
             </button>
           )}
         </div>
 
         {/* Content */}
         <div className="glass-panel" id="admin-content-scroll" style={{ flex: 1, padding: '1.5rem', overflowY: 'auto', position: 'relative' }}>
-          
+
+        {/* Aba Geral — barra de sub-guias */}
+        {activeTab === 'general' && (
+          <div className="general-tabs-wrap" style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--bg-card)', padding: '0.6rem 0', marginBottom: '0.9rem', borderBottom: '1px solid var(--border-glass)' }}>
+            <div className="hide-scrollbar" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+              {[
+                { key: 'config', label: 'Avaliação', icon: <Settings size={17} />, check: canView('config', 'view') },
+                { key: 'tenants', label: 'Escolas', icon: <GraduationCap size={17} />, check: isSuperAdmin && canView('tenants', 'view') },
+                { key: 'users', label: 'Gerenciamento de Usuários', icon: <Users size={17} />, check: canView('users', 'view') },
+                { key: 'roles', label: 'Hierarquias', icon: <ShieldCheck size={17} />, check: (userData?.role === 'admin' || userData?.role === 'superadmin') },
+                { key: 'ranks', label: 'Patentes', icon: <Medal size={17} />, check: canView('ranks', 'view') },
+                { key: 'classes', label: 'Turmas', icon: <BookOpen size={17} />, check: canView('classes', 'view') },
+                { key: 'companion', label: 'Tutorial', icon: <MessageCircle size={17} />, check: isSuperAdmin },
+              ].filter(t => t.check).sort((a, b) => a.label.localeCompare(b.label)).map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setGeneralTab(tab.key as any)}
+                  className={`general-tab-btn ${generalTab === tab.key ? 'active' : ''}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', padding: '0.65rem 1.1rem', borderRadius: '10px', border: generalTab === tab.key ? '1px solid var(--gold-primary)' : '1px solid var(--border-glass)', cursor: 'pointer', fontSize: '0.92rem', fontWeight: generalTab === tab.key ? 'bold' : 'normal', background: generalTab === tab.key ? 'var(--gold-primary)' : 'var(--bg-card)', color: generalTab === tab.key ? 'var(--text-on-gold, #000)' : 'var(--text-primary)', flexShrink: 0, boxShadow: generalTab === tab.key ? '0 2px 10px rgba(218, 165, 32, 0.3)' : 'none' }}
+                  title={tab.label}
+                >
+                  {tab.icon} <span className="general-tab-text">{tab.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Aba de Solicitações (Approvals) */}
         {activeTab === 'approvals' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
@@ -1846,13 +1864,20 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* Aba de Hierarquias e Permissões */}
+        {activeTab === 'general' && generalTab === 'roles' && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+            <AdminRolesManager />
+          </div>
+        )}
+
         {/* Aba de Dicas do Companheiro - Apenas Superadmin */}
-        {activeTab === 'companion' && isSuperAdmin && (
+        {activeTab === 'general' && generalTab === 'companion' && isSuperAdmin && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             <div style={{ marginBottom: '1.5rem' }}>
               <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <MessageCircle size={28} color="#fbbf24" />
-                Companheiro — Dicas para Iniciantes
+                Tutorial
               </h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                 Personalize as falas do personagem que aparece no cubo do jogador.
@@ -1863,12 +1888,12 @@ export default function AdminDashboard() {
         )}
 
         {/* Aba de Escolas (Multi-tenant) - Apenas Superadmin */}
-        {activeTab === 'tenants' && isSuperAdmin && (
+        {activeTab === 'general' && generalTab === 'tenants' && isSuperAdmin && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             <div style={{ marginBottom: '2rem' }}>
               <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <GraduationCap size={28} color="#8b5cf6" />
-                Gerenciamento de Escolas
+                Escolas
               </h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                 Gerencie as escolas da plataforma. Cada escola é um tenant isolado com seus próprios alunos, missões e itens.
@@ -2022,7 +2047,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Aba de Usuários */}
-        {activeTab === 'users' && (
+        {activeTab === 'general' && generalTab === 'users' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '0.5rem 2rem', margin: '-2rem -2rem 0.5rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div className="compact-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -2332,7 +2357,7 @@ export default function AdminDashboard() {
                 <>
                   <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Central de Missões</h2>
+                      <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Missões</h2>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Crie desafios ao estilo Kahoot para os alunos faturarem XP.</p>
                     </div>
                     <button className="login-btn" onClick={() => setIsCreatingQuest(true)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
@@ -2636,7 +2661,7 @@ export default function AdminDashboard() {
           )}
 
           {/* Aba de Turmas */}
-          {activeTab === 'classes' && (
+          {activeTab === 'general' && generalTab === 'classes' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
@@ -2690,12 +2715,12 @@ export default function AdminDashboard() {
           )}
 
           {/* Aba de Configurações */}
-          {activeTab === 'config' && (
+          {activeTab === 'general' && generalTab === 'config' && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Tipos de Avaliação</h2>
+                  <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Avaliação</h2>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Ajuste pesos das notas e integrações externas.</p>
                 </div>
                 <button 
@@ -2730,7 +2755,7 @@ export default function AdminDashboard() {
           )}
 
           {/* Aba Ranks */}
-          {activeTab === 'ranks' && (
+          {activeTab === 'general' && generalTab === 'ranks' && (
             <AdminRankManager pixabayKey={pixabayKey} />
           )}
           {/* Aba Loja */}
@@ -2743,10 +2768,10 @@ export default function AdminDashboard() {
 
       {/* Modal de Editar Aluno */}
       {editingStudent && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="glass-panel" style={{ width: '400px', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>Editar Usuário</h3>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '560px', maxHeight: 'calc(100vh - 2rem)', overflowY: 'auto', padding: '1.5rem', animation: 'slideUp 0.3s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', position: 'sticky', top: 0, background: 'inherit', padding: '0.25rem 0' }}>
+              <h3 style={{ fontSize: '1.4rem', margin: 0, color: 'var(--text-primary)' }}>Editar Usuário</h3>
               <button onClick={() => setEditingStudent(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
                 <X size={24} />
               </button>
@@ -3416,7 +3441,7 @@ export default function AdminDashboard() {
         );
       })()}
 
-      {/* Modal de Gerenciamento de Escolas */}
+      {/* Modal de Escolas */}
       {tenantModalOpen && (
         <div className="modal-overlay" style={{ zIndex: 100 }}>
           <div className="glass-panel modal-content" style={{ maxWidth: '500px' }}>

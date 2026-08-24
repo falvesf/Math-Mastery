@@ -11,6 +11,7 @@ import SkinBuffIcon from '../components/SkinBuffIcon';
 import ItemIcon from './ItemIcon';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
+import { usePermissions } from '../lib/permissions';
 import { fetchEconomyType } from '../lib/economy';
 import { RANKS } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
@@ -70,6 +71,7 @@ const getRarityLabel = (rarity?: string) => {
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
   const { showAlert, showConfirm } = useDialog();
   const { tenantId, isSuperAdmin } = useTenant();
+  const { can: canItems } = usePermissions();
   const [items, setItems] = useState<StoreItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
@@ -306,6 +308,16 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const handleSaveItem = async () => {
     if (!formData.title || !formData.cost) return;
 
+    // Permissões: editar exige 'update', criar exige 'create'
+    if (editingId && !canItems('items', 'update')) {
+      await showAlert('Sem permissão', 'Sua função não permite editar itens.');
+      return;
+    }
+    if (!editingId && !canItems('items', 'create')) {
+      await showAlert('Sem permissão', 'Sua função não permite criar itens.');
+      return;
+    }
+
     // Itens globais (sem tenant) só podem ser editados pelo superadmin
     if (editingId) {
       const editingItem = items.find(i => i.id === editingId);
@@ -393,6 +405,10 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   };
 
   const handleDeleteItem = async (id: string) => {
+    if (!canItems('items', 'delete')) {
+      await showAlert('Sem permissão', 'Sua função não permite excluir itens.');
+      return;
+    }
     const target = items.find(i => i.id === id);
     if (target?._isGlobal && !target?._tenantId && !isSuperAdmin) {
       await showAlert('Item global (somente leitura)', 'Itens globais só podem ser excluídos pelo superadmin.');
@@ -449,12 +465,16 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               <Star color="var(--gold-primary)" /> Catálogo de Itens
             </h2>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button className="login-btn" onClick={() => setShowItemBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-                <Package size={18} /> Banco de Itens
-              </button>
-              <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
-                <Plus size={18} /> Novo Item
-              </button>
+              {canItems('items', 'create') && (
+                <button className="login-btn" onClick={() => setShowItemBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+                  <Package size={18} /> Banco de Itens
+                </button>
+              )}
+              {canItems('items', 'create') && (
+                <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
+                  <Plus size={18} /> Novo Item
+                </button>
+              )}
             </div>
           </div>
 
@@ -548,8 +568,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: isGridIcon ? '0.75rem' : '0' }}>
-                      <button onClick={() => openEdit(item)} disabled={isGlobalReadonly && !isSuperAdmin} style={{ background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: isGlobalReadonly && !isSuperAdmin ? 'not-allowed' : 'pointer', padding: '0.4rem', display: 'flex', opacity: isGlobalReadonly && !isSuperAdmin ? 0.4 : 1 }} title={isGlobalReadonly && !isSuperAdmin ? 'Global (somente leitura) — importe para criar uma cópia local' : 'Editar'}><Edit2 size={16} /></button>
-                      <button onClick={() => handleDeleteItem(item.id)} disabled={isGlobalReadonly && !isSuperAdmin} style={{ background: 'transparent', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: 'var(--accent-red)', cursor: isGlobalReadonly && !isSuperAdmin ? 'not-allowed' : 'pointer', padding: '0.4rem', display: 'flex', opacity: isGlobalReadonly && !isSuperAdmin ? 0.4 : 1 }} title={isGlobalReadonly && !isSuperAdmin ? 'Global (somente leitura)' : 'Excluir'}><Trash2 size={16} /></button>
+                      <button onClick={() => openEdit(item)} disabled={(!canItems('items', 'update') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: ((!canItems('items', 'update') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)) ? 'not-allowed' : 'pointer', padding: '0.4rem', display: 'flex', opacity: ((!canItems('items', 'update') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)) ? 0.4 : 1 }} title={isGlobalReadonly && !isSuperAdmin ? 'Global (somente leitura) — importe para criar uma cópia local' : !canItems('items', 'update') && !isSuperAdmin ? 'Sem permissão para editar' : 'Editar'}><Edit2 size={16} /></button>
+                      <button onClick={() => handleDeleteItem(item.id)} disabled={(!canItems('items', 'delete') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)} style={{ background: 'transparent', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: 'var(--accent-red)', cursor: ((!canItems('items', 'delete') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)) ? 'not-allowed' : 'pointer', padding: '0.4rem', display: 'flex', opacity: ((!canItems('items', 'delete') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)) ? 0.4 : 1 }} title={isGlobalReadonly && !isSuperAdmin ? 'Global (somente leitura)' : !canItems('items', 'delete') && !isSuperAdmin ? 'Sem permissão para excluir' : 'Excluir'}><Trash2 size={16} /></button>
                     </div>
                   </div>
                 );

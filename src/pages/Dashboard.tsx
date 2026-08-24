@@ -34,6 +34,7 @@ import ChatWidget from '../components/ChatWidget';
 import TeacherWanderer from '../components/TeacherWanderer';
 import AboutModal from '../components/AboutModal';
 import TenantSwitcher from '../components/TenantSwitcher';
+import { usePermissions } from '../lib/permissions';
 import StatDistributionModal from '../components/StatDistributionModal';
 import NintendoHeart from '../components/NintendoHeart';
 import { fetchStudentAchievementHistory } from '../lib/achievementHistory';
@@ -108,6 +109,7 @@ export default function Dashboard() {
   const { showAlert, showConfirm, showToast, showPrompt } = useDialog();
   const { userData, toggleStudentView, updateUserDataLocally, ranksLoaded } = useAuth();
   const { tenantId } = useTenant();
+  const { can: canView } = usePermissions();
   if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
@@ -1840,12 +1842,14 @@ export default function Dashboard() {
                 >
                   <Box size={18} /> Cubo 3D
                 </button>
-                <button
-                  onClick={() => setSettingsTab('theme')}
-                  className={`settings-modal-tab-btn ${settingsTab === 'theme' ? 'active' : ''}`}
-                >
-                  <Palette size={18} /> Temas
-                </button>
+                {canView('themes', 'view') && (
+                  <button
+                    onClick={() => setSettingsTab('theme')}
+                    className={`settings-modal-tab-btn ${settingsTab === 'theme' ? 'active' : ''}`}
+                  >
+                    <Palette size={18} /> Temas
+                  </button>
+                )}
                 {(userData?.role !== 'student' || userData?.studentViewActive) && (
                   <button
                     onClick={() => setSettingsTab('debug')}
@@ -2495,41 +2499,51 @@ export default function Dashboard() {
 
         {/* Navegação de Abas do Aluno */}
         <div className="scrollable-menu-container">
-          <button
-            onClick={() => setActiveTab('quests')}
-            title="Central de Missões"
-            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
-          >
-            <Swords size={20} /> <span className="tab-text">Central de Missões</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('profile')}
-            title="Meu Perfil"
-            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'profile' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
-          >
-            <Star size={20} /> <span className="tab-text">Meu Perfil</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('ranking_class')}
-            title="Ranking da Turma"
-            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_class' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
-          >
-            <Users size={20} /> <span className="tab-text">Ranking Turma</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('ranking_general')}
-            title="Ranking Geral"
-            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_general' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
-          >
-            <TrendingUp size={20} /> <span className="tab-text">Ranking Geral</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('store')}
-            title="Mercado"
-            style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
-          >
-            <Store size={20} /> <span className="tab-text">Mercado</span>
-          </button>
+          {canView('quests', 'view') && (
+            <button
+              onClick={() => setActiveTab('quests')}
+              title="Central de Missões"
+              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'quests' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+            >
+              <Swords size={20} /> <span className="tab-text">Central de Missões</span>
+            </button>
+          )}
+          {canView('profile', 'view') && (
+            <button
+              onClick={() => setActiveTab('profile')}
+              title="Meu Perfil"
+              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'profile' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+            >
+              <Star size={20} /> <span className="tab-text">Meu Perfil</span>
+            </button>
+          )}
+          {canView('ranking', 'view') && (
+            <button
+              onClick={() => setActiveTab('ranking_class')}
+              title="Ranking da Turma"
+              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_class' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+            >
+              <Users size={20} /> <span className="tab-text">Ranking Turma</span>
+            </button>
+          )}
+          {canView('ranking', 'view') && (
+            <button
+              onClick={() => setActiveTab('ranking_general')}
+              title="Ranking Geral"
+              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'ranking_general' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+            >
+              <TrendingUp size={20} /> <span className="tab-text">Ranking Geral</span>
+            </button>
+          )}
+          {canView('store', 'view') && (
+            <button
+              onClick={() => setActiveTab('store')}
+              title="Mercado"
+              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+            >
+              <Store size={20} /> <span className="tab-text">Mercado</span>
+            </button>
+          )}
         </div>
       </div>
 

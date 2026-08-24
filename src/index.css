@@ -984,6 +984,12 @@ h3 {
   display: none !important;
 }
 
+@media (max-width: 768px) {
+  .general-tab-text {
+    display: none;
+  }
+}
+
 /* Seletor de escola no cabeçalho: dropdown no desktop, menu no mobile */
 .tenant-switcher-desktop {
   display: flex;

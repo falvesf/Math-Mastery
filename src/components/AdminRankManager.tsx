@@ -491,7 +491,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Medal color="var(--gold-primary)" /> Patentes e Artes
+              <Medal color="var(--gold-primary)" /> Patentes
             </h2>
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
               Configure as patentes da sua escola. Patentes globais (🌐) são somente leitura.

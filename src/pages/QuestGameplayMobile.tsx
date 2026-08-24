@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
+import { usePermissions } from '../lib/permissions';
 import ArenaDebugPanel, { type ArenaDebugConfig, DEFAULT_ARENA_DEBUG } from '../components/ArenaDebugPanel';
 import { fetchEconomySettings } from '../lib/economy';
 import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircle, Package, Coins } from 'lucide-react';
@@ -39,6 +40,7 @@ export default function QuestGameplay() {
   const { questId } = useParams();
   const { userData, updateUserDataLocally } = useAuth();
   const { tenantId, isSuperAdmin } = useTenant();
+  const { can: canArenaDebug } = usePermissions();
   const navigate = useNavigate();
   const { showAlert, showConfirm } = useDialog();
 
@@ -1688,7 +1690,7 @@ export default function QuestGameplay() {
                     </button>
                   )}
                 </div>
-                {(isSuperAdmin || userData?.role === 'admin') && (
+                {(canArenaDebug('arena_debug', 'view') || (isSuperAdmin || userData?.role === 'admin')) && (
                   <button onClick={() => setShowDebugPanel(v => !v)} style={{ background: showDebugPanel ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.5)', border: `1px solid ${showDebugPanel ? 'var(--gold-primary)' : 'var(--border-glass)'}`, borderRadius: '12px', color: showDebugPanel ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.2rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.65rem', fontWeight: 'bold', flexShrink: 0 }} title="Arena Debug">
                     🏟️ Debug
                   </button>
@@ -2120,7 +2122,7 @@ export default function QuestGameplay() {
       </div>
 
       {/* Arena Debug Panel - floating control for admins, only during gameplay */}
-      {gameState === 'playing' && showDebugPanel && (
+      {gameState === 'playing' && showDebugPanel && canArenaDebug('arena_debug', 'view') && (
         <ArenaDebugPanel
           config={arenaDebug}
           onChange={setArenaDebug}
