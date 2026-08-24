@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Sword, Shield, Trophy, LogIn } from 'lucide-react';
+import { Sword, Shield, Trophy, LogIn, KeyRound } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import LocalLoginModal from '../components/LocalLoginModal';
 
 export default function LandingPage() {
   const [isHovered, setIsHovered] = useState(false);
   const [error, setError] = useState('');
+  const [showLocalLogin, setShowLocalLogin] = useState(false);
   const { currentUser } = useAuth();
 
   // Se já estiver logado, joga para o dashboard
@@ -34,7 +36,7 @@ export default function LandingPage() {
     <div className="app-container landing-page">
       <nav className="navbar glass-panel" style={{ position: 'relative' }}>
         <div style={{ flex: 1 }}></div>
-        <button 
+        <button
           className="login-btn"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
@@ -42,6 +44,14 @@ export default function LandingPage() {
         >
           <LogIn size={20} className={isHovered ? 'icon-hover' : ''} />
           <span>Login com Google</span>
+        </button>
+        <button
+          className="login-btn"
+          onClick={() => setShowLocalLogin(true)}
+          style={{ background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.4)', color: '#c084fc' }}
+        >
+          <KeyRound size={20} />
+          <span>Conta Local</span>
         </button>
       </nav>
 
@@ -83,6 +93,8 @@ export default function LandingPage() {
           </div>
         </div>
       </main>
+
+      {showLocalLogin && <LocalLoginModal onClose={() => setShowLocalLogin(false)} />}
     </div>
   );
 }

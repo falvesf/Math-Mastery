@@ -18,6 +18,22 @@ import './App.css';
 const PrivateRoute = ({ children, requiredRole }: { children: React.ReactNode, requiredRole?: string }) => {
   const { currentUser, userData, loading } = useAuth();
   const { loading: tenantLoading } = useTenant();
+  const [hasHierarchyRoles, setHasHierarchyRoles] = React.useState(false);
+
+  // Verifica se o usuário possui alguma função de Hierarquia (user_roles) —
+  // isso permite que alunos com função delegada acessem rotas de staff (ex: /admin).
+  React.useEffect(() => {
+    if (!userData?.uid) return;
+    let active = true;
+    setHasHierarchyRoles(false);
+    supabase
+      .from('user_roles')
+      .select('role_id', { count: 'exact', head: true })
+      .eq('user_id', userData.uid)
+      .then(({ count }) => { if (active) setHasHierarchyRoles(!!count && count > 0); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [userData?.uid]);
 
   if (loading || tenantLoading) {
     return (
@@ -52,9 +68,13 @@ const PrivateRoute = ({ children, requiredRole }: { children: React.ReactNode, r
     );
   }
 
-  // Se exigiu uma função (ex: teacher) e o usuário não tem a role necessária
+  // Se exigiu uma função (ex: teacher) e o usuário não tem a role necessária:
+  // permite acesso também para quem possui função de Hierarquia delegada
+  // (o Painel Master mostra apenas o que a função tem permissão de ver).
   if (requiredRole && userData?.role !== requiredRole && userData?.role !== 'admin' && userData?.role !== 'superadmin') {
-     return <Navigate to="/dashboard" />;
+    if (!hasHierarchyRoles) {
+      return <Navigate to="/dashboard" />;
+    }
   }
 
   return children;

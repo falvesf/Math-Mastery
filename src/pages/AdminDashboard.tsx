@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, Copy, RefreshCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -12,7 +12,7 @@ import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
 import AdminEntitiesManager from '../components/AdminEntitiesManager';
 import AdminRolesManager from '../components/AdminRolesManager';
-import { usePermissions } from '../lib/permissions';
+import { usePermissions, fetchRoles, fetchUserRoles, assignRoleToUser, removeRoleFromUser, type RoleDef } from '../lib/permissions';
 import AdminCompanionTipsManager from '../components/AdminCompanionTipsManager';
 import TenantSwitcher from '../components/TenantSwitcher';
 import AdminEconomySettings from '../components/AdminEconomySettings';
@@ -29,6 +29,7 @@ import PreAuthorizedStudentsManager from '../components/PreAuthorizedStudentsMan
 import { useDialog } from '../contexts/DialogContext';
 import { validateCharacterName, normalizeForComparison, formatFirstAndLastName } from '../lib/nameValidation';
 import { normalizeCombatCoinDrop } from '../lib/utils';
+import { createLocalAccount, generatePassword, resetLocalPassword, listLocalAccounts, deleteLocalAccount, type LocalAccountRow } from '../lib/localAuth';
 
 export interface ClassDef {
   id: string;
@@ -501,11 +502,117 @@ export default function AdminDashboard() {
   const [editName, setEditName] = useState('');
   const [editClass, setEditClass] = useState('');
   const [editRole, setEditRole] = useState('student');
+  const [editCustomRoleId, setEditCustomRoleId] = useState('');
+  const [originalCustomRoleIds, setOriginalCustomRoleIds] = useState<string[]>([]);
+  const [schoolRoles, setSchoolRoles] = useState<RoleDef[]>([]);
   const [editCharacterName, setEditCharacterName] = useState('');
   const [editUserTenantIds, setEditUserTenantIds] = useState<string[]>([]);
   const [originalUserTenantIds, setOriginalUserTenantIds] = useState<string[]>([]);
   const [editUserTenantAdd, setEditUserTenantAdd] = useState('');
   const [editUserPrimaryTenantId, setEditUserPrimaryTenantId] = useState<string>('');
+
+  // Contas Locais (login híbrido)
+  const [showLocalAccountModal, setShowLocalAccountModal] = useState(false);
+  const [localAccountForm, setLocalAccountForm] = useState({ username: '', email: '', phone: '', className: '' });
+  const [localAccountPassword, setLocalAccountPassword] = useState('');
+  const [localAccountCreated, setLocalAccountCreated] = useState<{ username: string; password: string; auth_email: string } | null>(null);
+  const [localAccountError, setLocalAccountError] = useState('');
+  const [localAccountLoading, setLocalAccountLoading] = useState(false);
+
+  const openLocalAccountModal = () => {
+    setLocalAccountForm({ username: '', email: '', phone: '', className: '' });
+    setLocalAccountPassword(generatePassword());
+    setLocalAccountCreated(null);
+    setLocalAccountError('');
+    setShowLocalAccountModal(true);
+  };
+
+  const handleCreateLocalAccount = async () => {
+    if (!tenantId) {
+      setLocalAccountError('Selecione uma escola antes de criar a conta.');
+      return;
+    }
+    if (!localAccountForm.username.trim()) {
+      setLocalAccountError('Informe um nome de usuário.');
+      return;
+    }
+    if (!localAccountPassword.trim()) {
+      setLocalAccountError('Gere uma senha antes de criar a conta.');
+      return;
+    }
+    setLocalAccountError('');
+    setLocalAccountLoading(true);
+    try {
+      const result = await createLocalAccount({
+        tenantId,
+        username: localAccountForm.username,
+        email: localAccountForm.email,
+        phone: localAccountForm.phone,
+        className: localAccountForm.className || undefined,
+        password: localAccountPassword,
+      });
+      setLocalAccountCreated({ username: result.username, password: result.password, auth_email: result.auth_email });
+    } catch (e: any) {
+      setLocalAccountError(e?.message || 'Erro ao criar a conta local.');
+    } finally {
+      setLocalAccountLoading(false);
+    }
+  };
+
+  // Gerenciamento de Contas Locais (listar + redefinir senha)
+  const [showLocalAccountsList, setShowLocalAccountsList] = useState(false);
+  const [localAccounts, setLocalAccounts] = useState<LocalAccountRow[]>([]);
+  const [localAccountsLoading, setLocalAccountsLoading] = useState(false);
+  const [localAccountsError, setLocalAccountsError] = useState('');
+  const [resetResult, setResetResult] = useState<{ username: string; password: string } | null>(null);
+  const [resettingId, setResettingId] = useState<string | null>(null);
+
+  const openLocalAccountsList = async () => {
+    setShowLocalAccountsList(true);
+    setResetResult(null);
+    setLocalAccountsError('');
+    setLocalAccountsLoading(true);
+    try {
+      const rows = await listLocalAccounts(tenantId);
+      setLocalAccounts(rows);
+    } catch (e: any) {
+      setLocalAccountsError(e?.message || 'Erro ao carregar contas locais.');
+    } finally {
+      setLocalAccountsLoading(false);
+    }
+  };
+
+  const handleResetLocalPassword = async (account: LocalAccountRow) => {
+    const newPass = generatePassword();
+    setResettingId(account.id);
+    setLocalAccountsError('');
+    try {
+      const result = await resetLocalPassword(account.id, newPass);
+      setResetResult({ username: result.username, password: result.password });
+      setLocalAccounts(prev => prev.map(a => a.id === account.id ? { ...a, must_change_password: true } : a));
+    } catch (e: any) {
+      setLocalAccountsError(e?.message || 'Erro ao redefinir a senha.');
+    } finally {
+      setResettingId(null);
+    }
+  };
+
+  const handleDeleteLocalAccount = async (account: LocalAccountRow) => {
+    const confirmed = await showConfirm(`Excluir a conta local "${account.username}"? O usuário de autenticação e os dados serão removidos.`);
+    if (!confirmed) return;
+    setResettingId(account.id);
+    setLocalAccountsError('');
+    try {
+      await deleteLocalAccount(account.id);
+      setLocalAccounts(prev => prev.filter(a => a.id !== account.id));
+      setResetResult(null);
+      showToast(`Conta local "${account.username}" excluída.`, 'success');
+    } catch (e: any) {
+      setLocalAccountsError(e?.message || 'Erro ao excluir a conta local.');
+    } finally {
+      setResettingId(null);
+    }
+  };
 
   // Novos States - Filtros e Seleção em Massa
   const [studentSearch, setStudentSearch] = useState('');
@@ -1063,8 +1170,29 @@ export default function AdminDashboard() {
     setEditRole(student.role || 'student');
     setEditCharacterName(student.characterName || '');
     setEditUserPrimaryTenantId(student.tenantId || '');
+    setEditCustomRoleId('');
+    setOriginalCustomRoleIds([]);
     // Carregar escolas de acesso atuais do usuário (para superadmin atribuir tenants)
     loadUserAccessTenants(student.uid);
+    // Carregar funções de Hierarquia (roles) da escola + atribuição atual do usuário
+    loadSchoolRoles(student.uid);
+  };
+
+  const loadSchoolRoles = async (uid: string) => {
+    try {
+      const roles = await fetchRoles(tenantId);
+      setSchoolRoles(roles);
+      const assigned = await fetchUserRoles(uid, tenantId);
+      // Considera apenas funções NÃO padrão como "função de hierarquia" selecionável
+      const stdNames = new Set(['Administrador', 'Coordenador', 'Professor', 'Aluno']);
+      const customAssigned = roles
+        .filter(r => r.id && assigned.includes(r.id) && !stdNames.has(r.name))
+        .map(r => r.id);
+      setOriginalCustomRoleIds(customAssigned);
+      setEditCustomRoleId(customAssigned[0] || '');
+    } catch (e) {
+      console.error('Erro ao carregar funções de hierarquia:', e);
+    }
   };
 
   const loadUserAccessTenants = async (uid: string) => {
@@ -1166,10 +1294,41 @@ export default function AdminDashboard() {
       delete updateData.tenant_id;
     }
     
-    await supabase.from('users').update(updateData).eq('id', editingStudent.uid);
+    // Sincronizar função de Hierarquia (role customizada via user_roles)
+    if (tenantId) {
+      let roleSyncOk = true;
+      // Remove atribuições anteriores que não estão mais selecionadas
+      for (const rid of originalCustomRoleIds) {
+        if (rid !== editCustomRoleId) {
+          const ok = await removeRoleFromUser(editingStudent.uid, rid, tenantId);
+          if (!ok) roleSyncOk = false;
+        }
+      }
+      // Atribui a função selecionada
+      if (editCustomRoleId && !originalCustomRoleIds.includes(editCustomRoleId)) {
+        const ok = await assignRoleToUser(editingStudent.uid, editCustomRoleId, tenantId);
+        if (!ok) roleSyncOk = false;
+      }
+      if (!roleSyncOk) {
+        showToast('Atenção: a função de hierarquia não pôde ser atualizada (verifique permissões/RLS).', 'error');
+      }
+    }
+
+    const { error: userUpdateError } = await supabase.from('users').update(updateData).eq('id', editingStudent.uid);
+    if (userUpdateError) {
+      console.error('Erro ao salvar usuário:', userUpdateError);
+      showToast('Erro ao salvar o usuário.', 'error');
+      return;
+    }
 
     setEditingStudent(null);
     fetchStudents();
+    showToast(
+      editCustomRoleId
+        ? `Usuário salvo com a função de hierarquia "${schoolRoles.find(r => r.id === editCustomRoleId)?.name || ''}".`
+        : 'Usuário salvo com sucesso.',
+      'success'
+    );
   };
 
   const handleDeleteStudent = async () => {
@@ -2072,7 +2231,7 @@ export default function AdminDashboard() {
                     {showAvatars3D ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
                   <div style={{ width: '1px', height: '16px', background: 'var(--border-glass)' }} />
-                  <button onClick={() => {
+<button onClick={() => {
                     const studentIds = students.filter(s => s.role === 'student').map(s => s.uid);
                     const allSelected = studentIds.length > 0 && studentIds.every(id => selectedStudentIds.includes(id));
                     if (allSelected) {
@@ -2082,8 +2241,18 @@ export default function AdminDashboard() {
                     }
                   }} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.35rem', display: 'flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.75rem', gap: '0.25rem' }} title="Selecionar/Desselecionar Todos os Alunos">
                     <Users size={14} />
-                  </button>
+</button>
                 </div>
+                {canView('users', 'create') && (
+                  <button className="login-btn" onClick={openLocalAccountModal} style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#c084fc', border: '1px solid rgba(139, 92, 246, 0.4)' }}>
+                    <KeyRound size={15} /> Conta Local
+                  </button>
+                )}
+                {canView('users', 'create') && (
+                  <button className="login-btn" onClick={openLocalAccountsList} style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.35)' }}>
+                    <KeyRound size={15} /> Contas Locais
+                  </button>
+                )}
                 
                 {selectedStudentIds.length > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(251, 191, 36, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '8px', border: '1px solid var(--gold-primary)' }}>
@@ -2816,12 +2985,40 @@ export default function AdminDashboard() {
               {userData?.role === 'admin' || isSuperAdmin ? (
                 <>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Permissão no Sistema (Role)</label>
-                  <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }}>
-                    <option value="student">Aluno (Padrão)</option>
-                    <option value="teacher">Professor</option>
-                    <option value="coordinator">Coordenador</option>
-                    <option value="admin">Administrador (Gerente)</option>
+                  <select
+                    value={editCustomRoleId ? `role_id:${editCustomRoleId}` : editRole}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val.startsWith('role_id:')) {
+                        setEditCustomRoleId(val.slice('role_id:'.length));
+                      } else {
+                        setEditCustomRoleId('');
+                        setEditRole(val);
+                      }
+                    }}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }}
+                  >
+                    <optgroup label="Funções Padrão">
+                      <option value="student">Aluno (Padrão)</option>
+                      <option value="teacher">Professor</option>
+                      <option value="coordinator">Coordenador</option>
+                      <option value="admin">Administrador (Gerente)</option>
+                    </optgroup>
+                    {schoolRoles.filter(r => !['Administrador', 'Coordenador', 'Professor', 'Aluno'].includes(r.name)).length > 0 && (
+                      <optgroup label="Funções de Hierarquia">
+                        {schoolRoles
+                          .filter(r => !['Administrador', 'Coordenador', 'Professor', 'Aluno'].includes(r.name))
+                          .map(r => (
+                            <option key={r.id} value={`role_id:${r.id}`}>{r.name}</option>
+                          ))}
+                      </optgroup>
+                    )}
                   </select>
+                  {editCustomRoleId && (
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      Função de hierarquia selecionada: <strong style={{ color: 'var(--gold-primary)' }}>{schoolRoles.find(r => r.id === editCustomRoleId)?.name}</strong>. A base (role padrão) continua <strong>{editRole === 'student' ? 'Aluno' : editRole === 'teacher' ? 'Professor' : editRole === 'coordinator' ? 'Coordenador' : 'Administrador'}</strong>.
+                    </span>
+                  )}
                 </>
               ) : null}
             </div>
@@ -3541,6 +3738,195 @@ export default function AdminDashboard() {
               >
                 {editingTenant ? 'Salvar' : 'Criar Escola'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Criar Conta Local */}
+      {showLocalAccountModal && (
+        <div className="modal-overlay" style={{ zIndex: 200 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: '520px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ fontSize: '1.4rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <KeyRound size={22} color="#8b5cf6" /> Criar Conta Local
+              </h3>
+              <button onClick={() => setShowLocalAccountModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+
+            {localAccountCreated ? (
+              <div>
+                <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '10px', padding: '1rem', marginBottom: '1rem' }}>
+                  <strong style={{ color: 'var(--accent-green)', display: 'block', marginBottom: '0.5rem' }}>Conta criada com sucesso!</strong>
+                  <p style={{ margin: '0 0 0.75rem 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                    Entregue estas credenciais ao aluno. Ele deverá trocar a senha no primeiro acesso.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.95rem' }}>
+                    <div><strong style={{ color: 'var(--gold-primary)' }}>Usuário:</strong> {localAccountCreated.username}</div>
+                    <div><strong style={{ color: 'var(--gold-primary)' }}>Senha:</strong> <span style={{ fontFamily: 'monospace', letterSpacing: '1px' }}>{localAccountCreated.password}</span>
+                      <button onClick={() => navigator.clipboard?.writeText(localAccountCreated.password)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-blue)', cursor: 'pointer', marginLeft: '0.5rem', display: 'inline-flex', verticalAlign: 'middle' }} title="Copiar senha"><Copy size={14} /></button>
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>E-mail de acesso: {localAccountCreated.auth_email}</div>
+                  </div>
+                </div>
+                <button className="login-btn" onClick={() => setShowLocalAccountModal(false)} style={{ width: '100%', justifyContent: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
+                  Concluir
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Nome de Usuário (único) *</label>
+                  <input
+                    type="text"
+                    value={localAccountForm.username}
+                    onChange={e => setLocalAccountForm({ ...localAccountForm, username: e.target.value.toLowerCase().replace(/\s+/g, '') })}
+                    placeholder="ex: joao.silva"
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>E-mail (opcional)</label>
+                    <input
+                      type="text"
+                      value={localAccountForm.email}
+                      onChange={e => setLocalAccountForm({ ...localAccountForm, email: e.target.value })}
+                      placeholder="ex: joao@gmail.com"
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Telefone (opcional)</label>
+                    <input
+                      type="text"
+                      value={localAccountForm.phone}
+                      onChange={e => setLocalAccountForm({ ...localAccountForm, phone: e.target.value })}
+                      placeholder="ex: (11) 99999-0000"
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Turma (opcional)</label>
+                  <select
+                    value={localAccountForm.className}
+                    onChange={e => setLocalAccountForm({ ...localAccountForm, className: e.target.value })}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                  >
+                    <option value="">Sem Turma (definir depois)</option>
+                    {schoolClasses.map(cls => (
+                      <option key={cls.id} value={cls.name}>{cls.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: '1rem', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '8px', padding: '0.85rem 1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Senha Gerada</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ flex: 1, fontFamily: 'monospace', letterSpacing: '2px', fontSize: '1.05rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
+                      {localAccountPassword || '—'}
+                    </span>
+                    <button onClick={() => setLocalAccountPassword(generatePassword())} style={{ background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.4)', color: 'var(--gold-primary)', borderRadius: '6px', padding: '0.35rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="Gerar nova senha">
+                      <RefreshCcw size={14} /> Gerar
+                    </button>
+                    <button onClick={() => navigator.clipboard?.writeText(localAccountPassword)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', borderRadius: '6px', padding: '0.35rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="Copiar senha">
+                      <Copy size={14} /> Copiar
+                    </button>
+                  </div>
+                  <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    A senha gerada só é válida até o primeiro acesso, quando o aluno será obrigado a trocá-la.
+                  </p>
+                </div>
+
+                {localAccountError && (
+                  <div style={{ color: 'var(--accent-red)', fontSize: '0.85rem', background: 'rgba(239,68,68,0.1)', padding: '0.6rem 0.8rem', borderRadius: '8px', marginBottom: '1rem' }}>{localAccountError}</div>
+                )}
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button onClick={() => setShowLocalAccountModal(false)} style={{ flex: 1, padding: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 'bold' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={handleCreateLocalAccount} disabled={localAccountLoading} style={{ flex: 1, padding: '0.75rem', background: '#8b5cf6', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
+                    {localAccountLoading ? <RefreshCcw size={16} className="animate-spin" /> : <KeyRound size={16} />} Criar Conta
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Gerenciar Contas Locais */}
+      {showLocalAccountsList && (
+        <div className="modal-overlay" style={{ zIndex: 210 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: '620px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ fontSize: '1.4rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <KeyRound size={22} color="#60a5fa" /> Contas Locais
+              </h3>
+              <button onClick={() => setShowLocalAccountsList(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+
+            {resetResult && (
+              <div style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: '10px', padding: '1rem', marginBottom: '1rem' }}>
+                <strong style={{ color: 'var(--gold-primary)', display: 'block', marginBottom: '0.4rem' }}>Senha redefinida para {resetResult.username}</strong>
+                <p style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                  O aluno deverá trocá-la no próximo acesso.
+                </p>
+                <div style={{ fontFamily: 'monospace', letterSpacing: '2px', fontSize: '1.05rem', color: 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {resetResult.password}
+                  <button onClick={() => navigator.clipboard?.writeText(resetResult.password)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', borderRadius: '6px', padding: '0.25rem 0.5rem', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <Copy size={14} /> Copiar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {localAccountsError && (
+              <div style={{ color: 'var(--accent-red)', fontSize: '0.85rem', background: 'rgba(239,68,68,0.1)', padding: '0.6rem 0.8rem', borderRadius: '8px', marginBottom: '1rem' }}>{localAccountsError}</div>
+            )}
+
+            <div style={{ maxHeight: '55vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {localAccountsLoading ? (
+                <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>Carregando contas locais...</p>
+              ) : localAccounts.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', padding: '2rem', textAlign: 'center' }}>
+                  Nenhuma conta local cadastrada nesta escola.
+                </p>
+              ) : localAccounts.map(acc => (
+                <div key={acc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ color: 'var(--text-primary)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.username}</strong>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', display: 'block' }}>
+                      {acc.email || 'sem e-mail'}
+                      {acc.must_change_password && <span style={{ marginLeft: '0.4rem', color: 'var(--gold-primary)' }}>• aguardando 1º acesso</span>}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleResetLocalPassword(acc)}
+                    disabled={resettingId === acc.id}
+                    style={{ flexShrink: 0, padding: '0.4rem 0.8rem', background: 'rgba(251,191,36,0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                    title="Redefinir senha (o aluno precisará trocar no próximo acesso)"
+                  >
+                    {resettingId === acc.id ? <RefreshCcw size={14} className="animate-spin" /> : <RefreshCcw size={14} />} Redefinir Senha
+                  </button>
+                  <button
+                    onClick={() => handleDeleteLocalAccount(acc)}
+                    disabled={resettingId === acc.id}
+                    style={{ flexShrink: 0, padding: '0.4rem 0.8rem', background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                    title="Excluir conta local"
+                  >
+                    <Trash2 size={14} /> Excluir
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         </div>
