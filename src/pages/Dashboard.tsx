@@ -2695,16 +2695,16 @@ export default function Dashboard() {
               <button
                 onClick={() => setProfileTab('overview')}
                 className="login-btn"
-                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'overview' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'overview' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', padding: '0.4rem 1rem', fontSize: '0.85rem' }}
               >
-                <Star size={20} /> {(userData?.role === 'student' || userData?.studentViewActive) ? 'Personagem e Histórico' : 'Personagem'}
+                <Star size={16} /> Personagem
               </button>
               <button
                 onClick={() => setProfileTab('inventory')}
                 className="login-btn"
-                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'inventory' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'inventory' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', padding: '0.4rem 1rem', fontSize: '0.85rem' }}
               >
-                <Package size={20} /> Mochila
+                <Package size={16} /> Mochila
               </button>
             </div>
 
@@ -2746,15 +2746,12 @@ export default function Dashboard() {
                               zIndex: 0
                             }} />
 
-                            <div style={{ position: 'absolute', bottom: -15, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 10, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <div 
+                              onClick={(e) => { e.stopPropagation(); handleRenameCharacter(); }}
+                              title={userData?.characterName ? 'Renomear personagem' : 'Criar nome do personagem'}
+                              style={{ position: 'absolute', bottom: -24, left: '50%', transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 10px ${currentRank.color}80`, zIndex: 30, display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
                               {userData?.characterName || 'Personagem'}
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleRenameCharacter(); }}
-                                style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', opacity: 0.7 }}
-                                title={userData?.characterName ? 'Renomear personagem' : 'Criar nome do personagem'}
-                              >
-                                <Edit3 size={12} />
-                              </button>
+                              <Edit3 size={14} style={{ opacity: 0.7 }} />
                             </div>
                             {(liveAvatarConfig || userData?.avatarConfig) ? (
                               <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 20 }} onClick={() => setIsCustomizingAvatar(true)}>
@@ -2981,42 +2978,46 @@ export default function Dashboard() {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
-                    <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', margin: 0 }}>{userData?.name}</h2>
-                  </div>
+                  {profileTab !== 'inventory' && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
+                        <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', margin: 0 }}>{userData?.name}</h2>
+                      </div>
 
-                  {isEditingStatus ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', width: '100%', maxWidth: '400px' }}>
-                      <MessageCircle size={16} color="var(--text-secondary)" />
-                      <input
-                        autoFocus
-                        value={statusInputValue}
-                        onChange={e => setStatusInputValue(e.target.value)}
-                        onKeyDown={async (e) => {
-                          if (e.key === 'Enter') {
-                            await handleUpdateStatus(statusInputValue);
-                            setIsEditingStatus(false);
-                          }
-                          if (e.key === 'Escape') {
-                            setIsEditingStatus(false);
-                          }
-                        }}
-                        onBlur={async () => {
-                          await handleUpdateStatus(statusInputValue);
-                          setIsEditingStatus(false);
-                        }}
-                        placeholder="Escreva seu status..."
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', flex: 1, outline: 'none', fontStyle: 'italic', width: '100%', fontSize: '0.9rem' }}
-                      />
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', color: 'var(--text-secondary)', minHeight: '36px', width: '100%', maxWidth: '400px', fontSize: '0.9rem' }}>
-                      <MessageCircle size={16} />
-                      <span style={{ fontStyle: 'italic', flex: 1 }}>{userData?.customStatusText ? `"${userData.customStatusText}"` : "Escreva seu status..."}</span>
-                      <button onClick={() => { setStatusInputValue(userData?.customStatusText || ''); setIsEditingStatus(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0 0.25rem', display: 'flex' }} className="hover-brightness" title="Editar Status">
-                        <Edit3 size={16} />
-                      </button>
-                    </div>
+                      {isEditingStatus ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', width: '100%', maxWidth: '400px' }}>
+                          <MessageCircle size={16} color="var(--text-secondary)" />
+                          <input
+                            autoFocus
+                            value={statusInputValue}
+                            onChange={e => setStatusInputValue(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter') {
+                                await handleUpdateStatus(statusInputValue);
+                                setIsEditingStatus(false);
+                              }
+                              if (e.key === 'Escape') {
+                                setIsEditingStatus(false);
+                              }
+                            }}
+                            onBlur={async () => {
+                              await handleUpdateStatus(statusInputValue);
+                              setIsEditingStatus(false);
+                            }}
+                            placeholder="Escreva seu status..."
+                            style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', flex: 1, outline: 'none', fontStyle: 'italic', width: '100%', fontSize: '0.9rem' }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', color: 'var(--text-secondary)', minHeight: '36px', width: '100%', maxWidth: '400px', fontSize: '0.9rem' }}>
+                          <MessageCircle size={16} />
+                          <span style={{ fontStyle: 'italic', flex: 1 }}>{userData?.customStatusText ? `"${userData.customStatusText}"` : "Escreva seu status..."}</span>
+                          <button onClick={() => { setStatusInputValue(userData?.customStatusText || ''); setIsEditingStatus(true); }} style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0 0.25rem', display: 'flex' }} className="hover-brightness" title="Editar Status">
+                            <Edit3 size={16} />
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

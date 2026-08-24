@@ -897,20 +897,20 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
       <div style={{ paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-glass)', marginBottom: '0.75rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <Package size={24} color="var(--gold-primary)" />
-            <h3 style={{ fontSize: '1.4rem', margin: 0 }}>Minha Mochila</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Package size={isMobile ? 18 : 22} color="var(--gold-primary)" />
+            <h3 style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', margin: 0 }}>Minha Mochila</h3>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', background: 'rgba(0,0,0,0.3)', padding: '0.35rem 0.75rem', borderRadius: '12px' }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: isMobile ? '0.7rem' : '0.85rem', background: 'rgba(0,0,0,0.3)', padding: isMobile ? '0.2rem 0.5rem' : '0.35rem 0.75rem', borderRadius: '12px' }}>
               Espaço: <strong style={{ color: currentSpaceOccupied >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{currentSpaceOccupied}</strong> / {maxInventorySpace}
             </div>
             <button
               onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.35rem 0.65rem', background: isFiltersOpen ? 'var(--btn-hover)' : 'var(--btn-bg)', color: 'var(--text-primary)', borderRadius: '8px', border: '1px solid var(--border-glass)', cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.85rem' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: isMobile ? '0.25rem 0.5rem' : '0.35rem 0.65rem', background: isFiltersOpen ? 'var(--btn-hover)' : 'var(--btn-bg)', color: 'var(--text-primary)', borderRadius: '8px', border: '1px solid var(--border-glass)', cursor: 'pointer', transition: 'all 0.2s' }}
               title="Mostrar / Ocultar Filtros"
             >
-              <Filter size={16} />
+              <Filter size={isMobile ? 14 : 16} />
             </button>
           </div>
         </div>

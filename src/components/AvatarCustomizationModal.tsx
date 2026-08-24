@@ -804,34 +804,33 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
           </button>
         )}
 
-        <div style={{ flexShrink: 0, padding: inline ? '0' : '2rem 2rem 1rem 2rem', borderBottom: inline ? 'none' : '1px solid var(--border-glass)', zIndex: 11 }}>
+        <div style={{ flexShrink: 0, padding: inline ? '0' : '1rem 1rem 0.5rem 1rem', borderBottom: inline ? 'none' : '1px solid var(--border-glass)', zIndex: 11 }}>
           {!inline && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-              <UserIcon size={32} color="var(--accent-primary)" />
-              <h2 style={{ margin: 0, fontSize: '1.5rem', textTransform: 'uppercase' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', justifyContent: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: '1rem', textTransform: 'uppercase' }}>
                 {customSaveMode ? 'Personalizar Monstro' : 'Personalizar Personagem'}
               </h2>
             </div>
           )}
           {(userData?.role === 'admin' || isAdmin) && !inline && (
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.25rem', fontSize: '0.9rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem', fontSize: '0.75rem', flexWrap: 'wrap' }}>
               <button 
                 onClick={() => setShowAdminManager(true)}
-                style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--bg-card)', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: 'var(--bg-card)', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                <Settings size={16} /> <span className="hide-on-mobile">Admin: Skins</span>
+                <Settings size={12} /> <span className="hide-on-mobile">Skins</span>
               </button>
               <button 
                 onClick={() => setShowAdmin3dManager(true)}
-                style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--bg-card)', border: '1px solid #10b981', color: '#10b981', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: 'var(--bg-card)', border: '1px solid #10b981', color: '#10b981', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                <Settings size={16} /> <span className="hide-on-mobile">Admin: Moldes 3D</span>
+                <Settings size={12} /> <span className="hide-on-mobile">Moldes</span>
               </button>
               <button 
                 onClick={() => setDebugMode(!debugMode)}
-                style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: debugMode ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card)', border: debugMode ? '2px solid #f59e0b' : '1px solid #f59e0b', color: '#f59e0b', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: debugMode ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card)', border: debugMode ? '2px solid #f59e0b' : '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                🔧 <span className="hide-on-mobile">Debug 3D</span>
+                🔧 <span className="hide-on-mobile">Debug</span>
               </button>
             </div>
           )}
@@ -1216,9 +1215,9 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                 : null;
 
               if (activeModel) {
-                return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={250} />;
+                return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 220} />;
               }
-              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={250} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
+              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 220} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
             })()}
             
             {/* Draggable Controls Widget */}
@@ -1834,14 +1833,14 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         </div>
 
         {/* STICKY FOOTER */}
-        <div style={{ flexShrink: 0, background: 'var(--bg-dark)', padding: '1.5rem', borderTop: '1px solid var(--border-color)', zIndex: 100, display: 'flex', justifyContent: 'center', borderRadius: inline ? '0' : '0 0 16px 16px', boxShadow: '0 -4px 10px rgba(0,0,0,0.2)' }}>
+        <div style={{ flexShrink: 0, background: 'var(--bg-dark)', padding: '0.75rem', borderTop: '1px solid var(--border-color)', zIndex: 100, display: 'flex', justifyContent: 'center', borderRadius: inline ? '0' : '0 0 16px 16px', boxShadow: '0 -4px 10px rgba(0,0,0,0.2)' }}>
           <button 
             className="btn-primary hover-brightness"
             onClick={handleSave}
             disabled={saving}
-            style={{ width: '100%', maxWidth: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '1rem', fontSize: '1.1rem', fontWeight: 'bold' }}
+            style={{ width: '100%', maxWidth: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.6rem', fontSize: '0.9rem', fontWeight: 'bold' }}
           >
-            <Save size={20} /> {saving ? 'Salvando...' : customSaveMode ? 'Salvar Monstro' : 'Salvar Personagem'}
+            <Save size={16} /> {saving ? 'Salvando...' : customSaveMode ? 'Salvar Monstro' : 'Salvar Personagem'}
           </button>
         </div>
 
