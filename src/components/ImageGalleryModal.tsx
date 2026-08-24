@@ -231,7 +231,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      showToast('O arquivo não pode exceder 2 MB.', 'error');
+      showAlert(`Não é possível subir arquivos maiores que 2 MB. Este arquivo tem ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
       return;
     }
 

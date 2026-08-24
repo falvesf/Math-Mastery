@@ -13,7 +13,7 @@ interface DirectUploadButtonProps {
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 
 export default function DirectUploadButton({ onUploadComplete, folder = 'uploads', buttonStyle, accept = 'image/*' }: DirectUploadButtonProps) {
-  const { showAlert, showToast } = useDialog();
+  const { showAlert } = useDialog();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -33,7 +33,7 @@ export default function DirectUploadButton({ onUploadComplete, folder = 'uploads
     }
 
     if (file.type.startsWith('image/') && file.size > MAX_IMAGE_SIZE_BYTES) {
-      showToast('O arquivo não pode exceder 2 MB.', 'error');
+      showAlert(`Não é possível subir arquivos maiores que 2 MB. Este arquivo tem ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
       return;
     }
     
