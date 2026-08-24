@@ -1369,7 +1369,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         const item = items.find(i => i.id === hoveredItem);
         if (!item) return null;
         return createPortal(
-          <div style={{
+          <div className="item-tooltip" style={{
             position: 'fixed',
             top: mousePos.y + 15,
             left: mousePos.x + 15,
@@ -1441,10 +1441,34 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                 </ul>
               </div>
             )}
+            
+            <div className="mobile-only-actions" style={{ display: 'none', marginTop: '1rem', borderTop: '1px solid var(--border-glass)', paddingTop: '1rem', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {item.itemType === 'equippable' ? (
+                <button onClick={() => { handleEquip(item); setHoveredItem(null); }} style={{ flex: 1, padding: '0.5rem', background: item.equipped ? 'rgba(16, 185, 129, 0.2)' : 'var(--btn-bg)', color: item.equipped ? 'var(--accent-green)' : 'var(--text-primary)', border: item.equipped ? '1px solid var(--accent-green)' : '1px solid var(--border-glass)', borderRadius: '8px', fontWeight: 'bold' }}>
+                  {item.equipped ? 'Desequipar' : 'Equipar'}
+                </button>
+              ) : (
+                <button onClick={() => { handleUseConsumable(item); setHoveredItem(null); }} style={{ flex: 1, padding: '0.5rem', background: 'rgba(251, 191, 36, 0.2)', color: 'var(--gold-primary)', border: '1px solid rgba(251, 191, 36, 0.3)', borderRadius: '8px', fontWeight: 'bold' }}>
+                  Usar Item
+                </button>
+              )}
+              <button onClick={() => { 
+                  if (item.equipped) { showAlert("Desequipe antes de vender."); return; }
+                  setHoveredItem(null); setSellModalItem(item); 
+                }} 
+                style={{ padding: '0.5rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px' }}>
+                <Coins size={16} />
+              </button>
+              <button onClick={() => { setHoveredItem(null); handleDropItemToTrash(item); }} style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px' }}>
+                <Trash2 size={16} />
+              </button>
+            </div>
+            
           </div>,
           document.body
         );
       })()}
+      
     </div>
   );
 }

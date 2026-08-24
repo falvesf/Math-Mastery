@@ -1958,10 +1958,11 @@ export default function QuestGameplay() {
 
           
           {gameState === 'intro' && quest && (
-            <div className="glass-panel quest-victory-panel" style={{ width: '100%', maxWidth: '800px', textAlign: 'center', animation: 'epicZoom 0.5s ease-out' }}>
-              <Swords size={64} color="var(--gold-primary)" style={{ margin: '0 auto 2rem auto' }} />
-              <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem' }}>{quest.title}</h1>
-              <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '3rem', lineHeight: 1.6 }}>{quest.description}</p>
+            <div className="glass-panel quest-victory-panel" style={{ width: '100%', maxWidth: '800px', textAlign: 'center', animation: 'epicZoom 0.5s ease-out', display: 'flex', flexDirection: 'column', maxHeight: '85vh' }}>
+              <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '1rem', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+                <Swords size={64} color="var(--gold-primary)" style={{ margin: '0 auto 2rem auto' }} />
+                <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem' }}>{quest.title}</h1>
+                <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '3rem', lineHeight: 1.6 }}>{quest.description}</p>
               
               <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '2rem', marginBottom: '4rem' }}>
                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem 2rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
@@ -1977,10 +1978,13 @@ export default function QuestGameplay() {
                   </div>
                 </div>
               </div>
+              </div>
 
-              <button className="login-btn" onClick={startGame} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '1.5rem 4rem', fontSize: '1.5rem', borderRadius: '50px' }}>
-                Iniciar Batalha
-              </button>
+              <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <button className="login-btn" onClick={startGame} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '1.5rem 4rem', fontSize: '1.5rem', borderRadius: '50px', width: '100%' }}>
+                  Iniciar Batalha
+                </button>
+              </div>
             </div>
           )}
 

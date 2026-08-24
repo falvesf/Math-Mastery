@@ -155,6 +155,49 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     setLoading(false);
   };
 
+  const importGlobalRanks = async () => {
+    const confirmed = await showConfirm('Importar patentes globais? Elas serão adicionadas à sua lista local (evitando nomes duplicados) e ficarão editáveis.');
+    if (!confirmed) return;
+
+    if (globalRanks.length === 0) return;
+
+    const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
+
+    // Buscar patentes locais existentes para não duplicar por nome
+    const { data: existingLocal } = await supabase
+      .from('custom_ranks')
+      .select('name')
+      .eq('tenant_id', tenantId)
+      .eq('is_global', false);
+
+    const existingNames = new Set((existingLocal || []).map(r => (r.name as string).toLowerCase()));
+
+    const sorted = [...globalRanks].sort((a, b) => a.minXp - b.minXp);
+    
+    // Obter total atual para não sobrepor IDs
+    const currentCount = existingLocal?.length || 0;
+    let addedCount = 0;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const g = sorted[i];
+      if (existingNames.has(g.name.toLowerCase())) {
+        continue; // Ignora se já existe uma patente com o mesmo nome
+      }
+      
+      const { _isGlobal, id, _id, ...rankData } = g as any;
+      await supabase.from('custom_ranks').insert({
+        id: `rank_${tenantPrefix}_${currentCount + addedCount}_${Date.now()}`,
+        ...rankData,
+        tenant_id: tenantId || null,
+        is_global: false
+      });
+      addedCount++;
+    }
+
+    await showConfirm(`${addedCount} patentes importadas com sucesso!`, 'Sucesso');
+    fetchRanks(false);
+  };
+
   const copyGlobalsAsBase = async () => {
     const confirmed = await showConfirm('Copiar patentes globais como base? Elas serão copiadas para esta escola e ficarão editáveis. As globais originais permanecem para outras escolas.');
     if (!confirmed) return;
@@ -454,10 +497,10 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
               Configure as patentes da sua escola. Patentes globais (🌐) são somente leitura.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            {ranks.length === 0 && globalRanks.length > 0 && (
-              <button className="login-btn" onClick={copyGlobalsAsBase} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
-                <Copy size={16} /> Copiar Globais como Base
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            {!isSuperAdmin && (
+              <button className="login-btn" onClick={importGlobalRanks} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
+                <Copy size={16} /> Importar Patentes Globais
               </button>
             )}
             {globalRanks.length > 0 && (
@@ -473,8 +516,15 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
 
         {isEditing && createPortal(
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-            <div className="glass-panel" style={{ width: '500px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
-              <h3 style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingIndex !== null ? 'Editar Patente Local' : 'Criar Nova Patente Local'}</h3>
+            <div className="glass-panel" style={{ width: '500px', maxWidth: '95vw', maxHeight: '90vh', overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out' }}>
+              <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', padding: '1.5rem 2rem', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '1.5rem' }}>{editingIndex !== null ? 'Editar Patente Local' : 'Criar Nova Patente Local'}</h3>
+                <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <Trash2 size={24} style={{ display: 'none' }} />
+                  <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>×</span>
+                </button>
+              </div>
+              <div style={{ padding: '1.5rem 2rem', overflowY: 'auto' }}>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
                 <div>
@@ -711,6 +761,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                 <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
                 <button onClick={handleSaveRank} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>Salvar Patente</button>
               </div>
+              </div>
             </div>
           </div>,
           document.body
@@ -763,8 +814,8 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
             </p>
             {!isSuperAdmin && (
               <div style={{ marginBottom: '1rem' }}>
-                <button className="login-btn" onClick={async () => { await copyGlobalsAsBase(); setShowRankBank(false); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
-                  <Copy size={16} /> Copiar Todas como Base
+                <button className="login-btn" onClick={async () => { await importGlobalRanks(); setShowRankBank(false); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
+                  <Copy size={16} /> Importar Patentes Globais
                 </button>
               </div>
             )}

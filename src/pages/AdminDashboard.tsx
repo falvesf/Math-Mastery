@@ -1527,7 +1527,7 @@ export default function AdminDashboard() {
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>Máximo de Moedas {showDropChance && '(Obrigatório para ativar o baú)'}</label>
             <input type="number" value={chestConfig?.maxCoins || ''} onChange={e => setChestConfig({ ...chestConfig, maxCoins: parseInt(e.target.value) || 0 })} placeholder="Ex: 100" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--gold-primary)', color: 'white', fontFamily: 'inherit', fontSize: '1.1rem' }} />
@@ -1540,7 +1540,7 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
           {slots.map((slot) => {
             const selectedItem = availableStoreItems.find(i => i.id === chestConfig?.itemIds?.[slot]);
             const isConsumable = selectedItem?.type === 'consumable';
@@ -2318,7 +2318,7 @@ export default function AdminDashboard() {
                       const isOwnerOrAdmin = userData?.role === 'admin' || quest.createdBy === userData?.uid;
                       return (
                       <div key={quest.id} className="glass-panel quest-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderLeft: `4px solid ${quest.active ? 'var(--accent-green)' : 'var(--text-secondary)'}` }}>
-                        <div className="quest-card-info" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                        <div className="quest-card-info" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', minWidth: 0 }}>
                           {quest.coverImageUrl ? (
                             <img src={quest.coverImageUrl} alt="Capa" className="quest-card-img" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }} />
                           ) : (
@@ -2327,8 +2327,8 @@ export default function AdminDashboard() {
                             </div>
                           )}
                           <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                              <h3 style={{ fontSize: '1.3rem', margin: 0 }}>{quest.title}</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                              <h3 style={{ fontSize: '1.3rem', margin: 0, wordBreak: 'break-word', minWidth: 0 }}>{quest.title}</h3>
                               <span className="quest-card-mode-badge" style={{ padding: '0.2rem 0.6rem', background: quest.mode === 'live' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: quest.mode === 'live' ? 'var(--gold-primary)' : 'var(--accent-blue)', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                 {quest.mode === 'live' ? 'Tempo Real' : 'Atividade'}
                               </span>
@@ -2455,7 +2455,7 @@ export default function AdminDashboard() {
                         <div>
                           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Imagem de Capa (Opcional - Cole uma URL de imagem)</label>
                           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                            <input type="text" value={questCover} onChange={e => setQuestCover(e.target.value)} placeholder="URL ou Galeria ->" style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+                            <input type="text" value={questCover} onChange={e => setQuestCover(e.target.value)} placeholder="URL ou Galeria ->" style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', minWidth: 0 }} />
                             <DirectUploadButton folder="quests" onUploadComplete={setQuestCover} buttonStyle={{ minHeight: '100%' }} />
                             <button onClick={() => setGalleryTarget('cover')} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                               <Search size={20} />

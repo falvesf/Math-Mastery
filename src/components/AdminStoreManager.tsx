@@ -484,10 +484,10 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         </div>
 
           <div style={
-            layoutMode === 'grid-2' ? { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' } :
-            layoutMode === 'grid-3' ? { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' } :
-            layoutMode === 'small-icons' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem' } :
-            layoutMode === 'large-icons' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem' } :
+            layoutMode === 'grid-2' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' } :
+            layoutMode === 'grid-3' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '1rem' } :
+            layoutMode === 'small-icons' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '1rem' } :
+            layoutMode === 'large-icons' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1.5rem' } :
             { display: 'flex', flexDirection: 'column', gap: '1rem' }
           }>
             {(() => {
@@ -564,8 +564,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       {/* Modal Novo/Editar Item */}
       {isEditing && createPortal(
         <div className="modal-overlay">
-          <div className="glass-panel modal-content">
-            <h3 style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingId ? 'Editar Item' : 'Criar Novo Item'}</h3>
+          <div className="glass-panel modal-content" style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+            <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', padding: '1.5rem 2rem', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.5rem' }}>{editingId ? 'Editar Item' : 'Criar Novo Item'}</h3>
+              <button onClick={() => { setIsEditing(false); setEditingId(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <Trash2 size={24} style={{ display: 'none' }} />
+                <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>×</span>
+              </button>
+            </div>
+            <div style={{ padding: '1.5rem 2rem', overflowY: 'auto' }}>
             
             {/* Linha 1: Nome e Tipo */}
             <div className="responsive-grid" style={{ marginBottom: '1.5rem' }}>
@@ -882,6 +889,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
               <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
               <button onClick={handleSaveItem} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>Salvar Item</button>
+            </div>
             </div>
           </div>
         </div>,

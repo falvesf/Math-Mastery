@@ -818,19 +818,19 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
                 onClick={() => setShowAdminManager(true)}
                 style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--bg-card)', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                <Settings size={16} /> Admin: Skins
+                <Settings size={16} /> <span className="hide-on-mobile">Admin: Skins</span>
               </button>
               <button 
                 onClick={() => setShowAdmin3dManager(true)}
                 style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--bg-card)', border: '1px solid #10b981', color: '#10b981', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                <Settings size={16} /> Admin: Moldes 3D
+                <Settings size={16} /> <span className="hide-on-mobile">Admin: Moldes 3D</span>
               </button>
               <button 
                 onClick={() => setDebugMode(!debugMode)}
                 style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: debugMode ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card)', border: debugMode ? '2px solid #f59e0b' : '1px solid #f59e0b', color: '#f59e0b', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                🔧 Debug 3D
+                🔧 <span className="hide-on-mobile">Debug 3D</span>
               </button>
             </div>
           )}
@@ -1207,19 +1207,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: inline ? '0' : '1.5rem 2rem' }}>
           <div className="avatar-modal-grid">
           
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
-            background: 'var(--bg-dark)',
-            borderRadius: '16px',
-            padding: '2rem',
-            minHeight: '400px',
-            border: '2px solid var(--border-color)',
-            position: 'sticky',
-            top: '0',
-            alignSelf: 'flex-start',
-            overflow: 'hidden',
-            zIndex: 10
-          }}>
+          <div className="avatar-viewer-container">
             {(() => {
               const activePreset = presetSkins.find(s => s.url === config.customSkinUrl);
               const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default' 

@@ -14,7 +14,7 @@ export default function AdminEntitiesManager() {
         <h2 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>Gerenciar Entidades 3D</h2>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '1rem' }}>
+        <div className="hide-scrollbar" style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '1rem', overflowX: 'auto', whiteSpace: 'nowrap' }}>
           <button
             onClick={() => setActiveTab('players')}
             style={{
@@ -69,7 +69,7 @@ export default function AdminEntitiesManager() {
             transition: 'all 0.2s'
           }}
         >
-          <Settings size={18} /> Skins
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg> Skins
         </button>
         <button
           onClick={() => setActiveTab('models')}
@@ -83,7 +83,7 @@ export default function AdminEntitiesManager() {
             transition: 'all 0.2s'
           }}
         >
-          <Settings size={18} /> Moldes 3D
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg> Moldes 3D
         </button>
         </div>
       </div>
