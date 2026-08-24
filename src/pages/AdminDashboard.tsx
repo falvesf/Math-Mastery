@@ -479,7 +479,7 @@ export default function AdminDashboard() {
   // Modal de Escolas (Multi-tenant) States
   const [tenantModalOpen, setTenantModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
-  const [tenantForm, setTenantForm] = useState({ name: '', slug: '', max_students: 500, status: 'active' as 'active' | 'inactive' | 'suspended' });
+  const [tenantForm, setTenantForm] = useState({ name: '', slug: '', max_students: 500, status: 'active' as 'active' | 'inactive' | 'suspended', allowed_email_domain: '' });
 
   // Modal de Lançar Nota States
   const [selectedStudent, setSelectedStudent] = useState<UserData | null>(null);
@@ -666,7 +666,7 @@ export default function AdminDashboard() {
   // Funções para o modal de escolas
   const openCreateTenantModal = () => {
     setEditingTenant(null);
-    setTenantForm({ name: '', slug: '', max_students: 100, status: 'active' });
+    setTenantForm({ name: '', slug: '', max_students: 100, status: 'active', allowed_email_domain: '' });
     setTenantModalOpen(true);
   };
 
@@ -680,7 +680,7 @@ export default function AdminDashboard() {
 
   const openEditTenantModal = (t: Tenant) => {
     setEditingTenant(t);
-    setTenantForm({ name: t.name, slug: t.slug, max_students: t.max_students || 100, status: t.status });
+    setTenantForm({ name: t.name, slug: t.slug, max_students: t.max_students || 100, status: t.status, allowed_email_domain: (t as any).allowed_email_domain || '' });
     setTenantModalOpen(true);
   };
 
@@ -700,7 +700,8 @@ export default function AdminDashboard() {
         name: tenantForm.name,
         slug: tenantForm.slug,
         max_students: tenantForm.max_students,
-        status: tenantForm.status
+        status: tenantForm.status,
+        allowed_email_domain: tenantForm.allowed_email_domain?.trim() || null
       });
       if (success) {
         await showAlert('Sucesso', `Escola "${tenantForm.name}" atualizada com sucesso!`);
@@ -712,7 +713,8 @@ export default function AdminDashboard() {
         name: tenantForm.name,
         slug: tenantForm.slug,
         max_students: tenantForm.max_students,
-        status: tenantForm.status
+        status: tenantForm.status,
+        allowed_email_domain: tenantForm.allowed_email_domain?.trim() || null
       });
       if (newTenant) {
         await showAlert('Sucesso', `Escola "${tenantForm.name}" criada com sucesso!`);
@@ -3496,6 +3498,20 @@ export default function AdminDashboard() {
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
                 Mínimo: 10 alunos
+              </span>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Domínio de E-mail Permitido (Opcional)</label>
+              <input 
+                type="text" 
+                value={tenantForm.allowed_email_domain} 
+                onChange={e => setTenantForm({...tenantForm, allowed_email_domain: e.target.value.toLowerCase().replace(/^@/, '')})} 
+                placeholder="ex: escola.edu.br (vazio = qualquer conta Google)" 
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} 
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                Somente contas com esse domínio poderão se matricular nesta escola. Deixe vazio para aceitar qualquer conta (ex: Gmail).
               </span>
             </div>
 

@@ -14,6 +14,7 @@ export interface Tenant {
   max_students?: number;
   status: 'active' | 'inactive' | 'suspended';
   admin_id?: string;
+  allowed_email_domain?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -370,6 +371,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
           max_students: data.max_students || 500,
           status: data.status || 'active',
           admin_id: data.admin_id,
+          allowed_email_domain: data.allowed_email_domain || null,
         })
         .select()
         .single();

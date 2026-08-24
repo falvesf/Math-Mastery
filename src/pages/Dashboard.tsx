@@ -1575,6 +1575,7 @@ export default function Dashboard() {
     if (enrollmentStep === 'school') {
       return (
         <SchoolSelectorModal
+          userEmail={userData.email}
           onSelect={(school) => {
             setSelectedSchool(school);
             setEnrollmentStep('class');

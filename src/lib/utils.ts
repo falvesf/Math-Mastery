@@ -26,3 +26,23 @@ export function normalizeCombatCoinDrop(raw: any): { minCoins?: number; maxCoins
   }
   return raw as { minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number };
 }
+
+/** Extrai o domínio do e-mail (ex: "aluno@escola.edu.br" -> "escola.edu.br") */
+export function getEmailDomain(email?: string): string {
+  if (!email) return '';
+  const parts = email.trim().toLowerCase().split('@');
+  return parts.length > 1 ? parts[1] : '';
+}
+
+/** Normaliza o domínio permitido configurado na escola (remove "@", espaços, minúsculas) */
+export function normalizeAllowedDomain(domain?: string | null): string {
+  if (!domain) return '';
+  return domain.trim().toLowerCase().replace(/^@/, '');
+}
+
+/** Verifica se o e-mail pertence ao domínio permitido da escola (vazio = sem restrição) */
+export function emailMatchesDomain(email?: string, allowedDomain?: string | null): boolean {
+  const norm = normalizeAllowedDomain(allowedDomain);
+  if (!norm) return true;
+  return getEmailDomain(email) === norm;
+}
