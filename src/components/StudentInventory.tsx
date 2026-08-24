@@ -1074,6 +1074,50 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                       </div>
                     )}
                     
+                    {hoveredItem === item.id && viewMode !== 'list' && (
+                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(20, 20, 30, 0.85)', backdropFilter: 'blur(4px)', borderRadius: '8px', display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '6px', zIndex: 1000, padding: '0.25rem' }}>
+                        {item.itemType === 'equippable' ? (
+                          <button 
+                            title={item.equipped ? '✔ Equipado' : 'Equipar'}
+                            onClick={(e) => { e.stopPropagation(); handleEquip(item); }} 
+                            style={{ background: item.equipped ? 'rgba(16, 185, 129, 0.2)' : 'var(--btn-bg)', color: item.equipped  ? 'var(--accent-green)'  : 'var(--text-primary)', border: item.equipped ? '1px solid var(--accent-green)' : '1px solid var(--border-glass)', padding: '0.2rem', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
+                            <Shield size={viewMode === 'grid-small' ? 12 : 14} />
+                          </button>
+                        ) : (
+                          ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(item.gameEffect || '') ? (
+                            <div title="Arraste para usar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--btn-bg)', color: 'var(--text-secondary)', padding: '0.2rem', borderRadius: '4px', border: '1px dashed rgba(255,255,255,0.2)', cursor: 'grab', width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
+                              <Hand size={viewMode === 'grid-small' ? 12 : 14} />
+                            </div>
+                          ) : (
+                            <button 
+                              title="Usar Item"
+                              onClick={(e) => { e.stopPropagation(); handleUseConsumable(item); }} 
+                              style={{ background: 'rgba(251, 191, 36, 0.2)', color: 'var(--gold-primary)', border: '1px solid rgba(251, 191, 36, 0.3)', padding: '0.2rem', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
+                              <Zap size={viewMode === 'grid-small' ? 12 : 14} />
+                            </button>
+                          )
+                        )}
+                        <button 
+                          title="Vender"
+                          disabled={isOverflow}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (item.equipped) { showAlert("Desequipe antes de vender."); return; }
+                            setSellModalItem(item);
+                          }} 
+                          style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '0.2rem', borderRadius: '4px', cursor: isOverflow ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isOverflow ? 0.5 : 1, width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
+                          <Coins size={viewMode === 'grid-small' ? 12 : 14} />
+                        </button>
+                        <button 
+                          title="Jogar Fora"
+                          disabled={isOverflow}
+                          onClick={(e) => { e.stopPropagation(); handleDropItemToTrash(item); }} 
+                          style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.2rem', borderRadius: '4px', cursor: isOverflow ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isOverflow ? 0.5 : 1, width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
+                          <Trash2 size={viewMode === 'grid-small' ? 12 : 14} />
+                        </button>
+                      </div>
+                    )}
+                    
                   <div className={`rarity-badge ${item.rarity || 'common'}`}>
                     {getRarityLabel(item.rarity)}
                   </div>
@@ -1166,48 +1210,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                         {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
                       </span>
                       
-                      {hoveredItem === item.id && (
-                        <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(20, 20, 30, 0.95)', backdropFilter: 'blur(8px)', border: '1px solid var(--border-glass)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', zIndex: 1000, padding: '0.35rem', marginTop: '6px', boxShadow: '0 8px 16px rgba(0,0,0,0.5)' }}>
-                          {item.itemType === 'equippable' ? (
-                            <button 
-                              title={item.equipped ? '✔ Equipado' : 'Equipar'}
-                              onClick={() => handleEquip(item)} 
-                              style={{ background: item.equipped ? 'rgba(16, 185, 129, 0.2)' : 'var(--btn-bg)', color: item.equipped  ? 'var(--accent-green)'  : 'var(--text-primary)', border: item.equipped ? '1px solid var(--accent-green)' : '1px solid var(--border-glass)', padding: '0.2rem', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
-                              <Shield size={viewMode === 'grid-small' ? 12 : 14} />
-                            </button>
-                          ) : (
-                            ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(item.gameEffect || '') ? (
-                              <div title="Arraste para usar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--btn-bg)', color: 'var(--text-secondary)', padding: '0.2rem', borderRadius: '4px', border: '1px dashed rgba(255,255,255,0.2)', cursor: 'grab', width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
-                                <Hand size={viewMode === 'grid-small' ? 12 : 14} />
-                              </div>
-                            ) : (
-                              <button 
-                                title="Usar Item"
-                                onClick={() => handleUseConsumable(item)} 
-                                style={{ background: 'rgba(251, 191, 36, 0.2)', color: 'var(--gold-primary)', border: '1px solid rgba(251, 191, 36, 0.3)', padding: '0.2rem', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
-                                <Zap size={viewMode === 'grid-small' ? 12 : 14} />
-                              </button>
-                            )
-                          )}
-                          <button 
-                            title="Vender"
-                            disabled={isOverflow}
-                            onClick={() => {
-                              if (item.equipped) { showAlert("Desequipe antes de vender."); return; }
-                              setSellModalItem(item);
-                            }} 
-                            style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '0.2rem', borderRadius: '4px', cursor: isOverflow ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isOverflow ? 0.5 : 1, width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
-                            <Coins size={viewMode === 'grid-small' ? 12 : 14} />
-                          </button>
-                          <button 
-                            title="Jogar Fora"
-                            disabled={isOverflow}
-                            onClick={() => handleDropItemToTrash(item)} 
-                            style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.2rem', borderRadius: '4px', cursor: isOverflow ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isOverflow ? 0.5 : 1, width: viewMode === 'grid-small' ? '24px' : '28px', height: viewMode === 'grid-small' ? '24px' : '28px' }}>
-                            <Trash2 size={viewMode === 'grid-small' ? 12 : 14} />
-                          </button>
-                        </div>
-                      )}
+
                     </div>
                   )}
               </div>
@@ -1450,28 +1453,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               </div>
             )}
             
-            <div className="mobile-only-actions" style={{ display: 'none', marginTop: '1rem', borderTop: '1px solid var(--border-glass)', paddingTop: '1rem', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {item.itemType === 'equippable' ? (
-                <button onClick={() => { handleEquip(item); setHoveredItem(null); }} style={{ flex: 1, padding: '0.5rem', background: item.equipped ? 'rgba(16, 185, 129, 0.2)' : 'var(--btn-bg)', color: item.equipped ? 'var(--accent-green)' : 'var(--text-primary)', border: item.equipped ? '1px solid var(--accent-green)' : '1px solid var(--border-glass)', borderRadius: '8px', fontWeight: 'bold' }}>
-                  {item.equipped ? 'Desequipar' : 'Equipar'}
-                </button>
-              ) : (
-                <button onClick={() => { handleUseConsumable(item); setHoveredItem(null); }} style={{ flex: 1, padding: '0.5rem', background: 'rgba(251, 191, 36, 0.2)', color: 'var(--gold-primary)', border: '1px solid rgba(251, 191, 36, 0.3)', borderRadius: '8px', fontWeight: 'bold' }}>
-                  Usar Item
-                </button>
-              )}
-              <button onClick={() => { 
-                  if (item.equipped) { showAlert("Desequipe antes de vender."); return; }
-                  setHoveredItem(null); setSellModalItem(item); 
-                }} 
-                style={{ padding: '0.5rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px' }}>
-                <Coins size={16} />
-              </button>
-              <button onClick={() => { setHoveredItem(null); handleDropItemToTrash(item); }} style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px' }}>
-                <Trash2 size={16} />
-              </button>
-            </div>
-            
+
           </div>,
           document.body
         );
