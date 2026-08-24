@@ -1621,35 +1621,37 @@ export default function QuestGameplay() {
       <div style={{ position: 'relative', zIndex: 10, width: '100%', maxWidth: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', flexShrink: 0 }}>
         
         {/* Header */}
-        <div style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-            <button onClick={handleAbandon} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ArrowLeft /> Abandonar
+        <div style={{ padding: '0.35rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
+          {/* Row 1: Abandonar + Desafio */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'space-between' }}>
+            <button onClick={handleAbandon} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', padding: 0 }}>
+              <ArrowLeft size={14} /> Abandonar
             </button>
             {gameState === 'playing' && quest && (
-              <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', letterSpacing: '1px', textTransform: 'uppercase' }}>
+              <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', letterSpacing: '1px', textTransform: 'uppercase', fontSize: '0.8rem' }}>
                 Desafio {currentQIndex + 1} de {quest.questions.length}
               </span>
             )}
           </div>
           
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
+          {/* Row 2: Stats + powerups + debug */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'nowrap', overflowX: 'auto' }}>
             {gameState === 'playing' && powerups.length > 0 && (
-              <div style={{ display: 'flex', gap: '0.5rem', marginRight: '1rem', overflowX: 'auto', maxWidth: '300px', paddingBottom: '0.2rem', scrollbarWidth: 'thin' }}>
+              <div style={{ display: 'flex', gap: '0.25rem', overflowX: 'auto', flexShrink: 0 }}>
                 {powerups.map(p => (
                   <button
                     key={p.id}
                     onClick={() => handleUsePowerup(p)}
                     title={`Usar: ${p.itemTitle}`}
-                    style={{ position: 'relative', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{ position: 'relative', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer', padding: '0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                   >
                     {p.itemImageUrl ? (
-                      <img src={getSafeUrl(p.itemImageUrl)} alt={p.itemTitle} style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'cover' }} />
+                      <img src={getSafeUrl(p.itemImageUrl)} alt={p.itemTitle} style={{ width: '24px', height: '24px', borderRadius: '4px', objectFit: 'cover' }} />
                     ) : (
-                      <Zap size={24} color="var(--gold-primary)" style={{ padding: '4px' }} />
+                      <Zap size={18} color="var(--gold-primary)" style={{ padding: '2px' }} />
                     )}
                     {p.count && p.count > 1 && (
-                      <span style={{ position: 'absolute', top: -5, right: -5, background: 'var(--accent-red)', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', zIndex: 2 }}>
+                      <span style={{ position: 'absolute', top: -4, right: -4, background: 'var(--accent-red)', color: 'white', fontSize: '0.6rem', fontWeight: 'bold', padding: '1px 4px', borderRadius: '8px', zIndex: 2 }}>
                         {p.count}
                       </span>
                     )}
@@ -1659,35 +1661,35 @@ export default function QuestGameplay() {
             )}
 
             {hasShield && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(59, 130, 246, 0.3)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', animation: 'epicGlow 2s infinite alternate' }}>
-                <Shield size={18} />
-                <span style={{ fontWeight: 'bold' }}>Escudo</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(59, 130, 246, 0.3)', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', animation: 'epicGlow 2s infinite alternate', flexShrink: 0 }}>
+                <Shield size={12} />
+                <span style={{ fontWeight: 'bold', fontSize: '0.7rem' }}>Escudo</span>
               </div>
             )}
             {gameState === 'playing' && (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--gold-primary)' }}>
-                  <Star size={18} color="var(--gold-primary)" />
-                  <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)' }}>{currentXp} XP</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(0,0,0,0.5)', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid var(--gold-primary)', flexShrink: 0 }}>
+                  <Star size={12} color="var(--gold-primary)" />
+                  <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)', fontSize: '0.75rem' }}>{currentXp} XP</span>
                 </div>
                 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid #ef4444' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.1rem', background: 'rgba(0,0,0,0.5)', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid #ef4444', flexShrink: 0 }}>
                   {Array.from({ length: currentHearts }).map((_, i) => (
-                    <Heart key={i} size={18} fill="#ef4444" color="#ef4444" />
+                    <Heart key={i} size={12} fill="#ef4444" color="#ef4444" />
                   ))}
                 </div>
                 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5  ? 'var(--accent-red)'  : 'var(--text-primary)' }}>
-                  <Clock size={18} />
-                  <span style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>{timeLeft}s</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.2rem 0.5rem', borderRadius: '12px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-primary)', flexShrink: 0 }}>
+                  <Clock size={12} />
+                  <span style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{timeLeft}s</span>
                   {(isSuperAdmin || userData?.role === 'admin') && (
-                    <button onClick={() => { setTimerPaused(p => { timerPausedRef.current = !p; return !p; }); }} style={{ background: 'transparent', border: 'none', color: timerPaused ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.1rem', marginLeft: '0.25rem' }} title={timerPaused ? 'Retomar timer' : 'Pausar timer'}>
+                    <button onClick={() => { setTimerPaused(p => { timerPausedRef.current = !p; return !p; }); }} style={{ background: 'transparent', border: 'none', color: timerPaused ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0', marginLeft: '0.1rem', fontSize: '0.7rem' }} title={timerPaused ? 'Retomar timer' : 'Pausar timer'}>
                       {timerPaused ? '▶' : '⏸'}
                     </button>
                   )}
                 </div>
                 {(isSuperAdmin || userData?.role === 'admin') && (
-                  <button onClick={() => setShowDebugPanel(v => !v)} style={{ background: showDebugPanel ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.5)', border: `1px solid ${showDebugPanel ? 'var(--gold-primary)' : 'var(--border-glass)'}`, borderRadius: '20px', color: showDebugPanel ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 'bold' }} title="Arena Debug">
+                  <button onClick={() => setShowDebugPanel(v => !v)} style={{ background: showDebugPanel ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.5)', border: `1px solid ${showDebugPanel ? 'var(--gold-primary)' : 'var(--border-glass)'}`, borderRadius: '12px', color: showDebugPanel ? 'var(--gold-primary)' : 'var(--text-secondary)', cursor: 'pointer', padding: '0.2rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.65rem', fontWeight: 'bold', flexShrink: 0 }} title="Arena Debug">
                     🏟️ Debug
                   </button>
                 )}
