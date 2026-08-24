@@ -109,12 +109,10 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
 
 const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; defaultPos: { x: number; y: number }; children: React.ReactNode; deviceKey?: string }) => {
   const [pos, setPos] = useState(() => {
-    try {
-      const saved = localStorage.getItem(`arenaDebug_widgetPos_${id}`);
-      return saved ? JSON.parse(saved) : defaultPos;
-    } catch (e) {
-      return defaultPos;
-    }
+    // Always spawn at the center of the screen, ignoring old saved positions that may be off-screen
+    const centerX = Math.max(0, Math.floor(window.innerWidth / 2) - 130);
+    const centerY = Math.max(0, Math.floor(window.innerHeight / 2) - 210);
+    return { x: centerX, y: centerY };
   });
   const [isMinimized, setIsMinimized] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -150,8 +148,8 @@ const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; 
     <div
       style={{
         position: 'fixed', 
-        left: Math.max(0, Math.min(typeof pos?.x === 'number' && !isNaN(pos.x) ? pos.x : defaultPos.x, window.innerWidth - 100)), 
-        top: Math.max(0, Math.min(typeof pos?.y === 'number' && !isNaN(pos.y) ? pos.y : defaultPos.y, window.innerHeight - 50)), 
+        left: typeof pos?.x === 'number' && !isNaN(pos.x) ? pos.x : defaultPos.x, 
+        top: typeof pos?.y === 'number' && !isNaN(pos.y) ? pos.y : defaultPos.y, 
         zIndex: 99999,
         background: 'rgba(30, 35, 45, 0.95)', backdropFilter: 'blur(10px)',
         padding: isMinimized ? '0.4rem 0.8rem' : '0.5rem',
