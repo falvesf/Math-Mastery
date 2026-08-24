@@ -12,7 +12,7 @@ import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
 import AdminEntitiesManager from '../components/AdminEntitiesManager';
 import AdminRolesManager from '../components/AdminRolesManager';
-import { usePermissions, fetchRoles, fetchUserRoles, assignRoleToUser, removeRoleFromUser, type RoleDef } from '../lib/permissions';
+import { usePermissions, fetchRoles, fetchUserRoles, assignRoleToUser, removeRoleFromUser, getPanelRoleName, panelLabel, baseRolePanelLabel, type RoleDef } from '../lib/permissions';
 import AdminCompanionTipsManager from '../components/AdminCompanionTipsManager';
 import TenantSwitcher from '../components/TenantSwitcher';
 import AdminEconomySettings from '../components/AdminEconomySettings';
@@ -468,6 +468,14 @@ export default function AdminDashboard() {
   const { tenant, tenantId, tenants, isSuperAdmin, noTenants, switchTenant, createTenant, updateTenant, deleteTenant, refreshTenants } = useTenant();
   const { can: canView } = usePermissions();
   const navigate = useNavigate();
+  // Nome da função que dá título ao painel (função de hierarquia ou base)
+  const [panelRoleName, setPanelRoleName] = useState(() => baseRolePanelLabel(userData?.role));
+  useEffect(() => {
+    if (!userData?.uid) return;
+    let active = true;
+    getPanelRoleName(userData.uid, tenantId, userData.role).then(n => { if (active) setPanelRoleName(n); }).catch(() => {});
+    return () => { active = false; };
+  }, [userData?.uid, tenantId, userData?.role]);
   // Guias internas do "Geral" e quem pode ver cada uma
   const generalTabOptions = [
     { key: 'config', label: 'Avaliação', icon: <Settings size={17} />, check: canView('config', 'view') },
@@ -1853,7 +1861,7 @@ export default function AdminDashboard() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem', minWidth: 0 }}>
             <h1 className="title-glow">
-              {userData?.role === 'admin' ? 'Painel Master (Admin)' : 'Painel do Professor'}
+              {panelLabel(panelRoleName)}
             </h1>
             <div className="tenant-switcher-desktop" style={{ position: 'relative', zIndex: 99999 }}>
               <TenantSwitcher />

@@ -34,7 +34,7 @@ import ChatWidget from '../components/ChatWidget';
 import TeacherWanderer from '../components/TeacherWanderer';
 import AboutModal from '../components/AboutModal';
 import TenantSwitcher from '../components/TenantSwitcher';
-import { usePermissions } from '../lib/permissions';
+import { usePermissions, getPanelRoleName, panelLabel, baseRolePanelLabel } from '../lib/permissions';
 import StatDistributionModal from '../components/StatDistributionModal';
 import NintendoHeart from '../components/NintendoHeart';
 import { fetchStudentAchievementHistory } from '../lib/achievementHistory';
@@ -114,6 +114,14 @@ export default function Dashboard() {
   // tem função de hierarquia com permissão em alguma delas, mostra o botão.
   const ADMIN_AREAS = ['users', 'quests_admin', 'items', 'economy', 'classes', 'approvals', 'config', 'ranks', 'entities', 'models', 'skins', 'debug3d', 'pre_authorized', 'tenants', 'companion', 'themes', 'arena_debug'];
   const hasAdminAccess = ADMIN_AREAS.some(a => canView(a, 'view'));
+  // Nome da função que dá título ao painel (função de hierarquia ou base)
+  const [panelRoleName, setPanelRoleName] = useState(() => baseRolePanelLabel(userData?.role));
+  useEffect(() => {
+    if (!userData?.uid) return;
+    let active = true;
+    getPanelRoleName(userData.uid, tenantId, userData.role).then(n => { if (active) setPanelRoleName(n); }).catch(() => {});
+    return () => { active = false; };
+  }, [userData?.uid, tenantId, userData?.role]);
   if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
@@ -2385,10 +2393,10 @@ export default function Dashboard() {
                 className="login-btn hide-on-mobile"
                 onClick={() => navigate('/admin')}
                 style={{ padding: '0.4rem 0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)', fontSize: '0.85rem' }}
-                title={userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}
+                title={panelLabel(panelRoleName)}
               >
                 <ShieldAlert size={16} color="var(--gold-primary)" />
-                <span style={{ color: 'var(--gold-primary)' }}>{userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}</span>
+                <span style={{ color: 'var(--gold-primary)' }}>{panelLabel(panelRoleName)}</span>
               </button>
             )}
 
@@ -2475,7 +2483,7 @@ export default function Dashboard() {
                         style={{ width: '100%', justifyContent: 'flex-start', padding: '0.5rem 0.75rem', gap: '0.5rem', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)', fontSize: '0.85rem' }}
                       >
                         <ShieldAlert size={16} color="var(--gold-primary)" />
-                        <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>{userData?.role === 'admin' ? 'Painel Master' : 'Painel do Professor'}</span>
+                        <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>{panelLabel(panelRoleName)}</span>
                       </button>
                     )}
 
