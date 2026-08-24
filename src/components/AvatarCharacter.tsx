@@ -2042,60 +2042,66 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             </div>
             
             {/* Tooltip Estilo RPG */}
-            {hoveredSlot === slot.id && (
-               <div style={{
-                 position: 'absolute',
-                 top: '110%',
-                 left: '50%',
-                 transform: 'translateX(-50%) translateZ(30px)',
-                 background: 'var(--bg-card)',
-                 border: '1px solid var(--border-glass)',
-                 borderRadius: '8px',
-                 padding: '1rem',
-                 width: 'max-content',
-                 minWidth: '200px',
-                 zIndex: 50,
-                 boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
-                 WebkitFontSmoothing: 'antialiased',
-                 pointerEvents: 'none',
-                 color: 'var(--text-primary)',
-                 textAlign: 'left'
-               }}>
-                 {item ? (
-                   <>
-                     <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>{item.itemTitle || 'Item Desconhecido'}</h4>
-                     
-                     {item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
-                       <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                         {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
-                       </div>
-                     )}
-                     
-                     {item.adds && item.adds.length > 0 && (
-                       <div style={{ fontSize: '0.9rem' }}>
-                         <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
-                         <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem' }}>
-                           {item.adds.map((add: ItemAdd, i: number) => {
-                             const lbl = ATTRIBUTE_LABELS[add.type];
-                             if (!lbl) return null;
-                             return (
-                               <li key={i} style={{ color: lbl.color, marginBottom: '0.25rem' }}>
-                                 {lbl.icon} {lbl.label}: +{add.value}%
-                               </li>
-                             );
-                           })}
-                         </ul>
-                       </div>
-                     )}
-                   </>
-                 ) : (
-                   <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                     {slot.label}<br/>
-                     <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Nenhum item equipado</span>
-                   </p>
-                 )}
-               </div>
-            )}
+            {hoveredSlot === slot.id && (() => {
+               const isBottomSlot = 'bottom' in slot.pos;
+               return (
+                 <div style={{
+                   position: 'absolute',
+                   ...(isBottomSlot
+                     ? { bottom: '110%', top: 'auto' }
+                     : { top: '110%', bottom: 'auto' }),
+                   left: '50%',
+                   transform: 'translateX(-50%) translateZ(30px)',
+                   background: 'var(--bg-card)',
+                   border: '1px solid var(--border-glass)',
+                   borderRadius: '8px',
+                   padding: '1rem',
+                   width: 'max-content',
+                   minWidth: '200px',
+                   zIndex: 50,
+                   boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
+                   WebkitFontSmoothing: 'antialiased',
+                   pointerEvents: 'none',
+                   color: 'var(--text-primary)',
+                   textAlign: 'left'
+                 }}>
+                   {item ? (
+                     <>
+                       <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>{item.itemTitle || 'Item Desconhecido'}</h4>
+                       
+                       {item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
+                         <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                           {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
+                         </div>
+                       )}
+                       
+                       {item.adds && item.adds.length > 0 && (
+                         <div style={{ fontSize: '0.9rem' }}>
+                           <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
+                           <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem' }}>
+                             {item.adds.map((add: ItemAdd, i: number) => {
+                               const lbl = ATTRIBUTE_LABELS[add.type];
+                               if (!lbl) return null;
+                               return (
+                                 <li key={i} style={{ color: lbl.color, marginBottom: '0.25rem' }}>
+                                   {lbl.icon} {lbl.label}: +{add.value}%
+                                 </li>
+                               );
+                             })}
+                           </ul>
+                         </div>
+                       )}
+                     </>
+                   ) : (
+                     <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                       {slot.label}<br/>
+                       <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Nenhum item equipado</span>
+                     </p>
+                   )}
+                 </div>
+               );
+             })()
+            }
           </div>
         );
       })}

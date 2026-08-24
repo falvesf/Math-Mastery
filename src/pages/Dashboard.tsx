@@ -218,6 +218,8 @@ export default function Dashboard() {
   useEffect(() => {
     const handleOpenInventory = () => {
       setActiveTab('profile');
+      // Snap cube to character face before showing inventory
+      setCubeRotation(prev => Math.round(prev / 360) * 360);
       setProfileTab('inventory');
     };
     window.addEventListener('select-inventory-tab', handleOpenInventory);
@@ -536,14 +538,14 @@ export default function Dashboard() {
     };
   }, [isIdle, cubeIdleTime]);
 
-  // Giro automático do cubo quando ocioso (pausado enquanto houver dicas do companheiro)
+  // Giro automático do cubo quando ocioso (pausado enquanto houver dicas do companheiro ou mochila aberta)
   useEffect(() => {
-    if (!cubeAutoRotate || !isIdle || pendingTips.length > 0) return;
+    if (!cubeAutoRotate || !isIdle || pendingTips.length > 0 || profileTab === 'inventory') return;
     const rotateInterval = setInterval(() => {
       setCubeRotation(prev => prev - 90);
     }, cubeRotateInterval * 1000); // Gira a cada X segundos
     return () => clearInterval(rotateInterval);
-  }, [isIdle, cubeAutoRotate, cubeRotateInterval, pendingTips.length]);
+  }, [isIdle, cubeAutoRotate, cubeRotateInterval, pendingTips.length, profileTab]);
 
   useEffect(() => {
     if (!userData || !equippedItemsLoaded) return;
@@ -2700,7 +2702,11 @@ export default function Dashboard() {
                 <Star size={16} /> Personagem
               </button>
               <button
-                onClick={() => setProfileTab('inventory')}
+                onClick={() => {
+                  // Snap cube to character face (nearest multiple of 360°) before showing inventory
+                  setCubeRotation(prev => Math.round(prev / 360) * 360);
+                  setProfileTab('inventory');
+                }}
                 className="login-btn"
                 style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: profileTab === 'inventory' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', padding: '0.4rem 1rem', fontSize: '0.85rem' }}
               >
