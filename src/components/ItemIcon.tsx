@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Package } from 'lucide-react';
 import SkinBuffIcon from './SkinBuffIcon';
 import CachedImage from './CachedImage';
@@ -40,6 +41,7 @@ interface ItemIconProps {
     minecraftHeadValue?: string;
     unlockedSkinId?: string;
     gameEffect?: string;
+    buffDurationDays?: number;
   };
   size?: number;
   style?: React.CSSProperties;
@@ -54,6 +56,9 @@ interface ItemIconProps {
  */
 export default function ItemIcon({ item, size = 64, style }: ItemIconProps) {
   const image = item.imageUrl || item.itemImageUrl || '';
+  // Licença de Venda no Bazar: mostra a validade do anúncio na própria imagem
+  const isBazarLicense = item.gameEffect === 'bazar_sale_permit';
+  const licenseDays = item.buffDurationDays || 3;
 
   // Buff de skin (usa unlockedSkinId como URL da skin)
   if (item.gameEffect === 'unlock_skin' && item.unlockedSkinId) {
@@ -64,22 +69,47 @@ export default function ItemIcon({ item, size = 64, style }: ItemIconProps) {
     );
   }
 
-  // Imagem normal
+  let content: ReactNode;
   if (image) {
-    return <CachedImage src={image} style={{ width: size, height: size, borderRadius: 8, objectFit: 'cover', ...style }} />;
+    content = <CachedImage src={image} style={{ width: size, height: size, borderRadius: 8, objectFit: 'cover', ...style }} />;
+  } else if (item.minecraftHeadValue && item.minecraftHeadValue.trim() !== '') {
+    content = <MinecraftHeadIcon minecraftHeadValue={item.minecraftHeadValue} size={size} />;
+  } else {
+    content = (
+      <div style={{ width: size, height: size, borderRadius: 8, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, ...style }}>
+        <Package size={size * 0.4} color="var(--text-secondary)" />
+      </div>
+    );
   }
 
-  // Cabeça Minecraft (esfera 2D)
-  if (item.minecraftHeadValue && item.minecraftHeadValue.trim() !== '') {
-    return <MinecraftHeadIcon minecraftHeadValue={item.minecraftHeadValue} size={size} />;
+  // Selo de validade para Licença de Venda no Bazar (ex: 1d, 3d, 5d, 10d, 15d)
+  if (isBazarLicense) {
+    return (
+      <div style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
+        {content}
+        <div style={{
+          position: 'absolute',
+          bottom: '2px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0, 0, 0, 0.8)',
+          border: '1px solid rgba(255,255,255,0.2)',
+          color: '#fbbf24',
+          fontSize: Math.max(10, size * 0.2),
+          padding: '1px 6px',
+          borderRadius: '10px',
+          fontWeight: 'bold',
+          whiteSpace: 'nowrap',
+          textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+          pointerEvents: 'none'
+        }}>
+          {licenseDays}d
+        </div>
+      </div>
+    );
   }
 
-  // Placeholder
-  return (
-    <div style={{ width: size, height: size, borderRadius: 8, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, ...style }}>
-      <Package size={size * 0.4} color="var(--text-secondary)" />
-    </div>
-  );
+  return content;
 }
 
 /**
