@@ -1240,13 +1240,13 @@ export default function AdminDashboard() {
       battleBgMoveSpeed: questBattleBgMoveSpeed,
       battleBgMoveDuration: questBattleBgMoveDuration,
       podiumBgUrl: questPodiumBgUrl || undefined,
-      combatcoindrop: {
+      combatCoinDrop: {
         minCoins: questCombatCoinMin,
         maxCoins: questCombatCoinMax,
         minValue: questCombatCoinMinValue,
         maxValue: questCombatCoinMaxValue,
       },
-      chestconfig: questChestConfig,
+      chestConfig: questChestConfig,
       mode: questMode,
       liveChest1stPlace: questLiveChest1st,
       liveChest2ndPlace: questLiveChest2nd,

@@ -222,7 +222,7 @@ export default function QuestGameplay() {
           if (data?.data) {
             const dbData = data.data as Record<string, any>;
             const cleanData = Object.fromEntries(Object.entries(dbData).filter(([_, v]) => v !== undefined && v !== null));
-            setArenaDebug(prev => ({ ...DEFAULT_ARENA_DEBUG, ...cleanData, ...shared }));
+            setArenaDebug({ ...DEFAULT_ARENA_DEBUG, ...cleanData, ...shared });
           }
         });
       }
