@@ -26,12 +26,12 @@ export default function PendingApprovalToasts({ isStaff }: { isStaff: boolean })
   useEffect(() => {
     if (!isStaff) return;
     const channel = supabase
-      .channel('pending_approvals')
+      .channel(`pending_approvals_${tenantId || 'all'}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'users',
-        filter: 'role=in.(pending_student,pending_teacher)'
+        filter: tenantId ? `role=in.(pending_student,pending_teacher)and tenant_id=eq.${tenantId}` : 'role=in.(pending_student,pending_teacher)'
       }, async (payload) => {
         const row: any = payload.new;
         if (!row || !row.id) return;
@@ -42,20 +42,68 @@ export default function PendingApprovalToasts({ isStaff }: { isStaff: boolean })
             tenantName = data?.name || '';
           } catch { /* ignore */ }
         }
-        setToasts(prev => [...prev, {
-          id: `${row.id}_${Date.now()}`,
-          userId: row.id,
-          name: row.name || 'Aluno',
-          role: row.role || 'pending_student',
-          tenantId: row.tenant_id || null,
-          tenantName,
-          pendingClassName: row.pending_class_name || null
-        }]);
+        setToasts(prev => {
+          if (prev.some(t => t.userId === row.id)) return prev;
+          return [...prev, {
+            id: `${row.id}_${Date.now()}`,
+            userId: row.id,
+            name: row.name || 'Aluno',
+            role: row.role || 'pending_student',
+            tenantId: row.tenant_id || null,
+            tenantName,
+            pendingClassName: row.pending_class_name || null
+          }];
+        });
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [isStaff]);
+  }, [isStaff, tenantId]);
+
+  // Carregar pedidos que JÁ existiam (usuários aguardando aprovação antes de
+  // o staff entrar na escola) — avisa na tela inicial sem precisar ir a "Solicitações".
+  useEffect(() => {
+    if (!isStaff) return;
+    let cancelled = false;
+    const loadExisting = async () => {
+      try {
+        let q = supabase
+          .from('users')
+          .select('id, name, role, tenant_id, pending_class_name')
+          .in('role', ['pending_student', 'pending_teacher']);
+        if (tenantId) q = q.eq('tenant_id', tenantId);
+        else q = q.is('tenant_id', null);
+        const { data } = await q;
+        if (cancelled || !data || data.length === 0) return;
+
+        // Resolver nomes das escolas de uma vez
+        const tenantIds = [...new Set(data.map((r: any) => r.tenant_id).filter(Boolean))];
+        const tenantNames: Record<string, string> = {};
+        if (tenantIds.length > 0) {
+          const { data: tData } = await supabase.from('tenants').select('id, name').in('id', tenantIds);
+          (tData || []).forEach((t: any) => { tenantNames[t.id] = t.name; });
+        }
+
+        setToasts(prev => {
+          const existingIds = new Set(prev.map(t => t.userId));
+          const newOnes = data.map((row: any) => ({
+            id: `${row.id}_existing_${Date.now()}`,
+            userId: row.id,
+            name: row.name || 'Aluno',
+            role: row.role || 'pending_student',
+            tenantId: row.tenant_id || null,
+            tenantName: tenantNames[row.tenant_id] || '',
+            pendingClassName: row.pending_class_name || null
+          })).filter(t => !existingIds.has(t.userId));
+          return [...prev, ...newOnes];
+        });
+      } catch (e) {
+        console.error('Erro ao carregar solicitações pendentes:', e);
+      }
+    };
+    loadExisting();
+    return () => { cancelled = true; };
+  }, [isStaff, tenantId]);
 
   const handleApprove = async (t: PendingToast) => {
     const targetTenantId = t.tenantId || tenantId;
@@ -142,7 +190,7 @@ export default function PendingApprovalToasts({ isStaff }: { isStaff: boolean })
   if (toasts.length === 0) return null;
 
   return (
-    <div style={{ position: 'fixed', bottom: '1rem', right: '1rem', zIndex: 20000, display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '380px' }}>
+    <div style={{ position: 'fixed', bottom: '1rem', right: '1rem', zIndex: 20000, display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '380px', maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }}>
       {toasts.map(t => (
         <div key={t.id} style={{ background: 'var(--bg-panel)', border: '1px solid var(--gold-primary)', borderRadius: '12px', padding: '1rem', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', animation: 'toast-in 0.35s ease-out' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>

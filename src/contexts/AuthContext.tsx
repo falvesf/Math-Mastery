@@ -345,6 +345,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => { cancelled = true; clearInterval(int); };
   }, [userData?.uid, isTeacherRole, userData?.tenantId]);
 
+  // Usuários aguardando aprovação: mesmo que o Realtime da tabela users não
+  // esteja ativo, verifica periodicamente se o admin aprovou e atualiza o
+  // userData no lugar (dispensa refresh manual na tela "Aguardando Aprovação").
+  const isPendingApproval = userData?.role === 'pending_teacher' || userData?.role === 'pending_student';
+  useEffect(() => {
+    if (!userData?.uid || !isPendingApproval) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const { data } = await supabase.from('users').select('*').eq('id', userData.uid).maybeSingle();
+        if (cancelled || !data) return;
+        if (data.role !== 'pending_teacher' && data.role !== 'pending_student') {
+          const mapped = mapUserToClient(data);
+          const isInStudentView = mapped.studentViewActive === true;
+          if (isInStudentView && mapped.role !== 'student') mapped.role = 'student';
+          setUserData(prev => prev ? { ...prev, ...mapped } : prev);
+        }
+      } catch (e) {
+        // silencioso — não interromper o ciclo de verificação
+      }
+    };
+    check();
+    const int = setInterval(check, 4000);
+    return () => { cancelled = true; clearInterval(int); };
+  }, [userData?.uid, isPendingApproval]);
+
   const updateUserDataLocally = (updates: Partial<UserData>) => {
     setUserData(prev => prev ? { ...prev, ...updates } : prev);
   };
