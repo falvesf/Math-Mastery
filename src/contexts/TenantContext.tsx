@@ -90,8 +90,56 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Carrega as escolas de acesso do usuário comum (tenant_users) e resolve o
+  // tenant ativo. Sempre roda para usuários comuns — mesmo com cache de escola —
+  // para que o seletor de escolas apareça quando há mais de um tenant.
+  const loadUserAccessTenantsAndResolve = async (userDataParam: any) => {
+    if (!uid) return;
+
+    const { data: tenantUserRows } = await supabase
+      .from('tenant_users')
+      .select('tenant_id')
+      .eq('user_id', uid);
+
+    if (!tenantUserRows || tenantUserRows.length === 0) {
+      console.warn('Usuário sem tenant, usando padrão');
+      await assignDefaultTenant();
+      return;
+    }
+
+    const tenantIds = tenantUserRows.map((r: any) => r.tenant_id);
+    const { data: resolvedTenantsData } = await supabase.from('tenants').select('*').in('id', tenantIds);
+
+    if (!resolvedTenantsData || resolvedTenantsData.length === 0) {
+      await assignDefaultTenant();
+      return;
+    }
+
+    const resolvedTenants = resolvedTenantsData as Tenant[];
+    setUserTenants(resolvedTenants);
+
+    // Escolha da escola: cache atual (se ainda for um acesso) > preferência salva
+    // > padrão definido pelo superadmin (users.tenant_id) > primeira
+    const savedPref = localStorage.getItem(`user_selected_tenant_${uid}`);
+    const primaryPref = userDataParam?.tenantId && resolvedTenants.some(t => t.id === userDataParam.tenantId) ? userDataParam.tenantId : null;
+    const chosenTenant =
+      (tenantId && resolvedTenants.find(t => t.id === tenantId)) ||
+      resolvedTenants.find(t => t.id === savedPref) ||
+      resolvedTenants.find(t => t.id === primaryPref) ||
+      resolvedTenants[0];
+    setTenant(chosenTenant);
+    setTenantId(chosenTenant.id);
+    setNoTenants(false);
+    await syncUserTenantId(chosenTenant.id);
+  };
+
   // Carregar tenant do usuário atual
   const loadUserTenant = useCallback(async () => {
+    const isUserSuperAdmin =
+      userData?.role === 'superadmin' ||
+      userData?.email === 'fabio.feitoza@eaportal.org' ||
+      currentUser?.email === 'fabio.feitoza@eaportal.org';
+
     // 1) Deep-link: escola vinda da URL (?tenant=<id>)
     const urlTenant = new URLSearchParams(window.location.search).get('tenant');
     if (urlTenant) {
@@ -101,38 +149,25 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
         console.warn('Não foi possível limpar a URL:', e);
       }
       const { data } = await supabase.from('tenants').select('*').eq('id', urlTenant).single();
-      setTenant((data as Tenant) || { id: urlTenant, name: 'Escola', slug: '' });
+      const urlResolved = (data as Tenant) || { id: urlTenant, name: 'Escola', slug: '' };
+      setTenant(urlResolved);
+      setTenantId(urlResolved.id);
       setNoTenants(false);
       setLoading(false);
+      // Mesmo assim carrega os acessos (para o seletor de escolas aparecer)
+      if (uid && !isUserSuperAdmin) {
+        loadUserAccessTenantsAndResolve(userData).catch(() => {});
+      }
       return;
     }
 
-    // 2) tenantId já inicializado do cache (localStorage) no useState: garante o objeto
-    if (tenantId) {
-      if (!tenant) {
-        const { data } = await supabase.from('tenants').select('*').eq('id', tenantId).single();
-        if (data) {
-          setTenant(data as Tenant);
-          setLoading(false);
-          return;
-        }
-        // Escola salva não existe mais (foi excluída): limpar cache e resolver normalmente
-        localStorage.removeItem('superadmin_selected_tenant');
-        if (uid) localStorage.removeItem(`user_selected_tenant_${uid}`);
-        setTenantId(null);
-      } else {
-        setLoading(false);
-        return;
-      }
-    }
-
-    // 3) Sem usuário autenticado: não há tenant a resolver (e não trava o loading)
+    // 2) Sem usuário autenticado: não há tenant a resolver (e não trava o loading)
     if (!currentUser || !uid) {
       setLoading(false);
       return;
     }
 
-    // 4) Aguarda o userData carregar, a menos que seja superadmin por email
+    // 3) Aguarda o userData carregar, a menos que seja superadmin por email
     const isSuperByEmail = currentUser?.email === 'fabio.feitoza@eaportal.org';
     if (!userData && !isSuperByEmail) {
       setLoading(true);
@@ -140,11 +175,6 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      const isUserSuperAdmin =
-        userData?.role === 'superadmin' ||
-        userData?.email === 'fabio.feitoza@eaportal.org' ||
-        currentUser?.email === 'fabio.feitoza@eaportal.org';
-
       if (isUserSuperAdmin) {
         // Escola ativa: lê de qualquer chave de cache (superadmin ou por usuário)
         const savedTenantId =
@@ -186,38 +216,8 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // Usuário comum: tenants do usuário
-      const { data: tenantUserRows } = await supabase
-        .from('tenant_users')
-        .select('tenant_id')
-        .eq('user_id', uid);
-
-      if (!tenantUserRows || tenantUserRows.length === 0) {
-        console.warn('Usuário sem tenant, usando padrão');
-        await assignDefaultTenant();
-        return;
-      }
-
-      const tenantIds = tenantUserRows.map((r: any) => r.tenant_id);
-      const { data: resolvedTenantsData } = await supabase.from('tenants').select('*').in('id', tenantIds);
-
-      if (!resolvedTenantsData || resolvedTenantsData.length === 0) {
-        await assignDefaultTenant();
-        return;
-      }
-
-      const resolvedTenants = resolvedTenantsData as Tenant[];
-      setUserTenants(resolvedTenants);
-
-      // Preferência salva OU escola padrão do usuário (users.tenant_id) OU primeira
-      const savedPref = localStorage.getItem(`user_selected_tenant_${uid}`);
-      // Escola padrão definida pelo superadmin (users.tenant_id) tem prioridade
-      // apenas quando o usuário ainda não escolheu manualmente (sem cache salvo).
-      const primaryPref = userData?.tenantId && resolvedTenants.some(t => t.id === userData.tenantId) ? userData.tenantId : null;
-      const chosenTenant = resolvedTenants.find(t => t.id === savedPref) || resolvedTenants.find(t => t.id === primaryPref) || resolvedTenants[0];
-      setTenant(chosenTenant);
-      setTenantId(chosenTenant.id);
-      await syncUserTenantId(chosenTenant.id);
+      // Usuário comum: SEMPRE carrega os acessos (mesmo com tenantId em cache)
+      await loadUserAccessTenantsAndResolve(userData);
     } catch (err) {
       console.error('Erro ao carregar tenant do usuário:', err);
       await assignDefaultTenant();

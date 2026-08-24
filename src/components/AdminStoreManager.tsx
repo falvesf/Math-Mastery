@@ -18,7 +18,7 @@ import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd }
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
 import { v4 as uuidv4 } from 'uuid';
 
-export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character';
+export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 'bazar_sale_permit';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 
 export interface StoreItem {
@@ -674,6 +674,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="unlock_skin">Liberar Skin Temporária (Buff)</option>
                       <option value="unlock_gender">Liberar Troca de Gênero (15 min)</option>
                       <option value="rename_character">Carta de Troca de Nome (Renomear personagem)</option>
+                      <option value="bazar_sale_permit">Licença de Venda no Bazar (Permite vender itens no bazar com validade)</option>
                     </select>
                   </div>
                   {formData.gameEffect === 'reduce_hp_cooldown' && (
@@ -733,6 +734,25 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                           <option value={15}>15 Dias</option>
                           <option value={30}>30 Dias</option>
                         </select>
+                      </div>
+                    </div>
+                  )}
+                  {formData.gameEffect === 'bazar_sale_permit' && (
+                    <div className="responsive-grid-sm" style={{ background: 'rgba(139,92,246,0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(139,92,246,0.25)' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                          🏪 Validade do Anúncio (Buff Máx. 15 dias)
+                        </label>
+                        <select value={formData.buffDurationDays || 3} onChange={e => setFormData({...formData, buffDurationDays: Math.min(15, Number(e.target.value))})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                          <option value={1}>1 Dia</option>
+                          <option value={3}>3 Dias</option>
+                          <option value={5}>5 Dias</option>
+                          <option value={10}>10 Dias</option>
+                          <option value={15}>15 Dias</option>
+                        </select>
+                        <small style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', display: 'block', marginTop: '4px' }}>
+                          Ao usar esta licença para vender um item no bazar, o anúncio ficará ativo por {formData.buffDurationDays || 3} dia(s). Quando expirar, o item volta ao inventário automaticamente.
+                        </small>
                       </div>
                     </div>
                   )}

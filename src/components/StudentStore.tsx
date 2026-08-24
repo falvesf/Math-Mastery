@@ -11,6 +11,7 @@ import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
 import ItemIcon from './ItemIcon';
+import { processExpiredSales, formatSaleRemaining } from '../lib/bazar';
 
 interface MarketItem {
   id: string;
@@ -37,6 +38,9 @@ interface MarketItem {
   modelTransforms?: any;
   unlockedSkinId?: string;
   buffDurationDays?: number;
+  saleExpiresAt?: number;
+  saleBuffDays?: number;
+  hiddenFromMarket?: boolean;
 }
 
 const getAttributeName = (type: string) => {
@@ -113,6 +117,15 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     fetchStoreData();
   }, [tenantId]);
 
+  // Enquanto o Bazar estiver aberto, processa anúncios expirados periodicamente
+  // (buff vencido -> item volta ao inventário ou é ocultado sem espaço)
+  useEffect(() => {
+    if (activeTab !== 'market') return;
+    const int = setInterval(() => { fetchStoreData(false); }, 60 * 1000);
+    return () => clearInterval(int);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   const fetchStoreData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     const econ = await fetchEconomySettings(tenantId);
@@ -182,19 +195,25 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     loadedStudents.sort((a,b) => a.name.localeCompare(b.name));
     setStudents(loadedStudents);
     
+    // Processar anúncios expirados (buff vencido -> item volta ao inventário
+    // ou é ocultado do bazar até haver espaço) antes de listar o bazar.
+    await processExpiredSales();
+
     const { data: marketSnap } = await supabase.from('user_items').select('*').eq('data->>forSale', 'true');
     const loadedMarket: MarketItem[] = [];
     (marketSnap || []).forEach(d => {
+      const data = d.data as MarketItem;
+      // Ocultos: buff expirado e vendedor sem espaço — não aparecem no bazar
+      if (data.hiddenFromMarket === true) return;
       // Filtrar conforme o alcance configurado no Bazar (economia da escola)
       const scope = econ.bazarCommerceScope || 'all';
       if (scope === 'school' && tenantId && d.tenant_id !== tenantId) return;
       if (scope === 'class') {
-        const sellerClass = (d.data as any)?.sellerClassName || '';
+        const sellerClass = data.sellerClassName || '';
         const myClass = userData?.classId || '';
         if (tenantId && d.tenant_id !== tenantId) return;
         if (myClass && sellerClass && sellerClass !== myClass) return;
       }
-      const data = d.data as MarketItem;
       const originalStoreItem = loaded.find(si => si.id === d.item_id);
       const patchedRarity = data.rarity || originalStoreItem?.rarity || 'common';
       loadedMarket.push({ ...data, id: d.id, itemId: d.item_id, rarity: patchedRarity });
@@ -446,7 +465,10 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             price: null,
             sellerName: null,
             sellerPersuasion: null,
-            preferredCurrency: null
+            preferredCurrency: null,
+            saleExpiresAt: null,
+            saleBuffDays: null,
+            hiddenFromMarket: null
           }
         }).eq('id', marketBuyModalItem.id);
       }
@@ -479,7 +501,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     try {
       const { data: oldItem } = await supabase.from('user_items').select('data').eq('id', item.id).single();
       if (oldItem) await supabase.from('user_items').update({
-        data: { ...(oldItem.data as any), forSale: false, price: null, sellerName: null }
+        data: { ...(oldItem.data as any), forSale: false, price: null, sellerName: null, saleExpiresAt: null, saleBuffDays: null, hiddenFromMarket: null }
       }).eq('id', item.id);
       await showAlert("Venda cancelada! O item voltou para sua mochila.");
       fetchStoreData(false);
@@ -1108,6 +1130,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                       {item.sellerClassName && <span style={{ color: item.sellerClassColor || 'inherit' }}> | {item.sellerClassName}</span>}
                     </strong>
                   </p>
+                  {item.saleExpiresAt && (
+                    <div style={{ fontSize: '0.68rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      ⏳ Anúncio expira em <strong>{formatSaleRemaining(item.saleExpiresAt)}</strong>
+                    </div>
+                  )}
                   {viewMode !== 'grid-small' && items.find(si => si.id === item.itemId)?.description && (
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {items.find(si => si.id === item.itemId)?.description}

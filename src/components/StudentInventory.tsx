@@ -12,6 +12,7 @@ import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
+import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
 interface UserItem {
   id: string;
   itemId: string;
@@ -43,6 +44,9 @@ interface UserItem {
   buffDurationDays?: number;
   hpCooldownReductionMinutes?: number;
   buffDurationHours?: number;
+  saleExpiresAt?: number;
+  saleBuffDays?: number;
+  hiddenFromMarket?: boolean;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -67,6 +71,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const [sellModalItem, setSellModalItem] = useState<UserItem | null>(null);
   const [sellPrice, setSellPrice] = useState('');
   const [sellQuantity, setSellQuantity] = useState(1);
+  const [selectedLicenseId, setSelectedLicenseId] = useState('');
   const [trashModalItem, setTrashModalItem] = useState<UserItem | null>(null);
   const [trashQuantity, setTrashQuantity] = useState(1);
   const [preferredCurrency, setPreferredCurrency] = useState<'xp' | 'coins'>('xp');
@@ -131,6 +136,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const maxInventorySpace = 6 + currentRankIndex + (userData?.extraInventorySpace || 0) + extraSlotsFromFortitude;
   const currentSpaceOccupied = items.filter(i => !i.equipped).length;
 
+  // Licenças de venda no bazar (usadas/consumidas ao colocar um item à venda)
+  const bazarLicenses = items.filter(i => i.gameEffect === BAZAR_LICENSE_EFFECT);
+
   useEffect(() => {
     fetchInventory();
   }, [userData.uid, inventoryRefresh]);
@@ -161,6 +169,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const fetchInventory = async (silent = false) => {
     if (!userData.uid) return;
     if (!silent && items.length === 0) setLoading(true);
+
+    // Anúncios com buff vencido voltam automaticamente para a mochila
+    await processMyExpiredSales(userData.uid);
 
     const econ = await fetchEconomySettings(tenantId);
     setEconomyType(econ.currencyType);
@@ -470,6 +481,11 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
 
+    if (item.gameEffect === BAZAR_LICENSE_EFFECT) {
+      await showAlert(`"${item.itemTitle}" é uma Licença de Venda do Bazar. Ela é consumida automaticamente quando você coloca um item à venda (em "Vender"), mantendo o anúncio ativo por ${item.buffDurationDays || 3} dia(s).`);
+      return;
+    }
+
     if (item.gameEffect && item.gameEffect !== 'none' && item.gameEffect !== 'restore_hp' && item.gameEffect !== 'reduce_hp_cooldown' && item.gameEffect !== 'unlock_skin' && item.gameEffect !== 'unlock_gender' && item.gameEffect !== 'rename_character') {
       await showAlert(`O item "${item.itemTitle}" é um Poder de Jogo! Você só pode utilizá-lo de dentro de uma Missão/Desafio ativo.`);
       return;
@@ -675,6 +691,24 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       await showAlert(`Este item tem um preço mínimo de revenda de ${minSalePrice} ${isXp ? 'XP' : 'moedas'}. Você não pode colocar à venda por menos que isso.`);
       return;
     }
+
+    // Licença de Venda no Bazar é obrigatória (define a validade do anúncio)
+    const license = bazarLicenses.find(l => l.id === selectedLicenseId);
+    if (!license) {
+      await showAlert('Você precisa de uma Licença de Venda no Bazar para colocar itens à venda. Compre uma na Loja Oficial ou ganhe em missões.');
+      return;
+    }
+    const buffDays = Math.min(15, license.buffDurationDays || 3);
+    const saleExpiresAt = Date.now() + buffDays * 24 * 60 * 60 * 1000;
+    const consumeLicense = async () => {
+      if (license.itemType === 'consumable') {
+        await consumeItemQuantity(license.itemId, 1, license.id);
+      } else {
+        const docToDelete = license.docIds ? license.docIds[0] : license.id;
+        await supabase.from('user_items').delete().eq('id', docToDelete);
+      }
+    };
+    await consumeLicense();
     
     if (sellModalItem.itemType === 'consumable') {
       if (sellQuantity < 1 || sellQuantity > (sellModalItem.count || 1)) {
@@ -709,7 +743,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
           sellerName: userData.name,
           sellerClassName,
           sellerClassColor,
-          sellerPersuasion: totalEquippedStats.persuasion
+          sellerPersuasion: totalEquippedStats.persuasion,
+          saleExpiresAt,
+          saleBuffDays: buffDays
         }
       });
     } else {
@@ -735,7 +771,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             sellerName: userData.name,
             sellerClassName,
             sellerClassColor,
-            sellerPersuasion: totalEquippedStats.persuasion
+            sellerPersuasion: totalEquippedStats.persuasion,
+            saleExpiresAt,
+            saleBuffDays: buffDays
           }
         }).eq('id', docToUpdate);
       }
@@ -1189,6 +1227,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                             onClick={() => {
                               if (item.equipped) { showAlert("Desequipe antes de vender."); return; }
                               setSellModalItem(item);
+                              setSelectedLicenseId(bazarLicenses[0]?.id || '');
                             }} 
                             style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '0.2rem', borderRadius: '4px', cursor: isOverflow ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isOverflow ? 0.5 : 1, width: '22px', height: '22px' }}>
                             <Coins size={12} />
@@ -1277,6 +1316,33 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               </div>
             </div>
             
+            {/* Licença de Venda no Bazar (obrigatória) */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                Licença de Venda no Bazar <span style={{ color: 'var(--accent-red)' }}>*</span>
+              </label>
+              {bazarLicenses.length === 0 ? (
+                <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.85rem', color: '#f87171' }}>
+                  Você não possui nenhuma Licença de Venda. Compre uma na Loja Oficial ou ganhe em missões para poder vender itens no Bazar.
+                </div>
+              ) : (
+                <select
+                  value={selectedLicenseId}
+                  onChange={(e) => setSelectedLicenseId(e.target.value)}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                >
+                  {bazarLicenses.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.itemTitle} — {l.buffDurationDays || 3} dia(s) de anúncio (restam {l.count || 1})
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                A licença é consumida ao colocar o item à venda. Quando o anúncio expirar, o item volta ao seu inventário automaticamente.
+              </p>
+            </div>
+
             {economyType === 'xp' && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Moeda de Recebimento:</label>
