@@ -498,11 +498,9 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
             </p>
           </div>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            {!isSuperAdmin && (
-              <button className="login-btn" onClick={importGlobalRanks} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
-                <Copy size={16} /> Importar Patentes Globais
-              </button>
-            )}
+            <button className="login-btn" onClick={importGlobalRanks} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
+              <Copy size={16} /> Importar Patentes Globais
+            </button>
             {globalRanks.length > 0 && (
               <button className="login-btn" onClick={() => setShowRankBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
                 <Package size={16} /> Banco de Patentes
@@ -515,7 +513,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         </div>
 
         {isEditing && createPortal(
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001 }}>
             <div className="glass-panel" style={{ width: '500px', maxWidth: '95vw', maxHeight: '90vh', overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out' }}>
               <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', padding: '1.5rem 2rem', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, fontSize: '1.5rem' }}>{editingIndex !== null ? 'Editar Patente Local' : 'Criar Nova Patente Local'}</h3>
@@ -812,10 +810,19 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>
               Patentes globais criadas por todas as escolas. {isSuperAdmin ? 'Como superadmin, você edita/exclui a base global.' : 'Copie para a sua escola para editar localmente.'}
             </p>
-            {!isSuperAdmin && (
+            {!isSuperAdmin ? (
               <div style={{ marginBottom: '1rem' }}>
-                <button className="login-btn" onClick={async () => { await importGlobalRanks(); setShowRankBank(false); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
-                  <Copy size={16} /> Importar Patentes Globais
+                <button className="login-btn" onClick={async () => { await importGlobalRanks(); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
+                  <Copy size={16} /> Importar Todas de uma vez
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button className="login-btn" onClick={async () => { await importGlobalRanks(); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
+                  <Copy size={16} /> Importar Todas para esta Escola
+                </button>
+                <button className="login-btn" onClick={async () => { await copyGlobalsAsBase(); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(251, 191, 36, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
+                  <Gift size={16} /> Substituir Base da Escola pelas Padrão
                 </button>
               </div>
             )}
@@ -832,11 +839,9 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {!isSuperAdmin && (
-                      <button onClick={() => handleImportRankToLocal(rank)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        <Copy size={14} /> Copiar
-                      </button>
-                    )}
+                    <button onClick={() => handleImportRankToLocal(rank)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <Copy size={14} /> Copiar
+                    </button>
                     {isSuperAdmin && (
                       <>
                         <button onClick={() => openEditGlobal(rank)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
