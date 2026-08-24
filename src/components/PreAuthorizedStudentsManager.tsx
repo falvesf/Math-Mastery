@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useTenant } from '../contexts/TenantContext';
 import { useDialog } from '../contexts/DialogContext';
-import { Plus, Trash2, Upload, Loader2, Search, Users } from 'lucide-react';
+import { Plus, Trash2, Upload, Loader2, Search, Users, Check, Clock, X } from 'lucide-react';
 import ImportStudentsModal from './ImportStudentsModal';
+import { normalizeForComparison } from '../lib/nameValidation';
 
 interface PreAuthorizedStudent {
   id: string;
@@ -13,6 +14,7 @@ interface PreAuthorizedStudent {
   grade?: string;
   imported_from?: string;
   created_at?: string;
+  rejected?: boolean;
 }
 
 interface ClassDef {
@@ -31,6 +33,7 @@ export default function PreAuthorizedStudentsManager() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClass, setFilterClass] = useState('all');
+  const [authorizedNames, setAuthorizedNames] = useState<Set<string>>(new Set());
 
   // Form states for manual add
   const [newName, setNewName] = useState('');
@@ -54,6 +57,20 @@ export default function PreAuthorizedStudentsManager() {
 
       if (studentsError) throw studentsError;
       setStudents(studentsData || []);
+
+      // Buscar alunos já cadastrados no sistema (autorizados) para a escola
+      let usersQuery = supabase.from('users').select('name, tenant_id');
+      if (tenantId) {
+        usersQuery = usersQuery.eq('tenant_id', tenantId);
+      } else {
+        usersQuery = usersQuery.is('tenant_id', null);
+      }
+      const { data: usersData } = await usersQuery;
+      const names = new Set<string>();
+      (usersData || []).forEach((u: any) => {
+        if (u.name) names.add(normalizeForComparison(u.name));
+      });
+      setAuthorizedNames(names);
 
       // Fetch classes for this tenant
       let classesQuery = supabase.from('classes').select('*');
@@ -130,6 +147,12 @@ export default function PreAuthorizedStudentsManager() {
 
   const uniqueClasses = [...new Set(students.map(s => s.class_name))].sort();
 
+  const getStudentStatus = (student: PreAuthorizedStudent): 'rejected' | 'authorized' | 'waiting' => {
+    if (student.rejected) return 'rejected';
+    if (authorizedNames.has(normalizeForComparison(student.name))) return 'authorized';
+    return 'waiting';
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Header */}
@@ -182,6 +205,13 @@ export default function PreAuthorizedStudentsManager() {
         </select>
       </div>
 
+      {/* Legenda de status */}
+      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Check size={15} color="#10b981" /> Já autorizado</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Clock size={15} color="#f59e0b" /> Aguardando primeiro acesso</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><X size={15} color="#ef4444" /> Recusado</span>
+      </div>
+
       {/* Lista de alunos */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
@@ -200,6 +230,16 @@ export default function PreAuthorizedStudentsManager() {
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}
             >
               <div>
+                {(() => {
+                  const status = getStudentStatus(student);
+                  if (status === 'authorized') {
+                    return <Check size={18} color="#10b981" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} title="Aluno já autorizado/cadastrado" />;
+                  }
+                  if (status === 'rejected') {
+                    return <X size={18} color="#ef4444" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} title="Aluno foi recusado" />;
+                  }
+                  return <Clock size={18} color="#f59e0b" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} title="Aguardando primeiro acesso" />;
+                })()}
                 <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{student.name}</span>
                 <span style={{ marginLeft: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                   {student.class_name}

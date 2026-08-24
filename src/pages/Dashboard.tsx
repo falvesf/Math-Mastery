@@ -1609,6 +1609,11 @@ export default function Dashboard() {
                 role: 'student'
               });
 
+              // Se foi rejeitado antes, agora está autorizado → limpar a marca de rejeição
+              await supabase.from('pre_authorized_students')
+                .update({ rejected: false })
+                .eq('id', preAuth.id);
+
               updateUserDataLocally({
                 tenantId: selectedSchool.id,
                 classId: cls.name

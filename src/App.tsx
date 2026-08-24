@@ -3,6 +3,7 @@ import React from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { TenantProvider, useTenant } from './contexts/TenantContext';
 import { DialogProvider } from './contexts/DialogContext';
+import PendingApprovalToasts from './components/PendingApprovalToasts';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -148,11 +149,18 @@ function App() {
         <TenantProvider>
           <DialogProvider>
             <AppRoutes />
+            <StaffApprovalNotifications />
           </DialogProvider>
         </TenantProvider>
       </AuthProvider>
     </Router>
   );
+}
+
+function StaffApprovalNotifications() {
+  const { userData } = useAuth();
+  const isStaff = !!userData && ['admin', 'teacher', 'coordinator', 'superadmin'].includes(userData.role);
+  return <PendingApprovalToasts isStaff={isStaff} />;
 }
 
 export default App;

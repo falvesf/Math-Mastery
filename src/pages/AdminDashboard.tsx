@@ -332,7 +332,32 @@ function StudentEnrollmentCard({ reqUser, tenantId, schoolClasses, userData, onA
             .eq('user_id', reqUser.uid)
             .eq('status', 'pending');
         } catch (e) { console.error('Erro ao atualizar solicitação:', e); }
-        
+
+        // 5. Garantir que o aluno esteja na lista de pré-autorizados
+        try {
+          const { data: existingPreAuth } = await supabase
+            .from('pre_authorized_students')
+            .select('id')
+            .eq('tenant_id', targetTenantId)
+            .eq('name', reqUser.name)
+            .limit(1);
+          if (existingPreAuth && existingPreAuth.length > 0) {
+            // Já está na lista → limpar marca de rejeição (agora foi aprovado)
+            await supabase.from('pre_authorized_students')
+              .update({ rejected: false })
+              .eq('id', existingPreAuth[0].id);
+          } else {
+            // Não está na lista → cadastrar automaticamente
+            await supabase.from('pre_authorized_students').insert({
+              tenant_id: targetTenantId,
+              name: reqUser.name,
+              class_name: targetClassName,
+              imported_from: 'approval',
+              rejected: false
+            });
+          }
+        } catch (e) { console.error('Erro ao adicionar na pré-autorização:', e); }
+
         showAlert('Sucesso', `${reqUser.name} foi aprovado como aluno da turma ${targetClassName}!`);
       } else {
         showAlert('Erro', 'Não foi possível determinar a escola do aluno.');
@@ -367,6 +392,18 @@ function StudentEnrollmentCard({ reqUser, tenantId, schoolClasses, userData, onA
       try {
         await supabase.from('enrollment_requests').delete().eq('user_id', reqUser.uid);
       } catch (e) { console.error('Erro ao remover solicitação:', e); }
+      
+      // Marcar como rejeitado na lista pré-autorizada (se o aluno estiver nela)
+      try {
+        const rejectTenant = reqUser.tenantId || tenantId;
+        let rejectQuery = supabase.from('pre_authorized_students').update({ rejected: true });
+        if (rejectTenant) {
+          rejectQuery = rejectQuery.eq('tenant_id', rejectTenant);
+        } else {
+          rejectQuery = rejectQuery.is('tenant_id', null);
+        }
+        await rejectQuery.eq('name', reqUser.name);
+      } catch (e) { console.error('Erro ao marcar rejeição na pré-autorização:', e); }
       
       onReject();
       showAlert('Sucesso', `${reqUser.name} foi rejeitado e poderá escolher outra escola/turma.`);
