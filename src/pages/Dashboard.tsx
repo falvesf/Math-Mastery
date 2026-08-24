@@ -2710,7 +2710,7 @@ export default function Dashboard() {
 
             <div className="responsive-stack-mobile" style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center', width: '100%' }}>
               {/* Perfil do Aluno (Esquerda - Fixo ao rolar) */}
-              <div className="glass-panel profile-glass-panel" style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 min(100%, 380px)' : '0 1 500px', width: '100%', maxWidth: '100%', padding: '1.25rem', textAlign: 'center', position: 'sticky', top: '115px', zIndex: 15, minHeight: 'auto', display: 'flex', flexDirection: 'column', overflow: 'hidden', alignSelf: 'flex-start', boxSizing: 'border-box', backdropFilter: 'blur(16px)' }}>
+              <div className={`glass-panel profile-glass-panel ${profileTab === 'inventory' ? 'backpack-open' : 'backpack-closed'}`} style={{ flex: (userData?.role === 'student' || userData?.studentViewActive) ? '1 1 min(100%, 380px)' : '0 1 500px', width: '100%', maxWidth: '100%', padding: '1.25rem', textAlign: 'center', position: 'sticky', top: '115px', zIndex: 105, minHeight: 'auto', display: 'flex', flexDirection: 'column', overflow: 'hidden', alignSelf: 'flex-start', boxSizing: 'border-box', backdropFilter: 'blur(16px)' }}>
 
                 <div style={{ flexShrink: 0, paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem', height: '100%' }}>
                   <div

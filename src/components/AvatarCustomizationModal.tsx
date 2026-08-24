@@ -275,6 +275,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     }, 2500);
   };
   const [debugMode, setDebugMode] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [debugItemId, setDebugItemId] = useState<string | null>(null);
   const [debugTransform, setDebugTransform] = useState<ModelTransform>({
     posX: 0, posY: -11, posZ: 0,
@@ -1207,7 +1208,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: inline ? '0' : '1.5rem 2rem' }}>
           <div className="avatar-modal-grid">
           
-          <div className="avatar-viewer-container">
+          <div className={`avatar-viewer-container ${isMobileDrawerOpen ? 'drawer-open' : ''}`}>
             {(() => {
               const activePreset = presetSkins.find(s => s.url === config.customSkinUrl);
               const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default' 
@@ -1250,8 +1251,54 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             </DraggableWidget>
           </div>
 
+            <button 
+              className="mobile-drawer-toggle"
+              onClick={() => setIsMobileDrawerOpen(!isMobileDrawerOpen)}
+              style={{
+                display: 'none',
+                position: 'absolute',
+                bottom: '1rem',
+                right: '1rem',
+                zIndex: 105,
+                background: 'var(--gold-primary)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '50%',
+                width: '48px',
+                height: '48px',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                cursor: 'pointer'
+              }}
+            >
+              <Settings size={24} />
+            </button>
+
           {/* Controls */}
-          <div style={{ minWidth: 0 }}>
+          <div className={`avatar-options-container ${isMobileDrawerOpen ? 'drawer-open' : ''}`} style={{ minWidth: 0 }}>
+            {isMobileDrawerOpen && (
+              <button 
+                onClick={() => setIsMobileDrawerOpen(false)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '1rem',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  width: '100%',
+                  borderBottom: '1px solid var(--border-color)',
+                  marginBottom: '1rem'
+                }}
+              >
+                <X size={20} /> Fechar Opções
+              </button>
+            )}
             
             {customSaveMode && (
               <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-primary)', borderRadius: '8px' }}>
@@ -1383,22 +1430,39 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
 
                   <div style={{ marginBottom: '0.75rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Expressão</label>
-                    <select
-                      value={config.mouthStyle}
-                      onChange={(e) => setConfig({ ...config, mouthStyle: e.target.value })}
-                      style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
-                    >
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                       {[
-                        { id: 'smile', label: 'Sorrindo :)' },
-                        { id: 'neutral', label: 'Sério :|' },
-                        { id: 'sad', label: 'Triste :(' },
-                        { id: 'surprised', label: 'Surpreso :o' },
-                        { id: 'teeth', label: 'Feliz :D' },
-                        { id: 'tongue', label: 'Língua :P' }
+                        { id: 'smile', label: 'Sorrindo', icon: '🙂' },
+                        { id: 'neutral', label: 'Sério', icon: '😐' },
+                        { id: 'sad', label: 'Triste', icon: '😢' },
+                        { id: 'surprised', label: 'Surpreso', icon: '😮' },
+                        { id: 'teeth', label: 'Feliz', icon: '😁' },
+                        { id: 'tongue', label: 'Língua', icon: '😛' }
                       ].map(style => (
-                        <option key={style.id} value={style.id}>{style.label}</option>
+                        <button
+                          key={style.id}
+                          onClick={() => setConfig({ ...config, mouthStyle: style.id })}
+                          title={style.label}
+                          style={{
+                            flex: 1,
+                            minWidth: '40px',
+                            padding: '0.5rem',
+                            background: config.mouthStyle === style.id ? 'var(--gold-primary)' : 'var(--bg-dark)',
+                            color: config.mouthStyle === style.id ? '#000' : 'var(--text-primary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: '1.2rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {style.icon}
+                        </button>
                       ))}
-                    </select>
+                    </div>
                   </div>
 
                   {config.gender === 'female' && (

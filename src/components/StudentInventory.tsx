@@ -61,6 +61,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const { showAlert, showConfirm, showConfirmWithCheckbox, showToast, showPrompt } = useDialog();
   const { tenantId } = useTenant();
   const { updateUserDataLocally } = useAuth();
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [items, setItems] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sellModalItem, setSellModalItem] = useState<UserItem | null>(null);
@@ -97,7 +98,14 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       setTimeout(() => setCascadeAnimationTrigger(0), 4000); 
     };
     window.addEventListener('select-inventory-tab', handleTabSelect);
-    return () => window.removeEventListener('select-inventory-tab', handleTabSelect);
+
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('select-inventory-tab', handleTabSelect);
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
   
   // Custom slot mapping

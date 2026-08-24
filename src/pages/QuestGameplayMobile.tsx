@@ -1958,30 +1958,30 @@ export default function QuestGameplay() {
 
           
           {gameState === 'intro' && quest && (
-            <div className="glass-panel quest-victory-panel" style={{ width: '100%', maxWidth: '800px', textAlign: 'center', animation: 'epicZoom 0.5s ease-out', display: 'flex', flexDirection: 'column', maxHeight: '85vh' }}>
+            <div className="glass-panel quest-victory-panel" style={{ width: '100%', maxWidth: '800px', textAlign: 'center', animation: 'epicZoom 0.5s ease-out', display: 'flex', flexDirection: 'column', maxHeight: '85vh', padding: '1.5rem' }}>
               <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '1rem', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-                <Swords size={64} color="var(--gold-primary)" style={{ margin: '0 auto 2rem auto' }} />
-                <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem' }}>{quest.title}</h1>
-                <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '3rem', lineHeight: 1.6 }}>{quest.description}</p>
+                <Swords size={48} color="var(--gold-primary)" style={{ margin: '0 auto 1rem auto' }} />
+                <h1 className="title-glow" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{quest.title}</h1>
+                <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: 1.4 }}>{quest.description}</p>
               
-              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '2rem', marginBottom: '4rem' }}>
-                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem 2rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-                  <h4 style={{ color: 'var(--text-secondary)', margin: '0 0 0.5rem 0' }}>Recompensa</h4>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gold-primary)', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                    <Star size={24} /> {isStudyMode ? '0 XP (Estudo)' : `${Math.floor(quest.baseXp * (1 + (totalEquippedStats.xp / 100)))} XP`}
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border-glass)', flex: '1 1 140px' }}>
+                  <h4 style={{ color: 'var(--text-secondary)', margin: '0 0 0.25rem 0', fontSize: '0.9rem' }}>Recompensa</h4>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--gold-primary)', fontSize: '1.1rem', fontWeight: 'bold' }}>
+                    <Star size={20} /> {isStudyMode ? '0 XP (Estudo)' : `${Math.floor(quest.baseXp * (1 + (totalEquippedStats.xp / 100)))} XP`}
                   </div>
                 </div>
-                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem 2rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-                  <h4 style={{ color: 'var(--text-secondary)', margin: '0 0 0.5rem 0' }}>Modo de Batalha</h4>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: quest.allowRetries ? 'var(--accent-green)' : 'var(--accent-red)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                    <ShieldAlert size={20} /> {quest.allowRetries ? 'Vidas Extras' : 'Hardcore'}
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border-glass)', flex: '1 1 140px' }}>
+                  <h4 style={{ color: 'var(--text-secondary)', margin: '0 0 0.25rem 0', fontSize: '0.9rem' }}>Modo de Batalha</h4>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: quest.allowRetries ? 'var(--accent-green)' : 'var(--accent-red)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                    <ShieldAlert size={18} /> {quest.allowRetries ? 'Vidas Extras' : 'Hardcore'}
                   </div>
                 </div>
               </div>
               </div>
 
               <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                <button className="login-btn" onClick={startGame} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '1.5rem 4rem', fontSize: '1.5rem', borderRadius: '50px', width: '100%' }}>
+                <button className="login-btn" onClick={startGame} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '1rem 2rem', fontSize: '1.25rem', borderRadius: '50px', width: '100%' }}>
                   Iniciar Batalha
                 </button>
               </div>
