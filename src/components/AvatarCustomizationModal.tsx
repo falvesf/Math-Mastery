@@ -11,6 +11,7 @@ import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import Admin3DModelsManager from './Admin3DModelsManager';
 import CustomModelViewer from './CustomModelViewer';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
+import { v4 as uuidv4 } from 'uuid';
 
 interface AvatarCustomizationModalProps {
   isOpen: boolean;
@@ -517,16 +518,26 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         
         if ((userData?.role === 'admin' || isAdmin) && inline && monsterName.trim()) {
           try {
-            await supabase.from('preset_skins').insert({
+            const { error: insertError } = await supabase.from('preset_skins').insert({
+              id: uuidv4(),
               name: monsterName.trim(),
               url: '',
               type: customSaveMode ? 'monster' : 'human',
               baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null,
-              config: config
+              genderTarget: 'unisex',
+              config: cleanConfig,
+              tenant_id: userData?.tenantId || null,
+              is_global: false
             });
-            await showAlert(`${customSaveMode ? 'Monstro' : 'Personagem'} salvo na galeria com sucesso!`);
+            
+            if (insertError) {
+              console.error("Erro ao salvar na galeria", insertError);
+              await showAlert(`Erro ao salvar no banco de dados: ${insertError.message || JSON.stringify(insertError)}`);
+            } else {
+              await showAlert(`${customSaveMode ? 'Monstro' : 'Personagem'} salvo na galeria com sucesso!`);
+            }
           } catch (e) {
-            console.error("Erro ao salvar na galeria", e);
+            console.error("Erro inesperado ao salvar na galeria", e);
           }
         } else {
           await showAlert('Aparência salva na memória temporária.');

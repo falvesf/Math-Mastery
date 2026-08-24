@@ -6,6 +6,7 @@ import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import GachaConfigModal from './GachaConfigModal';
 import ItemBankModal from './ItemBankModal';
+import GlbMeshExtractorModal from './GlbMeshExtractorModal';
 import SkinBuffIcon from '../components/SkinBuffIcon';
 import ItemIcon from './ItemIcon';
 import { useDialog } from '../contexts/DialogContext';
@@ -52,6 +53,7 @@ export interface StoreItem {
   buffDurationDays?: number;
   backColor?: string;
   importedFromId?: string;
+  extractMeshName?: string;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -84,6 +86,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   
   const [showGallery, setShowGallery] = useState<'image' | 'model' | null>(null);
   const [showTransformModal, setShowTransformModal] = useState(false);
+  const [showExtractorModal, setShowExtractorModal] = useState(false);
   const [showGachaModal, setShowGachaModal] = useState(false);
   const [showItemBank, setShowItemBank] = useState(false);
   const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
@@ -185,6 +188,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       baseAttributeValue: item.baseAttributeValue,
       fixedAttributes: item.fixedAttributes,
       backColor: item.backColor,
+      extractMeshName: item.extractMeshName,
     };
 
     if (copyMode === 'direct') {
@@ -268,6 +272,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           baseAttributeValue: item.baseAttributeValue,
           fixedAttributes: item.fixedAttributes,
           backColor: item.backColor,
+          extractMeshName: item.extractMeshName,
           minSalePrice: 0,
           importedFromId: item._rawId || null,
         };
@@ -350,7 +355,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           buffDurationDays: itemData.buffDurationDays || 7,
           hpCooldownReductionMinutes: itemData.hpCooldownReductionMinutes || null,
           buffDurationHours: itemData.buffDurationHours || null,
-          backColor: itemData.backColor || ''
+          backColor: itemData.backColor || '',
+          extractMeshName: itemData.extractMeshName || null
         };
         updatePromises.push(supabase.from('user_items').update({ data: newData }).eq('id', row.id) as any);
       });
@@ -783,12 +789,29 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                     </button>
                   </div>
                   {formData.gameModelUrl && formData.gameModelUrl.trim() !== '' && (
-                    <button 
-                      onClick={() => setShowTransformModal(true)}
-                      style={{ padding: '0.5rem', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}
-                    >
-                      ⚙️ Configurar Posição 3D
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                      <button 
+                        onClick={() => setShowTransformModal(true)}
+                        style={{ padding: '0.5rem', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                      >
+                        ⚙️ Configurar Posição 3D
+                      </button>
+                      
+                      {formData.gameModelUrl.toLowerCase().endsWith('.glb') && (
+                        <button 
+                          onClick={() => setShowExtractorModal(true)}
+                          style={{ padding: '0.5rem', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10b981', color: '#10b981', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                        >
+                          📦 Extrair Peça (GLB)
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {formData.extractMeshName && (
+                    <div style={{ padding: '0.5rem', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid #3b82f6', color: '#60a5fa', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                      <strong>Malha extraída selecionada:</strong> {formData.extractMeshName}
+                      <button onClick={() => setFormData({...formData, extractMeshName: null})} style={{ marginLeft: '1rem', background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', textDecoration: 'underline' }}>Remover</button>
+                    </div>
                   )}
                 </div>
                 
@@ -949,7 +972,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           globalConfig={globalGachaConfig}
           onSave={async (config, fixed, newGlobalConfig, useGlobal) => {
             setFormData({ ...formData, gachaConfig: config, fixedAttributes: fixed, useGlobalGacha: useGlobal });
-            if (newGlobalConfig) {
+            if (newGlobalConfig && isSuperAdmin) {
               setGlobalGachaConfig(newGlobalConfig);
               const existing = await supabase.from('system_collections').select('id').eq('collection_name', 'settings').eq('doc_id', 'gacha').single();
               if (existing.data) {
@@ -972,6 +995,17 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           onImportMultiple={handleImportMultipleFromBank}
           onEditGlobal={openEditGlobal}
           localItems={items}
+        />
+      )}
+
+      {showExtractorModal && formData.gameModelUrl && (
+        <GlbMeshExtractorModal
+          glbUrl={formData.gameModelUrl}
+          currentExtractedName={formData.extractMeshName || null}
+          onSelect={(meshName) => {
+            setFormData({ ...formData, extractMeshName: meshName || undefined });
+          }}
+          onClose={() => setShowExtractorModal(false)}
         />
       )}
     </div>

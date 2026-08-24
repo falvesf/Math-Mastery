@@ -58,6 +58,7 @@ export interface EquippedItem {
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
   adds?: ItemAdd[];
+  extractMeshName?: string;
   gameModelUrl?: string;
   modelTextureUrl?: string;
   minecraftHeadValue?: string;
@@ -290,6 +291,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     normal: { base: string; blink: string };
     serious: { base: string; blink: string };
     sad: { base: string; blink: string };
+    happy: { base: string; blink: string };
+    smile: { base: string; blink: string };
   } | null>(null);
 
   const bgItems = equippedItems.filter(i => i.avatarPart === 'background');
@@ -391,7 +394,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         if (safeUrl.startsWith('/')) {
           safeUrl = import.meta.env.BASE_URL + safeUrl.substring(1);
         }
-        console.log(`Carregando modelo 3D para o item ${item.itemTitle}:`, safeUrl);
+        
+        const finalUrl = safeUrl.startsWith('http') ? safeUrl : encodeURI(safeUrl);
+        console.log(`Carregando modelo 3D para o item ${item.itemTitle}:`, finalUrl);
         
         const processLoadedModel = (model: THREE.Object3D, splitDir?: 'left' | 'right' | 'body_part', isGltf: boolean = false) => {
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
@@ -462,8 +467,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
-              } else if (item.modelTransforms && item.modelTransforms.common) {
-                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
+              } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
+                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
                 model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
                 model.position.set(t.posX, t.posY, t.posZ);
                 model.rotation.set(t.rotX, t.rotY, t.rotZ);
@@ -510,8 +515,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
-              } else if (item.modelTransforms && item.modelTransforms.common) {
-                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
+              } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
+                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
                 model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
                 model.position.set(t.posX, t.posY, t.posZ);
                 model.rotation.set(t.rotX, t.rotY, t.rotZ);
@@ -560,14 +565,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           }
         };
 
-        if (getExtension(safeUrl).endsWith('.png')) {
+        if (getExtension(finalUrl).endsWith('.png')) {
            let curveX = 0;
            let curveY = 0;
            if (debugItemTransform && debugItemId === (item.itemId || item.docId)) {
              curveX = debugItemTransform.curveX || 0;
              curveY = debugItemTransform.curveY || 0;
-           } else if (item.modelTransforms && item.modelTransforms.common) {
-             const curveT = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
+           } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
+             const curveT = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
              curveX = curveT.curveX || 0;
              curveY = curveT.curveY || 0;
            }
@@ -575,29 +580,62 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             const normalizedAvatarPart = item.avatarPart ? String(item.avatarPart).toLowerCase().trim() : '';
             if (normalizedAvatarPart === 'legs' || normalizedAvatarPart === 'feet') {
              Promise.all([
-               generateVoxelItemFromImage(safeUrl, item.backColor, curveX, curveY, 'left'),
-               generateVoxelItemFromImage(safeUrl, item.backColor, curveX, curveY, 'right')
+               generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, 'left'),
+               generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, 'right')
              ]).then(([leftModel, rightModel]) => {
                 if (isCancelled) return;
                 processLoadedModel(leftModel, 'left');
                 processLoadedModel(rightModel, 'right');
              }).catch(err => console.error(err));
            } else {
-             generateVoxelItemFromImage(safeUrl, item.backColor, curveX, curveY)
+             generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY)
                .then(model => {
                   if (isCancelled) return;
-                  console.log(`Voxel gerado com sucesso a partir da imagem ${safeUrl}`);
+                  console.log(`Voxel gerado com sucesso a partir da imagem ${finalUrl}`);
                   processLoadedModel(model);
                })
                .catch(err => console.error(err));
            }
         } else {
            loader.load(
-             safeUrl, 
+             finalUrl, 
              (gltf) => {
                if (isCancelled) return;
-               console.log(`Modelo ${safeUrl} carregado com sucesso!`);
+               console.log(`Modelo ${finalUrl} carregado com sucesso!`);
                const model = gltf.scene;
+                
+                if (item.extractMeshName) {
+                  let targetNode: THREE.Object3D | null = null;
+                  model.traverse((node) => {
+                    if (node.name === item.extractMeshName) {
+                      targetNode = node;
+                    }
+                  });
+                  
+                  if (targetNode) {
+                    // Hide everything first
+                    model.traverse((node) => {
+                      if ((node as THREE.Mesh).isMesh || (node as THREE.Group).isGroup) {
+                        node.visible = false;
+                      }
+                    });
+                    
+                    // Show only target and its descendants
+                    targetNode.visible = true;
+                    targetNode.traverse((child) => {
+                      child.visible = true;
+                    });
+                    
+                    // Also need to ensure parents are visible so it isn't hidden by a parent group!
+                    let current = targetNode.parent;
+                    while (current && current.type !== 'Scene') {
+                      current.visible = true;
+                      current = current.parent;
+                    }
+                  } else {
+                    console.warn(`Mesh extraída '${item.extractMeshName}' não encontrada no item ${item.itemTitle}.`);
+                  }
+                }
    
                if (item.modelTextureUrl) {
                  const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(item.modelTextureUrl)}`;
@@ -676,7 +714,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
              },
              undefined,
              (error) => {
-               console.error(`Falha ao carregar o modelo 3D (${safeUrl}):`, error);
+               console.error(`Falha ao carregar o modelo 3D (${finalUrl}):`, error);
              }
            );
         }
@@ -781,8 +819,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             mesh.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
             mesh.translateY(debugItemTransform.slide);
             appliedTransform = true;
-          } else if (item.modelTransforms && item.modelTransforms.common) {
-            const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
+          } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
+            const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
             mesh.position.set(t.posX, t.posY, t.posZ);
             mesh.rotation.set(t.rotX, t.rotY, t.rotZ);
             mesh.translateY(t.slide);
@@ -912,14 +950,20 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           // For head, we might want to respect the slide, similar to hands
           model.position.y = debugItemTransform.posY;
           model.translateY(debugItemTransform.slide);
+          if (model.userData.is25D) {
+            updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
+          }
           appliedTransform = true;
-        } else if (item.modelTransforms && item.modelTransforms.common) {
-          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
+        } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
+          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
           model.scale.set(t.scale ?? defaultHeadScale, t.scale ?? defaultHeadScale, (t.scale ?? defaultHeadScale) * (t.thickness ?? 1));
           model.position.set(t.posX, t.posY, t.posZ);
           model.rotation.set(t.rotX, t.rotY, t.rotZ);
           model.position.y = t.posY;
           model.translateY(t.slide);
+          if (model.userData.is25D) {
+            updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+          }
           appliedTransform = true;
         }
         
@@ -940,13 +984,19 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
           model.position.y = debugItemTransform.posY;
           model.translateY(debugItemTransform.slide);
+          if (model.userData.is25D) {
+            updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
+          }
           appliedTransform = true;
-        } else if (item.modelTransforms && item.modelTransforms.common) {
-          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
+        } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
+          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
           model.position.set(t.posX, t.posY, t.posZ);
           model.rotation.set(t.rotX, t.rotY, t.rotZ);
           model.position.y = t.posY;
           model.translateY(t.slide);
+          if (model.userData.is25D) {
+            updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+          }
           appliedTransform = true;
         }
         
@@ -963,14 +1013,20 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           let baseRotY = 0; // O modelo GLB exportado pelo Blockbench já está virado para a frente (0 graus)
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY + baseRotY, debugItemTransform.rotZ);
           model.translateY(debugItemTransform.slide);
-        } else if (item.modelTransforms && item.modelTransforms.common) {
-          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common;
+          if (model.userData.is25D) {
+            updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
+          }
+        } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
+          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
           model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
           model.position.set(t.posX, t.posY, t.posZ);
           
           let baseRotY = 0; // O modelo GLB exportado pelo Blockbench já está virado para a frente (0 graus)
           model.rotation.set(t.rotX, t.rotY + baseRotY, t.rotZ);
           model.translateY(t.slide);
+          if (model.userData.is25D) {
+            updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+          }
         }
       }
     });
@@ -1201,7 +1257,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 setSkinUrls({ 
                     normal: { base: finalUrl, blink: finalUrl },
                     serious: { base: finalUrl, blink: finalUrl },
-                    sad: { base: finalUrl, blink: finalUrl }
+                    sad: { base: finalUrl, blink: finalUrl },
+                    happy: { base: finalUrl, blink: finalUrl },
+                    smile: { base: finalUrl, blink: finalUrl }
                 });
             } else {
                 const normalUrl = await generateMinecraftSkinUrl(config, false);

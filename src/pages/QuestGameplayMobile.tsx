@@ -343,7 +343,26 @@ export default function QuestGameplay() {
           return;
         }
         
-        const qData = { id: snap.id, ...snap } as QuestDef;
+        const qData = {
+          ...snap,
+          id: snap.id,
+          coverImageUrl: snap.cover_image_url || snap.coverImageUrl,
+          baseXp: snap.base_xp || snap.baseXp,
+          allowRetries: snap.allow_retries !== undefined ? snap.allow_retries : snap.allowRetries,
+          targetClasses: snap.target_classes || snap.targetClasses || [],
+          chestConfig: snap.chestconfig || snap.chestConfig || null,
+          combatCoinDrop: snap.combatcoindrop || snap.combatCoinDrop || null,
+          monsterAvatarConfig: snap.monster_avatar_config || snap.monsterAvatarConfig || null,
+          monsterModelUrl: snap.monster_model_url || snap.monsterModelUrl || null,
+          monsterQuotes: snap.monster_quotes || snap.monsterQuotes || null,
+          monsterDefeatQuotes: snap.monster_defeat_quotes || snap.monsterDefeatQuotes || null,
+          liveChest1stPlace: snap.live_chest_1st_place || snap.liveChest1stPlace || null,
+          liveChest2ndPlace: snap.live_chest_2nd_place || snap.liveChest2ndPlace || null,
+          liveChest3rdPlace: snap.live_chest_3rd_place || snap.liveChest3rdPlace || null,
+          monsterDrops: snap.monster_drops || snap.monsterDrops || null,
+          battleBgUrl: snap.battle_bg_url || snap.battleBgUrl || null,
+          podiumBgUrl: snap.podium_bg_url || snap.podiumBgUrl || null
+        } as QuestDef;
         
         // Isolamento por escola: impedir que aluno de outra escola acesse a missão
         if (userData.role !== 'admin' && tenantId) {
@@ -619,7 +638,7 @@ export default function QuestGameplay() {
     if (isSurpriseAttack) {
       let newHearts = Math.max(0, initialHearts - 1);
       // Debug: evitar 1-hit kill
-      if (arenaDebug.noInstantKill && newHearts === 0) newHearts = 1;
+      if (((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.noInstantKill) && newHearts === 0) newHearts = 1;
       // Debug: admin imortal
       if (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin)) newHearts = initialHearts;
       drainHeartsAnimated(newHearts);
@@ -995,7 +1014,7 @@ export default function QuestGameplay() {
 
       if (!nextQExists) {
         // Debug: monstro imortal - não finaliza, volta ao início
-        if (arenaDebug.monsterImmortal) {
+        if ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.monsterImmortal) {
           setCurrentQIndex(0);
           setFeedback(null);
           setLastSelectedOption(null);
@@ -1028,12 +1047,12 @@ export default function QuestGameplay() {
       // Debug: admin imortal
       if (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin)) damage = 0;
       // Debug: evitar 1-hit kill - nunca deixa morrer de uma vez
-      if (arenaDebug.noInstantKill && damage >= currentHearts) damage = Math.max(0, currentHearts - 1);
+      if (((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.noInstantKill) && damage >= currentHearts) damage = Math.max(0, currentHearts - 1);
       
       let newHearts = Math.max(0, currentHearts - damage);
       // Debug: se admin imortal, nunca é fatal
       // Debug: se noInstantKill, nunca é fatal se ainda tem corações
-      const isFatalForPlayer = !hasShield && (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin) ? false : (arenaDebug.noInstantKill ? newHearts === 0 : (newHearts === 0 || isHardcore)));
+      const isFatalForPlayer = !hasShield && (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin) ? false : (((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.noInstantKill) ? newHearts === 0 : (newHearts === 0 || isHardcore)));
 
       const shouldLoseCoins = economySettings?.coinsLostInCombat || arenaDebug.forceCoinLoss;
       if (shouldLoseCoins && !isStudyMode && !hasShield) {
@@ -1064,7 +1083,7 @@ export default function QuestGameplay() {
             supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
             updateUserDataLocally({ coins: newCoins });
           }
-        } else if (arenaDebug.forceCoinLoss) {
+        } else if ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.forceCoinLoss) {
           // Debug: mostrar feedback mesmo sem moedas
           setLostCoinsDisplay(0);
           setBattleMessage('Sem moedas para perder!');
@@ -1667,13 +1686,13 @@ export default function QuestGameplay() {
             </div>
             
             {/* Coin Drop Area Debug Rectangle (Monster) */}
-            {arenaDebug.showCoinArea && (
+            {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showCoinArea && (
               <div style={{ position: 'absolute', left: `${arenaDebug.coinAreaX}%`, top: `${arenaDebug.coinAreaY}%`, width: `${arenaDebug.coinAreaW}%`, height: `${arenaDebug.coinAreaH}%`, border: '2px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', zIndex: 39, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: '0.6rem', color: '#10b981', background: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>💰 Drop Monstro</span>
               </div>
             )}
             {/* Player Coin Drop Area Debug Rectangle */}
-            {arenaDebug.showPlayerCoinArea && (
+            {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showPlayerCoinArea && (
               <div style={{ position: 'absolute', left: `${arenaDebug.playerCoinAreaX}%`, top: `${arenaDebug.playerCoinAreaY}%`, width: `${arenaDebug.playerCoinAreaW}%`, height: `${arenaDebug.playerCoinAreaH}%`, border: '2px solid #3b82f6', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', zIndex: 39, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: '0.6rem', color: '#3b82f6', background: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>💧 Queda Jogador</span>
               </div>
@@ -1793,7 +1812,7 @@ export default function QuestGameplay() {
                   {playerBubble || 'Olá!'}
                 </div>
               )}
-              {arenaDebug.showBubbleOrigins && (
+              {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBubbleOrigins && (
                 <div style={{ position: 'absolute', left: `calc(50% + ${arenaDebug.playerBubbleX}px)`, top: `${arenaDebug.playerBubbleY}px`, width: `${arenaDebug.bubbleOriginSize}px`, height: `${arenaDebug.bubbleOriginSize}px`, borderRadius: '50%', border: '2px dashed #3b82f6', background: 'rgba(59,130,246,0.15)', transform: 'translate(-50%, -50%)', zIndex: 29, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: '0.5rem', color: '#3b82f6', fontWeight: 'bold' }}>F</span>
                 </div>
@@ -1802,7 +1821,7 @@ export default function QuestGameplay() {
               <div style={{ position: 'absolute', top: `${arenaDebug.playerNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arenaDebug.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap' }}>
                 <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
               </div>
-              <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: arenaDebug.showBoxes ? '2px solid lime' : 'none', outlineOffset: '2px', marginRight: '-20px', transform: `translate(${arenaDebug.playerOffsetX}px, ${arenaDebug.playerOffsetY}px) scale(${arenaDebug.playerScale})` }}>
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', marginRight: '-20px', transform: `translate(${arenaDebug.playerOffsetX}px, ${arenaDebug.playerOffsetY}px) scale(${arenaDebug.playerScale})` }}>
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px' }}>
                   <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={170} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
                   {!quest?.allowRetries ? (
@@ -1843,7 +1862,7 @@ export default function QuestGameplay() {
                   {monsterBubble || 'Grrr!'}
                 </div>
               )}
-              {arenaDebug.showBubbleOrigins && (
+              {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBubbleOrigins && (
                 <div style={{ position: 'absolute', left: `calc(50% + ${arenaDebug.monsterBubbleX}px)`, top: `${arenaDebug.monsterBubbleY}px`, width: `${arenaDebug.bubbleOriginSize}px`, height: `${arenaDebug.bubbleOriginSize}px`, borderRadius: '50%', border: '2px dashed #ef4444', background: 'rgba(239,68,68,0.15)', transform: 'translate(-50%, -50%)', zIndex: 29, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: '0.5rem', color: '#ef4444', fontWeight: 'bold' }}>F</span>
                 </div>
@@ -1868,7 +1887,7 @@ export default function QuestGameplay() {
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
                   }`}
-                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: arenaDebug.showBoxes ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${arenaDebug.monsterOffsetX}px, ${arenaDebug.monsterOffsetY}px) scale(${arenaDebug.monsterScale})` }}
+                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${arenaDebug.monsterOffsetX}px, ${arenaDebug.monsterOffsetY}px) scale(${arenaDebug.monsterScale})` }}
                 >
                   {/* Nome do monstro - acompanha animações de morte */}
                   <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arenaDebug.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>

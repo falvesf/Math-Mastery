@@ -678,11 +678,14 @@ export default function Dashboard() {
         let completedIds: string[] = [];
         let completedDates: Record<string, number> = {};
 
-        const cachedAttempts = sessionCache.get<{ ids: string[], dates: Record<string, number> }>(attemptsCacheKey);
+        const cachedAttempts = sessionCache.get<{ ids: string[], dates: Record<string, number>, claimed: string[] }>(attemptsCacheKey);
 
         if (cachedAttempts && cachedAttempts.ids) {
           completedIds = cachedAttempts.ids;
           completedDates = cachedAttempts.dates;
+          if (cachedAttempts.claimed) {
+            setClaimedChestIds(new Set(cachedAttempts.claimed));
+          }
         } else {
             const { data: attemptSnap } = await supabase.from('quest_attempts').select('quest_id, created_at, chest_claimed').eq('student_id', userData.uid).eq('status', 'completed');
             if (attemptSnap) {
@@ -695,8 +698,8 @@ export default function Dashboard() {
                 }
               });
               setClaimedChestIds(claimed);
+              sessionCache.set(attemptsCacheKey, { ids: completedIds, dates: completedDates, claimed: Array.from(claimed) }, CACHE_TTL.QUEST_ATTEMPTS);
           }
-          sessionCache.set(attemptsCacheKey, { ids: completedIds, dates: completedDates }, CACHE_TTL.QUEST_ATTEMPTS);
         }
         setCompletedQuestIds(completedIds);
         setCompletedQuestDates(completedDates);

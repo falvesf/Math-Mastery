@@ -247,7 +247,26 @@ export default function QuestGameplay() {
           return;
         }
         
-        const qData = { id: snap.id, ...snap } as QuestDef;
+        const qData = {
+          ...snap,
+          id: snap.id,
+          coverImageUrl: snap.cover_image_url || snap.coverImageUrl,
+          baseXp: snap.base_xp || snap.baseXp,
+          allowRetries: snap.allow_retries !== undefined ? snap.allow_retries : snap.allowRetries,
+          targetClasses: snap.target_classes || snap.targetClasses || [],
+          chestConfig: snap.chestconfig || snap.chestConfig || null,
+          combatCoinDrop: snap.combatcoindrop || snap.combatCoinDrop || null,
+          monsterAvatarConfig: snap.monster_avatar_config || snap.monsterAvatarConfig || null,
+          monsterModelUrl: snap.monster_model_url || snap.monsterModelUrl || null,
+          monsterQuotes: snap.monster_quotes || snap.monsterQuotes || null,
+          monsterDefeatQuotes: snap.monster_defeat_quotes || snap.monsterDefeatQuotes || null,
+          liveChest1stPlace: snap.live_chest_1st_place || snap.liveChest1stPlace || null,
+          liveChest2ndPlace: snap.live_chest_2nd_place || snap.liveChest2ndPlace || null,
+          liveChest3rdPlace: snap.live_chest_3rd_place || snap.liveChest3rdPlace || null,
+          monsterDrops: snap.monster_drops || snap.monsterDrops || null,
+          battleBgUrl: snap.battle_bg_url || snap.battleBgUrl || null,
+          podiumBgUrl: snap.podium_bg_url || snap.podiumBgUrl || null
+        } as QuestDef;
         
         // Isolamento por escola: impedir que aluno de outra escola acesse a missão
         if (userData.role !== 'admin' && tenantId) {
