@@ -1358,7 +1358,7 @@ h3 {
     flex: 1 1 30vh !important;
     margin-bottom: 0.5rem;
     padding-top: 0 !important;
-    z-index: 100 !important;
+    z-index: 999 !important;
   }
 
   .profile-glass-panel.backpack-open .cube-container {
