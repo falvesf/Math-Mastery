@@ -89,12 +89,28 @@ export async function runVisitEngine(
 
     // Buscar alunos online da escola
     const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: students } = await supabase
+    let query = supabase
       .from('users')
       .select('id, name')
-      .eq('tenant_id', tenantId)
       .eq('role', 'student')
       .gte('last_seen_at', cutoff);
+
+    // Alguns alunos existem só em tenant_users (users.tenant_id nulo) e ficavam
+    // fora do sorteio. Incluímos também os membros do tenant.
+    if (tenantId) {
+      const { data: memberRows } = await supabase
+        .from('tenant_users')
+        .select('user_id')
+        .eq('tenant_id', tenantId);
+      const memberIds = (memberRows || []).map(r => r.user_id).filter(Boolean);
+      if (memberIds.length > 0) {
+        query = query.or(`tenant_id.eq.${tenantId},id.in.(${memberIds.join(',')})`);
+      } else {
+        query = query.eq('tenant_id', tenantId);
+      }
+    }
+
+    const { data: students } = await query;
 
     const online = (students || []).filter((s: any) => s.id !== teacherUid);
     if (online.length === 0) {

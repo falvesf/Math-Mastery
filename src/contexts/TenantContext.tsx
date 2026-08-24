@@ -78,6 +78,18 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
 
   const isSuperAdmin = userData?.role === 'superadmin' || userData?.email === 'fabio.feitoza@eaportal.org';
 
+  // Sincroniza users.tenant_id com a escola selecionada (auto-correção).
+  // Várias funções (chat, visitas do professor, rankings) filtram por essa
+  // coluna; se o usuário só existe em tenant_users, ele fica invisível nelas.
+  const syncUserTenantId = async (tid: string) => {
+    if (!uid) return;
+    try {
+      await supabase.from('users').update({ tenant_id: tid }).eq('id', uid);
+    } catch (e) {
+      console.warn('Falha ao sincronizar tenant_id do usuário:', e);
+    }
+  };
+
   // Carregar tenant do usuário atual
   const loadUserTenant = useCallback(async () => {
     // 1) Deep-link: escola vinda da URL (?tenant=<id>)
@@ -145,6 +157,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
             setTenantId(savedTenantId);
             setNoTenants(false);
             setLoading(false);
+            await syncUserTenantId(savedTenantId);
             return;
           }
           // Escola salva não existe mais (foi excluída): limpar do cache
@@ -162,6 +175,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
           localStorage.setItem('superadmin_selected_tenant', firstTenant.id);
           if (uid) localStorage.setItem(`user_selected_tenant_${uid}`, firstTenant.id);
           setLoading(false);
+          await syncUserTenantId(firstTenant.id);
           return;
         }
 
@@ -203,6 +217,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       const chosenTenant = resolvedTenants.find(t => t.id === savedPref) || resolvedTenants.find(t => t.id === primaryPref) || resolvedTenants[0];
       setTenant(chosenTenant);
       setTenantId(chosenTenant.id);
+      await syncUserTenantId(chosenTenant.id);
     } catch (err) {
       console.error('Erro ao carregar tenant do usuário:', err);
       await assignDefaultTenant();
@@ -323,6 +338,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       // que dependem do tenantId re-executam (padrão do agendamentochromes)
       setTenant(tenantData as Tenant);
       setTenantId(newTenantId);
+      await syncUserTenantId(newTenantId);
     } catch (err) {
       console.error('Erro ao trocar de tenant:', err);
     } finally {

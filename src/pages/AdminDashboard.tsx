@@ -779,7 +779,12 @@ export default function AdminDashboard() {
     // Não misturar usuários órfãos/sem tenant de outras escolas.
     let usersQuery = supabase.from('users').select('*');
     if (tenantId) {
-      usersQuery = usersQuery.or(`tenant_id.eq.${tenantId},role.eq.pending_student,role.eq.pending_teacher`);
+      // Incluir também quem existe só em tenant_users (users.tenant_id pode estar nulo)
+      const { data: memberRows } = await supabase.from('tenant_users').select('user_id').eq('tenant_id', tenantId);
+      const memberIds = (memberRows || []).map(r => r.user_id).filter(Boolean);
+      usersQuery = memberIds.length > 0
+        ? usersQuery.or(`tenant_id.eq.${tenantId},role.eq.pending_student,role.eq.pending_teacher,id.in.(${memberIds.join(',')})`)
+        : usersQuery.or(`tenant_id.eq.${tenantId},role.eq.pending_student,role.eq.pending_teacher`);
     } else {
       // Sem tenant definido: não listar alunos de todas as escolas (evita o "limbo")
       usersQuery = usersQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001').eq('role', 'pending_student');

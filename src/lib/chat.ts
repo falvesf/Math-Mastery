@@ -74,12 +74,23 @@ export async function fetchContacts(uid: string, classId?: string, tenantId?: st
   const friendIds = (friendRows || []).map(r => r.friend_id);
 
   // 2. Colegas (usuários com mesmo tenant)
+  // Alguns usuários existem apenas em tenant_users (sem users.tenant_id preenchido)
+  // e ficavam invisíveis aqui. Buscamos também os membros do tenant e usamos .or().
   let usersQuery = supabase
     .from('users')
     .select('id, name, photo_url, class_id, character_name, last_seen_at, role');
 
   if (tenantId) {
-    usersQuery = usersQuery.eq('tenant_id', tenantId);
+    const { data: memberRows } = await supabase
+      .from('tenant_users')
+      .select('user_id')
+      .eq('tenant_id', tenantId);
+    const memberIds = (memberRows || []).map(r => r.user_id).filter(Boolean);
+    if (memberIds.length > 0) {
+      usersQuery = usersQuery.or(`tenant_id.eq.${tenantId},id.in.(${memberIds.join(',')})`);
+    } else {
+      usersQuery = usersQuery.eq('tenant_id', tenantId);
+    }
   }
 
   const { data: users } = await usersQuery;

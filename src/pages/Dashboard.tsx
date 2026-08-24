@@ -802,7 +802,12 @@ export default function Dashboard() {
       // Filtrar por tenant_id (superadmin vê a escola selecionada, outros veem sua escola).
       // Sem tenantId não listamos alunos de todas as escolas (evita o "limbo").
       if (tenantId) {
-        usersQuery = usersQuery.eq('tenant_id', tenantId);
+        // Incluir também quem existe só em tenant_users (users.tenant_id pode estar nulo)
+        const { data: memberRows } = await supabase.from('tenant_users').select('user_id').eq('tenant_id', tenantId);
+        const memberIds = (memberRows || []).map(r => r.user_id).filter(Boolean);
+        usersQuery = memberIds.length > 0
+          ? usersQuery.or(`tenant_id.eq.${tenantId},id.in.(${memberIds.join(',')})`)
+          : usersQuery.eq('tenant_id', tenantId);
       } else {
         usersQuery = usersQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
       }

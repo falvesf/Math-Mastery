@@ -528,14 +528,16 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
               return sortedItems.map(item => {
                 const isGridIcon = layoutMode === 'small-icons' || layoutMode === 'large-icons';
+                // grid-2/grid-3 empilham verticalmente (senão os botões estouram a célula)
+                const isGridMode = layoutMode === 'grid-2' || layoutMode === 'grid-3' || isGridIcon;
                 const imgSize = layoutMode === 'small-icons' ? '80px' : layoutMode === 'large-icons' ? '140px' : '50px';
                 const isGlobalReadonly = item._isGlobal && !item._tenantId;
                 
                 return (
                   <div key={item.id} 
                     className={`rarity-${item.rarity || 'common'}`}
-                    style={{ position: 'relative', display: 'flex', flexDirection: isGridIcon ? 'column' : 'row', alignItems: 'center', justifyContent: isGridIcon ? 'center' : 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: isGridIcon ? 'center' : 'left' }}>
-                    <div style={{ display: 'flex', flexDirection: isGridIcon ? 'column' : 'row', alignItems: 'center', gap: '1rem', width: isGridIcon ? '100%' : 'auto', position: 'relative' }}>
+                    style={{ position: 'relative', display: 'flex', flexDirection: isGridMode ? 'column' : 'row', alignItems: 'center', justifyContent: isGridMode ? 'center' : 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: isGridMode ? 'center' : 'left', minWidth: 0, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', flexDirection: isGridMode ? 'column' : 'row', alignItems: 'center', gap: '1rem', width: isGridMode ? '100%' : 'auto', minWidth: 0 }}>
                       <div className={`rarity-badge ${item.rarity || 'common'}`}>
                         {getRarityLabel(item.rarity)}
                       </div>
@@ -544,30 +546,29 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       ) : (
                         <ItemIcon item={item} size={parseInt(imgSize)} />
                       )}
-                      <div style={{ flex: 1, width: isGridIcon ? '100%' : 'auto' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <h4 style={{ margin: '0', fontSize: isGridIcon ? '0.95rem' : '1.1rem', whiteSpace: isGridIcon ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis', color: `var(--rarity-${item.rarity || 'common'})` }}>{item.title}</h4>
+                      <div style={{ flex: 1, minWidth: 0, width: isGridMode ? '100%' : 'auto' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: isGridMode ? 'center' : 'flex-start', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <h4 style={{ margin: '0', fontSize: isGridMode ? '0.95rem' : '1.1rem', whiteSpace: isGridMode ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', color: `var(--rarity-${item.rarity || 'common'})` }}>{item.title}</h4>
                           {item._isGlobal && !item._tenantId && (
                             <span style={{ fontSize: '0.7rem', background: 'rgba(139,92,246,0.2)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', padding: '0.1rem 0.5rem', borderRadius: '10px', whiteSpace: 'nowrap' }} title="Item do banco global (somente leitura para esta escola)">
                               Global
                             </span>
                           )}
                         </div>
-                        {!isGridIcon && (
+                        {isGridMode ? (
+                          <div style={{ fontSize: '0.85rem', color: 'var(--gold-primary)', fontWeight: 'bold', marginTop: '0.25rem' }}>
+                            {item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}
+                          </div>
+                        ) : (
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                             <span>Custo: <strong style={{ color: 'var(--gold-primary)' }}>{item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}</strong></span>
                             <span>Tipo: {item.type === 'consumable' ? 'Consumível' : 'Equipável'}</span>
                             <span>Patente Mínima: {RANKS[item.minRankRequired]?.name}</span>
                           </div>
                         )}
-                        {isGridIcon && (
-                          <div style={{ fontSize: '0.85rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
-                            {item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}
-                          </div>
-                        )}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: isGridIcon ? '0.75rem' : '0' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: isGridMode ? '0.75rem' : '0' }}>
                       <button onClick={() => openEdit(item)} disabled={(!canItems('items', 'update') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: ((!canItems('items', 'update') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)) ? 'not-allowed' : 'pointer', padding: '0.4rem', display: 'flex', opacity: ((!canItems('items', 'update') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)) ? 0.4 : 1 }} title={isGlobalReadonly && !isSuperAdmin ? 'Global (somente leitura) — importe para criar uma cópia local' : !canItems('items', 'update') && !isSuperAdmin ? 'Sem permissão para editar' : 'Editar'}><Edit2 size={16} /></button>
                       <button onClick={() => handleDeleteItem(item.id)} disabled={(!canItems('items', 'delete') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)} style={{ background: 'transparent', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: 'var(--accent-red)', cursor: ((!canItems('items', 'delete') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)) ? 'not-allowed' : 'pointer', padding: '0.4rem', display: 'flex', opacity: ((!canItems('items', 'delete') && !isSuperAdmin) || (isGlobalReadonly && !isSuperAdmin)) ? 0.4 : 1 }} title={isGlobalReadonly && !isSuperAdmin ? 'Global (somente leitura)' : !canItems('items', 'delete') && !isSuperAdmin ? 'Sem permissão para excluir' : 'Excluir'}><Trash2 size={16} /></button>
                     </div>
