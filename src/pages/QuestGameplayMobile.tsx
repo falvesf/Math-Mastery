@@ -185,13 +185,16 @@ export default function QuestGameplay() {
   
   const [arenaDebug, setArenaDebug] = useState<ArenaDebugConfig>(() => {
     const saved = localStorage.getItem(`arenaDebugConfig_${window.innerWidth < 768 ? 'mobile' : 'desktop'}`);
+    const sharedStr = localStorage.getItem('arenaDebugSharedToggles');
+    const shared = sharedStr ? JSON.parse(sharedStr) : {};
+    
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return { ...DEFAULT_ARENA_DEBUG, ...parsed };
-      } catch { return DEFAULT_ARENA_DEBUG; }
+        return { ...DEFAULT_ARENA_DEBUG, ...parsed, ...shared };
+      } catch { return { ...DEFAULT_ARENA_DEBUG, ...shared }; }
     }
-    return DEFAULT_ARENA_DEBUG;
+    return { ...DEFAULT_ARENA_DEBUG, ...shared };
   });
   
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -207,8 +210,11 @@ export default function QuestGameplay() {
         
         // Carregar do localStorage primeiro
         const localSaved = localStorage.getItem(localKey);
+        const sharedStr = localStorage.getItem('arenaDebugSharedToggles');
+        const shared = sharedStr ? JSON.parse(sharedStr) : {};
+
         if (localSaved) {
-          try { setArenaDebug({ ...DEFAULT_ARENA_DEBUG, ...JSON.parse(localSaved) }); } catch {}
+          try { setArenaDebug({ ...DEFAULT_ARENA_DEBUG, ...JSON.parse(localSaved), ...shared }); } catch {}
         }
         
         // Depois do Supabase
@@ -216,7 +222,7 @@ export default function QuestGameplay() {
           if (data?.data) {
             const dbData = data.data as Record<string, any>;
             const cleanData = Object.fromEntries(Object.entries(dbData).filter(([_, v]) => v !== undefined && v !== null));
-            setArenaDebug({ ...DEFAULT_ARENA_DEBUG, ...cleanData });
+            setArenaDebug(prev => ({ ...DEFAULT_ARENA_DEBUG, ...cleanData, ...shared }));
           }
         });
       }
@@ -229,11 +235,14 @@ export default function QuestGameplay() {
   useEffect(() => {
     const loadArenaDebug = async () => {
       const { data } = await supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', `arena_${deviceKey}`).single();
+      const sharedStr = localStorage.getItem('arenaDebugSharedToggles');
+      const shared = sharedStr ? JSON.parse(sharedStr) : {};
+
       if (data?.data) {
         // Merge with defaults, filtering out undefined/null values from DB
         const dbData = data.data as Record<string, any>;
         const cleanData = Object.fromEntries(Object.entries(dbData).filter(([_, v]) => v !== undefined && v !== null));
-        setArenaDebug(prev => ({ ...DEFAULT_ARENA_DEBUG, ...prev, ...cleanData }));
+        setArenaDebug(prev => ({ ...DEFAULT_ARENA_DEBUG, ...prev, ...cleanData, ...shared }));
       }
     };
     loadArenaDebug();
@@ -242,13 +251,34 @@ export default function QuestGameplay() {
   // Save to localStorage on every change
   useEffect(() => {
     localStorage.setItem(`arenaDebugConfig_${deviceKey}`, JSON.stringify(arenaDebug));
+    
+    const SHARED_DEBUG_TOGGLES: (keyof ArenaDebugConfig)[] = [
+      'showBoxes', 'showCoinArea', 'showPlayerCoinArea', 'showBubbleOrigins', 
+      'playerBubbleAlwaysOn', 'monsterBubbleAlwaysOn', 
+      'noInstantKill', 'adminImmortal', 'monsterImmortal', 'forceCoinLoss'
+    ];
+    const sharedToggles: Partial<ArenaDebugConfig> = {};
+    SHARED_DEBUG_TOGGLES.forEach(k => {
+      (sharedToggles as any)[k] = arenaDebug[k];
+    });
+    localStorage.setItem('arenaDebugSharedToggles', JSON.stringify(sharedToggles));
   }, [arenaDebug, deviceKey]);
 
   const handleSaveArenaDebug = async () => {
+    const dataToSave = { ...arenaDebug };
+    const SHARED_DEBUG_TOGGLES: (keyof ArenaDebugConfig)[] = [
+      'showBoxes', 'showCoinArea', 'showPlayerCoinArea', 'showBubbleOrigins', 
+      'playerBubbleAlwaysOn', 'monsterBubbleAlwaysOn', 
+      'noInstantKill', 'adminImmortal', 'monsterImmortal', 'forceCoinLoss'
+    ];
+    SHARED_DEBUG_TOGGLES.forEach(k => {
+      delete dataToSave[k];
+    });
+
     const payload: any = {
       collection_name: 'arena_debug',
       doc_id: `arena_${deviceKey}`,
-      data: arenaDebug,
+      data: dataToSave,
     };
     if (tenantId) payload.tenant_id = tenantId;
     
@@ -256,7 +286,7 @@ export default function QuestGameplay() {
     const { data: existing } = await supabase.from('system_collections').select('id').eq('collection_name', 'arena_debug').eq('doc_id', `arena_${deviceKey}`).limit(1);
     let error;
     if (existing && existing.length > 0) {
-      const res = await supabase.from('system_collections').update({ data: arenaDebug }).eq('collection_name', 'arena_debug').eq('doc_id', `arena_${deviceKey}`);
+      const res = await supabase.from('system_collections').update({ data: dataToSave }).eq('collection_name', 'arena_debug').eq('doc_id', `arena_${deviceKey}`);
       error = res.error;
     } else {
       const res = await supabase.from('system_collections').insert(payload);
