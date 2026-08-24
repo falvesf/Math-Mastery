@@ -4,6 +4,7 @@ import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, C
 import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
+import { usePermissions } from '../lib/permissions';
 import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose, resolveModelTransform } from './AvatarCharacter';
 import { fetchSavedPoses, saveSavedPoses, type SavedPose } from '../lib/savedPoses';
 import { useDialog } from '../contexts/DialogContext';
@@ -234,7 +235,12 @@ const HorizontalScrollList = ({ children }: { children: React.ReactNode }) => {
 export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, onPositionsSaved, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
   const { userData, updateUserDataLocally } = useAuth();
   const { tenantId } = useTenant();
+  const { can: canView } = usePermissions();
   const { showAlert, showToast } = useDialog();
+  // Menus de administrador na edição do personagem (Skins, Moldes, Debug)
+  const canSkins = userData?.role === 'admin' || isAdmin || canView('skins', 'view');
+  const canModels = userData?.role === 'admin' || isAdmin || canView('models', 'view');
+  const canDebug = userData?.role === 'admin' || isAdmin || canView('debug3d', 'view');
   const [config, setConfig] = useState<AvatarConfig>({
     gender: 'male',
     skinColor: '#ffcc99',
@@ -458,8 +464,8 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
         if (userData?.avatarConfig && !customSaveMode) {
           let loadedConfig = { ...userData.avatarConfig };
           if (loadedConfig.customSkinUrl) {
-            const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || isAdmin;
-            const expiry = userData.unlockedSkins?.[loadedConfig.customSkinUrl];
+const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || isAdmin || canSkins;
+                const expiry = userData.unlockedSkins?.[loadedConfig.customSkinUrl];
             if (!isStaff && (!expiry || expiry <= Date.now())) {
               loadedConfig.customSkinUrl = '';
             }
@@ -518,7 +524,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
           onSave(config, monsterName);
         }
         
-        if ((userData?.role === 'admin' || isAdmin) && inline && monsterName.trim()) {
+        if ((userData?.role === 'admin' || isAdmin || canSkins || canModels) && inline && monsterName.trim()) {
           try {
             const { error: insertError } = await supabase.from('preset_skins').insert({
               id: uuidv4(),
@@ -813,26 +819,32 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               </h2>
             </div>
           )}
-          {(userData?.role === 'admin' || isAdmin) && !inline && (
+          {(canSkins || canModels || canDebug) && !inline && (
             <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem', fontSize: '0.75rem', flexWrap: 'wrap' }}>
-              <button 
-                onClick={() => setShowAdminManager(true)}
-                style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: 'var(--bg-card)', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                <Settings size={12} /> <span className="hide-on-mobile">Skins</span>
-              </button>
-              <button 
-                onClick={() => setShowAdmin3dManager(true)}
-                style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: 'var(--bg-card)', border: '1px solid #10b981', color: '#10b981', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                <Settings size={12} /> <span className="hide-on-mobile">Moldes</span>
-              </button>
-              <button 
-                onClick={() => setDebugMode(!debugMode)}
-                style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: debugMode ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card)', border: debugMode ? '2px solid #f59e0b' : '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                🔧 <span className="hide-on-mobile">Debug</span>
-              </button>
+              {canSkins && (
+                <button 
+                  onClick={() => setShowAdminManager(true)}
+                  style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: 'var(--bg-card)', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  <Settings size={12} /> <span className="hide-on-mobile">Skins</span>
+                </button>
+              )}
+              {canModels && (
+                <button 
+                  onClick={() => setShowAdmin3dManager(true)}
+                  style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: 'var(--bg-card)', border: '1px solid #10b981', color: '#10b981', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  <Settings size={12} /> <span className="hide-on-mobile">Moldes</span>
+                </button>
+              )}
+              {canDebug && (
+                <button 
+                  onClick={() => setDebugMode(!debugMode)}
+                  style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: debugMode ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card)', border: debugMode ? '2px solid #f59e0b' : '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  🔧 <span className="hide-on-mobile">Debug</span>
+                </button>
+              )}
             </div>
           )}
           {debugMode && (
@@ -1349,8 +1361,10 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
             {!customSaveMode && (() => {
               const availableSkins = presetSkins.filter(s => {
                 if ((s.type || 'human') !== 'human') return false;
-                const isStaff = (userData?.role !== 'student' && !userData?.studentViewActive) || isAdmin;
-                if (!isStaff) {
+                // Quem tem permissão de "Skins" (ou é staff) vê TODAS as skins cadastradas;
+                // aluno comum só vê as que desbloqueou.
+                const canSeeAll = (userData?.role !== 'student' && !userData?.studentViewActive) || isAdmin || canSkins;
+                if (!canSeeAll) {
                   const expiry = userData?.unlockedSkins?.[s.url];
                   if (!expiry || expiry <= Date.now()) return false;
                 }
@@ -1825,7 +1839,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               )}
             </div>
 
-            {(userData?.role === 'admin' || isAdmin) && inline && (
+            {(userData?.role === 'admin' || isAdmin || canSkins || canModels) && inline && (
               <div style={{ marginBottom: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--accent-primary)' }}>
                 <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
                   {customSaveMode ? 'Salvar Monstro na Galeria Global' : 'Salvar Personagem na Galeria Global'}

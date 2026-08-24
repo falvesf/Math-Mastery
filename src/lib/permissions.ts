@@ -92,6 +92,46 @@ const STANDARD_ROLE_NAMES: Record<string, string> = {
   student: 'Aluno',
 };
 
+const STANDARD_ROLE_NAMES_SET = new Set(['Administrador', 'Coordenador', 'Professor', 'Aluno']);
+
+/** Rótulo do painel pela função base (quando não há função de hierarquia). */
+export function baseRolePanelLabel(role?: string): string {
+  switch (role) {
+    case 'admin':
+    case 'superadmin':
+      return 'Master';
+    case 'teacher':
+      return 'Professor';
+    case 'coordinator':
+      return 'Coordenador';
+    default:
+      return 'Professor';
+  }
+}
+
+/**
+ * Nome da função que dá título ao painel: usa a função de hierarquia
+ * delegada ao usuário (ex: Designer, Coordenador) se houver; senão, a base.
+ */
+export async function getPanelRoleName(uid: string, tenantId?: string | null, baseRole?: string): Promise<string> {
+  try {
+    const assigned = await fetchUserRoles(uid, tenantId);
+    if (assigned.length > 0) {
+      const roles = await fetchRoles(tenantId);
+      const found = roles.find(r => assigned.includes(r.id) && !STANDARD_ROLE_NAMES_SET.has(r.name));
+      if (found) return found.name;
+    }
+  } catch (e) {
+    console.error('Erro ao carregar função do painel:', e);
+  }
+  return baseRolePanelLabel(baseRole);
+}
+
+/** Texto do botão/título do painel (ex: "Painel Master", "Painel do Designer"). */
+export function panelLabel(roleName: string): string {
+  return roleName === 'Master' ? 'Painel Master' : `Painel do ${roleName}`;
+}
+
 /**
  * Garante que as funções padrão existam para a escola (com permissões iniciais editáveis).
  */

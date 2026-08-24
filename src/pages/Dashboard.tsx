@@ -110,6 +110,10 @@ export default function Dashboard() {
   const { userData, toggleStudentView, updateUserDataLocally, ranksLoaded } = useAuth();
   const { tenantId } = useTenant();
   const { can: canView } = usePermissions();
+  // Áreas que pertencem ao Painel Master (staff). Se o usuário (mesmo aluno)
+  // tem função de hierarquia com permissão em alguma delas, mostra o botão.
+  const ADMIN_AREAS = ['users', 'quests_admin', 'items', 'economy', 'classes', 'approvals', 'config', 'ranks', 'entities', 'models', 'skins', 'debug3d', 'pre_authorized', 'tenants', 'companion', 'themes', 'arena_debug'];
+  const hasAdminAccess = ADMIN_AREAS.some(a => canView(a, 'view'));
   if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
@@ -2376,7 +2380,7 @@ export default function Dashboard() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'flex-end' }}>
 
-            {(userData?.role === 'admin' || userData?.role === 'teacher') && !userData?.studentViewActive && (
+            {(userData?.role === 'admin' || userData?.role === 'teacher' || hasAdminAccess) && !userData?.studentViewActive && (
               <button
                 className="login-btn hide-on-mobile"
                 onClick={() => navigate('/admin')}
@@ -2464,7 +2468,7 @@ export default function Dashboard() {
                     </div>
 
                     {/* Acesso Staff */}
-                    {(userData?.role === 'admin' || userData?.role === 'teacher') && !userData?.studentViewActive && (
+                    {(userData?.role === 'admin' || userData?.role === 'teacher' || hasAdminAccess) && !userData?.studentViewActive && (
                       <button
                         className="login-btn"
                         onClick={() => { setStudentMobileMenuOpen(false); navigate('/admin'); }}

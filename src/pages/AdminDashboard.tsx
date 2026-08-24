@@ -468,8 +468,37 @@ export default function AdminDashboard() {
   const { tenant, tenantId, tenants, isSuperAdmin, noTenants, switchTenant, createTenant, updateTenant, deleteTenant, refreshTenants } = useTenant();
   const { can: canView } = usePermissions();
   const navigate = useNavigate();
+  // Guias internas do "Geral" e quem pode ver cada uma
+  const generalTabOptions = [
+    { key: 'config', label: 'Avaliação', icon: <Settings size={17} />, check: canView('config', 'view') },
+    { key: 'tenants', label: 'Escolas', icon: <GraduationCap size={17} />, check: isSuperAdmin && canView('tenants', 'view') },
+    { key: 'users', label: 'Gerenciamento de Usuários', icon: <Users size={17} />, check: canView('users', 'view') },
+    { key: 'roles', label: 'Hierarquias', icon: <ShieldCheck size={17} />, check: (userData?.role === 'admin' || userData?.role === 'superadmin') },
+    { key: 'ranks', label: 'Patentes', icon: <Medal size={17} />, check: canView('ranks', 'view') },
+    { key: 'classes', label: 'Turmas', icon: <BookOpen size={17} />, check: canView('classes', 'view') },
+    { key: 'companion', label: 'Tutorial', icon: <MessageCircle size={17} />, check: isSuperAdmin },
+  ];
+  const canAccessGeneral = generalTabOptions.some(t => t.check);
+  const firstGeneralTab = (generalTabOptions.find(t => t.check)?.key || 'users') as any;
   const [activeTab, setActiveTab] = useState('general');
   const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'ranks' | 'roles' | 'tenants' | 'companion'>('users');
+
+  // Ao abrir o painel, garante que a sub-aba do "Geral" é uma que o usuário
+  // tem permissão de ver (evita cair no Gerenciamento de Usuários sem permissão).
+  useEffect(() => {
+    if (activeTab === 'general') {
+      if (!canAccessGeneral) {
+        const fallback = ['quests', 'store', 'economy', 'approvals', 'entities'].find(a => canView(a, 'view'));
+        if (fallback) setActiveTab(fallback);
+        return;
+      }
+      const current = generalTabOptions.find(t => t.key === generalTab);
+      if (!current || !current.check) {
+        setGeneralTab(firstGeneralTab);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, generalTab, canAccessGeneral]);
   const [students, setStudents] = useState<UserData[]>([]);
   const [allUserItems, setAllUserItems] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(false);
@@ -1866,8 +1895,8 @@ export default function AdminDashboard() {
           <div className="tenant-switcher-mobile" style={{ flexDirection: 'column', gap: '0.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
             <TenantSwitcher variant="menu" />
           </div>
-{canView('users', 'view') && (
-            <button className={`login-btn ${activeTab === 'general' ? 'active' : ''}`} onClick={() => { setActiveTab('general'); setGeneralTab('users'); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'general' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'general' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+{canAccessGeneral && (
+            <button className={`login-btn ${activeTab === 'general' ? 'active' : ''}`} onClick={() => { setActiveTab('general'); setGeneralTab(firstGeneralTab); setIsSidebarOpen(false); }} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'general' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'general' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
               <Users size={20} /> <span className="sidebar-btn-text">Geral</span>
             </button>
           )}
@@ -1905,15 +1934,7 @@ export default function AdminDashboard() {
         {activeTab === 'general' && (
           <div className="general-tabs-wrap" style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--bg-card)', padding: '0.6rem 0', marginBottom: '0.9rem', borderBottom: '1px solid var(--border-glass)' }}>
             <div className="hide-scrollbar" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', whiteSpace: 'nowrap' }}>
-              {[
-                { key: 'config', label: 'Avaliação', icon: <Settings size={17} />, check: canView('config', 'view') },
-                { key: 'tenants', label: 'Escolas', icon: <GraduationCap size={17} />, check: isSuperAdmin && canView('tenants', 'view') },
-                { key: 'users', label: 'Gerenciamento de Usuários', icon: <Users size={17} />, check: canView('users', 'view') },
-                { key: 'roles', label: 'Hierarquias', icon: <ShieldCheck size={17} />, check: (userData?.role === 'admin' || userData?.role === 'superadmin') },
-                { key: 'ranks', label: 'Patentes', icon: <Medal size={17} />, check: canView('ranks', 'view') },
-                { key: 'classes', label: 'Turmas', icon: <BookOpen size={17} />, check: canView('classes', 'view') },
-                { key: 'companion', label: 'Tutorial', icon: <MessageCircle size={17} />, check: isSuperAdmin },
-              ].filter(t => t.check).sort((a, b) => a.label.localeCompare(b.label)).map(tab => (
+              {generalTabOptions.filter(t => t.check).sort((a, b) => a.label.localeCompare(b.label)).map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => setGeneralTab(tab.key as any)}
@@ -2031,7 +2052,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Aba de Hierarquias e Permissões */}
-        {activeTab === 'general' && generalTab === 'roles' && (
+        {activeTab === 'general' && generalTab === 'roles' && (userData?.role === 'admin' || userData?.role === 'superadmin') && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             <AdminRolesManager />
           </div>
@@ -2213,7 +2234,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Aba de Usuários */}
-        {activeTab === 'general' && generalTab === 'users' && (
+        {activeTab === 'general' && generalTab === 'users' && canView('users', 'view') && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '0.5rem 2rem', margin: '-2rem -2rem 0.5rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div className="compact-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -2486,7 +2507,7 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                           <div className="user-action-btns" style={{ display: 'flex', gap: '0.35rem', flexShrink: 0, flexWrap: 'nowrap' }}>
-                            {student.uid !== userData?.uid && (student.role !== 'admin' || isSuperAdmin) && (
+                            {student.uid !== userData?.uid && (student.role !== 'admin' || isSuperAdmin) && canView('users', 'update') && (
                               <button 
                                 className="login-btn" 
                                 onClick={() => openEditModal(student)}
@@ -2496,7 +2517,7 @@ export default function AdminDashboard() {
                                 <Edit2 size={16} />
                               </button>
                             )}
-                            {student.role === 'student' && (
+                            {student.role === 'student' && canView('users', 'update') && (
                               <button 
                                 className="login-btn" 
                                 onClick={() => { setModalMode('add'); setXpMode('grade'); setSelectedStudent(student); }}
@@ -2506,7 +2527,7 @@ export default function AdminDashboard() {
                                 <Star size={16} />
                               </button>
                             )}
-                            {student.uid !== userData?.uid && (student.role !== 'admin' || isSuperAdmin) && (
+                            {student.uid !== userData?.uid && (student.role !== 'admin' || isSuperAdmin) && canView('users', 'delete') && (
                               <button 
                                 className="login-btn" 
                                 onClick={() => setDeletingStudent(student)}
@@ -2837,7 +2858,7 @@ export default function AdminDashboard() {
           )}
 
           {/* Aba de Turmas */}
-          {activeTab === 'general' && generalTab === 'classes' && (
+          {activeTab === 'general' && generalTab === 'classes' && canView('classes', 'view') && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
@@ -2891,7 +2912,7 @@ export default function AdminDashboard() {
           )}
 
           {/* Aba de Configurações */}
-          {activeTab === 'general' && generalTab === 'config' && (
+          {activeTab === 'general' && generalTab === 'config' && canView('config', 'view') && (
             <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
               <div className="dashboard-header-sticky" style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2931,7 +2952,7 @@ export default function AdminDashboard() {
           )}
 
           {/* Aba Ranks */}
-          {activeTab === 'general' && generalTab === 'ranks' && (
+          {activeTab === 'general' && generalTab === 'ranks' && canView('ranks', 'view') && (
             <AdminRankManager pixabayKey={pixabayKey} />
           )}
           {/* Aba Loja */}
