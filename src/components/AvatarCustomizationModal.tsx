@@ -255,6 +255,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   const [models3d, setModels3d] = useState<any[]>([]);
   const [showAdminManager, setShowAdminManager] = useState(false);
   const [showAdmin3dManager, setShowAdmin3dManager] = useState(false);
+  const [viewerZoom, setViewerZoom] = useState(1);
   
   const handednessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1208,6 +1209,18 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
           <div className="avatar-modal-grid">
           
           <div className={`avatar-viewer-container ${isMobileDrawerOpen ? 'drawer-open' : ''}`}>
+            {/* Controle de Zoom */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', zIndex: 5 }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Zoom:</span>
+              <button onClick={() => setViewerZoom(v => Math.max(0.4, +(v - 0.1).toFixed(2)))} style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Diminuir">−</button>
+              <span style={{ fontSize: '0.85rem', color: 'var(--gold-primary)', fontWeight: 'bold', minWidth: '38px', textAlign: 'center' }}>{Math.round(viewerZoom * 100)}%</span>
+              <button onClick={() => setViewerZoom(v => Math.min(2.5, +(v + 0.1).toFixed(2)))} style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Aumentar">+</button>
+              <button onClick={() => setViewerZoom(1)} style={{ padding: '0.25rem 0.6rem', borderRadius: '6px', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem' }} title="Resetar zoom">Resetar</button>
+            </div>
+
+            {/* Avatar com zoom aplicado */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
+            <div style={{ transform: `scale(${viewerZoom})`, transformOrigin: 'center bottom', transition: 'transform 0.2s ease-out' }}>
             {(() => {
               const activePreset = presetSkins.find(s => s.url === config.customSkinUrl);
               const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default' 
@@ -1219,6 +1232,8 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
               }
               return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 220} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
             })()}
+            </div>
+            </div>
             
             {/* Draggable Controls Widget */}
             <DraggableWidget id="anim_controller" defaultPos={{x: 20, y: 20}}>
