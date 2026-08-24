@@ -2315,7 +2315,7 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                           <div className="user-action-btns" style={{ display: 'flex', gap: '0.35rem', flexShrink: 0, flexWrap: 'nowrap' }}>
-                            {student.uid !== userData?.uid && student.role !== 'admin' && (
+                            {student.uid !== userData?.uid && (student.role !== 'admin' || isSuperAdmin) && (
                               <button 
                                 className="login-btn" 
                                 onClick={() => openEditModal(student)}
@@ -2335,7 +2335,7 @@ export default function AdminDashboard() {
                                 <Star size={16} />
                               </button>
                             )}
-                            {student.uid !== userData?.uid && student.role !== 'admin' && (
+                            {student.uid !== userData?.uid && (student.role !== 'admin' || isSuperAdmin) && (
                               <button 
                                 className="login-btn" 
                                 onClick={() => setDeletingStudent(student)}
@@ -2811,7 +2811,7 @@ export default function AdminDashboard() {
                 ))}
               </select>
 
-              {userData?.role === 'admin' && (
+              {userData?.role === 'admin' || isSuperAdmin ? (
                 <>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Permissão no Sistema (Role)</label>
                   <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }}>
@@ -2821,7 +2821,7 @@ export default function AdminDashboard() {
                     <option value="admin">Administrador (Gerente)</option>
                   </select>
                 </>
-              )}
+              ) : null}
             </div>
 
             {isSuperAdmin && (
