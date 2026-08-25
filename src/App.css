@@ -196,11 +196,12 @@
 
 .landing-page .hero-section {
   position: relative;
+  animation: none;
 }
 
 .landing-page .landing-logo {
   position: relative;
-  z-index: 60;
+  z-index: 1100;
 }
 
 .landing-page .login-btn {
