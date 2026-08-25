@@ -26,7 +26,7 @@ import OnboardingModal from '../components/OnboardingModal';
 import SchoolSelectorModal from '../components/SchoolSelectorModal';
 import ClassSelectorModal from '../components/ClassSelectorModal';
 import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../components/CustomThemeModal';
-import { applyCustomTheme, applyFontPreset } from '../lib/theme';
+import { applyCustomTheme, applyFontPreset, applyFontScale } from '../lib/theme';
 import { validateCharacterName, normalizeForComparison, normalizeNameForMatch, formatFirstAndLastName } from '../lib/nameValidation';
 import { fetchModel3DById } from '../lib/model3d';
 import { COMPANION_TIPS, fetchCompanionTips } from '../lib/companionTips';
@@ -515,11 +515,15 @@ export default function Dashboard() {
       const currentThemeData = getCurrentThemeData();
       if (currentThemeData?.fontFamily) {
         applyFontPreset(currentThemeData.fontFamily);
+        applyFontScale(currentThemeData.fontFamily, currentThemeData.fontScale ?? 1);
       } else {
         applyFontPreset('default');
+        applyFontScale('default', currentThemeData?.fontScale ?? 1);
       }
     } else {
+      // Escolha explícita do usuário prevalece sobre a fonte do tema
       applyFontPreset(appFonts);
+      applyFontScale(appFonts);
     }
   }, [appFonts, appTheme]);
   const [cubeAutoRotate, setCubeAutoRotate] = useState(() => {

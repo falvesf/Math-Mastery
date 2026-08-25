@@ -9,10 +9,25 @@ const FONT_PRESETS: Record<string, { heading: string; body: string }> = {
   'clean': { heading: "'Oswald', sans-serif", body: "'Open Sans', sans-serif" },
 };
 
+// Correção de escala para fontes que renderizam maiores (pixel art, etc.):
+// evita que a fonte "empurre" botões e textos — em vez disso, reduz um pouco
+// o tamanho base. 1 = sem correção.
+const FONT_CORRECTIONS: Record<string, number> = {
+  'retro': 0.82,
+};
+
 export const applyFontPreset = (fontId: string) => {
   const selected = FONT_PRESETS[fontId] || FONT_PRESETS['default'];
   document.documentElement.style.setProperty('--font-heading', selected.heading);
   document.documentElement.style.setProperty('--font-body', selected.body);
+};
+
+/** Aplica a escala base, combinando a escala do tema com a correção da fonte. */
+export const applyFontScale = (fontId?: string, themeScale: number = 1) => {
+  const correction = FONT_CORRECTIONS[fontId || 'default'] || 1;
+  const scale = themeScale * correction;
+  document.documentElement.style.setProperty('--font-scale', scale.toString());
+  document.documentElement.style.fontSize = `${scale * 100}%`;
 };
 
 export const applyCustomTheme = (theme: CustomTheme | null) => {
@@ -72,16 +87,12 @@ export const applyCustomTheme = (theme: CustomTheme | null) => {
     document.body.style.removeProperty('background-image');
   }
 
-  const userFontOverride = localStorage.getItem('appFonts');
+  // Fonte do tema: aplica apenas se houver; a escolha EXPLÍCITA do usuário
+  // (appFonts no Dashboard) continua prevalecendo quando ele selecionou outra fonte.
+  // Não apaga mais a escolha do usuário no localStorage (antes isso fazia a
+  // fonte do tema "sumir" e voltar ao padrão em alguns fluxos).
   if (theme.fontFamily) {
     applyFontPreset(theme.fontFamily);
-    // Se o usuário tinha override manual, limpar para o tema prevalecer
-    if (userFontOverride && userFontOverride !== 'default') {
-      localStorage.setItem('appFonts', 'default');
-    }
   }
-
-  const scale = theme.fontScale ?? 1;
-  document.documentElement.style.setProperty('--font-scale', scale.toString());
-  document.documentElement.style.fontSize = `${scale * 100}%`;
+  applyFontScale(theme.fontFamily, theme.fontScale ?? 1);
 };

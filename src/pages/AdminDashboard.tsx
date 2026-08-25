@@ -466,7 +466,7 @@ export default function AdminDashboard() {
   const { showAlert, showConfirm, showToast } = useDialog();
   const { userData, startImpersonation } = useAuth();
   const { tenant, tenantId, tenants, isSuperAdmin, noTenants, switchTenant, createTenant, updateTenant, deleteTenant, refreshTenants } = useTenant();
-  const { can: canView } = usePermissions();
+  const { can: canView, loading: permsLoading } = usePermissions();
   const navigate = useNavigate();
   // Nome da função que dá título ao painel (função de hierarquia ou base)
   const [panelRoleName, setPanelRoleName] = useState(() => baseRolePanelLabel(userData?.role));
@@ -506,6 +506,9 @@ export default function AdminDashboard() {
   // Ao abrir o painel, garante que a sub-aba do "Geral" é uma que o usuário
   // tem permissão de ver (evita cair no Gerenciamento de Usuários sem permissão).
   useEffect(() => {
+    // Aguarda as permissões carregarem: antes disso canAccessUsers pode ser falso
+    // e a aba padrão cairia errada (ex: Hierarquias) para usuários com acesso a usuários.
+    if (permsLoading) return;
     if (activeTab === 'general') {
       if (!canAccessGeneral) {
         // Sem acesso ao Geral: abre a primeira área lateral permitida
@@ -518,7 +521,7 @@ export default function AdminDashboard() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, generalTab, canAccessGeneral, firstAccessibleTab]);
+  }, [activeTab, generalTab, canAccessGeneral, firstAccessibleTab, firstGeneralTab, permsLoading]);
   const [students, setStudents] = useState<UserData[]>([]);
   const [allUserItems, setAllUserItems] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(false);

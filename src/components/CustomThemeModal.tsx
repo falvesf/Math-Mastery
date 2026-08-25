@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Image as ImageIcon } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
-import { applyFontPreset } from '../lib/theme';
+import { applyFontPreset, applyFontScale } from '../lib/theme';
 
 export interface CustomTheme {
   id: string;
@@ -91,11 +91,8 @@ export default function CustomThemeModal({ initialTheme, isAdmin, onSave, onClos
   // Update preview live whenever theme changes
   useEffect(() => {
     onPreview(theme);
-    if (theme.fontFamily) {
-      applyFontPreset(theme.fontFamily);
-    }
-    const scale = theme.fontScale ?? 1;
-    document.documentElement.style.fontSize = `${scale * 100}%`;
+    applyFontPreset(theme.fontFamily || 'default');
+    applyFontScale(theme.fontFamily, theme.fontScale ?? 1);
   }, [theme, onPreview]);
 
   const handleColorChange = (key: keyof CustomTheme['colors'], value: string | number) => {
