@@ -1081,6 +1081,8 @@ export default function Dashboard() {
   // Verificar se subiu de patente
   useEffect(() => {
     if (!userData || userData.role !== 'student' || !ranksLoaded) return;
+    // Sem patentes LOCAIS cadastradas na escola: ninguém sobe de nível.
+    if (RANKS.length === 0) return;
 
     // Se não tem lastSeenRank e o rank é Iniciante, apenas salva silenciosamente.
     if (!userData.lastSeenRank) {

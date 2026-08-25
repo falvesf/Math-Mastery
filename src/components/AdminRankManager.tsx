@@ -153,9 +153,10 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         : DEFAULT_RANKS.map((r, i) => ({ ...r, id: `default_global_${i}`, _isGlobal: true }) as RankDef & { _isGlobal?: boolean; id?: string });
       setGlobalRanks(effectiveGlobals);
 
-      // RANKS do jogo: usar os locais se existirem, senão os globais (padrão)
+      // RANKS do jogo: apenas os LOCAIS da escola (sem fallback p/ globais —
+      // se não há patentes locais, ninguém sobe de nível no jogo)
       RANKS.length = 0;
-      RANKS.push(...(loadedRanks.length > 0 ? loadedRanks : effectiveGlobals));
+      RANKS.push(...loadedRanks);
     } catch (e) {
       console.error('Erro ao carregar patentes:', e);
     }

@@ -41,6 +41,11 @@ export const RANKS: RankDef[] = [
 export const DEFAULT_RANKS: RankDef[] = RANKS.map(r => ({ ...r }));
 
 export function getRankForXp(xp: number, classId?: string): RankDef {
+  // Sem patentes cadastradas (nenhuma local na escola): retorna um rótulo neutro
+  // e o sistema NÃO sobe ninguém de nível.
+  if (RANKS.length === 0) {
+    return { name: 'Sem Patente', minXp: 0, color: '#94a3b8', hideFromHistory: true };
+  }
   let currentRank = RANKS[0];
   for (const rank of RANKS) {
     if (xp >= rank.minXp) {
@@ -64,12 +69,16 @@ export function getRankForXp(xp: number, classId?: string): RankDef {
 
 export const initRanks = async (tenantId?: string) => {
   try {
-    let ranksQuery = supabase.from('custom_ranks').select('*');
-    // Buscar ranks globais OU ranks da escola atual
-    if (tenantId) {
-      ranksQuery = ranksQuery.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
-    }
-    const { data: snap, error } = await ranksQuery;
+    // IMPORTANTE: o level up usa SOMENTE as patentes LOCAIS da escola.
+    // Sem tenant ou sem patentes locais, RANKS fica vazio (ninguém sobe de nível).
+    RANKS.length = 0;
+    if (!tenantId) return;
+
+    const { data: snap, error } = await supabase
+      .from('custom_ranks')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('is_global', false);
     if (error) throw error;
     if (snap && snap.length > 0) {
       const loadedRanks = snap.map(d => {
@@ -80,17 +89,7 @@ export const initRanks = async (tenantId?: string) => {
           _isGlobal: d.is_global ?? false 
         } as RankDef & { _isGlobal?: boolean };
       }).sort((a,b) => a.minXp - b.minXp);
-
-      // Se a escola tem patentes locais, elas substituem as globais
-      const localRanks = loadedRanks.filter(r => !(r as any)._isGlobal);
-      const globalRanks = loadedRanks.filter(r => (r as any)._isGlobal);
-
-      RANKS.length = 0; // clear existing
-      if (localRanks.length > 0) {
-        RANKS.push(...localRanks);
-      } else {
-        RANKS.push(...globalRanks);
-      }
+      RANKS.push(...loadedRanks);
     }
   } catch (e) {
     console.error("Failed to load custom ranks", e);

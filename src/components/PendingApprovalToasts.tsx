@@ -120,17 +120,30 @@ export default function PendingApprovalToasts({ isStaff }: { isStaff: boolean })
       } catch { targetClassName = 'Sem Turma'; }
     }
 
-    const { error: userErr } = await supabase.from('users').update({
-      role: 'student',
-      tenant_id: targetTenantId,
-      class_id: targetClassName || 'Sem Turma',
-      xp: 0,
-      coins: 0,
-      pending_class_name: null
-    }).eq('id', t.userId);
+    // Aprova SOMENTE se o usuário ainda estiver pendente. Se outro administrador
+    // já aprovou/rejeitou, o update não encontra a linha pendente (0 linhas) e
+    // informamos o segundo admin em vez de desfazer a ação do primeiro.
+    const { data: updated, error: userErr } = await supabase.from('users')
+      .update({
+        role: 'student',
+        tenant_id: targetTenantId,
+        class_id: targetClassName || 'Sem Turma',
+        xp: 0,
+        coins: 0,
+        pending_class_name: null
+      })
+      .eq('id', t.userId)
+      .in('role', ['pending_student', 'pending_teacher'])
+      .select('id');
+
     if (userErr) {
       console.error('Erro ao aprovar (toast):', userErr);
       showToast('Não foi possível aprovar.', 'error');
+      removeToast(t.id);
+      return;
+    }
+    if (!updated || updated.length === 0) {
+      showToast(`${t.name} já foi aprovado(a) ou rejeitado(a) por outro administrador.`, 'info');
       removeToast(t.id);
       return;
     }
@@ -174,8 +187,26 @@ export default function PendingApprovalToasts({ isStaff }: { isStaff: boolean })
   };
 
   const handleReject = async (t: PendingToast) => {
-    await supabase.from('users').update({ role: 'student', tenant_id: null, class_id: null }).eq('id', t.userId);
-    try { await supabase.from('users').update({ pending_class_name: null }).eq('id', t.userId); } catch { /* opcional */ }
+    // Rejeita SOMENTE se ainda estiver pendente — se outro admin já processou,
+    // não desfaz a ação dele e avisa o segundo admin.
+    const { data: updated, error: rejectErr } = await supabase.from('users')
+      .update({ role: 'student', tenant_id: null, class_id: null, pending_class_name: null })
+      .eq('id', t.userId)
+      .in('role', ['pending_student', 'pending_teacher'])
+      .select('id');
+
+    if (rejectErr) {
+      console.error('Erro ao rejeitar (toast):', rejectErr);
+      showToast('Não foi possível rejeitar.', 'error');
+      removeToast(t.id);
+      return;
+    }
+    if (!updated || updated.length === 0) {
+      showToast(`${t.name} já foi aprovado(a) ou rejeitado(a) por outro administrador.`, 'info');
+      removeToast(t.id);
+      return;
+    }
+
     try { await supabase.from('enrollment_requests').delete().eq('user_id', t.userId); } catch { /* opcional */ }
     try {
       const rejectTenant = t.tenantId || tenantId;
