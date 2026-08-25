@@ -191,6 +191,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       fixedAttributes: item.fixedAttributes,
       backColor: item.backColor,
       extractMeshName: item.extractMeshName,
+      // Campos que estavam sendo perdidos na cópia (Debug 3D e outros):
+      modelTransforms: item.modelTransforms || null,
+      hpCooldownReductionMinutes: item.hpCooldownReductionMinutes,
+      buffDurationHours: item.buffDurationHours,
+      gameImage2dUrl: item.gameImage2dUrl || '',
+      minSalePrice: item.minSalePrice || 0,
+      gachaConfig: item.gachaConfig || null,
+      useGlobalGacha: item.useGlobalGacha ?? true,
     };
 
     if (copyMode === 'direct') {
@@ -275,6 +283,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           fixedAttributes: item.fixedAttributes,
           backColor: item.backColor,
           extractMeshName: item.extractMeshName,
+          modelTransforms: item.modelTransforms || null,
+          hpCooldownReductionMinutes: item.hpCooldownReductionMinutes,
+          buffDurationHours: item.buffDurationHours,
+          gameImage2dUrl: item.gameImage2dUrl || '',
+          gachaConfig: item.gachaConfig || null,
+          useGlobalGacha: item.useGlobalGacha ?? true,
           minSalePrice: 0,
           importedFromId: item._rawId || null,
         };

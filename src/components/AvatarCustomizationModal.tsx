@@ -654,6 +654,11 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
       // Mulheres não têm barba/bigode
       newConfig.facialHair = 'none';
       newConfig.facialHairColor = undefined;
+      // Estilos de cabelo exclusivamente masculinos não migram
+      const maleOnlyHair = ['spiky', 'mohawk', 'messy'];
+      if (maleOnlyHair.includes(newConfig.hairStyle || '')) {
+        newConfig.hairStyle = 'long';
+      }
     } else {
       // Homens não têm acessórios de cabelo femininos nem batom
       const femaleOnlyAccessories = ['bow', 'flower', 'headband'];
@@ -663,6 +668,11 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
         newConfig.hairAccessory = 'none';
       }
       newConfig.lipstickColor = undefined;
+      // Estilos de cabelo exclusivamente femininos não migram
+      const femaleOnlyHair = ['ponytail', 'bun', 'braid', 'pigtails', 'bob'];
+      if (femaleOnlyHair.includes(newConfig.hairStyle || '')) {
+        newConfig.hairStyle = 'short';
+      }
       // Peças de roupa exclusivamente femininas → t-shirt
       const femaleOnlyClothing = ['dress', 'skirt', 'crop-top', 'overalls'];
       if (femaleOnlyClothing.includes(newConfig.clothingStyle || '')) {
@@ -853,18 +863,28 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
                 <p style={{ margin: 0, color: '#f59e0b', fontWeight: 'bold' }}>🔧 Debug {debugTab === 'item' ? 'Transform' : 'Pose'}</p>
                 <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
                    <button
-                     onClick={() => setConfig(prev => {
-                       const newGender = prev.gender === 'female' ? 'male' : 'female';
-                       const newId = debugItemId;
-                       if (newId) {
-                         const item = equippedItems.find(i => (i.itemId || i.docId) === newId);
-                         const isBattle = prev.animationState === 'attack';
-                         const t = resolveModelTransform(item, newGender, prev.handedness, isBattle);
-                         if (t) setDebugTransform(t);
-                         else setDebugTransform(getDebugDefaultTransform(item));
-                       }
-                       return { ...prev, gender: newGender };
-                     })}
+onClick={() => setConfig(prev => {
+                        const newGender = prev.gender === 'female' ? 'male' : 'female';
+                        const newId = debugItemId;
+                        if (newId) {
+                          const item = equippedItems.find(i => (i.itemId || i.docId) === newId);
+                          const isBattle = prev.animationState === 'attack';
+                          const t = resolveModelTransform(item, newGender, prev.handedness, isBattle);
+                          if (t) setDebugTransform(t);
+                          else setDebugTransform(getDebugDefaultTransform(item));
+                        }
+                        // Sanitiza o estilo de cabelo para o novo gênero (evita herdar
+                        // estilos exclusivos do gênero oposto ao alternar no Debug)
+                        const next = { ...prev, gender: newGender };
+                        const maleOnlyHair = ['spiky', 'mohawk', 'messy'];
+                        const femaleOnlyHair = ['ponytail', 'bun', 'braid', 'pigtails', 'bob'];
+                        if (newGender === 'female' && maleOnlyHair.includes(next.hairStyle || '')) {
+                          next.hairStyle = 'long';
+                        } else if (newGender === 'male' && femaleOnlyHair.includes(next.hairStyle || '')) {
+                          next.hairStyle = 'short';
+                        }
+                        return next;
+                      })}
                      style={{ padding: '0.25rem 0.5rem', background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', border: '1px solid #8b5cf6', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
                      title="Alternar gênero da configuração 3D"
                    >
@@ -986,13 +1006,15 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
                             ? (isBattle ? (isLeftHanded ? 'battle_left_female' : 'battle_female') : (isLeftHanded ? 'common_left_female' : 'common_female'))
                             : (isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common'));
                           
-                          // 1. Save to store_items
-                          // 1. Save to store_items
+                          // 1. Save to store_items (também grava a chave "common" universal,
+                          // para a pré-visualização na loja/bazar respeitar a configuração
+                          // independente do gênero/mão do comprador)
                           const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
                           if (storeItemSnap) {
+                            const prevTransforms = (storeItemSnap.data as any).modelTransforms || {};
                             const newStoreData = { 
                               ...(storeItemSnap.data as any), 
-                              modelTransforms: { ...((storeItemSnap.data as any).modelTransforms || {}), [transformKey]: debugTransform } 
+                              modelTransforms: { ...prevTransforms, [transformKey]: debugTransform, common: { ...debugTransform } } 
                             };
                             await supabase.from('store_items').update({ data: newStoreData }).eq('id', targetItem.itemId);
                           }
@@ -1001,9 +1023,10 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
                           const { data: snapUserItems } = await supabase.from('user_items').select('id, data').eq('item_id', targetItem.itemId);
                           if (snapUserItems) {
                             for (const d of snapUserItems) {
+                              const prevTransforms = (d.data as any).modelTransforms || {};
                               const newUserData = { 
                                 ...(d.data as any), 
-                                modelTransforms: { ...((d.data as any).modelTransforms || {}), [transformKey]: debugTransform } 
+                                modelTransforms: { ...prevTransforms, [transformKey]: debugTransform, common: { ...debugTransform } } 
                               };
                               await supabase.from('user_items').update({ data: newUserData }).eq('id', d.id);
                             }

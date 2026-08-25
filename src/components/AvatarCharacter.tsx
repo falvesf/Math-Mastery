@@ -134,13 +134,16 @@ export function resolveModelTransform(
     if (isLeft && isBattle && mt.battle_left) return mt.battle_left;
     if (isLeft && !isBattle && mt.common_left) return mt.common_left;
     if (isBattle && mt.battle) return mt.battle;
-    return mt.common;
+    // Fallback priorizando chaves femininas e depois qualquer uma (evita aplicar
+    // transform masculino "voando" quando só existe uma configuração parcial)
+    return mt.common || mt.common_female || mt.common_left_female || mt.battle_female || mt.common_left || mt.battle || mt.battle_left_female || mt.battle_left;
   }
 
   if (isLeft && isBattle && mt.battle_left) return mt.battle_left;
   if (isLeft && !isBattle && mt.common_left) return mt.common_left;
   if (isBattle && mt.battle) return mt.battle;
-  return mt.common;
+  // Fallback priorizando chaves masculinas/neutras (common) e depois qualquer uma
+  return mt.common || mt.common_left || mt.battle || mt.battle_left || mt.common_female || mt.common_left_female || mt.battle_female || mt.battle_left_female;
 }
 
 const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boolean = false) => {
