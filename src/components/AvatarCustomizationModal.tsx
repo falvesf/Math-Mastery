@@ -450,8 +450,10 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   };
 
   useEffect(() => {
-    fetchPresetSkins();
-    fetchModels3d();
+    // Sempre busca do banco ao montar (ignora cache) para skins/modelos novos
+    // aparecerem imediatamente após o admin cadastrar.
+    fetchPresetSkins(true);
+    fetchModels3d(true);
   }, []);
 
   useEffect(() => {
@@ -829,13 +831,6 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
               <h2 style={{ margin: 0, fontSize: '1rem', textTransform: 'uppercase' }}>
                 {customSaveMode ? 'Personalizar Monstro' : 'Personalizar Personagem'}
               </h2>
-              <button
-                onClick={() => setShowPoseStudio(true)}
-                style={{ padding: '0.25rem 0.6rem', background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                title="Abrir a Central 3D — Estúdio de Poses e Animações"
-              >
-                🎬 Central 3D
-              </button>
             </div>
           )}
           {(canSkins || canModels || canDebug) && !inline && (
@@ -862,6 +857,15 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
                   style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: debugMode ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card)', border: debugMode ? '2px solid #f59e0b' : '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
                 >
                   🔧 <span className="hide-on-mobile">Debug</span>
+                </button>
+              )}
+              {canDebug && (
+                <button
+                  onClick={() => setShowPoseStudio(true)}
+                  style={{ flex: 1, padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.5)', color: '#c4b5fd', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                  title="Central 3D — Estúdio de Poses e Animações (apenas para quem tem acesso ao Debug 3D)"
+                >
+                  🎬 <span className="hide-on-mobile">Central 3D</span>
                 </button>
               )}
             </div>
@@ -900,7 +904,6 @@ onClick={() => setConfig(prev => {
                      👤 {config.gender === 'female' ? 'Feminino' : 'Masculino'}
                    </button>
                    <button onClick={() => setDebugTab('item')} style={{ padding: '0.25rem 0.5rem', background: debugTab === 'item' ? '#f59e0b' : 'transparent', color: debugTab === 'item' ? '#000' : '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗡️ Item</button>
-                   <button onClick={() => setDebugTab('pose')} style={{ padding: '0.25rem 0.5rem', background: debugTab === 'pose' ? '#f59e0b' : 'transparent', color: debugTab === 'pose' ? '#000' : '#f59e0b', border: '1px solid #f59e0b', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🧍 Pose</button>
                 </div>
               </div>
 
@@ -1274,7 +1277,7 @@ onClick={() => setConfig(prev => {
               if (activeModel) {
                 return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 220} />;
               }
-              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 220} animation={config.animationState || 'idle'} interactive={true} ignoreHiddenSlots debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
+              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 220} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
             })()}
             </div>
             </div>

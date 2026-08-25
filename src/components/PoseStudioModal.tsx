@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Save, Play, Square, Plus, Undo2, Trash2, RotateCw, Download, Upload, Settings2 } from 'lucide-react';
 import AvatarCharacter, { type CharacterPose, type AvatarConfig, type EquippedItem, type ModelTransform, type SpriteAnimation } from './AvatarCharacter';
-import { fetchSavedActions, saveSavedActions, type SavedAction } from '../lib/savedPoses';
+import { fetchSavedActions, saveSavedActions, fetchSavedPoses, saveSavedPoses, type SavedAction, type SavedPose } from '../lib/savedPoses';
 import { supabase } from '../lib/supabase';
 import { useTenant } from '../contexts/TenantContext';
 import DirectUploadButton from './DirectUploadButton';
@@ -132,6 +132,10 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
   const [selectedItem, setSelectedItem] = useState<{ kind: 'hand' | 'weapon'; index: number } | null>(null);
   const [itemTransform, setItemTransform] = useState<ModelTransform>({ posX: 0, posY: 0, posZ: 0, rotX: 0, rotY: 0, rotZ: 0, slide: 0, scale: 10, thickness: 1, curveX: 0, curveY: 0 });
   const [itemSpriteAnim, setItemSpriteAnim] = useState<SpriteAnimation | null>(null);
+  // Poses estáticas salvas da escola (Salvar Poses / Poses Salvas)
+  const [savedPoses, setSavedPoses] = useState<SavedPose[]>([]);
+  const [newPoseName, setNewPoseName] = useState('');
+  const [userActionPoses, setUserActionPoses] = useState<Record<string, CharacterPose> | null>(null);
   const dragRef = useRef<{ startX: number; startYaw: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const draggedPalette = useRef<EquippedItem | null>(null);
@@ -154,7 +158,20 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
     setDropTarget(null);
     setSelectedItem(null);
     setItemSpriteAnim(null);
+    setNewPoseName('');
     fetchSavedActions(tenantId).then(setSavedActions).catch(() => {});
+    fetchSavedPoses(tenantId).then(setSavedPoses).catch(() => {});
+    // Ações equipadas no personagem (para marcar ✓ nos botões de equipar pose)
+    if (userData?.uid) {
+      supabase.from('users').select('avatar_config').eq('id', userData.uid).single()
+        .then(({ data }) => {
+          const cfg = (data?.avatar_config as any) || userData.avatarConfig || {};
+          setUserActionPoses(cfg.actionPoses || null);
+        })
+        .catch(() => setUserActionPoses(null));
+    } else {
+      setUserActionPoses(null);
+    }
     // Carrega itens com modelo 3D para as duas abas:
     //  - Consumíveis: segurar nas mãos (simular uso)
     //  - Equipáveis: criar a cena com o item na mão e vincular a ação a ele
@@ -293,7 +310,7 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
   const openAdjust = (item: EquippedItem, kind: 'hand' | 'weapon', index: number) => {
     const base = item.modelTransforms?.common || Object.values(item.modelTransforms || {})[0];
     setItemTransform(base ? { ...getDefaultForPart(item.avatarPart), ...base } : getDefaultForPart(item.avatarPart));
-    setItemSpriteAnim(item.spriteAnimation ? { cols: 1, rows: 1, fps: 8, scale: 10, offsetY: 0, offsetX: 0, offsetZ: 0, opacity: 0.85, ...item.spriteAnimation } : null);
+    setItemSpriteAnim(item.spriteAnimation ? { cols: 1, rows: 1, fps: 8, scale: 10, offsetY: 0, offsetX: 0, offsetZ: 0, opacity: 0.85, maskColor: '', maskTolerance: 0.15, maskShape: 'none', maskUrl: '', ...item.spriteAnimation } : null);
     setSelectedItem({ kind, index });
   };
 
@@ -336,6 +353,64 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
   const clearWeapon = () => {
     setWeaponItem(null);
     setSelectedItem(prev => (prev && prev.kind === 'weapon') ? null : prev);
+  };
+
+  const ACTION_LABEL: Record<'idle' | 'walk' | 'run' | 'attack', string> = {
+    idle: 'Parado', walk: 'Andando', run: 'Correndo', attack: 'Lutando',
+  };
+
+  const loadSavedPoses = async () => {
+    const poses = await fetchSavedPoses(tenantId);
+    setSavedPoses(poses);
+  };
+
+  const handleSavePose = async () => {
+    const name = newPoseName.trim();
+    if (!name) { setStatus('Digite um nome para a pose.'); return; }
+    const poseToSave: SavedPose = { id: `pose_${Date.now()}`, name, pose: clone(pose), updatedAt: Date.now() };
+    const updated = [...savedPoses, poseToSave];
+    const ok = await saveSavedPoses(tenantId, updated, savedActions);
+    if (ok) { setSavedPoses(updated); setNewPoseName(''); setStatus(`Pose "${name}" salva!`); }
+    else setStatus('Não foi possível salvar a pose.');
+  };
+
+  const handleDeletePose = async (poseId: string) => {
+    const updated = savedPoses.filter(p => p.id !== poseId);
+    const ok = await saveSavedPoses(tenantId, updated, savedActions);
+    if (ok) { setSavedPoses(updated); setStatus('Pose removida.'); }
+    else setStatus('Não foi possível remover a pose.');
+  };
+
+  // Carregar uma pose salva no editor (como cena de 1 frame)
+  const handleLoadPose = (sp: SavedPose) => {
+    setPose(clone(sp.pose));
+    setFrames([clone(sp.pose)]);
+    setCurrentFrame(0);
+    setPreviewAnim(false);
+    setDirtyParts(new Set());
+    setYawDirty(false);
+    setStatus(`Pose "${sp.name}" carregada.`);
+  };
+
+  // Equipar/remover a pose numa ação base do personagem (Parado/Andando/Correndo/Lutando)
+  const handleEquipPoseAction = async (sp: SavedPose, action: 'idle' | 'walk' | 'run' | 'attack') => {
+    if (!userData?.uid) { setStatus('Usuário não identificado.'); return; }
+    try {
+      const { data } = await supabase.from('users').select('avatar_config').eq('id', userData.uid).single();
+      const cfg: any = (data?.avatar_config as any) || userData.avatarConfig || {};
+      const actionPoses: Record<string, CharacterPose> = { ...(cfg.actionPoses || {}) };
+      if (actionPoses[action]) delete actionPoses[action];
+      else actionPoses[action] = JSON.parse(JSON.stringify(sp.pose));
+      const newConfig = { ...cfg, actionPoses };
+      await supabase.from('users').update({ avatar_config: newConfig }).eq('id', userData.uid);
+      setUserActionPoses(actionPoses);
+      setStatus(actionPoses[action]
+        ? `Pose "${sp.name}" equipada na ação "${ACTION_LABEL[action]}".`
+        : `Ação "${ACTION_LABEL[action]}" voltou para a animação padrão.`);
+    } catch (e) {
+      console.error(e);
+      setStatus('Erro ao equipar a pose na ação.');
+    }
   };
 
   const saveItemAdjust = async () => {
@@ -680,6 +755,7 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
             size={Math.min(300, isMobile ? 210 : 300)}
             interactive={false}
             animation="idle"
+            ignoreHiddenSlots
             debugItemId={debugItemId}
             debugItemTransform={debugItemTransform}
             debugPose={previewAnim && frames.length > 0 ? overridePose : pose}
@@ -749,7 +825,7 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
             ...(isMobile
               ? { left: 0, right: 0, bottom: 0, maxHeight: '42%' }
               : { top: 0, right: 0, bottom: 0, width: '300px' }),
-            overflowY: 'auto',
+            overflow: 'hidden',
             background: 'rgba(12,16,24,0.92)',
             borderLeft: isMobile ? 'none' : '1px solid var(--border-glass)',
             borderTop: isMobile ? '1px solid var(--border-glass)' : 'none',
@@ -757,9 +833,11 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
             zIndex: 20,
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.9rem',
+            gap: '0.6rem',
           }}
         >
+          {/* Parte de CIMA (rolável): inversões, olhos, itens, ajuste e ações */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.9rem', paddingRight: '2px' }}>
           {/* Inversões de eixo / lados */}
           <div style={{ border: '1px solid rgba(59,130,246,0.25)', borderRadius: '8px', padding: '0.7rem' }}>
             <div style={{ fontSize: '0.82rem', color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.35rem' }}>↔️ Inversões</div>
@@ -962,13 +1040,63 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
                         <span style={{ width: '44px', textAlign: 'right', color: '#c4b5fd', fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 'bold' }}>{(itemSpriteAnim[key] ?? (integer ? 1 : 0.8)).toFixed(integer ? 0 : 2)}</span>
                       </div>
                     ))}
+
+                    {/* Forma de recorte (clip) da sprite */}
+                    <div style={{ marginTop: '0.3rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.4rem' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 'bold', marginBottom: '0.25rem' }}>✂️ Forma de recorte</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        {([['none', 'Retângulo'], ['circle', 'Círculo'], ['square', 'Quadrado'], ['triangle', 'Triângulo'], ['diamond', 'Losango'], ['ring', 'Anel']] as const).map(([val, label]) => (
+                          <button key={val} onClick={() => setItemSpriteAnim(prev => ({ ...(prev as SpriteAnimation), maskShape: val, maskUrl: '' }))} style={{ padding: '0.25rem 0.5rem', borderRadius: '16px', cursor: 'pointer', fontSize: '0.66rem', border: '1px solid', background: itemSpriteAnim.maskShape === val && !itemSpriteAnim.maskUrl ? '#8b5cf6' : 'transparent', borderColor: '#8b5cf6', color: itemSpriteAnim.maskShape === val && !itemSpriteAnim.maskUrl ? '#fff' : '#a78bfa' }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', flexShrink: 0 }}>Silhueta:</span>
+                        <div style={{ flex: 1 }}>
+                          <DirectUploadButton
+                            folder="uploads"
+                            accept="image/*"
+                            onUploadComplete={(url) => setItemSpriteAnim(prev => ({ ...(prev as SpriteAnimation), maskUrl: url }))}
+                            buttonStyle={{ width: '100%', height: '34px', padding: '0 0.5rem', background: 'rgba(139,92,246,0.12)', color: '#a78bfa', border: '1px dashed #8b5cf6', borderRadius: '6px', cursor: 'pointer' }}
+                          />
+                        </div>
+                      </div>
+                      {itemSpriteAnim.maskUrl && (
+                        <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                          <span style={{ fontSize: '0.66rem', color: '#a78bfa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Silhueta personalizada aplicada</span>
+                          <button onClick={() => setItemSpriteAnim(prev => ({ ...(prev as SpriteAnimation), maskUrl: '' }))} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }} title="Remover silhueta"><Trash2 size={12} /></button>
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.2rem', lineHeight: 1.3 }}>
+                        Recorte a sprite em uma forma (círculo, quadrado, triângulo, losango, anel) — ou suba a silhueta do próprio item para ela aparecer exatamente no formato dele.
+                      </div>
+                    </div>
+
+                    {/* Máscara de cor (ignorar fundo, ex.: preto) */}
+                    <div style={{ marginTop: '0.3rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.4rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.72rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!!itemSpriteAnim.maskColor} onChange={(e) => setItemSpriteAnim(prev => ({ ...(prev as SpriteAnimation), maskColor: e.target.checked ? (prev?.maskColor || '#000000') : '', maskTolerance: prev?.maskTolerance ?? 0.15 }))} style={{ width: '15px', height: '15px', accentColor: '#8b5cf6' }} />
+                        🎯 Remover fundo (chroma key)
+                      </label>
+                      {itemSpriteAnim.maskColor && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.3rem' }}>
+                          <input type="color" value={itemSpriteAnim.maskColor} onChange={(e) => setItemSpriteAnim(prev => ({ ...(prev as SpriteAnimation), maskColor: e.target.value }))} style={{ width: 34, height: 26, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }} />
+                          <input type="range" min={0} max={1} step={0.01} value={itemSpriteAnim.maskTolerance ?? 0.15} onChange={(e) => setItemSpriteAnim(prev => ({ ...(prev as SpriteAnimation), maskTolerance: parseFloat(e.target.value) }))} style={{ flex: 1, accentColor: '#8b5cf6' }} />
+                          <span style={{ width: '44px', textAlign: 'right', color: '#c4b5fd', fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 'bold' }}>{(itemSpriteAnim.maskTolerance ?? 0.15).toFixed(2)}</span>
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.2rem', lineHeight: 1.3 }}>
+                        Ex.: fundo preto → deixe a cor <b>#000000</b> e aumente a tolerância até o fundo sumir; só o que for diferente do fundo é renderizado.
+                      </div>
+                    </div>
                     <button onClick={() => setItemSpriteAnim(null)} style={{ marginTop: '0.3rem', width: '100%', padding: '0.3rem', background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem' }}>Remover sprite</button>
                   </>
                 ) : (
                   <DirectUploadButton
                     folder="uploads"
                     accept="image/*"
-                    onUploadComplete={(url) => setItemSpriteAnim({ url, cols: 4, rows: 1, fps: 8, scale: 10, offsetY: 0, offsetX: 0, offsetZ: 0, opacity: 0.85 })}
+                    onUploadComplete={(url) => setItemSpriteAnim({ url, cols: 4, rows: 1, fps: 8, scale: 10, offsetY: 0, offsetX: 0, offsetZ: 0, opacity: 0.85, maskColor: '', maskTolerance: 0.15, maskShape: 'none', maskUrl: '' })}
                     buttonStyle={{ width: '100%', padding: '0.4rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px dashed #8b5cf6', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}
                   />
                 )}
@@ -999,7 +1127,10 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
               </button>
             )}
           </div>
+          </div>
 
+          {/* Parte de BAIXO FIXA: a partir da janela "Adicionar Frame" */}
+          <div style={{ flexShrink: 0, maxHeight: '62%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.9rem', borderTop: '1px solid var(--border-glass)', paddingTop: '0.6rem' }}>
           {/* Captura de frames */}
           <div style={{ border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '0.7rem' }}>
             <div style={{ fontSize: '0.82rem', color: '#c4b5fd', fontWeight: 'bold', marginBottom: '0.35rem' }}>🎞️ Animação (Frames: {frames.length}/{MAX_FRAMES})</div>
@@ -1088,6 +1219,57 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Poses Salvas da Escola (Salvar Pose / Poses Salvas) */}
+          <div style={{ border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '0.7rem' }}>
+            <div style={{ fontSize: '0.82rem', color: '#a78bfa', fontWeight: 'bold', marginBottom: '0.35rem' }}>📚 Poses Salvas da Escola</div>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <input
+                type="text"
+                value={newPoseName}
+                onChange={(e) => setNewPoseName(e.target.value)}
+                placeholder="Nome da pose (ex: Ataque Espada)"
+                style={{ flex: 1, padding: '0.4rem 0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.8rem' }}
+              />
+              <button onClick={handleSavePose} style={{ padding: '0.4rem 0.8rem', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold', fontSize: '0.78rem' }}>
+                💾 Salvar Pose
+              </button>
+            </div>
+            <div style={{ marginTop: '0.3rem', fontSize: '0.62rem', color: 'rgba(255,255,255,0.45)' }}>
+              Salva a pose ATUAL (1 frame) por escola. Depois carregue para editar ou equipe numa ação base do personagem.
+            </div>
+            {savedPoses.length > 0 && (
+              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                {savedPoses.map(sp => (
+                  <div key={sp.id} style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: '8px', padding: '0.4rem 0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sp.name}</span>
+                      <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
+                        <button onClick={() => handleLoadPose(sp)} style={{ padding: '0.2rem 0.5rem', background: 'rgba(59,130,246,0.2)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 'bold' }}>Carregar</button>
+                        <button onClick={() => handleDeletePose(sp.id)} style={{ padding: '0.2rem 0.5rem', background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.68rem' }} title="Excluir pose"><Trash2 size={12} /></button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                      {(['idle', 'walk', 'run', 'attack'] as const).map(action => {
+                        const equipped = !!userActionPoses?.[action];
+                        return (
+                          <button
+                            key={action}
+                            onClick={() => handleEquipPoseAction(sp, action)}
+                            style={{ padding: '0.2rem 0.5rem', background: equipped ? 'rgba(16,185,129,0.25)' : 'transparent', color: equipped ? '#10b981' : 'var(--text-secondary)', border: equipped ? '1px solid rgba(16,185,129,0.5)' : '1px solid var(--border-glass)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.66rem', fontWeight: 'bold' }}
+                            title={equipped ? `Remover pose da ação ${ACTION_LABEL[action]}` : `Equipar nesta ação (${ACTION_LABEL[action]})`}
+                          >
+                            {ACTION_LABEL[action]}{equipped ? ' ✓' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           </div>
         </div>
       </div>

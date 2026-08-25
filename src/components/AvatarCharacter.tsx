@@ -105,6 +105,14 @@ export interface SpriteAnimation {
   /** Profundidade (Z) — aproxima/afasta a sprite do item (ex.: braços esticados para frente) */
   offsetZ?: number;
   opacity?: number;
+  /** Cor do fundo a ignorar (chroma key). Vazio = sem máscara. Ex.: '#000000' para fundo preto */
+  maskColor?: string;
+  /** Tolerância da máscara (0-1) — quão próximo da cor é considerado fundo */
+  maskTolerance?: number;
+  /** Forma de recorte (clip) da sprite. 'none' = retângulo completo */
+  maskShape?: 'none' | 'circle' | 'square' | 'triangle' | 'diamond' | 'ring';
+  /** Silhueta personalizada (imagem) usada como recorte — ex.: o formato do item */
+  maskUrl?: string;
 }
 
 export interface ModelTransform {
@@ -378,6 +386,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   const equippedItemsJson = JSON.stringify(equippedItems);
   const debugTransformJson = JSON.stringify(debugItemTransform);
   const loadedModelsRef = useRef<{itemId?: string, avatarPart: string, model: THREE.Object3D, item: EquippedItem}[]>([]);
+  // Cacheia o centro do item (no frame local) por itemId — estável entre recriações da sprite
+  const itemCentersRef = useRef<Record<string, THREE.Vector3>>({});
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -386,55 +396,192 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     let isCancelled = false;
     // Armazena os modelos carregados para poder removê-los depois
     const loadedModels: { parent: THREE.Object3D, model: THREE.Object3D }[] = [];
-    const spriteTimers: number[] = [];
     const loader = new GLTFLoader();
 
-    // Cria a sprite animada anexada ao MESMO osso do item e na MESMA posição do item,
-    // assim ela segue exatamente o item (braços esticados, golpes, etc.).
-    const spawnSprite = (parent: THREE.Object3D, item: EquippedItem, localPos: THREE.Vector3) => {
+    // Gera a máscara de forma (alpha) proporcional à célula do atlas
+    const buildShapeMask = (shape: string, aspect: number): THREE.Texture | null => {
+      const W = 256;
+      const H = Math.max(16, Math.round(256 * aspect));
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#ffffff';
+      const cx = W / 2;
+      const cy = H / 2;
+      const r = Math.min(W, H) / 2 * 0.95;
+      switch (shape) {
+        case 'circle':
+          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); break;
+        case 'square':
+          ctx.fillRect(cx - r, cy - r, r * 2, r * 2); break;
+        case 'triangle':
+          ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx - r, cy + r); ctx.lineTo(cx + r, cy + r); ctx.closePath(); ctx.fill(); break;
+        case 'diamond':
+          ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy); ctx.closePath(); ctx.fill(); break;
+        case 'ring':
+          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2); ctx.fill();
+          break;
+        default:
+          return null;
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      return tex;
+    };
+
+    // Carrega uma silhueta personalizada (imagem) como recorte
+    const loadShapeFromUrl = (url: string) => new Promise<THREE.Texture | null>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(null);
+          ctx.drawImage(img, 0, 0);
+          const tex = new THREE.CanvasTexture(canvas);
+          tex.magFilter = THREE.NearestFilter;
+          tex.minFilter = THREE.NearestFilter;
+          resolve(tex);
+        } catch (e) { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+    const applyColorMask = (tex: THREE.Texture, color: string, tolerance: number): THREE.Texture => {
+      const img = (tex as any).image;
+      if (!img || !img.width || !img.height) return tex;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return tex;
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const r = parseInt(color.slice(1, 3), 16) || 0;
+        const g = parseInt(color.slice(3, 5), 16) || 0;
+        const b = parseInt(color.slice(5, 7), 16) || 0;
+        const tol = Math.max(0, Math.min(1, tolerance)) * 255;
+        for (let i = 0; i < data.length; i += 4) {
+          if (Math.abs(data[i] - r) <= tol && Math.abs(data[i + 1] - g) <= tol && Math.abs(data[i + 2] - b) <= tol) {
+            data[i + 3] = 0;
+          }
+        }
+        ctx.putImageData(imageData, 0, 0);
+        const masked = new THREE.CanvasTexture(canvas);
+        masked.colorSpace = tex.colorSpace;
+        return masked;
+      } catch (e) {
+        console.error('Erro ao aplicar máscara de cor na sprite:', e);
+        return tex;
+      }
+    };
+
+    // Centro do modelo do item no frame local (para a sprite nascer "no item")
+    const getItemCenter = (model: THREE.Object3D): THREE.Vector3 => {
+      try {
+        model.updateWorldMatrix(true, true);
+        const box = new THREE.Box3().setFromObject(model);
+        if (box.isEmpty()) return new THREE.Vector3(0, 0, 0);
+        const inv = new THREE.Matrix4().copy(model.matrixWorld).invert();
+        box.applyMatrix4(inv);
+        const c = box.getCenter(new THREE.Vector3());
+        if (!isFinite(c.x) || !isFinite(c.y) || !isFinite(c.z)) return new THREE.Vector3(0, 0, 0);
+        return c;
+      } catch (e) {
+        return new THREE.Vector3(0, 0, 0);
+      }
+    };
+
+    // Cria a sprite animada como FILHA do modelo do item: ela segue exatamente o item
+    // (posição, rotação, escala) e os deslocamentos são relativos à geometria do item.
+    const spawnSprite = (itemModel: THREE.Object3D, item: EquippedItem) => {
       const sa = item.spriteAnimation;
       if (!sa || !sa.url) return;
       const cols = Math.max(1, sa.cols || 1);
       const rows = Math.max(1, sa.rows || 1);
       const fps = Math.max(1, sa.fps || 6);
       const s = sa.scale || 8;
-      new THREE.TextureLoader().load(sa.url, (tex) => {
+      // Compensa a escala do modelo pai para manter tamanho/posição visuais consistentes
+      const inv = itemModel.scale.x || 1;
+      new THREE.TextureLoader().load(sa.url, (rawTex) => {
         if (isCancelled) return;
+        // Clona a textura para cada sprite (evita conflito de offset/repeat entre sprites)
+        const baseTex = rawTex.clone();
+        // Aplica máscara de fundo (chroma key) se configurada
+        const tex = (sa.maskColor && sa.maskColor.trim() !== '')
+          ? applyColorMask(baseTex, sa.maskColor.trim(), sa.maskTolerance ?? 0.15)
+          : baseTex;
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = THREE.RepeatWrapping;
         tex.repeat.set(1 / cols, 1 / rows);
         tex.magFilter = THREE.NearestFilter;
         tex.minFilter = THREE.NearestFilter;
-        const mat = new THREE.SpriteMaterial({
-          map: tex,
-          transparent: true,
-          depthWrite: false,
-          opacity: sa.opacity ?? 0.85,
-          blending: THREE.AdditiveBlending,
-        });
-        const sprite = new THREE.Sprite(mat);
-        // Proporção da célula para a escala ficar fiel ao recorte
-        sprite.scale.set(s * (rows / cols), s, 1);
-        // Posição = posição do item + deslocamentos da sprite (mesmo eixo do item)
-        sprite.position.copy(localPos).add(new THREE.Vector3(sa.offsetX || 0, sa.offsetY || 0, sa.offsetZ || 0));
-        parent.add(sprite);
-        loadedModels.push({ parent, model: sprite });
-        loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model: sprite, item });
 
-        let frame = 0;
-        const total = cols * rows;
-        const setFrame = (f: number) => {
-          const col = f % cols;
-          const row = Math.floor(f / cols) % rows;
-          tex.offset.set(col * (1 / cols), 1 - (row + 1) * (1 / rows));
+        // Cria a sprite (a forma de recorte é aplicada via alphaMap)
+        const makeSprite = (alpha: THREE.Texture | null) => {
+          if (isCancelled) return;
+          const matParams: THREE.SpriteMaterialParameters = {
+            map: tex,
+            transparent: true,
+            depthWrite: false,
+            opacity: sa.opacity ?? 0.85,
+            blending: THREE.AdditiveBlending,
+          };
+          if (alpha) matParams.alphaMap = alpha;
+          const mat = new THREE.SpriteMaterial(matParams);
+          const sprite = new THREE.Sprite(mat);
+          // Proporção da célula para a escala ficar fiel ao recorte
+          sprite.scale.set((s * (rows / cols)) / inv, s / inv, 1);
+          // Nasce no CENTRO do item (bounding box) — valor cacheado por item para
+          // não variar entre recriações da sprite ao mexer nos sliders
+          const itemKey = item.itemId || item.docId || item.itemTitle || 'item';
+          let center = itemCentersRef.current[itemKey];
+          if (!center) {
+            center = getItemCenter(itemModel);
+            itemCentersRef.current[itemKey] = center.clone();
+          }
+          sprite.position.set(
+            center.x + (sa.offsetX || 0) / inv,
+            center.y + (sa.offsetY || 0) / inv,
+            center.z + (sa.offsetZ || 0) / inv
+          );
+          itemModel.add(sprite);
+          loadedModels.push({ parent: itemModel, model: sprite });
+          loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model: sprite, item });
+
+          const total = cols * rows;
+          if (total > 1) {
+            // Animação baseada no tempo (roda no onBeforeRender do material): não depende
+            // de intervalos, então nunca "para" ao mexer nos sliders ou recriar a sprite.
+            mat.onBeforeRender = () => {
+              const f = Math.floor((performance.now() / 1000) * fps) % total;
+              const col = f % cols;
+              const row = Math.floor(f / cols) % rows;
+              tex.offset.set(col * (1 / cols), 1 - (row + 1) * (1 / rows));
+            };
+          } else {
+            tex.offset.set(0, 1 - (1 / rows));
+          }
         };
-        setFrame(0);
-        if (total > 1) {
-          const timer = window.setInterval(() => {
-            frame = (frame + 1) % total;
-            setFrame(frame);
-          }, 1000 / fps);
-          spriteTimers.push(timer);
+
+        // Recorte: silhueta personalizada > forma pré-definida > nenhum
+        if (sa.maskUrl && sa.maskUrl.trim() !== '') {
+          loadShapeFromUrl(sa.maskUrl.trim()).then(alpha => { if (!isCancelled) makeSprite(alpha); });
+        } else if (sa.maskShape && sa.maskShape !== 'none') {
+          makeSprite(buildShapeMask(sa.maskShape, rows / cols));
+        } else {
+          makeSprite(null);
         }
       }, undefined, (err) => {
         console.error(`Erro ao carregar sprite do item ${item.itemTitle}:`, err);
@@ -533,8 +680,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               targetArm.add(model);
               loadedModels.push({ parent: targetArm, model });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
-              // Sprite acompanha o item na mão (mesma posição no osso)
-              spawnSprite(targetArm, item, model.position.clone());
+              // Sprite acompanha o item (filha do modelo)
+              spawnSprite(model, item);
             } else if (item.avatarPart === 'head') {
               const head = viewer.playerObject.skin.head;
               // Os itens do Blockbench para Minecraft geralmente vêm na escala de 1 unidade = 16 pixels.
@@ -565,7 +712,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               head.add(model);
               loadedModels.push({ parent: head, model });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
-              spawnSprite(head, item, model.position.clone());
+              spawnSprite(model, item);
             } else if (item.avatarPart === 'body' || item.avatarPart === 'legs' || item.avatarPart === 'feet') {
               let targetGroup = viewer.playerObject.skin.body;
               let finalModelToAdd = model;
@@ -633,7 +780,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               }
               loadedModels.push({ parent: targetGroup, model: finalModelToAdd });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
-              spawnSprite(targetGroup, item, finalModelToAdd.position.clone());
+              spawnSprite(model, item);
             }
             if (!isCancelled) {
               setModelsLoadedCount(prev => prev + 1);
@@ -943,7 +1090,6 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
     return () => {
       isCancelled = true;
-      spriteTimers.forEach(t => window.clearInterval(t));
       loadedModels.forEach(({ parent, model }) => {
         parent.remove(model);
       });

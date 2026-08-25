@@ -142,7 +142,7 @@ export default function AdminPresetSkinsManager() {
         return;
       }
       showAlert(editingId ? 'Skin atualizada com sucesso!' : 'Skin adicionada com sucesso!');
-      sessionCache.invalidate(CACHE_KEYS.presetSkins());
+      sessionCache.invalidate(CACHE_KEYS.presetSkins(tenantId));
       setIsModalOpen(false);
       fetchSkins(false);
     } catch (e: any) {
@@ -160,7 +160,7 @@ export default function AdminPresetSkinsManager() {
           return;
         }
         await supabase.from('preset_skins').delete().eq('id', id);
-        sessionCache.invalidate(CACHE_KEYS.presetSkins());
+        sessionCache.invalidate(CACHE_KEYS.presetSkins(tenantId));
         showAlert('Skin excluída com sucesso!');
         fetchSkins(false);
       } catch (e) {
