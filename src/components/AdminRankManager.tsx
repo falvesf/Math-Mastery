@@ -185,6 +185,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     // Obter total atual para não sobrepor IDs
     const currentCount = existingLocal?.length || 0;
     let addedCount = 0;
+    let lastError: any = null;
 
     for (let i = 0; i < sorted.length; i++) {
       const g = sorted[i];
@@ -193,17 +194,33 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       }
       
       const clean = cleanRankForDb(g);
-      await supabase.from('custom_ranks').insert({
+      const { error } = await supabase.from('custom_ranks').insert({
         id: `rank_${tenantPrefix}_${currentCount + addedCount}_${Date.now()}`,
         ...clean,
         hide_from_history: (g as any).hideFromHistory ?? ((g as any).hide_from_history ?? (g.minXp === 0)),
         tenant_id: tenantId || null,
         is_global: false
       });
+      if (error) {
+        lastError = error;
+        console.error('Erro ao importar patente local:', error);
+        continue;
+      }
       addedCount++;
     }
 
-    await showConfirm(`${addedCount} patentes importadas com sucesso!`, 'Sucesso');
+    if (addedCount > 0) {
+      await showConfirm(`${addedCount} patentes importadas com sucesso!`, 'Sucesso');
+    } else if (sorted.every(g => existingNames.has(g.name.toLowerCase()))) {
+      await showConfirm('Todas as patentes globais já existem na sua escola. Nenhuma nova importada.', 'Sem alterações');
+    } else if (lastError) {
+      await showConfirm(
+        `Falha ao importar as patentes. Erro do banco: ${lastError.message || 'sem detalhes'}\n\nVerifique se a tabela custom_ranks permite escrita (pode ser RLS). Rode o migration_custom_ranks_rls.sql no Supabase.`,
+        'Erro'
+      );
+    } else {
+      await showConfirm('Nenhuma patente foi importada.', 'Aviso');
+    }
     fetchRanks(false);
   };
 

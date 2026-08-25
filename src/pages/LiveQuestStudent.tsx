@@ -575,14 +575,13 @@ export default function LiveQuestStudent() {
           }
           const minV = Math.max(1, cfg.minValue ?? 1);
           const maxV = Math.max(minV, cfg.maxValue ?? minV);
-          const coinValue = Math.floor(Math.random() * (maxV - minV + 1)) + minV;
           setCoinsToRescue(dropped);
           setTimeout(() => setCoinsToRescue(0), 3000);
           const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
             id: Date.now() + i,
             x: 74 + Math.random() * 18,
             y: 70 + Math.random() * 15,
-            value: coinValue
+            value: Math.floor(Math.random() * (maxV - minV + 1)) + minV
           }));
           setDroppedCoins(prev => [...prev, ...newCoins]);
         }

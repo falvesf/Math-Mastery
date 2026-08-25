@@ -41,6 +41,8 @@ export interface ArenaDebugConfig {
   adminImmortal: boolean;
   monsterImmortal: boolean;
   forceCoinLoss: boolean;
+  forceRewards: boolean;
+  guaranteedCrit: boolean;
   showBubbleOrigins: boolean;
   bubbleOriginSize: number;
   bubbleMaxWidth: number;
@@ -91,6 +93,8 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   adminImmortal: false,
   monsterImmortal: false,
   forceCoinLoss: false,
+  forceRewards: false,
+  guaranteedCrit: false,
   showBubbleOrigins: false,
   bubbleOriginSize: 30,
   bubbleMaxWidth: 200,
@@ -249,6 +253,8 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
     adminImmortal: config.adminImmortal ?? false,
     monsterImmortal: config.monsterImmortal ?? false,
     forceCoinLoss: config.forceCoinLoss ?? false,
+    forceRewards: config.forceRewards ?? false,
+    guaranteedCrit: config.guaranteedCrit ?? false,
   };
 
   const update = (key: keyof ArenaDebugConfig, value: any) => {
@@ -349,6 +355,8 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
             <Toggle label="Admin imortal" value={safeConfig.adminImmortal} onChange={v => update('adminImmortal', v)} />
             <Toggle label="Monstro imortal" value={safeConfig.monsterImmortal} onChange={v => update('monsterImmortal', v)} />
             <Toggle label="Forçar perda de moedas" value={safeConfig.forceCoinLoss} onChange={v => update('forceCoinLoss', v)} />
+            <Toggle label="Admin recebe recompensas (teste)" value={safeConfig.forceRewards} onChange={v => update('forceRewards', v)} />
+            <Toggle label="Crítico garantido (teste)" value={safeConfig.guaranteedCrit} onChange={v => update('guaranteedCrit', v)} />
           </>
         )}
 

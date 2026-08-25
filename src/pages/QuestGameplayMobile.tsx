@@ -85,6 +85,9 @@ export default function QuestGameplay() {
   const [monsterBubble, setMonsterBubble] = useState<string>('');
   const [playerAnim, setPlayerAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
+  // Fração do coração ATUAL do monstro (1 = cheio, 0.5 = metade, 0.333 = 1/3, 0.25 = 1/4).
+  // Golpe crítico danifica o coração atual e o renderiza conforme o RNG sorteado.
+  const [monsterHeartFrac, setMonsterHeartFrac] = useState<number>(1);
   
   // Feedback Visual (certo/errado)
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
@@ -427,13 +430,13 @@ export default function QuestGameplay() {
         alreadyCompletedRef.current = alreadyCompleted;
         combatCoinConfigRef.current = normalizeCombatCoinDrop(qData.combatCoinDrop);
 
-        if (alreadyCompleted && userData.role !== 'admin' && !isStudyMode) {
+        if (alreadyCompleted && userData.role !== 'admin' && !isSuperAdmin && !isStudyMode) {
           setErrorMessage('Você já completou esta missão com sucesso!');
           setGameState('result');
           return;
         }
 
-        if (alreadyFailedHardcore && userData.role !== 'admin') {
+        if (alreadyFailedHardcore && userData.role !== 'admin' && !isSuperAdmin) {
           setErrorMessage('Você falhou nesta missão e ela não permite novas tentativas (Hardcore).');
           setGameState('result');
           return;
@@ -1019,7 +1022,9 @@ export default function QuestGameplay() {
       const baseCritChance = timeRatio > 0.5 ? 0.02 : 0.0025;
       const critChance = bonusCritActive ? baseCritChance * 2.5 : baseCritChance;
       
-      const isCritical = Math.random() < critChance;
+      // Debug: crítico garantido para testar
+      const debugGuaranteedCrit = !!arenaDebug.guaranteedCrit && (userData?.role === 'admin' || isSuperAdmin);
+      const isCritical = debugGuaranteedCrit || Math.random() < critChance;
       
       if (isCritical) {
         setCriticalHits(prev => prev + 1);
@@ -1027,6 +1032,9 @@ export default function QuestGameplay() {
         // Sorteia a vantagem fracionada
         const fractions = ['1/4', '1/3', '1/2'];
         const fraction = fractions[Math.floor(Math.random() * fractions.length)];
+        
+        // Renderiza o coração ATUAL do monstro com dano extra conforme o RNG (1/4, 1/3, 1/2)
+        setMonsterHeartFrac(fraction === '1/4' ? 0.25 : fraction === '1/3' ? 1 / 3 : 0.5);
         
         if (fraction === '1/4') {
           setNextQAdvantage('eliminate-2');
@@ -1060,7 +1068,7 @@ export default function QuestGameplay() {
         }
       } else {
         setPlayerAnim('attack');
-        setTimeout(() => { setMonsterAnim('hurt'); dropCoins(); }, 500);
+        setTimeout(() => { setMonsterAnim('hurt'); dropCoins(isCritical); }, 500);
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
         setTimeout(() => {
           setFeedback(null);
@@ -1227,6 +1235,7 @@ export default function QuestGameplay() {
     setNextQAdvantage(null);
     setBonusCritActive(isBonusCrit);
     setEliminatedOptions(newEliminated);
+    setMonsterHeartFrac(1); // próximo coração do monstro nasce cheio
 
     if (currentQIndex < quest.questions.length - 1) {
       setCurrentQIndex(nextIndex);
@@ -1242,8 +1251,11 @@ export default function QuestGameplay() {
     const isAbandon = customMessage?.includes('abandonou');
 
     const isStudent = userData?.role === 'student' || !!userData?.studentViewActive;
-    const isEligibleForXP = isStudent && !isStudyMode;
-    const isEligibleForChest = isStudent && !alreadyCompletedRef.current; // Baú só na 1ª conclusão
+    // Debug: admins testam recompensas recebendo XP/moedas/baú como se fossem alunos.
+    // Também ignora tentativas antigas (admin que já foi aluno) para SEMPRE receber o baú no teste.
+    const forceRewards = !!arenaDebug.forceRewards && (userData?.role === 'admin' || isSuperAdmin);
+    const isEligibleForXP = (isStudent || forceRewards) && !isStudyMode;
+    const isEligibleForChest = forceRewards || (isStudent && !alreadyCompletedRef.current); // Baú só na 1ª conclusão (alunos)
     
     setSaving(true);
     
@@ -1328,7 +1340,7 @@ export default function QuestGameplay() {
         }
       
     // Monster Drops (só na 1ª conclusão)
-    if (isWin && !alreadyCompletedRef.current && quest?.monsterDrops && quest.monsterDrops.length > 0) {
+    if (isWin && (forceRewards || !alreadyCompletedRef.current) && quest?.monsterDrops && quest.monsterDrops.length > 0) {
       const dropItemIds = quest.monsterDrops.map(d => d.itemId);
       if (dropItemIds.length > 0) {
         const { data: snap } = await supabase.from('store_items').select('*').in('id', dropItemIds);
@@ -1494,32 +1506,37 @@ export default function QuestGameplay() {
     setCoinPops(prev => [...prev, { id: Date.now() + Math.random(), x: coin.x, y: coin.y, value: coin.value }]);
   };
 
-  const dropCoins = () => {
+  const dropCoins = (isCrit = false) => {
     if (!economySettings?.coinsDropInCombat) return;
     const cfg = combatCoinConfigRef.current;
     let dropped: number;
-    let coinValue: number;
+
+    const rankObj = getRankForXp(userData?.xp || 0);
+    const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
 
     if (cfg.minCoins && cfg.maxCoins) {
       const minC = Math.max(1, cfg.minCoins);
       const maxC = Math.max(minC, cfg.maxCoins);
       dropped = Math.floor(Math.random() * (maxC - minC + 1)) + minC;
+      // Patente: patentes mais altas aumentam a quantidade do drop
+      dropped += (rankIndex - 1);
     } else {
-      const rankObj = getRankForXp(userData?.xp || 0);
-      const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+      // Sem config da missão → fallback baseado na patente
       dropped = Math.floor(Math.random() * rankIndex) + 1;
     }
 
+    // Golpe crítico DOBRA o drop de moedas
+    if (isCrit) dropped = dropped * 2;
+
     const minV = Math.max(1, cfg.minValue ?? 1);
     const maxV = Math.max(minV, cfg.maxValue ?? minV);
-    coinValue = Math.floor(Math.random() * (maxV - minV + 1)) + minV;
 
-    // Moedas caem na área configurável
+    // Moedas caem na área configurável — cada moeda tem valor aleatório (ex.: 1, 2 ou 3)
     const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
       id: Date.now() + i,
       x: arenaDebug.coinAreaX + Math.random() * arenaDebug.coinAreaW,
       y: arenaDebug.coinAreaY + Math.random() * arenaDebug.coinAreaH,
-      value: coinValue
+      value: Math.floor(Math.random() * (maxV - minV + 1)) + minV
     }));
     setDroppedCoins(prev => [...prev, ...newCoins]);
     setCoinsToRescue(dropped);
@@ -1929,9 +1946,28 @@ export default function QuestGameplay() {
                   <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arenaDebug.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
-                      {Array.from({ length: Math.max(0, (quest?.questions.length || 0) - currentQIndex - (monsterAnim.startsWith('death-') ? 1 : 0)) }).map((_, i) => (
-                        <Heart key={i} size={10} fill="#ef4444" color="#ef4444" />
-                      ))}
+                      {(() => {
+                        const totalHearts = quest?.questions.length || 0;
+                        const remainingHearts = Math.max(0, totalHearts - currentQIndex - (monsterAnim.startsWith('death-') ? 1 : 0));
+                        if (remainingHearts <= 0) return null;
+                        // Corações cheios (todos, exceto o atual que pode estar danificado por crítico)
+                        const fullHearts = Math.max(0, remainingHearts - 1);
+                        const hearts = [];
+                        for (let i = 0; i < fullHearts; i++) {
+                          hearts.push(<Heart key={`f${i}`} size={10} fill="#ef4444" color="#ef4444" />);
+                        }
+                        // Coração ATUAL renderizado conforme o RNG do crítico (1 = cheio, 1/2, 1/3, 1/4)
+                        const frac = Math.max(0.01, Math.min(1, monsterHeartFrac));
+                        hearts.push(
+                          <span key="cur" style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+                            <Heart size={10} fill="rgba(239, 68, 68, 0.12)" color="#ef4444" />
+                            <span style={{ position: 'absolute', inset: 0, width: `${frac * 100}%`, overflow: 'hidden' }}>
+                              <Heart size={10} fill="#ef4444" color="#ef4444" />
+                            </span>
+                          </span>
+                        );
+                        return hearts;
+                      })()}
                     </div>
                   </div>
                 <div style={{ position: 'relative', display: 'inline-block' }}>

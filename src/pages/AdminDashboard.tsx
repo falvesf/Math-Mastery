@@ -1499,7 +1499,7 @@ export default function AdminDashboard() {
       battleBgMoveSpeed: questBattleBgMoveSpeed,
       battleBgMoveDuration: questBattleBgMoveDuration,
       podiumBgUrl: questPodiumBgUrl || undefined,
-      combatCoinDrop: {
+      combatcoindrop: {
         minCoins: questCombatCoinMin,
         maxCoins: questCombatCoinMax,
         minValue: questCombatCoinMinValue,

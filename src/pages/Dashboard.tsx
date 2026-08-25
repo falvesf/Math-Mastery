@@ -2658,7 +2658,10 @@ export default function Dashboard() {
                           if (isCompleted || !activeLiveQuests[quest.id]) return;
                           navigate(`/live/${quest.id}`);
                         } else {
-                          navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`);
+                          // Admin/superadmin SEMPRE joga a missão completa (não vai para Revisão),
+                          // mesmo que já tenha tentativas da época em que era aluno — assim pode testar recompensas.
+                          const isAdminPlayer = userData?.role === 'admin' || userData?.role === 'superadmin';
+                          navigate((isCompleted && !isAdminPlayer) ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`);
                         }
                       }}
                     >
@@ -2755,13 +2758,14 @@ export default function Dashboard() {
                                 if (quest.mode === 'live' && !isCompleted) {
                                   navigate(`/live/${quest.id}`);
                                 } else {
-                                  navigate(isCompleted ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`);
+                                  const isAdminPlayer = userData?.role === 'admin' || userData?.role === 'superadmin';
+                                  navigate((isCompleted && !isAdminPlayer) ? `/quest/${quest.id}?study=true` : `/quest/${quest.id}`);
                                 }
                               }}
                             >
                               {quest.mode === 'live' && !isCompleted
                                 ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : 'Não Iniciada')
-                                : (isCompleted ? 'Revisar' : 'Jogar Agora')}
+                                : ((isCompleted && userData?.role !== 'admin' && userData?.role !== 'superadmin') ? 'Revisar' : 'Jogar Agora')}
                             </button>
                           </div>
                         </div>
