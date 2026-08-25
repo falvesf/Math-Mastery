@@ -205,6 +205,33 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
   }, []);
   openConversationRef.current = openConversation;
 
+  // Abrir conversa por evento externo (ex: clicar "Enviar mensagem" no professor visitante)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.uid) return;
+      const contact = contacts.find(c => c.uid === detail.uid) || {
+        uid: detail.uid,
+        name: detail.name || 'Professor(a)',
+        online: true,
+        isFriend: false,
+        classId: detail.classId,
+      } as ChatContact;
+      setOpen(true);
+      openConversation(contact);
+    };
+    window.addEventListener('open-chat-with', handler);
+    return () => window.removeEventListener('open-chat-with', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contacts]);
+
+  // Avisa o professor visitante quando um chat abre/fecha (para o boneco parar de andar)
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('teacher-visit-chat', {
+      detail: { open: open && !!activeContact, teacherUid: activeContact?.uid || null },
+    }));
+  }, [open, activeContact]);
+
   const handleSend = async () => {
     if (!uid || !activeContact || !draft.trim()) return;
     const { text, containsBlocked } = sanitizeMessage(draft);

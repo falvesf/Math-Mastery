@@ -424,7 +424,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                   appliedTransform = true;
                 } else if (item.modelTransforms) {
                   const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
-                  let transform = resolveModelTransform(item, config.gender, config.handedness, isBattle);
+                  const transform = resolveModelTransform(item, config.gender, config.handedness, isBattle)
+                    || item.modelTransforms.common
+                    || (Object.values(item.modelTransforms)[0] as any);
                   if (transform) {
                     model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
                     model.position.set(transform.posX * inv, transform.posY, transform.posZ);
@@ -909,9 +911,11 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           appliedTransform = true;
         } else if (item.modelTransforms) {
           const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
-          
-          let transform = resolveModelTransform(item, config.gender, config.handedness, isBattle);
-          
+
+          const transform = resolveModelTransform(item, config.gender, config.handedness, isBattle)
+            || item.modelTransforms.common
+            || (Object.values(item.modelTransforms)[0] as any);
+
           if (transform) {
             model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
             model.position.set(transform.posX * inv, transform.posY, transform.posZ);

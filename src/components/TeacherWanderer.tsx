@@ -22,6 +22,7 @@ interface OnlineTeacher {
 }
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000; // 5 min (abas em background podem atrasar o heartbeat)
+const DISMISS_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 1 dia
 
 export default function TeacherWanderer({ myUid, tenantId, onOpenTeacherProfile, top3Names = [], isRankingView }: TeacherWandererProps) {
   const [teacher, setTeacher] = useState<OnlineTeacher | null>(null);
@@ -33,6 +34,22 @@ export default function TeacherWanderer({ myUid, tenantId, onOpenTeacherProfile,
   const [bubbleMsg, setBubbleMsg] = useState('');
   const [phase, setPhase] = useState<'walking' | 'pondering'>('walking');
   const animationRef = useRef<number>(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Menu de interação + estados de pausa/animação
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [chatPaused, setChatPaused] = useState(false);
+  const [transientAnim, setTransientAnim] = useState<string | null>(null);
+
+  const paused = menuOpen || chatPaused;
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      cancelAnimationFrame(animationRef.current);
+    };
+  }, []);
 
   // Buscar o professor e verificar se é a MINHA vez de ser visitado.
   // Consulta o estado central (banco) — o motor roda no professor.
@@ -49,15 +66,28 @@ export default function TeacherWanderer({ myUid, tenantId, onOpenTeacherProfile,
         return;
       }
 
-      // É a minha vez: carregar o avatar do professor
+      // Aluno dispensou este professor (cooldown de 1 dia para retorno)
+      const { data: myRow } = await supabase
+        .from('users')
+        .select('visitor_dismissal')
+        .eq('id', myUid)
+        .maybeSingle();
+      if (cancelled) return;
+      const dismiss = (myRow as any)?.visitor_dismissal;
+      if (dismiss && dismiss.teacherUid === visit.teacherUid && Date.now() - dismiss.dismissedAt < DISMISS_COOLDOWN_MS) {
+        setTeacher(null);
+        return;
+      }
+
+      // É a minha vez: carregar o professor (APENAS professores podem visitar)
       const { data: teacherRow } = await supabase
         .from('users')
-        .select('id, name, character_name, photo_url, avatar_config')
+        .select('id, name, role, character_name, photo_url, avatar_config')
         .eq('id', visit.teacherUid)
         .single();
 
       if (cancelled) return;
-      if (!teacherRow) { setTeacher(null); return; }
+      if (!teacherRow || teacherRow.role !== 'teacher') { setTeacher(null); return; }
 
       setTeacher({
         uid: teacherRow.id,
@@ -116,9 +146,36 @@ export default function TeacherWanderer({ myUid, tenantId, onOpenTeacherProfile,
     }
   }, [visible]);
 
-  // Animação de caminhada com requestAnimationFrame (ida e volta)
+  // Pausar/retomar quando um chat com o professor visitante abre/fecha
   useEffect(() => {
-    if (!visible || !teacher) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      if (detail.open && teacher && detail.teacherUid === teacher.uid) {
+        setChatPaused(true);
+      } else if (!detail.open) {
+        setChatPaused(false);
+      }
+    };
+    window.addEventListener('teacher-visit-chat', handler);
+    return () => window.removeEventListener('teacher-visit-chat', handler);
+  }, [teacher]);
+
+  // Fecha o menu se clicar fora do boneco/professor
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const t = setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    return () => { clearTimeout(t); document.removeEventListener('mousedown', handler); };
+  }, [menuOpen]);
+
+  // Animação de caminhada (para quando pausado/menu aberto)
+  useEffect(() => {
+    if (!visible || !teacher || paused) return;
     let lastTime = performance.now();
 
     const step = (time: number) => {
@@ -135,11 +192,11 @@ export default function TeacherWanderer({ myUid, tenantId, onOpenTeacherProfile,
     };
     animationRef.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animationRef.current);
-  }, [visible, teacher, direction, isRankingView]);
+  }, [visible, teacher, direction, isRankingView, paused]);
 
   // Quando está no ranking: parar no topo, pensar e apontar para os 3 melhores
   useEffect(() => {
-    if (!isRankingView || !teacher || !visible) return;
+    if (!isRankingView || !teacher || !visible || paused) return;
     // Após 2s de caminhada lenta, para e "pensa"
     const stopTimer = setTimeout(() => {
       setPhase('pondering');
@@ -158,28 +215,105 @@ export default function TeacherWanderer({ myUid, tenantId, onOpenTeacherProfile,
       }, 3000);
     }, 1500);
     return () => clearTimeout(stopTimer);
-  }, [isRankingView, teacher, visible, top3Names]);
+  }, [isRankingView, teacher, visible, top3Names, paused]);
+
+  const playTransient = (anim: string) => {
+    setTransientAnim(anim);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setTransientAnim(null), 1800);
+  };
+
+  const handleTeacherClick = () => {
+    if (!teacher) return;
+    setMenuOpen(o => !o);
+  };
+
+  const handleStatus = () => {
+    if (!teacher) return;
+    setMenuOpen(false);
+    playTransient('raise-hand');
+    onOpenTeacherProfile?.(teacher.uid);
+  };
+
+  const handleMessage = () => {
+    if (!teacher) return;
+    setMenuOpen(false);
+    playTransient('cheer');
+    setChatPaused(true);
+    window.dispatchEvent(new CustomEvent('open-chat-with', {
+      detail: { uid: teacher.uid, name: teacher.characterName || teacher.name, classId: undefined },
+    }));
+  };
+
+  const handleBye = async () => {
+    if (!teacher || !myUid) return;
+    setMenuOpen(false);
+    playTransient('victory-easy');
+    // Registra a dispensa (cooldown de 1 dia para o retorno deste professor)
+    try {
+      await supabase.from('users').update({
+        visitor_dismissal: { teacherUid: teacher.uid, dismissedAt: Date.now() },
+      }).eq('id', myUid);
+    } catch (e) { console.error('Erro ao registrar dispensa:', e); }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setTeacher(null), 1800);
+  };
 
   if (!teacher || !visible) return null;
 
   const scale = 0.5 + (posX / 100) * 0.6;
+  const animation = transientAnim || (paused ? 'idle' : phase === 'pondering' ? 'raise-hand' : 'walk');
 
   return (
     <div
-      onClick={() => onOpenTeacherProfile?.(teacher.uid)}
+      ref={rootRef}
+      onClick={handleTeacherClick}
       style={{
         position: 'fixed',
         bottom: '8%',
         left: `${posX}%`,
         transform: `scaleX(${direction}) scale(${scale})`,
-        zIndex: 9000,
+        zIndex: chatPaused ? 1 : 9000,
         cursor: 'pointer',
         transition: 'transform 0.1s',
         userSelect: 'none',
       }}
-      title={`${teacher.characterName || teacher.name} — clique para ver o histórico e adicionar aos contatos`}
+      title={teacher.characterName || teacher.name}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+        {/* Menu de interação */}
+        {menuOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'var(--bg-panel)',
+              border: '1px solid var(--border-glass)',
+              borderRadius: '12px',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+              padding: '0.5rem',
+              minWidth: '180px',
+              zIndex: 10,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.25rem',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button onClick={handleStatus} style={menuBtnStyle} title="Abrir o perfil/status do professor">
+              📋 Verificar status
+            </button>
+            <button onClick={handleMessage} style={menuBtnStyle} title="Abrir o chat com este professor">
+              💬 Enviar mensagem
+            </button>
+            <button onClick={handleBye} style={{ ...menuBtnStyle, color: '#f87171' }} title="Dispensar o professor (volta em 1 dia)">
+              👋 Dar tchau
+            </button>
+          </div>
+        )}
+
         {/* Balão de fala */}
         {showBubble && (
           <div style={{
@@ -199,7 +333,7 @@ export default function TeacherWanderer({ myUid, tenantId, onOpenTeacherProfile,
               equippedItems={equipped}
               size={110}
               interactive={false}
-              animation={phase === 'pondering' ? 'raise-hand' : 'walk'}
+              animation={animation as any}
             />
           ) : (
             <div style={{
@@ -221,3 +355,19 @@ export default function TeacherWanderer({ myUid, tenantId, onOpenTeacherProfile,
     </div>
   );
 }
+
+const menuBtnStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  padding: '0.5rem 0.75rem',
+  background: 'transparent',
+  border: 'none',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  color: 'var(--text-primary)',
+  fontSize: '0.85rem',
+  textAlign: 'left',
+  whiteSpace: 'nowrap',
+  fontFamily: 'inherit',
+};

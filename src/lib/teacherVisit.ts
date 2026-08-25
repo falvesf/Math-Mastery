@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getPresenceState } from './onlinePresence';
 
 /**
  * Sistema de VISITAS DO PROFESSOR — coordenado por estado central no banco.
@@ -80,6 +81,15 @@ export async function runVisitEngine(
   tenantId?: string | null,
 ): Promise<void> {
   try {
+    // SOMENTE professores (role 'teacher') podem visitar alunos —
+    // administradores, coordenadores etc. ficam de fora.
+    const { data: caller } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', teacherUid)
+      .maybeSingle();
+    if (!caller || caller.role !== 'teacher') return;
+
     const current = await getTeacherVisit(tenantId);
 
     // Se há uma visita ativa iniciada há menos de 60s, mantém (não sorteia)
@@ -87,16 +97,16 @@ export async function runVisitEngine(
       return;
     }
 
-    // Buscar alunos online da escola
-    const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    // Quem está online AGORA (presença em tempo real) — evita depender só do
+    // last_seen_at (que pode atrasar em abas em background).
+    const onlineUids = getPresenceState().onlineUids;
+    const cutoff = Date.now() - 5 * 60 * 1000;
+
+    // Buscar alunos da escola (tenant_id OU tenant_users)
     let query = supabase
       .from('users')
-      .select('id, name')
-      .eq('role', 'student')
-      .gte('last_seen_at', cutoff);
-
-    // Alguns alunos existem só em tenant_users (users.tenant_id nulo) e ficavam
-    // fora do sorteio. Incluímos também os membros do tenant.
+      .select('id, name, last_seen_at')
+      .eq('role', 'student');
     if (tenantId) {
       const { data: memberRows } = await supabase
         .from('tenant_users')
@@ -112,7 +122,13 @@ export async function runVisitEngine(
 
     const { data: students } = await query;
 
-    const online = (students || []).filter((s: any) => s.id !== teacherUid);
+    const online = (students || []).filter((s: any) =>
+      s.id !== teacherUid &&
+      (
+        onlineUids.has(s.id) ||
+        (s.last_seen_at && new Date(s.last_seen_at).getTime() >= cutoff)
+      )
+    );
     if (online.length === 0) {
       // Ninguém online para visitar: limpa a visita
       await setTeacherVisit(tenantId, { teacherUid, teacherName, targetUid: '', startedAt: Date.now() });
