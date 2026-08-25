@@ -18,7 +18,7 @@ import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
-import { fetchModel3DById, fetchActiveCoin } from '../lib/model3d';
+import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 
 interface UserItem {
   id: string;
@@ -487,7 +487,9 @@ export default function QuestGameplay() {
           const chestModel = await fetchModel3DById(qData.chestConfig.chestModelId, tenantId);
           setSelectedChestModel(chestModel);
         } else {
-          setSelectedChestModel(null);
+          // Sem baú específico → usa o baú padrão cadastrado em Moldes 3D > Baús
+          const activeChest = await fetchActiveChest(tenantId);
+          setSelectedChestModel(activeChest);
         }
         const coinModel = await fetchActiveCoin(tenantId);
         setActiveCoinModel(coinModel);

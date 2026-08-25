@@ -52,6 +52,16 @@ export async function fetchActiveCoin(tenantId?: string | null): Promise<Model3D
 }
 
 /**
+ * Busca o baú de recompensa PADRÃO (marca is_active).
+ * Usado como fallback quando uma missão não define um baú específico
+ * (chestConfig.chestModelId vazio) — substitui o /models/minecraft_chest.glb fixo.
+ */
+export async function fetchActiveChest(tenantId?: string | null): Promise<Model3D | null> {
+  const chests = await fetchModelsByCategory('chest', tenantId);
+  return chests.find(c => c.is_active) || null;
+}
+
+/**
  * Busca um modelo por id (usado para o baú selecionado na missão).
  */
 export async function fetchModel3DById(id: string, tenantId?: string | null): Promise<Model3D | null> {

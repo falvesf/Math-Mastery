@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import CustomModelViewer from './CustomModelViewer';
-import { isImageUrl } from '../lib/model3d';
+import { fetchActiveChest, isImageUrl } from '../lib/model3d';
+import { useTenant } from '../contexts/TenantContext';
 
 interface ChestRevealProps {
   onOpen: () => void;
@@ -22,11 +23,28 @@ const RARITY_COLORS: Record<string, string> = {
 export default function ChestReveal({ onOpen, title = "Baú de Recompensas", subtitle = "Clique no baú para abri-lo!", chestModelUrl, chestOpenUrl, rarity }: ChestRevealProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
+  const { tenantId } = useTenant();
 
-  const usePngChest = chestModelUrl ? isImageUrl(chestModelUrl) : false;
-  const displayUrl = chestOpenUrl && isOpen ? chestOpenUrl : chestModelUrl;
+  // Baú padrão cadastrado em Moldes 3D > Baús de Recompensa (is_active).
+  // Usado como fallback quando nenhum baú específico foi passado — substitui o minecraft_chest.glb fixo.
+  const [defaultChest, setDefaultChest] = useState<{ url: string; open_url?: string; rarity?: string } | null>(null);
+  useEffect(() => {
+    if (chestModelUrl) return;
+    let mounted = true;
+    fetchActiveChest(tenantId).then(chest => {
+      if (mounted && chest) setDefaultChest(chest);
+    });
+    return () => { mounted = false; };
+  }, [chestModelUrl, tenantId]);
 
-  const rarityColor = rarity ? (RARITY_COLORS[rarity] || '#fbbf24') : 'var(--gold-primary)';
+  const resolvedUrl = chestModelUrl || defaultChest?.url || '/models/minecraft_chest.glb';
+  const resolvedOpenUrl = chestOpenUrl || defaultChest?.open_url || undefined;
+  const resolvedRarity = rarity || defaultChest?.rarity;
+
+  const usePngChest = resolvedUrl ? isImageUrl(resolvedUrl) : false;
+  const displayUrl = resolvedOpenUrl && isOpen ? resolvedOpenUrl : resolvedUrl;
+
+  const rarityColor = resolvedRarity ? (RARITY_COLORS[resolvedRarity] || '#fbbf24') : 'var(--gold-primary)';
 
   const handleOpen = () => {
     if (isOpen || isOpening) return;
@@ -85,11 +103,10 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
         }}
         className={!isOpen ? 'hover-pulse' : ''}
       >
-        {chestModelUrl ? (
-          usePngChest ? (
+        {usePngChest ? (
             <div style={{ width: '120px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <img
-                src={displayUrl || chestModelUrl}
+                src={displayUrl || resolvedUrl}
                 alt="Baú"
                 style={{
                   maxWidth: '120px',
@@ -104,21 +121,12 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
           ) : (
             <div style={{ maxWidth: '120px', maxHeight: '120px' }}>
               <CustomModelViewer 
-                modelUrl={chestModelUrl}
+                modelUrl={resolvedUrl}
                 animation={isOpen ? 'open' : 'none'}
                 size={120}
               />
             </div>
-          )
-        ) : (
-          <div style={{ maxWidth: '120px', maxHeight: '120px' }}>
-            <CustomModelViewer 
-              modelUrl="/models/minecraft_chest.glb"
-              animation={isOpen ? 'open' : 'none'}
-              size={120}
-            />
-          </div>
-        )}
+          )}
       </div>
     </div>
   );

@@ -150,6 +150,15 @@ export default function Admin3DModelsManager() {
         data.rarity = rarity || null;
         data.open_url = openUrl.trim() || null;
         data.slot_count = Math.max(1, Math.min(10, slotCount || 4));
+        data.is_active = isActive;
+        if (isActive) {
+          // Só um baú padrão por tenant (ou global quando sem tenant)
+          if (tenantId) {
+            await supabase.from('3d_models').update({ is_active: false }).eq('category', 'chest').eq('tenant_id', tenantId);
+          } else {
+            await supabase.from('3d_models').update({ is_active: false }).eq('category', 'chest').is('tenant_id', null);
+          }
+        }
       } else if (category === 'coin') {
         data.open_url = openUrl.trim() || null;
         data.is_active = isActive;
@@ -248,6 +257,35 @@ export default function Admin3DModelsManager() {
     } catch (e) {
       console.error(e);
       showAlert('Erro ao ativar moeda.');
+    }
+  };
+
+  const handleActivateChest = async (model: Model3D) => {
+    if (model._isGlobal && !isSuperAdmin) {
+      showAlert('Modelos globais só podem ser editados pelo superadmin.');
+      return;
+    }
+    try {
+      const { error: e1 } = tenantId
+          ? await supabase.from('3d_models').update({ is_active: false }).eq('category', 'chest').eq('tenant_id', tenantId)
+          : await supabase.from('3d_models').update({ is_active: false }).eq('category', 'chest').is('tenant_id', null);
+      const { error: e2 } = await supabase.from('3d_models').update({ is_active: true }).eq('id', model.id);
+      const err = e1 || e2;
+      if (err) {
+        console.error('Erro ao definir baú padrão:', err);
+        if ((err.message || '').includes('category') || (err.message || '').includes('does not exist')) {
+          showAlert('Faltam colunas novas na tabela 3d_models. Rode o migration_3d_models_categories.sql no Supabase.');
+        } else {
+          showAlert(`Erro ao definir baú padrão: ${err.message}`);
+        }
+        return;
+      }
+      sessionCache.invalidate(CACHE_KEYS.models3d());
+      fetchModels(false);
+      showAlert(`Baú "${model.name}" definido como padrão!`);
+    } catch (e) {
+      console.error(e);
+      showAlert('Erro ao definir baú padrão.');
     }
   };
 
@@ -463,6 +501,18 @@ export default function Admin3DModelsManager() {
               </>
             )}
 
+            {category === 'chest' && (
+              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={e => setIsActive(e.target.checked)}
+                  style={{ width: '20px', height: '20px' }}
+                />
+                <label style={{ color: 'var(--text-primary)' }}>Marcar como baú padrão (usado quando a missão não define um baú específico)</label>
+              </div>
+            )}
+
             {category === 'coin' && (
               <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <input
@@ -511,6 +561,11 @@ export default function Admin3DModelsManager() {
                       {model.category === 'chest' && model.slot_count && (
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{model.slot_count} slots</span>
                       )}
+                      {model.category === 'chest' && model.is_active && (
+                        <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', border: '1px solid #f59e0b', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <Check size={11} /> Padrão
+                        </span>
+                      )}
                       {model.category === 'coin' && model.is_active && (
                         <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', background: 'rgba(251, 191, 36, 0.2)', color: '#fbbf24', border: '1px solid #fbbf24', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           <Check size={11} /> Ativa
@@ -519,6 +574,11 @@ export default function Admin3DModelsManager() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                    {model.category === 'chest' && !model.is_active && (
+                      <button onClick={() => handleActivateChest(model)} disabled={model._isGlobal && !isSuperAdmin} title="Definir como baú padrão" style={{ padding: '0.5rem', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
+                        <Check size={16} />
+                      </button>
+                    )}
                     {model.category === 'coin' && !model.is_active && (
                       <button onClick={() => handleActivateCoin(model)} disabled={model._isGlobal && !isSuperAdmin} title="Ativar moeda" style={{ padding: '0.5rem', color: '#fbbf24', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
                         <Check size={16} />

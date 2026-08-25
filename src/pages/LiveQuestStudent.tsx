@@ -18,7 +18,7 @@ import { normalizeCombatCoinDrop } from '../lib/utils';
 import { useDialog } from '../contexts/DialogContext';
 import { calculateTotalStats } from '../lib/gacha';
 import type { GameEffectType } from '../components/AdminStoreManager';
-import { fetchModel3DById, fetchActiveCoin } from '../lib/model3d';
+import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 interface UserItem {
@@ -137,7 +137,9 @@ export default function LiveQuestStudent() {
           const chestModel = await fetchModel3DById(chestModelId, tenantId);
           setSelectedChestModel(chestModel);
         } else {
-          setSelectedChestModel(null);
+          // Sem baú específico → usa o baú padrão cadastrado em Moldes 3D > Baús
+          const activeChest = await fetchActiveChest(tenantId);
+          setSelectedChestModel(activeChest);
         }
         const coinModel = await fetchActiveCoin(tenantId);
         setActiveCoinModel(coinModel);
