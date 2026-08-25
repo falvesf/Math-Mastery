@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import React from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { TenantProvider, useTenant } from './contexts/TenantContext';
@@ -168,12 +168,62 @@ function App() {
       <AuthProvider>
         <TenantProvider>
           <DialogProvider>
+            <ImpersonationBanner />
             <AppRoutes />
             <StaffApprovalNotifications />
           </DialogProvider>
         </TenantProvider>
       </AuthProvider>
     </Router>
+  );
+}
+
+function ImpersonationBanner() {
+  const { userData, impersonatingId, exitImpersonation } = useAuth();
+  const navigate = useNavigate();
+
+  if (!impersonatingId || !userData) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 9999999,
+      background: 'linear-gradient(90deg, #0f766e, #065f46)',
+      color: 'white',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '1rem',
+      padding: '0.5rem 1rem',
+      fontSize: '0.85rem',
+      fontWeight: 'bold',
+      boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
+      flexWrap: 'wrap',
+      textAlign: 'center'
+    }}>
+      <span>🕵️ Você está logado como <span style={{ textDecoration: 'underline' }}>{userData.name || userData.email}</span> ({userData.role}) — modo de suporte/verificação de bugs</span>
+      <button
+        onClick={async () => {
+          await exitImpersonation();
+          navigate('/admin');
+        }}
+        style={{
+          background: '#fff',
+          color: '#0f766e',
+          border: 'none',
+          padding: '0.35rem 1rem',
+          borderRadius: '20px',
+          cursor: 'pointer',
+          fontWeight: 'bold',
+          fontSize: '0.8rem'
+        }}
+      >
+        Sair e voltar ao Admin
+      </button>
+    </div>
   );
 }
 
