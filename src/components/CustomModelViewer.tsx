@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { useGLTF, useAnimations, OrbitControls, Bounds } from '@react-three/drei';
 import * as THREE from 'three';
 
@@ -9,6 +9,27 @@ interface CustomModelViewerProps {
   animation?: string;
   size?: number;
   role?: 'player' | 'monster';
+}
+
+// Para baús "de dois estados" (fechado à esquerda + aberto à direita no MESMO .glb,
+// sem animação de ossos): detecta o centro de cada baú para saber a distância do deslize.
+// Retorna null se não conseguir separar em dois grupos (ex.: um único mesh).
+function computeChestSlide(scene: THREE.Object3D): { closedX: number; openX: number } | null {
+  const centers: number[] = [];
+  scene.updateMatrixWorld(true);
+  scene.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      const box = new THREE.Box3().setFromObject(child as THREE.Object3D);
+      centers.push(box.getCenter(new THREE.Vector3()).x);
+    }
+  });
+  if (centers.length < 2) return null;
+  const left = centers.filter(x => x <= 0);
+  const right = centers.filter(x => x > 0);
+  if (left.length === 0 || right.length === 0) return null;
+  const closedX = left.reduce((s, x) => s + x, 0) / left.length;
+  const openX = right.reduce((s, x) => s + x, 0) / right.length;
+  return { closedX, openX };
 }
 
 function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster' }) {
@@ -119,7 +140,40 @@ function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string
     return [0, Math.PI, 0];
   }, [role, animationName]);
 
-  return <primitive object={scene} rotation={targetRotation} />;
+  // Baú "de dois estados" (fechado | aberto no mesmo arquivo, SEM animação de ossos):
+  // quando o arquivo tem animação 'open' de verdade, deixamos a animação rodar.
+  // Quando NÃO tem, usamos o deslize horizontal para revelar o baú aberto.
+  const isChest = modelUrl.includes('chest');
+  const hasOpenAnimation = Object.keys(actions).some(name => /open/i.test(name));
+  const chestSlide = React.useMemo(() => {
+    if (!isChest || hasOpenAnimation) return null;
+    return computeChestSlide(scene);
+  }, [isChest, hasOpenAnimation, scene]);
+
+  const slideTargetX = React.useMemo(() => {
+    if (!chestSlide) return 0;
+    return animationName === 'open' ? chestSlide.openX : chestSlide.closedX;
+  }, [chestSlide, animationName]);
+
+  const slideGroupRef = useRef<THREE.Group>(null);
+  const isFirstSlideFrame = useRef(true);
+  useFrame((_, delta) => {
+    const g = slideGroupRef.current;
+    if (!g) return;
+    if (isFirstSlideFrame.current) {
+      g.position.x = slideTargetX;
+      isFirstSlideFrame.current = false;
+      return;
+    }
+    const next = THREE.MathUtils.damp(g.position.x, slideTargetX, 8, delta);
+    if (Math.abs(next - g.position.x) > 0.0001) g.position.x = next;
+  });
+
+  return (
+    <group ref={slideGroupRef}>
+      <primitive object={scene} rotation={targetRotation} />
+    </group>
+  );
 }
 
 export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role }: CustomModelViewerProps) {
