@@ -101,6 +101,13 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     }
   };
 
+  // Remove campos de exibição (aliases camelCase) que NÃO são colunas do banco.
+  // Enviá-los no INSERT/UPSERT faz o PostgREST rejeitar a linha inteira.
+  const cleanRankForDb = (r: any) => {
+    const { _isGlobal, _id, id, hideFromHistory, ...clean } = r || {};
+    return clean;
+  };
+
   const fetchRanks = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
@@ -184,10 +191,11 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         continue; // Ignora se já existe uma patente com o mesmo nome
       }
       
-      const { _isGlobal, id, _id, ...rankData } = g as any;
+      const clean = cleanRankForDb(g);
       await supabase.from('custom_ranks').insert({
         id: `rank_${tenantPrefix}_${currentCount + addedCount}_${Date.now()}`,
-        ...rankData,
+        ...clean,
+        hide_from_history: (g as any).hideFromHistory ?? ((g as any).hide_from_history ?? (g.minXp === 0)),
         tenant_id: tenantId || null,
         is_global: false
       });
@@ -221,10 +229,11 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
 
     const sorted = [...globalRanks].sort((a, b) => a.minXp - b.minXp);
     for (let i = 0; i < sorted.length; i++) {
-      const { _isGlobal, ...rankData } = sorted[i] as any;
+      const clean = cleanRankForDb(sorted[i]);
       await supabase.from('custom_ranks').upsert({
         id: `rank_${tenantPrefix}_${i}`,
-        ...rankData,
+        ...clean,
+        hide_from_history: (sorted[i] as any).hideFromHistory ?? ((sorted[i] as any).hide_from_history ?? (sorted[i].minXp === 0)),
         tenant_id: tenantId || null,
         is_global: false
       });
@@ -244,10 +253,11 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       .eq('tenant_id', tenantId)
       .eq('is_global', false);
     const nextIdx = existingLocal.data?.length || 0;
-    const { _isGlobal, ...rankData } = global as any;
+    const clean = cleanRankForDb(global);
     await supabase.from('custom_ranks').upsert({
       id: `rank_${tenantPrefix}_${nextIdx}`,
-      ...rankData,
+      ...clean,
+      hide_from_history: (global as any).hideFromHistory ?? ((global as any).hide_from_history ?? (global.minXp === 0)),
       tenant_id: tenantId || null,
       is_global: false
     });
@@ -336,14 +346,16 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
     // Salvar patentes locais com IDs únicos por tenant
     const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
     for (let i = 0; i < newRanks.length; i++) {
-      const { _isGlobal, ...rankData } = newRanks[i] as any;
-      await supabase.from('custom_ranks').upsert({
+      const src = newRanks[i] as any;
+      const clean = cleanRankForDb(src);
+      const { error } = await supabase.from('custom_ranks').upsert({
         id: `rank_${tenantPrefix}_${i}`,
-        ...rankData,
-        hide_from_history: rankData.hideFromHistory ?? (rankData.minXp === 0),
+        ...clean,
+        hide_from_history: src.hideFromHistory ?? (src.minXp === 0),
         tenant_id: tenantId || null,
         is_global: false
       });
+      if (error) console.error('Erro ao salvar patente local:', error);
     }
 
     // Nova patente também vira base GLOBAL (banco de patentes), editável só pelo superadmin
@@ -412,11 +424,12 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
 
       const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
       for (let i = 0; i < localRanks.length; i++) {
-        const { _isGlobal, ...rankData } = localRanks[i] as any;
+        const src = localRanks[i] as any;
+        const clean = cleanRankForDb(src);
         await supabase.from('custom_ranks').upsert({
           id: `rank_${tenantPrefix}_${i}`,
-          ...rankData,
-          hide_from_history: rankData.hideFromHistory ?? (rankData.minXp === 0),
+          ...clean,
+          hide_from_history: src.hideFromHistory ?? (src.minXp === 0),
           tenant_id: tenantId || null,
           is_global: false
         });
