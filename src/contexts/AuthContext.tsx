@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -90,6 +90,9 @@ interface AuthContextType {
   toggleStudentView: () => Promise<void>;
   updateUserDataLocally: (updates: Partial<UserData>) => void;
   ranksLoaded: boolean;
+  impersonatingId: string | null;
+  startImpersonation: (userId: string) => Promise<void>;
+  exitImpersonation: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -99,7 +102,10 @@ const AuthContext = createContext<AuthContextType>({
   needsEnrollment: false,
   toggleStudentView: async () => {},
   updateUserDataLocally: () => {},
-  ranksLoaded: false
+  ranksLoaded: false,
+  impersonatingId: null,
+  startImpersonation: async () => {},
+  exitImpersonation: async () => {}
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -110,13 +116,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [needsEnrollment, setNeedsEnrollment] = useState(false);
   const [ranksLoaded, setRanksLoaded] = useState(false);
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(() => {
+    return localStorage.getItem('impersonatingUserId') || null;
+  });
+
+  const getImpersonatingId = () => localStorage.getItem('impersonatingUserId') || null;
+
+  // Guarda a função de fetch definida dentro do efeito para poder ser chamada
+  // por startImpersonation/exitImpersonation (que vivem no corpo do provider).
+  const fetchUserDataRef = useRef<((u: User) => Promise<void>) | null>(null);
+
+  const isAdminOrSuper = async (sessionUserId: string) => {
+    const { data } = await supabase.from('users').select('role').eq('id', sessionUserId).single();
+    return !!data && (data.role === 'admin' || data.role === 'superadmin');
+  };
+
+  const startImpersonation = async (userId: string) => {
+    if (!currentUser) return;
+    const allowed = await isAdminOrSuper(currentUser.id);
+    if (!allowed) return;
+    localStorage.setItem('impersonatingUserId', userId);
+    setImpersonatingId(userId);
+    if (fetchUserDataRef.current) await fetchUserDataRef.current(currentUser);
+  };
+
+  const exitImpersonation = async () => {
+    localStorage.removeItem('impersonatingUserId');
+    setImpersonatingId(null);
+    if (currentUser && fetchUserDataRef.current) await fetchUserDataRef.current(currentUser);
+  };
 
   useEffect(() => {
     let isMounted = true;
     let realtimeSubscription: any;
 
     const fetchUserData = async (sessionUser: User) => {
-      const { data: userDoc, error } = await supabase.from('users').select('*').eq('id', sessionUser.id).single();
+      const impersonatingId = getImpersonatingId();
+      const isImpersonating = !!impersonatingId && impersonatingId !== sessionUser.id;
+      const targetUserId = isImpersonating ? impersonatingId : sessionUser.id;
+
+      const { data: userDoc, error } = await supabase.from('users').select('*').eq('id', targetUserId).single();
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user data', error);
         return;
@@ -124,6 +163,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Se o usuário não existe, criar um novo registro
       if (!userDoc) {
+        // Impersonação aponta para um usuário que não existe mais — cancela o modo
+        if (isImpersonating) {
+          localStorage.removeItem('impersonatingUserId');
+          setImpersonatingId(null);
+          return;
+        }
         console.log('Novo usuário detectado, criando registro...');
         const newUser = {
           id: sessionUser.id,
@@ -168,17 +213,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Usuário existe - continuar com o fluxo normal
       if (userDoc) {
-        // Mágica de Super Admin (Abordagem Híbrida)
-        // 1. Chave mestra: email hardcoded (fallback de segurança)
-        // 2. Role no banco: permite adicionar outros superadmins
-        const isSuperAdmin = 
-          sessionUser.email === 'fabio.feitoza@eaportal.org' ||  // Chave mestra
-          userDoc.role === 'superadmin';                         // Role no banco
-        
-        if (isSuperAdmin && userDoc.role !== 'superadmin' && userDoc.role !== 'admin') {
-           // Se é superadmin mas não tem role adequada, promover para admin
-           await supabase.from('users').update({ role: 'admin' }).eq('id', sessionUser.id);
-           userDoc.role = 'admin';
+        // Blocos especiais (super admin, staff rules) só rodam na conta REAL do admin,
+        // nunca durante impersonação — assim vemos os dados reais do usuário alvo.
+        if (!isImpersonating) {
+          // Mágica de Super Admin (Abordagem Híbrida)
+          // 1. Chave mestra: email hardcoded (fallback de segurança)
+          // 2. Role no banco: permite adicionar outros superadmins
+          const isSuperAdmin = 
+            sessionUser.email === 'fabio.feitoza@eaportal.org' ||  // Chave mestra
+            userDoc.role === 'superadmin';                         // Role no banco
+          
+          if (isSuperAdmin && userDoc.role !== 'superadmin' && userDoc.role !== 'admin') {
+             // Se é superadmin mas não tem role adequada, promover para admin
+             await supabase.from('users').update({ role: 'admin' }).eq('id', sessionUser.id);
+             userDoc.role = 'admin';
+          }
         }
 
         const mappedUserData = mapUserToClient(userDoc);
@@ -198,13 +247,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           mappedUserData.role = 'student';
         }
 
-        if (isStaffAccount && !isInStudentView && (mappedUserData.xp || 0) < 50000) {
+        if (!isImpersonating && isStaffAccount && !isInStudentView && (mappedUserData.xp || 0) < 50000) {
           mappedUserData.xp = 50000;
           mappedUserData.coins = 50000;
           await supabase.from('users').update({ xp: 50000, coins: 50000 }).eq('id', sessionUser.id);
         }
 
-        if (mappedUserData.role === 'student' && mappedUserData.avatarConfig?.customSkinUrl) {
+        if (!isImpersonating && mappedUserData.role === 'student' && mappedUserData.avatarConfig?.customSkinUrl) {
           const skinUrl = mappedUserData.avatarConfig.customSkinUrl;
           const expiry = mappedUserData.unlockedSkins?.[skinUrl];
           if (expiry !== undefined && expiry <= Date.now()) {
@@ -221,6 +270,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (isMounted) setUserData(mappedUserData);
       }
     };
+
+    fetchUserDataRef.current = fetchUserData;
 
     const handleUserSession = async (sessionUser: User | null) => {
       if (!sessionUser) {
@@ -240,27 +291,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (isMounted) {
         setTimeout(() => fetchUserData(sessionUser), 1500);
       }
-
-      if (realtimeSubscription) {
-        try { await supabase.removeChannel(realtimeSubscription); } catch (e) { console.warn('Erro ao remover canal antigo:', e); }
-        realtimeSubscription = null;
-      }
-      // Nome de canal único por sessão para evitar o erro
-      // "cannot add postgres_changes callbacks after subscribe()"
-      realtimeSubscription = supabase.channel(`public:users:${sessionUser.id}_${Date.now()}`)
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${sessionUser.id}` }, (payload) => {
-           if (isMounted) {
-             setUserData(prev => {
-                if (!prev) return prev;
-                const newMapped = mapUserToClient(payload.new);
-                const isInStudentView = newMapped.studentViewActive === true;
-                if (isInStudentView && newMapped.role !== 'student') {
-                  newMapped.role = 'student';
-                }
-                return { ...prev, ...newMapped };
-             });
-           }
-        }).subscribe();
 
       if (isMounted) setLoading(false);
     };
@@ -283,10 +313,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
+  // Realtime do usuário ATIVO (conta real ou usuário impersonado).
+  // Recria o canal quando a impersonação muda de alvo.
+  useEffect(() => {
+    if (!currentUser) return;
+    const targetId = getImpersonatingId() || currentUser.id;
+
+    const channel = supabase.channel(`public:users:${targetId}_${Date.now()}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${targetId}` }, (payload) => {
+        if (!isMounted) return;
+        setUserData(prev => {
+          if (!prev) return prev;
+          const newMapped = mapUserToClient(payload.new);
+          const isInStudentView = newMapped.studentViewActive === true;
+          if (isInStudentView && newMapped.role !== 'student') {
+            newMapped.role = 'student';
+          }
+          return { ...prev, ...newMapped };
+        });
+      }).subscribe();
+
+    return () => {
+      supabase.removeChannel(channel).catch(() => {});
+    };
+  }, [currentUser, impersonatingId]);
+
   // Presença ONLINE via Realtime (presence channel) + heartbeat de reforço.
   // Usa userData.uid (mapeado de users.id) — currentUser.uid do supabase NÃO existe.
+  // Não roda durante impersonação para não "sujar" os dados do usuário alvo.
   useEffect(() => {
-    if (!userData?.uid) return;
+    if (!userData?.uid || impersonatingId) return;
     const uid = userData.uid;
 
     // Heartbeat: atualiza last_seen_at (fonte principal de "online")
@@ -320,7 +376,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.removeEventListener('focus', onFocus);
       disconnectPresence();
     };
-  }, [userData?.uid]);
+  }, [userData?.uid, impersonatingId]);
 
   // Motor de visitas do PROFESSOR: roda apenas para TEACHERS (são os que têm
 // contato direto com os alunos). Superadmin/administradores ficam de fora.
@@ -329,7 +385,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // visita UMA tela por vez, sem parar.
   const isTeacherRole = userData?.role === 'teacher';
   useEffect(() => {
-    if (!userData?.uid || !isTeacherRole || !userData?.tenantId) return;
+    if (!userData?.uid || impersonatingId || !isTeacherRole || !userData?.tenantId) return;
     let cancelled = false;
     const engine = async () => {
       if (cancelled) return;
@@ -343,7 +399,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     engine();
     const int = setInterval(engine, 15 * 1000);
     return () => { cancelled = true; clearInterval(int); };
-  }, [userData?.uid, isTeacherRole, userData?.tenantId]);
+  }, [userData?.uid, isTeacherRole, userData?.tenantId, impersonatingId]);
 
   // Usuários aguardando aprovação: mesmo que o Realtime da tabela users não
   // esteja ativo, verifica periodicamente se o admin aprovou e atualiza o
@@ -383,7 +439,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, userData, loading, needsEnrollment, toggleStudentView, updateUserDataLocally, ranksLoaded }}>
+    <AuthContext.Provider value={{ currentUser, userData, loading, needsEnrollment, toggleStudentView, updateUserDataLocally, ranksLoaded, impersonatingId, startImpersonation, exitImpersonation }}>
       {!loading && children}
     </AuthContext.Provider>
   );

@@ -464,7 +464,7 @@ function StudentEnrollmentCard({ reqUser, tenantId, schoolClasses, userData, onA
 
 export default function AdminDashboard() {
   const { showAlert, showConfirm, showToast } = useDialog();
-  const { userData } = useAuth();
+  const { userData, startImpersonation } = useAuth();
   const { tenant, tenantId, tenants, isSuperAdmin, noTenants, switchTenant, createTenant, updateTenant, deleteTenant, refreshTenants } = useTenant();
   const { can: canView } = usePermissions();
   const navigate = useNavigate();
@@ -2533,6 +2533,21 @@ export default function AdminDashboard() {
                                 title="Gerenciar XP"
                               >
                                 <Star size={16} />
+                              </button>
+                            )}
+                            {(userData?.role === 'admin' || isSuperAdmin) && student.uid !== userData?.uid && (
+                              <button 
+                                className="login-btn" 
+                                onClick={async () => {
+                                  if (await showConfirm('Logar como', `Entrar como ${student.characterName || student.name} para verificar/suporte? Você poderá voltar ao seu perfil depois.`)) {
+                                    await startImpersonation(student.uid);
+                                    navigate('/dashboard');
+                                  }
+                                }}
+                                style={{ padding: '0.4rem', borderColor: 'var(--accent-green)', color: 'var(--accent-green)', background: 'rgba(16, 185, 129, 0.1)', flexShrink: 0 }}
+                                title="Logar como este usuário (verificar/suporte)"
+                              >
+                                <UserCheck size={16} />
                               </button>
                             )}
                             {student.uid !== userData?.uid && (student.role !== 'admin' || isSuperAdmin) && canView('users', 'delete') && (
