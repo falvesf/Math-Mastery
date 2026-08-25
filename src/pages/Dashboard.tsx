@@ -254,6 +254,22 @@ export default function Dashboard() {
   const [enrollmentStep, setEnrollmentStep] = useState<'school' | 'class' | 'pending' | 'complete'>('school');
   const [selectedSchool, setSelectedSchool] = useState<any>(null);
 
+  // Se o usuário já tem uma escola vinculada (ex: conta local criada pelo admin),
+  // pula a seleção de escola e vai direto para a escolha da turma.
+  useEffect(() => {
+    if (userData?.tenantId && !userData?.classId && enrollmentStep === 'school') {
+      let active = true;
+      (async () => {
+        const { data } = await supabase.from('tenants').select('name').eq('id', userData.tenantId).maybeSingle();
+        if (!active) return;
+        setSelectedSchool({ id: userData.tenantId, name: data?.name || 'Sua Escola' });
+        setEnrollmentStep('class');
+      })();
+      return () => { active = false; };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userData?.tenantId, userData?.classId, enrollmentStep]);
+
   // Monitorar se o aluno foi aprovado (role muda de pending_student para student com tenant/class)
   useEffect(() => {
     const shouldMonitor = userData?.role === 'pending_student' ||
@@ -1637,6 +1653,30 @@ export default function Dashboard() {
               updateUserDataLocally({
                 tenantId: selectedSchool.id,
                 classId: cls.name
+              });
+
+              setEnrollmentStep('complete');
+            } else if (userData.tenantId) {
+              // Usuário já vinculado a uma escola (conta local criada pelo admin,
+              // ou admin já aprovou): matrícula é aprovada na hora — sem pedir aprovação.
+              await supabase.from('users').update({
+                role: 'student',
+                tenant_id: userData.tenantId,
+                class_id: cls.name,
+                pending_class_name: null
+              }).eq('id', userData.uid);
+
+              await supabase.from('tenant_users').upsert({
+                tenant_id: userData.tenantId,
+                user_id: userData.uid,
+                role: 'student'
+              });
+
+              updateUserDataLocally({
+                tenantId: userData.tenantId,
+                classId: cls.name,
+                pendingClassName: undefined,
+                role: 'student'
               });
 
               setEnrollmentStep('complete');

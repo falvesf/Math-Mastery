@@ -487,7 +487,19 @@ export default function AdminDashboard() {
     { key: 'companion', label: 'Tutorial', icon: <MessageCircle size={17} />, check: isSuperAdmin },
   ];
   const canAccessGeneral = generalTabOptions.some(t => t.check);
-  const firstGeneralTab = (generalTabOptions.find(t => t.check)?.key || 'users') as any;
+  // Se o usuário tem acesso ao Gerenciamento de Usuários, ele é a primeira
+  // guia mostrada ao abrir o menu Geral; senão, a primeira permitida.
+  const canAccessUsers = generalTabOptions.find(t => t.key === 'users')?.check || false;
+  const firstGeneralTab = (canAccessUsers ? 'users' : generalTabOptions.find(t => t.check)?.key || 'users') as any;
+  // Primeira área do painel que o usuário consegue abrir (evita página em branco)
+  const firstAccessibleTab = canAccessGeneral
+    ? 'general'
+    : canView('quests_admin', 'view') ? 'quests'
+    : canView('items', 'view') ? 'store'
+    : canView('economy', 'view') ? 'economy'
+    : canView('approvals', 'view') ? 'approvals'
+    : canView('entities', 'view') ? 'entities'
+    : 'general';
   const [activeTab, setActiveTab] = useState('general');
   const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'ranks' | 'roles' | 'tenants' | 'companion'>('users');
 
@@ -496,8 +508,8 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (activeTab === 'general') {
       if (!canAccessGeneral) {
-        const fallback = ['quests', 'store', 'economy', 'approvals', 'entities'].find(a => canView(a, 'view'));
-        if (fallback) setActiveTab(fallback);
+        // Sem acesso ao Geral: abre a primeira área lateral permitida
+        if (firstAccessibleTab !== 'general') setActiveTab(firstAccessibleTab);
         return;
       }
       const current = generalTabOptions.find(t => t.key === generalTab);
@@ -506,7 +518,7 @@ export default function AdminDashboard() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, generalTab, canAccessGeneral]);
+  }, [activeTab, generalTab, canAccessGeneral, firstAccessibleTab]);
   const [students, setStudents] = useState<UserData[]>([]);
   const [allUserItems, setAllUserItems] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(false);
