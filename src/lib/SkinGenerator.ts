@@ -18,7 +18,7 @@ const hash = (x: number, y: number) => {
     return n - Math.floor(n);
 };
 
-export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking: boolean = false): Promise<string> {
+export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking: boolean = false, eyeMode?: 'left' | 'right' | 'both'): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
   canvas.height = 64;
@@ -324,71 +324,70 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
   // Franja Sombra
   fillTextured(skin, 8, 8, 8, 2, 5, -15);
   
-  if (isBlinking) {
-      // Olhos fechados (linha única)
-      fill(eye, 9, 12, 2, 1);
-      fill(eye, 13, 12, 2, 1);
-  } else {
-      const eyeStyle = config.eyeStyle || (gender === 'female' ? 'cute' : 'classic');
+  // Fecha cada olho de forma independente: com eyeMode dá pra fechar um lado
+  // só ou os dois juntos; isBlinking continua fechando os dois.
+  const closeLeft = isBlinking || eyeMode === 'left' || eyeMode === 'both';
+  const closeRight = isBlinking || eyeMode === 'right' || eyeMode === 'both';
+  const eyeStyle = config.eyeStyle || (gender === 'female' ? 'cute' : 'classic');
 
+  const drawEye = (side: 'left' | 'right') => {
+    if (side === 'left') {
+      if (closeLeft) { fill(eye, 9, 12, 2, 1); return; }
       if (eyeStyle === 'cute') {
-          // Olho Fofo (Anime 2x3)
-          // Olho Esquerdo
-          fill(eye, 9, 10, 2, 3); // Base do olho
-          fill('#ffffff', 10, 10, 1, 1); // Brilho superior
-          fill('#ffffff', 9, 12, 1, 1); // Brilho inferior
-          
-          // Olho Direito
-          fill(eye, 13, 10, 2, 3); // Base do olho
-          fill('#ffffff', 14, 10, 1, 1); // Brilho superior
-          fill('#ffffff', 13, 12, 1, 1); // Brilho inferior
-          
-          // Blush forte
-          fill(adjustColor(skin, -20), 8, 13, 2, 1);
-          fill(adjustColor(skin, -20), 14, 13, 2, 1);
+        fill(eye, 9, 10, 2, 3); // Base do olho
+        fill('#ffffff', 10, 10, 1, 1); // Brilho superior
+        fill('#ffffff', 9, 12, 1, 1); // Brilho inferior
+        fill(adjustColor(skin, -20), 8, 13, 2, 1); // Blush
       } else if (eyeStyle === 'oriental') {
-          // Oriental Fino (Branco + Cor, olhar afiado)
-          fill('#ffffff', 9, 11, 1, 1);
-          fill(eye, 10, 11, 1, 1);
-          
-          fill(eye, 13, 11, 1, 1);
-          fill('#ffffff', 14, 11, 1, 1);
+        fill('#ffffff', 9, 11, 1, 1);
+        fill(eye, 10, 11, 1, 1);
       } else if (eyeStyle === 'oriental-2') {
-          // Oriental Suave (Inclinado para baixo \ / )
-          fill(eye, 9, 10, 1, 1);
-          fill(eye, 10, 11, 1, 1);
-          
-          fill(eye, 13, 11, 1, 1);
-          fill(eye, 14, 10, 1, 1);
+        fill(eye, 9, 10, 1, 1);
+        fill(eye, 10, 11, 1, 1);
       } else if (eyeStyle === 'oriental-3') {
-          // Oriental Fechado (Sorrindo ^ ^ )
-          fill(eye, 9, 11, 1, 1);
-          fill(eye, 10, 10, 1, 1);
-          
-          fill(eye, 13, 10, 1, 1);
-          fill(eye, 14, 11, 1, 1);
+        fill(eye, 9, 11, 1, 1);
+        fill(eye, 10, 10, 1, 1);
       } else if (eyeStyle === 'dot') {
-          // Pontinho
-          fill(eye, 10, 11, 1, 1);
-          fill(eye, 13, 11, 1, 1);
+        fill(eye, 10, 11, 1, 1);
       } else if (eyeStyle === 'tired') {
-          // Cansado (com olheiras)
-          fill('#ffffff', 9, 11, 1, 2);
-          fill(eye, 10, 11, 1, 2);
-          fill(adjustColor(skin, -20), 9, 13, 2, 1); // Olheira esquerda
-          
-          fill(eye, 13, 11, 1, 2);
-          fill('#ffffff', 14, 11, 1, 2);
-          fill(adjustColor(skin, -20), 13, 13, 2, 1); // Olheira direita
+        fill('#ffffff', 9, 11, 1, 2);
+        fill(eye, 10, 11, 1, 2);
+        fill(adjustColor(skin, -20), 9, 13, 2, 1); // Olheira
       } else {
-          // Clássico
-          fill('#ffffff', 9, 11, 1, 2);
-          fill(eye, 10, 11, 1, 2);
-          
-          fill(eye, 13, 11, 1, 2);
-          fill('#ffffff', 14, 11, 1, 2);
+        fill('#ffffff', 9, 11, 1, 2);
+        fill(eye, 10, 11, 1, 2);
       }
-  }
+    } else {
+      if (closeRight) { fill(eye, 13, 12, 2, 1); return; }
+      if (eyeStyle === 'cute') {
+        fill(eye, 13, 10, 2, 3); // Base do olho
+        fill('#ffffff', 14, 10, 1, 1); // Brilho superior
+        fill('#ffffff', 13, 12, 1, 1); // Brilho inferior
+        fill(adjustColor(skin, -20), 14, 13, 2, 1); // Blush
+      } else if (eyeStyle === 'oriental') {
+        fill(eye, 13, 11, 1, 1);
+        fill('#ffffff', 14, 11, 1, 1);
+      } else if (eyeStyle === 'oriental-2') {
+        fill(eye, 13, 11, 1, 1);
+        fill(eye, 14, 10, 1, 1);
+      } else if (eyeStyle === 'oriental-3') {
+        fill(eye, 13, 10, 1, 1);
+        fill(eye, 14, 11, 1, 1);
+      } else if (eyeStyle === 'dot') {
+        fill(eye, 13, 11, 1, 1);
+      } else if (eyeStyle === 'tired') {
+        fill(eye, 13, 11, 1, 2);
+        fill('#ffffff', 14, 11, 1, 2);
+        fill(adjustColor(skin, -20), 13, 13, 2, 1); // Olheira
+      } else {
+        fill(eye, 13, 11, 1, 2);
+        fill('#ffffff', 14, 11, 1, 2);
+      }
+    }
+  };
+
+  drawEye('left');
+  drawEye('right');
 
   drawMouth();
 

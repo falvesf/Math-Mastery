@@ -11,6 +11,7 @@ import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import Admin3DModelsManager from './Admin3DModelsManager';
 import CustomModelViewer from './CustomModelViewer';
+import PoseStudioModal from './PoseStudioModal';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -261,6 +262,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   const [models3d, setModels3d] = useState<any[]>([]);
   const [showAdminManager, setShowAdminManager] = useState(false);
   const [showAdmin3dManager, setShowAdmin3dManager] = useState(false);
+  const [showPoseStudio, setShowPoseStudio] = useState(false);
   const [viewerZoom, setViewerZoom] = useState(1);
   
   const handednessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -827,6 +829,13 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
               <h2 style={{ margin: 0, fontSize: '1rem', textTransform: 'uppercase' }}>
                 {customSaveMode ? 'Personalizar Monstro' : 'Personalizar Personagem'}
               </h2>
+              <button
+                onClick={() => setShowPoseStudio(true)}
+                style={{ padding: '0.25rem 0.6rem', background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                title="Abrir a Central 3D — Estúdio de Poses e Animações"
+              >
+                🎬 Central 3D
+              </button>
             </div>
           )}
           {(canSkins || canModels || canDebug) && !inline && (
@@ -1265,7 +1274,7 @@ onClick={() => setConfig(prev => {
               if (activeModel) {
                 return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 220} />;
               }
-              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 220} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
+              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 220} animation={config.animationState || 'idle'} interactive={true} ignoreHiddenSlots debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
             })()}
             </div>
             </div>
@@ -2057,6 +2066,13 @@ onClick={() => setConfig(prev => {
           </div>
         </div>
       )}
+
+      {/* Central 3D — Estúdio de Poses */}
+      <PoseStudioModal
+        isOpen={showPoseStudio}
+        onClose={() => setShowPoseStudio(false)}
+        userData={userData}
+      />
     </div>
   );
 }

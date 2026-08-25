@@ -66,6 +66,8 @@ export interface EquippedItem {
   rarity?: string;
   backColor?: string;
   customAnimation?: ItemAnimation;
+  /** Sprite animado (atlas) ao redor do item — efeito de brilho/encanto */
+  spriteAnimation?: SpriteAnimation;
   gameEffect?: string;
   hpCooldownReductionMinutes?: number;
 }
@@ -81,12 +83,28 @@ export interface CharacterPose {
   rightArm?: BoneTransform;
   leftLeg?: BoneTransform;
   rightLeg?: BoneTransform;
+  /** Rotação do CORPO TODO (yaw, em radianos) — usado para "girar" o boneco */
+  yaw?: number;
 }
 
 export interface ItemAnimation {
   frames: CharacterPose[];
   loop: boolean;
   duration?: number;
+}
+
+/** Sprite animado (atlas) ao redor do item — exibe uma célula por vez, ciclando (efeito de brilho/encanto) */
+export interface SpriteAnimation {
+  url: string;
+  cols: number;
+  rows: number;
+  fps: number;
+  scale?: number;
+  offsetX?: number;
+  offsetY?: number;
+  /** Profundidade (Z) — aproxima/afasta a sprite do item (ex.: braços esticados para frente) */
+  offsetZ?: number;
+  opacity?: number;
 }
 
 export interface ModelTransform {
@@ -208,13 +226,17 @@ export interface AvatarCharacterProps {
   faceCamera?: boolean;
   /** Duração em segundos de cada frame no preview de animação (padrão 0.5s) */
   debugAnimationDuration?: number;
+  /** Controle manual dos olhos: fecha o olho indicado (ou os dois) e desativa a piscada automática */
+  closedEyes?: 'none' | 'left' | 'right' | 'both';
+  /** Ignora a configuração de slots ocultos (hiddenSlots) — exibe todos os itens equipados (usado na Central 3D) */
+  ignoreHiddenSlots?: boolean;
   /** Esconde os modelos 3D de cabelo/acessórios gerados a partir do config (ex.: ao visualizar uma skin completa) */
   hideConfigAddons?: boolean;
 }
 
 import CustomModelViewer from './CustomModelViewer';
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, hideConfigAddons }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons }: AvatarCharacterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
@@ -364,7 +386,60 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     let isCancelled = false;
     // Armazena os modelos carregados para poder removê-los depois
     const loadedModels: { parent: THREE.Object3D, model: THREE.Object3D }[] = [];
+    const spriteTimers: number[] = [];
     const loader = new GLTFLoader();
+
+    // Cria a sprite animada anexada ao MESMO osso do item e na MESMA posição do item,
+    // assim ela segue exatamente o item (braços esticados, golpes, etc.).
+    const spawnSprite = (parent: THREE.Object3D, item: EquippedItem, localPos: THREE.Vector3) => {
+      const sa = item.spriteAnimation;
+      if (!sa || !sa.url) return;
+      const cols = Math.max(1, sa.cols || 1);
+      const rows = Math.max(1, sa.rows || 1);
+      const fps = Math.max(1, sa.fps || 6);
+      const s = sa.scale || 8;
+      new THREE.TextureLoader().load(sa.url, (tex) => {
+        if (isCancelled) return;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(1 / cols, 1 / rows);
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        const mat = new THREE.SpriteMaterial({
+          map: tex,
+          transparent: true,
+          depthWrite: false,
+          opacity: sa.opacity ?? 0.85,
+          blending: THREE.AdditiveBlending,
+        });
+        const sprite = new THREE.Sprite(mat);
+        // Proporção da célula para a escala ficar fiel ao recorte
+        sprite.scale.set(s * (rows / cols), s, 1);
+        // Posição = posição do item + deslocamentos da sprite (mesmo eixo do item)
+        sprite.position.copy(localPos).add(new THREE.Vector3(sa.offsetX || 0, sa.offsetY || 0, sa.offsetZ || 0));
+        parent.add(sprite);
+        loadedModels.push({ parent, model: sprite });
+        loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model: sprite, item });
+
+        let frame = 0;
+        const total = cols * rows;
+        const setFrame = (f: number) => {
+          const col = f % cols;
+          const row = Math.floor(f / cols) % rows;
+          tex.offset.set(col * (1 / cols), 1 - (row + 1) * (1 / rows));
+        };
+        setFrame(0);
+        if (total > 1) {
+          const timer = window.setInterval(() => {
+            frame = (frame + 1) % total;
+            setFrame(frame);
+          }, 1000 / fps);
+          spriteTimers.push(timer);
+        }
+      }, undefined, (err) => {
+        console.error(`Erro ao carregar sprite do item ${item.itemTitle}:`, err);
+      });
+    };
     
     const handItemsLocal = equippedItems.filter(i => i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'hand');
     let rightScreenHandLocal = null;
@@ -384,7 +459,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
          if (item === rightScreenHandLocal) slotId = 'hand1';
          else if (item === leftScreenHandLocal) slotId = 'hand2';
       }
-      if (config?.hiddenSlots?.includes(slotId)) return;
+      if (!ignoreHiddenSlots && config?.hiddenSlots?.includes(slotId)) return;
 
       if (item.gameModelUrl && item.gameModelUrl.trim() !== '') {
         let safeUrl = item.gameModelUrl.replace(/\\/g, '/');
@@ -458,6 +533,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               targetArm.add(model);
               loadedModels.push({ parent: targetArm, model });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
+              // Sprite acompanha o item na mão (mesma posição no osso)
+              spawnSprite(targetArm, item, model.position.clone());
             } else if (item.avatarPart === 'head') {
               const head = viewer.playerObject.skin.head;
               // Os itens do Blockbench para Minecraft geralmente vêm na escala de 1 unidade = 16 pixels.
@@ -488,6 +565,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               head.add(model);
               loadedModels.push({ parent: head, model });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
+              spawnSprite(head, item, model.position.clone());
             } else if (item.avatarPart === 'body' || item.avatarPart === 'legs' || item.avatarPart === 'feet') {
               let targetGroup = viewer.playerObject.skin.body;
               let finalModelToAdd = model;
@@ -555,6 +633,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               }
               loadedModels.push({ parent: targetGroup, model: finalModelToAdd });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
+              spawnSprite(targetGroup, item, finalModelToAdd.position.clone());
             }
             if (!isCancelled) {
               setModelsLoadedCount(prev => prev + 1);
@@ -861,16 +940,17 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         loadTexture(proxyUrl, fallbackProxyUrl);
       }
     });
-    
+
     return () => {
       isCancelled = true;
+      spriteTimers.forEach(t => window.clearInterval(t));
       loadedModels.forEach(({ parent, model }) => {
         parent.remove(model);
       });
       loadedModelsRef.current = [];
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equippedItemsJson, config?.handedness, config?.hiddenSlots?.join(',')]);
+  }, [equippedItemsJson, config?.handedness, config?.hiddenSlots?.join(','), ignoreHiddenSlots]);
 
   // 3b. Apply transformations dynamically to avoid reloading models (flicker)
   useEffect(() => {
@@ -1037,7 +1117,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         }
       }
     });
-  }, [debugTransformJson, debugItemId, animation, config?.handedness, modelsLoadedCount, equippedItemsJson, config?.hiddenSlots?.join(',')]);
+  }, [debugTransformJson, debugItemId, animation, config?.handedness, modelsLoadedCount, equippedItemsJson, config?.hiddenSlots?.join(','), ignoreHiddenSlots]);
 
   // 3c. Add 3D Head Addons (Ponytail, Bow, etc)
   useEffect(() => {
@@ -1052,7 +1132,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       customHairRef.current = null;
     }
 
-    const hasHelmet = equippedItems.some(i => i.avatarPart === 'head' && !config?.hiddenSlots?.includes('head'));
+    const hasHelmet = equippedItems.some(i => i.avatarPart === 'head' && (ignoreHiddenSlots || !config?.hiddenSlots?.includes('head')));
     if (hasHelmet) return;
 
     const addonsGroup = new THREE.Group();
@@ -1248,7 +1328,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       viewer.playerObject.skin.head.add(addonsGroup);
       customHairRef.current = addonsGroup;
     }
-  }, [config?.hairStyle, config?.hairColor, config?.hairTieColor, config?.shirtColor, config?.ponytailLength, config?.ponytailThickness, config?.ponytailAngle, config?.hairAccessories, config?.hairAccessory, config?.accessoryColor, config?.accessoryColors, equippedItemsJson, config?.hiddenSlots?.join(','), hideConfigAddons]);
+  }, [config?.hairStyle, config?.hairColor, config?.hairTieColor, config?.shirtColor, config?.ponytailLength, config?.ponytailThickness, config?.ponytailAngle, config?.hairAccessories, config?.hairAccessory, config?.accessoryColor, config?.accessoryColors, equippedItemsJson, config?.hiddenSlots?.join(','), hideConfigAddons, ignoreHiddenSlots]);
 
   // 4. Generate skins when config changes
   useEffect(() => {
@@ -1269,20 +1349,21 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                     smile: { base: finalUrl, blink: finalUrl }
                 });
             } else {
-                const normalUrl = await generateMinecraftSkinUrl(config, false);
-                const normalBlinkUrl = await generateMinecraftSkinUrl(config, true);
+                const eyeMode = closedEyes !== 'none' ? closedEyes : undefined;
+                const normalUrl = await generateMinecraftSkinUrl(config, false, eyeMode);
+                const normalBlinkUrl = await generateMinecraftSkinUrl(config, true, eyeMode);
 
                 const happyConfig = { ...config, mouthStyle: 'smile' as any };
-                const happyUrl = await generateMinecraftSkinUrl(happyConfig, false);
-                const happyBlinkUrl = await generateMinecraftSkinUrl(happyConfig, true);
+                const happyUrl = await generateMinecraftSkinUrl(happyConfig, false, eyeMode);
+                const happyBlinkUrl = await generateMinecraftSkinUrl(happyConfig, true, eyeMode);
                 
                 const seriousConfig = { ...config, mouthStyle: 'neutral' as any };
-                const seriousUrl = await generateMinecraftSkinUrl(seriousConfig, false);
-                const seriousBlinkUrl = await generateMinecraftSkinUrl(seriousConfig, true);
+                const seriousUrl = await generateMinecraftSkinUrl(seriousConfig, false, eyeMode);
+                const seriousBlinkUrl = await generateMinecraftSkinUrl(seriousConfig, true, eyeMode);
 
                 const sadConfig = { ...config, mouthStyle: 'sad' as any };
-                const sadUrl = await generateMinecraftSkinUrl(sadConfig, false);
-                const sadBlinkUrl = await generateMinecraftSkinUrl(sadConfig, true);
+                const sadUrl = await generateMinecraftSkinUrl(sadConfig, false, eyeMode);
+                const sadBlinkUrl = await generateMinecraftSkinUrl(sadConfig, true, eyeMode);
                 
                 if (isMounted) {
                     setSkinUrls({ 
@@ -1304,7 +1385,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     return () => {
         isMounted = false;
     };
-  }, [config]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, closedEyes]);
 
   // Handle Skin Application & Blinking
   useEffect(() => {
@@ -1312,6 +1394,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       let isMounted = true;
       let blinkInterval: any;
       let blinkTimeout: any;
+      // Com olhos controlados manualmente, desativa a piscada automática
+      const closedOverride = closedEyes !== 'none';
 
       const applySkins = async () => {
           const modelType = config.gender === 'female' ? 'slim' : 'default';
@@ -1346,17 +1430,19 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               
               if (!isMounted) return;
               
-              blinkInterval = setInterval(() => {
-                  if (!viewerRef.current || !isMounted) return;
-                  if (activeUrls.blink === activeUrls.base) return; 
-                  viewerRef.current.loadSkin(activeUrls.blink, { model: modelType }).then(forceNearestFilter).catch(() => {});
-                  
-                  blinkTimeout = setTimeout(() => {
-                      if (viewerRef.current && isMounted) {
-                          viewerRef.current.loadSkin(activeUrls.base, { model: modelType }).then(forceNearestFilter).catch(() => {});
-                      }
-                  }, 150);
-              }, 3500 + Math.random() * 2000);
+              if (!closedOverride) {
+                blinkInterval = setInterval(() => {
+                    if (!viewerRef.current || !isMounted) return;
+                    if (activeUrls.blink === activeUrls.base) return; 
+                    viewerRef.current.loadSkin(activeUrls.blink, { model: modelType }).then(forceNearestFilter).catch(() => {});
+                    
+                    blinkTimeout = setTimeout(() => {
+                        if (viewerRef.current && isMounted) {
+                            viewerRef.current.loadSkin(activeUrls.base, { model: modelType }).then(forceNearestFilter).catch(() => {});
+                        }
+                    }, 150);
+                }, 3500 + Math.random() * 2000);
+              }
           }
       };
 
@@ -1368,7 +1454,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           if (blinkTimeout) clearTimeout(blinkTimeout);
       };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skinUrls, animation, expression, equippedItemsJson]);
+  }, [skinUrls, animation, expression, equippedItemsJson, closedEyes]);
 
   useEffect(() => {
     if (!viewerRef.current) return;
@@ -1425,6 +1511,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         if (pose.rightArm) { player.skin.rightArm.rotation.x = pose.rightArm.rx; player.skin.rightArm.rotation.y = pose.rightArm.ry; player.skin.rightArm.rotation.z = pose.rightArm.rz; }
         if (pose.leftLeg) { player.skin.leftLeg.rotation.x = pose.leftLeg.rx; player.skin.leftLeg.rotation.y = pose.leftLeg.ry; player.skin.leftLeg.rotation.z = pose.leftLeg.rz; }
         if (pose.rightLeg) { player.skin.rightLeg.rotation.x = pose.rightLeg.rx; player.skin.rightLeg.rotation.y = pose.rightLeg.ry; player.skin.rightLeg.rotation.z = pose.rightLeg.rz; }
+        if (typeof pose.yaw === 'number') { player.rotation.y = pose.yaw; }
     };
 
     const applyInterpolatedPose = (player: any, frames: CharacterPose[], time: number, durationPerFrame: number = 0.5) => {
@@ -1457,6 +1544,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             rightArm: lerpBone(f1.rightArm, f2.rightArm),
             leftLeg: lerpBone(f1.leftLeg, f2.leftLeg),
             rightLeg: lerpBone(f1.rightLeg, f2.rightLeg),
+            yaw: lerp(f1.yaw, f2.yaw, progress),
         };
         applyPose(player, interpolatedPose);
     };
@@ -1484,6 +1572,12 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     if (debugAnimationFrames && debugAnimationFrames.length > 0 && debugPreviewAnim) {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
           applyInterpolatedPose(player, debugAnimationFrames, time, debugAnimationDuration ?? 0.5);
+          // Sobrescreve os membros tocados pelo usuário (sliders), mantendo a
+          // animação base nos demais membros — permite "combinar" a ação com
+          // braços/pernas/cabeça/tronco ajustados ao vivo.
+          if (debugPose && Object.keys(debugPose).length > 0) {
+            applyPose(player, debugPose);
+          }
       });
       return;
     } else if (debugPose && Object.keys(debugPose).length > 0) {
@@ -1990,7 +2084,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               backdropFilter: 'blur(6px)'
           }}>
             {/* Passive Hidden Indicator */}
-            {item && config?.hiddenSlots?.includes(slot.id) && (
+            {!ignoreHiddenSlots && item && config?.hiddenSlots?.includes(slot.id) && (
               <div 
                 title="Este item está oculto"
                 style={{
