@@ -9,6 +9,8 @@ import ItemBankModal from './ItemBankModal';
 import GlbMeshExtractorModal from './GlbMeshExtractorModal';
 import SkinBuffIcon from '../components/SkinBuffIcon';
 import ItemIcon from './ItemIcon';
+import AudioBankPicker from './AudioBankPicker';
+import { playSound } from '../lib/audioBank';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usePermissions } from '../lib/permissions';
@@ -82,6 +84,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [editingId, setEditingId] = useState<string | null>(null);
   // true = veio do "Importar e Personalizar" do banco: salva SÓ a cópia local
   const [isImportCustomize, setIsImportCustomize] = useState(false);
+  const [battleSoundPickerOpen, setBattleSoundPickerOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<StoreItem>>({
     title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common'
   });
@@ -779,6 +782,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
               {formData.type === 'equippable' && (
                 <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Som de Ataque na Batalha (opcional)</label>
+                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '1rem' }}>
+                    <input type="text" value={formData.battleSoundUrl || ''} onChange={e => setFormData({ ...formData, battleSoundUrl: e.target.value })} placeholder="URL do som de ataque..." style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                    <button onClick={() => playSound(formData.battleSoundUrl || '')} disabled={!formData.battleSoundUrl} style={{ padding: '0.5rem 0.7rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: formData.battleSoundUrl ? 'pointer' : 'not-allowed', opacity: formData.battleSoundUrl ? 1 : 0.4 }}>▶</button>
+                    <button onClick={() => setBattleSoundPickerOpen(true)} style={{ padding: '0.5rem 0.8rem', background: 'rgba(139,92,246,0.2)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco de Áudio</button>
+                  </div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Parte do Avatar (Para Equipamentos Visuais)</label>
                   <select value={formData.avatarPart || ''} onChange={e => setFormData({...formData, avatarPart: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
                     <option value="">Nenhuma (Apenas Título/Inventário)</option>
@@ -1049,6 +1058,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           onClose={() => setShowGachaModal(false)}
         />
       )}
+
+      <AudioBankPicker
+        open={battleSoundPickerOpen}
+        onClose={() => setBattleSoundPickerOpen(false)}
+        onSelect={(url) => { setFormData({ ...formData, battleSoundUrl: url }); setBattleSoundPickerOpen(false); }}
+        categoryFilter="effect"
+        title="Banco de Áudio — Som de Ataque do Item"
+      />
 
       {showItemBank && (
         <ItemBankModal

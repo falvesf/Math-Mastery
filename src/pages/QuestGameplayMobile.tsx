@@ -17,6 +17,7 @@ import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
+import { playSound } from '../lib/audioBank';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 
@@ -144,6 +145,93 @@ export default function QuestGameplay() {
   const [, setLostCoinsDisplay] = useState<number | null>(null);
   const alreadyCompletedRef = useRef(false);
   const combatCoinConfigRef = useRef<{ minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number }>({});
+
+  // --- Áudio da batalha ---
+  const musicAudioRef = useRef<HTMLAudioElement | null>(null);
+  const playerDamageSoundsRef = useRef<{ male: string; female: string }>({ male: '', female: '' });
+  const battleSoundsRef = useRef<{ victory: string; deathMale: string; deathFemale: string; fail: string; punch: string; fatalFall: string; fatalEvaporate: string; fatalSlice: string; fatalExplode: string }>({ victory: '', deathMale: '', deathFemale: '', fail: '', punch: '', fatalFall: '', fatalEvaporate: '', fatalSlice: '', fatalExplode: '' });
+
+  // Sons globais de dano do personagem (por gênero) e sons de batalha
+  useEffect(() => {
+    let active = true;
+    supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'player_damage_sounds').then(({ data }) => {
+      if (!active) return;
+      let d: any = {};
+      (data || []).forEach(r => d = { ...d, ...(r.data || {}) });
+      playerDamageSoundsRef.current = { male: d.male || '', female: d.female || '' };
+    });
+    supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'battle_sounds').then(({ data }) => {
+      if (!active) return;
+      let b: any = {};
+      (data || []).forEach(r => b = { ...b, ...(r.data || {}) });
+      battleSoundsRef.current = { victory: b.victory || '', deathMale: b.deathMale || '', deathFemale: b.deathFemale || '', fail: b.fail || '', punch: b.punch || '', fatalFall: b.fatalFall || '', fatalEvaporate: b.fatalEvaporate || '', fatalSlice: b.fatalSlice || '', fatalExplode: b.fatalExplode || '' };
+    });
+    return () => { active = false; };
+  }, []);
+
+  // Música ambiente da batalha
+  useEffect(() => {
+    if (gameState !== 'playing' || !quest?.battleMusicUrl) return;
+    try {
+      const audio = new Audio(quest.battleMusicUrl);
+      audio.loop = true;
+      audio.volume = Math.max(0, Math.min(1, quest.battleMusicVolume ?? 0.5));
+      audio.play().catch(() => {});
+      musicAudioRef.current = audio;
+    } catch (e) {}
+    return () => {
+      if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; }
+    };
+  }, [gameState, quest?.battleMusicUrl, quest?.battleMusicVolume]);
+
+  const playPlayerDamageSound = () => {
+    const gender = (userData?.avatarConfig as any)?.gender;
+    const url = gender === 'female' ? playerDamageSoundsRef.current.female : playerDamageSoundsRef.current.male;
+    playSound(url, 0.8);
+  };
+  const playMonsterAttackSound = () => playSound(quest?.monsterAttackSound, 0.8);
+  const playMonsterDamageSound = () => playSound(quest?.monsterDamageSound, 0.8);
+  const playMonsterGruntSound = () => playSound(quest?.monsterGruntSound, 0.8);
+  const playVictorySound = () => playSound(battleSoundsRef.current.victory, 0.9);
+  // Som de fatalidade conforme o tipo de animação de morte
+  const playFatalitySound = (fatality: string) => {
+    const map: Record<string, string> = {
+      'death-explode': battleSoundsRef.current.fatalExplode,
+      'death-slice': battleSoundsRef.current.fatalSlice,
+      'death-evaporate': battleSoundsRef.current.fatalEvaporate,
+      'death-fall': battleSoundsRef.current.fatalFall,
+    };
+    playSound(map[fatality], 0.9);
+  };
+  const playDeathSound = () => {
+    const gender = (userData?.avatarConfig as any)?.gender;
+    playSound(gender === 'female' ? battleSoundsRef.current.deathFemale : battleSoundsRef.current.deathMale, 0.9);
+  };
+  const playFailSound = () => playSound(battleSoundsRef.current.fail, 0.9);
+
+  // Fade-out gradual da música antes do golpe final (vitória)
+  const fadeOutMusic = (durationMs = 2200) => {
+    const audio = musicAudioRef.current;
+    if (!audio) return;
+    const startVol = audio.volume;
+    const start = performance.now();
+    const step = () => {
+      const t = Math.min(1, (performance.now() - start) / durationMs);
+      audio.volume = Math.max(0, startVol * (1 - t));
+      if (t < 1) requestAnimationFrame(step);
+      else { audio.pause(); musicAudioRef.current = null; }
+    };
+    requestAnimationFrame(step);
+  };
+
+  const playPlayerAttackSound = () => {
+    const weapon = playerEquippedItems.find(i =>
+      (i.itemCategory === 'attack' || (i.baseAttributeType === 'attack' && (i.baseAttributeValue || 0) > 0)) &&
+      (i as any).battleSoundUrl
+    );
+    // Se tiver arma com som, toca o da arma; senão, toca o som de soco (sem arma)
+    playSound((weapon as any)?.battleSoundUrl || battleSoundsRef.current.punch, 0.8);
+  };
 
   // Escudos e Defesa
   const totalDefense = totalEquippedStats.defense;
@@ -396,7 +484,13 @@ export default function QuestGameplay() {
           liveChest3rdPlace: snap.live_chest_3rd_place || snap.liveChest3rdPlace || null,
           monsterDrops: snap.monster_drops || snap.monsterDrops || null,
           battleBgUrl: snap.battle_bg_url || snap.battleBgUrl || null,
-          podiumBgUrl: snap.podium_bg_url || snap.podiumBgUrl || null
+          podiumBgUrl: snap.podium_bg_url || snap.podiumBgUrl || null,
+          battleMusicUrl: snap.battle_music_url || snap.battleMusicUrl || '',
+          battleMusicVolume: snap.battle_music_volume ?? 0.5,
+          monsterGender: snap.monster_gender || snap.monsterGender || '',
+          monsterAttackSound: snap.monster_attack_sound || snap.monsterAttackSound || '',
+          monsterGruntSound: snap.monster_grunt_sound || snap.monsterGruntSound || '',
+          monsterDamageSound: snap.monster_damage_sound || snap.monsterDamageSound || ''
         } as QuestDef;
         
         // Isolamento por escola: impedir que aluno de outra escola acesse a missão
@@ -536,6 +630,7 @@ export default function QuestGameplay() {
                   backColor: data.backColor || '',
                   rarity: data.rarity,
                   customAnimation: data.customAnimation,
+                  battleSoundUrl: data.battleSoundUrl,
                 };
                 eLoaded.push(eqItem);
 
@@ -694,7 +789,8 @@ export default function QuestGameplay() {
         }
         setBattleMessage('ATAQUE SURPRESA! O monstro foi mais rápido e atacou primeiro!');
         setMonsterAnim('attack');
-        setTimeout(() => setPlayerAnim('hurt'), 500);
+        playMonsterAttackSound();
+        setTimeout(() => { setPlayerAnim('hurt'); playPlayerDamageSound(); }, 500);
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
       }
     } else {
@@ -812,6 +908,8 @@ export default function QuestGameplay() {
     if (isPlayerWinning) {
       setPlayerAnim('idle');
       setPlayerBubble('Eu venci!');
+      // A música vai abaixando aos poucos até o golpe final
+      fadeOutMusic(2400);
       
       let monsterDefeatQuote = 'Argh!!!';
       if (quest?.monsterDefeatQuotes) {
@@ -834,6 +932,9 @@ export default function QuestGameplay() {
           setMonsterAnim(fatality);
           setMonsterBubble(monsterDefeatQuote);
           setBattleMessage(getVictoryMessage());
+          playMonsterGruntSound();
+          playFatalitySound(fatality);
+          playVictorySound();
           
           // Entra em idle-victory (apreensão) e depois roda a animação de vitória
           setPlayerAnim('idle-victory' as any);
@@ -863,6 +964,7 @@ export default function QuestGameplay() {
         setMonsterAnim('attack-fatal-slow');
         setMonsterBubble(msg);
         setBattleMessage('O monstro está preparando um ataque letal!');
+        fadeOutMusic(2400);
         
         // Espera 1.125s para o jogador sentir o golpe
         setTimeout(() => setPlayerAnim('hurt'), 1125);
@@ -870,6 +972,7 @@ export default function QuestGameplay() {
         setTimeout(() => {
           setPlayerAnim('death-fall');
           setPlayerBubble(playerDefeatQuote);
+          playDeathSound();
           const gameOverMsg = isStudyMode 
             ? 'Fim de Jogo (Modo Estudo). Suas vidas reais estão a salvo, mas a simulação terminou!' 
             : getDefeatMessage();
@@ -1068,7 +1171,8 @@ export default function QuestGameplay() {
         }
       } else {
         setPlayerAnim('attack');
-        setTimeout(() => { setMonsterAnim('hurt'); dropCoins(isCritical); }, 500);
+        playPlayerAttackSound();
+        setTimeout(() => { setMonsterAnim('hurt'); dropCoins(isCritical); playMonsterDamageSound(); }, 500);
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
         setTimeout(() => {
           setFeedback(null);
@@ -1151,7 +1255,8 @@ export default function QuestGameplay() {
         if (quote) setMonsterBubble(quote);
       }
       setMonsterAnim('attack');
-      setTimeout(() => setPlayerAnim('hurt'), 500);
+      playMonsterAttackSound();
+      setTimeout(() => { setPlayerAnim('hurt'); playPlayerDamageSound(); }, 500);
       setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
       
       if (hasShield) {
@@ -1250,6 +1355,9 @@ export default function QuestGameplay() {
     if (customMessage) setErrorMessage(customMessage);
     const isAbandon = customMessage?.includes('abandonou');
 
+    // Som de falha quando o jogador é derrotado (não no abandono voluntário)
+    if (!isWin && !isAbandon) playFailSound();
+
     const isStudent = userData?.role === 'student' || !!userData?.studentViewActive;
     // Debug: admins testam recompensas recebendo XP/moedas/baú como se fossem alunos.
     // Também ignora tentativas antigas (admin que já foi aluno) para SEMPRE receber o baú no teste.
@@ -1312,6 +1420,7 @@ export default function QuestGameplay() {
                   itemImageUrl: item.imageUrl || '',
                   gameEffect: item.gameEffect || 'none',
                   usableInQuest: item.usableInQuest || false,
+                  battleSoundUrl: (item as any).battleSoundUrl || '',
                   gameModelUrl: item.gameModelUrl || '',
                   modelTextureUrl: item.modelTextureUrl || '',
                   minecraftHeadValue: item.minecraftHeadValue || '',
@@ -1360,6 +1469,7 @@ export default function QuestGameplay() {
               itemImageUrl: item.imageUrl || '',
               gameEffect: item.gameEffect || 'none',
               usableInQuest: item.usableInQuest || false,
+                  battleSoundUrl: (item as any).battleSoundUrl || '',
               gameModelUrl: item.gameModelUrl || '',
               modelTextureUrl: item.modelTextureUrl || '',
               minecraftHeadValue: item.minecraftHeadValue || '',
@@ -1508,6 +1618,7 @@ export default function QuestGameplay() {
 
   const dropCoins = (isCrit = false) => {
     if (!economySettings?.coinsDropInCombat) return;
+    playSound((activeCoinModel as any)?.coinSoundUrl, 0.7);
     const cfg = combatCoinConfigRef.current;
     let dropped: number;
 
@@ -1921,7 +2032,7 @@ export default function QuestGameplay() {
                 </div>
               )}
               {monsterAnim === 'death-slice' ? (
-                <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', height: '200px' }}>
+                <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', height: '200px', '--death-base-x': 'calc((var(--attack-dist, 150px)) * -1 - 20px)' } as any}>
                   {/* Nome do monstro - acompanha death-slice */}
                   <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', opacity: 0.3 }}>{quest?.monsterName || 'Inimigo'}</span>
@@ -1940,7 +2051,7 @@ export default function QuestGameplay() {
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
                   }`}
-                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${arenaDebug.monsterOffsetX}px, ${arenaDebug.monsterOffsetY}px) scale(${arenaDebug.monsterScale})` }}
+                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${arenaDebug.monsterOffsetX}px, ${arenaDebug.monsterOffsetY}px) scale(${arenaDebug.monsterScale})`, ...(monsterAnim.startsWith('death-') ? { '--death-base-x': 'calc((var(--attack-dist, 150px)) * -1 - 20px)' } as any : {}) }}
                 >
                   {/* Nome do monstro - acompanha animações de morte */}
                   <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arenaDebug.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>

@@ -288,10 +288,10 @@ h3 {
 }
 
 @keyframes death-evaporate {
-  0% { opacity: 1; filter: blur(0); transform: translateY(0) scale(1); }
-  20% { opacity: 0.8; filter: blur(2px) sepia(1) hue-rotate(300deg); transform: translateY(-10px) scale(1.05); }
-  40% { opacity: 0.5; filter: blur(5px) sepia(1) hue-rotate(300deg); transform: translateY(-30px) scale(1.1); }
-  100% { opacity: 0; filter: blur(20px); transform: translateY(-100px) scale(1.5); }
+  0% { opacity: 1; filter: blur(0); transform: translateX(var(--death-base-x, 0px)) translateY(0) scale(1); }
+  20% { opacity: 0.8; filter: blur(2px) sepia(1) hue-rotate(300deg); transform: translateX(var(--death-base-x, 0px)) translateY(-10px) scale(1.05); }
+  40% { opacity: 0.5; filter: blur(5px) sepia(1) hue-rotate(300deg); transform: translateX(var(--death-base-x, 0px)) translateY(-30px) scale(1.1); }
+  100% { opacity: 0; filter: blur(20px); transform: translateX(var(--death-base-x, 0px)) translateY(-100px) scale(1.5); }
 }
 
 .death-slice-left {
@@ -306,16 +306,16 @@ h3 {
 }
 
 @keyframes slice-left {
-  0% { transform: translateX(0) translateY(0) rotate(0); opacity: 1; }
-  10% { transform: translateX(-5px) translateY(5px) rotate(-2deg); opacity: 1; filter: brightness(1.5); }
+  0% { transform: translateX(var(--death-base-x, 0px)) translateY(0) rotate(0); opacity: 1; }
+  10% { transform: translateX(calc(var(--death-base-x, 0px) - 5px)) translateY(5px) rotate(-2deg); opacity: 1; filter: brightness(1.5); }
   15% { filter: brightness(1); }
-  100% { transform: translateX(-50px) translateY(100px) rotate(-20deg); opacity: 0; }
+  100% { transform: translateX(calc(var(--death-base-x, 0px) - 50px)) translateY(100px) rotate(-20deg); opacity: 0; }
 }
 @keyframes slice-right {
-  0% { transform: translateX(0) translateY(0) rotate(0); opacity: 1; }
-  10% { transform: translateX(5px) translateY(5px) rotate(2deg); opacity: 1; filter: brightness(1.5); }
+  0% { transform: translateX(var(--death-base-x, 0px)) translateY(0) rotate(0); opacity: 1; }
+  10% { transform: translateX(calc(var(--death-base-x, 0px) + 5px)) translateY(5px) rotate(2deg); opacity: 1; filter: brightness(1.5); }
   15% { filter: brightness(1); }
-  100% { transform: translateX(50px) translateY(100px) rotate(20deg); opacity: 0; }
+  100% { transform: translateX(calc(var(--death-base-x, 0px) + 50px)) translateY(100px) rotate(20deg); opacity: 0; }
 }
 
 .teleport-player {
@@ -432,9 +432,9 @@ h3 {
 }
 
 @keyframes death-fall-anim {
-  0% { transform: rotate(0deg); opacity: 1; filter: grayscale(0%); }
-  50% { transform: rotate(-90deg); opacity: 1; filter: grayscale(100%); }
-  100% { transform: rotate(-90deg); opacity: 0; filter: grayscale(100%); }
+  0% { transform: translateX(var(--death-base-x, 0px)) rotate(0deg); opacity: 1; filter: grayscale(0%); }
+  50% { transform: translateX(var(--death-base-x, 0px)) rotate(-90deg); opacity: 1; filter: grayscale(100%); }
+  100% { transform: translateX(var(--death-base-x, 0px)) rotate(-90deg); opacity: 0; filter: grayscale(100%); }
 }
 
 .anim-death-explode {
@@ -442,11 +442,11 @@ h3 {
 }
 
 @keyframes death-explode-anim {
-  0% { transform: scale(1); opacity: 1; filter: brightness(1); }
-  20% { transform: scale(1.5); filter: brightness(5) sepia(1) hue-rotate(-50deg); }
-  30% { transform: scale(2); opacity: 1; filter: brightness(10); }
-  40% { transform: scale(0.1); opacity: 0; }
-  100% { transform: scale(0); opacity: 0; }
+  0% { transform: translateX(var(--death-base-x, 0px)) scale(1); opacity: 1; filter: brightness(1); }
+  20% { transform: translateX(var(--death-base-x, 0px)) scale(1.5); filter: brightness(5) sepia(1) hue-rotate(-50deg); }
+  30% { transform: translateX(var(--death-base-x, 0px)) scale(2); opacity: 1; filter: brightness(10); }
+  40% { transform: translateX(var(--death-base-x, 0px)) scale(0.1); opacity: 0; }
+  100% { transform: translateX(var(--death-base-x, 0px)) scale(0); opacity: 0; }
 }
 
 .bruise-overlay {

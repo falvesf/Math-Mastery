@@ -115,5 +115,6 @@ export const CACHE_KEYS = {
   rankingItems: () => `ranking_items`,
   presetSkins: (tenantId?: string | null) => tenantId ? `preset_skins_${tenantId}` : `preset_skins`,
   models3d: (tenantId?: string | null) => tenantId ? `3d_models_${tenantId}` : `3d_models`,
+  audioBank: (tenantId?: string | null) => tenantId ? `audio_bank_${tenantId}` : `audio_bank`,
   companionTips: () => `companion_tips`,
 };

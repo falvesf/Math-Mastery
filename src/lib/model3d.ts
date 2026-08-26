@@ -43,6 +43,7 @@ export async function fetchModelsByCategory(
         chestAudioRate: m.chest_audio_rate ?? 1,
         chestAudioStart: m.chest_audio_start ?? 0,
         chestAudioDuration: m.chest_audio_duration ?? 0,
+        coinSoundUrl: m.coin_sound_url || '',
         _isGlobal: m.is_global ?? false,
       }));
       sessionCache.set(cacheKey, models, CACHE_TTL.MODELS_3D);
@@ -108,6 +109,7 @@ export async function fetchModel3DById(id: string, tenantId?: string | null): Pr
       chestAudioRate: m.chest_audio_rate ?? 1,
       chestAudioStart: m.chest_audio_start ?? 0,
       chestAudioDuration: m.chest_audio_duration ?? 0,
+      coinSoundUrl: m.coin_sound_url || '',
       _isGlobal: m.is_global ?? false,
     };
   } catch (e) {

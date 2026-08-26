@@ -576,6 +576,7 @@ export default function LiveQuestAdmin() {
                     itemImageUrl: item.imageUrl || '',
                     gameEffect: item.gameEffect || 'none',
                     usableInQuest: item.usableInQuest || false,
+                    battleSoundUrl: (item as any).battleSoundUrl || '',
                     gameModelUrl: item.gameModelUrl || '',
                     modelTextureUrl: item.modelTextureUrl || '',
                     minecraftHeadValue: item.minecraftHeadValue || '',

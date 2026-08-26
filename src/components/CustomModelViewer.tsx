@@ -37,10 +37,22 @@ export function computeChestSlide(scene: THREE.Object3D): { closedX: number; ope
     }
   });
   if (left.length === 0 || right.length === 0) return null;
-  const closedBox = new THREE.Box3();
-  left.forEach(b => closedBox.union(b));
-  const openBox = new THREE.Box3();
-  right.forEach(b => openBox.union(b));
+  const leftBox = new THREE.Box3();
+  left.forEach(b => leftBox.union(b));
+  const rightBox = new THREE.Box3();
+  right.forEach(b => rightBox.union(b));
+
+  // Detecção automática: o baú FECHADO costuma ser mais baixo (tampa abaixada);
+  // o ABERTO mais alto (tampa levantada). Se as alturas diferirem de forma
+  // significativa, o menor é o fechado — independente do lado.
+  let closedBox = leftBox;
+  let openBox = rightBox;
+  const leftH = leftBox.max.y - leftBox.min.y;
+  const rightH = rightBox.max.y - rightBox.min.y;
+  if (Math.abs(leftH - rightH) > Math.max(leftH, rightH) * 0.05) {
+    if (rightH < leftH) { closedBox = rightBox; openBox = leftBox; }
+  }
+
   return {
     closedX: closedBox.getCenter(new THREE.Vector3()).x,
     openX: openBox.getCenter(new THREE.Vector3()).x
@@ -57,13 +69,15 @@ export function computeChestBaselineFit(scene: THREE.Object3D, twoState: { close
   const box = new THREE.Box3();
 
   if (twoState) {
-    // Baú "de dois estados": usa o baú FECHADO (cluster esquerdo por padrão;
-    // se swapSides, o fechado está à direita)
+    // Encaixa o cluster identificado como FECHADO (pela detecção automática),
+    // respeitando a inversão manual se o admin tiver marcado "Inverter lados".
+    const autoClosedIsRight = twoState.closedX > 0;
+    const useRight = swapSides ? !autoClosedIsRight : autoClosedIsRight;
     s.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const b = new THREE.Box3().setFromObject(child as THREE.Object3D);
         const c = b.getCenter(new THREE.Vector3()).x;
-        if (swapSides ? c > 0 : c <= 0) box.union(b);
+        if (useRight ? c > 0 : c <= 0) box.union(b);
       }
     });
   } else {

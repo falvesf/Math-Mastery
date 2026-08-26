@@ -8,6 +8,7 @@ import DirectUploadButton from './DirectUploadButton';
 import ImageGalleryModal from './ImageGalleryModal';
 import InteractiveModelPreview from './InteractiveModelPreview';
 import { playChestAudio } from '../lib/audio';
+import { playSound } from '../lib/audioBank';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 export interface Model3D {
@@ -31,6 +32,7 @@ export interface Model3D {
   chestAudioRate?: number;
   chestAudioStart?: number;
   chestAudioDuration?: number;
+  coinSoundUrl?: string;
   _isGlobal?: boolean;
 }
 
@@ -86,6 +88,7 @@ export default function Admin3DModelsManager() {
   const [chestAudioRate, setChestAudioRate] = useState(1);
   const [chestAudioStart, setChestAudioStart] = useState(0);
   const [chestAudioDuration, setChestAudioDuration] = useState(0);
+  const [coinSoundUrl, setCoinSoundUrl] = useState('');
   const [galleryTarget, setGalleryTarget] = useState<'url' | 'openUrl' | null>(null);
 
   const fetchModels = async (showLoading = true) => {
@@ -119,6 +122,7 @@ export default function Admin3DModelsManager() {
           chestAudioRate: m.chest_audio_rate ?? 1,
           chestAudioStart: m.chest_audio_start ?? 0,
           chestAudioDuration: m.chest_audio_duration ?? 0,
+          coinSoundUrl: m.coin_sound_url || '',
           _isGlobal: m.is_global ?? false,
         })));
       }
@@ -158,6 +162,7 @@ export default function Admin3DModelsManager() {
       setChestAudioRate(model.chestAudioRate ?? 1);
       setChestAudioStart(model.chestAudioStart ?? 0);
       setChestAudioDuration(model.chestAudioDuration ?? 0);
+      setCoinSoundUrl(model.coinSoundUrl || '');
     } else {
       setEditingId(null);
       setName('');
@@ -179,6 +184,7 @@ export default function Admin3DModelsManager() {
       setChestAudioRate(1);
       setChestAudioStart(0);
       setChestAudioDuration(0);
+      setCoinSoundUrl('');
     }
     setIsModalOpen(true);
   };
@@ -236,6 +242,7 @@ export default function Admin3DModelsManager() {
         }
       } else if (category === 'coin') {
         data.open_url = openUrl.trim() || null;
+        data.coin_sound_url = coinSoundUrl.trim() || null;
         data.is_active = isActive;
         if (isActive) {
           if (tenantId) {
@@ -741,15 +748,31 @@ export default function Admin3DModelsManager() {
             )}
 
             {category === 'coin' && (
-              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={e => setIsActive(e.target.checked)}
-                  style={{ width: '20px', height: '20px' }}
-                />
-                <label style={{ color: 'var(--text-primary)' }}>Marcar como moeda ativa nas batalhas</label>
-              </div>
+              <>
+                <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={e => setIsActive(e.target.checked)}
+                    style={{ width: '20px', height: '20px' }}
+                  />
+                  <label style={{ color: 'var(--text-primary)' }}>Marcar como moeda ativa nas batalhas</label>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Som ao cair no chão (opcional)</label>
+                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={coinSoundUrl}
+                      onChange={e => setCoinSoundUrl(e.target.value)}
+                      placeholder="URL do som..."
+                      style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                    />
+                    <button onClick={() => playSound(coinSoundUrl)} disabled={!coinSoundUrl} style={{ padding: '0.5rem 0.7rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: coinSoundUrl ? 'pointer' : 'not-allowed', opacity: coinSoundUrl ? 1 : 0.4 }}>▶</button>
+                    <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setCoinSoundUrl} buttonStyle={{ minHeight: '100%', padding: '0 0.75rem' }} />
+                  </div>
+                </div>
+              </>
             )}
 
             <button 
