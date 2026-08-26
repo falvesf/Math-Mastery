@@ -25,6 +25,10 @@ export interface ArenaDebugConfig {
   /** Posição onde o monstro morre (fatalidade): cai/evapora/explode/corta exatamente nesse deslocamento */
   deathOffsetX: number;
   deathOffsetY: number;
+  /** Mostra um retângulo na posição da fatalidade para visualizar/definir X e Y */
+  showDeathArea: boolean;
+  /** Força uma fatalidade específica no fim da luta ('' = aleatória) */
+  forcedFatality: string;
   arenaHeight: number;
   arenaPaddingTop: number;
   arenaGap: number;
@@ -75,6 +79,8 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   monsterNameY: -25,
   deathOffsetX: 0,
   deathOffsetY: 0,
+  showDeathArea: false,
+  forcedFatality: '',
   arenaHeight: 300,
   arenaPaddingTop: 16,
   arenaGap: 0,
@@ -312,6 +318,17 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
               <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold', marginBottom: '0.3rem' }}>💀 Posição da Fatalidade (onde o monstro morre)</div>
               <Slider label="Morte X" value={safeConfig.deathOffsetX} onChange={v => update('deathOffsetX', v)} min={-300} max={300} />
               <Slider label="Morte Y" value={safeConfig.deathOffsetY} onChange={v => update('deathOffsetY', v)} min={-300} max={300} />
+              <Toggle label="Ver retângulo da fatalidade" value={safeConfig.showDeathArea} onChange={v => update('showDeathArea', v)} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.3rem' }}>
+                <span style={{ fontSize: '0.65rem', color: '#94a3b8', minWidth: '58px', whiteSpace: 'nowrap' }}>Forçar:</span>
+                <select value={safeConfig.forcedFatality} onChange={e => update('forcedFatality', e.target.value)} style={{ flex: 1, padding: '0.3rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.65rem' }}>
+                  <option value="">🎲 Aleatória</option>
+                  <option value="death-fall">Queda</option>
+                  <option value="death-evaporate">Evaporar</option>
+                  <option value="death-slice">Corte</option>
+                  <option value="death-explode">Explosão</option>
+                </select>
+              </div>
               <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Deslocamento em cima da posição normal do monstro. Ajuste até ele cair/evaporar/explodir no ponto exato do golpe.</div>
             </div>
 

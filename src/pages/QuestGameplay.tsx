@@ -18,7 +18,9 @@ import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../li
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
-import { playSound } from '../lib/audioBank';
+import { playSound, playCoinCollect } from '../lib/audioBank';
+import { usePermissions } from '../lib/permissions';
+import ArenaDebugPanel, { type ArenaDebugConfig, DEFAULT_ARENA_DEBUG } from '../components/ArenaDebugPanel';
 
 interface UserItem {
   id: string;
@@ -246,6 +248,48 @@ export default function QuestGameplay() {
   const arenaRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const gameStateRef = useRef(gameState);
+
+  // Arena Debug (desktop): config compartilhada com o mobile (slot arena_desktop)
+  const { can: canArenaDebug } = usePermissions();
+  const [arenaDebug, setArenaDebug] = useState<ArenaDebugConfig>(() => {
+    const saved = localStorage.getItem('arenaDebugConfig_desktop');
+    const sharedStr = localStorage.getItem('arenaDebugSharedToggles');
+    const shared = sharedStr ? JSON.parse(sharedStr) : {};
+    if (saved) {
+      try { return { ...DEFAULT_ARENA_DEBUG, ...JSON.parse(saved), ...shared }; } catch { return { ...DEFAULT_ARENA_DEBUG, ...shared }; }
+    }
+    return { ...DEFAULT_ARENA_DEBUG, ...shared };
+  });
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+
+  useEffect(() => {
+    const loadArenaDebug = async () => {
+      const { data } = await supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', 'arena_desktop').single();
+      const sharedStr = localStorage.getItem('arenaDebugSharedToggles');
+      const shared = sharedStr ? JSON.parse(sharedStr) : {};
+      if (data?.data) {
+        const dbData = data.data as Record<string, any>;
+        const cleanData = Object.fromEntries(Object.entries(dbData).filter(([_, v]) => v !== undefined && v !== null));
+        setArenaDebug(prev => ({ ...DEFAULT_ARENA_DEBUG, ...prev, ...cleanData, ...shared }));
+      }
+    };
+    loadArenaDebug();
+  }, []);
+
+  const handleSaveArenaDebug = async () => {
+    try {
+      const existing = await supabase.from('system_collections').select('id').eq('collection_name', 'arena_debug').eq('doc_id', 'arena_desktop').limit(1);
+      const payload = { collection_name: 'arena_debug', doc_id: 'arena_desktop', data: arenaDebug };
+      if (existing.data && existing.data.length > 0) {
+        await supabase.from('system_collections').update({ data: arenaDebug }).eq('id', existing.data[0].id);
+      } else {
+        await supabase.from('system_collections').insert(payload);
+      }
+      localStorage.setItem('arenaDebugConfig_desktop', JSON.stringify(arenaDebug));
+    } catch (e) {
+      console.error('Erro ao salvar arena debug:', e);
+    }
+  };
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -712,7 +756,10 @@ export default function QuestGameplay() {
     const deaths = hasAttackWeapon 
       ? ['death-fall', 'death-evaporate', 'death-slice', 'death-explode']
       : ['death-fall', 'death-evaporate'];
-    const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+    // Força uma fatalidade específica via Arena Debug (senão aleatória)
+    const fatality = arenaDebug.forcedFatality && deaths.includes(arenaDebug.forcedFatality)
+      ? arenaDebug.forcedFatality
+      : deaths[Math.floor(Math.random() * deaths.length)];
     
     let msg = '';
     if (hasAttackWeapon) {
@@ -1407,10 +1454,14 @@ export default function QuestGameplay() {
     userData.coins = newCoins;
     setDroppedCoins(prev => prev.filter(c => c.id !== coin.id));
     setCoinPops(prev => [...prev, { id: Date.now() + Math.random(), x: coin.x, y: coin.y, value: coin.value }]);
+    // Som de coleta da moeda (coinSoundUrl da moeda ativa ou blip padrão)
+    playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
   };
 
   const dropCoins = (isCrit = false) => {
     if (!economySettings?.coinsDropInCombat) return;
+    // Som quando as moedas CAEM no chão (coinSoundUrl da moeda ativa ou blip padrão)
+    playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
     const cfg = combatCoinConfigRef.current;
     let dropped: number;
 
@@ -1785,13 +1836,20 @@ export default function QuestGameplay() {
                 </div>
               ) : (
                 <div 
-                  className={`quest-arena-avatars ${
+                  className="quest-arena-avatars"
+                  style={{ position: 'relative', width: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', transform: `translate(${arenaDebug.monsterOffsetX + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0)}px, ${arenaDebug.monsterOffsetY + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0)}px) scale(${arenaDebug.monsterScale})`, transformOrigin: 'bottom center' }}
+                >
+                  {((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showDeathArea) && (
+                    <div style={{ position: 'absolute', top: 0, left: 0, transform: `translate(${arenaDebug.monsterOffsetX + arenaDebug.deathOffsetX}px, ${arenaDebug.monsterOffsetY + arenaDebug.deathOffsetY}px) scale(${arenaDebug.monsterScale})`, width: '160px', height: '228px', border: '2px dashed #fbbf24', borderRadius: '8px', background: 'rgba(251,191,36,0.08)', zIndex: 29, pointerEvents: 'none', boxSizing: 'border-box' }}>
+                      <span style={{ position: 'absolute', top: '-20px', left: 0, fontSize: '0.6rem', color: '#fbbf24', fontWeight: 'bold', background: 'rgba(0,0,0,0.75)', padding: '0 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>⚰️ X:{arenaDebug.deathOffsetX} Y:{arenaDebug.deathOffsetY}</span>
+                    </div>
+                  )}
+                  {/* A animação fica num FILHO para não sobrescrever a posição (transform) do pai */}
+                  <div className={`${
                     monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : 
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
-                  }`}
-                  style={{ position: 'relative', width: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
-                >
+                  }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center' }}>
                   {/* Nome do monstro - acompanha animações de morte */}
                   <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
@@ -1829,6 +1887,7 @@ export default function QuestGameplay() {
                     <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
                   )}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, currentQIndex / Math.max(1, quest?.questions.length || 1))) } as any} />
+                </div>
                 </div>
                 </div>
               )}
@@ -2017,6 +2076,28 @@ export default function QuestGameplay() {
           setTransition('none');
         }}
       />
+
+      {/* Arena Debug (desktop) */}
+      {canArenaDebug('arena_debug', 'view') && (
+        <button
+          onClick={() => setShowDebugPanel(v => !v)}
+          style={{ position: 'fixed', bottom: '1.5rem', left: '1.5rem', zIndex: 99998, width: '48px', height: '48px', borderRadius: '50%', background: showDebugPanel ? 'rgba(245,158,11,0.4)' : 'rgba(30,35,45,0.9)', border: '2px solid #f59e0b', color: '#f59e0b', cursor: 'pointer', fontSize: '1.2rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Abrir Arena Debug"
+        >
+          🏟️
+        </button>
+      )}
+      {gameState === 'playing' && showDebugPanel && canArenaDebug('arena_debug', 'view') && (
+        <ArenaDebugPanel
+          config={arenaDebug}
+          onChange={setArenaDebug}
+          onSave={handleSaveArenaDebug}
+          onTestPlayerBubble={() => setPlayerBubble('Teste!')}
+          onTestMonsterBubble={() => setMonsterBubble('Teste!')}
+          isAdmin={userData?.role === 'admin' || userData?.role === 'superadmin'}
+          deviceKey="desktop"
+        />
+      )}
     </div>
   );
 }

@@ -2010,8 +2010,8 @@ html, body {
     left: 0.5rem !important;
     width: auto !important;
     max-width: calc(100vw - 1rem) !important;
-    height: calc(100dvh - 110px) !important;
-    max-height: 80vh !important;
+    height: calc(100dvh - 125px) !important;
+    max-height: 72vh !important;
     border-radius: 12px !important;
   }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageCircle, X, Send, Users, UserPlus, ShieldCheck, Accessibility, Loader2, ArrowLeft, Pin, PinOff } from 'lucide-react';
+import { MessageCircle, X, Send, Users, UserPlus, ShieldCheck, User, Loader2, ArrowLeft, Pin, PinOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
@@ -318,7 +318,7 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
       >
         <div style={{ position: 'relative' }}>
           <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--btn-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
-            <Accessibility size={20} />
+            <User size={20} />
           </div>
           {contact.photoURL && (
             <img
@@ -403,7 +403,7 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
       {open && (
         <div className="chat-window" style={{
           position: 'fixed', bottom: '5.5rem', right: '1.5rem',
-          width: '360px', maxWidth: 'calc(100vw - 1.5rem)', height: '520px', maxHeight: 'calc(100dvh - 7rem)',
+          width: 'min(340px, calc(100vw - 2rem))', height: 'min(460px, calc(100dvh - 9rem))',
           borderRadius: '16px', display: 'flex', flexDirection: 'column', overflow: 'hidden',
           boxShadow: '0 12px 40px rgba(0,0,0,0.6)', pointerEvents: 'auto', zIndex: 9999
         }}>
@@ -460,7 +460,7 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
                 </div>
                 <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                   <button onClick={() => onOpenProfile?.(activeContact.uid)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-blue, #8b5cf6)', cursor: 'pointer', padding: '0.25rem' }} title="Ver histórico">
-                    <Accessibility size={16} />
+                    <User size={16} />
                   </button>
                   {activeContact.isFriend ? (
                     <button onClick={() => handleRemoveFriend(activeContact)} style={{ background: 'color-mix(in srgb, var(--accent-red, #ef4444) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-red, #ef4444) 40%, transparent)', color: 'var(--accent-red, #ef4444)', cursor: 'pointer', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.7rem' }}>

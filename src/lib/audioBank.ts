@@ -96,3 +96,38 @@ export function fadeOutAllSounds(durationMs = 1200) {
     requestAnimationFrame(step);
   });
 }
+
+/** Blip de moeda gerado via Web Audio (sem depender de arquivo configurado). */
+export function playCoinBlip() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    const tone = (freq: number, start: number, dur: number, vol = 0.18) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + start);
+      gain.gain.setValueAtTime(0.0001, now + start);
+      gain.gain.linearRampToValueAtTime(vol, now + start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + start);
+      osc.stop(now + start + dur + 0.05);
+    };
+    tone(1318.5, 0, 0.12);   // E6
+    tone(1760, 0.08, 0.2);   // A6
+    setTimeout(() => ctx.close().catch(() => {}), 500);
+  } catch (e) { /* ignore */ }
+}
+
+/** Som de coleta de moeda: usa o coinSoundUrl configurado, senão o blip padrão. */
+export function playCoinCollect(coinSoundUrl?: string | null) {
+  if (coinSoundUrl) {
+    playSound(coinSoundUrl, 0.7);
+  } else {
+    playCoinBlip();
+  }
+}

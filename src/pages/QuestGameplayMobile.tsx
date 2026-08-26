@@ -18,7 +18,7 @@ import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
-import { playSound, fadeOutAllSounds } from '../lib/audioBank';
+import { playSound, fadeOutAllSounds, playCoinCollect } from '../lib/audioBank';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 
@@ -904,7 +904,10 @@ export default function QuestGameplay() {
     const deaths = hasAttackWeapon 
       ? ['death-fall', 'death-evaporate', 'death-slice', 'death-explode']
       : ['death-fall', 'death-evaporate'];
-    const fatality = deaths[Math.floor(Math.random() * deaths.length)];
+    // Força uma fatalidade específica via Arena Debug (senão aleatória)
+    const fatality = arenaDebug.forcedFatality && deaths.includes(arenaDebug.forcedFatality)
+      ? arenaDebug.forcedFatality
+      : deaths[Math.floor(Math.random() * deaths.length)];
     
     let msg = '';
     if (hasAttackWeapon) {
@@ -1646,11 +1649,14 @@ export default function QuestGameplay() {
     userData.coins = newCoins;
     setDroppedCoins(prev => prev.filter(c => c.id !== coin.id));
     setCoinPops(prev => [...prev, { id: Date.now() + Math.random(), x: coin.x, y: coin.y, value: coin.value }]);
+    // Som de coleta da moeda (coinSoundUrl da moeda ativa ou blip padrão)
+    playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
   };
 
   const dropCoins = (isCrit = false) => {
     if (!economySettings?.coinsDropInCombat) return;
-    playSound((activeCoinModel as any)?.coinSoundUrl, 0.7);
+    // Som quando as moedas CAEM no chão (coinSoundUrl da moeda ativa ou blip padrão)
+    playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
     const cfg = combatCoinConfigRef.current;
     let dropped: number;
 
@@ -2063,6 +2069,11 @@ export default function QuestGameplay() {
                   <span style={{ fontSize: '0.5rem', color: '#ef4444', fontWeight: 'bold' }}>F</span>
                 </div>
               )}
+              {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showDeathArea && (
+                <div style={{ position: 'absolute', top: 0, left: 'calc(50% - 20px)', transform: `translate(calc(-50% + ${arenaDebug.monsterOffsetX + arenaDebug.deathOffsetX}px), ${arenaDebug.monsterOffsetY + arenaDebug.deathOffsetY}px) scale(${arenaDebug.monsterScale})`, width: '130px', height: '200px', border: '2px dashed #fbbf24', borderRadius: '8px', background: 'rgba(251,191,36,0.08)', zIndex: 29, pointerEvents: 'none', boxSizing: 'border-box' }}>
+                  <span style={{ position: 'absolute', top: '-20px', left: 0, fontSize: '0.6rem', color: '#fbbf24', fontWeight: 'bold', background: 'rgba(0,0,0,0.75)', padding: '0 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>⚰️ X:{arenaDebug.deathOffsetX} Y:{arenaDebug.deathOffsetY}</span>
+                </div>
+              )}
               {monsterAnim === 'death-slice' ? (
                 <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', height: '200px', transform: `translate(${arenaDebug.monsterOffsetX + arenaDebug.deathOffsetX}px, ${arenaDebug.monsterOffsetY + arenaDebug.deathOffsetY}px)` }}>
                   {/* Nome do monstro - acompanha death-slice */}
@@ -2078,13 +2089,15 @@ export default function QuestGameplay() {
                 </div>
               ) : (
                 <div 
-                  className={`quest-arena-avatars ${
+                  className="quest-arena-avatars"
+                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${arenaDebug.monsterOffsetX + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0)}px, ${arenaDebug.monsterOffsetY + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0)}px) scale(${arenaDebug.monsterScale})`, transformOrigin: 'bottom center' }}
+                >
+                  {/* A animação fica num FILHO para não sobrescrever a posição (transform) do pai */}
+                  <div className={`${
                     monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : 
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
-                  }`}
-                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${arenaDebug.monsterOffsetX + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0)}px, ${arenaDebug.monsterOffsetY + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0)}px) scale(${arenaDebug.monsterScale})` }}
-                >
+                  }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center' }}>
                   {/* Nome do monstro - acompanha animações de morte */}
                   <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arenaDebug.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
@@ -2131,6 +2144,7 @@ export default function QuestGameplay() {
                     }
                   })()}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, currentQIndex / Math.max(1, quest?.questions.length || 1))) } as any} />
+                </div>
                 </div>
                 </div>
               )}
