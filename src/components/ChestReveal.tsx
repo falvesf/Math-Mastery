@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import CustomModelViewer from './CustomModelViewer';
 import { fetchActiveChest, isImageUrl } from '../lib/model3d';
+import { playChestAudio } from '../lib/audio';
 import { useTenant } from '../contexts/TenantContext';
 
 interface ChestRevealProps {
@@ -10,6 +11,18 @@ interface ChestRevealProps {
   chestModelUrl?: string;
   chestOpenUrl?: string;
   rarity?: string;
+  chestScale?: number;
+  chestZoom?: number;
+  chestOffsetX?: number;
+  chestOffsetY?: number;
+  chestRotY?: number;
+  chestOpenOffsetX?: number;
+  chestOpenOffsetY?: number;
+  chestSwapSides?: boolean;
+  chestAudioUrl?: string;
+  chestAudioRate?: number;
+  chestAudioStart?: number;
+  chestAudioDuration?: number;
 }
 
 const RARITY_COLORS: Record<string, string> = {
@@ -20,14 +33,14 @@ const RARITY_COLORS: Record<string, string> = {
   legendary: '#fbbf24',
 };
 
-export default function ChestReveal({ onOpen, title = "Baú de Recompensas", subtitle = "Clique no baú para abri-lo!", chestModelUrl, chestOpenUrl, rarity }: ChestRevealProps) {
+export default function ChestReveal({ onOpen, title = "Baú de Recompensas", subtitle = "Clique no baú para abri-lo!", chestModelUrl, chestOpenUrl, rarity, chestScale = 1, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides, chestAudioUrl, chestAudioRate, chestAudioStart, chestAudioDuration }: ChestRevealProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
   const { tenantId } = useTenant();
 
   // Baú padrão cadastrado em Moldes 3D > Baús de Recompensa (is_active).
   // Usado como fallback quando nenhum baú específico foi passado — substitui o minecraft_chest.glb fixo.
-  const [defaultChest, setDefaultChest] = useState<{ url: string; open_url?: string; rarity?: string } | null>(null);
+  const [defaultChest, setDefaultChest] = useState<{ url: string; open_url?: string; rarity?: string; chestScale?: number; chestZoom?: number; chestOffsetX?: number; chestOffsetY?: number; chestRotY?: number; chestOpenOffsetX?: number; chestOpenOffsetY?: number; chestSwapSides?: boolean; chestAudioUrl?: string; chestAudioRate?: number; chestAudioStart?: number; chestAudioDuration?: number } | null>(null);
   useEffect(() => {
     if (chestModelUrl) return;
     let mounted = true;
@@ -40,16 +53,66 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
   const resolvedUrl = chestModelUrl || defaultChest?.url || '/models/minecraft_chest.glb';
   const resolvedOpenUrl = chestOpenUrl || defaultChest?.open_url || undefined;
   const resolvedRarity = rarity || defaultChest?.rarity;
+  const resolvedChestScale = chestScale * (defaultChest?.chestScale ?? 1);
+  const resolvedZoom = chestZoom ?? defaultChest?.chestZoom ?? 1;
+  const resolvedOffsetX = chestOffsetX ?? defaultChest?.chestOffsetX ?? 0;
+  const resolvedOffsetY = chestOffsetY ?? defaultChest?.chestOffsetY ?? 0;
+  const resolvedRotY = chestRotY ?? defaultChest?.chestRotY ?? 0;
+  const resolvedOpenOffsetX = chestOpenOffsetX ?? defaultChest?.chestOpenOffsetX ?? undefined;
+  const resolvedOpenOffsetY = chestOpenOffsetY ?? defaultChest?.chestOpenOffsetY ?? undefined;
+  const resolvedSwapSides = chestSwapSides ?? defaultChest?.chestSwapSides ?? false;
+  const resolvedAudioUrl = chestAudioUrl || defaultChest?.chestAudioUrl || '';
+  const resolvedAudioRate = chestAudioRate ?? defaultChest?.chestAudioRate ?? 1;
+  const resolvedAudioStart = chestAudioStart ?? defaultChest?.chestAudioStart ?? 0;
+  const resolvedAudioDuration = chestAudioDuration ?? defaultChest?.chestAudioDuration ?? 0;
 
   const usePngChest = resolvedUrl ? isImageUrl(resolvedUrl) : false;
   const displayUrl = resolvedOpenUrl && isOpen ? resolvedOpenUrl : resolvedUrl;
 
   const rarityColor = resolvedRarity ? (RARITY_COLORS[resolvedRarity] || '#fbbf24') : 'var(--gold-primary)';
 
+  // Som de abertura: usa o áudio personalizado do baú (com velocidade/corte);
+  // senão, um "pop" curto padrão.
+  const playOpenSound = () => {
+    if (resolvedAudioUrl) {
+      playChestAudio(resolvedAudioUrl, resolvedAudioRate, resolvedAudioStart, resolvedAudioDuration);
+      return;
+    }
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const playTone = (freq: number, start: number, dur: number, vol = 0.4) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime + start);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(0, audioCtx.currentTime + start);
+        gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + start + dur * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + start + dur);
+        osc.start(audioCtx.currentTime + start);
+        osc.stop(audioCtx.currentTime + start + dur);
+      };
+      // "Abriu o baú": duas notas rápidas ascendentes
+      playTone(523.25, 0, 0.15, 0.35); // C5
+      playTone(783.99, 0.15, 0.25, 0.4); // G5
+    } catch (e) {
+      console.error("Audio API not supported");
+    }
+  };
+
+  // O círculo externo cresce junto com a escala do baú (antes ficava fixo em 180px
+  // e cortava o baú quando o tamanho aumentava). Limite = caber na tela.
+  const viewportCap = Math.min(window.innerWidth - 32, window.innerHeight - 32);
+  const boxSize = Math.max(120, Math.min(520, viewportCap, 180 * resolvedChestScale));
+  const innerSize = Math.max(80, boxSize - 32);
+
   const handleOpen = () => {
     if (isOpen || isOpening) return;
     setIsOpening(true);
     setIsOpen(true);
+    playOpenSound();
     
     // O tempo de animação de abrir do bau
     setTimeout(() => {
@@ -94,8 +157,8 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
           background: `radial-gradient(circle, ${rarityColor}33 0%, transparent 70%)`,
           borderRadius: '50%',
           padding: '1rem',
-          width: '180px',
-          height: '180px',
+          width: boxSize,
+          height: boxSize,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -104,13 +167,13 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
         className={!isOpen ? 'hover-pulse' : ''}
       >
         {usePngChest ? (
-            <div style={{ width: '120px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: innerSize, height: innerSize, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <img
                 src={displayUrl || resolvedUrl}
                 alt="Baú"
                 style={{
-                  maxWidth: '120px',
-                  maxHeight: '120px',
+                  width: '100%',
+                  height: '100%',
                   objectFit: 'contain',
                   transform: isOpening ? 'scale(1.15)' : 'scale(1)',
                   transition: 'transform 0.3s ease-out',
@@ -119,11 +182,18 @@ export default function ChestReveal({ onOpen, title = "Baú de Recompensas", sub
               />
             </div>
           ) : (
-            <div style={{ maxWidth: '120px', maxHeight: '120px' }}>
+            <div style={{ width: innerSize, height: innerSize }}>
               <CustomModelViewer 
                 modelUrl={resolvedUrl}
                 animation={isOpen ? 'open' : 'none'}
-                size={120}
+                size={innerSize}
+                chestZoom={resolvedZoom}
+                chestOffsetX={resolvedOffsetX}
+                chestOffsetY={resolvedOffsetY}
+                chestRotY={resolvedRotY}
+                chestOpenOffsetX={resolvedOpenOffsetX}
+                chestOpenOffsetY={resolvedOpenOffsetY}
+                chestSwapSides={resolvedSwapSides}
               />
             </div>
           )}

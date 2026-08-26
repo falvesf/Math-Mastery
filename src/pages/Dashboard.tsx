@@ -1773,6 +1773,18 @@ export default function Dashboard() {
               chestModelUrl={rankUpChestModel?.url}
               chestOpenUrl={rankUpChestModel?.open_url}
               rarity={rankUpChestModel?.rarity}
+              chestScale={rankUpChestModel?.chestScale}
+              chestZoom={rankUpChestModel?.chestZoom}
+              chestOffsetX={rankUpChestModel?.chestOffsetX}
+              chestOffsetY={rankUpChestModel?.chestOffsetY}
+              chestRotY={rankUpChestModel?.chestRotY}
+              chestOpenOffsetX={rankUpChestModel?.chestOpenOffsetX}
+              chestOpenOffsetY={rankUpChestModel?.chestOpenOffsetY}
+              chestSwapSides={rankUpChestModel?.chestSwapSides}
+              chestAudioUrl={rankUpChestModel?.chestAudioUrl}
+              chestAudioRate={rankUpChestModel?.chestAudioRate}
+              chestAudioStart={rankUpChestModel?.chestAudioStart}
+              chestAudioDuration={rankUpChestModel?.chestAudioDuration}
             />
             {rankUpChestItems.map((item, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', marginBottom: '0.5rem' }}>
@@ -1865,6 +1877,18 @@ export default function Dashboard() {
               chestModelUrl={questChestToOpen.chestModel?.url}
               chestOpenUrl={questChestToOpen.chestModel?.open_url}
               rarity={questChestToOpen.chestModel?.rarity}
+              chestScale={questChestToOpen.chestModel?.chestScale}
+              chestZoom={questChestToOpen.chestModel?.chestZoom}
+              chestOffsetX={questChestToOpen.chestModel?.chestOffsetX}
+              chestOffsetY={questChestToOpen.chestModel?.chestOffsetY}
+              chestRotY={questChestToOpen.chestModel?.chestRotY}
+              chestOpenOffsetX={questChestToOpen.chestModel?.chestOpenOffsetX}
+              chestOpenOffsetY={questChestToOpen.chestModel?.chestOpenOffsetY}
+              chestSwapSides={questChestToOpen.chestModel?.chestSwapSides}
+              chestAudioUrl={questChestToOpen.chestModel?.chestAudioUrl}
+              chestAudioRate={questChestToOpen.chestModel?.chestAudioRate}
+              chestAudioStart={questChestToOpen.chestModel?.chestAudioStart}
+              chestAudioDuration={questChestToOpen.chestModel?.chestAudioDuration}
             />
             {/* Itens ganhos */}
             {questChestWonItems.length > 0 && (

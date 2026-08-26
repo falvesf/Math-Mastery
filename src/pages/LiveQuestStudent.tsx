@@ -1182,6 +1182,18 @@ export default function LiveQuestStudent() {
             chestModelUrl={selectedChestModel?.url} 
             chestOpenUrl={selectedChestModel?.open_url} 
             rarity={selectedChestModel?.rarity} 
+            chestScale={selectedChestModel?.chestScale} 
+            chestZoom={selectedChestModel?.chestZoom}
+            chestOffsetX={selectedChestModel?.chestOffsetX}
+            chestOffsetY={selectedChestModel?.chestOffsetY}
+            chestRotY={selectedChestModel?.chestRotY}
+            chestOpenOffsetX={selectedChestModel?.chestOpenOffsetX}
+            chestOpenOffsetY={selectedChestModel?.chestOpenOffsetY}
+            chestSwapSides={selectedChestModel?.chestSwapSides}
+            chestAudioUrl={selectedChestModel?.chestAudioUrl}
+            chestAudioRate={selectedChestModel?.chestAudioRate}
+            chestAudioStart={selectedChestModel?.chestAudioStart}
+            chestAudioDuration={selectedChestModel?.chestAudioDuration}
           />
         </div>
       );

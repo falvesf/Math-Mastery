@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { useGLTF, useAnimations, OrbitControls, Bounds } from '@react-three/drei';
+import { useGLTF, useAnimations, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
 interface CustomModelViewerProps {
@@ -9,30 +9,79 @@ interface CustomModelViewerProps {
   animation?: string;
   size?: number;
   role?: 'player' | 'monster';
+  chestZoom?: number;
+  chestOffsetX?: number;
+  chestOffsetY?: number;
+  chestRotY?: number;
+  chestOpenOffsetX?: number;
+  chestOpenOffsetY?: number;
+  chestSwapSides?: boolean;
 }
 
 // Para baús "de dois estados" (fechado à esquerda + aberto à direita no MESMO .glb,
 // sem animação de ossos): detecta o centro de cada baú para saber a distância do deslize.
 // Retorna null se não conseguir separar em dois grupos (ex.: um único mesh).
-function computeChestSlide(scene: THREE.Object3D): { closedX: number; openX: number } | null {
-  const centers: number[] = [];
-  scene.updateMatrixWorld(true);
-  scene.traverse((child) => {
+// Usa uma CÓPIA da cena (matrizes locais autoradas) para ser estável, independente
+// de rotação/escala aplicadas em runtime pelo R3F.
+export function computeChestSlide(scene: THREE.Object3D): { closedX: number; openX: number } | null {
+  const s = scene.clone();
+  s.updateMatrixWorld(true);
+  const left: THREE.Box3[] = [];
+  const right: THREE.Box3[] = [];
+  s.traverse((child) => {
     if ((child as THREE.Mesh).isMesh) {
       const box = new THREE.Box3().setFromObject(child as THREE.Object3D);
-      centers.push(box.getCenter(new THREE.Vector3()).x);
+      const c = box.getCenter(new THREE.Vector3());
+      if (c.x <= 0) left.push(box.clone());
+      else right.push(box.clone());
     }
   });
-  if (centers.length < 2) return null;
-  const left = centers.filter(x => x <= 0);
-  const right = centers.filter(x => x > 0);
   if (left.length === 0 || right.length === 0) return null;
-  const closedX = left.reduce((s, x) => s + x, 0) / left.length;
-  const openX = right.reduce((s, x) => s + x, 0) / right.length;
-  return { closedX, openX };
+  const closedBox = new THREE.Box3();
+  left.forEach(b => closedBox.union(b));
+  const openBox = new THREE.Box3();
+  right.forEach(b => openBox.union(b));
+  return {
+    closedX: closedBox.getCenter(new THREE.Vector3()).x,
+    openX: openBox.getCenter(new THREE.Vector3()).x
+  };
 }
 
-function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster' }) {
+// Encaixe base (baseline) para baús: faz o baú (ou o baú fechado, se "de dois estados")
+// preencher ~78% da área visível com zoom=1. Retorna { scale, posY }.
+// Com zoom/offsets manuais, o usuário ajusta por cima (WYSIWYG com o preview).
+// Usa CÓPIA da cena (matrizes locais) para ficar estável durante giro/zoom.
+export function computeChestBaselineFit(scene: THREE.Object3D, twoState: { closedX: number; openX: number } | null, swapSides = false): { scale: number; posY: number } {
+  const s = scene.clone();
+  s.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+
+  if (twoState) {
+    // Baú "de dois estados": usa o baú FECHADO (cluster esquerdo por padrão;
+    // se swapSides, o fechado está à direita)
+    s.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const b = new THREE.Box3().setFromObject(child as THREE.Object3D);
+        const c = b.getCenter(new THREE.Vector3()).x;
+        if (swapSides ? c > 0 : c <= 0) box.union(b);
+      }
+    });
+  } else {
+    box.setFromObject(s);
+  }
+
+  if (box.isEmpty()) return { scale: 2.8, posY: -1 };
+
+  const h = Math.max(0.001, box.max.y - box.min.y);
+  const w = Math.max(0.001, box.max.x - box.min.x);
+  const cy = (box.max.y + box.min.y) / 2;
+  // Clamp largo para permitir encolher modelos grandes (ex.: autorados enormes)
+  const fitScale = Math.max(0.001, Math.min(20, 6.5 / Math.max(h, w)));
+  // Centraliza na altura do alvo da câmera (y=1.5) para não cortar
+  return { scale: fitScale, posY: 1.5 - cy * fitScale };
+}
+
+function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean }) {
   const safeModelUrl = modelUrl.startsWith('/') && !modelUrl.startsWith('http') 
     ? import.meta.env.BASE_URL + modelUrl.substring(1) 
     : modelUrl;
@@ -152,8 +201,12 @@ function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string
 
   const slideTargetX = React.useMemo(() => {
     if (!chestSlide) return 0;
-    return animationName === 'open' ? chestSlide.openX : chestSlide.closedX;
-  }, [chestSlide, animationName]);
+    // Se o arquivo tiver o fechado no lado invertido, troca os lados
+    const target = chestSwapSides
+      ? (animationName === 'open' ? chestSlide.closedX : chestSlide.openX)
+      : (animationName === 'open' ? chestSlide.openX : chestSlide.closedX);
+    return target;
+  }, [chestSlide, animationName, chestSwapSides]);
 
   const slideGroupRef = useRef<THREE.Group>(null);
   const isFirstSlideFrame = useRef(true);
@@ -176,13 +229,57 @@ function Model({ modelUrl, textureUrl, animationName, role }: { modelUrl: string
   );
 }
 
-export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role }: CustomModelViewerProps) {
+// Decide como enquadrar o modelo na área:
+//  - Baús: enquadramento MANUAL (baseline + chestZoom + offsets + giro), WYSIWYG com o preview.
+//  - Jogadores/monstros: escala/posição fixas (comportamento atual).
+function ModelGroup({ modelUrl, textureUrl, animationName, role, chestZoom = 1, chestOffsetX = 0, chestOffsetY = 0, chestRotY = 0, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides = false }: {
+  modelUrl: string; textureUrl?: string; animationName?: string; role?: 'player' | 'monster';
+  chestZoom?: number; chestOffsetX?: number; chestOffsetY?: number; chestRotY?: number;
+  chestOpenOffsetX?: number; chestOpenOffsetY?: number; chestSwapSides?: boolean;
+}) {
+  const safeModelUrl = modelUrl.startsWith('/') && !modelUrl.startsWith('http')
+    ? import.meta.env.BASE_URL + modelUrl.substring(1)
+    : modelUrl;
+  const { scene, animations } = useGLTF(safeModelUrl);
+  const isChest = modelUrl.includes('chest');
+
+  const hasOpenAnim = animations.some(a => /open/i.test(a.name));
+
+  // Encaixe calculado UMA vez por cena (estável, não depende de rotação/zoom em runtime)
+  const { twoState, fit } = useMemo(() => {
+    const slide = isChest && !hasOpenAnim ? computeChestSlide(scene) : null;
+    const base = isChest ? computeChestBaselineFit(scene, slide, chestSwapSides) : { scale: 1, posY: 0 };
+    return { twoState: slide, fit: base };
+  }, [scene, isChest, hasOpenAnim, chestSwapSides]);
+
+  const content = (
+    <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animationName} role={role} chestSwapSides={chestSwapSides} />
+  );
+
+  if (!isChest) {
+    return (
+      <group position={[0, -2.8, 0]} scale={2.6}>
+        {content}
+      </group>
+    );
+  }
+
+  // Baú: posição X/Y SEPARADA para o estado fechado e aberto (WYSIWYG com o preview)
+  const isOpen = animationName === 'open';
+  const offX = isOpen ? (chestOpenOffsetX ?? chestOffsetX ?? 0) : (chestOffsetX ?? 0);
+  const offY = isOpen ? (chestOpenOffsetY ?? chestOffsetY ?? 0) : (chestOffsetY ?? 0);
+  const zoom = Math.max(0.1, Math.min(5, chestZoom ?? 1));
+  const rotRad = ((((chestRotY ?? 0) % 360) + 360) % 360) * Math.PI / 180;
+  return (
+    <group position={[offX, fit.posY + offY, 0]} scale={fit.scale * zoom} rotation={[0, rotRad, 0]}>
+      {content}
+    </group>
+  );
+}
+
+export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides }: CustomModelViewerProps) {
   const isChest = modelUrl.includes('chest');
   
-  // Aumentar a escala para monstros, mas não o suficiente para cortar a cabeça no modo desafio
-  const modelScale = isChest ? 2.8 : 2.6;
-  const modelPosY = isChest ? -2.5 : -2.8;
-
   // Desabilitar rotação e zoom no modo desafio (quando role for passado)
   const isArena = !!role;
   const allowInteraction = !isChest && !isArena;
@@ -194,9 +291,7 @@ export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, ani
         <directionalLight position={[5, 10, 5]} intensity={0.5} />
         <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.5, 0]} />
         <React.Suspense fallback={null}>
-          <group position={[0, modelPosY, 0]} scale={modelScale}>
-            <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} />
-          </group>
+          <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} />
         </React.Suspense>
       </Canvas>
     </div>

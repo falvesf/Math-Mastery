@@ -6,6 +6,8 @@ import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import DirectUploadButton from './DirectUploadButton';
 import ImageGalleryModal from './ImageGalleryModal';
+import InteractiveModelPreview from './InteractiveModelPreview';
+import { playChestAudio } from '../lib/audio';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 export interface Model3D {
@@ -17,6 +19,18 @@ export interface Model3D {
   open_url?: string;
   slot_count?: number;
   is_active?: boolean;
+  chestScale?: number;
+  chestZoom?: number;
+  chestOffsetX?: number;
+  chestOffsetY?: number;
+  chestRotY?: number;
+  chestOpenOffsetX?: number;
+  chestOpenOffsetY?: number;
+  chestSwapSides?: boolean;
+  chestAudioUrl?: string;
+  chestAudioRate?: number;
+  chestAudioStart?: number;
+  chestAudioDuration?: number;
   _isGlobal?: boolean;
 }
 
@@ -59,6 +73,19 @@ export default function Admin3DModelsManager() {
   const [openUrl, setOpenUrl] = useState('');
   const [slotCount, setSlotCount] = useState(4);
   const [isActive, setIsActive] = useState(false);
+  const [chestScale, setChestScale] = useState(1);
+  const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewOffsetX, setPreviewOffsetX] = useState(0);
+  const [previewOffsetY, setPreviewOffsetY] = useState(0);
+  const [previewRotY, setPreviewRotY] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewOpenOffsetX, setPreviewOpenOffsetX] = useState(0);
+  const [previewOpenOffsetY, setPreviewOpenOffsetY] = useState(0);
+  const [previewSwapSides, setPreviewSwapSides] = useState(false);
+  const [chestAudioUrl, setChestAudioUrl] = useState('');
+  const [chestAudioRate, setChestAudioRate] = useState(1);
+  const [chestAudioStart, setChestAudioStart] = useState(0);
+  const [chestAudioDuration, setChestAudioDuration] = useState(0);
   const [galleryTarget, setGalleryTarget] = useState<'url' | 'openUrl' | null>(null);
 
   const fetchModels = async (showLoading = true) => {
@@ -80,6 +107,18 @@ export default function Admin3DModelsManager() {
           open_url: m.open_url || undefined,
           slot_count: m.slot_count ?? 4,
           is_active: m.is_active ?? false,
+          chestScale: m.chest_scale ?? 1,
+          chestZoom: m.chest_zoom ?? 1,
+          chestOffsetX: m.chest_offset_x ?? 0,
+          chestOffsetY: m.chest_offset_y ?? 0,
+          chestRotY: m.chest_rot_y ?? 0,
+          chestOpenOffsetX: m.chest_open_offset_x ?? 0,
+          chestOpenOffsetY: m.chest_open_offset_y ?? 0,
+          chestSwapSides: m.chest_swap_sides ?? false,
+          chestAudioUrl: m.chest_audio_url || '',
+          chestAudioRate: m.chest_audio_rate ?? 1,
+          chestAudioStart: m.chest_audio_start ?? 0,
+          chestAudioDuration: m.chest_audio_duration ?? 0,
           _isGlobal: m.is_global ?? false,
         })));
       }
@@ -107,6 +146,18 @@ export default function Admin3DModelsManager() {
       setOpenUrl(model.open_url || '');
       setSlotCount(model.slot_count ?? 4);
       setIsActive(model.is_active ?? false);
+      setChestScale(model.chestScale ?? 1);
+      setPreviewZoom(model.chestZoom ?? 1);
+      setPreviewOffsetX(model.chestOffsetX ?? 0);
+      setPreviewOffsetY(model.chestOffsetY ?? 0);
+      setPreviewRotY(model.chestRotY ?? 0);
+      setPreviewOpenOffsetX(model.chestOpenOffsetX ?? 0);
+      setPreviewOpenOffsetY(model.chestOpenOffsetY ?? 0);
+      setPreviewSwapSides(model.chestSwapSides ?? false);
+      setChestAudioUrl(model.chestAudioUrl || '');
+      setChestAudioRate(model.chestAudioRate ?? 1);
+      setChestAudioStart(model.chestAudioStart ?? 0);
+      setChestAudioDuration(model.chestAudioDuration ?? 0);
     } else {
       setEditingId(null);
       setName('');
@@ -116,6 +167,18 @@ export default function Admin3DModelsManager() {
       setOpenUrl('');
       setSlotCount(4);
       setIsActive(false);
+      setChestScale(1);
+      setPreviewZoom(1);
+      setPreviewOffsetX(0);
+      setPreviewOffsetY(0);
+      setPreviewRotY(0);
+      setPreviewOpenOffsetX(0);
+      setPreviewOpenOffsetY(0);
+      setPreviewSwapSides(false);
+      setChestAudioUrl('');
+      setChestAudioRate(1);
+      setChestAudioStart(0);
+      setChestAudioDuration(0);
     }
     setIsModalOpen(true);
   };
@@ -150,6 +213,18 @@ export default function Admin3DModelsManager() {
         data.rarity = rarity || null;
         data.open_url = openUrl.trim() || null;
         data.slot_count = Math.max(1, Math.min(10, slotCount || 4));
+        data.chest_scale = Math.max(0.5, Math.min(3, chestScale || 1));
+        data.chest_zoom = Math.max(0.1, Math.min(5, previewZoom || 1));
+        data.chest_offset_x = previewOffsetX || 0;
+        data.chest_offset_y = previewOffsetY || 0;
+        data.chest_rot_y = previewRotY || 0;
+        data.chest_open_offset_x = previewOpenOffsetX || 0;
+        data.chest_open_offset_y = previewOpenOffsetY || 0;
+        data.chest_swap_sides = previewSwapSides;
+        data.chest_audio_url = chestAudioUrl.trim() || null;
+        data.chest_audio_rate = Math.max(0.25, Math.min(3, chestAudioRate || 1));
+        data.chest_audio_start = Math.max(0, chestAudioStart || 0);
+        data.chest_audio_duration = Math.max(0, chestAudioDuration || 0);
         data.is_active = isActive;
         if (isActive) {
           // Só um baú padrão por tenant (ou global quando sem tenant)
@@ -498,6 +573,158 @@ export default function Admin3DModelsManager() {
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
                   />
                 </div>
+
+                {/* Pré-visualização + Tamanho do baú na premiação */}
+                <div style={{ marginBottom: '1rem', borderTop: '1px solid var(--border-glass)', paddingTop: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                    Pré-visualização (igual à premiação — arraste p/ girar o objeto, scroll p/ zoom)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    <div style={{ width: Math.round(150 * chestScale), height: Math.round(150 * chestScale) }}>
+                      <InteractiveModelPreview
+                        modelUrl={url}
+                        size={Math.max(120, Math.min(340, Math.round(150 * chestScale)))}
+                        zoom={previewZoom}
+                        offsetX={previewOffsetX}
+                        offsetY={previewOffsetY}
+                        rotY={previewRotY}
+                        open={previewOpen}
+                        openOffsetX={previewOpenOffsetX}
+                        openOffsetY={previewOpenOffsetY}
+                        swapSides={previewSwapSides}
+                        onZoomChange={setPreviewZoom}
+                        onOffsetXChange={setPreviewOffsetX}
+                        onOffsetYChange={setPreviewOffsetY}
+                        onRotYChange={setPreviewRotY}
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: '240px', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => setPreviewOpen(false)}
+                          style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', background: !previewOpen ? 'rgba(16,185,129,0.2)' : 'var(--btn-bg)', color: !previewOpen ? '#10b981' : 'var(--text-secondary)', border: `1px solid ${!previewOpen ? 'rgba(16,185,129,0.5)' : 'var(--border-glass)'}` }}
+                        >
+                          Baú Fechado
+                        </button>
+                        <button
+                          onClick={() => setPreviewOpen(true)}
+                          style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', background: previewOpen ? 'rgba(245,158,11,0.2)' : 'var(--btn-bg)', color: previewOpen ? 'var(--gold-primary)' : 'var(--text-secondary)', border: `1px solid ${previewOpen ? 'rgba(245,158,11,0.5)' : 'var(--border-glass)'}` }}
+                        >
+                          Simular Aberto
+                        </button>
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                          <label style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem' }}>Tamanho (área na premiação)</label>
+                          <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>{(chestScale * 100).toFixed(0)}%</span>
+                        </div>
+                        <input type="range" min="0.5" max="3" step="0.05" value={chestScale} onChange={e => setChestScale(parseFloat(e.target.value))} style={{ width: '100%', accentColor: 'var(--gold-primary)' }} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                          <label style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem' }}>Zoom do objeto</label>
+                          <span style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>{(previewZoom * 100).toFixed(0)}%</span>
+                        </div>
+                        <input type="range" min="0.1" max="5" step="0.05" value={previewZoom} onChange={e => setPreviewZoom(parseFloat(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent-blue)' }} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                          <label style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                            Posição X {previewOpen ? '(aberto)' : '(fechado)'}
+                          </label>
+                          <span style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>{(previewOpen ? previewOpenOffsetX : previewOffsetX).toFixed(1)}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="-8"
+                          max="8"
+                          step="0.1"
+                          value={previewOpen ? previewOpenOffsetX : previewOffsetX}
+                          onChange={e => (previewOpen ? setPreviewOpenOffsetX(parseFloat(e.target.value)) : setPreviewOffsetX(parseFloat(e.target.value)))}
+                          style={{ width: '100%', accentColor: 'var(--accent-blue)' }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                          <label style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                            Posição Y {previewOpen ? '(aberto)' : '(fechado)'}
+                          </label>
+                          <span style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>{(previewOpen ? previewOpenOffsetY : previewOffsetY).toFixed(1)}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="-8"
+                          max="8"
+                          step="0.1"
+                          value={previewOpen ? previewOpenOffsetY : previewOffsetY}
+                          onChange={e => (previewOpen ? setPreviewOpenOffsetY(parseFloat(e.target.value)) : setPreviewOffsetY(parseFloat(e.target.value)))}
+                          style={{ width: '100%', accentColor: 'var(--accent-blue)' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={previewSwapSides}
+                          onChange={e => setPreviewSwapSides(e.target.checked)}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        />
+                        <label style={{ color: 'var(--text-primary)', fontSize: '0.85rem', cursor: 'pointer' }}>Inverter lados no arquivo (fechado à direita)</label>
+                      </div>
+                      <div>
+                        <div style={{ marginBottom: '0.3rem' }}>
+                          <label style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem' }}>Som ao abrir (opcional)</label>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <input
+                            type="text"
+                            value={chestAudioUrl}
+                            onChange={e => setChestAudioUrl(e.target.value)}
+                            placeholder="URL do áudio (mp3/ogg)..."
+                            style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                          />
+                          <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setChestAudioUrl} buttonStyle={{ minHeight: '100%', padding: '0 0.75rem' }} />
+                        </div>
+                        {chestAudioUrl && (
+                          <>
+                            <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                              <div>
+                                <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.72rem', marginBottom: '0.2rem' }}>Velocidade</label>
+                                <input type="number" min="0.25" max="3" step="0.05" value={chestAudioRate} onChange={e => setChestAudioRate(parseFloat(e.target.value) || 1)} style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                              </div>
+                              <div>
+                                <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.72rem', marginBottom: '0.2rem' }}>Início (seg)</label>
+                                <input type="number" min="0" step="0.1" value={chestAudioStart} onChange={e => setChestAudioStart(Math.max(0, parseFloat(e.target.value) || 0))} style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                              </div>
+                              <div>
+                                <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.72rem', marginBottom: '0.2rem' }}>Duração (0=tudo)</label>
+                                <input type="number" min="0" step="0.1" value={chestAudioDuration} onChange={e => setChestAudioDuration(Math.max(0, parseFloat(e.target.value) || 0))} style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                              <audio controls src={chestAudioUrl} playbackRate={chestAudioRate} style={{ flex: 1, height: '38px' }} />
+                              <button
+                                onClick={() => playChestAudio(chestAudioUrl, chestAudioRate, chestAudioStart, chestAudioDuration)}
+                                style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem', background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.5)', whiteSpace: 'nowrap' }}
+                              >
+                                ▶ Testar com corte
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                          <label style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem' }}>Giro do objeto</label>
+                          <span style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>{Math.round(previewRotY)}°</span>
+                        </div>
+                        <input type="range" min="0" max="360" step="1" value={previewRotY} onChange={e => setPreviewRotY(parseFloat(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent-blue)' }} />
+                      </div>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                        O preview é idêntico à premiação. Arraste para girar e use o scroll (ou os sliders) para ajustar zoom/posição/giro. Salve para aplicar.
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </>
             )}
 
@@ -560,6 +787,9 @@ export default function Admin3DModelsManager() {
                       {renderRarityBadge(model)}
                       {model.category === 'chest' && model.slot_count && (
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{model.slot_count} slots</span>
+                      )}
+                      {model.category === 'chest' && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{Math.round((model.chestScale ?? 1) * 100)}%</span>
                       )}
                       {model.category === 'chest' && model.is_active && (
                         <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', border: '1px solid #f59e0b', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
