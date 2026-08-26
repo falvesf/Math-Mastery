@@ -1,3 +1,6 @@
+/** Guarda referências para o navegador não coletar (GC) o áudio antes de tocar. */
+const activeAudios = new Set<HTMLAudioElement>();
+
 /**
  * Toca um áudio com velocidade e recorte (início/duração) configuráveis.
  * Retorna o elemento de áudio (para poder pausar) ou null em erro.
@@ -12,6 +15,7 @@ export function playChestAudio(url: string, rate = 1, startSec = 0, durationSec 
     const cleanup = () => {
       audio.removeEventListener('timeupdate', stopAtEnd);
       audio.removeEventListener('ended', cleanup);
+      activeAudios.delete(audio);
     };
     const endAt = (startSec || 0) + (durationSec || 0);
     const stopAtEnd = () => {
@@ -25,8 +29,9 @@ export function playChestAudio(url: string, rate = 1, startSec = 0, durationSec 
       audio.addEventListener('timeupdate', stopAtEnd);
     }
     audio.addEventListener('ended', cleanup);
+    activeAudios.add(audio);
 
-    audio.play().catch(() => {});
+    audio.play().catch(() => activeAudios.delete(audio));
     return audio;
   } catch (e) {
     console.error('Erro ao tocar áudio:', e);

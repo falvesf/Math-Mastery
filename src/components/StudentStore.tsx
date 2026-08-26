@@ -331,6 +331,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             itemImageUrl: item.imageUrl || '',
             gameEffect: item.gameEffect || 'none',
             usableInQuest: item.usableInQuest || false,
+            battleSoundUrl: (item as any).battleSoundUrl || '',
             quantity: qty,
             giftedBy: isGift ? userData.name : null,
             avatarPart: item.avatarPart || null,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, Copy, RefreshCcw } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, Copy, RefreshCcw, Volume2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -26,6 +26,7 @@ import QuestConfigModal from '../components/QuestConfigModal';
 import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
 import PreAuthorizedStudentsManager from '../components/PreAuthorizedStudentsManager';
+import AudioBankManager from '../components/AudioBankManager';
 import { useDialog } from '../contexts/DialogContext';
 import { validateCharacterName, normalizeForComparison, formatFirstAndLastName } from '../lib/nameValidation';
 import { normalizeCombatCoinDrop } from '../lib/utils';
@@ -104,6 +105,12 @@ export interface QuestDef {
     minValue?: number;
     maxValue?: number;
   };
+  battleMusicUrl?: string;
+  battleMusicVolume?: number;
+  monsterGender?: string;
+  monsterAttackSound?: string;
+  monsterGruntSound?: string;
+  monsterDamageSound?: string;
   active: boolean;
   createdBy?: string;
   creatorRole?: string;
@@ -502,6 +509,7 @@ export default function AdminDashboard() {
     : 'general';
   const [activeTab, setActiveTab] = useState('general');
   const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'ranks' | 'roles' | 'tenants' | 'companion'>('users');
+  const [showAudioBank, setShowAudioBank] = useState(false);
 
   // Ao abrir o painel, garante que a sub-aba do "Geral" é uma que o usuário
   // tem permissão de ver (evita cair no Gerenciamento de Usuários sem permissão).
@@ -747,6 +755,12 @@ export default function AdminDashboard() {
   const [questBattleBgMoveSpeed, setQuestBattleBgMoveSpeed] = useState(10);
   const [questBattleBgMoveDuration, setQuestBattleBgMoveDuration] = useState(30);
   const [questPodiumBgUrl, setQuestPodiumBgUrl] = useState('');
+  const [questBattleMusicUrl, setQuestBattleMusicUrl] = useState('');
+  const [questBattleMusicVolume, setQuestBattleMusicVolume] = useState(0.5);
+  const [questMonsterGender, setQuestMonsterGender] = useState('');
+  const [questMonsterAttackSound, setQuestMonsterAttackSound] = useState('');
+  const [questMonsterGruntSound, setQuestMonsterGruntSound] = useState('');
+  const [questMonsterDamageSound, setQuestMonsterDamageSound] = useState('');
   const [showArenaBgEditor, setShowArenaBgEditor] = useState(false);
   const [questChestConfig, setQuestChestConfig] = useState<{maxCoins?: number, itemIds?: string[], itemQuantities?: number[], slotChances?: number[], dropChance?: number, chestModelId?: string}>({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
   const [questCombatCoinMin, setQuestCombatCoinMin] = useState(2);
@@ -818,6 +832,12 @@ export default function AdminDashboard() {
       targetClasses: d.target_classes || d.targetClasses || [],
       chestConfig: d.chestconfig || d.chestConfig || null,
       combatCoinDrop: d.combatcoindrop || d.combatCoinDrop || null,
+      battleMusicUrl: d.battle_music_url || d.battleMusicUrl || '',
+      battleMusicVolume: d.battle_music_volume ?? 0.5,
+      monsterGender: d.monster_gender || d.monsterGender || '',
+      monsterAttackSound: d.monster_attack_sound || d.monsterAttackSound || '',
+      monsterGruntSound: d.monster_grunt_sound || d.monsterGruntSound || '',
+      monsterDamageSound: d.monster_damage_sound || d.monsterDamageSound || '',
       createdAt: { seconds: new Date(d.created_at || d.id).getTime() / 1000 }
     })) as QuestDef[] : [];
     setQuests(loaded);
@@ -1545,6 +1565,12 @@ export default function AdminDashboard() {
         minValue: questCombatCoinMinValue,
         maxValue: questCombatCoinMaxValue,
       },
+      battle_music_url: questBattleMusicUrl || null,
+      battle_music_volume: questBattleMusicVolume ?? 0.5,
+      monster_gender: questMonsterGender || null,
+      monster_attack_sound: questMonsterAttackSound || null,
+      monster_grunt_sound: questMonsterGruntSound || null,
+      monster_damage_sound: questMonsterDamageSound || null,
       chestConfig: questChestConfig,
       mode: questMode,
       liveChest1stPlace: questLiveChest1st,
@@ -1592,7 +1618,7 @@ export default function AdminDashboard() {
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestPodiumBgUrl(''); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
+      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestPodiumBgUrl(''); setQuestBattleMusicUrl(''); setQuestBattleMusicVolume(0.5); setQuestMonsterGender(''); setQuestMonsterAttackSound(''); setQuestMonsterGruntSound(''); setQuestMonsterDamageSound(''); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
       setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -1630,6 +1656,12 @@ export default function AdminDashboard() {
     setQuestBattleBgMoveDirection(quest.battleBgMoveDirection ?? 'diagonal');
     setQuestBattleBgMoveSpeed(quest.battleBgMoveSpeed ?? 10);
     setQuestBattleBgMoveDuration(quest.battleBgMoveDuration ?? 30);
+    setQuestBattleMusicUrl(quest.battleMusicUrl || '');
+    setQuestBattleMusicVolume(quest.battleMusicVolume ?? 0.5);
+    setQuestMonsterGender(quest.monsterGender || '');
+    setQuestMonsterAttackSound(quest.monsterAttackSound || '');
+    setQuestMonsterGruntSound(quest.monsterGruntSound || '');
+    setQuestMonsterDamageSound(quest.monsterDamageSound || '');
     setQuestPodiumBgUrl(quest.podiumBgUrl || '');
     const combatCoinDropConfig = normalizeCombatCoinDrop(quest.combatCoinDrop);
     setQuestCombatCoinMin(combatCoinDropConfig.minCoins ?? 2);
@@ -2648,10 +2680,21 @@ export default function AdminDashboard() {
                       <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Missões</h2>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Crie desafios ao estilo Kahoot para os alunos faturarem XP.</p>
                     </div>
-                    <button className="login-btn" onClick={() => setIsCreatingQuest(true)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
-                      <Plus size={18} style={{ marginRight: '0.5rem' }} /> Nova Missão
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button className="login-btn" onClick={() => setShowAudioBank(v => !v)} style={{ background: showAudioBank ? 'rgba(139,92,246,0.25)' : 'var(--btn-bg)', color: showAudioBank ? '#c084fc' : 'var(--text-primary)', border: `1px solid ${showAudioBank ? 'rgba(139,92,246,0.5)' : 'var(--border-glass)'}` }}>
+                        <Volume2 size={18} style={{ marginRight: '0.4rem' }} /> Banco de Áudio
+                      </button>
+                      <button className="login-btn" onClick={() => setIsCreatingQuest(true)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
+                        <Plus size={18} style={{ marginRight: '0.5rem' }} /> Nova Missão
+                      </button>
+                    </div>
                   </div>
+
+                  {showAudioBank && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <AudioBankManager />
+                    </div>
+                  )}
 
                   <div style={{ display: 'grid', gap: '1rem' }}>
                     {quests.filter(q => {
@@ -3492,6 +3535,14 @@ export default function AdminDashboard() {
           available3DModels={available3DModels}
           availableStoreItems={availableStoreItems}
           onCustomizeMonster={() => setIsCustomizingMonster(true)}
+          questMonsterGender={questMonsterGender}
+          setQuestMonsterGender={setQuestMonsterGender}
+          questMonsterAttackSound={questMonsterAttackSound}
+          setQuestMonsterAttackSound={setQuestMonsterAttackSound}
+          questMonsterGruntSound={questMonsterGruntSound}
+          setQuestMonsterGruntSound={setQuestMonsterGruntSound}
+          questMonsterDamageSound={questMonsterDamageSound}
+          setQuestMonsterDamageSound={setQuestMonsterDamageSound}
           questBattleBgUrl={questBattleBgUrl}
           setQuestBattleBgUrl={setQuestBattleBgUrl}
           questBattleBgPosX={questBattleBgPosX}
@@ -3510,6 +3561,10 @@ export default function AdminDashboard() {
           setQuestBattleBgMoveDuration={setQuestBattleBgMoveDuration}
           onGalleryArena={() => setGalleryTarget('arena')}
           onOpenArenaEditor={() => setShowArenaBgEditor(true)}
+          questBattleMusicUrl={questBattleMusicUrl}
+          setQuestBattleMusicUrl={setQuestBattleMusicUrl}
+          questBattleMusicVolume={questBattleMusicVolume}
+          setQuestBattleMusicVolume={setQuestBattleMusicVolume}
           questPodiumBgUrl={questPodiumBgUrl}
           setQuestPodiumBgUrl={setQuestPodiumBgUrl}
           onGalleryPodium={() => setGalleryTarget('podium')}

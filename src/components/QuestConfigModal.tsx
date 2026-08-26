@@ -1,7 +1,63 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy, Menu } from 'lucide-react';
+import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy, Menu, Volume2, XCircle } from 'lucide-react';
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
 import DirectUploadButton from './DirectUploadButton';
+import AudioBankPicker from './AudioBankPicker';
+
+// Campo de som: input + botão "Banco" (abre o AudioBankPicker) + ouvir/parar + limpar.
+// O volume (se informado) controla a reprodução e atualiza ao vivo durante o toque.
+function SoundField({ label, value, onChange, categoryFilter = '', genderFilter = '', placeholder = 'URL do áudio...', volume }: {
+  label: string; value: string; onChange: (v: string) => void; categoryFilter?: string; genderFilter?: string; placeholder?: string; volume?: number;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const togglePlay = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsPlaying(false);
+      return;
+    }
+    if (!value) return;
+    try {
+      const a = new Audio(value);
+      a.volume = volume !== undefined ? Math.max(0, Math.min(1, volume)) : 0.8;
+      a.onended = () => { setIsPlaying(false); audioRef.current = null; };
+      a.play().catch(() => { setIsPlaying(false); audioRef.current = null; });
+      audioRef.current = a;
+      setIsPlaying(true);
+    } catch (e) {}
+  };
+
+  // Volume ao vivo: enquanto a música toca, o slider abaixa/subir em tempo real
+  useEffect(() => {
+    if (audioRef.current && volume !== undefined) {
+      audioRef.current.volume = Math.max(0, Math.min(1, volume));
+    }
+  }, [volume]);
+
+  // Para o som ao desmontar o campo
+  useEffect(() => {
+    return () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } };
+  }, []);
+
+  return (
+    <div style={{ marginBottom: '0.75rem' }}>
+      <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{label}</label>
+      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+        <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={{ flex: 1, padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+        <button onClick={togglePlay} disabled={!value} style={{ padding: '0.5rem 0.7rem', background: isPlaying ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: value ? 'pointer' : 'not-allowed', opacity: value ? 1 : 0.4, color: isPlaying ? 'var(--gold-primary)' : 'var(--text-primary)' }} title={isPlaying ? 'Parar' : 'Ouvir'}>{isPlaying ? '⏹' : '▶'}</button>
+        <button onClick={() => setPickerOpen(true)} style={{ padding: '0.5rem 0.8rem', background: 'rgba(139,92,246,0.2)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}><Volume2 size={14} /> Banco</button>
+        {value && (
+          <button onClick={() => { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setIsPlaying(false); } onChange(''); }} style={{ padding: '0.5rem', background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer' }} title="Limpar"><XCircle size={16} /></button>
+        )}
+      </div>
+      <AudioBankPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={(url) => { onChange(url); setPickerOpen(false); }} categoryFilter={categoryFilter} genderFilter={genderFilter} title={`Banco de Áudio — ${label}`} />
+    </div>
+  );
+}
 
 interface StoreItemOption {
   id: string;
@@ -166,6 +222,15 @@ export interface QuestConfigModalProps {
   available3DModels: any[];
   availableStoreItems: any[];
   onCustomizeMonster: () => void;
+  // Sons do Monstro (por gênero)
+  questMonsterGender: string;
+  setQuestMonsterGender: (v: string) => void;
+  questMonsterAttackSound: string;
+  setQuestMonsterAttackSound: (v: string) => void;
+  questMonsterGruntSound: string;
+  setQuestMonsterGruntSound: (v: string) => void;
+  questMonsterDamageSound: string;
+  setQuestMonsterDamageSound: (v: string) => void;
   // Arena
   questBattleBgUrl: string;
   setQuestBattleBgUrl: (v: string) => void;
@@ -185,6 +250,11 @@ export interface QuestConfigModalProps {
   setQuestBattleBgMoveDuration: (v: number) => void;
   onGalleryArena: () => void;
   onOpenArenaEditor: () => void;
+  // Música ambiente da batalha
+  questBattleMusicUrl: string;
+  setQuestBattleMusicUrl: (v: string) => void;
+  questBattleMusicVolume: number;
+  setQuestBattleMusicVolume: (v: number) => void;
   // Pódio
   questPodiumBgUrl?: string;
   setQuestPodiumBgUrl?: (v: string) => void;
@@ -370,6 +440,26 @@ function MonsterTab(p: QuestConfigModalProps) {
       </div>
 
       <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
+        <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '1.1rem' }}>Sons do Monstro (Opcional)</h5>
+        <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+          Gênero define quais sons de voz aparecem no banco. Ataque toca quando o monstro ataca, Dano quando ele RECEBE dano, Grunido em momentos especiais.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 1.5rem' }}>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Gênero do Monstro</label>
+            <select value={p.questMonsterGender || ''} onChange={e => p.setQuestMonsterGender(e.target.value)} style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+              <option value="">Neutro</option>
+              <option value="male">Masculino ♂</option>
+              <option value="female">Feminino ♀</option>
+            </select>
+          </div>
+          <SoundField label="Som de Ataque" value={p.questMonsterAttackSound} onChange={p.setQuestMonsterAttackSound} categoryFilter="voice" genderFilter={p.questMonsterGender} />
+          <SoundField label="Grunido" value={p.questMonsterGruntSound} onChange={p.setQuestMonsterGruntSound} categoryFilter="voice" genderFilter={p.questMonsterGender} />
+          <SoundField label="Som de Dano (recebe dano)" value={p.questMonsterDamageSound} onChange={p.setQuestMonsterDamageSound} categoryFilter="voice" genderFilter={p.questMonsterGender} />
+        </div>
+      </div>
+
+      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
         <h5 style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1.1rem' }}>Falas do Monstro (Opcional - Separe por ; para sortear)</h5>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div>
@@ -541,6 +631,22 @@ function ArenaTab(p: QuestConfigModalProps) {
             placeholder="Ou cole a URL da imagem aqui..."
             style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
           />
+        </div>
+      </div>
+
+      {/* SEÇÃO DA MÚSICA DA BATALHA */}
+      <hr style={{ borderColor: 'rgba(255, 255, 255, 0.1)', margin: '1.5rem 0' }} />
+      <h4 style={{ color: 'var(--gold-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <Volume2 size={20} /> Música Ambiente da Batalha (Opcional)
+      </h4>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+        Escolha uma música do banco de áudio para tocar durante a batalha. Defina o volume.
+      </p>
+      <div style={{ maxWidth: '520px' }}>
+        <SoundField label="Música da Batalha" value={p.questBattleMusicUrl} onChange={p.setQuestBattleMusicUrl} categoryFilter="music" placeholder="URL da música..." volume={p.questBattleMusicVolume ?? 0.5} />
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Volume da música: {Math.round((p.questBattleMusicVolume ?? 0.5) * 100)}%</label>
+          <input type="range" min="0" max="1" step="0.05" value={p.questBattleMusicVolume ?? 0.5} onChange={e => p.setQuestBattleMusicVolume(parseFloat(e.target.value))} style={{ width: '100%', accentColor: 'var(--gold-primary)' }} />
         </div>
       </div>
 
