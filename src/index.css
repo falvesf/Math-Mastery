@@ -1406,15 +1406,15 @@ h3 {
   .profile-glass-panel.backpack-open {
     position: sticky !important;
     top: 50px !important;
-    max-height: 30vh !important;
-    flex: 1 1 30vh !important;
+    max-height: calc(30vh * var(--font-scale, 1)) !important;
+    flex: 1 1 calc(30vh * var(--font-scale, 1)) !important;
     margin-bottom: 0.5rem;
     padding-top: 0 !important;
     z-index: 999 !important;
   }
 
   .profile-glass-panel.backpack-open .cube-container {
-    transform: scale(0.65);
+    transform: scale(calc(0.65 * clamp(0.85, var(--font-scale, 1), 1.1)));
     transform-origin: top center;
     margin-bottom: -80px;
   }
