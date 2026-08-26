@@ -13,11 +13,12 @@ import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
 import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
+import BattleTransition from '../components/BattleTransition';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
-import { playSound } from '../lib/audioBank';
+import { playSound, fadeOutAllSounds } from '../lib/audioBank';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 
@@ -47,6 +48,8 @@ export default function QuestGameplay() {
 
   const [quest, setQuest] = useState<QuestDef | null>(null);
   const [gameState, setGameState] = useState<'loading' | 'intro' | 'playing' | 'result'>('loading');
+  // Transição de batalha estilo FF7 (entrada na arena / saída para o acampamento)
+  const [transition, setTransition] = useState<'none' | 'enter' | 'exit'>('none');
   const [errorMessage, setErrorMessage] = useState('');
   
   const searchParams = new URLSearchParams(window.location.search);
@@ -164,14 +167,30 @@ export default function QuestGameplay() {
       if (!active) return;
       let b: any = {};
       (data || []).forEach(r => b = { ...b, ...(r.data || {}) });
-      battleSoundsRef.current = { victory: b.victory || '', deathMale: b.deathMale || '', deathFemale: b.deathFemale || '', fail: b.fail || '', punch: b.punch || '', fatalFall: b.fatalFall || '', fatalEvaporate: b.fatalEvaporate || '', fatalSlice: b.fatalSlice || '', fatalExplode: b.fatalExplode || '' };
+      battleSoundsRef.current = {
+        victory: b.victory || b.victory_sound || '',
+        deathMale: b.deathMale || b.death_male || '',
+        deathFemale: b.deathFemale || b.death_female || '',
+        fail: b.fail || b.fail_sound || '',
+        punch: b.punch || b.punch_sound || '',
+        fatalFall: b.fatalFall || b.fatal_fall || '',
+        fatalEvaporate: b.fatalEvaporate || b.fatal_evaporate || '',
+        fatalSlice: b.fatalSlice || b.fatal_slice || '',
+        fatalExplode: b.fatalExplode || b.fatal_explode || '',
+      };
     });
     return () => { active = false; };
   }, []);
 
-  // Música ambiente da batalha
+  // Música ambiente da batalha — continua tocando na tela de recompensa
+  // (o fade-out é feito ao abrir o baú ou clicar em "Retornar ao Acampamento")
   useEffect(() => {
-    if (gameState !== 'playing' || !quest?.battleMusicUrl) return;
+    if (gameState !== 'playing' && gameState !== 'result') {
+      if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; }
+      return;
+    }
+    if (!quest?.battleMusicUrl) return;
+    if (musicAudioRef.current) return; // já tocando — mantém sem reiniciar ao trocar de estado
     try {
       const audio = new Audio(quest.battleMusicUrl);
       audio.loop = true;
@@ -179,10 +198,12 @@ export default function QuestGameplay() {
       audio.play().catch(() => {});
       musicAudioRef.current = audio;
     } catch (e) {}
-    return () => {
-      if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; }
-    };
   }, [gameState, quest?.battleMusicUrl, quest?.battleMusicVolume]);
+
+  // Para a música ao desmontar (saiu da missão)
+  useEffect(() => {
+    return () => { if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; } };
+  }, []);
 
   const playPlayerDamageSound = () => {
     const gender = (userData?.avatarConfig as any)?.gender;
@@ -201,13 +222,22 @@ export default function QuestGameplay() {
       'death-evaporate': battleSoundsRef.current.fatalEvaporate,
       'death-fall': battleSoundsRef.current.fatalFall,
     };
-    playSound(map[fatality], 0.9);
+    const url = map[fatality] || battleSoundsRef.current.punch;
+    console.log('[fatality]', fatality, '->', map[fatality] || '(vazio, fallback soco)');
+    playSound(url, 0.9);
   };
   const playDeathSound = () => {
     const gender = (userData?.avatarConfig as any)?.gender;
     playSound(gender === 'female' ? battleSoundsRef.current.deathFemale : battleSoundsRef.current.deathMale, 0.9);
   };
   const playFailSound = () => playSound(battleSoundsRef.current.fail, 0.9);
+
+  // Sai da missão com a música parando gradualmente + transição de batalha antes de navegar
+  const exitToCamp = () => {
+    fadeOutMusic(900);
+    fadeOutAllSounds(900);
+    setTransition('exit');
+  };
 
   // Fade-out gradual da música antes do golpe final (vitória)
   const fadeOutMusic = (durationMs = 2200) => {
@@ -775,6 +805,7 @@ export default function QuestGameplay() {
       if (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin)) newHearts = initialHearts;
       drainHeartsAnimated(newHearts);
       setGameState('playing');
+      setTransition('enter');
       setCurrentQIndex(0);
       setEliminatedOptions([]);
       setHasShield(false);
@@ -795,6 +826,7 @@ export default function QuestGameplay() {
       }
     } else {
       setGameState('playing');
+      setTransition('enter');
       setCurrentQIndex(0);
       setEliminatedOptions([]);
       setHasShield(false);
@@ -908,7 +940,7 @@ export default function QuestGameplay() {
     if (isPlayerWinning) {
       setPlayerAnim('idle');
       setPlayerBubble('Eu venci!');
-      // A música vai abaixando aos poucos até o golpe final
+      // A música de combate vai parando gradualmente antes do golpe final (a de vitória toca depois)
       fadeOutMusic(2400);
       
       let monsterDefeatQuote = 'Argh!!!';
@@ -1602,7 +1634,7 @@ export default function QuestGameplay() {
       
       finishGame(false, finalXp, `Você abandonou a missão. Recebeu apenas ${finalXp} XP (penalidade aplicada).`);
     } else {
-      navigate('/dashboard');
+      exitToCamp();
     }
   };
 
@@ -2032,7 +2064,7 @@ export default function QuestGameplay() {
                 </div>
               )}
               {monsterAnim === 'death-slice' ? (
-                <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', height: '200px', '--death-base-x': 'calc((var(--attack-dist, 150px)) * -1 - 20px)' } as any}>
+                <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', height: '200px', transform: `translate(${arenaDebug.monsterOffsetX + arenaDebug.deathOffsetX}px, ${arenaDebug.monsterOffsetY + arenaDebug.deathOffsetY}px)` }}>
                   {/* Nome do monstro - acompanha death-slice */}
                   <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', opacity: 0.3 }}>{quest?.monsterName || 'Inimigo'}</span>
@@ -2051,7 +2083,7 @@ export default function QuestGameplay() {
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
                   }`}
-                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${arenaDebug.monsterOffsetX}px, ${arenaDebug.monsterOffsetY}px) scale(${arenaDebug.monsterScale})`, ...(monsterAnim.startsWith('death-') ? { '--death-base-x': 'calc((var(--attack-dist, 150px)) * -1 - 20px)' } as any : {}) }}
+                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${arenaDebug.monsterOffsetX + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0)}px, ${arenaDebug.monsterOffsetY + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0)}px) scale(${arenaDebug.monsterScale})` }}
                 >
                   {/* Nome do monstro - acompanha animações de morte */}
                   <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arenaDebug.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
@@ -2217,7 +2249,7 @@ export default function QuestGameplay() {
               )}
 
               <div>
-                <button className="login-btn" onClick={() => navigate('/dashboard')} disabled={saving} style={{ background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)', padding: '1rem 3rem', fontSize: '1.2rem' }}>
+                <button className="login-btn" onClick={() => exitToCamp()} disabled={saving} style={{ background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)', padding: '1rem 3rem', fontSize: '1.2rem' }}>
                   {saving ? 'Salvando progresso...' : 'Retornar ao Acampamento'}
                 </button>
               </div>
@@ -2228,7 +2260,7 @@ export default function QuestGameplay() {
             <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               {!chestOpened ? (
                 <ChestReveal
-                  onOpen={() => setChestOpened(true)}
+                  onOpen={() => { setChestOpened(true); fadeOutMusic(1500); fadeOutAllSounds(1500); }}
                   chestModelUrl={selectedChestModel?.url}
                   chestOpenUrl={selectedChestModel?.open_url}
                   rarity={selectedChestModel?.rarity}
@@ -2271,7 +2303,7 @@ chestRotY={selectedChestModel?.chestRotY}
                     ))}
                   </div>
                   
-                  <button className="login-btn" onClick={() => navigate('/dashboard')} style={{ marginTop: '4rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '1rem 3rem', fontSize: '1.2rem', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '1s', opacity: 0 }}>
+                  <button className="login-btn" onClick={() => exitToCamp()} style={{ marginTop: '4rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '1rem 3rem', fontSize: '1.2rem', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '1s', opacity: 0 }}>
                     Coletar Tudo e Continuar
                   </button>
                 </div>
@@ -2294,6 +2326,16 @@ chestRotY={selectedChestModel?.chestRotY}
           deviceKey={deviceKey}
         />
       )}
+
+      {/* Transição de batalha estilo FF7 */}
+      <BattleTransition
+        active={transition !== 'none'}
+        direction={transition === 'exit' ? 'exit' : 'enter'}
+        onComplete={() => {
+          if (transition === 'exit') navigate('/dashboard');
+          setTransition('none');
+        }}
+      />
     </div>
   );
 }

@@ -11,12 +11,14 @@ import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
 import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
+import BattleTransition from '../components/BattleTransition';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
+import { playSound } from '../lib/audioBank';
 
 interface UserItem {
   id: string;
@@ -43,6 +45,8 @@ export default function QuestGameplay() {
 
   const [quest, setQuest] = useState<QuestDef | null>(null);
   const [gameState, setGameState] = useState<'loading' | 'intro' | 'playing' | 'result'>('loading');
+  // Transição de batalha estilo FF7 (entrada na arena / saída para o acampamento)
+  const [transition, setTransition] = useState<'none' | 'enter' | 'exit'>('none');
   const [errorMessage, setErrorMessage] = useState('');
   
   const searchParams = new URLSearchParams(window.location.search);
@@ -140,6 +144,68 @@ export default function QuestGameplay() {
   const [, setLostCoinsDisplay] = useState<number | null>(null);
   const alreadyCompletedRef = useRef(false);
   const combatCoinConfigRef = useRef<{ minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number }>({});
+
+  // --- Áudio da batalha (sons globais: dano do personagem + batalha/fatalidades) ---
+  const playerDamageSoundsRef = useRef<{ male: string; female: string }>({ male: '', female: '' });
+  const battleSoundsRef = useRef<{ victory: string; deathMale: string; deathFemale: string; fail: string; punch: string; fatalFall: string; fatalEvaporate: string; fatalSlice: string; fatalExplode: string }>({ victory: '', deathMale: '', deathFemale: '', fail: '', punch: '', fatalFall: '', fatalEvaporate: '', fatalSlice: '', fatalExplode: '' });
+
+  useEffect(() => {
+    let active = true;
+    supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'player_damage_sounds').then(({ data }) => {
+      if (!active) return;
+      let d: any = {};
+      (data || []).forEach(r => d = { ...d, ...(r.data || {}) });
+      playerDamageSoundsRef.current = { male: d.male || '', female: d.female || '' };
+    });
+    supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'battle_sounds').then(({ data }) => {
+      if (!active) return;
+      let b: any = {};
+      (data || []).forEach(r => b = { ...b, ...(r.data || {}) });
+      battleSoundsRef.current = {
+        victory: b.victory || b.victory_sound || '',
+        deathMale: b.deathMale || b.death_male || '',
+        deathFemale: b.deathFemale || b.death_female || '',
+        fail: b.fail || b.fail_sound || '',
+        punch: b.punch || b.punch_sound || '',
+        fatalFall: b.fatalFall || b.fatal_fall || '',
+        fatalEvaporate: b.fatalEvaporate || b.fatal_evaporate || '',
+        fatalSlice: b.fatalSlice || b.fatal_slice || '',
+        fatalExplode: b.fatalExplode || b.fatal_explode || '',
+      };
+      console.log('[battle_sounds] carregados:', battleSoundsRef.current);
+    });
+    return () => { active = false; };
+  }, []);
+
+  const playPlayerDamageSound = () => {
+    const gender = (userData?.avatarConfig as any)?.gender;
+    playSound(gender === 'female' ? playerDamageSoundsRef.current.female : playerDamageSoundsRef.current.male, 0.8);
+  };
+  const playMonsterAttackSound = () => playSound(quest?.monsterAttackSound, 0.8);
+  const playMonsterDamageSound = () => playSound(quest?.monsterDamageSound, 0.8);
+  const playMonsterGruntSound = () => playSound(quest?.monsterGruntSound, 0.8);
+  const playVictorySound = () => playSound(battleSoundsRef.current.victory, 0.9);
+  // Som de fatalidade conforme o tipo de animação de morte
+  const playFatalitySound = (fatality: string) => {
+    const map: Record<string, string> = {
+      'death-explode': battleSoundsRef.current.fatalExplode,
+      'death-slice': battleSoundsRef.current.fatalSlice,
+      'death-evaporate': battleSoundsRef.current.fatalEvaporate,
+      'death-fall': battleSoundsRef.current.fatalFall,
+    };
+    const url = map[fatality] || battleSoundsRef.current.punch;
+    console.log('[fatality]', fatality, '->', map[fatality] || '(vazio, fallback soco)');
+    playSound(url, 0.9);
+  };
+  const playDeathSound = () => {
+    const gender = (userData?.avatarConfig as any)?.gender;
+    playSound(gender === 'female' ? battleSoundsRef.current.deathFemale : battleSoundsRef.current.deathMale, 0.9);
+  };
+  const playFailSound = () => playSound(battleSoundsRef.current.fail, 0.9);
+  const playPlayerAttackSound = () => {
+    const weapon = playerEquippedItems.find((i: any) => (i as any).battleSoundUrl);
+    playSound((weapon as any)?.battleSoundUrl || battleSoundsRef.current.punch, 0.8);
+  };
 
   // Escudos e Defesa
   const totalDefense = totalEquippedStats.defense;
@@ -547,6 +613,7 @@ export default function QuestGameplay() {
       const newHearts = Math.max(0, initialHearts - 1);
       drainHeartsAnimated(newHearts);
       setGameState('playing');
+      setTransition('enter');
       setCurrentQIndex(0);
       setEliminatedOptions([]);
       setHasShield(false);
@@ -561,11 +628,13 @@ export default function QuestGameplay() {
         }
         setBattleMessage('ATAQUE SURPRESA! O monstro foi mais rápido e atacou primeiro!');
         setMonsterAnim('attack');
-        setTimeout(() => setPlayerAnim('hurt'), 500);
+        playMonsterAttackSound();
+        setTimeout(() => { setPlayerAnim('hurt'); playPlayerDamageSound(); }, 500);
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
       }
     } else {
       setGameState('playing');
+      setTransition('enter');
       setCurrentQIndex(0);
       setEliminatedOptions([]);
       setHasShield(false);
@@ -699,6 +768,8 @@ export default function QuestGameplay() {
         
         setTimeout(() => {
           setMonsterAnim(fatality);
+          playFatalitySound(fatality);
+          playVictorySound();
           setMonsterBubble(monsterDefeatQuote);
           setBattleMessage(getVictoryMessage());
           
@@ -736,6 +807,7 @@ export default function QuestGameplay() {
         
         setTimeout(() => {
           setPlayerAnim('death-fall');
+          playDeathSound();
           setPlayerBubble(playerDefeatQuote);
           const gameOverMsg = isStudyMode 
             ? 'Fim de Jogo (Modo Estudo). Suas vidas reais estão a salvo, mas a simulação terminou!' 
@@ -925,7 +997,8 @@ export default function QuestGameplay() {
         triggerFatality(true);
       } else {
         setPlayerAnim('attack');
-        setTimeout(() => { setMonsterAnim('hurt'); dropCoins(isCritical); }, 500);
+        playPlayerAttackSound();
+        setTimeout(() => { setMonsterAnim('hurt'); dropCoins(isCritical); playMonsterDamageSound(); }, 500);
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
         setTimeout(() => {
           setFeedback(null);
@@ -983,7 +1056,8 @@ export default function QuestGameplay() {
         if (quote) setMonsterBubble(quote);
       }
       setMonsterAnim('attack');
-      setTimeout(() => setPlayerAnim('hurt'), 500);
+      playMonsterAttackSound();
+      setTimeout(() => { setPlayerAnim('hurt'); playPlayerDamageSound(); }, 500);
       setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
       
       if (hasShield) {
@@ -1321,7 +1395,7 @@ export default function QuestGameplay() {
       
       finishGame(false, finalXp, `Você abandonou a missão. Recebeu apenas ${finalXp} XP (penalidade aplicada).`);
     } else {
-      navigate('/dashboard');
+      setTransition('exit');
     }
   };
 
@@ -1869,7 +1943,7 @@ export default function QuestGameplay() {
               )}
 
               <div>
-                <button className="login-btn" onClick={() => navigate('/dashboard')} disabled={saving} style={{ background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)', padding: '1rem 3rem', fontSize: '1.2rem' }}>
+                <button className="login-btn" onClick={() => setTransition('exit')} disabled={saving} style={{ background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)', padding: '1rem 3rem', fontSize: '1.2rem' }}>
                   {saving ? 'Salvando progresso...' : 'Retornar ao Acampamento'}
                 </button>
               </div>
@@ -1923,7 +1997,7 @@ export default function QuestGameplay() {
                     ))}
                   </div>
                   
-                  <button className="login-btn" onClick={() => navigate('/dashboard')} style={{ marginTop: '4rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '1rem 3rem', fontSize: '1.2rem', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '1s', opacity: 0 }}>
+                  <button className="login-btn" onClick={() => setTransition('exit')} style={{ marginTop: '4rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '1rem 3rem', fontSize: '1.2rem', animation: 'popInChest 0.3s ease-out forwards', animationDelay: '1s', opacity: 0 }}>
                     Coletar Tudo e Continuar
                   </button>
                 </div>
@@ -1933,6 +2007,16 @@ export default function QuestGameplay() {
 
         </div>
       </div>
+
+      {/* Transição de batalha estilo FF7 */}
+      <BattleTransition
+        active={transition !== 'none'}
+        direction={transition === 'exit' ? 'exit' : 'enter'}
+        onComplete={() => {
+          if (transition === 'exit') navigate('/dashboard');
+          setTransition('none');
+        }}
+      />
     </div>
   );
 }

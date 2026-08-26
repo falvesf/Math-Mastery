@@ -427,14 +427,15 @@ h3 {
 }
 
 .anim-death-fall {
-  animation: death-fall-anim 4s forwards;
+  animation: death-fall-anim 4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   transform-origin: bottom center;
 }
 
 @keyframes death-fall-anim {
-  0% { transform: translateX(var(--death-base-x, 0px)) rotate(0deg); opacity: 1; filter: grayscale(0%); }
-  50% { transform: translateX(var(--death-base-x, 0px)) rotate(-90deg); opacity: 1; filter: grayscale(100%); }
-  100% { transform: translateX(var(--death-base-x, 0px)) rotate(-90deg); opacity: 0; filter: grayscale(100%); }
+  0% { transform: translateX(var(--death-base-x, 0px)) translateY(0) rotate(0deg); opacity: 1; filter: grayscale(0%); }
+  30% { transform: translateX(var(--death-base-x, 0px)) translateY(4px) rotate(-28deg); opacity: 1; filter: grayscale(60%); }
+  60% { transform: translateX(var(--death-base-x, 0px)) translateY(10px) rotate(-66deg); opacity: 1; filter: grayscale(100%); }
+  100% { transform: translateX(var(--death-base-x, 0px)) translateY(14px) rotate(-90deg); opacity: 0; filter: grayscale(100%); }
 }
 
 .anim-death-explode {
@@ -606,6 +607,45 @@ h3 {
   0% { transform: translateX(-50%) scale(0); opacity: 0; }
   80% { transform: translateX(-50%) scale(1.1); opacity: 1; }
   100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+/* Transição de batalha estilo Final Fantasy 7 */
+.ff7-transition {
+  animation: ff7-fade-out 0.45s ease-in forwards;
+  animation-delay: 0.85s;
+}
+.ff7-transition.ff7-exit {
+  animation: none;
+}
+.ff7-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 33.34%;
+  background: linear-gradient(180deg, #0a0518 0%, #3b1a8a 35%, #7a3cf0 50%, #3b1a8a 65%, #0a0518 100%);
+  box-shadow: 0 0 40px rgba(122, 60, 240, 0.6);
+}
+.ff7-strip-top { top: 0; animation: ff7-strip-in-top 0.45s ease-out forwards; }
+.ff7-strip-mid { top: 33.33%; animation: ff7-strip-in-mid 0.55s ease-out forwards; }
+.ff7-strip-bot { top: 66.66%; animation: ff7-strip-in-bot 0.45s ease-out forwards; }
+@keyframes ff7-strip-in-top { from { transform: translateY(-101%); } to { transform: translateY(0); } }
+@keyframes ff7-strip-in-mid { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes ff7-strip-in-bot { from { transform: translateY(101%); } to { transform: translateY(0); } }
+.ff7-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 60%);
+  animation: ff7-flash-anim 0.9s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes ff7-flash-anim {
+  0% { opacity: 0; }
+  40% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes ff7-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* Quest Question Overlay on Arena */

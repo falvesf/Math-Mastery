@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, Edit2, Save, X, Globe, Building2, Volume2, Music } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
@@ -6,7 +6,7 @@ import { useTenant } from '../contexts/TenantContext';
 import { useDialog } from '../contexts/DialogContext';
 import DirectUploadButton from './DirectUploadButton';
 import AudioBankPicker from './AudioBankPicker';
-import { fetchAudioBank, AUDIO_CATEGORIES, playSound, type AudioBankEntry } from '../lib/audioBank';
+import { fetchAudioBank, AUDIO_CATEGORIES, type AudioBankEntry } from '../lib/audioBank';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 export default function AudioBankManager() {
@@ -14,6 +14,15 @@ export default function AudioBankManager() {
   const { showAlert, showConfirm } = useDialog();
   const [entries, setEntries] = useState<AudioBankEntry[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Player de teste: guarda o áudio atual e a URL tocando (toggle play/stop)
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingUrl, setPlayingUrl] = useState('');
+
+  // Para o áudio ao desmontar
+  useEffect(() => {
+    return () => { if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; } };
+  }, []);
 
   // Editor
   const [isEditing, setIsEditing] = useState(false);
@@ -158,8 +167,25 @@ export default function AudioBankManager() {
     showAlert('Sons de batalha salvos!');
   };
 
-  const playTest = (u: string) => {
-    try { const a = new Audio(u); a.volume = 0.8; a.play().catch(() => {}); } catch (e) {}
+const togglePlay = (u: string) => {
+    // Se já está tocando este, para
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+      setPlayingUrl('');
+      return;
+    }
+    if (!u) return;
+    try {
+      const a = new Audio(u);
+      a.volume = 0.8;
+      const done = () => { if (previewAudioRef.current === a) { previewAudioRef.current = null; setPlayingUrl(''); } };
+      a.addEventListener('ended', done);
+      a.addEventListener('error', done);
+      previewAudioRef.current = a;
+      setPlayingUrl(u);
+      a.play().catch(() => done());
+    } catch (e) {}
   };
 
   const genderBadge = (g: string) => g === 'male' ? '♂' : g === 'female' ? '♀' : '';
@@ -216,7 +242,7 @@ export default function AudioBankManager() {
                 {entry._isGlobal ? <Globe size={11} style={{ marginLeft: '0.4rem' }} /> : <Building2 size={11} style={{ marginLeft: '0.4rem' }} />}
               </span>
             </div>
-            <button onClick={() => playTest(entry.url)} style={{ padding: '0.3rem 0.6rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer' }}>▶</button>
+<button onClick={() => togglePlay(entry.url)} style={{ padding: '0.3rem 0.6rem', background: playingUrl === entry.url ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer', color: playingUrl === entry.url ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{playingUrl === entry.url ? '⏹' : '▶'}</button>
             <button onClick={() => openEdit(entry)} disabled={entry._isGlobal && !isSuperAdmin} style={{ padding: '0.3rem', background: 'transparent', border: 'none', color: '#60a5fa', cursor: 'pointer', opacity: entry._isGlobal && !isSuperAdmin ? 0.4 : 1 }}><Edit2 size={16} /></button>
             <button onClick={() => deleteEntry(entry)} disabled={entry._isGlobal && !isSuperAdmin} style={{ padding: '0.3rem', background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', opacity: entry._isGlobal && !isSuperAdmin ? 0.4 : 1 }}><Trash2 size={16} /></button>
           </div>
@@ -238,7 +264,7 @@ export default function AudioBankManager() {
                 <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.3rem' }}>{g === 'male' ? 'Masculino ♂' : 'Feminino ♀'}</label>
                 <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
                   <input value={val} onChange={e => setVal(e.target.value)} placeholder="URL..." style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
-                  <button onClick={() => playSound(val)} disabled={!val} style={{ padding: '0.4rem 0.6rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4 }} title="Ouvir">▶</button>
+<button onClick={() => togglePlay(val)} disabled={!val} style={{ padding: '0.4rem 0.6rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }} title="Ouvir">{playingUrl === val ? '⏹' : '▶'}</button>
                   <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setVal} buttonStyle={{ padding: '0.35rem 0.6rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}>Upload</DirectUploadButton>
                   <button onClick={() => setDamagePickerFor(g)} style={{ padding: '0.4rem 0.7rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco</button>
                 </div>
@@ -269,7 +295,7 @@ export default function AudioBankManager() {
           <div key={key} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', marginBottom: '0.5rem' }}>
             <label style={{ width: '180px', color: 'var(--text-secondary)', fontSize: '0.8rem', flexShrink: 0 }}>{label}</label>
             <input value={val} onChange={e => setVal(e.target.value)} placeholder="URL..." style={{ flex: 1, padding: '0.45rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
-            <button onClick={() => playSound(val)} disabled={!val} style={{ padding: '0.35rem 0.55rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4 }}>▶</button>
+<button onClick={() => togglePlay(val)} disabled={!val} style={{ padding: '0.35rem 0.55rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{playingUrl === val ? '⏹' : '▶'}</button>
             <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setVal as (v: string) => void} buttonStyle={{ padding: '0.3rem 0.55rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}>Upload</DirectUploadButton>
             <button onClick={() => setBattlePickerFor(key as any)} style={{ padding: '0.35rem 0.65rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco</button>
           </div>

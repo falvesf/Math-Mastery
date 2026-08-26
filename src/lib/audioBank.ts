@@ -50,11 +50,11 @@ export async function fetchAudioBank(tenantId?: string | null): Promise<AudioBan
  * antes de tocar — senão sons avulsos (soco, moeda, vitória...) não saem. */
 const activeAudios = new Set<HTMLAudioElement>();
 
-/** Toca um som de efeito (one-shot) com volume. */
+/** Toca um som de efeito (one-shot) com volume. Resolve URLs relativas com o BASE_URL. */
 export function playSound(url?: string | null, volume = 0.8) {
   if (!url) return;
   try {
-    const audio = new Audio(url);
+    const audio = new Audio(resolveAudioUrl(url));
     audio.volume = Math.max(0, Math.min(1, volume));
     const cleanup = () => {
       activeAudios.delete(audio);
@@ -75,4 +75,24 @@ export function resolveAudioUrl(url?: string | null): string {
   if (!url) return '';
   if (url.startsWith('http') || url.startsWith('data:')) return url;
   return import.meta.env.BASE_URL + url.replace(/^\//, '');
+}
+
+/** Para gradualmente (fade-out) TODOS os sons em reprodução, incluindo os
+ * avulsos longos (ex.: música de vitória) que não passam pelo musicAudioRef. */
+export function fadeOutAllSounds(durationMs = 1200) {
+  if (activeAudios.size === 0) return;
+  activeAudios.forEach(audio => {
+    const startVol = audio.volume;
+    const start = performance.now();
+    const step = () => {
+      const t = Math.min(1, (performance.now() - start) / durationMs);
+      audio.volume = Math.max(0, startVol * (1 - t));
+      if (t < 1) requestAnimationFrame(step);
+      else {
+        audio.pause();
+        activeAudios.delete(audio);
+      }
+    };
+    requestAnimationFrame(step);
+  });
 }

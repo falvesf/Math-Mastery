@@ -22,6 +22,9 @@ export interface ArenaDebugConfig {
   monsterNameY: number;
   monsterBubbleX: number;
   monsterBubbleY: number;
+  /** Posição onde o monstro morre (fatalidade): cai/evapora/explode/corta exatamente nesse deslocamento */
+  deathOffsetX: number;
+  deathOffsetY: number;
   arenaHeight: number;
   arenaPaddingTop: number;
   arenaGap: number;
@@ -70,6 +73,8 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   monsterScale: 1,
   monsterNameX: 0,
   monsterNameY: -25,
+  deathOffsetX: 0,
+  deathOffsetY: 0,
   arenaHeight: 300,
   arenaPaddingTop: 16,
   arenaGap: 0,
@@ -302,6 +307,13 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
             <Slider label="Escala" value={safeConfig.monsterScale} onChange={v => update('monsterScale', v)} min={0.3} max={2} step={0.1} unit="x" />
             <Slider label="Nome X" value={safeConfig.monsterNameX} onChange={v => update('monsterNameX', v)} min={-300} max={300} />
             <Slider label="Nome Y" value={safeConfig.monsterNameY} onChange={v => update('monsterNameY', v)} min={-300} max={300} />
+
+            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
+              <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold', marginBottom: '0.3rem' }}>💀 Posição da Fatalidade (onde o monstro morre)</div>
+              <Slider label="Morte X" value={safeConfig.deathOffsetX} onChange={v => update('deathOffsetX', v)} min={-300} max={300} />
+              <Slider label="Morte Y" value={safeConfig.deathOffsetY} onChange={v => update('deathOffsetY', v)} min={-300} max={300} />
+              <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Deslocamento em cima da posição normal do monstro. Ajuste até ele cair/evaporar/explodir no ponto exato do golpe.</div>
+            </div>
 
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 'bold', marginBottom: '0.3rem' }}>🎯 Modelos .GLB</div>
