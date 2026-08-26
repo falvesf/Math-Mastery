@@ -7,6 +7,8 @@ import { supabase } from '../lib/supabase';
 import { calculateTotalStats } from '../lib/gacha';
 import { RANKS } from '../lib/ranks';
 import { fetchStudentAchievementHistory, type AchievementItem } from '../lib/achievementHistory';
+import { getCustomRoleName } from '../lib/permissions';
+import { useTenant } from '../contexts/TenantContext';
 import NintendoHeart from './NintendoHeart';
 
 interface PublicProfileModalProps {
@@ -24,6 +26,16 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
   const [achievements, setAchievements] = useState<AchievementItem[]>([]);
   const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
   const [loading, setLoading] = useState(true);
+  const { tenantId } = useTenant();
+  const [customRoleName, setCustomRoleName] = useState('');
+
+  // Função de hierarquia (customizada) — badge discreto, ex: Designer
+  useEffect(() => {
+    if (!isOpen || !user.uid) { setCustomRoleName(''); return; }
+    let active = true;
+    getCustomRoleName(user.uid, tenantId).then(name => { if (active) setCustomRoleName(name); });
+    return () => { active = false; };
+  }, [isOpen, user.uid, tenantId]);
 
   useEffect(() => {
     if (!isOpen || !user.uid) {
@@ -131,7 +143,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
           <X size={24} />
         </button>
 
-        <div className="avatar-modal-grid" style={{ padding: '2rem', background: bgGradient, minHeight: '100%' }}>
+        <div className="profile-modal-grid" style={{ padding: '2rem', background: bgGradient, minHeight: '100%' }}>
           
           {/* Lado Esquerdo: Avatar, Nome, HP */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
@@ -157,6 +169,11 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
             <h2 style={{ fontSize: '1.8rem', margin: '1rem 0 0.5rem 0', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px', color: 'white' }}>
               {user.name}
             </h2>
+            {customRoleName && (
+              <span style={{ display: 'inline-block', fontSize: '0.7rem', fontWeight: 'bold', padding: '0.2rem 0.8rem', borderRadius: '12px', background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.4)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {customRoleName}
+              </span>
+            )}
             {user.customStatusText && (
               <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', fontStyle: 'italic', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1.5rem', borderRadius: '20px', textAlign: 'center' }}>
                 "{user.customStatusText}"

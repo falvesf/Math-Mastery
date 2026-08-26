@@ -12,7 +12,7 @@ import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
 import AdminEntitiesManager from '../components/AdminEntitiesManager';
 import AdminRolesManager from '../components/AdminRolesManager';
-import { usePermissions, fetchRoles, fetchUserRoles, assignRoleToUser, removeRoleFromUser, getPanelRoleName, panelLabel, baseRolePanelLabel, type RoleDef } from '../lib/permissions';
+import { usePermissions, fetchRoles, fetchUserRoles, assignRoleToUser, removeRoleFromUser, getPanelRoleName, panelLabel, baseRolePanelLabel, STANDARD_ROLE_NAMES_SET, type RoleDef } from '../lib/permissions';
 import AdminCompanionTipsManager from '../components/AdminCompanionTipsManager';
 import TenantSwitcher from '../components/TenantSwitcher';
 import AdminEconomySettings from '../components/AdminEconomySettings';
@@ -551,6 +551,7 @@ export default function AdminDashboard() {
   // Modal de Editar Aluno States
   const [editingStudent, setEditingStudent] = useState<UserData | null>(null);
   const [viewingProfileUser, setViewingProfileUser] = useState<UserData | null>(null);
+  const [userCustomRoles, setUserCustomRoles] = useState<Record<string, string>>({});
   const [editName, setEditName] = useState('');
   const [editClass, setEditClass] = useState('');
   const [editRole, setEditRole] = useState('student');
@@ -990,7 +991,32 @@ export default function AdminDashboard() {
     setAllUserItems(itemsMap);
     
     setStudents(loadedStudents);
+    // Funções de hierarquia (customizadas) de todos os alunos — para o badge discreto
+    loadCustomRoles(loadedStudents.map(s => s.uid));
     setLoading(false);
+  };
+
+  // Carrega em lote as funções de hierarquia (não-padrão) dos alunos
+  const loadCustomRoles = async (uids: string[]) => {
+    if (!uids || uids.length === 0) { setUserCustomRoles({}); return; }
+    try {
+      const roles = await fetchRoles(tenantId);
+      const customRoles = roles.filter(r => !STANDARD_ROLE_NAMES_SET.has(r.name));
+      const { data: urRows } = await supabase
+        .from('user_roles')
+        .select('user_id, role_id')
+        .in('user_id', uids);
+      const map: Record<string, string> = {};
+      (urRows || []).forEach((r: any) => {
+        if (!map[r.user_id]) {
+          const role = customRoles.find(cr => cr.id === r.role_id);
+          if (role) map[r.user_id] = role.name;
+        }
+      });
+      setUserCustomRoles(map);
+    } catch (e) {
+      console.error('Erro ao carregar funções hierárquicas:', e);
+    }
   };
 
   const loadStudentHistoryLocally = async (studentUid: string) => {
@@ -1344,6 +1370,20 @@ export default function AdminDashboard() {
     } else {
       // Preservar tenant_id atual
       delete updateData.tenant_id;
+    }
+
+    // GARANTIA ANTI-LIMBO: seja qual for o tenant_id final do usuário,
+    // cria a relação tenant_users correspondente. Sem isso, um aluno pode
+    // ficar INVISÍVEL na escola (não é listado em users.tenant_id nem em
+    // tenant_users), como aconteceu com o aluno "sumido".
+    const finalTenantId = (updateData as any).tenant_id as string | undefined;
+    if (finalTenantId) {
+      const tenantRole = editRole === 'admin' ? 'admin' : editRole === 'coordinator' ? 'coordinator' : editRole === 'teacher' ? 'teacher' : 'student';
+      await supabase.from('tenant_users').upsert({
+        tenant_id: finalTenantId,
+        user_id: editingStudent.uid,
+        role: tenantRole
+      }, { onConflict: 'tenant_id,user_id' });
     }
     
     // Sincronizar função de Hierarquia (role customizada via user_roles)
@@ -2410,7 +2450,10 @@ export default function AdminDashboard() {
                   if (selectedClassTab === 'staff') {
                     matchesTab = student.role !== 'student';
                   } else if (selectedClassTab === 'unassigned') {
-                    matchesTab = !student.classId && student.role === 'student';
+                    // "Sem Turma": alunos SEM turma OU com turma que não existe mais na escola
+                    // (ex.: veio de outra escola e a turma não existe aqui) — evita o "limbo".
+                    const validClasses = schoolClasses.map(c => c.name);
+                    matchesTab = student.role === 'student' && (!student.classId || !validClasses.includes(student.classId));
                   } else if (selectedClassTab === 'all') {
                     matchesTab = student.role === 'student';
                   } else {
@@ -2476,12 +2519,17 @@ export default function AdminDashboard() {
                             ) : (
                               <div
                                 onClick={() => setViewingProfileUser(student)}
-                                style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', overflow: 'hidden', flexShrink: 0, aspectRatio: '1' }}
+                                style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', overflow: 'hidden', flexShrink: 0, aspectRatio: '1', position: 'relative' }}
                               >
-                                {student.photoURL ? (
-                                  <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                ) : (
-                                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: currentRank.color }}>{student.name?.charAt(0)?.toUpperCase() || '?'}</span>
+                                {/* Inicial sempre por baixo — se a foto quebrar, ela é revelada */}
+                                <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 'bold', color: currentRank.color }}>{student.name?.charAt(0)?.toUpperCase() || '?'}</span>
+                                {student.photoURL && (
+                                  <img
+                                    src={student.photoURL}
+                                    alt=""
+                                    style={{ position: 'relative', width: '100%', height: '100%', objectFit: 'cover' }}
+                                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                  />
                                 )}
                               </div>
                             )}
@@ -2503,6 +2551,11 @@ export default function AdminDashboard() {
                                 {student.role !== 'student' && (
                                   <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.5rem', background: 'var(--accent-red)', borderRadius: '12px', color: 'white', textTransform: 'uppercase' }}>
                                     {student.role === 'admin' ? 'Admin' : student.role === 'teacher' ? 'Professor' : 'Coord.'}
+                                  </span>
+                                )}
+                                {userCustomRoles[student.uid] && (
+                                  <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.5rem', background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.4)', borderRadius: '12px', textTransform: 'uppercase' }}>
+                                    {userCustomRoles[student.uid]}
                                   </span>
                                 )}
                               </h3>
@@ -3036,6 +3089,9 @@ export default function AdminDashboard() {
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Turma Oficial</label>
               <select value={editClass} onChange={e => setEditClass(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', marginBottom: '1rem' }}>
                 <option value="">Sem Turma</option>
+                {editClass && !schoolClasses.some(c => c.name === editClass) && (
+                  <option value={editClass} disabled style={{ color: '#f87171' }}>⚠ {editClass} (turma não existe nesta escola — escolha abaixo)</option>
+                )}
                 {schoolClasses.map(cls => (
                   <option key={cls.id} value={cls.name}>{cls.name}</option>
                 ))}

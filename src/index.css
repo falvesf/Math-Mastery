@@ -1574,6 +1574,21 @@ h3 {
   align-items: start;
 }
 
+/* Grade do modal de PERFIL público (não usa o comportamento de drawer do avatar) */
+.profile-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 2fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .profile-modal-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
 .avatar-viewer-container {
   display: flex;
   flex-direction: column;

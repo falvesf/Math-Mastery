@@ -128,6 +128,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         loadedRanks = snap.map(d => {
           const { id, ...rest } = d;
           return {
+            id,
             ...rest,
             hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
             _isGlobal: d.is_global ?? false
@@ -348,32 +349,47 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
 
     newRanks.sort((a, b) => a.minXp - b.minXp);
 
-    // Limpar patentes locais antigas da escola (para evitar duplicatas)
+    // Salvar patentes locais com IDs únicos por tenant.
+    // Estratégia: UPSERT preservando o id existente (não apaga tudo antes).
+    // Assim, se um upsert falhar, a patente continua existindo (não some).
+    const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
     const { data: existingLocal } = await supabase
       .from('custom_ranks')
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('is_global', false);
 
-    if (existingLocal) {
-      for (const d of existingLocal) {
-        await supabase.from('custom_ranks').delete().eq('id', d.id);
-      }
-    }
+    const existingIds = new Set((existingLocal || []).map(d => d.id));
+    const upsertedIds: string[] = [];
+    let saveError: any = null;
 
-    // Salvar patentes locais com IDs únicos por tenant
-    const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
     for (let i = 0; i < newRanks.length; i++) {
       const src = newRanks[i] as any;
       const clean = cleanRankForDb(src);
+      const newId = (src.id as string) || `rank_${tenantPrefix}_${i}`;
+      upsertedIds.push(newId);
       const { error } = await supabase.from('custom_ranks').upsert({
-        id: `rank_${tenantPrefix}_${i}`,
+        id: newId,
         ...clean,
         hide_from_history: src.hideFromHistory ?? (src.minXp === 0),
         tenant_id: tenantId || null,
         is_global: false
       });
-      if (error) console.error('Erro ao salvar patente local:', error);
+      if (error) {
+        saveError = error;
+        console.error('Erro ao salvar patente local:', error);
+      }
+    }
+
+    // Remover apenas patentes locais que ficaram órfãs (não estão mais na lista)
+    for (const id of existingIds) {
+      if (!upsertedIds.includes(id)) {
+        await supabase.from('custom_ranks').delete().eq('id', id);
+      }
+    }
+
+    if (saveError) {
+      await showConfirm(`Erro ao salvar algumas patentes: ${saveError.message || 'sem detalhes'}`, 'Erro');
     }
 
     // Nova patente também vira base GLOBAL (banco de patentes), editável só pelo superadmin
@@ -427,30 +443,34 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       const localRanks = newRanks.filter(r => !(r as any)._isGlobal);
       const globalRanks = newRanks.filter(r => (r as any)._isGlobal);
 
-      // Limpar patentes locais da escola
+      // UPSERT preservando ids existentes + remover só os órfãos (evita sumir patente)
+      const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
       const { data: existingLocal } = await supabase
         .from('custom_ranks')
         .select('id')
         .eq('tenant_id', tenantId)
         .eq('is_global', false);
+      const existingIds = new Set((existingLocal || []).map(d => d.id));
+      const upsertedIds: string[] = [];
 
-      if (existingLocal) {
-        for (const d of existingLocal) {
-          await supabase.from('custom_ranks').delete().eq('id', d.id);
-        }
-      }
-
-      const tenantPrefix = tenantId ? tenantId.replace(/-/g, '').substring(0, 8) : 'local';
       for (let i = 0; i < localRanks.length; i++) {
         const src = localRanks[i] as any;
         const clean = cleanRankForDb(src);
+        const newId = (src.id as string) || `rank_${tenantPrefix}_${i}`;
+        upsertedIds.push(newId);
         await supabase.from('custom_ranks').upsert({
-          id: `rank_${tenantPrefix}_${i}`,
+          id: newId,
           ...clean,
           hide_from_history: src.hideFromHistory ?? (src.minXp === 0),
           tenant_id: tenantId || null,
           is_global: false
         });
+      }
+
+      for (const id of existingIds) {
+        if (!upsertedIds.includes(id)) {
+          await supabase.from('custom_ranks').delete().eq('id', id);
+        }
       }
 
       setRanks([...globalRanks, ...localRanks]);

@@ -92,7 +92,7 @@ const STANDARD_ROLE_NAMES: Record<string, string> = {
   student: 'Aluno',
 };
 
-const STANDARD_ROLE_NAMES_SET = new Set(['Administrador', 'Coordenador', 'Professor', 'Aluno']);
+export const STANDARD_ROLE_NAMES_SET = new Set(['Administrador', 'Coordenador', 'Professor', 'Aluno']);
 
 /** Rótulo do painel pela função base (quando não há função de hierarquia). */
 export function baseRolePanelLabel(role?: string): string {
@@ -130,6 +130,24 @@ export async function getPanelRoleName(uid: string, tenantId?: string | null, ba
 /** Texto do botão/título do painel (ex: "Painel Master", "Painel do Designer"). */
 export function panelLabel(roleName: string): string {
   return roleName === 'Master' ? 'Painel Master' : `Painel do ${roleName}`;
+}
+
+/**
+ * Nome da FUNÇÃO DE HIERARQUIA (customizada) do usuário, ou '' se não tiver.
+ * Diferente de getPanelRoleName: NÃO cai para a função base — só retorna a
+ * função hierárquica delegada (ex: Designer, Vice-Coordenador).
+ */
+export async function getCustomRoleName(uid: string, tenantId?: string | null): Promise<string> {
+  try {
+    const assigned = await fetchUserRoles(uid, tenantId);
+    if (assigned.length === 0) return '';
+    const roles = await fetchRoles(tenantId);
+    const found = roles.find(r => assigned.includes(r.id) && !STANDARD_ROLE_NAMES_SET.has(r.name));
+    return found ? found.name : '';
+  } catch (e) {
+    console.error('Erro ao carregar função hierárquica:', e);
+    return '';
+  }
 }
 
 /**

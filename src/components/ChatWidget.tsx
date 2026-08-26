@@ -317,12 +317,16 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
         onMouseLeave={e => (e.currentTarget.style.background = hasUnread ? 'var(--gold-glow)' : 'transparent')}
       >
         <div style={{ position: 'relative' }}>
-          {contact.photoURL ? (
-            <img src={contact.photoURL} alt="" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
-          ) : (
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--btn-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
-              <Accessibility size={20} />
-            </div>
+          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--btn-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
+            <Accessibility size={20} />
+          </div>
+          {contact.photoURL && (
+            <img
+              src={contact.photoURL}
+              alt=""
+              style={{ position: 'absolute', inset: 0, width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
           )}
           <span style={{
             position: 'absolute', bottom: '0', right: '0', width: '12px', height: '12px',

@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import { RANKS, getRankForXp } from './ranks';
 
 export interface AchievementItem {
   id: string;
@@ -139,14 +138,50 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
 
     // --- PROCESSAR PATENTES ALCANÇADAS ---
     if (user) {
+      // Busca as patentes da escola DO ALUNO direto do banco, para respeitar
+      // a configuração "omitir do histórico" de cada patente. NÃO depende do
+      // array global RANKS (que pode estar vazio ou refletir outra escola).
+      let schoolRanks: any[] = [];
+      if (user.tenant_id) {
+        const { data: rankRows } = await supabase
+          .from('custom_ranks')
+          .select('*')
+          .eq('tenant_id', user.tenant_id)
+          .eq('is_global', false)
+          .order('minXp', { ascending: true });
+        schoolRanks = (rankRows || []).map((d: any) => {
+          const { id, ...rest } = d;
+          return {
+            ...rest,
+            hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
+          };
+        });
+      }
+      // Fallback: sem patentes locais, usa o banco de patentes globais
+      if (schoolRanks.length === 0) {
+        const { data: gRows } = await supabase
+          .from('custom_ranks')
+          .select('*')
+          .eq('is_global', true)
+          .order('minXp', { ascending: true });
+        schoolRanks = (gRows || []).map((d: any) => ({
+          ...d,
+          hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
+        }));
+      }
+
       const userXp = user.xp || 0;
-      const currentRank = getRankForXp(userXp);
-      const currentRankIdx = RANKS.findIndex(r => r.name === currentRank.name);
+      // Patente atual pelo XP (usando a lista da escola)
+      let currentRankIdx = 0;
+      for (let i = 0; i < schoolRanks.length; i++) {
+        if (userXp >= (schoolRanks[i].minXp || 0)) currentRankIdx = i;
+        else break;
+      }
       const highestIdx = Math.max(currentRankIdx, user.inventoryPreferences?.highestRankIndex || 0);
 
       // Adiciona as patentes alcançadas na linha do tempo (omitindo patentes marcadas como hideFromHistory ou patente inicial)
       for (let i = 0; i <= highestIdx; i++) {
-        const rank = RANKS[i];
+        const rank = schoolRanks[i];
         if (!rank) continue;
         if (rank.hideFromHistory || (rank.minXp === 0 && rank.hideFromHistory !== false)) continue;
 
