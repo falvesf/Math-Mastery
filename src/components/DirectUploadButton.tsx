@@ -11,6 +11,7 @@ interface DirectUploadButtonProps {
 }
 
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+const MAX_GLB_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB (modelos 3D)
 
 export default function DirectUploadButton({ onUploadComplete, folder = 'uploads', buttonStyle, accept = 'image/*' }: DirectUploadButtonProps) {
   const { showAlert } = useDialog();
@@ -27,18 +28,29 @@ export default function DirectUploadButton({ onUploadComplete, folder = 'uploads
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (accept === 'image/*' && !file.type.startsWith('image/')) {
-      showAlert('Por favor, selecione apenas arquivos de imagem.');
-      return;
+    const isGlb = file.name.toLowerCase().endsWith('.glb') || file.name.toLowerCase().endsWith('.gltf');
+    const isImage = file.type.startsWith('image/');
+
+    // Modo misto (aceita .glb/.gltf + imagem)
+    if (accept.includes('.glb')) {
+      if (!isGlb && !isImage) {
+        showAlert('Selecione um modelo 3D (.glb/.gltf) ou uma imagem.');
+        return;
+      }
+    } else if (accept === 'image/*') {
+      if (!isImage) {
+        showAlert('Por favor, selecione apenas arquivos de imagem.');
+        return;
+      }
     }
 
-    if (file.type.startsWith('image/') && file.size > MAX_IMAGE_SIZE_BYTES) {
-      showAlert(`Não é possível subir arquivos maiores que 2 MB. Este arquivo tem ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
+    // Limites de tamanho
+    if (isImage && file.size > MAX_IMAGE_SIZE_BYTES) {
+      showAlert(`Não é possível subir imagens maiores que 2 MB. Este arquivo tem ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
       return;
     }
-    
-    if (accept.includes('.glb') && !file.name.toLowerCase().endsWith('.glb') && !file.name.toLowerCase().endsWith('.gltf')) {
-      showAlert('Por favor, selecione apenas arquivos de modelo 3D (.glb ou .gltf).');
+    if (isGlb && file.size > MAX_GLB_SIZE_BYTES) {
+      showAlert(`Não é possível subir modelos 3D maiores que 5 MB. Este arquivo tem ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
       return;
     }
 
