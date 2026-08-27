@@ -630,7 +630,7 @@ export default function LiveQuestAdmin() {
               student_id: uid,
               status: 'completed',
               tenant_id: quest.tenant_id || tenantId,
-              data: { answers: [], earned_xp: earnedXp, isStudyMode: false, isLiveQuest: true },
+              data: { answers: [], earned_xp: earnedXp, isStudyMode: false, isLiveQuest: true, questTitle: quest.title || '' },
               created_at: new Date().toISOString()
             })
           );

@@ -337,7 +337,7 @@ export default function QuestGameplay() {
             quest_id: questId,
             student_id: userData.uid,
             status: 'failed',
-            data: { answers: studentAnswers.current, isStudyMode: isStudyMode, earned_xp: 0 }
+            data: { answers: studentAnswers.current, isStudyMode: isStudyMode, earned_xp: 0, questTitle: quest?.title || questId }
           });
           supabase.from('users').update({ stunned_until: Date.now() + 10 * 60 * 1000 }).eq('id', userData.uid);
         }
@@ -1409,7 +1409,8 @@ export default function QuestGameplay() {
         data: {
           answers: studentAnswers.current,
           isStudyMode: isStudyMode,
-          earned_xp: (isWin && isEligibleForXP) ? finalXp : 0
+          earned_xp: (isWin && isEligibleForXP) ? finalXp : 0,
+          questTitle: quest?.title || ''
         }
       });
       

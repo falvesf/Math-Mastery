@@ -87,7 +87,8 @@ export default function LiveQuestStudent() {
           isLiveQuest: true,
           earned_xp: earnedXp,
           score: me?.score || 0,
-          place: me?.wonChest?.place || null
+          place: me?.wonChest?.place || null,
+          questTitle: quest.title || ''
         },
         created_at: new Date().toISOString()
       }).then(({ error: attErr }) => {

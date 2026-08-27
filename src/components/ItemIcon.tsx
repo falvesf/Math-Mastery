@@ -71,7 +71,7 @@ export default function ItemIcon({ item, size = 64, style }: ItemIconProps) {
 
   let content: ReactNode;
   if (image) {
-    content = <CachedImage src={image} style={{ width: size, height: size, borderRadius: 8, objectFit: 'cover', ...style }} />;
+    content = <CachedImage src={image} style={{ width: size, height: size, borderRadius: 8, objectFit: 'contain', ...style }} />;
   } else if (item.minecraftHeadValue && item.minecraftHeadValue.trim() !== '') {
     content = <MinecraftHeadIcon minecraftHeadValue={item.minecraftHeadValue} size={size} />;
   } else {

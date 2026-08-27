@@ -1406,8 +1406,8 @@ h3 {
   .profile-glass-panel.backpack-open {
     position: sticky !important;
     top: 50px !important;
-    max-height: calc(30vh * var(--font-scale, 1)) !important;
-    flex: 1 1 calc(30vh * var(--font-scale, 1)) !important;
+    max-height: calc(clamp(180px, 25vw, 240px) * 0.65 * clamp(0.85, var(--font-scale, 1), 1.1) + 60px) !important;
+    flex: 1 1 calc(clamp(180px, 25vw, 240px) * 0.65 * clamp(0.85, var(--font-scale, 1), 1.1) + 60px) !important;
     margin-bottom: 0.5rem;
     padding-top: 0 !important;
     z-index: 999 !important;
@@ -1417,6 +1417,11 @@ h3 {
     transform: scale(calc(0.65 * clamp(0.85, var(--font-scale, 1), 1.1)));
     transform-origin: top center;
     margin-bottom: -80px;
+  }
+
+  /* Com a mochila aberta no mobile, esconde nome/status — o painel fica compacto (só cubo + badge) */
+  .profile-glass-panel.backpack-open .profile-name-status {
+    display: none !important;
   }
   
   .profile-glass-panel.backpack-closed {

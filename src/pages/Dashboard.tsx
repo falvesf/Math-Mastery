@@ -344,6 +344,42 @@ export default function Dashboard() {
   // Status Bubbles
   const [activeBubbleId, setActiveBubbleId] = useState<string | null>(null);
 
+  // Lista atual do ranking (para rotacionar os balões de status entre quem tem status)
+  const rankingListRef = useRef<UserData[]>([]);
+
+  // Com os avatares exibidos, mostra o balão de status em cada posição do ranking,
+  // um de cada vez, começando pela 1ª colocação. O intervalo entre diálogos é
+  // 60 / N segundos, onde N = nº de jogadores do top 10 com status preenchido
+  // (status vazio ou só espaços não exibe balão e não conta).
+  useEffect(() => {
+    if (!showRankingAvatars) { setActiveBubbleId(null); return; }
+    let cancelled = false;
+    let timeoutId: any;
+    let hideTimeoutId: any;
+    let currentIdx = 0;
+
+    const studentsWithStatus = () => rankingListRef.current.filter(s => s.customStatusText && s.customStatusText.trim() !== '');
+
+    const tick = () => {
+      if (cancelled) return;
+      const list = studentsWithStatus();
+      if (list.length === 0) {
+        // Ainda sem status no ranking (lista carregando) — tenta de novo em breve
+        timeoutId = setTimeout(tick, 1000);
+        return;
+      }
+      // Exibe o balão do personagem atual por 5s e depois some
+      setActiveBubbleId(list[currentIdx % list.length].uid);
+      currentIdx++;
+      hideTimeoutId = setTimeout(() => { if (!cancelled) setActiveBubbleId(null); }, 5000);
+      // Intervalo = 60 / N segundos entre o início de um diálogo e o próximo
+      timeoutId = setTimeout(tick, 60000 / Math.max(1, list.length));
+    };
+    tick();
+
+    return () => { cancelled = true; clearTimeout(timeoutId); clearTimeout(hideTimeoutId); };
+  }, [showRankingAvatars, activeTab]);
+
   const [isEditingStatus, setIsEditingStatus] = useState(false);
   const [statusInputValue, setStatusInputValue] = useState('');
 
@@ -1020,6 +1056,8 @@ export default function Dashboard() {
     let timeoutId: any;
 
     const scheduleNextBubble = () => {
+      // No ranking com avatares, a rotação de status já controla os balões
+      if (showRankingAvatars && (activeTab === 'ranking_class' || activeTab === 'ranking_general')) return;
       // Tempo aleatório entre 60.000ms (1 min) e 120.000ms (2 min)
       const delay = Math.floor(Math.random() * (120000 - 60000 + 1)) + 60000;
 
@@ -1049,7 +1087,7 @@ export default function Dashboard() {
     scheduleNextBubble();
 
     return () => clearTimeout(timeoutId);
-  }, [allStudents]);
+  }, [allStudents, showRankingAvatars, activeTab]);
 
   const currentRank = getRankForXp(userData?.xp || 0, userData?.classId);
 
@@ -1463,6 +1501,8 @@ export default function Dashboard() {
         </span>
       );
     };
+
+    rankingListRef.current = list;
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -3095,11 +3135,11 @@ export default function Dashboard() {
                     )}
                   </div>
 
-                  {profileTab !== 'inventory' && (
-                    <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
-                        <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', margin: 0 }}>{userData?.name}</h2>
-                      </div>
+                  {/* Nome e status do personagem — no mobile com a mochila aberta são ocultados via CSS */}
+                  <div className="profile-name-status" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
+                      <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', margin: 0 }}>{userData?.name}</h2>
+                    </div>
 
                       {isEditingStatus ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', width: '100%', maxWidth: '400px' }}>
@@ -3134,8 +3174,7 @@ export default function Dashboard() {
                           </button>
                         </div>
                       )}
-                    </>
-                  )}
+                  </div>
                 </div>
               </div>
               {/* Coluna Direita Alternável (Histórico ou Mochila) */}

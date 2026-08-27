@@ -177,17 +177,22 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     setEconomyType(econ.currencyType);
     setEconomySettings(econ);
 
-    const { data: storeSnap } = await supabase.from('store_items').select('id, rarity');
+    const { data: storeSnap } = await supabase.from('store_items').select('id, data');
     const storeRarities = new Map<string, string>();
+    const storeEffects = new Map<string, string>();
     (storeSnap || []).forEach(d => {
       storeRarities.set(d.id, d.rarity || 'common');
+      const effect = d.data?.gameEffect || (d.data?.type === 'consumable' ? '' : '');
+      storeEffects.set(d.id, effect || '');
     });
 
     const { data: snap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
     const loaded: UserItem[] = [];
     (snap || []).forEach(row => {
       const data = row.data as any;
-      loaded.push({ ...data, id: row.id, equipped: row.equipped, rarity: data.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
+      // Itens ganhos em baú podem vir sem data (sem gameEffect) — completa do catálogo
+      const patchedEffect = data?.gameEffect || storeEffects.get(row.item_id) || 'none';
+      loaded.push({ ...(data || {}), id: row.id, equipped: row.equipped, gameEffect: patchedEffect, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
     });
 
     const finalItems: UserItem[] = [];

@@ -52,7 +52,8 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
     const questMap = new Map<string, { title: string; coverImageUrl?: string }>();
 
     if (questIds.length > 0) {
-      const { data: questsData } = await supabase.from('quests').select('id, title, cover_image_url, coverImageUrl').in('id', questIds);
+      // select('*') evita erro quando alguma coluna (ex: cover_image_url) não existe no banco
+      const { data: questsData } = await supabase.from('quests').select('*').in('id', questIds);
       if (questsData) {
         questsData.forEach((q: any) => {
           questMap.set(q.id, {
@@ -66,7 +67,8 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
     // --- PROCESSAR MISSÕES CONCLUÍDAS ---
     (attempts || []).forEach((att: any) => {
       const qInfo = questMap.get(att.quest_id);
-      const questTitle = qInfo?.title || 'Missão';
+      // Título real da missão (catálogo > dados da tentativa > genérico)
+      const questTitle = qInfo?.title || att.data?.questTitle || att.data?.title || att.quest_title || 'Missão';
       const isCompleted = att.status === 'completed';
       const earnedXp = att.data?.earned_xp ?? att.data?.earnedXp ?? att.xp_earned ?? 0;
       const isLive = att.data?.isLiveQuest || att.data?.is_live_quest;
@@ -101,7 +103,11 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
         id: `item-${itemDoc.id || timeMs}`,
         type: 'item',
         title: giftedBy ? `Recebeu de presente: ${itemTitle}` : `Adquiriu o item: ${itemTitle}`,
-        subtitle: giftedBy ? `Presenteado por ${giftedBy}` : (data.itemCategory ? `Categoria: ${data.itemCategory}` : 'Item do Inventário'),
+        subtitle: giftedBy
+          ? `Presenteado por ${giftedBy}`
+          : (data.itemCategory && data.itemCategory !== 'none' && data.itemCategory !== 'null'
+              ? `Categoria: ${data.itemCategory}`
+              : 'Item do Inventário'),
         imageUrl: itemImage,
         badgeText: 'Item Adquirido',
         badgeType: 'item_received',
