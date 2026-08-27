@@ -345,7 +345,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!userData?.uid || impersonatingId) return;
     const uid = userData.uid;
 
-    // Heartbeat: atualiza last_seen_at (fonte principal de "online")
+    // Só fica online enquanto o jogo está EM FOCO e sendo usado. Ao ficar em
+    // segundo plano, sem foco, ocioso ou saindo da página, desconecta a
+    // presença e "envelhece" o last_seen_at (aparece offline imediatamente).
+    let isOnline = true;
+
     const beat = () => {
       supabase
         .from('users')
@@ -356,12 +360,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           () => {}
         );
     };
+
+    const goOffline = () => {
+      if (!isOnline) return;
+      isOnline = false;
+      disconnectPresence();
+      // Envelhece last_seen_at para o chat não considerar online pelos próximos 5 min
+      supabase.from('users').update({ last_seen_at: new Date(Date.now() - 6 * 60 * 1000).toISOString() }).eq('id', uid).then(() => {});
+    };
+
+    const goOnline = () => {
+      if (isOnline) { beat(); return; }
+      isOnline = true;
+      try {
+        connectPresence(uid, { name: userData?.name, role: userData?.role, classId: userData?.classId });
+      } catch (e) { console.error('Presence error:', e); }
+      beat();
+    };
+
     beat();
-    const int = setInterval(beat, 30 * 1000);
-    const onVisible = () => { if (document.visibilityState === 'visible') beat(); };
-    const onFocus = () => beat();
-    document.addEventListener('visibilitychange', onVisible);
+    const int = setInterval(() => { if (isOnline) beat(); }, 30 * 1000);
+
+    // Ocioso: sem interação por 3 minutos → offline
+    let idleTimer: any;
+    const resetIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(goOffline, 3 * 60 * 1000);
+    };
+    resetIdle();
+
+    const onVisibility = () => { if (document.visibilityState === 'visible') goOnline(); else goOffline(); };
+    const onFocus = () => goOnline();
+    const onBlur = () => goOffline();
+    const onPageHide = () => goOffline();
+    const onActivity = () => { goOnline(); resetIdle(); };
+
+    document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('pagehide', onPageHide);
+    ['mousemove', 'keydown', 'touchstart', 'scroll', 'pointerdown'].forEach(ev => window.addEventListener(ev, onActivity));
 
     // Presence (bônus, em tempo real) — isolado para não quebrar o heartbeat
     try {
@@ -372,8 +410,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     return () => {
       clearInterval(int);
-      document.removeEventListener('visibilitychange', onVisible);
+      if (idleTimer) clearTimeout(idleTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('pagehide', onPageHide);
+      ['mousemove', 'keydown', 'touchstart', 'scroll', 'pointerdown'].forEach(ev => window.removeEventListener(ev, onActivity));
       disconnectPresence();
     };
   }, [userData?.uid, impersonatingId]);
