@@ -18,7 +18,7 @@ import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
-import { playSound, fadeOutAllSounds, playCoinCollect } from '../lib/audioBank';
+import { playSound, fadeOutAllSounds, playCoinCollect, resolveAudioUrl } from '../lib/audioBank';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 
@@ -163,11 +163,11 @@ export default function QuestGameplay() {
       (data || []).forEach(r => d = { ...d, ...(r.data || {}) });
       playerDamageSoundsRef.current = { male: d.male || '', female: d.female || '' };
     });
-    supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'battle_sounds').then(({ data }) => {
+    supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'battle_sounds').then(async ({ data }) => {
       if (!active) return;
       let b: any = {};
       (data || []).forEach(r => b = { ...b, ...(r.data || {}) });
-      battleSoundsRef.current = {
+      let sounds: Record<string, string> = {
         victory: b.victory || b.victory_sound || '',
         deathMale: b.deathMale || b.death_male || '',
         deathFemale: b.deathFemale || b.death_female || '',
@@ -178,6 +178,40 @@ export default function QuestGameplay() {
         fatalSlice: b.fatalSlice || b.fatal_slice || '',
         fatalExplode: b.fatalExplode || b.fatal_explode || '',
       };
+      // Fallback: se alguma fatalidade estiver vazia, tenta achar no banco de áudio pelo nome
+      if (!sounds.fatalFall || !sounds.fatalEvaporate || !sounds.fatalSlice || !sounds.fatalExplode) {
+        try {
+          const { data: audioBank } = await supabase.from('audio_bank').select('name, url');
+          const kw: Record<string, string[]> = {
+            fatalFall: ['queda', 'fall', 'cai', 'tombo'],
+            fatalEvaporate: ['evapor', 'pulver', 'desapare'],
+            fatalSlice: ['corte', 'slice', 'lamina', 'espada'],
+            fatalExplode: ['explos', 'explod', 'bomba'],
+          };
+          (audioBank || []).forEach((a: any) => {
+            const name = ((a.name || '') + ' ' + (a.url || '')).toLowerCase();
+            for (const [key, kws] of Object.entries(kw)) {
+              if (!sounds[key] && kws.some(k => name.includes(k))) sounds[key] = a.url;
+            }
+          });
+          // Garante que TODA fatalidade tenha som: preenche as que sobraram com qualquer fatalidade disponível
+          const firstFatal = ['fatalFall', 'fatalEvaporate', 'fatalSlice', 'fatalExplode'].map(k => sounds[k]).find(Boolean) || '';
+          for (const key of ['fatalFall', 'fatalEvaporate', 'fatalSlice', 'fatalExplode']) {
+            if (!sounds[key]) sounds[key] = firstFatal;
+          }
+        } catch (e) { /* ignore */ }
+      }
+      battleSoundsRef.current = {
+        victory: sounds.victory, deathMale: sounds.deathMale, deathFemale: sounds.deathFemale,
+        fail: sounds.fail, punch: sounds.punch,
+        fatalFall: sounds.fatalFall, fatalEvaporate: sounds.fatalEvaporate,
+        fatalSlice: sounds.fatalSlice, fatalExplode: sounds.fatalExplode,
+      };
+      // Pré-carrega os sons de batalha/fatalidade para tocarem SEM atraso no golpe
+      ['victory', 'deathMale', 'deathFemale', 'fail', 'punch', 'fatalFall', 'fatalEvaporate', 'fatalSlice', 'fatalExplode'].forEach(key => {
+        const u = (battleSoundsRef.current as any)[key];
+        if (u) { const a = new Audio(resolveAudioUrl(u)); a.preload = 'auto'; a.load(); }
+      });
     });
     return () => { active = false; };
   }, []);
@@ -904,8 +938,9 @@ export default function QuestGameplay() {
     const deaths = hasAttackWeapon 
       ? ['death-fall', 'death-evaporate', 'death-slice', 'death-explode']
       : ['death-fall', 'death-evaporate'];
-    // Força uma fatalidade específica via Arena Debug (senão aleatória)
-    const fatality = arenaDebug.forcedFatality && deaths.includes(arenaDebug.forcedFatality)
+    // Força uma fatalidade específica via Arena Debug (SÓ para quem tem acesso ao Debug — alunos usam aleatória)
+    const canForce = canArenaDebug('arena_debug', 'view') || isSuperAdmin || userData?.role === 'admin';
+    const fatality = canForce && arenaDebug.forcedFatality && deaths.includes(arenaDebug.forcedFatality)
       ? arenaDebug.forcedFatality
       : deaths[Math.floor(Math.random() * deaths.length)];
     
@@ -963,13 +998,16 @@ export default function QuestGameplay() {
         const impactDelay = hasAttackWeapon ? 1125 : 600;
         setTimeout(() => setMonsterAnim('hurt'), impactDelay);
         
+        // Efeito do fatality entra ANTES do golpe visual (compensa o start do áudio)
+        setTimeout(() => playFatalitySound(fatality), 1700);
+
         setTimeout(() => {
           setMonsterAnim(fatality);
           setMonsterBubble(monsterDefeatQuote);
           setBattleMessage(getVictoryMessage());
           playMonsterGruntSound();
-          playFatalitySound(fatality);
-          playVictorySound();
+          // A música de vitória entra com um pequeno atraso para o efeito do fatality ser ouvido
+          setTimeout(() => playVictorySound(), 1200);
           
           // Entra em idle-victory (apreensão) e depois roda a animação de vitória
           setPlayerAnim('idle-victory' as any);

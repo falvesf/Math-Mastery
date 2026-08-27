@@ -245,6 +245,9 @@ export default function Dashboard() {
   const [allStudents, setAllStudents] = useState<UserData[]>([]);
   const [selectedClassForRanking, setSelectedClassForRanking] = useState<string>('');
   const [cubeRotation, setCubeRotation] = useState(0);
+  // Pausa temporária do giro do cubo (ex.: após subir de patente, para ver os status)
+  const [cubePaused, setCubePaused] = useState(false);
+  const cubePauseTimeoutRef = useRef<any>(null);
   const [rankImageIndex, setRankImageIndex] = useState(0);
   const [isIdle, setIsIdle] = useState(false);
   const lastInteractionTime = useRef(Date.now());
@@ -608,14 +611,14 @@ export default function Dashboard() {
     };
   }, [isIdle, cubeIdleTime]);
 
-  // Giro automático do cubo quando ocioso (pausado enquanto houver dicas do companheiro ou mochila aberta)
+  // Giro automático do cubo quando ocioso (pausado enquanto houver dicas do companheiro, mochila aberta ou pausa temporária)
   useEffect(() => {
-    if (!cubeAutoRotate || !isIdle || pendingTips.length > 0 || profileTab === 'inventory') return;
+    if (!cubeAutoRotate || !isIdle || pendingTips.length > 0 || profileTab === 'inventory' || cubePaused) return;
     const rotateInterval = setInterval(() => {
       setCubeRotation(prev => prev - 90);
     }, cubeRotateInterval * 1000); // Gira a cada X segundos
     return () => clearInterval(rotateInterval);
-  }, [isIdle, cubeAutoRotate, cubeRotateInterval, pendingTips.length, profileTab]);
+  }, [isIdle, cubeAutoRotate, cubeRotateInterval, pendingTips.length, profileTab, cubePaused]);
 
   useEffect(() => {
     if (!userData || !equippedItemsLoaded) return;
@@ -1177,6 +1180,17 @@ export default function Dashboard() {
     }
   }, [userData?.xp, userData?.lastSeenRank, currentRank.name, ranksLoaded]);
 
+  // Após subir de patente e equipar: abre o Meu Perfil, mostra a face de STATUS
+  // do cubo (esquerda) e pausa o giro por 60s para o jogador atribuir os pontos.
+  const focusProfileStatus = () => {
+    setActiveTab('profile');
+    setProfileTab('overview');
+    setCubeRotation(90); // face esquerda = status/pontos
+    setCubePaused(true);
+    if (cubePauseTimeoutRef.current) clearTimeout(cubePauseTimeoutRef.current);
+    cubePauseTimeoutRef.current = setTimeout(() => setCubePaused(false), 60000);
+  };
+
   const handleCloseLevelUp = async () => {
     setShowLevelUp(false);
     if (userData) {
@@ -1255,6 +1269,8 @@ export default function Dashboard() {
       }
 
       await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
+      // Após equipar a patente, foca no perfil/status do cubo
+      focusProfileStatus();
     }
   };
 
@@ -1292,6 +1308,9 @@ export default function Dashboard() {
       }
       await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
     }
+
+    // Após abrir o baú da patente, foca no perfil/status do cubo
+    focusProfileStatus();
   };
 
   const handleLogout = async () => {
