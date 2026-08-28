@@ -187,6 +187,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
       case 'uncommon': return '#10b981';
       case 'rare': return '#3b82f6';
       case 'epic': return '#8b5cf6';
+      case 'mestre': return '#ef4444';
       case 'legendary': return '#f59e0b';
       default: return '#9ca3af';
     }
@@ -207,8 +208,8 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
   if (!isOpen) return null;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-      <div className="glass-panel" style={{ width: '900px', maxWidth: '95vw', maxHeight: '90vh', padding: '2rem', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out', background: 'var(--bg-dark)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100000 }}>
+      <div className="glass-panel" style={{ width: '900px', maxWidth: '95vw', maxHeight: '90vh', padding: '2rem', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out', background: 'var(--bg-dark)', overflow: 'hidden' }}>
         
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -275,7 +276,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
         </div>
 
         {/* Lista de Itens */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', minHeight: 0 }}>
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem', color: 'var(--gold-primary)', gap: '0.5rem' }}>
               <Loader2 className="animate-spin" size={24} /> Carregando itens...
@@ -290,6 +291,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
               {filteredItems.map(item => {
                 const imported = isImported(item);
                 const selected = selectedIds.includes(item.id);
+                const rarityColor = getRarityColor(item.rarity);
                 return (
                 <div
                   key={item.id}
@@ -298,12 +300,14 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
                     padding: '1rem',
                     cursor: 'pointer',
                     transition: 'all 0.2s',
-                    border: imported ? '1px solid rgba(16, 185, 129, 0.5)' : (selected ? '1px solid #8b5cf6' : '1px solid var(--border-glass)'),
-                    background: imported ? 'rgba(16, 185, 129, 0.06)' : (selected ? 'rgba(139, 92, 246, 0.08)' : undefined),
+                    border: `2px solid ${rarityColor}`,
+                    background: `${rarityColor}10`,
+                    boxShadow: `0 0 12px ${rarityColor}30`,
+                    outline: selected ? '2px solid #8b5cf6' : 'none',
                   }}
                   onClick={() => handleImportClick(item)}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = imported ? 'rgba(16, 185, 129, 0.8)' : 'var(--gold-primary)')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = imported ? 'rgba(16, 185, 129, 0.5)' : (selected ? '#8b5cf6' : 'var(--border-glass)'))}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = rarityColor)}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = rarityColor)}
                 >
                   <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem', alignItems: 'center' }}>
                     <ItemIcon item={item} size={48} />
@@ -375,7 +379,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
 
       {/* Modal de Importação */}
       {showImportModal && selectedItem && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100001 }}>
           <div className="glass-panel" style={{ width: '450px', maxWidth: '90vw', padding: '2rem', animation: 'slideUp 0.3s ease-out', background: 'var(--bg-dark)' }}>
             <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>
               Importar: {selectedItem.title}
