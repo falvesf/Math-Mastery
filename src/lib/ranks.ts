@@ -67,6 +67,33 @@ export function getRankForXp(xp: number, classId?: string): RankDef {
   return currentRank;
 }
 
+// Patente mínima exigida de um item.
+// NOVO formato: nome da patente (estável, independe da ordem da lista).
+// LEGADO: era um número (índice) — mapeamos pela lista padrão global usada na época.
+
+export function resolveMinRankName(value: number | string | null | undefined): string {
+  if (typeof value === 'string' && value) return value;
+  const idx = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  return DEFAULT_RANKS[idx]?.name || RANKS[idx]?.name || '';
+}
+
+export function getMinRankIndex(value: number | string | null | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    // Legado: era um índice na lista padrão global → resolve pelo nome na lista do tenant
+    const name = DEFAULT_RANKS[value]?.name;
+    if (name) {
+      const i = RANKS.findIndex(r => r.name === name);
+      return i < 0 ? 0 : i;
+    }
+    return value;
+  }
+  if (typeof value === 'string' && value) {
+    const i = RANKS.findIndex(r => r.name === value);
+    return i < 0 ? 0 : i;
+  }
+  return 0;
+}
+
 export const initRanks = async (tenantId?: string) => {
   try {
     // IMPORTANTE: o level up usa SOMENTE as patentes LOCAIS da escola.

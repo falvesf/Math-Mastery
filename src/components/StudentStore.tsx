@@ -5,7 +5,7 @@ import type { UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
-import { RANKS, getRankForXp } from '../lib/ranks';
+import { RANKS, getRankForXp, resolveMinRankName, getMinRankIndex } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
@@ -58,6 +58,7 @@ const getAttributeName = (type: string) => {
 const getRarityLabel = (rarity?: string) => {
   switch (rarity) {
     case 'legendary': return 'Lendário';
+    case 'mestre': return 'Mestre';
     case 'epic': return 'Épico';
     case 'rare': return 'Raro';
     case 'uncommon': return 'Incomum';
@@ -240,8 +241,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     if (!isStaff) {
       const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
       const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-      if (currentRankIndex < item.minRankRequired) {
-        showToast(`Sua patente é muito baixa! Você precisa ser no mínimo ${RANKS[item.minRankRequired].name} para comprar este item.`, 'error');
+      if (currentRankIndex < getMinRankIndex(item.minRankRequired)) {
+        showToast(`Sua patente é muito baixa! Você precisa ser no mínimo ${resolveMinRankName(item.minRankRequired) || 'Sem Patente'} para comprar este item.`, 'error');
         return;
       }
 
@@ -548,7 +549,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     
     // Esconde os itens se a patente do aluno for menor que a exigida
     if (!isStaff) {
-      result = result.filter(i => (i.minRankRequired || 0) <= currentRankIndex);
+      result = result.filter(i => getMinRankIndex(i.minRankRequired) <= currentRankIndex);
     }
 
     if (searchQuery) {
@@ -574,11 +575,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       if (sortBy === 'price-asc') return a.cost - b.cost;
       if (sortBy === 'price-desc') return b.cost - a.cost;
       if (sortBy === 'rarity-desc') {
-        const order: Record<string, number> = { legendary: 5, epic: 4, rare: 3, uncommon: 2, common: 1 };
+        const order: Record<string, number> = { legendary: 6, mestre: 5, epic: 4, rare: 3, uncommon: 2, common: 1 };
         return (order[b.rarity || 'common'] || 1) - (order[a.rarity || 'common'] || 1);
       }
       if (sortBy === 'rarity-asc') {
-        const order: Record<string, number> = { legendary: 5, epic: 4, rare: 3, uncommon: 2, common: 1 };
+        const order: Record<string, number> = { legendary: 6, mestre: 5, epic: 4, rare: 3, uncommon: 2, common: 1 };
         return (order[a.rarity || 'common'] || 1) - (order[b.rarity || 'common'] || 1);
       }
       return 0;
@@ -595,7 +596,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       result = result.filter(i => {
         // Encontrar o item original para checar a patente mínima (já que o marketItem pode não ter)
         const originalItem = items.find(storeI => storeI.id === i.itemId);
-        const minRank = originalItem ? (originalItem.minRankRequired || 0) : 0;
+        const minRank = originalItem ? getMinRankIndex(originalItem.minRankRequired) : 0;
         return minRank <= currentRankIndex;
       });
     }
@@ -749,6 +750,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               <option value="uncommon">Incomum</option>
               <option value="rare">Raro</option>
               <option value="epic">Épico</option>
+              <option value="mestre">Mestre</option>
               <option value="legendary">Lendário</option>
             </select>
             <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
@@ -832,7 +834,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             const canAfford = isStaff || currentBalance >= (economyType === 'xp' ? totalCost : totalCostCoins);
             const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
             const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-            const meetsRank = isStaff || currentRankIndex >= item.minRankRequired;
+            const meetsRank = isStaff || currentRankIndex >= getMinRankIndex(item.minRankRequired);
             const isGiftingThis = giftingItemId === item.id;
 
             const isList = viewMode === 'list';
@@ -922,7 +924,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   
                   {!meetsRank ? (
                     <div style={{ padding: '0.4rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--accent-red)', borderRadius: '6px', color: 'var(--accent-red)', fontSize: '0.75rem', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
-                      <ShieldAlert size={14} /> Requer Patente: {RANKS[item.minRankRequired]?.name}
+                      <ShieldAlert size={14} /> Requer Patente: {resolveMinRankName(item.minRankRequired) || 'Sem Patente'}
                     </div>
                   ) : (
                     <>

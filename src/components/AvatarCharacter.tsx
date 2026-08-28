@@ -140,6 +140,34 @@ export interface ModelTransformsConfig {
   battle_left_female?: ModelTransform;
 }
 
+// Mapeia a "Parte do Avatar" do item para a parte correspondente no esqueleto do skin.
+function getMinecraftSkinPart(skin: any, avatarPart?: string): any {
+  if (!skin) return null;
+  const map: Record<string, string> = {
+    head: 'head',
+    shoulders: 'body', torso: 'body', chest: 'body', body: 'body',
+    leftArm: 'leftArm', left_arm: 'leftArm', arm: 'leftArm',
+    rightArm: 'rightArm', right_arm: 'rightArm',
+    leftLeg: 'leftLeg', leg: 'leftLeg', legs: 'leftLeg',
+    rightLeg: 'rightLeg', feet: 'leftLeg',
+  };
+  return skin[map[avatarPart || 'head']] || skin.head;
+}
+
+// Escala/dimensões e altura padrão do cubo da textura Minecraft por parte do corpo.
+function getMinecraftPartBase(avatarPart?: string): { scale: [number, number, number]; y: number } {
+  switch (avatarPart) {
+    case 'shoulders': case 'torso': case 'chest': case 'body':
+      return { scale: [8.6, 12, 4.4], y: 6 };
+    case 'leftArm': case 'rightArm': case 'arm':
+      return { scale: [4.4, 12, 4.4], y: 6 };
+    case 'leftLeg': case 'rightLeg': case 'leg': case 'feet':
+      return { scale: [4.4, 12, 4.4], y: 6 };
+    default: // head
+      return { scale: [9.2, 9.2, 9.2], y: 4 };
+  }
+}
+
 // Resolve o transform correto de um item considerando gênero, mão dominante e estado de batalha.
 // As variantes femininas (corpo slim) têm prioridade quando o personagem é feminino, com fallback para a comum.
 export function resolveModelTransform(
@@ -949,7 +977,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
              }
            );
         }
-      } else if (item.minecraftHeadValue && item.minecraftHeadValue.trim() !== '' && item.avatarPart === 'head') {
+      } else if (item.minecraftHeadValue && item.minecraftHeadValue.trim() !== '' && item.avatarPart !== 'rightHand' && item.avatarPart !== 'leftHand' && item.avatarPart !== 'two_handed') {
         let textureUrl = item.minecraftHeadValue.trim();
         // Decode Base64 from Mojang format if it doesn't look like an HTTP URL
         if (!textureUrl.startsWith('http')) {
@@ -1035,14 +1063,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           uvAttribute.needsUpdate = true;
           
           const mesh = new THREE.Mesh(geometry, materials);
-          const head = viewer.playerObject.skin.head;
-          
-          // The base skinview3d head size is 8 units. The outer layer (hair) is about 9 units.
-          // Let's make it 9.2 so it completely covers the hair and fits like a proper helmet.
-          mesh.scale.set(9.2, 9.2, 9.2); 
-          // Center it on the head
-          // skinview3d head pivot is at the neck (bottom of head, Y=0). Center of head is Y=4.
-          
+          // Aplica a textura Minecraft na parte do corpo selecionada (exceto armas),
+          // com dimensões/posição padrão por parte.
+          const skin = viewer.playerObject.skin;
+          const parent = getMinecraftSkinPart(skin, item.avatarPart);
+          const partBase = getMinecraftPartBase(item.avatarPart);
+          if (!parent) return;
+          mesh.scale.set(partBase.scale[0], partBase.scale[1], partBase.scale[2]);
+
           let appliedTransform = false;
           const itemId = item.itemId || item.docId;
           if (debugItemTransform && debugItemId === itemId) {
@@ -1059,15 +1087,11 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           }
           
           if (!appliedTransform) {
-            mesh.position.set(0, 4, 0);
+            mesh.position.set(0, partBase.y, 0);
           }
           
-          // Notice: BoxGeometry front might not align perfectly with skinview3d head orientation.
-          // By testing, we might need a 180 flip if the face points backward.
-          // skinview3d usually rotates the head by default or maps it differently.
-          // Let's add it and let it rotate correctly!
-          head.add(mesh);
-          loadedModels.push({ parent: head, model: mesh });
+          parent.add(mesh);
+          loadedModels.push({ parent, model: mesh });
           loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model: mesh, item });
             },
             undefined,

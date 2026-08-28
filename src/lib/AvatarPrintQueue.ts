@@ -7,6 +7,32 @@ let globalViewer: SkinViewer | null = null;
 let queue: { config: any, equippedItems: EquippedItem[], resolve: (url: string) => void }[] = [];
 let isProcessing = false;
 
+// Verifica se a imagem da skin carrega E é "CORS-clean" (senão o skinview3d
+// quebra no getImageData interno ao inferir o modelo — IndexSizeError).
+function preloadSkinImage(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!url) return resolve(false);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || 1;
+        c.height = img.naturalHeight || 1;
+        const ctx = c.getContext('2d');
+        if (!ctx) return resolve(false);
+        ctx.drawImage(img, 0, 0);
+        ctx.getImageData(0, 0, 1, 1); // lança se a canvas estiver "tainted"
+        resolve(true);
+      } catch {
+        resolve(false);
+      }
+    };
+    img.onerror = () => resolve(false);
+    img.src = url;
+  });
+}
+
 async function processQueue() {
   if (isProcessing || queue.length === 0) return;
   isProcessing = true;
@@ -37,11 +63,21 @@ async function processQueue() {
 
     // 1. Generate skin
     const skinUrl = task.config.customSkinUrl || await generateMinecraftSkinUrl(task.config);
-    
-    await Promise.race([
-      globalViewer.loadSkin(skinUrl),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('Skin load timeout')), 10000))
-    ]);
+
+    // Só chama loadSkin se a imagem for válida e CORS-clean; senão mantém a skin dummy.
+    const skinOk = await preloadSkinImage(skinUrl);
+    if (skinOk) {
+      try {
+        await Promise.race([
+          globalViewer.loadSkin(skinUrl),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Skin load timeout')), 10000))
+        ]);
+      } catch (e) {
+        console.error('Erro ao carregar skin no print do avatar:', e);
+      }
+    } else {
+      console.warn('Skin inválida/inacessível no print do avatar; usando skin neutra:', skinUrl);
+    }
 
     // 2. Clear old items (remove children of playerObject parts that are our items)
     const player = globalViewer.playerObject;

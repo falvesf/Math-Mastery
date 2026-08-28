@@ -13,11 +13,26 @@ import { subscribePresence } from '../lib/onlinePresence';
 
 interface ChatWidgetProps {
   onOpenProfile?: (uid: string) => void;
+  translucent?: boolean; // no painel master: ícone translúcido para não atrapalhar
 }
 
 const POLL_INTERVAL = 4000;
 
-export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
+// Se é aluno (ou sem role → assume aluno). Não-alunos têm badge de função e NÃO exibem turma.
+function isStudentContact(role?: string): boolean {
+  return !role || role === 'student' || role === 'pending_student';
+}
+function getRoleLabel(role?: string): string {
+  switch (role) {
+    case 'admin':
+    case 'superadmin': return 'Admin';
+    case 'teacher': return 'Professor';
+    case 'coordinator': return 'Coord.';
+    default: return role || 'Equipe';
+  }
+}
+
+export default function ChatWidget({ onOpenProfile, translucent = false }: ChatWidgetProps) {
   const { userData } = useAuth();
   const { tenantId } = useTenant();
   const [open, setOpen] = useState(false);
@@ -345,7 +360,13 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
           <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
             {contact.online ? <span style={{ color: 'var(--accent-green)' }}>● Online</span> : <span>○ Offline</span>}
             {contact.isFriend && <span style={{ marginLeft: '0.4rem', color: 'var(--gold-primary)' }}>★ Contato</span>}
-            {contact.classId && <span style={{ marginLeft: '0.4rem' }}>· {contact.classId}</span>}
+            {/* Função (não-aluno) com badge discreto; turma só aparece para alunos */}
+            {!isStudentContact(contact.role) && (
+              <span style={{ marginLeft: '0.4rem', padding: '0.05rem 0.4rem', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: 'bold', fontSize: '0.62rem', textTransform: 'uppercase' }}>
+                {getRoleLabel(contact.role)}
+              </span>
+            )}
+            {isStudentContact(contact.role) && contact.classId && <span style={{ marginLeft: '0.4rem' }}>· {contact.classId}</span>}
           </div>
         </div>
         {hasUnread && (
@@ -379,11 +400,17 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
         className={getFabClass()}
         style={{
           position: 'fixed', bottom: '1.5rem', right: '1.5rem',
-          width: '56px', height: '56px', borderRadius: '50%',
+          width: translucent ? '44px' : '56px', height: translucent ? '44px' : '56px',
+          borderRadius: '50%',
           border: 'none', cursor: isChatDisabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'all 0.25s ease',
-          pointerEvents: 'auto', zIndex: 10000
+          pointerEvents: 'auto', zIndex: 10000,
+          opacity: translucent ? (open ? 1 : 0.35) : 1,
+          transform: translucent ? 'scale(0.9)' : 'scale(1)',
+          boxShadow: translucent ? '0 0 0 rgba(0,0,0,0)' : undefined
         }}
+        onMouseEnter={translucent ? (e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; } : undefined}
+        onMouseLeave={translucent ? (e) => { if (!open) { e.currentTarget.style.opacity = '0.35'; e.currentTarget.style.transform = 'scale(0.9)'; } } : undefined}
         title={getFabTitle()}
       >
         {open ? <X size={26} /> : <MessageCircle size={26} />}
@@ -418,6 +445,11 @@ export default function ChatWidget({ onOpenProfile }: ChatWidgetProps) {
                 </button>
               )}
               <MessageCircle size={18} /> {activeContact ? activeContact.characterName || activeContact.name : 'Chat'}
+              {activeContact && !isStudentContact(activeContact.role) && (
+                <span style={{ padding: '0.05rem 0.4rem', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: 'bold', fontSize: '0.62rem', textTransform: 'uppercase', marginLeft: '0.3rem' }}>
+                  {getRoleLabel(activeContact.role)}
+                </span>
+              )}
               {!activeContact && totalUnread > 0 && (
                 <span style={{ background: 'var(--accent-red)', color: '#fff', borderRadius: '10px', padding: '0 0.4rem', fontSize: '0.7rem', fontWeight: 'bold' }}>
                   {totalUnread}

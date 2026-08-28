@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import GachaConfigModal from './GachaConfigModal';
@@ -9,19 +9,22 @@ import ItemBankModal from './ItemBankModal';
 import GlbMeshExtractorModal from './GlbMeshExtractorModal';
 import SkinBuffIcon from '../components/SkinBuffIcon';
 import ItemIcon from './ItemIcon';
+import AvatarCharacter from './AvatarCharacter';
+import MinecraftPartPreview from './MinecraftPartPreview';
 import AudioBankPicker from './AudioBankPicker';
 import { playSound } from '../lib/audioBank';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usePermissions } from '../lib/permissions';
 import { fetchEconomyType } from '../lib/economy';
-import { RANKS } from '../lib/ranks';
+import { RANKS, resolveMinRankName } from '../lib/ranks';
+import type { RankDef } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
 import { v4 as uuidv4 } from 'uuid';
 
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 'bazar_sale_permit';
-export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mestre' | 'legendary';
 
 export interface StoreItem {
   id: string;
@@ -36,7 +39,7 @@ export interface StoreItem {
   hpCooldownReductionMinutes?: number;
   buffDurationHours?: number;
   usableInQuest?: boolean;
-  minRankRequired: number; // Index of RANKS array
+  minRankRequired: number | string; // Nome da patente (legado: índice numérico)
   active: boolean;
   gameModelUrl?: string; // URL para modelo 3D (ex: .glb)
   modelTextureUrl?: string; // URL da skin (textura) aplicada ao modelo .glb
@@ -62,6 +65,7 @@ export interface StoreItem {
 const getRarityLabel = (rarity?: string) => {
   switch (rarity) {
     case 'legendary': return 'Lendário';
+    case 'mestre': return 'Mestre';
     case 'epic': return 'Épico';
     case 'rare': return 'Raro';
     case 'uncommon': return 'Incomum';
@@ -76,6 +80,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const { can: canItems } = usePermissions();
   const [items, setItems] = useState<StoreItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tenantRanks, setTenantRanks] = useState<RankDef[]>([]);
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [globalGachaConfig, setGlobalGachaConfig] = useState<GachaConfig | null>(null);
   const [presetSkins, setPresetSkins] = useState<{id: string, name: string, url: string, type?: string}[]>([]);
@@ -91,10 +96,33 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   
   const [showGallery, setShowGallery] = useState<'image' | 'model' | null>(null);
   const [showTransformModal, setShowTransformModal] = useState(false);
+  const [showMinecraftPreview, setShowMinecraftPreview] = useState(false);
   const [showExtractorModal, setShowExtractorModal] = useState(false);
   const [showGachaModal, setShowGachaModal] = useState(false);
   const [showItemBank, setShowItemBank] = useState(false);
   const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
+
+  // Item montado para PREVIEW 3D no personagem (config de posição e visualização da textura)
+  const previewEquippedItems = useMemo(() => {
+    const f = formData;
+    const has3d = !!(f.gameModelUrl || f.modelTextureUrl || f.minecraftHeadValue);
+    if (!has3d) return [] as any[];
+    return [{
+      itemId: f.title || 'item',
+      docId: `preview_${f.title || 'item'}`,
+      itemTitle: f.title || 'Item',
+      imageUrl: f.imageUrl || '',
+      avatarPart: (f.avatarPart || 'head') as any,
+      itemCategory: 'attack',
+      baseAttributeType: 'attack',
+      baseAttributeValue: 0,
+      gameModelUrl: f.gameModelUrl || '',
+      modelTextureUrl: f.modelTextureUrl || '',
+      minecraftHeadValue: f.minecraftHeadValue || '',
+      modelTransforms: f.modelTransforms || undefined,
+      adds: [],
+    }] as any[];
+  }, [formData]);
   
   const [layoutMode, setLayoutMode] = useState<'list' | 'grid-2' | 'grid-3' | 'small-icons' | 'large-icons'>(
     () => (localStorage.getItem('storeLayoutMode') as any) || 'list'
@@ -115,6 +143,42 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Patente Mínima Exigida: usa SOMENTE as patentes LOCAIS do tenant atual
+  // (nunca a global/de outros tenants). Sincroniza também o RANKS do jogo.
+  const loadTenantRanks = async (tid?: string) => {
+    try {
+      let q = supabase.from('custom_ranks').select('*');
+      if (tid) {
+        q = q.eq('tenant_id', tid).eq('is_global', false);
+      } else {
+        q = q.eq('tenant_id', '00000000-0000-0000-0000-000000000001').eq('is_global', false);
+      }
+      const { data } = await q;
+      const list: RankDef[] = (data || []).map(d => ({
+        id: d.id,
+        name: d.name,
+        minXp: d.minXp,
+        color: d.color,
+        imageUrl: d.imageUrl,
+        audioUrl: d.audioUrl,
+        variants: d.variants,
+        rankUpChestItems: d.rankUpChestItems,
+        rankUpChestModelId: d.rankUpChestModelId,
+        hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
+      })).sort((a, b) => a.minXp - b.minXp);
+      setTenantRanks(list);
+      RANKS.length = 0;
+      RANKS.push(...list);
+    } catch (e) {
+      console.error('Erro ao carregar patentes do tenant:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadTenantRanks(tenantId);
+    /* eslint-disable-next-line */
+  }, [tenantId]);
 
   const fetchData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -170,6 +234,53 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     }
   };
 
+  // Superadmin: sincroniza os ícones/imagens do catálogo desta escola com os itens
+  // do Banco de Itens (global). Atualiza APENAS a imagem dos itens que já existem
+  // no banco e têm o mesmo nome, tipo e efeito — não cria cópia.
+  const syncIconsToBank = async () => {
+    if (!isSuperAdmin) return;
+    const confirmed = await showConfirm(
+      'Sincronizar ícones/imagens do catálogo desta escola com o Banco de Itens?\n\nItens com o MESMO nome, tipo e efeito terão a imagem do banco atualizada para a imagem da escola. Nenhum item é criado — apenas a imagem é atualizada.'
+    );
+    if (!confirmed) return;
+    if (!tenantId) { showAlert('Selecione uma escola para sincronizar.'); return; }
+    setLoading(true);
+    try {
+      const { data: localRows } = await supabase.from('store_items').select('*').eq('tenant_id', tenantId);
+      const { data: bankRows } = await supabase.from('store_items').select('*').eq('is_global', true);
+
+      const norm = (s?: string) => (s || '').trim().toLowerCase();
+      let synced = 0;
+      let updatedCount = 0;
+
+      for (const bank of (bankRows || [])) {
+        const bankData = bank.data || {};
+        const match = (localRows || []).find(local => {
+          const ld = local.data || {};
+          return norm(ld.title) === norm(bankData.title)
+            && (ld.type || '') === (bankData.type || '')
+            && (ld.gameEffect || 'none') === (bankData.gameEffect || 'none');
+        });
+        if (!match) continue;
+        synced++;
+        const ld = match.data || {};
+        const newImage = ld.itemImageUrl || ld.imageUrl || '';
+        const bankImage = bankData.itemImageUrl || bankData.imageUrl || '';
+        if (newImage && newImage !== bankImage) {
+          const newData = { ...bankData, imageUrl: newImage, itemImageUrl: newImage };
+          const { error } = await supabase.from('store_items').update({ data: newData }).eq('id', bank.id);
+          if (!error) updatedCount++;
+        }
+      }
+      showAlert(`Sincronização concluída: ${updatedCount} item(ns) do banco tiveram a imagem atualizada (de ${synced} correspondências por nome/tipo/efeito).`);
+    } catch (e) {
+      console.error(e);
+      showAlert('Erro ao sincronizar: ' + ((e as any)?.message || 'erro desconhecido'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleImportFromBank = async (item: any, copyMode: 'direct' | 'customize') => {
     const newItem: Partial<StoreItem> = {
       title: item.title || 'Sem nome',
@@ -182,7 +293,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       minecraftHeadValue: item.minecraftHeadValue || '',
       rarity: item.rarity || 'common',
       active: true,
-      minRankRequired: 0,
+      minRankRequired: item.minRankRequired || '',
       usableInQuest: !!item.usableInQuest,
       gameEffect: item.gameEffect || 'none',
       unlockedSkinId: item.unlockedSkinId || '',
@@ -274,7 +385,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           minecraftHeadValue: item.minecraftHeadValue || '',
           rarity: item.rarity || 'common',
           active: true,
-          minRankRequired: 0,
+          minRankRequired: item.minRankRequired || '',
           usableInQuest: !!item.usableInQuest,
           gameEffect: item.gameEffect || 'none',
           unlockedSkinId: item.unlockedSkinId || '',
@@ -347,7 +458,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     const itemData = {
       ...formData,
       cost: Number(formData.cost),
-      minRankRequired: Number(formData.minRankRequired),
+      minRankRequired: String(formData.minRankRequired || ''),
       minSalePrice: formData.minSalePrice ? Number(formData.minSalePrice) : 0,
     };
 
@@ -439,14 +550,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   };
 
   const openEdit = (item: StoreItem) => {
-    setFormData(item);
+    setFormData({ ...item, minRankRequired: resolveMinRankName(item.minRankRequired) });
     setEditingId(item.id);
     setIsEditing(true);
   };
 
   // Superadmin edita um item GLOBAL do banco (abre o mesmo editor; salvar atualiza o global)
   const openEditGlobal = (item: any) => {
-    setFormData({ ...item, id: item._rawId, _isGlobal: true } as StoreItem);
+    setFormData({ ...item, id: item._rawId, _isGlobal: true, minRankRequired: resolveMinRankName(item.minRankRequired) } as StoreItem);
     setEditingId(item._rawId);
     setIsEditing(true);
   };
@@ -482,6 +593,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               <Star color="var(--gold-primary)" /> Catálogo de Itens
             </h2>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
+              {isSuperAdmin && (
+                <button className="login-btn" onClick={syncIconsToBank} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)' }} title="Atualiza as imagens dos itens do Banco de Itens com as imagens deste catálogo (itens com mesmo nome, tipo e efeito)">
+                  <RefreshCcw size={18} /> Sincronizar Ícones com o Banco
+                </button>
+              )}
               {canItems('items', 'create') && (
                 <button className="login-btn" onClick={() => setShowItemBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
                   <Package size={18} /> Banco de Itens
@@ -580,7 +696,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                             <span>Custo: <strong style={{ color: 'var(--gold-primary)' }}>{item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}</strong></span>
                             <span>Tipo: {item.type === 'consumable' ? 'Consumível' : 'Equipável'}</span>
-                            <span>Patente Mínima: {RANKS[item.minRankRequired]?.name}</span>
+                            <span>Patente Mínima: {resolveMinRankName(item.minRankRequired) || 'Sem Patente'}</span>
                           </div>
                         )}
                       </div>
@@ -657,6 +773,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <option value="uncommon">Incomum (Verde)</option>
                   <option value="rare">Raro (Azul)</option>
                   <option value="epic">Épico (Roxo)</option>
+                  <option value="mestre">Mestre (Vermelho)</option>
                   <option value="legendary">Lendário (Dourado)</option>
                 </select>
               </div>
@@ -666,9 +783,10 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             <div className="responsive-grid" style={{ marginBottom: '1.5rem', alignItems: 'flex-start' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Patente Mínima Exigida</label>
-                <select value={formData.minRankRequired} onChange={e => setFormData({...formData, minRankRequired: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
-                  {RANKS.map((r, i) => (
-                    <option key={r.name} value={i}>{r.name} ({r.minXp} XP)</option>
+                <select value={String(formData.minRankRequired || '')} onChange={e => setFormData({...formData, minRankRequired: e.target.value})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                  <option value="">Sem Patente (todas)</option>
+                  {tenantRanks.map((r, i) => (
+                    <option key={`rank-${i}-${r.minXp}`} value={r.name}>{r.name} ({r.minXp} XP)</option>
                   ))}
                 </select>
               </div>
@@ -818,7 +936,21 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                     ⚙️ Atributos Adicionais (Gacha / Fixos)
                   </button>
                 </div>
-                
+
+                {/* Preview 3D do item no personagem — 1/3 à esquerda, campos ao lado */}
+                {previewEquippedItems.length > 0 && (
+                  <div style={{ marginRight: '1rem', marginBottom: '1rem', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '0.75rem', background: 'rgba(0,0,0,0.25)', width: '32%', minWidth: '200px', float: 'left', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 'bold', textAlign: 'center' }}>Pré-visualização 3D no personagem</div>
+                    <AvatarCharacter
+                      config={{ gender: 'male' } as any}
+                      equippedItems={previewEquippedItems}
+                      size={130}
+                      animation="idle"
+                      interactive={false}
+                    />
+                  </div>
+                )}
+
                 <div className="responsive-grid" style={{ marginBottom: '1.25rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Categoria do Item</label>
@@ -896,16 +1028,24 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   </select>
                   <p style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '1.5rem', marginTop: '-0.25rem' }}>Selecione uma skin previamente enviada na tela de Gerenciar Skins para colorir o modelo .glb.</p>
 
-                  <label style={{ display: 'block', fontSize: '0.9rem', color: '#9ca3af', marginBottom: '0.25rem' }}>Textura Minecraft Head (Base64 ou URL)</label>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Use isso se não quiser usar um .glb para criar um capacete-cabeça. Cole aqui a Base64 ou a Minecraft URL.</div>
+                  <label style={{ display: 'block', fontSize: '0.9rem', color: '#9ca3af', marginBottom: '0.25rem' }}>Textura Minecraft (Base64 ou URL)</label>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Aplica a textura na "Parte do Avatar" selecionada acima (cabeça, torso, braços, pernas...). Não se aplica a armas. Cole a Base64 ou a Minecraft URL.</div>
                   <input type="text" value={formData.minecraftHeadValue || ''} onChange={e => setFormData({...formData, minecraftHeadValue: e.target.value})} placeholder="eyJ0ZXh0dXJlcyI..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', marginBottom: '0.5rem' }} />
                   {formData.minecraftHeadValue && formData.minecraftHeadValue.trim() !== '' && (
-                    <button 
-                      onClick={() => setShowTransformModal(true)}
-                      style={{ padding: '0.5rem', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                    >
-                      ⚙️ Configurar Posição 3D
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button 
+                        onClick={() => setShowMinecraftPreview(true)}
+                        style={{ padding: '0.5rem', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid #3b82f6', color: '#60a5fa', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                      >
+                        👁️ Ver Item 3D
+                      </button>
+                      <button 
+                        onClick={() => setShowTransformModal(true)}
+                        style={{ padding: '0.5rem', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                      >
+                        ⚙️ Configurar Posição 3D
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -960,9 +1100,32 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         document.body
       )}
 
+      {showMinecraftPreview && createPortal(
+        <div className="modal-overlay" style={{ zIndex: 100000 }}>
+          <div className="modal-content modal-content-sm" style={{ background: 'var(--bg-dark)', borderRadius: '16px', border: '1px solid var(--gold-primary)', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0, alignItems: 'center' }}>
+            <div style={{ width: '100%', padding: '1rem', background: 'var(--btn-bg)', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>👁️ Item 3D (Textura Minecraft)</h3>
+              <button onClick={() => setShowMinecraftPreview(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>✖</button>
+            </div>
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+              {formData.minecraftHeadValue ? (
+                <MinecraftPartPreview minecraftHeadValue={formData.minecraftHeadValue} avatarPart={formData.avatarPart} size={240} />
+              ) : (
+                <p style={{ color: 'var(--text-secondary)' }}>Nenhuma textura informada.</p>
+              )}
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                Renderização da parte selecionada em "Parte do Avatar" com a textura aplicada. Para armas/acessórios, a textura de corpo não se aplica.
+              </p>
+              <button onClick={() => setShowMinecraftPreview(false)} style={{ padding: '0.6rem 1.5rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Fechar</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {showTransformModal && createPortal(
         <div className="modal-overlay" style={{ zIndex: 100000 }}>
-          <div className="modal-content modal-content-sm" style={{ background: 'var(--bg-dark)', borderRadius: '16px', border: '1px solid var(--gold-primary)', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
+          <div className="modal-content modal-content-lg" style={{ background: 'var(--bg-dark)', borderRadius: '16px', border: '1px solid var(--gold-primary)', display: 'flex', flexDirection: 'column', padding: 0, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ padding: '1rem', background: 'var(--btn-bg)', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>⚙️ Configurar Transformação 3D</h3>
               <button onClick={() => setShowTransformModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>✖</button>
@@ -973,7 +1136,19 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               <button onClick={() => setTransformActiveTab('battle')} style={{ flex: 1, padding: '0.75rem', background: transformActiveTab === 'battle' ? 'rgba(239, 68, 68, 0.2)' : 'transparent', border: 'none', borderBottom: transformActiveTab === 'battle' ? '2px solid var(--accent-red)' : '2px solid transparent', color: transformActiveTab === 'battle' ? 'var(--accent-red)' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 'bold' }}>Animação de Batalha</button>
             </div>
 
-            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'row', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {previewEquippedItems.length > 0 && (
+                <div style={{ width: '38%', minWidth: '220px', position: 'sticky', top: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', padding: '0.5rem', flexShrink: 0 }}>
+                  <AvatarCharacter
+                    config={{ gender: 'male' } as any}
+                    equippedItems={previewEquippedItems}
+                    size={160}
+                    animation="idle"
+                    interactive={false}
+                  />
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {(() => {
                 const currentTransforms = formData.modelTransforms || {};
                 const activeTransform = currentTransforms[transformActiveTab] || { posX: 0, posY: -11, posZ: 0, rotX: 1.428, rotY: 0, rotZ: -0.157, slide: -18 };
@@ -1021,6 +1196,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   </>
                 );
               })()}
+              </div>
             </div>
 
             <div style={{ padding: '1rem', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'flex-end' }}>

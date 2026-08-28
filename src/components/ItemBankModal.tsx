@@ -198,6 +198,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
       case 'uncommon': return 'Incomum';
       case 'rare': return 'Raro';
       case 'epic': return 'Épico';
+      case 'mestre': return 'Mestre';
       case 'legendary': return 'Lendário';
       default: return 'Comum';
     }
@@ -262,6 +263,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
             <option value="uncommon">Incomum</option>
             <option value="rare">Raro</option>
             <option value="epic">Épico</option>
+            <option value="mestre">Mestre</option>
             <option value="legendary">Lendário</option>
           </select>
           <button

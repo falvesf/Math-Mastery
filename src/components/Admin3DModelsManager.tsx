@@ -43,6 +43,7 @@ const RARITIES: { value: string; label: string }[] = [
   { value: 'uncommon', label: 'Incomum' },
   { value: 'rare', label: 'Raro' },
   { value: 'epic', label: 'Épico' },
+  { value: 'mestre', label: 'Mestre' },
   { value: 'legendary', label: 'Lendário' },
 ];
 
@@ -386,6 +387,7 @@ export default function Admin3DModelsManager() {
       uncommon: '#4ade80',
       rare: '#60a5fa',
       epic: '#c084fc',
+      mestre: '#ef4444',
       legendary: '#fbbf24',
     };
     return (

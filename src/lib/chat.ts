@@ -18,6 +18,7 @@ export interface ChatContact {
   isFriend: boolean;
   classId?: string;
   characterName?: string;
+  role?: string;
   last_seen_at?: string | null;
   hasUnread?: boolean;
 }
@@ -112,6 +113,7 @@ export async function fetchContacts(uid: string, classId?: string, tenantId?: st
         isFriend,
         classId: u.class_id,
         characterName: u.character_name,
+        role: u.role,
         last_seen_at: u.last_seen_at,
         _show: show,
       } as ChatContact & { _show: boolean };
@@ -292,6 +294,7 @@ export async function fetchPendingSenders(uid: string): Promise<ChatContact[]> {
     isFriend: false,
     classId: u.class_id,
     characterName: u.character_name,
+    role: u.role,
     last_seen_at: u.last_seen_at,
     hasUnread: true,
   }));

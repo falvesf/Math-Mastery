@@ -30,6 +30,7 @@ const RARITY_COLORS: Record<string, string> = {
   uncommon: '#4ade80',
   rare: '#60a5fa',
   epic: '#c084fc',
+  mestre: '#ef4444',
   legendary: '#fbbf24',
 };
 

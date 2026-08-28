@@ -27,6 +27,7 @@ import AvatarPrint from '../components/AvatarPrint';
 import PublicProfileModal from '../components/PublicProfileModal';
 import PreAuthorizedStudentsManager from '../components/PreAuthorizedStudentsManager';
 import AudioBankManager from '../components/AudioBankManager';
+import ChatWidget from '../components/ChatWidget';
 import { useDialog } from '../contexts/DialogContext';
 import { validateCharacterName, normalizeForComparison, formatFirstAndLastName } from '../lib/nameValidation';
 import { normalizeCombatCoinDrop } from '../lib/utils';
@@ -4101,6 +4102,9 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* Chat no painel master: translúcido para não atrapalhar cadastros/informações */}
+      <ChatWidget translucent />
     </div>
   );
 }
