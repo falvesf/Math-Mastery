@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Medal, Plus, Edit2, Trash2, Search, Globe, Building2, Copy, Gift, Package, X } from 'lucide-react';
+import { Medal, Plus, Edit2, Trash2, Search, Globe, Building2, Copy, Gift, Package, X, Volume2 } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
+import AudioBankPicker from './AudioBankPicker';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import { RANKS, ensureGlobalRanks, DEFAULT_RANKS } from '../lib/ranks';
@@ -52,6 +53,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
   const [availableChests, setAvailableChests] = useState<{ id: string; name: string; url: string; rarity?: string }[]>([]);
 
   const [galleryTarget, setGalleryTarget] = useState<'main' | number | null>(null);
+  const [audioPickerOpen, setAudioPickerOpen] = useState(false);
 
   useEffect(() => {
     fetchRanks(false);
@@ -612,11 +614,15 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Música de Comemoração (Opcional - MP3/WAV)</label>
                   <div style={{ display: 'flex', gap: '1rem' }}>
                     <input type="text" value={formData.audioUrl || ''} onChange={e => setFormData({ ...formData, audioUrl: e.target.value })} placeholder="URL do áudio..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                    <button onClick={() => setAudioPickerOpen(true)} style={{ padding: '0 0.9rem', background: 'rgba(139,92,246,0.2)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap', minHeight: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <Volume2 size={16} /> Banco
+                    </button>
                     <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={(url) => setFormData({ ...formData, audioUrl: url })} buttonStyle={{ minHeight: '100%' }} />
                   </div>
                   {formData.audioUrl && (
                     <audio controls src={formData.audioUrl} style={{ marginTop: '1rem', width: '100%', height: '40px' }} />
                   )}
+                  <AudioBankPicker open={audioPickerOpen} onClose={() => setAudioPickerOpen(false)} onSelect={(url) => { setFormData({ ...formData, audioUrl: url }); setAudioPickerOpen(false); }} categoryFilter="music" title="Banco de Áudio — Música de Comemoração" />
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', background: 'rgba(255,255,255,0.03)', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>

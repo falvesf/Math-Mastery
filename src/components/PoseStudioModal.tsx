@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Save, Play, Square, Plus, Undo2, Trash2, RotateCw, Download, Upload, Settings2 } from 'lucide-react';
-import AvatarCharacter, { type CharacterPose, type AvatarConfig, type EquippedItem, type ModelTransform, type SpriteAnimation } from './AvatarCharacter';
+import AvatarCharacter, { type CharacterPose, type AvatarConfig, type EquippedItem, type ModelTransform, type SpriteAnimation, getModelTransformKey } from './AvatarCharacter';
 import { fetchSavedActions, saveSavedActions, fetchSavedPoses, saveSavedPoses, type SavedAction, type SavedPose } from '../lib/savedPoses';
 import { supabase } from '../lib/supabase';
 import { useTenant } from '../contexts/TenantContext';
@@ -418,10 +418,13 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
     if (!item) { setStatus('Selecione um item para salvar o ajuste.'); return; }
     if (!item.itemId) { setStatus('Item sem id de catálogo — não é possível salvar.'); return; }
     try {
+      // A Central 3D edita a pose (idle). Chave específica da combinação
+      // atual (mão dominante + gênero), sem sobrescrever a chave da outra mão.
+      const transformKey = getModelTransformKey(avatarConfig.gender, avatarConfig.handedness, false);
       const { data: storeSnap } = await supabase.from('store_items').select('data').eq('id', item.itemId).single();
       if (storeSnap) {
         const data = (storeSnap.data as any) || {};
-        const modelTransforms = { ...(data.modelTransforms || {}), common: { ...itemTransform } };
+        const modelTransforms = { ...(data.modelTransforms || {}), [transformKey]: { ...itemTransform } };
         const newData = { ...data, modelTransforms, spriteAnimation: itemSpriteAnim || data.spriteAnimation || null };
         await supabase.from('store_items').update({ data: newData }).eq('id', item.itemId);
         const { data: copies } = await supabase.from('user_items').select('id, data').eq('item_id', item.itemId);
@@ -429,7 +432,7 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
           for (const c of copies) {
             const cd = (c.data as any) || {};
             await supabase.from('user_items').update({
-              data: { ...cd, modelTransforms: { ...(cd.modelTransforms || {}), common: { ...itemTransform } }, spriteAnimation: itemSpriteAnim || cd.spriteAnimation || null },
+              data: { ...cd, modelTransforms: { ...(cd.modelTransforms || {}), [transformKey]: { ...itemTransform } }, spriteAnimation: itemSpriteAnim || cd.spriteAnimation || null },
             }).eq('id', c.id);
           }
         }

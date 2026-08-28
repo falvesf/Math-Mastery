@@ -170,6 +170,22 @@ function getMinecraftPartBase(avatarPart?: string): { scale: [number, number, nu
 
 // Resolve o transform correto de um item considerando gênero, mão dominante e estado de batalha.
 // As variantes femininas (corpo slim) têm prioridade quando o personagem é feminino, com fallback para a comum.
+// Chave de transform de um item conforme mão dominante + gênero + estado de batalha.
+// Cada combinação tem configuração INDEPENDENTE (direita não afeta esquerda):
+//   male/direita: common | battle      female/direita: common_female | battle_female
+//   male/esquerda: common_left | battle_left  female/esquerda: common_left_female | battle_left_female
+export function getModelTransformKey(
+  gender: 'male' | 'female' | undefined,
+  handedness: string | undefined,
+  isBattle: boolean
+): string {
+  const isLeft = handedness === 'left';
+  const base = isBattle ? 'battle' : 'common';
+  const side = isLeft ? '_left' : '';
+  const g = gender === 'female' ? '_female' : '';
+  return `${base}${side}${g}`;
+}
+
 export function resolveModelTransform(
   item: { modelTransforms?: ModelTransformsConfig },
   gender: 'male' | 'female' | undefined,

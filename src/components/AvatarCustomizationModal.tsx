@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usePermissions } from '../lib/permissions';
-import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose, resolveModelTransform } from './AvatarCharacter';
+import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose, resolveModelTransform, getModelTransformKey } from './AvatarCharacter';
 import { fetchSavedPoses, saveSavedPoses, type SavedPose } from '../lib/savedPoses';
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
@@ -1014,19 +1014,19 @@ onClick={() => setConfig(prev => {
                         try {
                           const isBattle = config.animationState === 'attack';
                           const isLeftHanded = config.handedness === 'left';
-                          const transformKey = config.gender === 'female'
-                            ? (isBattle ? (isLeftHanded ? 'battle_left_female' : 'battle_female') : (isLeftHanded ? 'common_left_female' : 'common_female'))
-                            : (isBattle ? (isLeftHanded ? 'battle_left' : 'battle') : (isLeftHanded ? 'common_left' : 'common'));
+                          const transformKey = getModelTransformKey(config.gender, config.handedness, isBattle);
                           
-                          // 1. Save to store_items (também grava a chave "common" universal,
-                          // para a pré-visualização na loja/bazar respeitar a configuração
-                          // independente do gênero/mão do comprador)
+                          // 1. Save to store_items. Salva SOMENTE a chave da combinação
+                          // atual (mão + estado + gênero): `common`/`battle` (destra),
+                          // `common_left`/`battle_left` (canhota) e variantes `_female`.
+                          // NÃO sobrescreve mais a chave universal `common`, para que a
+                          // configuração de uma mão não influencie a outra.
                           const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
                           if (storeItemSnap) {
                             const prevTransforms = (storeItemSnap.data as any).modelTransforms || {};
                             const newStoreData = { 
                               ...(storeItemSnap.data as any), 
-                              modelTransforms: { ...prevTransforms, [transformKey]: debugTransform, common: { ...debugTransform } } 
+                              modelTransforms: { ...prevTransforms, [transformKey]: debugTransform }
                             };
                             await supabase.from('store_items').update({ data: newStoreData }).eq('id', targetItem.itemId);
                           }
@@ -1038,7 +1038,7 @@ onClick={() => setConfig(prev => {
                               const prevTransforms = (d.data as any).modelTransforms || {};
                               const newUserData = { 
                                 ...(d.data as any), 
-                                modelTransforms: { ...prevTransforms, [transformKey]: debugTransform, common: { ...debugTransform } } 
+                                modelTransforms: { ...prevTransforms, [transformKey]: debugTransform }
                               };
                               await supabase.from('user_items').update({ data: newUserData }).eq('id', d.id);
                             }
