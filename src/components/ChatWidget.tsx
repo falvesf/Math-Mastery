@@ -1,14 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageCircle, X, Send, Users, UserPlus, ShieldCheck, User, Loader2, ArrowLeft, Pin, PinOff } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import { MessageCircle, X, Send, Users, UserPlus, ShieldCheck, User, Loader2, ArrowLeft, Pin, PinOff, Settings2, Mail, Minus, UserMinus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import {
   fetchContacts, fetchConversation, sendMessage,
   markRead, addFriend, removeFriend, fetchTotalUnread, fetchPendingSenders, isOnlineTimestamp,
-  type ChatContact, type ChatMessage,
+  sendFriendRequest, respondFriendRequest, isFriendMarker, FRIEND_ACCEPT, FRIEND_REJECT,
+  getLocalChatSettings, saveLocalChatSettings, fetchChatSettings, saveChatSettings,
+  type ChatSettings, type ChatMessage, type ChatContact,
 } from '../lib/chat';
 import { sanitizeMessage } from '../lib/chatFilter';
+import { useDialog } from '../contexts/DialogContext';
+import {
+  loadSpamState, saveSpamState, penaltyLevel, formatCountdown, DAY_BLOCK_MS,
+  SPAM_WINDOW_MS, SPAM_THRESHOLD, SPAM_STEP_MS, BLOCK_TRIGGER_COUNT,
+  type SpamState,
+} from '../lib/chatSpam';
 import { subscribePresence } from '../lib/onlinePresence';
 
 interface ChatWidgetProps {
@@ -17,6 +25,59 @@ interface ChatWidgetProps {
 }
 
 const POLL_INTERVAL = 4000;
+/** Tolerância antes de mostrar um usuário como offline (evita flutuação de foco) */
+const ONLINE_GRACE_MS = 15000;
+
+// ─── Helpers de data (separador de dia, estilo WhatsApp) ───
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const today = startOfDay(now);
+  const start = startOfDay(d);
+  if (start === today) return 'Hoje';
+  if (start === today - 86400000) return 'Ontem';
+  return d.toLocaleDateString('pt-BR');
+}
+function DayChip({ date }: { date: string }) {
+  return (
+    <div style={{ alignSelf: 'center', background: 'rgba(255,255,255,0.09)', color: 'var(--text-secondary)', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '0.15rem 0.7rem', borderRadius: '10px', margin: '0.2rem 0' }}>
+      {dayLabel(date)}
+    </div>
+  );
+}
+
+// Aviso de penalidade por spam — visível apenas para o próprio usuário.
+function SpamNotice({ spam, nowTick }: { spam: SpamState; nowTick: number }) {
+  const blockedRemaining = spam.blockedUntil - nowTick;
+  const penaltyRemaining = spam.penaltyUntil - nowTick;
+  const isBlocked = blockedRemaining > 0;
+  const isPenalized = !isBlocked && penaltyRemaining > 0;
+  const isWarning = !isBlocked && !isPenalized && spam.count >= BLOCK_TRIGGER_COUNT - 1;
+  if (!isBlocked && !isPenalized && !isWarning) return null;
+  const level = penaltyLevel(spam.count);
+  const color = isBlocked ? 'var(--accent-red)' : (level === 'red' ? 'var(--accent-red)' : level === 'orange' ? '#f97316' : '#eab308');
+  const nearBlock = spam.count >= BLOCK_TRIGGER_COUNT - 1;
+  return (
+    <div className={isWarning ? 'spam-notice-blink' : ''} style={{ margin: '0.4rem 0.75rem', padding: '0.45rem 0.7rem', borderRadius: '10px', border: '1px solid currentColor', background: 'color-mix(in srgb, currentColor 12%, transparent)', color, fontSize: '0.72rem', fontWeight: 700, textAlign: 'center' }}>
+      {isBlocked && <span>Chat bloqueado por spam por <b>{formatCountdown(blockedRemaining)}</b>. Você não pode enviar mensagens.</span>}
+      {isPenalized && <span>Você foi silenciado por spam por <b>{formatCountdown(penaltyRemaining)}</b>.</span>}
+      {isWarning && <span>Atenção: se cometer mais um ato de spam, seu chat ficará bloqueado por <b>1 dia</b>!</span>}
+      {isPenalized && nearBlock && (
+        <div style={{ marginTop: '0.25rem', color: 'var(--accent-red)' }}>Se cometer mais um ato de spam, seu chat ficará bloqueado por 1 dia!</div>
+      )}
+    </div>
+  );
+}
+
+interface MiniChat {
+  contact: ChatContact;
+  minimized: boolean;
+  pos: { x: number; y: number };
+  msgs: ChatMessage[];
+}
 
 // Se é aluno (ou sem role → assume aluno). Não-alunos têm badge de função e NÃO exibem turma.
 function isStudentContact(role?: string): boolean {
@@ -35,6 +96,7 @@ function getRoleLabel(role?: string): string {
 export default function ChatWidget({ onOpenProfile, translucent = false }: ChatWidgetProps) {
   const { userData } = useAuth();
   const { tenantId } = useTenant();
+  const { showToast } = useDialog();
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [contacts, setContacts] = useState<ChatContact[]>([]);
@@ -46,6 +108,18 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
   const [blockedWarning, setBlockedWarning] = useState('');
   const [showFriendsOnly, setShowFriendsOnly] = useState(false);
   const [unreadByPeer, setUnreadByPeer] = useState<Record<string, number>>({});
+  const [settings, setSettings] = useState<ChatSettings>(() => getLocalChatSettings(userData?.uid));
+  const [showSettings, setShowSettings] = useState(false);
+  const [pendingFriendReq, setPendingFriendReq] = useState<{ uid: string; name: string } | null>(null);
+  const [minis, setMinis] = useState<MiniChat[]>([]);
+  const minisRef = useRef<MiniChat[]>([]);
+  minisRef.current = minis;
+  // Anti-spam: estado persistente + relógio para a contagem regressiva
+  const [spam, setSpam] = useState<SpamState>(() => loadSpamState(userData?.uid));
+  const spamRef = useRef(spam);
+  spamRef.current = spam;
+  const sendTimesRef = useRef<number[]>([]);
+  const [nowTick, setNowTick] = useState(Date.now());
   const messageEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const widgetRef = useRef<HTMLDivElement>(null);
@@ -58,7 +132,27 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
   const activeContactRef = useRef(activeContact);
   activeContactRef.current = activeContact;
   const openConversationRef = useRef<(c: ChatContact) => void>(() => {});
+  // Abre um contato: janela individual (modo individual) OU conversa fixa.
+  // No modo individual, se já existir envelope minimizado, restaura em vez de criar outro.
+  const handleOpenContact = (contact: ChatContact) => {
+    if (settings.autoOpen) {
+      const existing = minis.find(w => w.contact.uid === contact.uid);
+      if (existing) {
+        if (existing.minimized) restoreMini(contact.uid);
+      } else {
+        openMini(contact);
+      }
+    } else {
+      openConversation(contact);
+    }
+  };
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const contactsRef = useRef(contacts);
+  contactsRef.current = contacts;
+  // Última vez que cada contato foi visto online (para a tolerância de 15s)
+  const lastSeenOnlineRef = useRef<Record<string, number>>({});
 
   // Fecha o chat ao clicar fora (a menos que esteja fixado)
   useEffect(() => {
@@ -81,16 +175,46 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
   }, [uid, tenantId]);
 
   // Presença online em tempo real: atualiza o status dos contatos.
-  // NUNCA força offline: combina presence (se conectado) com last_seen_at recente.
+  // NUNCA força offline instantâneo: aplica uma tolerância de 15s a partir da
+  // última vez que o contato foi visto online (evita flutuação por foco/WS).
   useEffect(() => {
     if (!uid) return;
     const unsub = subscribePresence(state => {
-      setContacts(prev => prev.map(c => ({
-        ...c,
-        online: (state.connected && state.onlineUids.has(c.uid)) || isOnlineTimestamp(c.last_seen_at),
-      })));
+      const now = Date.now();
+      setContacts(prev => prev.map(c => {
+        const isNowOnline = (state.connected && state.onlineUids.has(c.uid)) || isOnlineTimestamp(c.last_seen_at);
+        if (isNowOnline) lastSeenOnlineRef.current[c.uid] = now;
+        return { ...c, online: isNowOnline || (now - (lastSeenOnlineRef.current[c.uid] || 0)) < ONLINE_GRACE_MS };
+      }));
     });
     return unsub;
+  }, [uid]);
+
+  // Refresh periódico do last_seen_at dos contatos: mantém o indicador estável
+  // mesmo quando a presença cai (aba em segundo plano suspende o WebSocket).
+  useEffect(() => {
+    if (!uid) return;
+    const refreshLastSeen = async () => {
+      try {
+        const uids = contactsRef.current.map(c => c.uid);
+        if (uids.length === 0) return;
+        const { data } = await supabase
+          .from('users')
+          .select('id, last_seen_at')
+          .in('id', uids);
+        const map: Record<string, string | null> = {};
+        (data || []).forEach((u: any) => { map[u.id] = u.last_seen_at || null; });
+        const now = Date.now();
+        setContacts(prev => prev.map(c => {
+          const ts = map[c.uid] !== undefined ? map[c.uid] : c.last_seen_at;
+          const isNowOnline = isOnlineTimestamp(ts);
+          if (isNowOnline) lastSeenOnlineRef.current[c.uid] = now;
+          return { ...c, last_seen_at: ts, online: isNowOnline || (now - (lastSeenOnlineRef.current[c.uid] || 0)) < ONLINE_GRACE_MS };
+        }));
+      } catch (e) { /* silencioso */ }
+    };
+    const int = setInterval(refreshLastSeen, 30000);
+    return () => clearInterval(int);
   }, [uid]);
 
   const loadContacts = useCallback(async () => {
@@ -103,6 +227,9 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
     // Mesclar: remetentes pendentes sempre aparecem (mesmo fora da série/amizade)
     const pendingIds = new Set(pending.map(p => p.uid));
     const merged = [...list.filter(c => !pendingIds.has(c.uid)), ...pending];
+    // Registra quem estava online no momento do carregamento (tolerância 15s)
+    const now = Date.now();
+    merged.forEach(c => { if (c.online) lastSeenOnlineRef.current[c.uid] = now; });
     setContacts(merged);
     setContactsLoading(false);
   }, [userData?.classId, tenantId, userData?.role]);
@@ -123,6 +250,33 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
     setUnreadByPeer(map);
   }, []);
 
+  // Carrega as configurações de chat do banco e aplica o status à presença
+  useEffect(() => {
+    if (!uid) return;
+    fetchChatSettings(uid).then(s => {
+      setSettings(s);
+      window.dispatchEvent(new CustomEvent('chat-status-change', { detail: { status: s.status } }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
+  // Relógio para atualizar a contagem regressiva de penalidades a cada segundo
+  useEffect(() => {
+    const int = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(int);
+  }, []);
+
+  const updateSettings = async (patch: Partial<ChatSettings>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    saveLocalChatSettings(uid, next);
+    if (uid) await saveChatSettings(uid, next);
+    // Modo individual substitui a janela fixa: fecha a conversa fixa aberta
+    if (patch.autoOpen === true) setActiveContact(null);
+    // Avisa o AuthContext para aplicar o status (offline/invisible = sem presença)
+    window.dispatchEvent(new CustomEvent('chat-status-change', { detail: { status: next.status } }));
+  };
+
   const markUnreadFrom = useCallback((senderId: string) => {
     setUnreadByPeer(prev => ({ ...prev, [senderId]: (prev[senderId] || 0) + 1 }));
     // Garantir que o remetente apareça na lista (recarrega contatos com pendentes)
@@ -139,6 +293,37 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
       const currentUid = uidRef.current;
       if (!currentUid) return;
       const activeNow = activeContactRef.current;
+
+      // Mensagens de sistema (convite de amizade / resposta)
+      if (isFriendMarker(m.body)) {
+        handleSystemMessage(m);
+        markRead(currentUid, m.sender_id);
+        setUnreadByPeer(prev => ({ ...prev, [m.sender_id]: 0 }));
+        return;
+      }
+
+      // Mini-janela exclusiva já existe para esse contato?
+      const mini = minisRef.current.find(w => w.contact.uid === m.sender_id);
+      if (mini) {
+        if (mini.minimized) {
+          // Minimizada: acumula como não-lida (o envelope mostra o badge)
+          markUnreadFrom(m.sender_id);
+        } else {
+          setMinis(prev => prev.map(w => w.contact.uid === m.sender_id ? { ...w, msgs: [...w.msgs, m] } : w));
+          markRead(currentUid, m.sender_id);
+          setUnreadByPeer(prev => ({ ...prev, [m.sender_id]: 0 }));
+        }
+        return;
+      }
+
+      // Janela de chat individual: ao receber mensagem, cria o ENVELOPE (piscando),
+      // independente de conversa fixa aberta — a pessoa escolhe qual atender.
+      if (settingsRef.current.autoOpen && m.sender_id !== currentUid) {
+        const contact = contactsRef.current.find(c => c.uid === m.sender_id)
+          || { uid: m.sender_id, name: 'Contato', online: true, isFriend: false } as ChatContact;
+        openMiniRef.current(contact, m, true);
+        return;
+      }
 
       if (activeNow && m.sender_id === activeNow.uid) {
         setMessages(prev => prev.some(p => p.id === m.id) ? prev : [...prev, m]);
@@ -205,6 +390,8 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
   const openConversation = useCallback(async (contact: ChatContact) => {
     const currentUid = uidRef.current;
     if (!currentUid) return;
+    // Ao abrir no chat principal, fecha a mini-janela do mesmo contato (evita duplicação)
+    setMinis(prev => prev.filter(w => w.contact.uid !== contact.uid));
     setActiveContact(contact);
     const conv = await fetchConversation(currentUid, contact.uid);
     // Registrar todas as mensagens carregadas como vistas (evita re-processamento)
@@ -220,6 +407,115 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
   }, []);
   openConversationRef.current = openConversation;
 
+  // ─── Mini-janelas exclusivas (por contato) ───
+  const openMini = useCallback(async (contact: ChatContact, incoming?: ChatMessage, startMinimized = false) => {
+    const currentUid = uidRef.current;
+    if (!currentUid) return;
+    setMinis(prev => {
+      if (prev.some(w => w.contact.uid === contact.uid)) return prev;
+      const n = prev.length;
+      return [...prev, { contact, minimized: startMinimized, pos: { x: Math.max(8, window.innerWidth - 330 - (n % 5) * 24), y: 70 + (n % 5) * 28 }, msgs: [] }];
+    });
+    if (startMinimized) {
+      // Cria o envelope (minimizado) sem marcar como lido: pisca até abrir.
+      // Restaura a conversa quando o usuário clicar no envelope.
+      markUnreadFrom(contact.uid);
+      return;
+    }
+    const conv = await fetchConversation(currentUid, contact.uid);
+    conv.forEach(m => seenIdsRef.current.add(m.id));
+    if (incoming && !conv.some(m => m.id === incoming.id)) conv.push(incoming);
+    setMinis(prev => prev.map(w => w.contact.uid === contact.uid ? { ...w, msgs: conv } : w));
+    markRead(currentUid, contact.uid);
+    setUnreadByPeer(prev => { const n = { ...prev }; delete n[contact.uid]; return n; });
+    setContacts(prev => prev.map(c => c.uid === contact.uid ? { ...c, hasUnread: false } : c));
+  }, []);
+  const openMiniRef = useRef(openMini);
+  openMiniRef.current = openMini;
+
+  const closeMini = (uid: string) => setMinis(prev => prev.filter(w => w.contact.uid !== uid));
+
+  const minimizeMini = (uid: string) => setMinis(prev => prev.map(w => w.contact.uid === uid ? { ...w, minimized: true } : w));
+
+  const restoreMini = async (uid: string) => {
+    const currentUid = uidRef.current;
+    if (!currentUid) return;
+    setMinis(prev => prev.map(w => w.contact.uid === uid ? { ...w, minimized: false } : w));
+    const conv = await fetchConversation(currentUid, uid);
+    conv.forEach(m => seenIdsRef.current.add(m.id));
+    setMinis(prev => prev.map(w => w.contact.uid === uid ? { ...w, msgs: conv } : w));
+    markRead(currentUid, uid);
+    setUnreadByPeer(prev => { const n = { ...prev }; delete n[uid]; return n; });
+    setContacts(prev => prev.map(c => c.uid === uid ? { ...c, hasUnread: false } : c));
+  };
+
+  const sendFromMini = async (uid: string, text: string): Promise<boolean> => {
+    const currentUid = uidRef.current;
+    if (!currentUid || !text.trim()) return false;
+    if (settings.status === 'offline') return false;
+    const win = minisRef.current.find(w => w.contact.uid === uid);
+    if (win && !isContactAvailable(win.contact)) {
+      showToast(`${win.contact.characterName || win.contact.name} não está disponível`);
+      return false;
+    }
+    if (!guardSend()) return false;
+    const sent = await sendMessage(currentUid, uid, text);
+    if (sent) {
+      setMinis(prev => prev.map(w => w.contact.uid === uid ? { ...w, msgs: [...w.msgs, sent] } : w));
+      return true;
+    }
+    return false;
+  };
+
+  const startDrag = (e: React.PointerEvent, index: number) => {
+    e.preventDefault();
+    const win = minis[index];
+    const startX = e.clientX - win.pos.x;
+    const startY = e.clientY - win.pos.y;
+    const onMove = (ev: PointerEvent) => {
+      setMinis(prev => prev.map((w, i) => i === index ? { ...w, pos: { x: ev.clientX - startX, y: ev.clientY - startY } } : w));
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  // Mensagens de sistema: convites de amizade e respostas
+  const handleSystemMessage = (m: ChatMessage) => {
+    const senderName = contactsRef.current.find(c => c.uid === m.sender_id)?.name || 'Alguém';
+    if (m.body.startsWith('[FRIEND_REQUEST]')) {
+      const name = m.body.split('|')[1]?.trim() || senderName;
+      setPendingFriendReq({ uid: m.sender_id, name });
+    } else if (m.body === FRIEND_ACCEPT) {
+      // Quem recebeu a aceitação adiciona o contato no próprio cliente (mútua)
+      const me = uidRef.current;
+      if (me) addFriend(me, m.sender_id);
+      showToast(`${senderName} aceitou seu convite de contato!`);
+      loadContacts();
+    } else if (m.body === FRIEND_REJECT) {
+      showToast(`${senderName} recusou seu convite de contato.`);
+    }
+  };
+
+  const handleAcceptFriendReq = async () => {
+    if (!pendingFriendReq || !uid) return;
+    const ok = await respondFriendRequest(uid, pendingFriendReq.uid, true);
+    setPendingFriendReq(null);
+    if (ok) {
+      showToast(`${pendingFriendReq.name} adicionado aos contatos!`);
+      loadContacts();
+    }
+  };
+
+  const handleRejectFriendReq = async () => {
+    if (!pendingFriendReq || !uid) return;
+    await respondFriendRequest(uid, pendingFriendReq.uid, false);
+    setPendingFriendReq(null);
+  };
+
   // Abrir conversa por evento externo (ex: clicar "Enviar mensagem" no professor visitante)
   useEffect(() => {
     const handler = (e: Event) => {
@@ -232,8 +528,12 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
         isFriend: false,
         classId: detail.classId,
       } as ChatContact;
-      setOpen(true);
-      openConversation(contact);
+      if (settings.autoOpen) {
+        openMini(contact);
+      } else {
+        setOpen(true);
+        openConversation(contact);
+      }
     };
     window.addEventListener('open-chat-with', handler);
     return () => window.removeEventListener('open-chat-with', handler);
@@ -247,8 +547,42 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
     }));
   }, [open, activeContact]);
 
+  // Verifica/bloqueia envio por spam e aplica penalidades progressivas.
+  // Retorna true se o envio pode prosseguir.
+  const guardSend = (): boolean => {
+    const now = Date.now();
+    const s = spamRef.current;
+    // Bloqueado (1 dia) ou em penalidade: não envia
+    if (s.blockedUntil > now || s.penaltyUntil > now) return false;
+    sendTimesRef.current = sendTimesRef.current.filter(t => now - t < SPAM_WINDOW_MS);
+    if (sendTimesRef.current.length >= SPAM_THRESHOLD) {
+      const next: SpamState = { ...s, count: s.count + 1 };
+      if (next.count >= BLOCK_TRIGGER_COUNT) {
+        next.blockedUntil = now + DAY_BLOCK_MS;
+        next.penaltyUntil = 0;
+      } else {
+        next.penaltyUntil = now + next.count * SPAM_STEP_MS;
+      }
+      spamRef.current = next;
+      setSpam(next);
+      saveSpamState(uid, next);
+      return false;
+    }
+    sendTimesRef.current.push(now);
+    return true;
+  };
+
   const handleSend = async () => {
     if (!uid || !activeContact || !draft.trim()) return;
+    if (settings.status === 'offline') {
+      setBlockedWarning('Você está offline e não pode conversar.');
+      return;
+    }
+    if (activeContact && !isContactAvailable(activeContact)) {
+      setBlockedWarning(`${activeContact.characterName || activeContact.name} não está disponível`);
+      return;
+    }
+    if (!guardSend()) return;
     const { text, containsBlocked } = sanitizeMessage(draft);
     if (!text) return;
     setBlockedWarning(containsBlocked ? 'Sua mensagem continha palavras ou links bloqueados e foi ajustada.' : '');
@@ -262,10 +596,10 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
   };
 
   const handleAddFriend = async (contact: ChatContact) => {
-    const ok = await addFriend(uid!, contact.uid);
+    // Envia um convite; o outro lado precisa aceitar.
+    const ok = await sendFriendRequest(uid!, contact.uid, userData?.name);
     if (ok) {
-      setContacts(prev => prev.map(c => c.uid === contact.uid ? { ...c, isFriend: true } : c));
-      if (activeContact?.uid === contact.uid) setActiveContact({ ...activeContact, isFriend: true });
+      showToast(`Convite de contato enviado para ${contact.name}!`);
     }
   };
 
@@ -273,7 +607,9 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
     const ok = await removeFriend(uid!, contact.uid);
     if (ok) {
       setContacts(prev => prev.map(c => c.uid === contact.uid ? { ...c, isFriend: false } : c));
+      setMinis(prev => prev.map(w => w.contact.uid === contact.uid ? { ...w, contact: { ...w.contact, isFriend: false } } : w));
       if (activeContact?.uid === contact.uid) setActiveContact({ ...activeContact, isFriend: false });
+      showToast(`${contact.characterName || contact.name} removido dos contatos`);
     }
   };
 
@@ -281,23 +617,38 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
   const isStudentWithoutClass = isStudent && (!userData?.classId || !userData?.classId.trim());
   const isChatDisabled = isStudentWithoutClass;
 
+  const isSelfOffline = settings.status === 'offline';
+  // Conversas ativas: quem conversa comigo (invisível) me vê online
+  const chattingUids = new Set([
+    ...(activeContact ? [activeContact.uid] : []),
+    ...minis.filter(w => !w.minimized).map(w => w.contact.uid),
+  ]);
+  // O contato está disponível para conversar agora? (online, ou invisível em conversa ativa)
+  const isContactAvailable = (c: ChatContact): boolean => {
+    if (isSelfOffline) return false;
+    return c.online || (c.status === 'invisible' && chattingUids.has(c.uid));
+  };
   const baseContacts = showFriendsOnly ? contacts.filter(c => c.isFriend) : contacts;
-  const onlineList = baseContacts.filter(c => c.online).sort((a, b) => a.name.localeCompare(b.name));
-  const offlineList = baseContacts.filter(c => !c.online).sort((a, b) => a.name.localeCompare(b.name));
-  const hasAnyOnline = contacts.some(c => c.online);
+  const onlineList = baseContacts.filter(c => isSelfOffline ? false : c.online).sort((a, b) => a.name.localeCompare(b.name));
+  const offlineList = baseContacts.filter(c => isSelfOffline ? true : !c.online).sort((a, b) => a.name.localeCompare(b.name));
+  const hasAnyOnline = isSelfOffline ? false : contacts.some(c => c.online);
 
-  const handleOpenWidget = () => {
+const handleOpenWidget = () => {
     if (isChatDisabled) return;
     const next = !open;
     setOpen(next);
     if (next) {
+      // Modo individual: o ícone é só a lista de contatos (quem está online/offline).
+      // Clicar numa pessoa abre a janela individual; não abre conversa fixa.
+      if (settings.autoOpen) {
+        setActiveContact(null);
+        return;
+      }
       const withUnread = contacts
         .filter(c => (unreadByPeer[c.uid] || 0) > 0)
         .sort((a, b) => (unreadByPeer[b.uid] || 0) - (unreadByPeer[a.uid] || 0));
       if (withUnread.length > 0 && !activeContact) {
         openConversation(withUnread[0]);
-      } else if (!activeContact) {
-        setActiveContact(null);
       }
     }
   };
@@ -317,22 +668,27 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
   const renderContactRow = (contact: ChatContact) => {
     const contactUnread = unreadByPeer[contact.uid] || 0;
     const hasUnread = contactUnread > 0;
+    // Status "Offline" meu: ninguém parece online e não posso conversar.
+    // Invisível (outro): aparece online apenas para quem está conversando com ele.
+    const effOnline = settings.status === 'offline'
+      ? false
+      : (contact.online || (contact.status === 'invisible' && chattingUids.has(contact.uid)));
     return (
       <div
         key={contact.uid}
-        onClick={() => openConversation(contact)}
+        onClick={() => handleOpenContact(contact)}
         className={`chat-contact-row${hasUnread ? ' has-unread' : ''}`}
         style={{
           display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0.6rem',
           borderRadius: '8px', cursor: 'pointer', transition: 'background 0.15s',
           borderBottom: '1px solid var(--border-glass)',
-          opacity: contact.online ? 1 : 0.6,
+          opacity: effOnline ? 1 : 0.6,
         }}
         onMouseEnter={e => (e.currentTarget.style.background = hasUnread ? 'var(--gold-glow)' : 'rgba(255,255,255,0.06)')}
         onMouseLeave={e => (e.currentTarget.style.background = hasUnread ? 'var(--gold-glow)' : 'transparent')}
       >
         <div style={{ position: 'relative' }}>
-          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--btn-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
+          <div className={`chat-contact-avatar${hasUnread && settings.pulse && !settings.autoOpen ? ' has-unread-pulse' : ''}`} style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--btn-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
             <User size={20} />
           </div>
           {contact.photoURL && (
@@ -345,7 +701,7 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
           )}
           <span style={{
             position: 'absolute', bottom: '0', right: '0', width: '12px', height: '12px',
-            borderRadius: '50%', background: contact.online ? 'var(--accent-green)' : 'rgba(100,116,139,0.55)',
+            borderRadius: '50%', background: effOnline ? 'var(--accent-green)' : 'rgba(100,116,139,0.55)',
             border: '2px solid var(--bg-dark)'
           }} />
         </div>
@@ -358,7 +714,7 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
             {contact.characterName || contact.name}
           </div>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-            {contact.online ? <span style={{ color: 'var(--accent-green)' }}>● Online</span> : <span>○ Offline</span>}
+            {effOnline ? <span style={{ color: 'var(--accent-green)' }}>● Online</span> : <span>○ Offline</span>}
             {contact.isFriend && <span style={{ marginLeft: '0.4rem', color: 'var(--gold-primary)' }}>★ Contato</span>}
             {/* Função (não-aluno) com badge discreto; turma só aparece para alunos */}
             {!isStudentContact(contact.role) && (
@@ -369,7 +725,7 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
             {isStudentContact(contact.role) && contact.classId && <span style={{ marginLeft: '0.4rem' }}>· {contact.classId}</span>}
           </div>
         </div>
-        {hasUnread && (
+        {settings.notifications && !settings.autoOpen && hasUnread && (
           <span style={{
             minWidth: '20px', height: '20px', borderRadius: '50%', background: 'var(--accent-red)',
             color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', display: 'flex',
@@ -378,7 +734,7 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
             {contactUnread}
           </span>
         )}
-        {!contact.isFriend && (
+        {!contact.isFriend && effOnline && !contact.restricted && (
           <button
             onClick={e => { e.stopPropagation(); handleAddFriend(contact); }}
             style={{ background: 'color-mix(in srgb, var(--accent-green, #10b981) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green, #10b981) 40%, transparent)', color: 'var(--accent-green, #10b981)', cursor: 'pointer', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
@@ -397,7 +753,7 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
       <button
         onClick={handleOpenWidget}
         disabled={isChatDisabled}
-        className={getFabClass()}
+        className={`${getFabClass()}${!open && totalUnread > 0 && settings.pulse && !settings.autoOpen ? ' has-unread-pulse' : ''}`}
         style={{
           position: 'fixed', bottom: '1.5rem', right: '1.5rem',
           width: translucent ? '44px' : '56px', height: translucent ? '44px' : '56px',
@@ -414,7 +770,7 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
         title={getFabTitle()}
       >
         {open ? <X size={26} /> : <MessageCircle size={26} />}
-        {!open && totalUnread > 0 && !isChatDisabled && (
+        {!open && totalUnread > 0 && !isChatDisabled && settings.notifications && !settings.autoOpen && (
           <span style={{
             position: 'absolute', top: '-4px', right: '-4px', minWidth: '20px', height: '20px',
             borderRadius: '50%', background: 'var(--accent-red)', color: '#fff', fontSize: '0.7rem',
@@ -450,7 +806,7 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
                   {getRoleLabel(activeContact.role)}
                 </span>
               )}
-              {!activeContact && totalUnread > 0 && (
+              {!activeContact && totalUnread > 0 && !settings.autoOpen && (
                 <span style={{ background: 'var(--accent-red)', color: '#fff', borderRadius: '10px', padding: '0 0.4rem', fontSize: '0.7rem', fontWeight: 'bold' }}>
                   {totalUnread}
                 </span>
@@ -477,12 +833,48 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
               >
                 {pinned ? <PinOff size={15} /> : <Pin size={15} />}
               </button>
+              <button
+                onClick={() => setShowSettings(v => !v)}
+                style={{ background: showSettings ? 'rgba(0,0,0,0.25)' : 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: '0.25rem', borderRadius: '6px', display: 'flex', alignItems: 'center', fontSize: '0.75rem' }}
+                title="Configurações do chat"
+              >
+                <Settings2 size={15} />
+              </button>
             </div>
           </div>
+
+          {/* Menu de configurações */}
+          {showSettings && (
+            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.78rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>Status</span>
+                <select value={settings.status} onChange={e => updateSettings({ status: e.target.value as ChatSettings['status'] })} style={{ background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', borderRadius: '6px', padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}>
+                  <option value="online">Online</option>
+                  <option value="offline">Offline</option>
+                  <option value="invisible">Invisível</option>
+                </select>
+              </div>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '-0.3rem' }}>
+                Online: visível e disponível. Offline: ninguém o vê (nem conversa). Invisível: conversa, mas ninguém vê que está online.
+              </div>
+              {[
+                { key: 'notifications' as const, label: 'Notificações (bolinhas vermelhas com contagem)' },
+                { key: 'pulse' as const, label: 'Notificações por pulso (glow no ícone)' },
+                { key: 'autoOpen' as const, label: 'Janela de chat individual (envelope ao receber mensagem)' },
+                { key: 'restricted' as const, label: 'Contato restrito (ninguém pode te adicionar)' },
+              ].map(t => (
+                <label key={t.key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={settings[t.key]} onChange={e => updateSettings({ [t.key]: e.target.checked })} style={{ width: '15px', height: '15px', accentColor: 'var(--gold-primary)' }} />
+                  {t.label}
+                </label>
+              ))}
+            </div>
+          )}
 
           {activeContact ? (
             /* Conversa aberta */
             <>
+              <SpamNotice spam={spam} nowTick={nowTick} />
               <div style={{ padding: '0.5rem 1rem', borderBottom: '1px solid var(--border-glass)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{activeContact.characterName || activeContact.name}</strong>
@@ -507,15 +899,19 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
               </div>
 
               <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                {messages.length === 0 && (
+                {messages.filter(m => !isFriendMarker(m.body)).length === 0 && (
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center', marginTop: '2rem' }}>
                     Nenhuma mensagem ainda. Envie a primeira!
                   </p>
                 )}
-                {messages.map(msg => {
+                {messages.filter(m => !isFriendMarker(m.body)).map((msg, idx, arr) => {
+                  const prev = arr[idx - 1];
+                  const showDay = !prev || new Date(prev.created_at).toDateString() !== new Date(msg.created_at).toDateString();
                   const mine = msg.sender_id === uid;
                   return (
-                    <div key={msg.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+                    <Fragment key={msg.id}>
+                      {showDay && <DayChip date={msg.created_at} />}
+                      <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
                       <div className={mine ? 'chat-msg-mine' : 'chat-msg-theirs'} style={{
                         maxWidth: '80%', padding: '0.45rem 0.7rem', borderRadius: '10px',
                         fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
@@ -526,6 +922,7 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
                         </div>
                       </div>
                     </div>
+                    </Fragment>
                   );
                 })}
                 <div ref={messageEndRef} />
@@ -611,6 +1008,117 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
           )}
         </div>
       )}
+
+      {/* Mini-janelas exclusivas (por contato, arrastáveis) */}
+      {minis.filter(w => !w.minimized).map((w) => {
+        const mi = minis.findIndex(x => x.contact.uid === w.contact.uid);
+        return (
+          <div key={w.contact.uid} style={{ position: 'fixed', left: w.pos.x, top: w.pos.y, width: 300, height: 280, background: 'rgba(13, 20, 36, 0.98)', border: '1px solid var(--border-glass)', borderRadius: '12px', boxShadow: '0 12px 40px rgba(0,0,0,0.7)', zIndex: 10004, display: 'flex', flexDirection: 'column', overflow: 'hidden', pointerEvents: 'auto' }}>
+            <div onPointerDown={e => startDrag(e, mi)} style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'grab', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000)', userSelect: 'none', touchAction: 'none' }}>
+              <strong style={{ fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.contact.characterName || w.contact.name}</strong>
+              <div style={{ display: 'flex', gap: '0.3rem' }}>
+                {w.contact.isFriend && (
+                  <button onClick={() => handleRemoveFriend(w.contact)} title="Remover dos contatos" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: '0.15rem' }}><UserMinus size={14} /></button>
+                )}
+                <button onClick={() => minimizeMini(w.contact.uid)} title="Minimizar" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: '0.15rem' }}><Minus size={14} /></button>
+                <button onClick={() => closeMini(w.contact.uid)} title="Fechar" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: '0.15rem' }}><X size={14} /></button>
+              </div>
+            </div>
+            <SpamNotice spam={spam} nowTick={nowTick} />
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {w.msgs.filter(m => !isFriendMarker(m.body)).map((m, idx, arr) => {
+                const prev = arr[idx - 1];
+                const showDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
+                const mine = m.sender_id === uid;
+                return (
+                  <Fragment key={m.id}>
+                    {showDay && <DayChip date={m.created_at} />}
+                    <div style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '85%', padding: '0.4rem 0.6rem', borderRadius: '8px', fontSize: '0.78rem', background: mine ? 'var(--accent-blue, #8b5cf6)' : 'rgba(255,255,255,0.08)', color: '#fff', wordBreak: 'break-word' }}>
+                      {m.body}
+                    </div>
+                  </Fragment>
+                );
+              })}
+            </div>
+            <MiniInput contactUid={w.contact.uid} onSend={sendFromMini} />
+          </div>
+        );
+      })}
+
+      {/* Pilha de envelopes (mini-janelas minimizadas) — no canto direito */}
+      {(() => {
+        const envs = minis.filter(w => w.minimized);
+        if (envs.length === 0) return null;
+        const ENV = 44, GAP = 8, RIGHT = 16, TOP_MIN = 12;
+        const vh = window.innerHeight;
+        const cols = Math.min(3, envs.length);
+        const rows = Math.ceil(envs.length / cols);
+        const clusterH = rows * (ENV + GAP) - GAP;
+        const top = Math.max(TOP_MIN, (vh - clusterH) / 2);
+        return (
+          <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 10005 }}>
+            {envs.map((w, i) => {
+              const c = Math.floor(i / rows);
+              const r = i % rows;
+              const x = window.innerWidth - RIGHT - ENV - c * (ENV + GAP);
+              const y = top + r * (ENV + GAP);
+              const unread = unreadByPeer[w.contact.uid] || 0;
+              return (
+                <button key={w.contact.uid} onClick={() => restoreMini(w.contact.uid)} title={w.contact.characterName || w.contact.name}
+                  className={unread > 0 ? 'env-unread-blink' : ''}
+                  style={{ position: 'fixed', left: x, top: y, width: ENV, height: ENV, borderRadius: '10px', background: '#fff', border: '1px solid rgba(0,0,0,0.15)', boxShadow: '0 4px 14px rgba(0,0,0,0.35)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}>
+                  <Mail size={22} color="#334155" />
+                  {unread > 0 && (
+                    <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 18, height: 18, borderRadius: '50%', background: 'var(--accent-red)', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {/* Confirmação de convite de amizade (flutuante) */}
+      {pendingFriendReq && (
+        <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', zIndex: 10001, background: 'var(--bg-card)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem 1.25rem', boxShadow: '0 12px 40px rgba(0,0,0,0.6)', maxWidth: 'min(340px, 90vw)', pointerEvents: 'auto' }}>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginBottom: '0.75rem' }}>
+            <b>{pendingFriendReq.name}</b> quer adicionar você ao contato. Deseja aceitar?
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button onClick={handleAcceptFriendReq} style={{ flex: 1, padding: '0.5rem', background: 'var(--accent-green, #10b981)', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Sim</button>
+            <button onClick={handleRejectFriendReq} style={{ flex: 1, padding: '0.5rem', background: 'var(--accent-red)', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Não</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniInput({ contactUid, onSend }: { contactUid: string; onSend: (uid: string, text: string) => boolean | Promise<boolean> }) {
+  const [draft, setDraft] = useState('');
+  const send = () => {
+    if (!draft.trim()) return;
+    const res = onSend(contactUid, draft);
+    if (res && typeof (res as any).then === 'function') {
+      (res as Promise<boolean>).then(ok => { if (ok) setDraft(''); });
+    } else if (res) {
+      setDraft('');
+    }
+  };
+  return (
+    <div style={{ display: 'flex', gap: '0.3rem', padding: '0.4rem', borderTop: '1px solid var(--border-glass)' }}>
+      <input
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); send(); } }}
+        placeholder="Responder..."
+        style={{ flex: 1, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', borderRadius: '8px', padding: '0.4rem 0.6rem', fontSize: '0.78rem', outline: 'none' }}
+      />
+      <button onClick={send} style={{ background: 'var(--gold-primary)', border: 'none', borderRadius: '8px', color: 'var(--text-on-gold, #000)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.3rem 0.5rem' }} title="Enviar">
+        <Send size={14} />
+      </button>
     </div>
   );
 }

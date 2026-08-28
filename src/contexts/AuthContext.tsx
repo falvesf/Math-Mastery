@@ -345,10 +345,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!userData?.uid || impersonatingId) return;
     const uid = userData.uid;
 
-    // Só fica online enquanto o jogo está EM FOCO e sendo usado. Ao ficar em
-    // segundo plano, sem foco, ocioso ou saindo da página, desconecta a
-    // presença e "envelhece" o last_seen_at (aparece offline imediatamente).
-    let isOnline = true;
+    // Um usuário fica online enquanto o jogo está aberto e em uso. O status
+    // explícito (Online/Offline/Invisível) é a fonte da verdade: offline e
+    // invisível NUNCA ficam online. Abas em segundo plano continuam online por
+    // até 3 min de inatividade (para que dois navegadores/janelas abertos
+    // possam se ver online durante testes), e saem offline ao ficar ociosas.
+    let status = 'online';
+    let isOnline = false;
 
     const beat = () => {
       supabase
@@ -378,42 +381,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       beat();
     };
 
+    // Status do chat (Online/Offline/Invisível)
+    const readChatStatus = (): string => {
+      try {
+        const s = localStorage.getItem(`chat_settings_${uid}`);
+        return s ? (JSON.parse(s).status || 'online') : 'online';
+      } catch { return 'online'; }
+    };
+    const applyStatus = (s: string) => {
+      status = s === 'online' ? 'online' : (s === 'invisible' ? 'invisible' : 'offline');
+      if (status === 'online') goOnline(); else goOffline();
+    };
+    applyStatus(readChatStatus());
+    const onChatStatusChange = (e: Event) => {
+      applyStatus((e as CustomEvent).detail?.status || 'online');
+    };
+    window.addEventListener('chat-status-change', onChatStatusChange);
+
     beat();
     const int = setInterval(() => { if (isOnline) beat(); }, 30 * 1000);
 
-    // Ocioso: sem interação por 3 minutos → offline
+    // Inatividade (sem interação por 3 min) → offline
     let idleTimer: any;
     const resetIdle = () => {
       if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(goOffline, 3 * 60 * 1000);
+      idleTimer = setTimeout(() => { if (status === 'online') goOffline(); }, 3 * 60 * 1000);
     };
     resetIdle();
 
-    const onVisibility = () => { if (document.visibilityState === 'visible') goOnline(); else goOffline(); };
-    const onFocus = () => goOnline();
-    const onBlur = () => goOffline();
+    const onFocus = () => { if (status === 'online') goOnline(); resetIdle(); };
+    const onVisibility = () => { if (document.visibilityState === 'visible' && status === 'online') goOnline(); };
     const onPageHide = () => goOffline();
-    const onActivity = () => { goOnline(); resetIdle(); };
+    const onActivity = () => { if (status === 'online') goOnline(); resetIdle(); };
 
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('focus', onFocus);
-    window.addEventListener('blur', onBlur);
     window.addEventListener('pagehide', onPageHide);
     ['mousemove', 'keydown', 'touchstart', 'scroll', 'pointerdown'].forEach(ev => window.addEventListener(ev, onActivity));
-
-    // Presence (bônus, em tempo real) — isolado para não quebrar o heartbeat
-    try {
-      connectPresence(uid, { name: userData?.name, role: userData?.role, classId: userData?.classId });
-    } catch (e) {
-      console.error('Presence error:', e);
-    }
 
     return () => {
       clearInterval(int);
       if (idleTimer) clearTimeout(idleTimer);
+      window.removeEventListener('chat-status-change', onChatStatusChange);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onFocus);
-      window.removeEventListener('blur', onBlur);
       window.removeEventListener('pagehide', onPageHide);
       ['mousemove', 'keydown', 'touchstart', 'scroll', 'pointerdown'].forEach(ev => window.removeEventListener(ev, onActivity));
       disconnectPresence();

@@ -29,6 +29,7 @@ import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../co
 import { applyCustomTheme, applyFontPreset, applyFontScale } from '../lib/theme';
 import { validateCharacterName, normalizeForComparison, normalizeNameForMatch, formatFirstAndLastName } from '../lib/nameValidation';
 import { fetchModel3DById } from '../lib/model3d';
+import { fetchAiQuestFlavor } from '../lib/questAi';
 import { COMPANION_TIPS, fetchCompanionTips } from '../lib/companionTips';
 import ChatWidget from '../components/ChatWidget';
 import TeacherWanderer from '../components/TeacherWanderer';
@@ -338,6 +339,8 @@ export default function Dashboard() {
 
   // Quests State
   const [activeQuests, setActiveQuests] = useState<any[]>([]);
+  // Textos de missão gerados pela IA (cache por missão)
+  const [aiQuestFlavors, setAiQuestFlavors] = useState<Record<string, string>>({});
   const [completedQuestIds, setCompletedQuestIds] = useState<string[]>([]);
   const [claimedChestIds, setClaimedChestIds] = useState<Set<string>>(new Set());
   const [completedQuestDates, setCompletedQuestDates] = useState<Record<string, number>>({});
@@ -822,6 +825,24 @@ export default function Dashboard() {
       fetchQuests();
     }
   }, [userData?.uid, userData?.classId, userData?.role, tenantId]);
+
+  // Gera (com IA) a descrição das missões que não têm descrição manual
+  useEffect(() => {
+    if (activeQuests.length === 0) return;
+    let cancelled = false;
+    const missing = activeQuests.filter(q => !q.description || !q.description.trim());
+    console.log('[questAi] missões sem descrição para gerar:', missing.length);
+    (async () => {
+      const results: Record<string, string> = {};
+      for (const q of missing) {
+        if (cancelled) return;
+        // eslint-disable-next-line no-await-in-loop
+        results[q.id] = await fetchAiQuestFlavor(q.id, q.title, q.description);
+      }
+      if (!cancelled) setAiQuestFlavors(prev => ({ ...prev, ...results }));
+    })();
+    return () => { cancelled = true; };
+  }, [activeQuests]);
 
   useEffect(() => {
     if (!userData) return;
@@ -2775,7 +2796,7 @@ export default function Dashboard() {
                       <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
                         <h3 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem 0' }}>{quest.title}</h3>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1.5rem', flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {quest.description || 'Uma missão misteriosa aguarda você...'}
+                          {quest.description || aiQuestFlavors[quest.id]}
                         </p>
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)' }}>

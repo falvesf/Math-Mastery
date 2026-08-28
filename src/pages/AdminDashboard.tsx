@@ -16,6 +16,7 @@ import { usePermissions, fetchRoles, fetchUserRoles, assignRoleToUser, removeRol
 import AdminCompanionTipsManager from '../components/AdminCompanionTipsManager';
 import TenantSwitcher from '../components/TenantSwitcher';
 import AdminEconomySettings from '../components/AdminEconomySettings';
+import AiSettingsPanel from '../components/AiSettingsPanel';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import ArenaBgEditor from '../components/ArenaBgEditor';
 import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
@@ -2326,6 +2327,7 @@ export default function AdminDashboard() {
               </div>
             </div>
             <AdminEconomySettings />
+            {(isSuperAdmin || userData?.role === 'superadmin' || userData?.role === 'admin') && <AiSettingsPanel />}
           </div>
         )}
 
