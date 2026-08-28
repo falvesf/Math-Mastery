@@ -247,7 +247,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       }
 
       if (!isGift) {
-        const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+        const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
         const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
         const availableSlots = Math.max(0, maxInventorySpace - myInventoryCount);
 
@@ -396,7 +396,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
     const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
     const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
     if (!isStaff && myInventoryCount >= maxInventorySpace) {
       await showAlert("Sua mochila está cheia!");
@@ -489,7 +489,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
     const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
 
     if (!isStaff && myInventoryCount >= maxInventorySpace) {
@@ -540,7 +540,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
   
-  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
   const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
 
   const getProcessedItems = () => {

@@ -157,7 +157,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
   const totalEquippedStats = calculateTotalStats(items.filter(i => i.equipped), userData?.distributedStats);
-  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 30);
+  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
   const maxInventorySpace = 6 + currentRankIndex + (userData?.extraInventorySpace || 0) + extraSlotsFromFortitude;
   const currentSpaceOccupied = items.filter(i => !i.equipped).length;
 
