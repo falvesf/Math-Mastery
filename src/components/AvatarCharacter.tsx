@@ -652,6 +652,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         console.log(`Carregando modelo 3D para o item ${item.itemTitle}:`, finalUrl);
         
         const processLoadedModel = (model: THREE.Object3D, splitDir?: 'left' | 'right' | 'body_part', isGltf: boolean = false) => {
+            // Malhas escaladas/rotacionadas anexadas a "bones" (braços/pernas) podem ter a
+            // bounding sphere mal calculada → o frustum culling "corta"/faz piscar a arma
+            // em certas posições (ex.: pós-fatality). Desabilitamos o culling dessas malhas.
+            model.traverse(child => {
+              if ((child as THREE.Mesh).isMesh) {
+                (child as THREE.Mesh).frustumCulled = false;
+              }
+            });
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
               const isDefense = item.itemCategory === 'defense';
               const isLeftHanded = config?.handedness === 'left';
@@ -1121,6 +1129,74 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [equippedItemsJson, config?.handedness, config?.hiddenSlots?.join(','), ignoreHiddenSlots]);
+
+  // 3c. Enquadramento do personagem no canvas.
+  // - Sem armas: canvas retrato normal, câmera no fit padrão.
+  // - Com armas (espada/escudo): alarga o canvas (mantém o boneco do mesmo tamanho) para as
+  //   armas não cortarem nas bordas ao girar.
+  // - Overrides do Arena Debug (🧍 Render) leem do localStorage e se aplicam a TODOS os
+  //   AvatarCharacter (batalha, loja, editor) e reagem ao evento 'arena-char-render' ao vivo.
+  const applyCharacterFraming = (ovConfig?: any) => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    let ov: Record<string, number> = { charCanvasW: 1, charCanvasH: 1, charZoom: 0.9, charFit: 60 };
+    if (ovConfig) {
+      ov = {
+        charCanvasW: typeof ovConfig.charCanvasW === 'number' ? ovConfig.charCanvasW : ov.charCanvasW,
+        charCanvasH: typeof ovConfig.charCanvasH === 'number' ? ovConfig.charCanvasH : ov.charCanvasH,
+        charZoom: typeof ovConfig.charZoom === 'number' ? ovConfig.charZoom : ov.charZoom,
+        charFit: typeof ovConfig.charFit === 'number' ? ovConfig.charFit : ov.charFit,
+      };
+    } else {
+      try {
+        const deviceKey = window.innerWidth < 768 ? 'mobile' : 'desktop';
+        const saved = localStorage.getItem(`arenaDebugConfig_${deviceKey}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          ov = {
+            charCanvasW: typeof parsed.charCanvasW === 'number' ? parsed.charCanvasW : 1,
+            charCanvasH: typeof parsed.charCanvasH === 'number' ? parsed.charCanvasH : 1,
+            charZoom: typeof parsed.charZoom === 'number' ? parsed.charZoom : 0.9,
+            charFit: typeof parsed.charFit === 'number' ? parsed.charFit : 60,
+          };
+        }
+      } catch (e) { /* ignora */ }
+    }
+
+    const weapons = (equippedItems || []).filter(i =>
+      ['rightHand', 'leftHand', 'hand', 'two_handed'].includes((i.avatarPart || '') as string)
+    );
+    const maxWeaponScale = Math.max(0, ...weapons.map(i =>
+      (i.modelTransforms?.common?.scale) || (i.modelTransforms?.battle?.scale) || 10
+    ));
+    const mult = weapons.length > 0 ? (maxWeaponScale > 14 ? 1.7 : 1.5) : 1;
+    const cw = Math.max(0.3, ov.charCanvasW);
+    const ch = Math.max(0.3, ov.charCanvasH);
+    const zoom = Math.max(0.1, ov.charZoom);
+    const fit = Math.max(20, ov.charFit);
+
+    viewer.width = Math.round(size * mult * cw);
+    viewer.height = Math.round(size * 1.8 * ch);
+    const camZ = fit / zoom;
+    viewer.camera.position.set(0, 10, camZ);
+    viewer.camera.lookAt(0, 0, 0);
+    viewer.controls.target.set(0, 0, 0);
+    viewer.controls.update();
+  };
+  const applyCharacterFramingRef = useRef(applyCharacterFraming);
+  applyCharacterFramingRef.current = applyCharacterFraming;
+
+  useEffect(() => {
+    applyCharacterFramingRef.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equippedItemsJson, size]);
+
+  // Aplica ao vivo quando o Arena Debug altera o render do personagem
+  useEffect(() => {
+    const handler = (e: Event) => applyCharacterFramingRef.current((e as CustomEvent).detail);
+    window.addEventListener('arena-char-render', handler);
+    return () => window.removeEventListener('arena-char-render', handler);
+  }, []);
 
   // 3b. Apply transformations dynamically to avoid reloading models (flicker)
   useEffect(() => {
@@ -2161,7 +2237,10 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         onClick={() => onAvatarClick && onAvatarClick()}
         style={{ 
           display: 'block', 
-          position: 'relative',
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
           zIndex: 1,
           outline: 'none',
           pointerEvents: 'auto',

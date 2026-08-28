@@ -113,6 +113,7 @@ async function processQueue() {
           loader.load(safeUrl, (gltf) => {
             const model = gltf.scene;
             model.userData.isItem = true;
+            model.traverse(child => { if ((child as any).isMesh) (child as any).frustumCulled = false; });
             
             const isDefense = item.itemCategory === 'defense' || item.avatarPart === 'leftHand';
             const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;

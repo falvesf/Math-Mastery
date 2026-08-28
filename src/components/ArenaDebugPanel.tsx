@@ -64,6 +64,14 @@ export interface ArenaDebugConfig {
   monsterBubbleAlwaysOn: boolean;
   modelConfigs: Record<string, ModelTransform>;
   selectedModelUrl: string;
+  /** Multiplicador da largura do canvas do personagem (área visível) */
+  charCanvasW: number;
+  /** Multiplicador da altura do canvas do personagem */
+  charCanvasH: number;
+  /** Zoom do boneco dentro do canvas (maior = mais perto/maior) */
+  charZoom: number;
+  /** Distância da câmera (fit) — base para o enquadramento do personagem */
+  charFit: number;
 }
 
 export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
@@ -120,6 +128,10 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   monsterBubbleAlwaysOn: false,
   modelConfigs: {},
   selectedModelUrl: '',
+  charCanvasW: 1,
+  charCanvasH: 1,
+  charZoom: 0.9,
+  charFit: 60,
 };
 
 const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; defaultPos: { x: number; y: number }; children: React.ReactNode; deviceKey?: string }) => {
@@ -249,7 +261,7 @@ const Toggle = ({ label, value, onChange: onToggle }: { label: string; value: bo
 );
 
 export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayerBubble, onTestMonsterBubble, isAdmin, deviceKey }: ArenaDebugPanelProps) {
-  const [tab, setTab] = useState<'player' | 'monster' | 'arena' | 'combat' | 'visual'>('player');
+  const [tab, setTab] = useState<'player' | 'monster' | 'arena' | 'combat' | 'visual' | 'render'>('player');
 
   // Garantir que campos novos existam (compatibilidade com cache antigo)
   const safeConfig: ArenaDebugConfig = {
@@ -269,7 +281,12 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
   };
 
   const update = (key: keyof ArenaDebugConfig, value: any) => {
-    onChange({ ...safeConfig, [key]: value });
+    const next = { ...safeConfig, [key]: value };
+    onChange(next);
+    // Dispara evento para o AvatarCharacter aplicar o enquadramento na hora (sem recarregar)
+    if (['charCanvasW', 'charCanvasH', 'charZoom', 'charFit'].includes(key)) {
+      window.dispatchEvent(new CustomEvent('arena-char-render', { detail: next }));
+    }
   };
 
   if (!isAdmin) return null;
@@ -280,6 +297,7 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
     { id: 'arena' as const, label: '🏟️', color: '#8b5cf6' },
     { id: 'combat' as const, label: '⚔️', color: '#f87171' },
     { id: 'visual' as const, label: '🔲', color: '#94a3b8' },
+    { id: 'render' as const, label: '🧍', color: '#10b981' },
   ];
 
   return (
@@ -415,6 +433,22 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
               <Slider label="Girar" value={safeConfig.monsterBubbleRotate} onChange={v => update('monsterBubbleRotate', v)} min={-45} max={45} unit="°" />
               <Toggle label="Sempre visível" value={safeConfig.monsterBubbleAlwaysOn} onChange={v => update('monsterBubbleAlwaysOn', v)} />
               <button onClick={onTestMonsterBubble} style={{ width: '100%', padding: '0.3rem', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '4px', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold', marginTop: '0.2rem' }}>👹 Testar Fala</button>
+            </div>
+          </>
+        )}
+
+        {tab === 'render' && (
+          <>
+            <div style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 'bold', marginBottom: '0.3rem' }}>🧍 Renderização do Personagem (canvas 3D)</div>
+            <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginBottom: '0.4rem' }}>
+              Ajuste o tamanho do canvas e o enquadramento do boneco para as armas não cortarem nas bordas. Aplica em tempo real e salva globalmente com 💾.
+            </div>
+            <Slider label="Largura" value={safeConfig.charCanvasW} onChange={v => update('charCanvasW', v)} min={0.6} max={2.5} step={0.05} unit="x" />
+            <Slider label="Altura" value={safeConfig.charCanvasH} onChange={v => update('charCanvasH', v)} min={0.6} max={2.5} step={0.05} unit="x" />
+            <Slider label="Zoom" value={safeConfig.charZoom} onChange={v => update('charZoom', v)} min={0.4} max={2.5} step={0.05} unit="x" />
+            <Slider label="Fit" value={safeConfig.charFit} onChange={v => update('charFit', v)} min={35} max={140} step={1} unit="" />
+            <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginTop: '0.3rem' }}>
+              Largura/Altura = tamanho do canvas (mais área). Zoom = tamanho do boneco. Fit = distância da câmera. O corte de armas acontece quando o canvas é estreito — aumente a Largura.
             </div>
           </>
         )}
