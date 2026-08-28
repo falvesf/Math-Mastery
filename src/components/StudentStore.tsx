@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Swords } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
@@ -6,7 +7,7 @@ import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp, resolveMinRankName, getMinRankIndex } from '../lib/ranks';
-import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
+import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig, ATTRIBUTE_LABELS } from '../lib/gacha';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
@@ -67,6 +68,22 @@ const getRarityLabel = (rarity?: string) => {
   }
 };
 
+const RARITY_COLORS: Record<string, string> = {
+  common: '#9ca3af',
+  uncommon: '#10b981',
+  rare: '#3b82f6',
+  epic: '#8b5cf6',
+  mestre: '#ef4444',
+  legendary: '#f59e0b',
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  attack: '⚔️ Ataque',
+  defense: '🛡️ Defesa',
+  support: '✨ Suporte',
+  none: '—',
+};
+
 export default function StudentStore({ userData }: { userData: UserData }) {
   const { showAlert, showConfirm, showPrompt, showToast } = useDialog();
   const { tenantId } = useTenant();
@@ -82,6 +99,19 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  // Mantém o tooltip dentro da tela (não corta nas bordas direita/inferior)
+  useEffect(() => {
+    if (hoveredItem && tooltipRef.current) {
+      const el = tooltipRef.current;
+      const rect = el.getBoundingClientRect();
+      if (rect.right > window.innerWidth - 8) el.style.left = `${Math.max(8, window.innerWidth - rect.width - 8)}px`;
+      if (rect.bottom > window.innerHeight - 8) el.style.top = `${Math.max(8, window.innerHeight - rect.height - 8)}px`;
+    }
+  }, [hoveredItem, mousePos]);
   
   // Presente (Gifting)
   const [students, setStudents] = useState<UserData[]>([]);
@@ -840,7 +870,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             const isList = viewMode === 'list';
 
             return (
-              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
+              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}
+                onMouseEnter={(e) => { setHoveredItem(item.id); setMousePos({ x: e.clientX, y: e.clientY }); }}
+                onMouseLeave={() => setHoveredItem(null)}
+                onMouseMove={(e) => { if (hoveredItem === item.id) setMousePos({ x: e.clientX, y: e.clientY }); }}
+              >
                 <div className={isList ? 'store-list-card-media' : ''} style={{ position: 'relative', width: isList ? '75px' : '100%', aspectRatio: isList ? 'none' : '1', minHeight: isList ? '75px' : undefined, background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
                     <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={50} />
@@ -1302,6 +1336,107 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           </div>
         </div>
       )}
+
+      {/* Tooltip Portal */}
+      {hoveredItem && (() => {
+        const item = items.find(i => i.id === hoveredItem);
+        if (!item) return null;
+        const rColor = RARITY_COLORS[item.rarity || 'common'] || '#9ca3af';
+        const baseAttr = item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType]
+          ? ATTRIBUTE_LABELS[item.baseAttributeType]
+          : null;
+        const mainStatPct = baseAttr && ['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType || '');
+        const consumableDesc = item.gameEffect === 'restore_hp' ? 'Restaura todos os pontos de vida.' :
+          item.gameEffect === 'heal_1_hp' ? 'Recupera 1 coração de vida.' :
+          item.gameEffect === 'reduce_hp_cooldown' ? `Acelera a recarga de vida: -${item.hpCooldownReductionMinutes || 10} min por coração.` :
+          item.gameEffect === 'add_attribute' ? 'Adiciona um novo atributo aleatório a um equipamento.' :
+          item.gameEffect === 'remove_attribute' ? 'Remove um atributo negativo de um equipamento.' :
+          item.gameEffect === 'reroll_attributes' ? 'Sorteia novamente todos os atributos extras de um equipamento.' :
+          item.gameEffect === 'unlock_skin' ? 'Desbloqueia uma skin para usar no personagem.' :
+          item.gameEffect === 'bazar_sale_permit' ? 'Licença para vender itens no bazar.' :
+          item.gameEffect === 'none' ? 'Um item comum sem efeitos mágicos.' :
+          null;
+        return createPortal(
+          <div ref={tooltipRef} className="item-tooltip" style={{
+            position: 'fixed',
+            top: mousePos.y + 15,
+            left: mousePos.x + 15,
+            background: 'var(--bg-card)',
+            border: `2px solid ${rColor}`,
+            borderRadius: '10px',
+            padding: '1rem',
+            width: 'max-content',
+            minWidth: '220px',
+            maxWidth: '300px',
+            zIndex: 999999,
+            boxShadow: `0 8px 30px rgba(0,0,0,0.6), 0 0 14px ${rColor}55`,
+            backdropFilter: 'blur(10px)',
+            pointerEvents: 'none',
+            color: 'var(--text-primary)',
+            textAlign: 'left'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
+              <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)' }}>{item.title}</h4>
+              <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px', color: rColor, border: `1px solid ${rColor}`, background: `${rColor}22` }}>
+                {getRarityLabel(item.rarity)}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: item.type === 'consumable' ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)', color: item.type === 'consumable' ? '#10b981' : '#3b82f6' }}>
+                {item.type === 'consumable' ? 'Consumível' : 'Equipável'}
+              </span>
+              {item.itemCategory && item.itemCategory !== 'none' && (
+                <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}>
+                  {CATEGORY_LABELS[item.itemCategory] || item.itemCategory}
+                </span>
+              )}
+            </div>
+
+            {item.description ? (
+              <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.82rem', color: 'var(--text-secondary)', fontStyle: 'italic', whiteSpace: 'normal' }}>"{item.description}"</p>
+            ) : (
+              consumableDesc && (
+                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.82rem', color: 'var(--text-secondary)', fontStyle: 'italic', whiteSpace: 'normal' }}>"{consumableDesc}"</p>
+              )
+            )}
+
+            {item.type === 'equippable' && baseAttr && (
+              <div style={{ marginBottom: '0.35rem', fontSize: '0.9rem' }}>
+                {baseAttr.icon} <strong>{baseAttr.label}:</strong> <span style={{ color: rColor }}>+{item.baseAttributeValue}{mainStatPct ? '%' : ''}</span>
+              </div>
+            )}
+
+            {item.type === 'equippable' && item.adds && item.adds.length > 0 && (
+              <div style={{ fontSize: '0.85rem' }}>
+                <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
+                <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem' }}>
+                  {item.adds.map((add, i) => {
+                    const lbl = ATTRIBUTE_LABELS[add.type];
+                    if (!lbl) return null;
+                    return (
+                      <li key={i} style={{ color: add.value > 0 ? '#60A5FA' : '#F87171' }}>
+                        {lbl.icon} {lbl.label}: +{add.value}%
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {item.type === 'consumable' && ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(item.gameEffect || '') && (
+              <div style={{ marginTop: '0.4rem', fontSize: '0.8rem', color: '#60A5FA', fontWeight: 'bold' }}>🖐️ Arraste sobre um equipamento para usar.</div>
+            )}
+
+            {item.gameEffect === 'reduce_hp_cooldown' && (
+              <div style={{ marginTop: '0.3rem', fontSize: '0.8rem', color: '#f87171', fontWeight: 'bold' }}>
+                ⚡ Recarga Acelerada: -{item.hpCooldownReductionMinutes || 10} min por coração
+              </div>
+            )}
+          </div>,
+          document.body
+        );
+      })()}
     </div>
   );
 }
