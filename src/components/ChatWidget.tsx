@@ -189,6 +189,14 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
 
   const openPvpChallenge = async (contact: ChatContact) => {
     if (!contact || !contact.online) return;
+    // Verificação FRESCA: o contato pode ter bloqueado duelos desde a última lista de contatos
+    try {
+      const { data: cd } = await supabase.from('users').select('inventory_preferences').eq('id', contact.uid).single();
+      if ((cd?.inventory_preferences as any)?.chatSettings?.blockDuelRequests) {
+        showToast(`${contact.name.split(' ')[0]} bloqueou pedidos de duelo (PvP).`);
+        return;
+      }
+    } catch (e) { /* segue mesmo se falhar a leitura */ }
     // Bloqueio por recusas persistentes (1min, +1min a cada nova recusa)
     const blockMs = getPvpBlockMs(contact.uid);
     if (blockMs > 0) {
@@ -304,9 +312,9 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
     return () => clearInterval(int);
   }, [uid]);
 
-  const loadContacts = useCallback(async () => {
+  const loadContacts = useCallback(async (silent = false) => {
     if (!uidRef.current) return;
-    setContactsLoading(true);
+    if (!silent) setContactsLoading(true);
     const [list, pending] = await Promise.all([
       fetchContacts(uidRef.current, userData?.classId, tenantId, userData?.role),
       fetchPendingSenders(uidRef.current),
@@ -318,8 +326,15 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
     const now = Date.now();
     merged.forEach(c => { if (c.online) lastSeenOnlineRef.current[c.uid] = now; });
     setContacts(merged);
-    setContactsLoading(false);
+    if (!silent) setContactsLoading(false);
   }, [userData?.classId, tenantId, userData?.role]);
+
+  // Refresh periódico dos contatos (status online + prefs do outro usuário, ex. bloqueio de duelo)
+  useEffect(() => {
+    if (!uid) return;
+    const int = setInterval(() => { loadContacts(true); }, 30000);
+    return () => clearInterval(int);
+  }, [uid, loadContacts]);
 
   const loadUnreadMap = useCallback(async () => {
     const currentUid = uidRef.current;
