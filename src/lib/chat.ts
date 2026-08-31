@@ -23,6 +23,8 @@ export interface ChatContact {
   hasUnread?: boolean;
   /** Usuário marcou "Contato restrito": ninguém pode adicioná-lo */
   restricted?: boolean;
+  /** Usuário bloqueou pedidos de duelo (PvP) contra o seu personagem */
+  blockDuelRequests?: boolean;
   /** Status de chat do outro usuário ('online' | 'offline' | 'invisible') */
   status?: string;
 }
@@ -33,6 +35,8 @@ export interface ChatSettings {
   pulse: boolean;
   autoOpen: boolean;
   restricted: boolean;
+  /** Bloqueia pedidos de duelo (PvP) contra o seu personagem */
+  blockDuelRequests?: boolean;
 }
 
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
@@ -41,6 +45,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   pulse: true,
   autoOpen: false,
   restricted: false,
+  blockDuelRequests: false,
 };
 
 /** Lê as configurações de chat do usuário (users.inventory_preferences.chatSettings + localStorage) */
@@ -203,6 +208,7 @@ export async function fetchContacts(uid: string, classId?: string, tenantId?: st
         last_seen_at: u.last_seen_at,
         restricted: !!otherPrefs.restricted,
         status: otherStatus,
+        blockDuelRequests: !!otherPrefs.blockDuelRequests,
         _show: show,
       } as ChatContact & { _show: boolean };
     })

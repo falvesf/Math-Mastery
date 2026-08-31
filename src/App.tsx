@@ -10,6 +10,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import QuestGameplayMobile from './pages/QuestGameplayMobile';
 import LiveQuestAdmin from './pages/LiveQuestAdmin';
 import LiveQuestStudent from './pages/LiveQuestStudent';
+import PvpPage from './pages/PvpPage';
 import { Loader2 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import './App.css';
@@ -121,6 +122,14 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <LiveQuestStudent />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/pvp/:matchId"
+        element={
+          <PrivateRoute>
+            <PvpPage />
           </PrivateRoute>
         }
       />

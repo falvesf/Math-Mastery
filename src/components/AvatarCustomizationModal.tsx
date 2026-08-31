@@ -392,6 +392,9 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   const [debugPreviewAnim, setDebugPreviewAnim] = useState(false);
   const [debugFrameDuration, setDebugFrameDuration] = useState(0.5);
   const [copiedDebugTransform, setCopiedDebugTransform] = useState<ModelTransform | null>(null);
+  const copiedDebugTransformRef = useRef<ModelTransform | null>(null);
+  // Evita que um efeito de re-seleção de item sobrescreva o transform logo após o "Colar".
+  const skipTransformResetRef = useRef(false);
   const [savedPoses, setSavedPoses] = useState<SavedPose[]>([]);
   const [showPoseModal, setShowPoseModal] = useState(false);
   const [poseModalTab, setPoseModalTab] = useState<'list' | 'save'>('list');
@@ -580,6 +583,11 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
   }, [config.customSkinUrl, config.customModelUrl, presetSkins, models3d, setConfig]);
 
   useEffect(() => {
+    // Se acabou de colar valores, não sobrescrever com o transform do item.
+    if (skipTransformResetRef.current) {
+      skipTransformResetRef.current = false;
+      return;
+    }
     if (debugItemId && debugMode) {
       const item = equippedItems.find(i => (i.itemId || i.docId) === debugItemId);
       if (!item) return;
@@ -964,9 +972,12 @@ onClick={() => setConfig(prev => {
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                     <button
                       onClick={() => {
-                        const code = `posX: ${debugTransform.posX}, posY: ${debugTransform.posY}, posZ: ${debugTransform.posZ}, rotX: ${debugTransform.rotX.toFixed(4)}, rotY: ${debugTransform.rotY.toFixed(4)}, rotZ: ${debugTransform.rotZ.toFixed(4)}, slide: ${debugTransform.slide}, scale: ${debugTransform.scale}, thickness: ${debugTransform.thickness}, curveX: ${debugTransform.curveX || 0}, curveY: ${debugTransform.curveY || 0}`;
+                        const safeT = { ...debugTransform, curveX: debugTransform.curveX || 0, curveY: debugTransform.curveY || 0, thickness: debugTransform.thickness ?? 1 };
+                        const code = `posX: ${safeT.posX}, posY: ${safeT.posY}, posZ: ${safeT.posZ}, rotX: ${safeT.rotX.toFixed(4)}, rotY: ${safeT.rotY.toFixed(4)}, rotZ: ${safeT.rotZ.toFixed(4)}, slide: ${safeT.slide}, scale: ${safeT.scale}, thickness: ${safeT.thickness}, curveX: ${safeT.curveX}, curveY: ${safeT.curveY}`;
                         navigator.clipboard.writeText(code).catch(() => {});
-                        setCopiedDebugTransform({ ...debugTransform });
+                        setCopiedDebugTransform({ ...safeT });
+                        copiedDebugTransformRef.current = { ...safeT };
+                        try { localStorage.setItem('copiedDebug3dTransform', JSON.stringify(safeT)); } catch (e) {}
                         showAlert('Valores copiados! Use "Colar Valores" em outro item.');
                       }}
                       style={{ flex: 1, padding: '0.5rem', background: 'var(--bg-card)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
@@ -975,9 +986,19 @@ onClick={() => setConfig(prev => {
                     </button>
                     <button
                       onClick={() => {
-                        // Colar do estado copiado (ou tentar ler o clipboard de texto)
-                        if (copiedDebugTransform) {
-                          setDebugTransform({ ...copiedDebugTransform });
+                        // Colar do estado copiado → ref → localStorage → clipboard (nessa ordem)
+                        let pasted: ModelTransform | null = copiedDebugTransform || copiedDebugTransformRef.current || null;
+                        if (!pasted) {
+                          try {
+                            const v = localStorage.getItem('copiedDebug3dTransform');
+                            if (v) pasted = JSON.parse(v);
+                          } catch (e) {}
+                        }
+                        if (pasted) {
+                          skipTransformResetRef.current = true;
+                          setDebugTransform({ ...pasted });
+                          setCopiedDebugTransform({ ...pasted });
+                          copiedDebugTransformRef.current = { ...pasted };
                           showAlert('Valores colados a partir da última cópia!');
                           return;
                         }
@@ -985,7 +1006,11 @@ onClick={() => setConfig(prev => {
                           const match = text.match(/posX:\s*(-?[\d.]+).*?posY:\s*(-?[\d.]+).*?posZ:\s*(-?[\d.]+).*?rotX:\s*(-?[\d.]+).*?rotY:\s*(-?[\d.]+).*?rotZ:\s*(-?[\d.]+).*?slide:\s*(-?[\d.]+).*?scale:\s*(-?[\d.]+).*?thickness:\s*(-?[\d.]+).*?curveX:\s*(-?[\d.]+).*?curveY:\s*(-?[\d.]+)/s);
                           if (match) {
                             const [, posX, posY, posZ, rotX, rotY, rotZ, slide, scale, thickness, curveX, curveY] = match.map(Number);
-                            setDebugTransform({ posX, posY, posZ, rotX, rotY, rotZ, slide, scale, thickness, curveX, curveY });
+                            const pastedFromClip = { posX, posY, posZ, rotX, rotY, rotZ, slide, scale, thickness, curveX, curveY };
+                            skipTransformResetRef.current = true;
+                            setDebugTransform({ ...pastedFromClip });
+                            setCopiedDebugTransform({ ...pastedFromClip });
+                            copiedDebugTransformRef.current = { ...pastedFromClip };
                             showAlert('Valores colados a partir do clipboard!');
                           } else {
                             showAlert('Nenhum valor no clipboard no formato esperado. Copie primeiro.');

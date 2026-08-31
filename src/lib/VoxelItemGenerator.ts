@@ -1,6 +1,6 @@
 import * as THREE from 'skinview3d/node_modules/three';
 
-export async function generateVoxelItemFromImage(imageUrl: string, backColor?: string, curveX = 0, curveY = 0, split?: 'left' | 'right'): Promise<THREE.Group> {
+export async function generateVoxelItemFromImage(imageUrl: string, backColor?: string, curveX = 0, curveY = 0, split?: 'left' | 'right', thickness = 0.12): Promise<THREE.Group> {
   return new Promise((resolve, reject) => {
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
@@ -116,9 +116,10 @@ export async function generateVoxelItemFromImage(imageUrl: string, backColor?: s
         
         const group = new THREE.Group();
         
-        // Fake 3D / Parallax
-        const thickness = 0.12; // Espessura ligeiramente reduzida para juntar mais
-        const layers = 60; // Densidade extremamente alta para sumir com os gaps e evitar invisibilidade lateral
+        // Fake 3D / Parallax. A espessura total desejada é `thickness`; as camadas são
+        // empilhadas bem próximas (quase coladas) para dar volume SEM mostrar vãos/cópias.
+        const thicknessVal = Math.max(0.03, thickness || 0.12);
+        const layers = Math.max(40, Math.min(400, Math.round(thicknessVal / 0.002)));
         
         for (let i = 0; i < layers; i++) {
            // i = 0 é a camada mais de trás (zOffset negativo). i = layers-1 é a da frente (zOffset positivo).
@@ -127,14 +128,24 @@ export async function generateVoxelItemFromImage(imageUrl: string, backColor?: s
            
            const mesh = new THREE.Mesh(geometry, mat);
            // Offset Z para dar profundidade (de -thickness/2 até +thickness/2)
-           const zOffset = layers > 1 ? (i / (layers - 1)) * thickness - (thickness / 2) : 0;
+           const zOffset = layers > 1 ? (i / (layers - 1)) * thicknessVal - (thicknessVal / 2) : 0;
            
            // Posicionar para que o pivô (0,0) fique no canto inferior esquerdo, igual ao Voxel antigo
            mesh.position.set(planeWidth / 2, planeHeight / 2, zOffset);
+           mesh.userData.isVoxelLayer = true;
            
            group.userData.is25D = true; // Flag for dynamic curve updates
            group.add(mesh);
         }
+        
+        // Guarda as peças para poder RE-EMPILHAR com outra espessura (setVoxelThickness)
+        // sem precisar recarregar a textura.
+        group.userData.voxelGeometry = geometry;
+        group.userData.voxelMaterial = material;
+        group.userData.voxelBackMaterial = backMaterial;
+        group.userData.voxelPlaneWidth = planeWidth;
+        group.userData.voxelPlaneHeight = planeHeight;
+        group.userData.voxelThickness = thicknessVal;
         
         resolve(group);
       },
@@ -142,6 +153,38 @@ export async function generateVoxelItemFromImage(imageUrl: string, backColor?: s
       (err) => reject(new Error("Falha ao carregar textura: " + err.message))
     );
   });
+}
+
+// Re-empilha as camadas com uma nova espessura (total local), mantendo-as quase coladas.
+// Usa a geometria/materiais já cacheados — não recarrega a textura.
+export function setVoxelThickness(group: THREE.Group, thickness: number) {
+  if (!group || !group.userData.is25D) return;
+  const geo = group.userData.voxelGeometry as THREE.PlaneGeometry | undefined;
+  const mat = group.userData.voxelMaterial as THREE.Material | undefined;
+  const backMat = group.userData.voxelBackMaterial as THREE.Material | undefined;
+  if (!geo || !mat) return;
+
+  // Remove SOMENTE as camadas voxel (preserva sprites/filhos extras)
+  for (let i = group.children.length - 1; i >= 0; i--) {
+    if ((group.children[i] as any).userData?.isVoxelLayer) {
+      group.remove(group.children[i]);
+    }
+  }
+
+  const thicknessVal = Math.max(0.03, thickness || 0.12);
+  const layers = Math.max(40, Math.min(400, Math.round(thicknessVal / 0.002)));
+  const w = group.userData.voxelPlaneWidth ?? 1.6;
+  const h = group.userData.voxelPlaneHeight ?? 1.6;
+
+  for (let i = 0; i < layers; i++) {
+    const isBackLayer = i === 0;
+    const mesh = new THREE.Mesh(geo, isBackLayer ? (backMat || mat) : mat);
+    const zOffset = layers > 1 ? (i / (layers - 1)) * thicknessVal - (thicknessVal / 2) : 0;
+    mesh.position.set(w / 2, h / 2, zOffset);
+    mesh.userData.isVoxelLayer = true;
+    group.add(mesh);
+  }
+  group.userData.voxelThickness = thicknessVal;
 }
 
 export function updateVoxelCurve(group: THREE.Group, curveX: number, curveY: number) {

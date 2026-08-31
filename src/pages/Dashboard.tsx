@@ -113,7 +113,8 @@ export default function Dashboard() {
   const { can: canView } = usePermissions();
   // Áreas que pertencem ao Painel Master (staff). Se o usuário (mesmo aluno)
   // tem função de hierarquia com permissão em alguma delas, mostra o botão.
-  const ADMIN_AREAS = ['users', 'quests_admin', 'items', 'economy', 'classes', 'approvals', 'config', 'ranks', 'entities', 'models', 'skins', 'debug3d', 'pre_authorized', 'tenants', 'companion', 'themes', 'arena_debug'];
+  // 'themes' fica fora: aluno tem view-only (escolher tema), não administra.
+  const ADMIN_AREAS = ['users', 'quests_admin', 'items', 'economy', 'classes', 'approvals', 'config', 'ranks', 'entities', 'models', 'skins', 'debug3d', 'pre_authorized', 'tenants', 'companion', 'arena_debug'];
   const hasAdminAccess = ADMIN_AREAS.some(a => canView(a, 'view'));
   // Nome da função que dá título ao painel (função de hierarquia ou base)
   const [panelRoleName, setPanelRoleName] = useState(() => baseRolePanelLabel(userData?.role));
@@ -257,10 +258,14 @@ export default function Dashboard() {
   // Enrollment flow state
   const [enrollmentStep, setEnrollmentStep] = useState<'school' | 'class' | 'pending' | 'complete'>('school');
   const [selectedSchool, setSelectedSchool] = useState<any>(null);
+  // Quando o usuário clica em "Voltar" para a seleção de escola, NÃO deixa o efeito
+  // de auto-pulo (tenantId presente) forçá-lo de volta à escolha de turma.
+  const schoolBackRef = useRef(false);
 
   // Se o usuário já tem uma escola vinculada (ex: conta local criada pelo admin),
   // pula a seleção de escola e vai direto para a escolha da turma.
   useEffect(() => {
+    if (schoolBackRef.current) return; // usuário voltou manualmente p/ seleção de escola
     if (userData?.tenantId && !userData?.classId && enrollmentStep === 'school') {
       let active = true;
       (async () => {
@@ -1774,6 +1779,14 @@ export default function Dashboard() {
                 pending_class_name: cls.name
               }).eq('id', userData.uid);
 
+              // Criar o acesso na tenant escolhida (evita o fallback de "primeira escola"
+              // no load do tenant, que só usa escolas presentes em tenant_users)
+              await supabase.from('tenant_users').upsert({
+                tenant_id: selectedSchool.id,
+                user_id: userData.uid,
+                role: 'student'
+              });
+
               // Também criar registro na tabela de solicitações (para backup/relatórios)
               try {
                 await supabase.from('enrollment_requests').insert({
@@ -1796,6 +1809,7 @@ export default function Dashboard() {
             }
           }}
           onBack={() => {
+            schoolBackRef.current = true;
             setSelectedSchool(null);
             setEnrollmentStep('school');
           }}

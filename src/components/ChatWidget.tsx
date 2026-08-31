@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
-import { MessageCircle, X, Send, Users, UserPlus, ShieldCheck, User, Loader2, ArrowLeft, Pin, PinOff, Settings2, Mail, Minus, UserMinus } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
+import { MessageCircle, X, Send, Users, UserPlus, ShieldCheck, User, Loader2, ArrowLeft, Pin, PinOff, Settings2, Mail, Minus, UserMinus, Swords, Eye } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
@@ -18,6 +20,8 @@ import {
   type SpamState,
 } from '../lib/chatSpam';
 import { subscribePresence } from '../lib/onlinePresence';
+import PvpChallengeModal from './PvpChallengeModal';
+import { subscribeIncomingChallenges, fetchPendingChallenge, declinePvpMatch, acceptPvpChallenge, getPvpBlockMs, fetchActivePvpMap, getRankIndex, ranksWithinTwo, type PvpMatch } from '../lib/pvp';
 
 interface ChatWidgetProps {
   onOpenProfile?: (uid: string) => void;
@@ -126,6 +130,89 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
 
   const uid = userData?.uid;
   const totalUnread = Object.values(unreadByPeer).reduce((a, b) => a + b, 0);
+
+  // ---- PvP Duelos ----
+  const navigate = useNavigate();
+  const [pvpOpen, setPvpOpen] = useState<'challenger' | 'opponent' | null>(null);
+  const [pvpContact, setPvpContact] = useState<{ uid: string; name: string; avatarConfig?: any; equippedItems?: any[] } | null>(null);
+  const [pvpIncoming, setPvpIncoming] = useState<PvpMatch | null>(null);
+  // Modal de CONFIRMAÇÃO antes das apostas (desafiado decide Aceitar/Recusar)
+  const [pvpConfirm, setPvpConfirm] = useState<PvpMatch | null>(null);
+  // uid -> matchId de partidas ATIVAS (para desabilitar duelo / oferecer modo espectador)
+  const [pvpActiveMap, setPvpActiveMap] = useState<Record<string, { matchId: string; status: string }>>({});
+  const pvpActiveRef = useRef<Record<string, { matchId: string; status: string }>>({});
+  pvpActiveRef.current = pvpActiveMap;
+
+  // Refresca as partidas ativas envolvendo eu e os contatos (realtime + polling)
+  useEffect(() => {
+    if (!uid) return;
+    const refresh = () => {
+      const contactUids = contactsRef.current.map(c => c.uid);
+      fetchActivePvpMap(uid, contactUids).then(map => setPvpActiveMap(map));
+    };
+    refresh();
+    const iv = setInterval(refresh, 3000);
+    // Atualiza também quando abre/fecha modais de duelo
+    window.addEventListener('pvp-state-change', refresh);
+    // Realtime: qualquer mudança em pvp_matches que envolva eu/meus contatos -> refresh na hora
+    const channel = supabase
+      .channel(`pvp_active_${uid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pvp_matches' }, (payload: any) => {
+        const row = payload.new || payload.old || {};
+        const involved = [row.challenger_id, row.opponent_id].filter(Boolean);
+        const mine = involved.includes(uid);
+        const anyContact = involved.some(cid => contactsRef.current.some(c => c.uid === cid));
+        if (mine || anyContact) refresh();
+      })
+      .subscribe();
+    return () => { clearInterval(iv); window.removeEventListener('pvp-state-change', refresh); supabase.removeChannel(channel); };
+  }, [uid]);
+
+  // Recebe desafios em tempo real (quando alguém me desafia pelo chat)
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = subscribeIncomingChallenges(uid, (m) => {
+      // Nunca abre as apostas direto: fecha o modal de apostas e mostra a CONFIRMAÇÃO
+      setPvpOpen(null);
+      setPvpIncoming(null);
+      setPvpConfirm(m);
+    });
+    // Se havia um desafio pendente antes de abrir o chat
+    fetchPendingChallenge(uid).then(m => {
+      if (m && !pvpConfirm && !pvpOpen) {
+        setPvpConfirm(m);
+      }
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
+  const openPvpChallenge = async (contact: ChatContact) => {
+    if (!contact || !contact.online) return;
+    // Bloqueio por recusas persistentes (1min, +1min a cada nova recusa)
+    const blockMs = getPvpBlockMs(contact.uid);
+    if (blockMs > 0) {
+      const secs = Math.ceil(blockMs / 1000);
+      showToast(`Você não pode desafiar ${contact.name.split(' ')[0]} por mais ${Math.floor(secs / 60)}m ${secs % 60}s (recusas anteriores).`);
+      return;
+    }
+    // Nova: limite de patente (máx 2 de diferença) — toast, sem travar
+    try {
+      const [ri, riOpp] = await Promise.all([getRankIndex(userData?.uid || ''), getRankIndex(contact.uid)]);
+      if (!ranksWithinTwo(ri, riOpp)) {
+        showToast('A diferença de patentes é maior que 2. Não é possível duelar (duelo desequilibrado).');
+        return;
+      }
+    } catch (e) { /* segue mesmo se falhar a leitura */ }
+    setPvpContact({ uid: contact.uid, name: contact.name, avatarConfig: (contact as any).avatarConfig, equippedItems: (contact as any).equippedItems });
+    setPvpIncoming(null);
+    setPvpOpen('challenger');
+  };
+
+  // Atualiza o mapa de partidas ativas quando o estado de duelo muda
+  useEffect(() => {
+    window.dispatchEvent(new Event('pvp-state-change'));
+  }, [pvpOpen, pvpConfirm, pvpIncoming]);
 
   const uidRef = useRef(uid);
   uidRef.current = uid;
@@ -743,6 +830,47 @@ const handleOpenWidget = () => {
             <UserPlus size={12} /> +Contato
           </button>
         )}
+        {effOnline && !settings.blockDuelRequests && !contact.blockDuelRequests && (() => {
+          const myActive = pvpActiveMap[userData?.uid];
+          const contactActive = pvpActiveMap[contact.uid];
+          if (myActive) {
+            // EU estou em um duelo -> botão desabilitado
+            return (
+              <button disabled style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: '#64748b', cursor: 'not-allowed', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }} title="Você já está em um duelo">
+                <Swords size={12} /> Em duelo
+              </button>
+            );
+          }
+          if (contactActive && contactActive.status === 'playing') {
+            // O contato está DUELANDO na arena -> botão de ESPECTADOR (olho + arena)
+            return (
+              <button
+                onClick={e => { e.stopPropagation(); navigate(`/pvp/${contactActive.matchId}?watch=${contact.uid}`); }}
+                style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: '#10b981', cursor: 'pointer', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                title={`Ver o duelo de ${contact.name.split(' ')[0]} (espectador)`}
+              >
+                <Eye size={12} /> Assistir
+              </button>
+            );
+          }
+          if (contactActive) {
+            // O contato está na PREPARAÇÃO/aposta -> duelo indisponível para os outros
+            return (
+              <button disabled style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: '#64748b', cursor: 'not-allowed', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }} title="O jogador está se preparando para um duelo">
+                <Swords size={12} /> Em duelo
+              </button>
+            );
+          }
+          return (
+            <button
+              onClick={e => { e.stopPropagation(); openPvpChallenge(contact); }}
+              style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', color: '#a78bfa', cursor: 'pointer', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+              title="Desafiar para Duelo PvP"
+            >
+              <Swords size={12} /> Duelo
+            </button>
+          );
+        })()}
       </div>
     );
   };
@@ -862,9 +990,10 @@ const handleOpenWidget = () => {
                 { key: 'pulse' as const, label: 'Notificações por pulso (glow no ícone)' },
                 { key: 'autoOpen' as const, label: 'Janela de chat individual (envelope ao receber mensagem)' },
                 { key: 'restricted' as const, label: 'Contato restrito (ninguém pode te adicionar)' },
+                { key: 'blockDuelRequests' as const, label: 'Bloquear pedidos de duelo (PvP)' },
               ].map(t => (
                 <label key={t.key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={settings[t.key]} onChange={e => updateSettings({ [t.key]: e.target.checked })} style={{ width: '15px', height: '15px', accentColor: 'var(--gold-primary)' }} />
+                  <input type="checkbox" checked={!!settings[t.key]} onChange={e => updateSettings({ [t.key]: e.target.checked })} style={{ width: '15px', height: '15px', accentColor: 'var(--gold-primary)' }} />
                   {t.label}
                 </label>
               ))}
@@ -1092,6 +1221,56 @@ const handleOpenWidget = () => {
           </div>
         </div>
       )}
+
+      {/* Confirmação de desafio PvP (antes das apostas) */}
+      {pvpConfirm && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200010, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: 'var(--bg-dark)', border: '1px solid var(--gold-primary)', borderRadius: '16px', padding: '1.5rem', width: 'min(400px, 100%)', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+            <div style={{ fontSize: '2rem' }}>⚔️</div>
+            <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text-primary)', margin: '0.5rem 0' }}>
+              {pvpConfirm.challenger_name} chamou você para um duelo!
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              {pvpConfirm.question_count} perguntas · Aposta: {pvpConfirm.bet?.challenger?.type === 'coins' ? `${pvpConfirm.bet.challenger.coins} moedas` : pvpConfirm.bet?.challenger?.type === 'item' ? 'item' : 'sem aposta'}
+            </div>
+            <div style={{ display: 'flex', gap: '0.6rem' }}>
+              <button
+                onClick={async () => {
+                  // Aceita de fato (status -> accepted) e abre o modal de apostas sem aceitação dupla
+                  const m = uid ? await acceptPvpChallenge(pvpConfirm.id, { type: 'none' }) : null;
+                  setPvpIncoming(m || pvpConfirm);
+                  setPvpOpen('opponent');
+                  setPvpConfirm(null);
+                }}
+                style={{ flex: 1, padding: '0.7rem', background: '#10b981', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                ✔ Aceitar
+              </button>
+              <button
+                onClick={async () => {
+                  if (uid) await declinePvpMatch(pvpConfirm.id, uid);
+                  setPvpConfirm(null);
+                }}
+                style={{ flex: 1, padding: '0.7rem', background: 'var(--btn-bg)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                ✖ Recusar
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* PvP Duelo */}
+      <PvpChallengeModal
+        open={pvpOpen !== null}
+        mode={pvpOpen}
+        userData={userData}
+        contact={pvpContact}
+        incomingMatch={pvpIncoming}
+        onClose={() => { setPvpOpen(null); setPvpContact(null); setPvpIncoming(null); }}
+        onStartMatch={(matchId) => { setPvpOpen(null); setPvpContact(null); setPvpIncoming(null); navigate(`/pvp/${matchId}`); }}
+      />
     </div>
   );
 }

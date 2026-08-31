@@ -83,13 +83,17 @@ export function getMinRankIndex(value: number | string | null | undefined): numb
     const name = DEFAULT_RANKS[value]?.name;
     if (name) {
       const i = RANKS.findIndex(r => r.name === name);
-      return i < 0 ? 0 : i;
+      return i < 0 ? value : i;
     }
     return value;
   }
   if (typeof value === 'string' && value) {
     const i = RANKS.findIndex(r => r.name === value);
-    return i < 0 ? 0 : i;
+    if (i >= 0) return i;
+    // Fallback: posição na lista padrão (caso a escola não tenha essa patente customizada
+    // ou a lista do tenant esteja vazia) — para não liberar o item para todos.
+    const di = DEFAULT_RANKS.findIndex(r => r.name === value);
+    return di < 0 ? 0 : di;
   }
   return 0;
 }

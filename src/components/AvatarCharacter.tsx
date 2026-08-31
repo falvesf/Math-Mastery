@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation, FunctionAnimation } from 'skinview3d';
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 // Importando THREE diretamente de dentro da dependência do skinview3d para evitar mismatch
 import * as THREE from 'skinview3d/node_modules/three';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
-import { generateVoxelItemFromImage, updateVoxelCurve } from '../lib/VoxelItemGenerator';
+import { generateVoxelItemFromImage, updateVoxelCurve, setVoxelThickness } from '../lib/VoxelItemGenerator';
 import { Eye, EyeOff, PackageX } from 'lucide-react';
 
 export interface AvatarConfig {
@@ -216,6 +216,21 @@ export function resolveModelTransform(
   return mt.common || mt.common_left || mt.battle || mt.battle_left || mt.common_female || mt.common_left_female || mt.battle_female || mt.battle_left_female;
 }
 
+// Itens 2.5D (voxel de imagem): a espessura é ASSADA nas camadas empilhadas (quase coladas).
+// Então aqui NÃO multiplicamos o Z pela espessura (isso espalharia as camadas e criaria vãos);
+// apenas re-empilhamos com a nova espessura quando ela mudar. Itens GLB: escala Z normal.
+function applyItemScale(model: THREE.Object3D, s: number, thickness: number) {
+  if (model.userData.is25D) {
+    model.scale.set(s, s, s);
+    const target = 0.12 * (thickness || 1);
+    if (Math.abs((model.userData.voxelThickness || 0.12) - target) > 0.001) {
+      setVoxelThickness(model as THREE.Group, target);
+    }
+  } else {
+    model.scale.set(s, s, s * (thickness || 1));
+  }
+}
+
 const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boolean = false) => {
   const color = "rgba(255, 255, 255, 0.4)";
   const opacity = 1;
@@ -289,6 +304,10 @@ export interface AvatarCharacterProps {
 import CustomModelViewer from './CustomModelViewer';
 
 const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons }: AvatarCharacterProps) {
+  // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
+  // useMemo garante uma referência ESTÁVEL (senão efeitos com [config] entrariam em loop).
+  const configMemo = useMemo(() => config || ({} as any), [config]);
+  config = configMemo as AvatarCharacterProps['config'];
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
@@ -694,7 +713,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 const inv = isLeftHanded ? -1 : 1;
                 
                 if (debugItemTransform && isTargetDebugItem) {
-                  model.scale.set(debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10, (debugItemTransform.scale ?? 10) * (debugItemTransform.thickness ?? 1));
+                  applyItemScale(model, debugItemTransform.scale ?? 10, debugItemTransform.thickness ?? 1);
                   model.position.set(debugItemTransform.posX * inv, debugItemTransform.posY, debugItemTransform.posZ);
                   model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY * inv, debugItemTransform.rotZ * inv);
                   model.translateY(debugItemTransform.slide);
@@ -705,7 +724,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                     || item.modelTransforms.common
                     || (Object.values(item.modelTransforms)[0] as any);
                   if (transform) {
-                    model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
+                    applyItemScale(model, transform.scale ?? 10, transform.thickness ?? 1);
                     model.position.set(transform.posX * inv, transform.posY, transform.posZ);
                     model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
                     model.translateY(transform.slide);
@@ -743,14 +762,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               let appliedTransform = false;
               const itemId = item.itemId || item.docId;
               if (debugItemTransform && debugItemId === itemId) {
-                model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, (debugItemTransform.scale ?? 16) * (debugItemTransform.thickness ?? 1));
+                applyItemScale(model, debugItemTransform.scale ?? 16, debugItemTransform.thickness ?? 1);
                 model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
                 model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
               } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
                 const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-                model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
+                applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
                 model.position.set(t.posX, t.posY, t.posZ);
                 model.rotation.set(t.rotX, t.rotY, t.rotZ);
                 model.translateY(t.slide);
@@ -792,14 +811,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               let appliedTransform = false;
               const itemId = item.itemId || item.docId;
               if (debugItemTransform && debugItemId === itemId) {
-                model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, (debugItemTransform.scale ?? 16) * (debugItemTransform.thickness ?? 1));
+                applyItemScale(model, debugItemTransform.scale ?? 16, debugItemTransform.thickness ?? 1);
                 model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
                 model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
               } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
                 const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-                model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
+                applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
                 model.position.set(t.posX, t.posY, t.posZ);
                 model.rotation.set(t.rotX, t.rotY, t.rotZ);
                 model.translateY(t.slide);
@@ -851,27 +870,30 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         if (getExtension(finalUrl).endsWith('.png')) {
            let curveX = 0;
            let curveY = 0;
+           let genThickness = 0.12;
            if (debugItemTransform && debugItemId === (item.itemId || item.docId)) {
              curveX = debugItemTransform.curveX || 0;
              curveY = debugItemTransform.curveY || 0;
+             genThickness = 0.12 * (debugItemTransform.thickness ?? 1);
            } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
              const curveT = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
              curveX = curveT.curveX || 0;
              curveY = curveT.curveY || 0;
+             genThickness = 0.12 * (curveT.thickness ?? 1);
            }
 
             const normalizedAvatarPart = item.avatarPart ? String(item.avatarPart).toLowerCase().trim() : '';
             if (normalizedAvatarPart === 'legs' || normalizedAvatarPart === 'feet') {
              Promise.all([
-               generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, 'left'),
-               generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, 'right')
+               generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, 'left', genThickness),
+               generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, 'right', genThickness)
              ]).then(([leftModel, rightModel]) => {
                 if (isCancelled) return;
                 processLoadedModel(leftModel, 'left');
                 processLoadedModel(rightModel, 'right');
              }).catch(err => console.error(err));
            } else {
-             generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY)
+             generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, undefined, genThickness)
                .then(model => {
                   if (isCancelled) return;
                   console.log(`Voxel gerado com sucesso a partir da imagem ${finalUrl}`);
@@ -1244,7 +1266,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         const inv = isLeftHanded ? -1 : 1;
 
         if (debugItemTransform && isTargetDebugItem) {
-          model.scale.set(debugItemTransform.scale ?? 10, debugItemTransform.scale ?? 10, (debugItemTransform.scale ?? 10) * (debugItemTransform.thickness ?? 1));
+          applyItemScale(model, debugItemTransform.scale ?? 10, debugItemTransform.thickness ?? 1);
           model.position.set(debugItemTransform.posX * inv, debugItemTransform.posY, debugItemTransform.posZ);
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY * inv, debugItemTransform.rotZ * inv);
           // Reset position Y, then translate
@@ -1262,7 +1284,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             || (Object.values(item.modelTransforms)[0] as any);
 
           if (transform) {
-            model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
+            applyItemScale(model, transform.scale ?? 10, transform.thickness ?? 1);
             model.position.set(transform.posX * inv, transform.posY, transform.posZ);
             model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
             model.position.y = transform.posY;
@@ -1293,7 +1315,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         const isTargetDebugItem = debugItemId === itemId;
         const defaultHeadScale = item.minecraftHeadValue ? 9.2 : 16;
         if (debugItemTransform && isTargetDebugItem) {
-          model.scale.set(debugItemTransform.scale ?? defaultHeadScale, debugItemTransform.scale ?? defaultHeadScale, (debugItemTransform.scale ?? defaultHeadScale) * (debugItemTransform.thickness ?? 1));
+          applyItemScale(model, debugItemTransform.scale ?? defaultHeadScale, debugItemTransform.thickness ?? 1);
           model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
           // For head, we might want to respect the slide, similar to hands
@@ -1305,7 +1327,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           appliedTransform = true;
         } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
           const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-          model.scale.set(t.scale ?? defaultHeadScale, t.scale ?? defaultHeadScale, (t.scale ?? defaultHeadScale) * (t.thickness ?? 1));
+          applyItemScale(model, t.scale ?? defaultHeadScale, t.thickness ?? 1);
           model.position.set(t.posX, t.posY, t.posZ);
           model.rotation.set(t.rotX, t.rotY, t.rotZ);
           model.position.y = t.posY;
@@ -1328,7 +1350,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         let appliedTransform = false;
         const isTargetDebugItem = debugItemId === itemId;
         if (debugItemTransform && isTargetDebugItem) {
-          model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, (debugItemTransform.scale ?? 16) * (debugItemTransform.thickness ?? 1));
+          applyItemScale(model, debugItemTransform.scale ?? 16, debugItemTransform.thickness ?? 1);
           model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
           model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
           model.position.y = debugItemTransform.posY;
@@ -1356,7 +1378,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       } else if (avatarPart === 'legs' || avatarPart === 'feet') {
         const isTargetDebugItem = debugItemId === itemId;
         if (debugItemTransform && isTargetDebugItem) {
-          model.scale.set(debugItemTransform.scale ?? 16, debugItemTransform.scale ?? 16, (debugItemTransform.scale ?? 16) * (debugItemTransform.thickness ?? 1));
+          applyItemScale(model, debugItemTransform.scale ?? 16, debugItemTransform.thickness ?? 1);
           model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
           
           let baseRotY = 0; // O modelo GLB exportado pelo Blockbench já está virado para a frente (0 graus)
@@ -1367,7 +1389,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           }
         } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
           const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-          model.scale.set(t.scale ?? 16, t.scale ?? 16, (t.scale ?? 16) * (t.thickness ?? 1));
+          applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
           model.position.set(t.posX, t.posY, t.posZ);
           
           let baseRotY = 0; // O modelo GLB exportado pelo Blockbench já está virado para a frente (0 graus)
@@ -1716,7 +1738,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           if (blinkTimeout) clearTimeout(blinkTimeout);
       };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skinUrls, animation, expression, equippedItemsJson, closedEyes]);
+  }, [skinUrls, animation === 'hurt', expression, equippedItemsJson, closedEyes]);
 
   useEffect(() => {
     if (!viewerRef.current) return;

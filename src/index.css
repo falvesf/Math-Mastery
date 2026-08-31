@@ -488,6 +488,48 @@ h3 {
 .sweat-drop:nth-child(2) { left: 60%; top: 16%; animation-delay: 0.35s; }
 .sweat-drop:nth-child(3) { left: 48%; top: 8%; animation-delay: 0.7s; }
 
+@keyframes pvp-bob {
+  from { transform: translateY(0); }
+  to { transform: translateY(-4px); }
+}
+
+/* Emojis de torcida: sobem, balançam levemente e desaparecem */
+.pvp-emoji-float {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  animation: pvp-emoji-up 4s ease-in forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+.pvp-emoji-char {
+  font-size: 2rem;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  animation: pvp-emoji-wiggle 0.5s ease-in-out infinite alternate;
+}
+.pvp-emoji-name {
+  font-size: 0.55rem;
+  font-weight: bold;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+@keyframes pvp-emoji-up {
+  0% { transform: translateY(0) scale(0.4); opacity: 0; }
+  12% { transform: translateY(-14px) scale(1.15); opacity: 1; }
+  22% { transform: translateY(-20px) scale(1); }
+  70% { transform: translateY(-95px) scale(1); opacity: 1; }
+  100% { transform: translateY(-130px) scale(0.9); opacity: 0; }
+}
+@keyframes pvp-emoji-wiggle {
+  from { transform: rotate(-6deg); }
+  to { transform: rotate(6deg); }
+}
+
 @keyframes sweat-fall {
   0% { transform: translateY(0) scale(1); opacity: 0.9; }
   50% { transform: translateY(18px) scale(0.7); opacity: 0.5; }

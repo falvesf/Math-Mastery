@@ -227,12 +227,15 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [currentUser, userData?.role, userData?.email]);
 
-  // Atribuir tenant ao usuário que não possui um (sem criar "tenant fantasma")
+  // Atribuir tenant ao usuário que não possui um (sem criar "tenant fantasma").
+  // NÃO auto-atribui escola aleatória: contas Google (sem escola) ficam sem tenant
+  // e escolhem a escola na tela de seleção. Contas LOCAIS criadas numa escola já
+  // têm users.tenant_id/tenant_users e caem no passo 1.
   const assignDefaultTenant = async () => {
     if (!currentUser || !uid) return;
 
     try {
-      // 1) Se o usuário já tem tenant_id em users, usar esse
+      // 1) Se o usuário já tem tenant_id em users, usar esse (contas locais criadas numa escola)
       if (userData?.tenantId) {
         const { data: userTenant } = await supabase.from('tenants').select('*').eq('id', userData.tenantId).single();
         if (userTenant) {
@@ -252,32 +255,34 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // 2) Fallback: primeira escola real ativa (nunca criar tenant fantasma)
-      const { data: realTenants } = await supabase.from('tenants').select('*').eq('status', 'active').order('name');
-      const firstReal = (realTenants || []).find(t => t.id !== DEFAULT_TENANT_ID) as Tenant | undefined;
-      if (firstReal) {
-        setTenant(firstReal);
-        setTenantId(firstReal.id);
-        setUserTenants([firstReal]);
-        // Grava no banco: users.tenant_id + tenant_users
-        await supabase.from('users').update({ tenant_id: firstReal.id }).eq('id', uid);
-        await supabase
-          .from('tenant_users')
-          .upsert({
-            tenant_id: firstReal.id,
-            user_id: uid,
-            role: userData?.role === 'admin' ? 'admin' :
-                  userData?.role === 'teacher' ? 'teacher' :
-                  userData?.role === 'coordinator' ? 'coordinator' : 'student'
-          }, { onConflict: 'tenant_id,user_id' });
-        return;
+      // 1b) userData pode estar DEFASADO (ex.: aluno recém-matriculado que escolheu a escola).
+      // Lê o tenant_id atual do BANCO e usa ELE (nunca sobrescreve com uma escola aleatória).
+      const { data: dbUser } = await supabase.from('users').select('tenant_id, role').eq('id', uid).single();
+      if (dbUser?.tenant_id) {
+        const { data: userTenant } = await supabase.from('tenants').select('*').eq('id', dbUser.tenant_id).single();
+        if (userTenant) {
+          setTenant(userTenant as Tenant);
+          setTenantId(dbUser.tenant_id);
+          setUserTenants([userTenant as Tenant]);
+          await supabase
+            .from('tenant_users')
+            .upsert({
+              tenant_id: dbUser.tenant_id,
+              user_id: uid,
+              role: dbUser.role === 'admin' ? 'admin' :
+                    dbUser.role === 'teacher' ? 'teacher' :
+                    dbUser.role === 'coordinator' ? 'coordinator' : 'student'
+            }, { onConflict: 'tenant_id,user_id' });
+          return;
+        }
       }
 
-      // 3) Sem nenhuma escola real: não criar fantasma, apenas estado vazio
+      // 2) Sem escola definida (ex.: conta Google nova): NÃO escolher aleatoriamente.
+      // Fica sem tenant — o fluxo de novo aluno mostra a tela de SELEÇÃO DE ESCOLA.
       setTenant(null);
       setTenantId(null);
       setUserTenants([]);
-      setNoTenants(true);
+      setNoTenants(false);
     } catch (err) {
       console.error('Erro ao atribuir tenant:', err);
     }
