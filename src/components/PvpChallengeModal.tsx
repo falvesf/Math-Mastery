@@ -55,6 +55,7 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
   const [myBetItemId, setMyBetItemId] = useState<string>('');
   const [rankIndex, setRankIndex] = useState(0);
   const [balance, setBalance] = useState(0);
+  const [opponentBalance, setOpponentBalance] = useState<number | null>(null);
 
   const [match, setMatch] = useState<PvpMatch | null>(incomingMatch || null);
   const [submitting, setSubmitting] = useState(false);
@@ -150,6 +151,10 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
       fetchEquippedItems(targetUid).then((data) => {
         setOpponentEquipped(normalizeEquippedItems(data || []));
       });
+      // Saldo do adversário: limita o teto comum de apostas em moedas
+      supabase.from('users').select('coins').eq('id', targetUid).single().then(({ data }) => {
+        setOpponentBalance(data?.coins || 0);
+      });
     }
   }, [open, incomingMatch, loadBase, loadMyData, contact?.uid, isChallenger]);
 
@@ -206,7 +211,15 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
 
   const maxQ = Math.max(5, Math.min(15, availableQ));
   const canChallenge = availableQ >= 5;
-  const maxCoins = maxCoinsBetFor(match?.question_count || questionCount);
+  // Teto comum: o máximo que AMBOS podem apostar em moedas é o menor saldo dos dois
+  // (e também o teto por nº de perguntas). Se o saldo do adversário ainda não carregou,
+  // usa o meu como teto.
+  const questionCountUsed = match?.question_count || questionCount;
+  const maxCoins = Math.min(maxCoinsBetFor(questionCountUsed), balance, opponentBalance ?? balance);
+
+  // Regra de coerência: se o desafiante apostou moedas, o desafiado precisa cobrir
+  // com moedas >= N ou com um item; senão o duelo fica sem aposta dos dois lados.
+  const challengerBetCoins = match && !isChallenger && challengerBet.type === 'coins' ? challengerBet.coins || 0 : 0;
 
   const handleCreate = async () => {
     if (!contact) return;
@@ -219,7 +232,7 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
       return;
     }
     if (myBetType === 'coins' && myBetCoins > balance) { showAlert('Saldo de moedas insuficiente para esta aposta.'); return; }
-    if (myBetType === 'coins' && myBetCoins > maxCoins) { showAlert(`Máximo de ${maxCoins} moedas para ${questionCount} perguntas.`); return; }
+    if (myBetType === 'coins' && myBetCoins > maxCoins) { showAlert(`Máximo de ${maxCoins} moedas para o duelo (teto comum entre os dois jogadores).`); return; }
     setSubmitting(true);
     const m = await createPvpChallenge({
       tenantId,
@@ -237,7 +250,26 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
   const handleAccept = async () => {
     if (!match) return;
     if (myBetType === 'coins' && myBetCoins > balance) { showAlert('Saldo de moedas insuficiente para esta aposta.'); return; }
-    if (myBetType === 'coins' && myBetCoins > maxCoins) { showAlert(`Máximo de ${maxCoins} moedas para ${questionCount} perguntas.`); return; }
+    if (myBetType === 'coins' && myBetCoins > maxCoins) { showAlert(`Máximo de ${maxCoins} moedas para o duelo (teto comum entre os dois jogadores).`); return; }
+    // Regra de coerência: o desafiante apostou moedas → o desafiado precisa cobrir
+    // com moedas >= N ou um item; se não cobrir, o duelo acontece sem apostas.
+    if (!isChallenger && challengerBet.type === 'coins') {
+      if (myBetType === 'coins' && myBetCoins < (challengerBet.coins || 0)) {
+        showAlert(`O desafiante apostou ${challengerBet.coins} moedas. Você precisa apostar pelo menos esse valor em moedas ou escolher um item — ou deixar sem aposta (o duelo ocorre sem apostas).`);
+        return;
+      }
+      if (myBetType === 'none' && myItems.length === 0 && balance < (challengerBet.coins || 0)) {
+        showConfirm('Você não tem moedas suficientes nem itens para cobrir a aposta do desafiante. O duelo ocorrerá SEM apostas. Continuar?').then(ok => {
+          if (ok) doAccept();
+        });
+        return;
+      }
+    }
+    doAccept();
+  };
+
+  const doAccept = async () => {
+    if (!match) return;
     setSubmitting(true);
     const m = await acceptPvpChallenge(match.id, myBet);
     setSubmitting(false);
@@ -357,17 +389,22 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
           {(match || isChallenger) && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div style={{ background: 'rgba(0,0,0,0.25)', borderRadius: '10px', padding: '0.75rem', border: '1px solid var(--border-glass)' }}>
-                <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold', marginBottom: '0.4rem' }}>Sua aposta (opcional)</div>
-                {myBetType === 'coins' && <div style={{ fontSize: '0.7rem', color: '#fbbf24', marginBottom: '0.4rem' }}>🪙 {myBetCoins} moedas (máx {Math.min(maxCoins, balance)})</div>}
+                <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold', marginBottom: '0.4rem' }}>Sua aposta {myBetType === 'none' && challengerBetCoins > 0 ? '(sem aposta → duelo sem apostas)' : '(opcional)'}</div>
+                {myBetType === 'coins' && <div style={{ fontSize: '0.7rem', color: '#fbbf24', marginBottom: '0.4rem' }}>🪙 {myBetCoins} moedas (máx {maxCoins})</div>}
                 {myBetType === 'item' && myBet.item && <div style={{ fontSize: '0.7rem', color: '#a78bfa', marginBottom: '0.4rem' }}>{myBet.item.itemTitle}</div>}
                 {myBetType === 'none' && <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '0.4rem' }}>Sem aposta</div>}
+                {challengerBetCoins > 0 && (
+                  <div style={{ fontSize: '0.65rem', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '6px', padding: '0.35rem 0.5rem', marginBottom: '0.4rem', lineHeight: '1.35' }}>
+                    O desafiante apostou <b>{challengerBetCoins} moedas</b>. Para a aposta valer, você precisa propor <b>≥ {challengerBetCoins}</b> em moedas ou <b>um item</b>. Se não cobrir, o duelo acontece <b>sem apostas</b>.
+                  </div>
+                )}
                 <select value={myBetType} onChange={e => setMyBetType(e.target.value as any)} style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.75rem' }}>
                   <option value="none">Sem aposta</option>
                   <option value="coins">🪙 Moedas</option>
                   <option value="item">🎒 Item</option>
                 </select>
                 {myBetType === 'coins' && (
-                  <input type="number" min={50} max={Math.min(maxCoins, balance)} step={50} value={myBetCoins} onChange={e => setMyBetCoins(Math.max(50, Math.min(Math.min(maxCoins, balance), Number(e.target.value) || 50)))} style={{ width: '100%', marginTop: '0.4rem', padding: '0.4rem', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.75rem' }} />
+                  <input type="number" min={challengerBetCoins > 0 ? challengerBetCoins : 50} max={maxCoins} step={50} value={myBetCoins} onChange={e => setMyBetCoins(Math.max(challengerBetCoins > 0 ? challengerBetCoins : 50, Math.min(maxCoins, Number(e.target.value) || (challengerBetCoins > 0 ? challengerBetCoins : 50))))} style={{ width: '100%', marginTop: '0.4rem', padding: '0.4rem', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.75rem' }} />
                 )}
                 {myBetType === 'item' && (
                   <select value={myBetItemId} onChange={e => setMyBetItemId(e.target.value)} style={{ width: '100%', marginTop: '0.4rem', padding: '0.4rem', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.75rem' }}>

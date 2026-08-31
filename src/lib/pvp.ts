@@ -331,11 +331,28 @@ export function getPvpBlockMs(opponentUid: string): number {
 
 // ============ Fluxo do desafio ============
 
+/**
+ * Resolve as apostas finais com a regra de coerência:
+ * - Se o DESAFIANTE apostou MOEDAS, o desafiado precisa COBRIR com moedas ≥ N
+ *   ou com um ITEM. Se não cobrir (sem itens / sem moedas suficientes), o duelo
+ *   acontece SEM apostas de ambos os lados.
+ */
+export function resolveFinalBets(challengerBet: PvpBet | undefined, opponentBet: PvpBet | undefined): PvpBetConfig {
+  const c: PvpBet = challengerBet || { type: 'none' };
+  const o: PvpBet = opponentBet || { type: 'none' };
+  if (c.type === 'coins') {
+    const covers = o.type === 'item' || (o.type === 'coins' && (o.coins || 0) >= (c.coins || 0));
+    if (!covers) return { challenger: { type: 'none' }, opponent: { type: 'none' } };
+  }
+  return { challenger: c, opponent: o };
+}
+
 export async function acceptPvpChallenge(matchId: string, opponentBet: PvpBet): Promise<PvpMatch | null> {
   const cur = await getPvpMatch(matchId);
   if (!cur) return null;
+  const finalBets = resolveFinalBets(cur.bet?.challenger, opponentBet);
   const { data, error } = await supabase.from('pvp_matches')
-    .update({ status: 'accepted', bet: { challenger: cur.bet?.challenger || { type: 'none' }, opponent: opponentBet } })
+    .update({ status: 'accepted', bet: finalBets })
     .eq('id', matchId)
     .in('status', ['challenged', 'accepted'])
     .select().single();
@@ -377,9 +394,10 @@ export async function setPvpReady(matchId: string, uid: string, avatarConfig: an
     started_at: status === 'playing' ? nowIso : cur.started_at,
     updated_at: nowIso,
   };
-  // Se o desafiado passou a aposta dele, salva (challenger já tem a dele)
+  // Se o desafiado passou a aposta dele, salva (challenger já tem a dele).
+  // Aplica a regra de coerência (moedas precisam ser cobertas por moedas ≥ N ou item).
   if (myBet && role === 'player2') {
-    updater.bet = { challenger: cur.bet?.challenger || { type: 'none' }, opponent: myBet };
+    updater.bet = resolveFinalBets(cur.bet?.challenger, myBet);
   }
 
   const { data, error } = await supabase.from('pvp_matches')
