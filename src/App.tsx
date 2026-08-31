@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { TenantProvider, useTenant } from './contexts/TenantContext';
 import { DialogProvider } from './contexts/DialogContext';
 import PendingApprovalToasts from './components/PendingApprovalToasts';
+import InstallPwaPrompt from './components/InstallPwaPrompt';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -180,6 +181,7 @@ function App() {
             <ImpersonationBanner />
             <AppRoutes />
             <StaffApprovalNotifications />
+            <InstallPwaPrompt />
           </DialogProvider>
         </TenantProvider>
       </AuthProvider>

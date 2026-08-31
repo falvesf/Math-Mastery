@@ -9,17 +9,18 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-// Registra o Service Worker para cache de imagens do Supabase Storage
-// Só ativa em produção (ou quando servido via HTTPS / localhost)
+// Registra o Service Worker (cache de imagens + instalação PWA).
+// Registro IMEDIATO (não espera o load) para o SW controlar a página cedo.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}sw.js`)
-      .then((reg) => {
-        console.log('[SW] Registrado com sucesso. Escopo:', reg.scope);
-      })
-      .catch((err) => {
-        console.warn('[SW] Falha ao registrar:', err);
-      });
-  });
+  const swUrl = `${import.meta.env.BASE_URL}sw.js`;
+  navigator.serviceWorker
+    .register(swUrl)
+    .then((reg) => {
+      console.log('[SW] Registrado com sucesso:', reg.scope);
+      // Força a atualização/controle da página pelo SW (instalação PWA)
+      reg.update();
+    })
+    .catch((err) => {
+      console.warn(`[SW] Falha ao registrar ${swUrl}:`, err);
+    });
 }
