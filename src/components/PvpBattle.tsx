@@ -611,8 +611,8 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
   const rightAnswered = isSpectator ? (specRightAttack || !!match.player2?.answered) : (lungeThem || !!themAnswered);
   const leftHurt = isSpectator ? specLeftHurt : hurtMe;
   const rightHurt = isSpectator ? specRightHurt : hurtThem;
-  const leftLunge = isSpectator ? false : lungeMe;
-  const rightLunge = isSpectator ? false : lungeThem;
+  const leftLunge = isSpectator ? specLeftAttack : lungeMe;
+  const rightLunge = isSpectator ? specRightAttack : lungeThem;
 
   return (
     <div style={{ minHeight: '100vh', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-dark)', position: 'relative', overflow: 'hidden' }}>
