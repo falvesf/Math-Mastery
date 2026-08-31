@@ -9,6 +9,7 @@ import {
   myRoleInMatch, opponentRole, normalizeEquippedItems, joinSpectator, leaveSpectator,
   sendEmoji, PVP_EMOJIS,
 } from '../lib/pvp';
+import { fetchEquippedItems } from '../lib/equippedItems';
 import { playSound, resolveAudioUrl } from '../lib/audioBank';
 import BattleTransition from './BattleTransition';
 
@@ -142,9 +143,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
   const [myRealEquip, setMyRealEquip] = useState<any[]>([]);
   useEffect(() => {
     if (!uid) return;
-    supabase.from('user_items').select('*').eq('student_id', uid).eq('equipped', true).then(({ data }) => {
-      setMyRealEquip(normalizeEquippedItems(data || []));
-    });
+    fetchEquippedItems(uid).then(data => setMyRealEquip(normalizeEquippedItems(data || [])));
   }, [uid]);
   const myRealConfig = useMemo(() => userData.avatarConfig && Object.keys(userData.avatarConfig).length > 0 ? userData.avatarConfig : {}, [JSON.stringify(userData.avatarConfig || {})]);
 
@@ -157,9 +156,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
     supabase.from('users').select('avatar_config').eq('id', oppUid).single().then(({ data }) => {
       if (data?.avatar_config) setOppRealConfig(data.avatar_config);
     });
-    supabase.from('user_items').select('*').eq('student_id', oppUid).eq('equipped', true).then(({ data }) => {
-      setOppRealEquip(normalizeEquippedItems(data || []));
-    });
+    fetchEquippedItems(oppUid).then(data => setOppRealEquip(normalizeEquippedItems(data || [])));
   }, [oppUid]);
 
   // Carrega sons globais de batalha + dano do personagem
@@ -356,20 +353,31 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
     });
   };
 
+  // Só aplica um estado se ele não for MAIS VELHO que o atual (por updated_at).
+  // Evita que o refresh (SELECT) que começou antes de um UPDATE realtime termine
+  // depois e regrida o estado — o que fazia os corações (HP) piscarem cheio/vazio.
+  const isNotStale = useCallback((m: PvpMatch | null): boolean => {
+    const cur = matchRef.current;
+    if (!cur || !m) return true;
+    const curT = cur.updated_at ? new Date(cur.updated_at).getTime() : 0;
+    const newT = m.updated_at ? new Date(m.updated_at).getTime() : curT;
+    return newT >= curT;
+  }, []);
+
   const refresh = useCallback(async () => {
     const m = await getPvpMatch(matchId);
-    if (m) {
+    if (m && isNotStale(m)) {
       setMatch(m);
       if (m.status === 'playing' && !isSpectator) {
         await tickPvp(m, uid);
       }
     }
-  }, [matchId, uid, isSpectator]);
+  }, [matchId, uid, isSpectator, isNotStale]);
 
   useEffect(() => {
     refresh();
     const unsub = subscribePvpMatch(matchId, (m) => {
-      if (!m) return;
+      if (!m || !isNotStale(m)) return;
       setMatch(m);
       if (m.status === 'playing' && !isSpectator) tickPvp(m, uid);
     });
@@ -537,6 +545,15 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
       );
     }
 
+    // Itens/configurações efetivos do placar: preferem o snapshot do match, mas
+    // caem para os itens REAIS (cache) quando o snapshot veio vazio — assim o
+    // resultado sempre mostra os equipamentos. Espectador usa só o snapshot.
+    const useRealForResult = !isSpectator;
+    const p1ResultEquip = (p1Equip && p1Equip.length > 0) ? p1Equip : (useRealForResult ? (isP1 ? myEquip : themEquip) : p1Equip);
+    const p2ResultEquip = (p2Equip && p2Equip.length > 0) ? p2Equip : (useRealForResult ? (isP1 ? themEquip : myEquip) : p2Equip);
+    const p1ResultConfig = (p1Config && Object.keys(p1Config).length > 0) ? p1Config : (useRealForResult ? (isP1 ? myConfig : themConfig) : p1Config);
+    const p2ResultConfig = (p2Config && Object.keys(p2Config).length > 0) ? p2Config : (useRealForResult ? (isP1 ? themConfig : myConfig) : p2Config);
+
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'var(--bg-dark)', padding: '2rem' }}>
         <div style={{ fontSize: '1.4rem', fontWeight: '900', color: won ? '#fbbf24' : (draw ? '#94a3b8' : '#f87171') }}>
@@ -546,7 +563,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '1.5rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <AvatarCharacter config={p1Config} equippedItems={p1Equip} size={70} animation={p1Won ? 'victory-mid' : (draw ? 'idle' : 'death-fall')} interactive={false} />
+            <AvatarCharacter config={p1ResultConfig} equippedItems={p1ResultEquip} size={70} animation={p1Won ? 'victory-mid' : (draw ? 'idle' : 'death-fall')} interactive={false} />
             <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>{abbreviate(match.player1?.name)}</div>
           </div>
           <div style={{ textAlign: 'center', paddingBottom: '0.5rem' }}>
@@ -554,7 +571,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{match.question_count} perguntas</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <AvatarCharacter config={p2Config} equippedItems={p2Equip} size={70} animation={!p1Won && !draw ? 'victory-mid' : (draw ? 'idle' : 'death-fall')} interactive={false} />
+            <AvatarCharacter config={p2ResultConfig} equippedItems={p2ResultEquip} size={70} animation={!p1Won && !draw ? 'victory-mid' : (draw ? 'idle' : 'death-fall')} interactive={false} />
             <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>{abbreviate(match.player2?.name)}</div>
           </div>
         </div>

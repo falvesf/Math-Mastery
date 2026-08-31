@@ -1,8 +1,20 @@
 import { supabase } from './supabase';
 
+export interface PvpHistoryEntry {
+  id: string;
+  won: boolean;
+  draw: boolean;
+  opponentName: string;
+  dateStr: string;
+  timestamp: number;
+  score: string;
+  prizeText?: string;
+  prizeType: 'coins_win' | 'coins_lose' | 'item_win' | 'item_lose' | 'refund' | 'none';
+}
+
 export interface AchievementItem {
   id: string;
-  type: 'rank_up' | 'quest' | 'item' | 'teacher_xp';
+  type: 'rank_up' | 'quest' | 'item' | 'teacher_xp' | 'pvp';
   title: string;
   subtitle?: string;
   imageUrl?: string;
@@ -10,6 +22,8 @@ export interface AchievementItem {
   badgeType: 'rank' | 'xp_positive' | 'xp_negative' | 'item_spent' | 'item_received';
   timestamp: number; // in milliseconds
   rawDate: string;
+  /** Histórico completo de PvP (anexado à conquista de primeira vitória) */
+  pvpDetails?: PvpHistoryEntry[];
 }
 
 /**
@@ -207,6 +221,83 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
           rawDate: new Date(rankTimestamp).toISOString()
         });
       }
+    }
+
+    // --- PROCESSAR PVP (duelos finalizados) ---
+    try {
+      const { data: pvpMatches } = await supabase
+        .from('pvp_matches')
+        .select('*')
+        .or(`challenger_id.eq.${studentUid},opponent_id.eq.${studentUid}`)
+        .eq('status', 'finished')
+        .order('finished_at', { ascending: false });
+
+      const pvpEntries: PvpHistoryEntry[] = (pvpMatches || []).map((m: any) => {
+        const role = m.challenger_id === studentUid ? 'challenger' : 'opponent';
+        const myBet = m.bet?.[role];
+        const oppBet = m.bet?.[role === 'challenger' ? 'opponent' : 'challenger'];
+        const won = !!m.winner_id && m.winner_id === studentUid;
+        const draw = !m.winner_id;
+        const oppName = role === 'challenger' ? m.opponent_name || 'Oponente' : m.challenger_name || 'Oponente';
+        const myScore = role === 'challenger' ? m.player1?.score : m.player2?.score;
+        const oppScore = role === 'challenger' ? m.player2?.score : m.player1?.score;
+
+        let prizeText: string | undefined;
+        let prizeType: PvpHistoryEntry['prizeType'] = 'none';
+        if (draw) {
+          prizeText = 'Empate — apostas devolvidas';
+          prizeType = 'refund';
+        } else if (won) {
+          const gains: string[] = [];
+          if (oppBet?.type === 'coins') { gains.push(`+${oppBet.coins} moedas`); prizeType = 'coins_win'; }
+          if (oppBet?.type === 'item') {
+            gains.push(`ganhou o item ${oppBet.item?.itemTitle || 'apostado'}`);
+            if (prizeType !== 'coins_win') prizeType = 'item_win';
+          }
+          if (gains.length > 0) prizeText = gains.join(' · ');
+        } else {
+          const losses: string[] = [];
+          if (myBet?.type === 'coins') { losses.push(`-${myBet.coins} moedas`); prizeType = 'coins_lose'; }
+          if (myBet?.type === 'item') {
+            losses.push(`perdeu o item ${myBet.item?.itemTitle || 'apostado'}`);
+            if (prizeType !== 'coins_lose') prizeType = 'item_lose';
+          }
+          if (losses.length > 0) prizeText = losses.join(' · ');
+        }
+
+        const dateStr = m.finished_at || m.created_at || new Date().toISOString();
+        return {
+          id: `pvp-${m.id || dateStr}`,
+          won,
+          draw,
+          opponentName: oppName,
+          dateStr,
+          timestamp: new Date(dateStr).getTime(),
+          score: `${myScore ?? 0} × ${oppScore ?? 0}`,
+          prizeText,
+          prizeType,
+        } as PvpHistoryEntry;
+      });
+
+      // Conquista da PRIMEIRA vitória de PvP, com o histórico completo anexado
+      const wins = pvpEntries.filter(e => e.won);
+      if (wins.length > 0) {
+        const firstWin = [...wins].sort((a, b) => a.timestamp - b.timestamp)[0];
+        const losses = pvpEntries.length - wins.length;
+        achievements.push({
+          id: 'pvp-first-win',
+          type: 'pvp',
+          title: 'Primeira Vitória em PvP',
+          subtitle: `${pvpEntries.length} duelo${pvpEntries.length > 1 ? 's' : ''} · ${wins.length} vitória${wins.length > 1 ? 's' : ''}${losses > 0 ? ` · ${losses} derrota${losses > 1 ? 's' : ''}` : ''}`,
+          badgeText: 'PvP',
+          badgeType: 'xp_positive',
+          timestamp: firstWin.timestamp,
+          rawDate: firstWin.dateStr,
+          pvpDetails: pvpEntries,
+        });
+      }
+    } catch (e) {
+      console.error('Erro ao buscar histórico de PvP:', e);
     }
 
     // Ordenar todas as conquistas em ordem cronológica decrescente (mais recente primeiro)

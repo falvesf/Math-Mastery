@@ -68,6 +68,7 @@ export interface PvpMatch {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  updated_at: string | null;
 }
 
 // ============ Helpers de conversão ============
@@ -153,6 +154,7 @@ function mapRow(row: any): PvpMatch | null {
     created_at: row.created_at,
     started_at: row.started_at,
     finished_at: row.finished_at,
+    updated_at: row.updated_at || null,
   };
 }
 
@@ -534,19 +536,23 @@ export async function tickPvp(match: PvpMatch, myUid: string): Promise<void> {
   if (m.status !== 'playing') return;
 
   // heartbeat próprio — usa COLUNA separada (não reescreve o player, evitando sobrescrever resposta)
+  // Frequência de 10s (antes 4s): cada UPDATE no pvp_matches gera uma mensagem
+  // realtime para TODOS os inscritos, então o heartbeat era o maior consumidor.
+  // Com tolerância de desconexão de 60s, o heartbeat de 10s ainda detecta
+  // quedas reais sem derrubar quem apenas pausou/aba em segundo plano.
   const role = myRoleInMatch(m, myUid);
   const meLastSeen = role === 'player1' ? m.challenger_last_seen : m.opponent_last_seen;
-  if (Date.now() - (meLastSeen || 0) > 4000) {
+  if (Date.now() - (meLastSeen || 0) > 10000) {
     const col = role === 'player1' ? 'challenger_last_seen' : 'opponent_last_seen';
     await supabase.from('pvp_matches')
-      .update({ [col]: Date.now() })
+      .update({ [col]: Date.now(), updated_at: new Date().toISOString() })
       .eq('id', m.id)
       .eq('status', 'playing');
   }
 
-  // Desconexão do oponente (sem heartbeat por 30s) -> vitória
+  // Desconexão do oponente (sem heartbeat por 60s) -> vitória
   const oppLastSeen = role === 'player1' ? m.opponent_last_seen : m.challenger_last_seen;
-  if (oppLastSeen && Date.now() - oppLastSeen > 30000) {
+  if (oppLastSeen && Date.now() - oppLastSeen > 60000) {
     await forceWinByDisconnect(m, m[role].uid);
     return;
   }

@@ -13,6 +13,7 @@ import {
   drawQuestions, maxCoinsBetFor, getRankIndex, ranksWithinTwo, normalizeEquippedItems,
   recordPvpRefusal,
 } from '../lib/pvp';
+import { fetchEquippedItems } from '../lib/equippedItems';
 
 interface Contact {
   uid: string;
@@ -104,7 +105,7 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
       getRankIndex(myUid),
       supabase.from('users').select('coins').eq('id', myUid).single(),
       supabase.from('user_items').select('*').eq('student_id', myUid).order('created_at', { ascending: false }),
-      supabase.from('user_items').select('*').eq('student_id', myUid).eq('equipped', true),
+      fetchEquippedItems(myUid),
     ]);
     setRankIndex(ri);
     setBalance(bal.data?.coins || 0);
@@ -115,7 +116,7 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
       const minRank = (i.data?.minRankRequired ?? 0);
       return ri >= (typeof minRank === 'number' ? minRank : 0);
     }));
-    setMyEquippedItems(normalizeEquippedItems(equipped.data || []));
+    setMyEquippedItems(normalizeEquippedItems(equipped || []));
   }, [myUid]);
 
   useEffect(() => {
@@ -137,7 +138,7 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
       supabase.from('users').select('avatar_config').eq('id', targetUid).single().then(({ data }) => {
         if (data?.avatar_config) setOpponentAvatar(data.avatar_config);
       });
-      supabase.from('user_items').select('*').eq('student_id', targetUid).eq('equipped', true).then(({ data }) => {
+      fetchEquippedItems(targetUid).then((data) => {
         setOpponentEquipped(normalizeEquippedItems(data || []));
       });
     }

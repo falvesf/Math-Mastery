@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
@@ -39,6 +39,7 @@ import { usePermissions, getPanelRoleName, panelLabel, baseRolePanelLabel } from
 import StatDistributionModal from '../components/StatDistributionModal';
 import NintendoHeart from '../components/NintendoHeart';
 import { fetchStudentAchievementHistory } from '../lib/achievementHistory';
+import { fetchEquippedItems, invalidateEquippedItems } from '../lib/equippedItems';
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
   classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
@@ -130,6 +131,7 @@ export default function Dashboard() {
   const [profileTab, setProfileTab] = useState('overview');
   const [xpHistory, setXpHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [expandedPvpId, setExpandedPvpId] = useState<string | null>(null);
 
   // Companion (boneco) - dicas para iniciantes
   const [onboarding, setOnboarding] = useState<Record<string, boolean>>(userData?.inventoryPreferences?.onboarding || {});
@@ -853,7 +855,7 @@ export default function Dashboard() {
     if (!userData) return;
     const fetchEquipped = async () => {
       try {
-        const { data: snapEquip } = await supabase.from('user_items').select('*').eq('student_id', userData.uid).eq('equipped', true);
+        const snapEquip = await fetchEquippedItems(userData.uid);
         const eq: EquippedItem[] = [];
         if (snapEquip) {
           snapEquip.forEach((d: any) => {
@@ -892,6 +894,11 @@ export default function Dashboard() {
     };
     fetchEquipped();
   }, [userData?.uid, userData?.studentViewActive, inventoryRefresh]);
+
+  // Invalida o cache de itens equipados quando o jogador equipa/desequipa algo
+  useEffect(() => {
+    if (inventoryRefresh > 0 && userData?.uid) invalidateEquippedItems(userData.uid);
+  }, [inventoryRefresh, userData?.uid]);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -3252,6 +3259,8 @@ export default function Dashboard() {
                         const isRank = item.type === 'rank_up';
                         const isItem = item.type === 'item';
                         const isNegative = item.badgeType === 'xp_negative';
+                        const isPvp = item.type === 'pvp';
+                        const isPvpExpanded = expandedPvpId === item.id;
 
                         let borderColor = 'var(--gold-primary)';
                         let badgeBg = 'rgba(251, 191, 36, 0.15)';
@@ -3265,6 +3274,10 @@ export default function Dashboard() {
                           borderColor = '#3b82f6';
                           badgeBg = 'rgba(59, 130, 246, 0.15)';
                           badgeColor = '#60a5fa';
+                        } else if (isPvp) {
+                          borderColor = '#f43f5e';
+                          badgeBg = 'rgba(244, 63, 94, 0.18)';
+                          badgeColor = '#fb7185';
                         } else if (isNegative) {
                           borderColor = 'var(--accent-red)';
                           badgeBg = 'rgba(239, 68, 68, 0.15)';
@@ -3274,32 +3287,64 @@ export default function Dashboard() {
                         const dateObj = item.timestamp ? (typeof item.timestamp === 'number' ? new Date(item.timestamp) : (item.timestamp.seconds ? new Date(item.timestamp.seconds * 1000) : new Date(item.timestamp))) : new Date();
 
                         return (
-                          <div key={item.id || index} style={{ padding: '0.9rem 1.1rem', background: 'rgba(0,0,0,0.25)', borderRadius: '12px', borderLeft: `4px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
-                              {item.imageUrl ? (
-                                <img src={item.imageUrl} alt="" style={{ width: '38px', height: '38px', objectFit: 'contain', borderRadius: '8px', flexShrink: 0 }} />
-                              ) : (
-                                <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                  {isRank ? <Trophy size={20} color="#c084fc" /> : isItem ? <Package size={20} color="#60a5fa" /> : <Star size={20} color="var(--gold-primary)" />}
-                                </div>
-                              )}
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                                <h4 style={{ fontSize: '0.95rem', margin: '0 0 0.15rem 0', fontWeight: 'bold', color: 'var(--text-primary)', whiteSpace: 'normal' }}>
-                                  {item.title || item.evalName}
-                                </h4>
-                                {item.subtitle && (
-                                  <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                    {item.subtitle}
-                                  </p>
+                          <div key={item.id || index} style={{ padding: '0.9rem 1.1rem', background: 'rgba(0,0,0,0.25)', borderRadius: '12px', borderLeft: `4px solid ${borderColor}`, cursor: isPvp ? 'pointer' : 'default' }} onClick={isPvp ? () => setExpandedPvpId(isPvpExpanded ? null : item.id) : undefined}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
+                                {item.imageUrl ? (
+                                  <img src={item.imageUrl} alt="" style={{ width: '38px', height: '38px', objectFit: 'contain', borderRadius: '8px', flexShrink: 0 }} />
+                                ) : (
+                                  <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    {isRank ? <Trophy size={20} color="#c084fc" /> : isItem ? <Package size={20} color="#60a5fa" /> : isPvp ? <Swords size={20} color="#fb7185" /> : <Star size={20} color="var(--gold-primary)" />}
+                                  </div>
                                 )}
-                                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
-                                  Data: {dateObj.toLocaleDateString('pt-BR')} | {dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                </span>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <h4 style={{ fontSize: '0.95rem', margin: '0 0 0.15rem 0', fontWeight: 'bold', color: 'var(--text-primary)', whiteSpace: 'normal' }}>
+                                    {item.title || item.evalName}
+                                  </h4>
+                                  {item.subtitle && (
+                                    <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                      {item.subtitle}
+                                    </p>
+                                  )}
+                                  <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
+                                    Data: {dateObj.toLocaleDateString('pt-BR')} | {dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: badgeColor, background: badgeBg, padding: '0.35rem 0.75rem', borderRadius: '20px', whiteSpace: 'nowrap', border: `1px solid ${borderColor}40` }}>
+                                  {item.badgeText || (item.xpGained !== undefined ? `${item.xpGained > 0 ? '+' : ''}${item.xpGained} XP` : 'Conquista')}
+                                </div>
+                                {isPvp && (isPvpExpanded ? <ChevronDown size={16} color="#fb7185" /> : <ChevronRight size={16} color="#fb7185" />)}
                               </div>
                             </div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: badgeColor, background: badgeBg, padding: '0.35rem 0.75rem', borderRadius: '20px', whiteSpace: 'nowrap', border: `1px solid ${borderColor}40` }}>
-                              {item.badgeText || (item.xpGained !== undefined ? `${item.xpGained > 0 ? '+' : ''}${item.xpGained} XP` : 'Conquista')}
-                            </div>
+
+                            {isPvp && isPvpExpanded && (
+                              <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {(item.pvpDetails || []).length === 0 ? (
+                                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Nenhum duelo registrado.</p>
+                                ) : item.pvpDetails.map((e: any) => (
+                                  <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.45rem 0.65rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px' }}>
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: e.won ? 'var(--accent-green, #10b981)' : e.draw ? 'var(--gold-primary)' : 'var(--accent-red)' }}>
+                                        {e.won ? '🏆 Vitória' : e.draw ? '🤝 Empate' : '💀 Derrota'} vs {e.opponentName}
+                                      </div>
+                                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                        {new Date(e.timestamp).toLocaleDateString('pt-BR')} | {new Date(e.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>{e.score}</div>
+                                      {e.prizeText && (
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 'bold', color: e.won ? 'var(--accent-green, #10b981)' : e.draw ? 'var(--gold-primary)' : 'var(--accent-red)' }}>
+                                          {e.prizeText}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         );
                       })
