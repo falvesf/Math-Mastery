@@ -7,9 +7,10 @@ import {
   type PvpMatch, type PvpPlayerState,
   getPvpMatch, subscribePvpMatch, submitPvpAnswer, tickPvp,
   myRoleInMatch, opponentRole, normalizeEquippedItems, joinSpectator, leaveSpectator,
-  sendEmoji, PVP_EMOJIS,
+  sendEmoji, PVP_EMOJIS, awardSpectateRewards,
 } from '../lib/pvp';
 import { fetchEquippedItems } from '../lib/equippedItems';
+import { useDialog } from '../contexts/DialogContext';
 import { playSound, resolveAudioUrl } from '../lib/audioBank';
 import BattleTransition from './BattleTransition';
 
@@ -45,6 +46,7 @@ function loadArenaDebug() {
 
 export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBattleProps) {
   const isSpectator = !!watchUid && watchUid !== userData.uid;
+  const { showToast } = useDialog();
   const [match, setMatch] = useState<PvpMatch | null>(null);
   const [now, setNow] = useState(Date.now());
   const [answerLock, setAnswerLock] = useState(false);
@@ -84,6 +86,8 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
 
   const matchRef = useRef<PvpMatch | null>(null);
   matchRef.current = match;
+  const leftRef = useRef<PvpPlayerState | null>(null);
+  const rightRef = useRef<PvpPlayerState | null>(null);
   const lastFetchRef = useRef(0);
 
   const FATALS = ['death-fall', 'death-slice', 'death-evaporate', 'death-explode'];
@@ -217,7 +221,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
   // Espectador: registra no duelo e sai ao fechar
   useEffect(() => {
     if (!isSpectator || !matchId) return;
-    joinSpectator(matchId, userData.uid, userData.name, userData.avatarConfig);
+    joinSpectator(matchId, userData.uid, userData.name, userData.avatarConfig, watchUid);
     return () => { leaveSpectator(matchId, userData.uid); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSpectator, matchId]);
@@ -395,6 +399,23 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
     }, 1000);
     return () => { unsub(); clearInterval(timer); };
   }, [matchId, uid, refresh]);
+
+  // Recompensa da PRIMEIRA batalha completa assistida (espectador): +100 moedas e
+  // Caixa de Presente (ou +200 moedas se a tenant não tiver a caixa cadastrada).
+  const awardedSpectateRef = useRef(false);
+  useEffect(() => {
+    if (!isSpectator || !uid || !match || match.status !== 'finished') return;
+    if (awardedSpectateRef.current) return;
+    awardedSpectateRef.current = true;
+    awardSpectateRewards(match, uid, userData.tenantId).then(res => {
+      if (res.awardedFirst) {
+        showToast(`🎁 Recompensa de espectador: ${res.firstPrize}!`);
+      } else if (res.shareCoins > 0) {
+        showToast(`🎉 Torcida vencedora: ${res.sharePrize}!`);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSpectator, uid, match?.id, match?.status]);
 
   if (!match) {
     return (
@@ -620,6 +641,14 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
   // player2 direita), sem "meu" personagem. Participante: eu à esquerda, oponente à direita.
   const left = isSpectator ? match.player1 : me;
   const right = isSpectator ? match.player2 : them;
+  // Fallback: se um player vier nulo/quebrado (durante respostas), mantém o último
+  // estado válido — evita o nome virar "?" e os corações zerarem por alguns instantes.
+  const isValidPlayer = (p: PvpPlayerState | null | undefined): p is PvpPlayerState =>
+    !!p && typeof p.maxHp === 'number' && typeof p.hp === 'number' && !!p.name;
+  if (isValidPlayer(left)) leftRef.current = left;
+  if (isValidPlayer(right)) rightRef.current = right;
+  const safeLeft = isValidPlayer(left) ? left : leftRef.current;
+  const safeRight = isValidPlayer(right) ? right : rightRef.current;
   const leftConfig = isSpectator ? p1Config : myConfig;
   const rightConfig = isSpectator ? p2Config : themConfig;
   const leftEquip = isSpectator ? p1Equip : myEquip;
@@ -648,7 +677,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
         )}
         {/* Espectadores (figuras pequenas vibrando ao fundo) */}
         {(() => {
-          const specs = (match.spectators || []).filter((s: any) => s.uid !== uid && s.uid !== match.player1?.uid && s.uid !== match.player2?.uid);
+          const specs = (match.spectators || []).filter((s: any) => s.active !== false && s.uid !== uid && s.uid !== match.player1?.uid && s.uid !== match.player2?.uid);
           if (specs.length === 0) return null;
           return (
             <div style={{ position: 'absolute', top: '0.4rem', left: '50%', transform: 'translateX(-50%)', zIndex: 3, display: 'flex', gap: '0.35rem', alignItems: 'flex-end' }}>
@@ -680,24 +709,24 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
         <div style={{ position: 'absolute', inset: 0, zIndex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: `${arenaGap}px` }}>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: leftLunge ? `translateX(${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
             <AvatarCharacter config={leftConfig} equippedItems={leftEquip} size={170} animation={leftAnswered ? 'attack' : (leftHurt ? 'hurt' : 'idle')} interactive={false} hurt={leftHurt} />
-            <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#fbbf24', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(left?.name)}</div>
+            <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#fbbf24', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(safeLeft?.name)}</div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '0.3rem' }}>
-              <div style={{ fontSize: '1.3rem', fontWeight: '900', color: 'var(--gold-primary)' }}>{left?.score}</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: '900', color: 'var(--gold-primary)' }}>{safeLeft?.score}</div>
               <div style={{ display: 'flex', gap: '2px' }}>
-                {Array.from({ length: left?.maxHp || 3 }).map((_, i) => (
-                  <Heart key={i} size={16} fill={i < (left?.hp || 0) ? '#ef4444' : 'transparent'} color={i < (left?.hp || 0) ? '#ef4444' : '#444'} />
+                {Array.from({ length: safeLeft?.maxHp || 3 }).map((_, i) => (
+                  <Heart key={i} size={16} fill={i < (safeLeft?.hp || 0) ? '#ef4444' : 'transparent'} color={i < (safeLeft?.hp || 0) ? '#ef4444' : '#444'} />
                 ))}
               </div>
             </div>
           </div>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: rightLunge ? `translateX(-${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
             <AvatarCharacter config={rightConfig} equippedItems={rightEquip} size={170} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'idle')} interactive={false} hurt={rightHurt} role="enemy" />
-            <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#94a3b8', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(right?.name)}</div>
+            <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#94a3b8', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(safeRight?.name)}</div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '0.3rem' }}>
-              <div style={{ fontSize: '1.3rem', fontWeight: '900', color: '#94a3b8' }}>{right?.score}</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: '900', color: '#94a3b8' }}>{safeRight?.score}</div>
               <div style={{ display: 'flex', gap: '2px' }}>
-                {Array.from({ length: right?.maxHp || 3 }).map((_, i) => (
-                  <Heart key={i} size={16} fill={i < (right?.hp || 0) ? '#ef4444' : 'transparent'} color={i < (right?.hp || 0) ? '#ef4444' : '#444'} />
+                {Array.from({ length: safeRight?.maxHp || 3 }).map((_, i) => (
+                  <Heart key={i} size={16} fill={i < (safeRight?.hp || 0) ? '#ef4444' : 'transparent'} color={i < (safeRight?.hp || 0) ? '#ef4444' : '#444'} />
                 ))}
               </div>
             </div>

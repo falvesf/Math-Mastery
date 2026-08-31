@@ -44,6 +44,7 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
   const { showAlert, showConfirm, showToast } = useDialog();
 
   const [arenas, setArenas] = useState<any[]>([]);
+  const [arenaTenantNames, setArenaTenantNames] = useState<Record<string, string>>({});
   const [availableQ, setAvailableQ] = useState(0);
   const [arenaIdx, setArenaIdx] = useState(0);
   const [questionCount, setQuestionCount] = useState(5);
@@ -98,6 +99,14 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
     const [a, q] = await Promise.all([fetchArenas(tenantId), fetchAvailableQuestions(tenantId)]);
     setArenas(a);
     setAvailableQ(q.length);
+    // Nomes das escolas donas das arenas (inclui outras tenants no PvP)
+    const tenantIds = Array.from(new Set((a || []).map((x: any) => x.tenant_id).filter(Boolean)));
+    const names: Record<string, string> = {};
+    if (tenantIds.length > 0) {
+      const { data: ts } = await supabase.from('tenants').select('id, name').in('id', tenantIds);
+      (ts || []).forEach((t: any) => { names[t.id] = t.name; });
+    }
+    setArenaTenantNames(names);
   }, [tenantId]);
 
   const loadMyData = useCallback(async () => {
@@ -318,7 +327,14 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
                   </div>
                   <button onClick={() => setArenaIdx(Math.min(arenas.length - 1, arenaIdx + 1))} disabled={arenaIdx >= arenas.length - 1} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0.4rem', color: 'var(--text-primary)', cursor: 'pointer' }}><ChevronRight size={16} /></button>
                 </div>
-                {arenas[arenaIdx] && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>{arenas[arenaIdx].title || arenas[arenaIdx].name || 'Arena'}</div>}
+                {arenas[arenaIdx] && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>
+                    {arenas[arenaIdx].title || arenas[arenaIdx].name || 'Arena'}
+                    {arenas[arenaIdx].tenant_id && arenaTenantNames[arenas[arenaIdx].tenant_id] && (
+                      <span style={{ marginLeft: '0.4rem', padding: '0.05rem 0.4rem', borderRadius: '8px', background: 'rgba(139,92,246,0.2)', color: '#c084fc', fontSize: '0.62rem', fontWeight: 'bold' }}>
+                        {arenaTenantNames[arenas[arenaIdx].tenant_id]}
+                      </span>
+                    )}
+                  </div>}
               </div>
 
               <div>

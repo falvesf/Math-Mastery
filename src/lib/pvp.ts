@@ -181,10 +181,20 @@ export async function fetchAvailableQuestions(): Promise<any[]> {
 
 export async function fetchArenas(tenantId?: string): Promise<any[]> {
   try {
-    const q = supabase.from('quests').select('*');
-    if (tenantId) q.eq('tenant_id', tenantId);
-    const { data } = await q;
-    return (data || []).filter((x: any) => (x.battle_bg_url || x.battleBgUrl));
+    // Arenas de duelo: inclui TODOS os tenants (gama maior de possibilidades no PvP),
+    // além das da própria escola. Deduplica por fundo e ordena por nome.
+    const { data } = await supabase.from('quests').select('*');
+    const arenas = (data || []).filter((x: any) => (x.battle_bg_url || x.battleBgUrl));
+    const seen = new Set<string>();
+    const unique = arenas.filter((a: any) => {
+      const url = a.battle_bg_url || a.battleBgUrl || '';
+      if (seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    });
+    return unique.sort((a: any, b: any) =>
+      (a.title || a.name || '').localeCompare(b.title || b.name || '')
+    );
   } catch (e) {
     console.error('Erro ao buscar arenas:', e);
     return [];
@@ -405,6 +415,7 @@ export async function submitPvpAnswer(matchId: string, uid: string, answerIndex:
   if (!cur || cur.status !== 'playing') return;
   const role = myRoleInMatch(cur, uid);
   const me = cur[role];
+  if (!me) return;
   if (me.answered) return;
   const q = cur.questions[cur.current_question_index];
   const answerTime = Date.now() - (cur.question_started_at || Date.now());
@@ -424,7 +435,7 @@ export async function submitPvpAnswer(matchId: string, uid: string, answerIndex:
   // Só avança quando alguém acertou OU ambos responderam.
   for (let i = 0; i < 6; i++) {
     const fresh = await getPvpMatch(matchId);
-    if (fresh && fresh.status === 'playing') {
+    if (fresh && fresh.status === 'playing' && fresh.player1 && fresh.player2) {
       const qf = fresh.questions[fresh.current_question_index];
       const c1 = fresh.player1.answered && fresh.player1.answerIndex === qf?.correctIndex;
       const c2 = fresh.player2.answered && fresh.player2.answerIndex === qf?.correctIndex;
@@ -456,6 +467,9 @@ async function resolveAndAdvance(match: PvpMatch): Promise<void> {
   if (!q) return;
   const p1 = match.player1;
   const p2 = match.player2;
+  // Estado inválido (jogador nulo): NÃO avança nem grava — evita escrever objetos
+  // quebrados (sem nome/hp) que fazem o nome virar "?" e os corações zerarem.
+  if (!p1 || !p2) return;
   const correct = q.correctIndex;
 
   const p1Correct = p1.answered && p1.answerIndex === correct;
@@ -559,6 +573,8 @@ export async function tickPvp(match: PvpMatch, myUid: string): Promise<void> {
 
   const q = m.questions[m.current_question_index];
   if (!q) return;
+  // Estado inválido (jogador nulo) → não resolve/avança para não gravar quebrado
+  if (!m.player1 || !m.player2) return;
   const timeLimit = (q?.timeLimit || 20) * 1000;
   const elapsed = Date.now() - (m.question_started_at || Date.now());
   const c1 = m.player1.answered && m.player1.answerIndex === q.correctIndex;
@@ -664,9 +680,9 @@ export async function fetchActivePvpMap(uid: string, contactUids: string[]): Pro
 
 // ============ Espectadores ============
 
-export async function joinSpectator(matchId: string, uid: string, name: string, avatarConfig: any): Promise<void> {
+export async function joinSpectator(matchId: string, uid: string, name: string, avatarConfig: any, watchUid?: string): Promise<void> {
   try {
-    await supabase.rpc('pvp_join_spectator', { p_match_id: matchId, p_uid: uid, p_name: name, p_avatar_config: avatarConfig || {} });
+    await supabase.rpc('pvp_join_spectator', { p_match_id: matchId, p_uid: uid, p_name: name, p_avatar_config: avatarConfig || {}, p_watch_uid: watchUid || uid });
   } catch (e) {
     console.error('Erro ao entrar como espectador:', e);
   }
@@ -733,4 +749,181 @@ export async function getRankIndex(uid: string): Promise<number> {
 
 export function ranksWithinTwo(a: number, b: number): boolean {
   return Math.abs(a - b) <= 2;
+}
+
+// ============ Recompensa de primeira batalha assistida (espectador) ============
+
+const GIFT_BOX_RE = /caixa\s*de\s*presente|gift\s*box|caixa\s*presente/i;
+
+// Procura o item "Caixa de presente" disponível para a tenant (local ou global)
+async function findGiftBoxItem(tenantId?: string): Promise<any | null> {
+  try {
+    let q = supabase.from('store_items').select('*').eq('active', true);
+    if (tenantId) {
+      q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    } else {
+      q = q.eq('is_global', true);
+    }
+    const { data } = await q;
+    return (data || []).find((r: any) => {
+      const title = r.data?.title || r.name || '';
+      return GIFT_BOX_RE.test(title);
+    }) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export interface SpectateRewardResult {
+  awardedFirst: boolean;
+  firstPrize: string;
+  shareCoins: number;
+  sharePrize?: string;
+}
+
+// Recompensa grande (1ª vez) só pode ocorrer UMA vez por usuário. Guard na sessão
+// (síncrono, antes de qualquer await) evita corridas mesmo com o banco lento.
+const firstSpectateClaimed = new Set<string>();
+
+const SPECTATE_COLLECTION = 'spectate_rewards';
+
+// Lê o histórico de recompensas de espectador (system_collections, com fallback legado).
+async function readSpectateRewards(uid: string): Promise<any[]> {
+  try {
+    const { data } = await supabase
+      .from('system_collections')
+      .select('data')
+      .eq('collection_name', SPECTATE_COLLECTION)
+      .eq('doc_id', uid)
+      .limit(1);
+    const d = data?.[0]?.data;
+    if (d && Array.isArray(d.rewards)) return d.rewards;
+  } catch (e) { /* ignore */ }
+  try {
+    const { data: u } = await supabase.from('users').select('inventory_preferences').eq('id', uid).single();
+    const p = (u?.inventory_preferences as any) || {};
+    if (Array.isArray(p.spectateRewards)) return p.spectateRewards;
+  } catch (e) { /* ignore */ }
+  return [];
+}
+
+async function appendSpectateReward(uid: string, rewards: any[]) {
+  try {
+    await supabase.from('system_collections').delete().eq('collection_name', SPECTATE_COLLECTION).eq('doc_id', uid);
+    await supabase.from('system_collections').insert({ collection_name: SPECTATE_COLLECTION, doc_id: uid, tenant_id: null, data: { rewards } });
+  } catch (e) {
+    console.error('Erro ao gravar histórico de espectador:', e);
+  }
+}
+
+// Concede um item da loja ao usuário (user_items), com a estrutura padrão.
+async function grantStoreItem(spectatorUid: string, item: any, tenantId?: string): Promise<void> {
+  const d = item.data || {};
+  await supabase.from('user_items').insert({
+    student_id: spectatorUid,
+    item_id: item.id,
+    equipped: false,
+    data: {
+      itemTitle: d.title || item.name || 'Caixa de Presente',
+      itemDescription: d.description || '',
+      itemType: d.type || item.type || 'consumable',
+      itemImageUrl: d.imageUrl || '',
+      gameEffect: d.gameEffect || 'none',
+      usableInQuest: d.usableInQuest || false,
+      battleSoundUrl: d.battleSoundUrl || '',
+      quantity: 1,
+      giftedBy: 'Recompensa Espectador PvP',
+      avatarPart: d.avatarPart || null,
+      itemCategory: d.itemCategory || 'none',
+      baseAttributeType: d.baseAttributeType || 'none',
+      baseAttributeValue: d.baseAttributeValue || 0,
+      gameModelUrl: d.gameModelUrl || '',
+      modelTextureUrl: d.modelTextureUrl || '',
+      minecraftHeadValue: d.minecraftHeadValue || '',
+      modelTransforms: d.modelTransforms || null,
+      adds: [],
+      rarity: d.rarity || 'common',
+    },
+    tenant_id: item.tenant_id || tenantId || null,
+  });
+}
+
+/**
+ * Recompensas de espectador ao ver uma luta COMPLETA (status finished):
+ * - 1ª vez (uma única vez): +100 moedas + Caixa de Presente, ou +200 moedas
+ *   se a tenant não tiver a caixa cadastrada.
+ * - Demais vezes: percentual de 0,25% do total de apostas (moedas) DIVIDIDO pelo
+ *   número de espectadores torcendo do lado do VENCEDOR, apenas se o espectador
+ *   estiver torcendo pelo vencedor (watchUid === winner_id). Torcendo pelo
+ *   perdedor → nenhuma recompensa.
+ */
+export async function awardSpectateRewards(
+  match: PvpMatch,
+  spectatorUid: string,
+  tenantId?: string
+): Promise<SpectateRewardResult> {
+  try {
+    // Guard da recompensa GRANDE: campo direto no banco (users.spectate_rewarded).
+    // 0 = nunca assistiu até o fim (pode receber); 1 = já recebeu (só as menores).
+    const { data: u } = await supabase.from('users').select('spectate_rewarded, coins').eq('id', spectatorUid).single();
+    const alreadyRewarded = (u?.spectate_rewarded || 0) === 1;
+    const nowIso = new Date().toISOString();
+    const score = `${match.player1?.score ?? 0} × ${match.player2?.score ?? 0}`;
+
+    // ---- PRIMEIRA vez: recompensa grande (garante UMA única vez) ----
+    if (!alreadyRewarded && !firstSpectateClaimed.has(spectatorUid)) {
+      // Claim síncrono: uma chamada concorrente já vê o uid reservado → sem duplicar
+      firstSpectateClaimed.add(spectatorUid);
+      // 1. MARCA 1 no banco ANTES de conceder (mesmo se a recompensa falhar, o
+      //    campo já ficou 1 → nunca mais recebe a recompensa máxima de novo)
+      await supabase.from('users').update({ spectate_rewarded: 1 }).eq('id', spectatorUid);
+
+      // 2. Concede a recompensa
+      const giftItem = await findGiftBoxItem(tenantId);
+      const coins = giftItem ? 100 : 200;
+      let prize = '';
+      if (giftItem) {
+        await supabase.from('users').update({ coins: (u?.coins || 0) + 100 }).eq('id', spectatorUid);
+        await grantStoreItem(spectatorUid, giftItem, tenantId);
+        prize = '100 moedas + Caixa de Presente';
+      } else {
+        await supabase.from('users').update({ coins: (u?.coins || 0) + 200 }).eq('id', spectatorUid);
+        prize = '200 moedas';
+      }
+
+      // 3. Registra no histórico
+      const rewards = await readSpectateRewards(spectatorUid);
+      await appendSpectateReward(spectatorUid, [...rewards, { matchId: match.id, date: nowIso, score, prize, coins, kind: 'first' }]);
+      return { awardedFirst: true, firstPrize: prize, shareCoins: 0 };
+    }
+
+    // ---- Próximas vezes: 0,25% da aposta dividido pelos espectadores do vencedor.
+    // O lado usado é o REGISTRADO (match.spectators), imutável para o duelo — quem
+    // tentar trocar de lado não engana a premiação. Precisa estar ATIVO até o final
+    // e o lado registrado ter vencido.
+    const mySpec = (match.spectators || []).find((s: any) => s.uid === spectatorUid);
+    if (mySpec && mySpec.active !== false && match.winner_id && mySpec.watchUid === match.winner_id) {
+      const bet = match.bet || {};
+      const totalBet =
+        ((bet.challenger?.type === 'coins' ? bet.challenger.coins : 0) || 0) +
+        ((bet.opponent?.type === 'coins' ? bet.opponent.coins : 0) || 0);
+      if (totalBet > 0) {
+        const specsOnWinner = (match.spectators || []).filter((s: any) => s.active !== false && s.watchUid === match.winner_id).length;
+        const divisor = Math.max(1, specsOnWinner);
+        const share = Math.floor((totalBet * 0.0025) / divisor);
+        if (share > 0) {
+          const { data: u2 } = await supabase.from('users').select('coins').eq('id', spectatorUid).single();
+          await supabase.from('users').update({ coins: (u2?.coins || 0) + share }).eq('id', spectatorUid);
+          const sharePrize = `+${share} moedas (0,25% da aposta)`;
+          const rewards = await readSpectateRewards(spectatorUid);
+          await appendSpectateReward(spectatorUid, [...rewards, { matchId: match.id, date: nowIso, score, prize: sharePrize, coins: share, kind: 'share' }]);
+          return { awardedFirst: false, firstPrize: '', shareCoins: share, sharePrize };
+        }
+      }
+    }
+    return { awardedFirst: false, firstPrize: '', shareCoins: 0 };
+  } catch (e) {
+    console.error('Erro ao premiar espectador PvP:', e);
+    return { awardedFirst: false, firstPrize: '', shareCoins: 0 };
+  }
 }

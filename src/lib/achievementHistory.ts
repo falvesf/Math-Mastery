@@ -300,6 +300,39 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
       console.error('Erro ao buscar histórico de PvP:', e);
     }
 
+    // --- RECOMPENSAS DE ESPECTADOR PVP (primeira batalha assistida) ---
+    let spectateRewards: any[] = [];
+    const legacySpectate = (user as any)?.inventory_preferences?.spectateRewards;
+    if (Array.isArray(legacySpectate)) spectateRewards = legacySpectate;
+    try {
+      const { data: specDocs } = await supabase
+        .from('system_collections')
+        .select('data')
+        .eq('collection_name', 'spectate_rewards')
+        .eq('doc_id', studentUid)
+        .limit(1);
+      const d = specDocs?.[0]?.data;
+      if (d && Array.isArray(d.rewards)) spectateRewards = d.rewards;
+    } catch (e) { /* ignore */ }
+    if (spectateRewards.length > 0) {
+      spectateRewards.forEach((r: any, i: number) => {
+        const dateStr = r.date || new Date().toISOString();
+        // 'share' (0,25% da aposta) não é a primeira vez — título próprio.
+        // Fallback por texto para registros antigos.
+        const isShare = r.kind === 'share' || (typeof r.prize === 'string' && r.prize.includes('0,25%'));
+        achievements.push({
+          id: `spectate-${r.matchId || i}`,
+          type: 'pvp',
+          title: isShare ? 'Recompensa de Torcida Vencedora' : 'Primeira Batalha Assistida (Espectador)',
+          subtitle: r.score ? `Placar: ${r.score}` : undefined,
+          badgeText: r.prize || '+100 moedas',
+          badgeType: 'xp_positive',
+          timestamp: new Date(dateStr).getTime(),
+          rawDate: dateStr,
+        });
+      });
+    }
+
     // Ordenar todas as conquistas em ordem cronológica decrescente (mais recente primeiro)
     achievements.sort((a, b) => b.timestamp - a.timestamp);
 

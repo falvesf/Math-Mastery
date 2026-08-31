@@ -3261,6 +3261,7 @@ export default function Dashboard() {
                         const isNegative = item.badgeType === 'xp_negative';
                         const isPvp = item.type === 'pvp';
                         const isPvpExpanded = expandedPvpId === item.id;
+                        const hasPvpDetails = isPvp && (item.pvpDetails || []).length > 0;
 
                         let borderColor = 'var(--gold-primary)';
                         let badgeBg = 'rgba(251, 191, 36, 0.15)';
@@ -3287,7 +3288,7 @@ export default function Dashboard() {
                         const dateObj = item.timestamp ? (typeof item.timestamp === 'number' ? new Date(item.timestamp) : (item.timestamp.seconds ? new Date(item.timestamp.seconds * 1000) : new Date(item.timestamp))) : new Date();
 
                         return (
-                          <div key={item.id || index} style={{ padding: '0.9rem 1.1rem', background: 'rgba(0,0,0,0.25)', borderRadius: '12px', borderLeft: `4px solid ${borderColor}`, cursor: isPvp ? 'pointer' : 'default' }} onClick={isPvp ? () => setExpandedPvpId(isPvpExpanded ? null : item.id) : undefined}>
+                          <div key={item.id || index} style={{ padding: '0.9rem 1.1rem', background: 'rgba(0,0,0,0.25)', borderRadius: '12px', borderLeft: `4px solid ${borderColor}`, cursor: hasPvpDetails ? 'pointer' : 'default' }} onClick={hasPvpDetails ? () => setExpandedPvpId(isPvpExpanded ? null : item.id) : undefined}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
                                 {item.imageUrl ? (
@@ -3315,7 +3316,7 @@ export default function Dashboard() {
                                 <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: badgeColor, background: badgeBg, padding: '0.35rem 0.75rem', borderRadius: '20px', whiteSpace: 'nowrap', border: `1px solid ${borderColor}40` }}>
                                   {item.badgeText || (item.xpGained !== undefined ? `${item.xpGained > 0 ? '+' : ''}${item.xpGained} XP` : 'Conquista')}
                                 </div>
-                                {isPvp && (isPvpExpanded ? <ChevronDown size={16} color="#fb7185" /> : <ChevronRight size={16} color="#fb7185" />)}
+                                {isPvp && hasPvpDetails && (isPvpExpanded ? <ChevronDown size={16} color="#fb7185" /> : <ChevronRight size={16} color="#fb7185" />)}
                               </div>
                             </div>
 
