@@ -9,6 +9,7 @@ interface CustomModelViewerProps {
   animation?: string;
   size?: number;
   role?: 'player' | 'monster';
+  interactive?: boolean;
   chestZoom?: number;
   chestOffsetX?: number;
   chestOffsetY?: number;
@@ -95,14 +96,43 @@ export function computeChestBaselineFit(scene: THREE.Object3D, twoState: { close
   return { scale: fitScale, posY: 1.5 - cy * fitScale };
 }
 
+// Encaixe automático para ENTIDADES (jogadores/monstros), estilo Sketchfab:
+// calcula a bounding box do modelo e ajusta escala+posição para preencher ~70% da
+// área visível SEM cortar, independente do tamanho autorado do .glb baixado.
+// Câmera: posição [0,3,10], fov 45, alvo y=1.5 → altura visível ≈ 8.4 unidades.
+export function computeEntityFit(scene: THREE.Object3D): { scale: number; posY: number } {
+  const s = scene.clone();
+  s.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(s);
+  if (box.isEmpty()) return { scale: 2.6, posY: -2.8 };
+  const h = Math.max(0.001, box.max.y - box.min.y);
+  const w = Math.max(0.001, box.max.x - box.min.x);
+  const d = Math.max(0.001, box.max.z - box.min.z);
+  const cy = (box.max.y + box.min.y) / 2;
+  const maxDim = Math.max(h, w, d);
+  // Alvo ~5.2 unidades (62% da altura visível) — deixa margem para não cortar
+  const fitScale = Math.max(0.001, Math.min(20, 5.2 / maxDim));
+  // Centraliza a altura do modelo perto do alvo da câmera (y=1.5)
+  return { scale: fitScale, posY: 1.5 - cy * fitScale };
+}
+
 function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean }) {
   const safeModelUrl = modelUrl.startsWith('/') && !modelUrl.startsWith('http') 
     ? import.meta.env.BASE_URL + modelUrl.substring(1) 
     : modelUrl;
   const { scene: originalScene, animations } = useGLTF(safeModelUrl);
   
-  // Clone to avoid mutating the cached GLTF if multiple are rendered
-  const scene = useMemo(() => originalScene.clone(), [originalScene]);
+  // Clone para não mutar o GLTF cacheado (se houver múltiplos renders) e desliga o
+  // frustum culling das malhas (evita "cortar" partes do modelo em certos ângulos).
+  const scene = useMemo(() => {
+    const c = originalScene.clone();
+    c.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        (child as THREE.Mesh).frustumCulled = false;
+      }
+    });
+    return c;
+  }, [originalScene]);
   const { actions, mixer } = useAnimations(animations, scene);
 
   // Guarda a pose original de todos os ossos e meshes
@@ -259,10 +289,11 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, chestZoom = 1, 
 
   const hasOpenAnim = animations.some(a => /open/i.test(a.name));
 
-  // Encaixe calculado UMA vez por cena (estável, não depende de rotação/zoom em runtime)
+  // Encaixe calculado UMA vez por cena (estável, não depende de rotação/zoom em runtime).
+  // Baús: enquadramento MANUAL (baseline + zoom/offsets). Entidades: auto-fit (Sketchfab-like).
   const { twoState, fit } = useMemo(() => {
     const slide = isChest && !hasOpenAnim ? computeChestSlide(scene) : null;
-    const base = isChest ? computeChestBaselineFit(scene, slide, chestSwapSides) : { scale: 1, posY: 0 };
+    const base = isChest ? computeChestBaselineFit(scene, slide, chestSwapSides) : computeEntityFit(scene);
     return { twoState: slide, fit: base };
   }, [scene, isChest, hasOpenAnim, chestSwapSides]);
 
@@ -272,7 +303,7 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, chestZoom = 1, 
 
   if (!isChest) {
     return (
-      <group position={[0, -2.8, 0]} scale={2.6}>
+      <group position={[0, fit.posY, 0]} scale={fit.scale}>
         {content}
       </group>
     );
@@ -291,12 +322,12 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, chestZoom = 1, 
   );
 }
 
-export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides }: CustomModelViewerProps) {
+export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides }: CustomModelViewerProps) {
   const isChest = modelUrl.includes('chest');
   
-  // Desabilitar rotação e zoom no modo desafio (quando role for passado)
-  const isArena = !!role;
-  const allowInteraction = !isChest && !isArena;
+  // Interação (girar/zoom) habilitada explicitamente pelo chamador (editores).
+  // Em batalha (role preenchido sem interactive) fica travado.
+  const allowInteraction = !isChest && interactive;
 
   return (
     <div style={{ width: size, height: size, position: 'relative', overflow: 'hidden', flexShrink: 0 }}>

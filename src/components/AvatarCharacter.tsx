@@ -2239,9 +2239,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     }
   };
 
-  if (config?.customModelUrl) {
-    return <CustomModelViewer modelUrl={config.customModelUrl} textureUrl={config.customSkinUrl} animation={animation as any} size={size} role={role} />;
-  }
+if (config?.customModelUrl) {
+  return <CustomModelViewer modelUrl={config.customModelUrl} textureUrl={config.customSkinUrl} animation={animation as any} size={size} role={role} interactive={interactive} />;
+}
 
   return (
     <div style={{

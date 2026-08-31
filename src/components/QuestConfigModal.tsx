@@ -422,13 +422,42 @@ function MonsterTab(p: QuestConfigModalProps) {
                 <AvatarCharacter
                   config={p.questMonsterConfig || (p.questMonsterModelUrl ? { customModelUrl: p.questMonsterModelUrl } as AvatarConfig : null)}
                   size={90}
-                  interactive={false}
+                  interactive={true}
                   animation="idle"
                   role="monster"
                 />
               ) : (
                 <Swords size={32} color="var(--text-secondary)" opacity={0.5} />
               )}
+            </div>
+          </div>
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+            Selecionar Molde 3D (Skins de Monstros e Pets)
+          </label>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <select
+              value={p.available3DModels.filter(m => (m.category || 'skin') === 'skin').find(m => m.url === p.questMonsterModelUrl)?.id || ''}
+              onChange={e => {
+                const selected = p.available3DModels.find(m => m.id === e.target.value);
+                if (selected) {
+                  // Usa o GLB DIRETO (as cores já vêm embutidas no arquivo), sem skin.
+                  p.setQuestMonsterModelUrl(selected.url);
+                  p.setQuestMonsterConfig(null);
+                } else {
+                  p.setQuestMonsterModelUrl('');
+                }
+              }}
+              style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+            >
+              <option value="">(Nenhum — usar o monstro acima/personalizado)</option>
+              {p.available3DModels.filter(m => (m.category || 'skin') === 'skin').map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', maxWidth: '230px', lineHeight: '1.35' }}>
+              Modelos .glb com cores próprias aparecem direto, sem precisar de skin. Cadastre-os em Moldes 3D → Skins de Monstros e Pets.
             </div>
           </div>
         </div>

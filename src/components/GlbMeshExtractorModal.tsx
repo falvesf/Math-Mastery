@@ -22,7 +22,18 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('');
   const [meshes, setMeshes] = useState<{name: string, isGroup: boolean}[]>([]);
-  const [selectedName, setSelectedName] = useState<string | null>(currentExtractedName);
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set(currentExtractedName ? [currentExtractedName] : []));
+  const selectedNamesArr = [...selectedNames];
+  const selectedName = selectedNamesArr[0] || null;
+
+  const toggleMesh = (name: string) => {
+    setSelectedNames(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -45,19 +56,15 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   // --- REPAIR TOOLS LOGIC ---
   
   const handleDeleteMesh = () => {
-    if (!selectedName || !sceneRef.current) return;
+    if (selectedNames.size === 0 || !sceneRef.current) return;
     
-    // Find the node to delete
-    let nodeToDelete: THREE.Object3D | null = null;
     sceneRef.current.traverse((node) => {
-      if (node.name === selectedName) nodeToDelete = node;
+      if (selectedNames.has(node.name)) {
+        node.removeFromParent();
+      }
     });
-    
-    if (nodeToDelete) {
-      nodeToDelete.removeFromParent();
-      setMeshes(m => m.filter(x => x.name !== selectedName));
-      setSelectedName(null);
-    }
+    setMeshes(m => m.filter(x => !selectedNames.has(x.name)));
+    setSelectedNames(new Set());
   };
 
   const handleDownloadTexture = () => {
@@ -223,6 +230,88 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
       },
       { binary: true }
     );
+  };
+  
+  const handleExportFusedGlb = () => {
+    if (selectedNames.size === 0 || !sceneRef.current) return;
+
+    let rootToExport: THREE.Object3D | null = null;
+    sceneRef.current.traverse((node) => {
+      if (node.userData?.isRootGltf) rootToExport = node;
+    });
+    if (!rootToExport) {
+      return alert('Erro: Não foi possível encontrar a raiz do modelo para exportar.');
+    }
+
+    // Restaura materiais originais (remove o highlight amarelo)
+    rootToExport.traverse((node) => {
+      if ((node as THREE.Mesh).isMesh) {
+        const mesh = node as THREE.Mesh;
+        if (originalMaterialsRef.current.has(mesh)) {
+          mesh.material = originalMaterialsRef.current.get(mesh)!;
+        }
+      }
+    });
+
+    // Coleta os nós que ficam: selecionadas + ancestrais + TODOS os OSSOS (bones)
+    // e suas cadeias. Preservar os ossos é vital: malhas com skinning (esqueleto)
+    // referenciam os ossos por índice; se algum sumir, o GLTFLoader quebra com
+    // "Cannot set properties of undefined (setting 'isBone')" ao carregar o GLB.
+    const keepSet = new Set(selectedNames);
+    const toKeep = new Set<THREE.Object3D>();
+    rootToExport.traverse((node) => {
+      const isBoneNode = (node as any).isBone === true || node.type === 'Bone';
+      if (keepSet.has(node.name) || isBoneNode) {
+        let cur: THREE.Object3D | null = node;
+        while (cur) { toKeep.add(cur); cur = cur.parent; }
+        if ((node as THREE.Group).isGroup) {
+          node.traverse((d) => toKeep.add(d));
+        }
+      }
+    });
+
+    // Nós a remover = filhos que não estão em toKeep
+    const toRemove: THREE.Object3D[] = [];
+    rootToExport.traverse((node) => {
+      node.children.forEach((c) => { if (!toKeep.has(c)) toRemove.push(c); });
+    });
+
+    // Remove temporariamente as não-selecionadas (exporta o MESMO caminho da
+    // exportação completa, que o sistema reconhece)
+    const parents = new Map<THREE.Object3D, THREE.Object3D | null>();
+    toRemove.forEach((n) => { parents.set(n, n.parent); n.removeFromParent(); });
+
+    setLoading(true);
+    setLoadingText('Fundindo malhas selecionadas e exportando GLB...');
+    const exporter = new GLTFExporter();
+    exporter.parse(
+      rootToExport,
+      (gltfData) => {
+        const blob = new Blob([gltfData as ArrayBuffer], { type: 'model/gltf-binary' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = 'fused_meshes.glb';
+        link.href = url;
+        link.click();
+        URL.revokeObjectURL(url);
+        toRemove.forEach((n) => { const p = parents.get(n); if (p) p.add(n); });
+        setLoading(false);
+      },
+      (error) => {
+        toRemove.forEach((n) => { const p = parents.get(n); if (p) p.add(n); });
+        console.error('Erro ao exportar fundido:', error);
+        alert('Ocorreu um erro ao exportar o modelo fundido.');
+        setLoading(false);
+      },
+      { binary: true }
+    );
+
+    // Re-aplica o highlight nas malhas selecionadas
+    rootToExport.traverse((node) => {
+      if ((node as THREE.Mesh).isMesh && selectedNames.has(node.name)) {
+        (node as THREE.Mesh).material = highlightMaterial;
+      }
+    });
   };
   
   // --- END REPAIR TOOLS LOGIC ---
@@ -414,13 +503,13 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
         // Find the mesh
         const object = intersects[0].object;
         if (object.name) {
-          setSelectedName(object.name);
+          toggleMesh(object.name);
         } else {
           // If the mesh itself has no name, look up the parent tree
           let parent = object.parent;
           while (parent && parent.type !== 'Scene') {
             if (parent.name) {
-              setSelectedName(parent.name);
+              toggleMesh(parent.name);
               break;
             }
             parent = parent.parent;
@@ -484,9 +573,9 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
       mesh.material = mat;
     });
     
-    if (selectedName) {
+    if (selectedNames.size > 0) {
       sceneRef.current.traverse((node) => {
-        if (node.name === selectedName) {
+        if (selectedNames.has(node.name)) {
           // If it's a group, highlight all children
           node.traverse((child) => {
             if ((child as THREE.Mesh).isMesh) {
@@ -496,7 +585,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
         }
       });
     }
-  }, [selectedName]);
+  }, [selectedNames]);
 
   return createPortal(
     <div className="modal-overlay" style={{ zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -531,26 +620,31 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <button
-                  onClick={() => setSelectedName(null)}
-                  style={{ textAlign: 'left', padding: '0.75rem', borderRadius: '6px', border: '1px solid ' + (selectedName === null ? '#f59e0b' : 'transparent'), background: selectedName === null ? 'rgba(245, 158, 11, 0.1)' : 'transparent', color: selectedName === null ? '#f59e0b' : 'var(--text-primary)', cursor: 'pointer' }}
+                  onClick={() => setSelectedNames(new Set())}
+                  style={{ textAlign: 'left', padding: '0.75rem', borderRadius: '6px', border: '1px solid ' + (selectedNames.size === 0 ? '#f59e0b' : 'transparent'), background: selectedNames.size === 0 ? 'rgba(245, 158, 11, 0.1)' : 'transparent', color: selectedNames.size === 0 ? '#f59e0b' : 'var(--text-primary)', cursor: 'pointer' }}
                   className="hover-brightness"
                 >
                   <i>❌ Não extrair nada (Usar modelo completo)</i>
                 </button>
                 
-                {meshes.map((mesh, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedName(mesh.name)}
-                    style={{ textAlign: 'left', padding: '0.75rem', borderRadius: '6px', border: '1px solid ' + (selectedName === mesh.name ? '#f59e0b' : 'var(--border-glass)'), background: selectedName === mesh.name ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-dark)', color: selectedName === mesh.name ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                    className="hover-brightness"
-                  >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: selectedName === mesh.name ? 'bold' : 'normal' }}>{mesh.name}</span>
-                    <span style={{ fontSize: '0.7rem', background: mesh.isGroup ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)', color: mesh.isGroup ? '#60a5fa' : '#34d399', padding: '2px 6px', borderRadius: '4px' }}>
-                      {mesh.isGroup ? 'Group' : 'Mesh'}
-                    </span>
-                  </button>
-                ))}
+                {meshes.map((mesh, i) => {
+                  const isSel = selectedNames.has(mesh.name);
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => toggleMesh(mesh.name)}
+                      style={{ textAlign: 'left', padding: '0.75rem', borderRadius: '6px', border: '1px solid ' + (isSel ? '#f59e0b' : 'var(--border-glass)'), background: isSel ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-dark)', color: isSel ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                      className="hover-brightness"
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSel ? 'bold' : 'normal' }}>
+                        {isSel ? '☑ ' : '☐ '}{mesh.name}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', background: mesh.isGroup ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)', color: mesh.isGroup ? '#60a5fa' : '#34d399', padding: '2px 6px', borderRadius: '4px' }}>
+                        {mesh.isGroup ? 'Group' : 'Mesh'}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
               
               {/* FERRAMENTAS DE REPARO MOVIDAS PARA DENTRO DA ÁREA COM SCROLL */}
@@ -559,31 +653,39 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
                 
                 <button 
                   onClick={handleDeleteMesh}
-                  disabled={!selectedName}
-                  style={{ padding: '0.5rem', background: selectedName ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedName ? '#fca5a5' : '#666', border: '1px solid ' + (selectedName ? 'rgba(239, 68, 68, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedName ? 'pointer' : 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  disabled={selectedNames.size === 0}
+                  style={{ padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#fca5a5' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(239, 68, 68, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
                 >
-                  🗑️ Deletar Peça Selecionada
+                  🗑️ Deletar Peças Selecionadas
                 </button>
                 
                 <div style={{ display: 'flex', gap: '0.25rem' }}>
                   <button 
                     onClick={handleDownloadTexture}
-                    disabled={!selectedName}
-                    style={{ flex: 1, padding: '0.5rem', background: selectedName ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedName ? '#93c5fd' : '#666', border: '1px solid ' + (selectedName ? 'rgba(59, 130, 246, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedName ? 'pointer' : 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                    disabled={selectedNames.size === 0}
+                    style={{ flex: 1, padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#93c5fd' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(59, 130, 246, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                     title="Baixar a imagem da textura para pintar/apagar pixels"
                   >
                     🖼️ Baixar Textura
                   </button>
                   <button 
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={!selectedName}
-                    style={{ flex: 1, padding: '0.5rem', background: selectedName ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedName ? '#6ee7b7' : '#666', border: '1px solid ' + (selectedName ? 'rgba(16, 185, 129, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedName ? 'pointer' : 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                    disabled={selectedNames.size === 0}
+                    style={{ flex: 1, padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#6ee7b7' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(16, 185, 129, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                     title="Substituir a textura da peça selecionada por uma imagem PNG do seu PC"
                   >
                     📤 Injetar Textura
                   </button>
                 </div>
                 <input type="file" ref={fileInputRef} accept="image/png" style={{ display: 'none' }} onChange={handleUploadTexture} />
+                
+                <button 
+                  onClick={handleExportFusedGlb}
+                  disabled={selectedNames.size === 0}
+                  style={{ padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#fbbf24' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(245, 158, 11, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 'bold' }}
+                >
+                  💾 Fundir Selecionadas em GLB
+                </button>
                 
                 <button 
                   onClick={handleExportGlb}
@@ -597,11 +699,18 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
             <div style={{ padding: '1rem', borderTop: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0 }}>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>Seleção atual:</span>
-                <strong style={{ color: selectedName ? '#f59e0b' : '#ef4444' }}>{selectedName || 'Nenhuma'}</strong>
+                <strong style={{ color: selectedNames.size > 0 ? '#f59e0b' : '#ef4444' }}>
+                  {selectedNames.size === 0 ? 'Nenhuma' : selectedNames.size === 1 ? selectedName : `${selectedNames.size} malhas`}
+                </strong>
               </div>
+              {selectedNames.size > 1 && (
+                <div style={{ fontSize: '0.72rem', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '6px', padding: '0.35rem 0.5rem' }}>
+                  Múltiplas malhas selecionadas: use <b>"Fundir Selecionadas em GLB"</b> para exportar todas juntas em um único arquivo.
+                </div>
+              )}
               <button 
                 onClick={() => {
-                  onSelect(selectedName);
+                  onSelect(selectedNames.size === 1 ? selectedName : null);
                   onClose();
                 }}
                 style={{ padding: '0.75rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}

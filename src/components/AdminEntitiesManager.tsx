@@ -1,11 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { User, Swords, Dog, Settings } from 'lucide-react';
 import AvatarCustomizationModal from './AvatarCustomizationModal';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import Admin3DModelsManager from './Admin3DModelsManager';
+import { supabase } from '../lib/supabase';
+import { useTenant } from '../contexts/TenantContext';
 
 export default function AdminEntitiesManager() {
   const [activeTab, setActiveTab] = useState<'players' | 'monsters' | 'pets' | 'skins' | 'models'>('players');
+  const { tenantId } = useTenant();
+  const [skinModels, setSkinModels] = useState<any[]>([]);
+  const [monsterModelUrl, setMonsterModelUrl] = useState('');
+
+  useEffect(() => {
+    let q = supabase.from('3d_models').select('*');
+    if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    q.then(({ data }) => {
+      setSkinModels((data || []).filter(m => (m.category || 'skin') === 'skin'));
+    }).catch(() => {});
+  }, [tenantId]);
 
   return (
     <div>
@@ -107,19 +120,36 @@ export default function AdminEntitiesManager() {
           </div>
         )}
 
-        {activeTab === 'monsters' && (
+{activeTab === 'monsters' && (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
               <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem' }}>Criação de Monstros</h3>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Crie novos monstros com peças customizadas.</span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Crie novos monstros com peças customizadas ou a partir de um molde 3D importado.</span>
             </div>
-            <AvatarCustomizationModal 
-              key="monster-modal"
-              isOpen={true} 
-              onClose={() => {}} 
-              isAdmin={true} 
-              inline={true} 
-              customSaveMode={true} 
+            <div style={{ marginBottom: '1rem', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', padding: '0.75rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                Começar a partir de um Molde 3D importado (Skins de Monstros e Pets)
+              </label>
+              <select
+                value={monsterModelUrl}
+                onChange={e => setMonsterModelUrl(e.target.value)}
+                style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+              >
+                <option value="">(Criar monstro do zero)</option>
+                {skinModels.map(m => <option key={m.id} value={m.url}>{m.name}</option>)}
+              </select>
+              <span style={{ display: 'block', marginTop: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>
+                Modelos .glb com cores próprias são usados direto, sem precisar de skin.
+              </span>
+            </div>
+            <AvatarCustomizationModal
+              key={`monster-modal-${monsterModelUrl}`}
+              isOpen={true}
+              onClose={() => {}}
+              isAdmin={true}
+              inline={true}
+              customSaveMode={true}
+              initialConfig={monsterModelUrl ? { customModelUrl: monsterModelUrl } as any : undefined}
               onSave={() => {
                 // Salvo com sucesso!
               }}
