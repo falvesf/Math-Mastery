@@ -263,7 +263,6 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   const [showAdminManager, setShowAdminManager] = useState(false);
   const [showAdmin3dManager, setShowAdmin3dManager] = useState(false);
   const [showPoseStudio, setShowPoseStudio] = useState(false);
-  const [viewerZoom, setViewerZoom] = useState(1);
   
   const handednessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1281,18 +1280,29 @@ onClick={() => setConfig(prev => {
           <div className="avatar-modal-grid">
           
           <div className={`avatar-viewer-container ${isMobileDrawerOpen ? 'drawer-open' : ''}`}>
-            {/* Controle de Zoom */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', zIndex: 5 }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Zoom:</span>
-              <button onClick={() => setViewerZoom(v => Math.max(0.4, +(v - 0.1).toFixed(2)))} style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Diminuir">−</button>
-              <span style={{ fontSize: '0.85rem', color: 'var(--gold-primary)', fontWeight: 'bold', minWidth: '38px', textAlign: 'center' }}>{Math.round(viewerZoom * 100)}%</span>
-              <button onClick={() => setViewerZoom(v => Math.min(2.5, +(v + 0.1).toFixed(2)))} style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Aumentar">+</button>
-              <button onClick={() => setViewerZoom(1)} style={{ padding: '0.25rem 0.6rem', borderRadius: '6px', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem' }} title="Resetar zoom">Resetar</button>
+            {/* Tamanho em batalha (zoom persistido no config) — controle único de zoom */}
+            <div style={{ marginBottom: '0.75rem', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>⚔️ Tamanho em batalha</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>{Math.round((config.customZoom ?? 1) * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0.3"
+                max="3"
+                step="0.05"
+                value={config.customZoom ?? 1}
+                onChange={e => setConfig(prev => ({ ...prev, customZoom: parseFloat(e.target.value) }))}
+                style={{ width: '100%', accentColor: 'var(--gold-primary)' }}
+              />
+              <button onClick={() => setConfig(prev => ({ ...prev, customZoom: 1 }))} style={{ marginTop: '0.3rem', padding: '0.2rem 0.6rem', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem', borderRadius: '6px' }}>
+                Resetar (100%)
+              </button>
             </div>
 
-            {/* Avatar com zoom aplicado */}
+            {/* Avatar com zoom aplicado (tamanho em batalha) */}
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
-            <div style={{ transform: `scale(${viewerZoom})`, transformOrigin: 'center bottom', transition: 'transform 0.2s ease-out' }}>
+            <div style={{ transform: `scale(${config.customZoom ?? 1})`, transformOrigin: 'center bottom', transition: 'transform 0.2s ease-out' }}>
             {(() => {
               const activePreset = presetSkins.find(s => s.url === config.customSkinUrl);
               const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default' 

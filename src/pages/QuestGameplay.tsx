@@ -1820,7 +1820,7 @@ export default function QuestGameplay() {
                 <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
               </div>
               <div className="quest-arena-avatars" style={{ position: 'relative', width: playerAnim.startsWith('attack-fatal') ? '220px' : '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease' }}>
-                <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-80px' }}>
+                <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-80px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
                   {!quest?.allowRetries ? (
                     (() => {
@@ -1867,10 +1867,10 @@ export default function QuestGameplay() {
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', opacity: 0.3 }}>{quest?.monsterName || 'Inimigo'}</span>
                   </div>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" /> : <div style={{ marginBottom: '-80px' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
+                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} /> : <div style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                   <div className="death-slice-right" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" /> : <div style={{ marginBottom: '-80px' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
+                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} /> : <div style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                 </div>
               ) : (
@@ -1919,9 +1919,9 @@ export default function QuestGameplay() {
                   </div>
                 <div style={{ position: 'relative', display: 'inline-block' }}>
                   {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? (
-                    <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={monsterAnim} role="monster" />
+                    <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} />
                   ) : quest?.monsterAvatarConfig ? (
-                    <div style={{ marginBottom: '-80px' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" hurt={monsterAnim === 'hurt'} /></div>
+                    <div style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" hurt={monsterAnim === 'hurt'} /></div>
                   ) : (
                     <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />
                   )}

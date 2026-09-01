@@ -286,6 +286,7 @@ export default function Admin3DModelsManager() {
         showAlert('Modelo adicionado com sucesso!');
       }
       sessionCache.invalidate(CACHE_KEYS.models3d());
+      window.dispatchEvent(new CustomEvent('models3d-changed'));
       setIsModalOpen(false);
       fetchModels(false);
     } catch (e) {
@@ -304,6 +305,7 @@ export default function Admin3DModelsManager() {
         }
         await supabase.from('3d_models').delete().eq('id', id);
         sessionCache.invalidate(CACHE_KEYS.models3d());
+        window.dispatchEvent(new CustomEvent('models3d-changed'));
         showAlert('Modelo excluído com sucesso!');
         fetchModels(false);
       } catch (e) {

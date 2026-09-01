@@ -10,6 +10,8 @@ interface CustomModelViewerProps {
   size?: number;
   role?: 'player' | 'monster';
   interactive?: boolean;
+  /** Multiplicador de escala do modelo (1 = auto-enquadrado padrão) */
+  zoom?: number;
   chestZoom?: number;
   chestOffsetX?: number;
   chestOffsetY?: number;
@@ -276,9 +278,9 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides }: { 
 // Decide como enquadrar o modelo na área:
 //  - Baús: enquadramento MANUAL (baseline + chestZoom + offsets + giro), WYSIWYG com o preview.
 //  - Jogadores/monstros: escala/posição fixas (comportamento atual).
-function ModelGroup({ modelUrl, textureUrl, animationName, role, chestZoom = 1, chestOffsetX = 0, chestOffsetY = 0, chestRotY = 0, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides = false }: {
+function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chestZoom = 1, chestOffsetX = 0, chestOffsetY = 0, chestRotY = 0, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides = false }: {
   modelUrl: string; textureUrl?: string; animationName?: string; role?: 'player' | 'monster';
-  chestZoom?: number; chestOffsetX?: number; chestOffsetY?: number; chestRotY?: number;
+  zoom?: number; chestZoom?: number; chestOffsetX?: number; chestOffsetY?: number; chestRotY?: number;
   chestOpenOffsetX?: number; chestOpenOffsetY?: number; chestSwapSides?: boolean;
 }) {
   const safeModelUrl = modelUrl.startsWith('/') && !modelUrl.startsWith('http')
@@ -302,8 +304,9 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, chestZoom = 1, 
   );
 
   if (!isChest) {
+    const effectiveZoom = Math.max(0.2, Math.min(4, zoom ?? 1));
     return (
-      <group position={[0, fit.posY, 0]} scale={fit.scale}>
+      <group position={[0, fit.posY, 0]} scale={fit.scale * effectiveZoom}>
         {content}
       </group>
     );
@@ -313,16 +316,16 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, chestZoom = 1, 
   const isOpen = animationName === 'open';
   const offX = isOpen ? (chestOpenOffsetX ?? chestOffsetX ?? 0) : (chestOffsetX ?? 0);
   const offY = isOpen ? (chestOpenOffsetY ?? chestOffsetY ?? 0) : (chestOffsetY ?? 0);
-  const zoom = Math.max(0.1, Math.min(5, chestZoom ?? 1));
+  const chestZoomEff = Math.max(0.1, Math.min(5, chestZoom ?? 1));
   const rotRad = ((((chestRotY ?? 0) % 360) + 360) % 360) * Math.PI / 180;
   return (
-    <group position={[offX, fit.posY + offY, 0]} scale={fit.scale * zoom} rotation={[0, rotRad, 0]}>
+    <group position={[offX, fit.posY + offY, 0]} scale={fit.scale * chestZoomEff} rotation={[0, rotRad, 0]}>
       {content}
     </group>
   );
 }
 
-export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides }: CustomModelViewerProps) {
+export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, zoom = 1, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides }: CustomModelViewerProps) {
   const isChest = modelUrl.includes('chest');
   
   // Interação (girar/zoom) habilitada explicitamente pelo chamador (editores).
@@ -336,7 +339,7 @@ export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, ani
         <directionalLight position={[5, 10, 5]} intensity={0.5} />
         <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.5, 0]} />
         <React.Suspense fallback={null}>
-          <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} />
+          <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} zoom={zoom} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} />
         </React.Suspense>
       </Canvas>
     </div>

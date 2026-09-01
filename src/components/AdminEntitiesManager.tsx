@@ -12,12 +12,27 @@ export default function AdminEntitiesManager() {
   const [skinModels, setSkinModels] = useState<any[]>([]);
   const [monsterModelUrl, setMonsterModelUrl] = useState('');
 
-  useEffect(() => {
+  const fetchSkinModels = () => {
     let q = supabase.from('3d_models').select('*');
     if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
     q.then(({ data }) => {
       setSkinModels((data || []).filter(m => (m.category || 'skin') === 'skin'));
     }).catch(() => {});
+  };
+
+  // Busca na abertura e sempre que trocar de guia (para novos moldes aparecerem
+  // na combobox sem precisar recarregar a página).
+  useEffect(() => {
+    fetchSkinModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, activeTab]);
+
+  // Também atualiza quando um molde é salvo/excluído no Moldes 3D
+  useEffect(() => {
+    const onModelsChanged = () => fetchSkinModels();
+    window.addEventListener('models3d-changed', onModelsChanged);
+    return () => window.removeEventListener('models3d-changed', onModelsChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
   return (

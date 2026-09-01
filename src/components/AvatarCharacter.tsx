@@ -35,6 +35,8 @@ export interface AvatarConfig {
   animationState?: 'idle' | 'walk' | 'run' | 'attack' | 'raise-hand';
   customSkinUrl?: string;
   customModelUrl?: string;
+  /** Escala/zoom do modelo 3D customizado (1 = padrão auto-enquadrado) */
+  customZoom?: number;
   ponytailLength?: number;
   ponytailThickness?: number;
   ponytailAngle?: number;
@@ -2240,7 +2242,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   };
 
 if (config?.customModelUrl) {
-  return <CustomModelViewer modelUrl={config.customModelUrl} textureUrl={config.customSkinUrl} animation={animation as any} size={size} role={role} interactive={interactive} />;
+  return <CustomModelViewer modelUrl={config.customModelUrl} textureUrl={config.customSkinUrl} animation={animation as any} size={size} role={role} interactive={interactive} zoom={config.customZoom} />;
 }
 
   return (
