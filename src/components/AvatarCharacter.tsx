@@ -324,13 +324,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
   const customHairRef = useRef<THREE.Group | null>(null);
 
-  const [zoomLevel, setZoomLevel] = useState(0.9);
-
+  // Tamanho em batalha (customZoom) aplicado DIRETO no viewer (só o boneco),
+  // multiplicando o zoom base do skinview3d — não escala a área/controles.
   useEffect(() => {
     if (viewerRef.current) {
-        viewerRef.current.zoom = zoomLevel;
+        const base = 0.9;
+        viewerRef.current.zoom = base * (config?.customZoom || 1);
     }
-  }, [zoomLevel]);
+  }, [config?.customZoom]);
 
   // Efeito de flash vermelho quando toma dano
   useEffect(() => {
@@ -2271,7 +2272,8 @@ if (config?.customModelUrl) {
         />
       ))}
 
-      {/* 3D Canvas */}
+      {/* 3D Canvas — o boneco cresce da BASE (pés) para cima ao dar zoom:
+          desloca o canvas para baixo conforme o zoom aumenta, para a cabeça não cortar no topo */}
       <canvas 
         ref={canvasRef} 
         onClick={() => onAvatarClick && onAvatarClick()}
@@ -2280,7 +2282,7 @@ if (config?.customModelUrl) {
           position: 'absolute',
           left: '50%',
           top: '50%',
-          transform: 'translate(-50%, -50%)',
+          transform: `translate(-50%, -50%) translateY(${Math.max(0, ((config?.customZoom || 1) - 1) * 40)}px)`,
           zIndex: 1,
           outline: 'none',
           pointerEvents: 'auto',
@@ -2288,37 +2290,6 @@ if (config?.customModelUrl) {
         }} 
       />
       
-      {/* Slider de Zoom Preciso */}
-      {interactive && (
-        <div style={{
-          position: 'absolute',
-          bottom: '10px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 200,
-          background: 'rgba(30, 41, 59, 0.8)',
-          padding: '6px 12px',
-          borderRadius: '20px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          backdropFilter: 'blur(4px)',
-          border: '1px solid rgba(255,255,255,0.1)'
-        }}>
-          <span style={{ fontSize: '14px' }}>🔍</span>
-          <input 
-            type="range" 
-            min="0.3" 
-            max="2.5" 
-            step="0.05" 
-            value={zoomLevel} 
-            onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
-            style={{ width: '100px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
-            title="Ajustar Zoom"
-          />
-        </div>
-      )}
-
       {/* Slots de Equipamento Externos */}
       {showSlots && ALL_SLOTS.map(slot => {
         const item = getEquippedForSlot(slot.id);

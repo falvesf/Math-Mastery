@@ -98,24 +98,28 @@ export function computeChestBaselineFit(scene: THREE.Object3D, twoState: { close
   return { scale: fitScale, posY: 1.5 - cy * fitScale };
 }
 
-// Encaixe automático para ENTIDADES (jogadores/monstros), estilo Sketchfab:
-// calcula a bounding box do modelo e ajusta escala+posição para preencher ~70% da
-// área visível SEM cortar, independente do tamanho autorado do .glb baixado.
+// Encaixe automático para ENTIDADES (jogadores/monstros):
+// calcula a bounding box do modelo e ajusta a escala para preencher ~50% da área
+// visível. A BASE (pés) fica ancorada perto do FUNDO da área (y≈-1.2) — o boneco
+// "fica em pé" no chão (não voa) e, ao dar zoom, cresce PARA CIMA a partir dos
+// pés, sem cortar a cabeça no topo dentro da faixa de zoom razoável.
 // Câmera: posição [0,3,10], fov 45, alvo y=1.5 → altura visível ≈ 8.4 unidades.
 export function computeEntityFit(scene: THREE.Object3D): { scale: number; posY: number } {
   const s = scene.clone();
   s.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(s);
-  if (box.isEmpty()) return { scale: 2.6, posY: -2.8 };
+  if (box.isEmpty() || !isFinite(box.min.y)) return { scale: 2.6, posY: -1.2 };
   const h = Math.max(0.001, box.max.y - box.min.y);
   const w = Math.max(0.001, box.max.x - box.min.x);
   const d = Math.max(0.001, box.max.z - box.min.z);
-  const cy = (box.max.y + box.min.y) / 2;
+  const minY = box.min.y;
   const maxDim = Math.max(h, w, d);
-  // Alvo ~5.2 unidades (62% da altura visível) — deixa margem para não cortar
-  const fitScale = Math.max(0.001, Math.min(20, 5.2 / maxDim));
-  // Centraliza a altura do modelo perto do alvo da câmera (y=1.5)
-  return { scale: fitScale, posY: 1.5 - cy * fitScale };
+  // Alvo ~4.2 unidades (50% da altura visível) — margem para o zoom crescer
+  const fitScale = Math.max(0.001, Math.min(20, 4.2 / maxDim));
+  // Base ancorada perto do fundo da área, MAS com CLAMP para o modelo nunca
+  // sair da área visível (mesmo se a bounding box estiver imprecisa).
+  const posY = Math.max(-3, Math.min(3, -1.2 - minY * fitScale));
+  return { scale: fitScale, posY };
 }
 
 function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean }) {
@@ -305,6 +309,8 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
 
   if (!isChest) {
     const effectiveZoom = Math.max(0.2, Math.min(4, zoom ?? 1));
+    // A base já está ancorada em y=0 (computeEntityFit). Ao dar zoom, o modelo
+    // cresce para cima a partir dos pés — sem cortar a cabeça no topo.
     return (
       <group position={[0, fit.posY, 0]} scale={fit.scale * effectiveZoom}>
         {content}

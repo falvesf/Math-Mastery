@@ -1300,9 +1300,9 @@ onClick={() => setConfig(prev => {
               </button>
             </div>
 
-            {/* Avatar com zoom aplicado (tamanho em batalha) */}
+            {/* Avatar — o customZoom é aplicado DENTRO do AvatarCharacter (no viewer, só o boneco) */}
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
-            <div style={{ transform: `scale(${config.customZoom ?? 1})`, transformOrigin: 'center bottom', transition: 'transform 0.2s ease-out' }}>
+            <div>
             {(() => {
               const activePreset = presetSkins.find(s => s.url === config.customSkinUrl);
               const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default' 
