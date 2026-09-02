@@ -903,7 +903,7 @@ export default function LiveQuestAdmin() {
             {quest.monsterAvatarConfig ? (
                <AvatarCharacter config={quest.monsterAvatarConfig} size={250} animation={monsterAnim === 'hurt' ? 'hurt' : 'idle'} interactive={false} />
             ) : (
-               <CustomModelViewer modelUrl={quest.monsterModelUrl || 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'} role="monster" size={280} animation={monsterAnim} />
+               <CustomModelViewer modelUrl={quest.monsterModelUrl || 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'} role="monster" size={280} animation={monsterAnim} configRotY={quest.monsterAvatarConfig?.customRotY} />
             )}
             {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
           </div>

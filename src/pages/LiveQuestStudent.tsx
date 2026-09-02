@@ -931,6 +931,7 @@ export default function LiveQuestStudent() {
                       role="monster"
                       size={190}
                       animation={monsterAnim}
+                      configRotY={quest?.monsterAvatarConfig?.customRotY}
                     />
                   )}
                 </div>

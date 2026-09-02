@@ -252,12 +252,17 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     facialHair: 'none',
     handedness: 'right',
   });
+  // Quando editando um monstro de skin/GLB: só o zoom fica disponível.
+  const [zoomOnly, setZoomOnly] = useState(false);
   const [showEquippedItems, setShowEquippedItems] = useState(() => {
     const saved = localStorage.getItem('avatarCustomizer_showEquippedItems');
     return saved ? JSON.parse(saved) : true;
   });
   const [saving, setSaving] = useState(false);
   const [monsterName, setMonsterName] = useState('');
+  // Quando editando um monstro já salvo na galeria: guarda o id do registro
+  // para fazer UPDATE (nunca duplicar) e o nome fica travado.
+  const [editingSkinId, setEditingSkinId] = useState<string | null>(null);
   const [presetSkins, setPresetSkins] = useState<PresetSkin[]>([]);
   const [models3d, setModels3d] = useState<any[]>([]);
   const [showAdminManager, setShowAdminManager] = useState(false);
@@ -464,8 +469,12 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
 
   useEffect(() => {
     if (isOpen) {
+      // Abrir o modal = novo monstro/personagem (a menos que um item salvo seja clicado depois).
+      setEditingSkinId(null);
+      setMonsterName('');
       if (initialConfig) {
         setConfig(initialConfig);
+        setZoomOnly(!!(initialConfig as any)?.customModelUrl);
       } else if (!inline) {
         if (userData?.avatarConfig && !customSaveMode) {
           let loadedConfig = { ...userData.avatarConfig };
@@ -548,29 +557,41 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
             }
           }
           try {
-            const { error: insertError } = await supabase.from('preset_skins').insert({
-              id: uuidv4(),
-              name: monsterName.trim(),
-              url: '',
-              type: customSaveMode ? 'monster' : 'human',
-              baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null,
-              genderTarget: 'unisex',
-              config: cleanConfig,
-              tenant_id: userData?.tenantId || null,
-              is_global: false
-            });
+            // Editando um monstro já salvo → UPDATE no MESMO registro (nome preservado, sem duplicar).
+            const { error: saveError } = editingSkinId
+              ? await supabase.from('preset_skins').update({
+                  config: cleanConfig,
+                  baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null
+                }).eq('id', editingSkinId)
+              : await supabase.from('preset_skins').insert({
+                  id: uuidv4(),
+                  name: monsterName.trim(),
+                  url: '',
+                  type: customSaveMode ? 'monster' : 'human',
+                  baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null,
+                  genderTarget: 'unisex',
+                  config: cleanConfig,
+                  tenant_id: userData?.tenantId || null,
+                  is_global: false
+                });
             
-            if (insertError) {
-              console.error("Erro ao salvar na galeria", insertError);
+            if (saveError) {
+              console.error("Erro ao salvar na galeria", saveError);
               const errText = [
-                insertError.message,
-                insertError.details,
-                insertError.hint,
-                insertError.code ? `Código: ${insertError.code}` : '',
+                saveError.message,
+                saveError.details,
+                saveError.hint,
+                saveError.code ? `Código: ${saveError.code}` : '',
               ].filter(Boolean).join(' · ');
-              await showAlert(`Erro ao salvar no banco de dados: ${errText || JSON.stringify(insertError)}`);
+              await showAlert(`Erro ao salvar no banco de dados: ${errText || JSON.stringify(saveError)}`);
             } else {
-              await showAlert(`${customSaveMode ? 'Monstro' : 'Personagem'} salvo na galeria com sucesso!`);
+              await showAlert(editingSkinId
+                ? `${customSaveMode ? 'Monstro' : 'Personagem'} atualizado com sucesso!`
+                : `${customSaveMode ? 'Monstro' : 'Personagem'} salvo na galeria com sucesso!`);
+              // Lista imediatamente o novo monstro/personagem em "Skins ... Pré-definidas"
+              // sem precisar recarregar a página.
+              setEditingSkinId(null);
+              await fetchPresetSkins(true);
             }
           } catch (e) {
             console.error("Erro inesperado ao salvar na galeria", e);
@@ -754,6 +775,8 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
     };
     delete (cleaned as any).savedPreSkinConfig;
     setConfig(cleaned);
+    setZoomOnly(false);
+    setEditingSkinId(null);
   };
 
   const handleRandomize = () => {
@@ -784,6 +807,7 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
         const modelExists = isExternalOrLocal || models3d.some(m => m.url === modelUrl);
         if (modelExists) {
           setConfig(cfg);
+          setZoomOnly(!!cfg.customModelUrl || !!cfg.customSkinUrl);
           return;
         }
       }
@@ -804,6 +828,7 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
         mouthStyle: randomItem(MOUTH_STYLES),
         customSkinUrl: ''
       });
+      setZoomOnly(false);
     } else {
       const newGender = randomItem(['male', 'female']);
       const isFemale = newGender === 'female';
@@ -1109,6 +1134,22 @@ onClick={() => setConfig(prev => {
                               await supabase.from('user_items').update({ data: newUserData }).eq('id', d.id);
                             }
                           }
+
+                          // 3. Registro GLOBAL (Debug 3D compartilhado entre TODOS os tenants):
+                          // itens iguais de outras escolas usam a MESMA configuração.
+                          try {
+                            const { computeItemTransformKey, invalidateGlobalItemTransforms } = await import('../lib/itemTransforms');
+                            const itemKey = computeItemTransformKey(targetItem);
+                            const { data: globalSnap } = await supabase.from('item_transforms').select('model_transforms').eq('item_key', itemKey).maybeSingle();
+                            const prevGlobal = (globalSnap?.model_transforms as any) || {};
+                            await supabase.from('item_transforms').upsert({
+                              item_key: itemKey,
+                              model_transforms: { ...prevGlobal, [transformKey]: debugTransform }
+                            }, { onConflict: 'item_key' });
+                            invalidateGlobalItemTransforms();
+                          } catch (e) {
+                            console.error('Erro ao salvar transform global:', e);
+                          }
                           if (onPositionsSaved) onPositionsSaved();
                           
                           showAlert(`Configuração de transformação (${transformKey}) salva com sucesso em todos os inventários!`);
@@ -1322,6 +1363,13 @@ onClick={() => setConfig(prev => {
           <div className="avatar-modal-grid">
           
           <div className={`avatar-viewer-container ${isMobileDrawerOpen ? 'drawer-open' : ''}`}>
+            {(() => {
+              const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
+              const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default'
+                ? models3d.find(m => m.id === activePreset.baseModelId)
+                : null;
+              const isGlbMonster = customSaveMode && (!!config.customModelUrl || !!activeModel);
+              return (<>
             {/* Tamanho em batalha (zoom persistido no config) — controle único de zoom */}
             <div style={{ marginBottom: '0.75rem', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
@@ -1342,6 +1390,36 @@ onClick={() => setConfig(prev => {
               </button>
             </div>
 
+            {/* Rotação em batalha — só para monstros GLB (corrige GLBs que carregam de costas) */}
+            {isGlbMonster && (
+              <div style={{ marginBottom: '0.75rem', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🔄 Rotação em batalha</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>{Math.round(config.customRotY ?? 0)}°</span>
+                </div>
+                <input
+                  type="range"
+                  min="-180"
+                  max="180"
+                  step="1"
+                  value={Math.max(-180, Math.min(180, config.customRotY ?? 0))}
+                  onChange={e => setConfig(prev => ({ ...prev, customRotY: parseInt(e.target.value) }))}
+                  style={{ width: '100%', accentColor: 'var(--gold-primary)' }}
+                />
+                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.3rem' }}>
+                  <button onClick={() => setConfig(prev => ({ ...prev, customRotY: Math.max(-180, (prev.customRotY ?? 0) - 90) }))} style={{ padding: '0.2rem 0.6rem', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem', borderRadius: '6px' }}>
+                    -90°
+                  </button>
+                  <button onClick={() => setConfig(prev => ({ ...prev, customRotY: 0 }))} style={{ padding: '0.2rem 0.6rem', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem', borderRadius: '6px' }}>
+                    Resetar (0°)
+                  </button>
+                  <button onClick={() => setConfig(prev => ({ ...prev, customRotY: Math.min(180, (prev.customRotY ?? 0) + 90) }))} style={{ padding: '0.2rem 0.6rem', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem', borderRadius: '6px' }}>
+                    +90°
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Avatar — o customZoom é aplicado DENTRO do AvatarCharacter (no viewer, só o boneco) */}
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
             <div>
@@ -1352,12 +1430,13 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                 : null;
 
               if (activeModel) {
-                return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 220} interactive />;
+                return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 220} interactive zoom={config.customZoom} configRotY={config.customRotY} />;
               }
               return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 220} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
             })()}
             </div>
             </div>
+            </>)})()}
             
             {/* Draggable Controls Widget */}
             <DraggableWidget id="anim_controller" defaultPos={{x: 20, y: 20}}>
@@ -1455,11 +1534,22 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                     return (
                     <button
                       key={skin.id}
+                      title="Abrir para edição"
                       onClick={() => {
-                        const modelUrl = skin.baseModelId && skin.baseModelId !== 'default' 
-                          ? models3d.find(m => m.id === skin.baseModelId)?.url 
-                          : undefined;
-                        handleEquipSkin(skin.url, modelUrl, { customZoom: skinCfg?.customZoom });
+                        // Abre para edição o MESMO registro (nome travado, sem duplicar).
+                        setEditingSkinId(skin.id);
+                        setMonsterName(skin.name || '');
+                        if (skinCfg && Object.keys(skinCfg).length > 0) {
+                          // Abre o config salvo para edição. Skin/GLB → só zoom; bloco → tudo.
+                          setConfig(skinCfg);
+                          setZoomOnly(!!skinCfg.customModelUrl || !!skinCfg.customSkinUrl);
+                        } else {
+                          const modelUrl = skin.baseModelId && skin.baseModelId !== 'default' 
+                            ? models3d.find(m => m.id === skin.baseModelId)?.url 
+                            : undefined;
+                          handleEquipSkin(skin.url, modelUrl, { customZoom: skinCfg?.customZoom });
+                          setZoomOnly(!!skin.url || !!modelUrl);
+                        }
                       }}
                       style={{
                          padding: '0.5rem', background: config.customSkinUrl === skin.url ? 'var(--accent-primary)' : 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: config.customSkinUrl === skin.url ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
@@ -1522,7 +1612,12 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
               );
             })()}
             
-            {/* ABAS */}
+            {/* ABAS — ocultas quando o monstro é skin/GLB (só zoom disponível) */}
+            {zoomOnly ? (
+              <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '8px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                Este monstro é um modelo de <b>skin/GLB</b> — apenas o <b>⚔️ Tamanho em batalha</b> (zoom) pode ser ajustado. Para personalizar o visual, crie um monstro em bloco.
+              </div>
+            ) : (
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
               <button 
                 onClick={() => setActiveTab('features')}
@@ -1537,9 +1632,10 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                 style={{ flex: 1, padding: '0.5rem', background: activeTab === 'clothes' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'clothes' ? 'var(--text-on-gold, #000)' : 'var(--text-primary)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
               >Trajes</button>
             </div>
+            )}
 
             {/* CONTEÚDO DAS ABAS */}
-            <div style={{ opacity: config.customSkinUrl ? 0.5 : 1, pointerEvents: config.customSkinUrl ? 'none' : 'auto' }}>
+            <div style={{ opacity: (zoomOnly || config.customSkinUrl) ? 0.4 : 1, pointerEvents: (zoomOnly || config.customSkinUrl) ? 'none' : 'auto' }}>
               {activeTab === 'features' && (
                 <>
                   <div style={{ marginBottom: '0.75rem' }}>
@@ -1965,8 +2061,10 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                   type="text" 
                   value={monsterName}
                   onChange={e => setMonsterName(e.target.value)}
+                  readOnly={!!editingSkinId}
+                  disabled={!!editingSkinId}
                   placeholder={`Nome do ${customSaveMode ? 'Monstro' : 'Personagem'} (Ex: ${customSaveMode ? 'Golem de Gelo' : 'Herói Padrão'})`}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: editingSkinId ? 'var(--bg-card)' : 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', cursor: editingSkinId ? 'not-allowed' : 'text', opacity: editingSkinId ? 0.75 : 1 }}
                 />
               </div>
             )}

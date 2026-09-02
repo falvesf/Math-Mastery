@@ -143,6 +143,12 @@ function App() {
     const theme = localStorage.getItem('appTheme') || 'default';
     document.body.setAttribute('data-theme', theme);
 
+    // Carrega o registro GLOBAL de transforms de itens (Debug 3D compartilhado
+    // entre todos os tenants, para itens idênticos não ficarem "voando").
+    import('./lib/itemTransforms').then(({ loadGlobalItemTransforms }) => {
+      loadGlobalItemTransforms().catch(() => {});
+    });
+
     if (theme.startsWith('user_')) {
       import('./lib/supabase').then(({ supabase }) => {
         supabase.from('user_themes').select('data').eq('id', theme).single().then(({ data }) => {

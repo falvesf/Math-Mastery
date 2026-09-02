@@ -555,8 +555,15 @@ export default function AdminDashboard() {
   const [freeXpReason, setFreeXpReason] = useState('');
   const [xpHistory, setXpHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [removeAmount, setRemoveAmount] = useState('');
-  const [removeReason, setRemoveReason] = useState('');
+const [removeAmount, setRemoveAmount] = useState('');
+const [removeReason, setRemoveReason] = useState('');
+// Abas do modal "Gerenciar ganhos" + gerenciamento de moedas (livre, sem nota)
+const [manageTab, setManageTab] = useState<'xp' | 'coins'>('xp');
+const [coinMode, setCoinMode] = useState<'add' | 'remove'>('add');
+const [coinAmount, setCoinAmount] = useState('');
+const [coinReason, setCoinReason] = useState('');
+const [coinHistory, setCoinHistory] = useState<any[]>([]);
+const [loadingCoinHistory, setLoadingCoinHistory] = useState(false);
 
   // Modal de Editar Aluno States
   const [editingStudent, setEditingStudent] = useState<UserData | null>(null);
@@ -1082,7 +1089,8 @@ export default function AdminDashboard() {
     const eqItems = (itemsSnap || []).map(d => {
       const data = d.data || {};
       return {
-        itemId: data.itemId,
+        docId: d.id,
+        itemId: d.item_id || data.itemId,
         imageUrl: data.itemImageUrl,
         avatarPart: data.avatarPart,
         itemTitle: data.itemTitle,
@@ -1100,6 +1108,22 @@ export default function AdminDashboard() {
     setSelectedStudentItems(eqItems);
 
     setLoadingHistory(false);
+  };
+
+  const loadCoinHistoryLocally = async (studentUid: string) => {
+    setLoadingCoinHistory(true);
+    const { data: snap } = await supabase.from('coin_logs').select('*').eq('student_id', studentUid);
+    let logs = (snap || []).map(d => ({
+      logId: d.id,
+      amount: Number(d.amount || 0),
+      reason: d.reason || '',
+      justification: d.justification || '',
+      created_at: d.created_at,
+      ...d
+    }));
+    logs.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    setCoinHistory(logs);
+    setLoadingCoinHistory(false);
   };
 
   useEffect(() => {
@@ -1122,6 +1146,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (selectedStudent) {
       loadStudentHistoryLocally(selectedStudent.uid);
+      loadCoinHistoryLocally(selectedStudent.uid);
     }
   }, [selectedStudent?.uid]);
 
@@ -1197,6 +1222,58 @@ export default function AdminDashboard() {
       setSelectedStudent({ ...selectedStudent, xp: newXp, coins: newCoins });
       fetchStudents(false);
       loadStudentHistoryLocally(selectedStudent.uid);
+    }
+  };
+
+  // ---- Gerenciamento de Moedas (livre, sem nota) ----
+  const handleGiveCoins = async () => {
+    if (!selectedStudent || !coinAmount) return;
+    const coinsGained = Math.round(parseFloat(coinAmount.replace(',', '.')));
+    if (isNaN(coinsGained) || coinsGained <= 0) return;
+    const newCoins = Math.max(0, (selectedStudent.coins || 0) + coinsGained);
+    await supabase.from('users').update({ coins: newCoins }).eq('id', selectedStudent.uid);
+    await supabase.from('coin_logs').insert({
+      student_id: selectedStudent.uid,
+      amount: coinsGained,
+      reason: `Atribuição de moedas |  | ${coinReason || 'Atribuição manual de moedas'}`,
+      justification: coinReason || ''
+    });
+    setSelectedStudent({ ...selectedStudent, coins: newCoins });
+    setCoinAmount('');
+    setCoinReason('');
+    fetchStudents(false);
+    loadCoinHistoryLocally(selectedStudent.uid);
+  };
+
+  const handleRemoveCoins = async () => {
+    if (!selectedStudent || !coinAmount) return;
+    const coinsToRemove = Math.round(parseFloat(coinAmount.replace(',', '.')));
+    if (isNaN(coinsToRemove) || coinsToRemove <= 0) return;
+    const newCoins = Math.max(0, (selectedStudent.coins || 0) - coinsToRemove);
+    await supabase.from('users').update({ coins: newCoins }).eq('id', selectedStudent.uid);
+    await supabase.from('coin_logs').insert({
+      student_id: selectedStudent.uid,
+      amount: -coinsToRemove,
+      reason: `Remoção de moedas |  | ${coinReason || 'Correção / Remoção manual'}`,
+      justification: coinReason || ''
+    });
+    setSelectedStudent({ ...selectedStudent, coins: newCoins });
+    setCoinAmount('');
+    setCoinReason('');
+    fetchStudents(false);
+    loadCoinHistoryLocally(selectedStudent.uid);
+  };
+
+  const handleDeleteCoinLog = async (logId: string, amount: number) => {
+    if (!selectedStudent) return;
+    const confirmed = await showConfirm("Atenção! Você está apagando este registro do histórico de moedas. O saldo do aluno será recalculado. Deseja continuar?");
+    if (confirmed) {
+      await supabase.from('coin_logs').delete().eq('id', logId);
+      const newCoins = Math.max(0, (selectedStudent.coins || 0) - amount);
+      await supabase.from('users').update({ coins: newCoins }).eq('id', selectedStudent.uid);
+      setSelectedStudent({ ...selectedStudent, coins: newCoins });
+      fetchStudents(false);
+      loadCoinHistoryLocally(selectedStudent.uid);
     }
   };
 
@@ -2633,7 +2710,7 @@ export default function AdminDashboard() {
                                 className="login-btn" 
                                 onClick={() => { setModalMode('add'); setXpMode('grade'); setSelectedStudent(student); }}
                                 style={{ padding: '0.4rem', borderColor: 'var(--gold-primary)', color: 'var(--gold-primary)', background: 'rgba(251, 191, 36, 0.1)', flexShrink: 0 }}
-                                title="Gerenciar XP"
+                                title="Gerenciar ganhos"
                               >
                                 <Star size={16} />
                               </button>
@@ -3260,33 +3337,48 @@ export default function AdminDashboard() {
       {/* Modal de Gerenciar XP e Histórico */}
       {selectedStudent && (
         <div className="modal-overlay" style={{ zIndex: 100 }}>
-          <div className="glass-panel xp-modal-content modal-content" style={{ maxWidth: '800px', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '2rem', position: 'relative' }}>
+          <div className="glass-panel xp-modal-content modal-content" style={{ maxWidth: '800px', width: '100%', height: '85vh', display: 'flex', flexDirection: 'column', gap: '1.25rem', position: 'relative', overflow: 'hidden' }}>
             <button className="xp-modal-close-top" onClick={() => setSelectedStudent(null)} style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', zIndex: 10 }}>
               <X size={24} />
             </button>
             
-            {/* Lado Esquerdo: Formulário */}
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>Gerenciar XP</h3>
-              </div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                 {selectedStudent.avatarConfig ? (
-                   <div style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', background: 'var(--bg-dark)', border: '2px solid var(--accent-blue)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                     <div style={{ position: 'absolute', width: 64, height: 64, bottom: -6, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
-                       <AvatarCharacter config={selectedStudent.avatarConfig} equippedItems={selectedStudentItems} size={64} interactive={false} animation={selectedStudent.avatarConfig.animationState as any || 'idle'} />
-                     </div>
-                   </div>
-                 ) : (
-                   <img src={selectedStudent.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
-                 )}
-                 <div>
-                   <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{selectedStudent.name}</div>
-                   <div style={{ fontSize: '0.9rem', color: 'var(--gold-primary)', marginTop: '0.2rem' }}>XP Atual: {selectedStudent.xp || 0}</div>
-                 </div>
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+              <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>Gerenciar ganhos</h3>
+            </div>
 
+            {/* Abas: XP | Moedas */}
+            <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px', width: '100%' }}>
+              <button onClick={() => setManageTab('xp')} style={{ flex: 1, padding: '0.6rem', borderRadius: '6px', background: manageTab === 'xp' ? 'var(--gold-primary)' : 'transparent', color: manageTab === 'xp' ? 'var(--bg-dark)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+                Gerenciar XP
+              </button>
+              <button onClick={() => setManageTab('coins')} style={{ flex: 1, padding: '0.6rem', borderRadius: '6px', background: manageTab === 'coins' ? 'var(--gold-primary)' : 'transparent', color: manageTab === 'coins' ? 'var(--bg-dark)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+                Gerenciar Moedas
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', width: '100%' }}>
+               {selectedStudent.avatarConfig ? (
+                 <div style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', background: 'var(--bg-dark)', border: '2px solid var(--accent-blue)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                   <div style={{ position: 'absolute', width: 64, height: 64, bottom: -6, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
+                     <AvatarCharacter config={selectedStudent.avatarConfig} equippedItems={selectedStudentItems} size={64} interactive={false} animation={selectedStudent.avatarConfig.animationState as any || 'idle'} />
+                   </div>
+                 </div>
+               ) : (
+                 <img src={selectedStudent.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
+               )}
+               <div>
+                 <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{selectedStudent.name}</div>
+                 <div style={{ fontSize: '0.9rem', color: 'var(--gold-primary)', marginTop: '0.2rem' }}>XP Atual: {selectedStudent.xp || 0}</div>
+                 <div style={{ fontSize: '0.9rem', color: 'var(--gold-primary)', marginTop: '0.2rem' }}>Moedas: {selectedStudent.coins || 0} 🪙</div>
+               </div>
+            </div>
+
+            {/* Conteúdo: formulário + histórico (rolam internamente, modal fixo) */}
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexWrap: 'wrap', gap: '2rem', overflow: 'hidden' }}>
+            {manageTab === 'xp' ? (
+            <>
+            {/* Lado Esquerdo: Formulário */}
+            <div style={{ flex: 1, minWidth: '280px', overflowY: 'auto' }}>
               {/* Toggles Adicionar/Remover */}
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
                 <button onClick={() => setModalMode('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: modalMode === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: modalMode === 'add'  ? 'var(--text-primary)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: modalMode === 'add' ? 'bold' : 'normal' }}>
@@ -3367,7 +3459,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Lado Direito: Histórico */}
-            <div style={{ flex: 1, minWidth: '300px', borderLeft: '1px solid var(--border-glass)', paddingLeft: '2rem', display: 'flex', flexDirection: 'column', maxHeight: '550px' }}>
+            <div style={{ flex: 1, minWidth: '300px', borderLeft: '1px solid var(--border-glass)', paddingLeft: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <History size={18} /> Histórico de XP
@@ -3421,6 +3513,90 @@ export default function AdminDashboard() {
                   ))
                 )}
               </div>
+            </div>
+            </>
+            ) : (
+            <>
+              {/* Lado Esquerdo: Formulário de Moedas */}
+              <div style={{ flex: 1, minWidth: '280px', overflowY: 'auto' }}>
+                {/* Toggles Adicionar/Remover Moedas */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
+                  <button onClick={() => setCoinMode('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: coinMode === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: coinMode === 'add' ? 'var(--text-primary)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: coinMode === 'add' ? 'bold' : 'normal' }}>
+                    Dar Moedas
+                  </button>
+                  <button onClick={() => setCoinMode('remove')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: coinMode === 'remove' ? 'rgba(239, 68, 68, 0.2)' : 'transparent', color: coinMode === 'remove' ? 'var(--accent-red)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: coinMode === 'remove' ? 'bold' : 'normal' }}>
+                    Retirar Moedas
+                  </button>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                    {coinMode === 'add' ? 'Quantidade de Moedas' : 'Quantidade de Moedas a Retirar'}
+                  </label>
+                  <input type="number" step="1" min="1" value={coinAmount} onChange={e => setCoinAmount(e.target.value)} placeholder="Ex: 500" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+                </div>
+                <div style={{ marginBottom: '2rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Justificativa (Opcional)</label>
+                  <input type="text" value={coinReason} onChange={e => setCoinReason(e.target.value)} placeholder={coinMode === 'add' ? 'Ex: Participação, bônus, premiação...' : 'Ex: Correção, punição, lançamento incorreto...'} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+                </div>
+                <button className="login-btn" onClick={coinMode === 'add' ? handleGiveCoins : handleRemoveCoins} style={{ width: '100%', justifyContent: 'center', background: coinMode === 'add' ? 'var(--gold-primary)' : 'var(--accent-red)', color: coinMode === 'add' ? 'var(--bg-dark)' : 'white', border: 'none' }}>
+                  {coinMode === 'add' ? 'Confirmar e Dar Moedas' : 'Confirmar Remoção de Moedas'}
+                </button>
+              </div>
+
+              {/* Lado Direito: Histórico de Moedas */}
+              <div style={{ flex: 1, minWidth: '300px', borderLeft: '1px solid var(--border-glass)', paddingLeft: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <History size={18} /> Histórico de Moedas
+                  </h3>
+                </div>
+
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {loadingCoinHistory ? (
+                    <p style={{ color: 'var(--text-secondary)' }}>Carregando histórico...</p>
+                  ) : coinHistory.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-secondary)', opacity: 0.6 }}>
+                      Nenhuma moeda registrada ainda.
+                    </div>
+                  ) : (
+                    coinHistory.map((log) => (
+                      <div key={log.logId} style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', borderLeft: `3px solid ${log.amount >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)'}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div>
+                              <strong style={{ fontSize: '0.95rem' }}>{log.reason?.split(' | ')[0] || 'Moedas'}</strong>
+                              {log.justification && (
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                                  Motivo: {log.justification}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ color: log.amount >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)', fontWeight: 'bold' }}>
+                              {log.amount > 0 ? '+' : ''}{log.amount} 🪙
+                            </span>
+                            <button 
+                              onClick={() => handleDeleteCoinLog(log.logId, log.amount)} 
+                              style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.2rem' }}
+                              title="Apagar este registro"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                          <span></span>
+                          <span>{log.created_at ? new Date(log.created_at).toLocaleDateString('pt-BR') : 'Agora'}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+            )}
             </div>
 
           </div>

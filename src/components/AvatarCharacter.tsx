@@ -6,6 +6,7 @@ import * as THREE from 'skinview3d/node_modules/three';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
 import { generateVoxelItemFromImage, updateVoxelCurve, setVoxelThickness } from '../lib/VoxelItemGenerator';
+import { getGlobalModelTransforms } from '../lib/itemTransforms';
 import { Eye, EyeOff, PackageX } from 'lucide-react';
 
 export interface AvatarConfig {
@@ -37,6 +38,8 @@ export interface AvatarConfig {
   customModelUrl?: string;
   /** Escala/zoom do modelo 3D customizado (1 = padrão auto-enquadrado) */
   customZoom?: number;
+  /** Rotação extra no eixo Y (graus) para corrigir GLBs que carregam de costas */
+  customRotY?: number;
   ponytailLength?: number;
   ponytailThickness?: number;
   ponytailAngle?: number;
@@ -189,12 +192,16 @@ export function getModelTransformKey(
 }
 
 export function resolveModelTransform(
-  item: { modelTransforms?: ModelTransformsConfig },
+  item: { modelTransforms?: ModelTransformsConfig; itemTitle?: string; avatarPart?: string; gameModelUrl?: string },
   gender: 'male' | 'female' | undefined,
   handedness: string | undefined,
   isBattle: boolean
 ): ModelTransform | undefined {
-  const mt = item.modelTransforms;
+  // Transform do próprio item prevalece; senão (ou em itens iguais de outro tenant),
+  // usa o registro GLOBAL do Debug 3D — itens idênticos compartilham a configuração.
+  const ownMt = item.modelTransforms;
+  const globalMt = getGlobalModelTransforms(item);
+  const mt = ownMt && globalMt ? { ...globalMt, ...ownMt } : (ownMt || globalMt);
   if (!mt) return undefined;
   const isLeft = handedness === 'left';
 
@@ -848,7 +855,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 model.rotation.set(0, 0, 0); // Mantém a rotação original (0 graus)
               }
               targetGroup.add(finalModelToAdd);
-              if (debugItemId === itemId) {
+              if (debugItemId && debugItemId === itemId) {
                 const helper = new THREE.BoxHelper(finalModelToAdd, 0xff0000);
                 targetGroup.add(helper);
               }
@@ -2243,7 +2250,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   };
 
 if (config?.customModelUrl) {
-  return <CustomModelViewer modelUrl={config.customModelUrl} textureUrl={config.customSkinUrl} animation={animation as any} size={size} role={role} interactive={interactive} zoom={config.customZoom} />;
+  return <CustomModelViewer modelUrl={config.customModelUrl} textureUrl={config.customSkinUrl} animation={animation as any} size={size} role={role} interactive={interactive} zoom={config.customZoom} configRotY={config.customRotY} />;
 }
 
   return (
