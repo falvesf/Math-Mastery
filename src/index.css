@@ -725,6 +725,16 @@ h3 {
 .quest-question-overlay .quest-question-title h2 {
   margin: 0;
   font-size: 1.1rem;
+  line-height: 1.4;
+  /* Máximo de 3 linhas: se a pergunta for maior, cria scroll SÓ na pergunta,
+     para as alternativas não serem empurradas para baixo (atrás dos bonecos). */
+  max-height: calc(1.1rem * 1.4 * 3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 158, 11, 0.5) transparent;
+  max-width: 100%;
+  word-break: break-word;
 }
 
 .quest-question-overlay .quest-question-title img {
@@ -814,6 +824,31 @@ h3 {
 .quest-question-overlay .quest-option-btn.wrong {
   background: rgba(239, 68, 68, 0.3);
   border-color: var(--accent-red);
+}
+
+/* Mobile: proteção extra — se mesmo assim houver muitas alternativas, elas
+   rolam internamente em vez de irem para trás/em cima dos bonecos. */
+@media (max-width: 600px) {
+  .quest-question-overlay {
+    padding: 0.5rem 0.6rem;
+  }
+  .quest-question-overlay .quest-question-title {
+    max-width: 96%;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.95rem;
+  }
+  .quest-question-overlay .quest-question-title h2 {
+    font-size: 1rem;
+    max-height: calc(1rem * 1.4 * 3);
+  }
+  .quest-question-overlay .quest-options-compact {
+    max-width: 100%;
+    max-height: 42vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(245, 158, 11, 0.5) transparent;
+  }
 }
 
 @media (max-width: 600px) {

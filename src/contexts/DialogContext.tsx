@@ -101,7 +101,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 99999,
+          zIndex: 1000000,
           padding: '1rem',
           animation: 'fadeIn 0.2s ease-out'
         }}>
@@ -251,7 +251,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           display: 'flex',
           flexDirection: 'column',
           gap: '10px',
-          zIndex: 999999,
+          zIndex: 1000001,
           pointerEvents: 'none',
           alignItems: 'center'
         }}>
