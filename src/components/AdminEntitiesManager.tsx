@@ -16,18 +16,21 @@ export default function AdminEntitiesManager() {
     let q = supabase.from('3d_models').select('*');
     if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
     q.then(({ data }) => {
-      setSkinModels((data || []).filter(m => (m.category || 'skin') === 'skin'));
+      const list = (data || []).filter(m => (m.category || 'skin') === 'skin');
+      setSkinModels(list);
+      // Se o molde selecionado foi excluído, reseta o estado (senão a URL antiga
+      // persiste e é aplicada como initialConfig, carregando o GLB excluído).
+      setMonsterModelUrl(prev => (list.some(m => m.url === prev) ? prev : ''));
     }).catch(() => {});
   };
 
-  // Busca na abertura e sempre que trocar de guia (para novos moldes aparecerem
-  // na combobox sem precisar recarregar a página).
+  // Busca na abertura e sempre que trocar de guia (novos moldes aparecem sem recarregar)
   useEffect(() => {
     fetchSkinModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, activeTab]);
 
-  // Também atualiza quando um molde é salvo/excluído no Moldes 3D
+  // Atualiza quando um molde é salvo/excluído no Moldes 3D
   useEffect(() => {
     const onModelsChanged = () => fetchSkinModels();
     window.addEventListener('models3d-changed', onModelsChanged);
@@ -154,7 +157,7 @@ export default function AdminEntitiesManager() {
                 {skinModels.map(m => <option key={m.id} value={m.url}>{m.name}</option>)}
               </select>
               <span style={{ display: 'block', marginTop: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>
-                Modelos .glb com cores próprias são usados direto, sem precisar de skin.
+                Modelos .glb com cores próprias são usados direto, sem precisar de skin. (O valor zera sozinho se o molde for excluído.)
               </span>
             </div>
             <AvatarCustomizationModal

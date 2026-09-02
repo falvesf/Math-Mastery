@@ -237,7 +237,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   const { userData, updateUserDataLocally } = useAuth();
   const { tenantId } = useTenant();
   const { can: canView } = usePermissions();
-  const { showAlert, showToast } = useDialog();
+  const { showAlert, showConfirm, showToast } = useDialog();
   // Menus de administrador na edição do personagem (Skins, Moldes, Debug)
   const canSkins = userData?.role === 'admin' || isAdmin || canView('skins', 'view');
   const canModels = userData?.role === 'admin' || isAdmin || canView('models', 'view');
@@ -499,6 +499,9 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
   const hasRandomized = useRef(false);
 
   useEffect(() => {
+    // Auto-randomização: sugere uma skin aleatória da categoria ao abrir as guias
+    // (o comportamento original). A skin de url vazia não é mais um problema —
+    // o preview ignora customSkinUrl vazio.
     if (inline && !hasRandomized.current && presetSkins.length >= 0) {
       handleRandomize();
       hasRandomized.current = true;
@@ -531,6 +534,19 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
         }
         
         if ((userData?.role === 'admin' || isAdmin || canSkins || canModels) && inline && monsterName.trim()) {
+          // Previne o conflito de NOMES IGUAIS: se o nome do monstro/skin bate com
+          // o nome de um molde 3D, avisa antes de salvar (senão o sorteio automático
+          // pode "travar" nesse modelo, como aconteceu com Wither/Enderman).
+          const nameCollision = models3d.some(m => (m.name || '').trim().toLowerCase() === monsterName.trim().toLowerCase());
+          if (nameCollision) {
+            const proceed = await showConfirm(
+              `⚠️ O nome "${monsterName.trim()}" também é usado por um MOLDE 3D cadastrado.\n\nIsso pode causar conflito no sorteio aleatório (a skin pode ficar presa nesse modelo).\n\nRecomendo usar um nome diferente. Deseja salvar mesmo assim?`
+            );
+            if (!proceed) {
+              setSaving(false);
+              return;
+            }
+          }
           try {
             const { error: insertError } = await supabase.from('preset_skins').insert({
               id: uuidv4(),
@@ -546,12 +562,19 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
             
             if (insertError) {
               console.error("Erro ao salvar na galeria", insertError);
-              await showAlert(`Erro ao salvar no banco de dados: ${insertError.message || JSON.stringify(insertError)}`);
+              const errText = [
+                insertError.message,
+                insertError.details,
+                insertError.hint,
+                insertError.code ? `Código: ${insertError.code}` : '',
+              ].filter(Boolean).join(' · ');
+              await showAlert(`Erro ao salvar no banco de dados: ${errText || JSON.stringify(insertError)}`);
             } else {
               await showAlert(`${customSaveMode ? 'Monstro' : 'Personagem'} salvo na galeria com sucesso!`);
             }
           } catch (e) {
             console.error("Erro inesperado ao salvar na galeria", e);
+            await showAlert(`Erro ao salvar na galeria: ${(e as any)?.message || JSON.stringify(e)}`);
           }
         } else {
           await showAlert('Aparência salva na memória temporária.');
@@ -564,7 +587,7 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
       }
     } catch (e) {
       console.error(e);
-      await showAlert('Erro ao salvar.');
+      await showAlert(`Erro ao salvar: ${(e as any)?.message || JSON.stringify(e)}`);
     }
     setSaving(false);
   };
@@ -700,8 +723,8 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
   };
 
 
-  const handleEquipSkin = (skinUrl: string, modelUrl?: string) => {
-    let newConfig = { ...config, customSkinUrl: skinUrl, customModelUrl: modelUrl };
+  const handleEquipSkin = (skinUrl: string, modelUrl?: string, extraConfig?: Partial<AvatarConfig>) => {
+    let newConfig = { ...config, customSkinUrl: skinUrl, customModelUrl: modelUrl, ...(extraConfig || {}) };
     if (!config.customSkinUrl) {
       newConfig.savedPreSkinConfig = {
         hairStyle: config.hairStyle,
@@ -722,28 +745,47 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
   };
 
   const handleUnequipSkin = () => {
-    if (config.savedPreSkinConfig) {
-      const restored = { ...config, ...config.savedPreSkinConfig, customSkinUrl: '', customModelUrl: undefined };
-      delete restored.savedPreSkinConfig;
-      setConfig(restored);
-    } else {
-      setConfig({ ...config, customSkinUrl: '', customModelUrl: undefined });
-    }
+    // Reseta para um monstro/bloco LIMPO: remove skin E modelo 3D (GLB).
+    const cleaned = {
+      ...config,
+      customSkinUrl: '',
+      customModelUrl: undefined as string | undefined,
+      ...(config.savedPreSkinConfig || {}),
+    };
+    delete (cleaned as any).savedPreSkinConfig;
+    setConfig(cleaned);
   };
 
   const handleRandomize = () => {
     const randomItem = (arr: any[]) => arr[Math.floor(Math.random() * arr.length)];
-    
-    // Sugerir da galeria global
-    const availableSkins = presetSkins.filter(s => 
+
+    // O config vem do banco (às vezes como string JSON). Parseia para objeto.
+    const parseConfig = (c: any): any => {
+      if (c && typeof c === 'string') {
+        try { return JSON.parse(c); } catch { return null; }
+      }
+      return c || null;
+    };
+
+    // Sugerir da galeria global — sorteia entre TODAS as skins da categoria
+    // (comportamento original). Só aplica se a skin sorteada tiver config válido.
+    const availableSkins = presetSkins.filter(s =>
       (s.type || 'human') === (customSaveMode ? 'monster' : 'human') &&
       (!s.genderTarget || s.genderTarget === 'both' || s.genderTarget === config.gender)
     );
     if (availableSkins.length > 0 && Math.random() < 0.4) {
       const selected = randomItem(availableSkins);
-      if (selected.config) {
-        setConfig(selected.config);
-        return;
+      const cfg = parseConfig(selected.config);
+      if (cfg) {
+        const modelUrl = cfg.customModelUrl;
+        // Imunidade a molde órfão: se aponta para um molde de galeria que não
+        // existe mais, não aplica (cai na randomização de cores).
+        const isExternalOrLocal = !modelUrl || modelUrl.startsWith('http') || modelUrl.startsWith('data:') || modelUrl.startsWith('/');
+        const modelExists = isExternalOrLocal || models3d.some(m => m.url === modelUrl);
+        if (modelExists) {
+          setConfig(cfg);
+          return;
+        }
       }
     }
 
@@ -1304,7 +1346,7 @@ onClick={() => setConfig(prev => {
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
             <div>
             {(() => {
-              const activePreset = presetSkins.find(s => s.url === config.customSkinUrl);
+const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
               const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default' 
                 ? models3d.find(m => m.id === activePreset.baseModelId) 
                 : null;
@@ -1408,14 +1450,16 @@ onClick={() => setConfig(prev => {
                   >
                     Nenhum
                   </button>
-                  {presetSkins.filter(s => s.type === 'monster').map(skin => (
+                  {presetSkins.filter(s => s.type === 'monster').map(skin => {
+                    const skinCfg = (() => { try { return typeof skin.config === 'string' ? JSON.parse(skin.config) : skin.config; } catch { return null; } })();
+                    return (
                     <button
                       key={skin.id}
                       onClick={() => {
                         const modelUrl = skin.baseModelId && skin.baseModelId !== 'default' 
                           ? models3d.find(m => m.id === skin.baseModelId)?.url 
                           : undefined;
-                        handleEquipSkin(skin.url, modelUrl);
+                        handleEquipSkin(skin.url, modelUrl, { customZoom: skinCfg?.customZoom });
                       }}
                       style={{
                          padding: '0.5rem', background: config.customSkinUrl === skin.url ? 'var(--accent-primary)' : 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: config.customSkinUrl === skin.url ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
@@ -1423,7 +1467,7 @@ onClick={() => setConfig(prev => {
                     >
                       {skin.name}
                     </button>
-                  ))}
+                  ); })}
                 </HorizontalScrollList>
               </div>
             )}

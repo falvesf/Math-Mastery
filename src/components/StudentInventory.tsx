@@ -349,12 +349,35 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   };
 
   const handleUseConsumable = async (item: UserItem) => {
+    if (item.gameEffect === 'heal_1_hp') {
+      const currentRankIndex = RANKS.findIndex(r => r.name === userData.lastSeenRank) || 0;
+      const maxHearts = 3 + Math.floor(currentRankIndex / 2);
+      if ((userData.hp || 0) >= maxHearts) {
+        showToast("Sua vida já está cheia!");
+        return;
+      }
+      const confirmed = await showConfirm(`Deseja usar "${item.itemTitle}" para restaurar 1 coração?`);
+      if (!confirmed) return;
+
+      const newHp = Math.min(maxHearts, (userData.hp || 0) + 1);
+      // Limpa o timestamp de regeneração para o heartbeat do Dashboard não
+      // sobrescrever a cura aplicada agora.
+      await supabase.from('users').update({ hp: newHp, hp_recovery_start_timestamp: null }).eq('id', userData.uid);
+      userData.hp = newHp;
+      userData.hpRecoveryStartTimestamp = null;
+
+      await consumeItemQuantity(item.itemId, 1, item.id);
+      fetchInventory();
+      showToast("❤️ 1 coração restaurado!");
+      return;
+    }
+
     if (item.gameEffect === 'restore_hp') {
       const currentRankIndex = RANKS.findIndex(r => r.name === userData.lastSeenRank) || 0;
       const maxHearts = 3 + Math.floor(currentRankIndex / 2);
       
       if ((userData.hp || 0) >= maxHearts) {
-        await showAlert("Sua vida já está cheia!");
+        showToast("Sua vida já está cheia!");
         return;
       }
       const confirmed = await showConfirm(`Deseja beber "${item.itemTitle}" e restaurar todo o seu HP?`);
@@ -362,15 +385,17 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       
       await supabase.from('users').update({ 
         hp: maxHearts,
+        hp_recovery_start_timestamp: null,
         happy_buff_until: null,
         happy_buff_duration: null,
         stunned_until: null
       }).eq('id', userData.uid);
       userData.hp = maxHearts;
+      userData.hpRecoveryStartTimestamp = null;
 
       await consumeItemQuantity(item.itemId, 1, item.id);
       fetchInventory();
-      await showAlert("HP restaurado completamente!");
+      showToast("❤️ HP restaurado completamente!");
       return;
     }
 

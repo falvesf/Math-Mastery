@@ -304,7 +304,11 @@ export default function Admin3DModelsManager() {
           return;
         }
         await supabase.from('3d_models').delete().eq('id', id);
+        // Remove o vínculo das skins pré-definidas que apontavam para este molde,
+        // para não ficarem órfãs (baseModelId inexistente → nada renderiza).
+        await supabase.from('preset_skins').update({ baseModelId: null }).eq('baseModelId', id);
         sessionCache.invalidate(CACHE_KEYS.models3d());
+        sessionCache.invalidate(CACHE_KEYS.presetSkins(tenantId));
         window.dispatchEvent(new CustomEvent('models3d-changed'));
         showAlert('Modelo excluído com sucesso!');
         fetchModels(false);

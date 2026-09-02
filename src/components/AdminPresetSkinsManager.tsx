@@ -123,6 +123,20 @@ export default function AdminPresetSkinsManager() {
         is_global: false,
       };
       let saveError: any = null;
+      // Se o molde base for "Padrão" (nenhum), também remove o customModelUrl do
+      // config da skin — senão a skin continua carregando o GLB antigo.
+      if (baseModelId === 'default' && editingId) {
+        const { data: existing } = await supabase.from('preset_skins').select('config').eq('id', editingId).single();
+        if (existing?.config) {
+          let cfg: any = existing.config;
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = null; } }
+          if (cfg && cfg.customModelUrl) {
+            const { customModelUrl, ...rest } = cfg;
+            const cleanCfg = typeof existing.config === 'string' ? JSON.stringify(rest) : rest;
+            await supabase.from('preset_skins').update({ config: cleanCfg }).eq('id', editingId);
+          }
+        }
+      }
       if (editingId) {
         const editingSkin = skins.find(s => s.id === editingId);
         if ((editingSkin as any)?._isGlobal && !isSuperAdmin) {
@@ -322,6 +336,17 @@ export default function AdminPresetSkinsManager() {
                           {skin.name}
                           {(skin as any)._isGlobal ? <span title="Global (somente leitura)"><Globe size={14} color="var(--text-secondary)" /></span> : <span title="Local (editável)"><Building2 size={14} color="#10b981" /></span>}
                         </h4>
+                        {(() => {
+                          const linkedModel = models3d.find(m => m.id === skin.baseModelId);
+                          if (!linkedModel) return null;
+                          const sameName = linkedModel.name.trim().toLowerCase() === (skin.name || '').trim().toLowerCase();
+                          return (
+                            <div style={{ marginTop: '0.25rem', fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: sameName ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)', color: sameName ? '#fca5a5' : '#6ee7b7', border: `1px solid ${sameName ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.4)'}` }}>
+                              🧩 Molde: {linkedModel.name}
+                              {sameName && <span title="A skin e o molde têm o mesmo nome — podem causar confusão. Renomeie um deles para evitar persistência inesperada.">⚠️ mesmo nome</span>}
+                            </div>
+                          );
+                        })()}
                         <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: skin.type === 'monster' ? 'rgba(239, 68, 68, 0.2)' : skin.type === 'equipment' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: skin.type === 'monster' ? '#f87171' : skin.type === 'equipment' ? '#f59e0b' : '#60a5fa', borderRadius: '1rem' }}>
                           {skin.type === 'monster' ? 'Monstro' : skin.type === 'equipment' ? 'Equipamento' : 'Humano'}
                         </span>
