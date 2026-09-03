@@ -841,6 +841,20 @@ const [loadingCoinHistory, setLoadingCoinHistory] = useState(false);
       targetClasses: d.target_classes || d.targetClasses || [],
       chestConfig: d.chestconfig || d.chestConfig || null,
       combatCoinDrop: d.combatcoindrop || d.combatCoinDrop || null,
+      battleBgUrl: d.battle_bg_url || d.battleBgUrl || null,
+      battleBgPosX: d.battle_bg_pos_x ?? d.battleBgPosX ?? 50,
+      battleBgPosY: d.battle_bg_pos_y ?? d.battleBgPosY ?? 50,
+      battleBgScale: d.battle_bg_scale ?? d.battleBgScale ?? 1.2,
+      battleBgMoveEnabled: d.battle_bg_move_enabled ?? d.battleBgMoveEnabled ?? true,
+      battleBgMoveDirection: d.battle_bg_move_direction || d.battleBgMoveDirection || 'diagonal',
+      battleBgMoveSpeed: d.battle_bg_move_speed ?? d.battleBgMoveSpeed ?? 10,
+      battleBgMoveDuration: d.battle_bg_move_duration ?? d.battleBgMoveDuration ?? 30,
+      podiumBgUrl: d.podium_bg_url || d.podiumBgUrl || null,
+      monsterName: d.monster_name || d.monsterName || '',
+      monsterAvatarConfig: (() => { try { const v = d.monster_avatar_config || d.monsterAvatarConfig || null; return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } })(),
+      monsterModelUrl: d.monster_model_url || d.monsterModelUrl || null,
+      monsterQuotes: d.monster_quotes || d.monsterQuotes || null,
+      monsterDrops: d.monster_drops || d.monsterDrops || null,
       battleMusicUrl: d.battle_music_url || d.battleMusicUrl || '',
       battleMusicVolume: d.battle_music_volume ?? 0.5,
       monsterGender: d.monster_gender || d.monsterGender || '',
@@ -1667,7 +1681,22 @@ const [loadingCoinHistory, setLoadingCoinHistory] = useState(false);
     };
 
     // Sanitize object to remove undefined values for Firestore
-    const sanitizedQuest = JSON.parse(JSON.stringify(newQuest));
+    const sanitizedQuest = JSON.parse(JSON.stringify({ ...newQuest, ...{
+      battle_bg_url: newQuest.battleBgUrl || null,
+      battle_bg_pos_x: newQuest.battleBgPosX,
+      battle_bg_pos_y: newQuest.battleBgPosY,
+      battle_bg_scale: newQuest.battleBgScale,
+      battle_bg_move_enabled: newQuest.battleBgMoveEnabled,
+      battle_bg_move_direction: newQuest.battleBgMoveDirection,
+      battle_bg_move_speed: newQuest.battleBgMoveSpeed,
+      battle_bg_move_duration: newQuest.battleBgMoveDuration,
+      podium_bg_url: newQuest.podiumBgUrl || null,
+      monster_avatar_config: newQuest.monsterAvatarConfig || null,
+      monster_model_url: newQuest.monsterModelUrl || null,
+      monster_quotes: newQuest.monsterQuotes || null,
+      monster_drops: newQuest.monsterDrops || null,
+      monster_name: newQuest.monsterName || null,
+    } }));
 
     try {
       // Tenta salvar com todas as colunas. Se alguma coluna não existir na
@@ -1680,7 +1709,10 @@ const [loadingCoinHistory, setLoadingCoinHistory] = useState(false);
       while (upsertErr && /Could not find the '([^']+)' column/.test(upsertErr.message || '')) {
         const missing = (upsertErr.message.match(/Could not find the '([^']+)' column/) || [])[1];
         if (!missing) break;
-        const { [missing]: _dropped, ...rest } = payload;
+        // PostgREST reporta a coluna em minúsculas; a chave real pode ser camelCase.
+        const realKey = Object.keys(payload).find(k => k.toLowerCase() === missing.toLowerCase());
+        if (!realKey) break;
+        const { [realKey]: _dropped, ...rest } = payload;
         payload = rest;
         upsertRes = await supabase.from('quests').upsert({ id: questId, ...payload });
         upsertErr = upsertRes.error;

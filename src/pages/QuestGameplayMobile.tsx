@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 import { supabase } from '../lib/supabase';
@@ -21,6 +21,8 @@ import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { playSound, fadeOutAllSounds, playCoinCollect, resolveAudioUrl } from '../lib/audioBank';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
+import DamageEffectOverlay from '../components/DamageEffectOverlay';
+import { getEquippedDamageEffect, getEquippedDamageEffectInfo, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
 
 interface UserItem {
   id: string;
@@ -75,6 +77,8 @@ export default function QuestGameplay() {
   const totalEquippedStats = calculateTotalStats(playerEquippedItems, userData?.distributedStats);
   const xpMultiplier = 1 + (totalEquippedStats.xp / 100);
   const coinsMultiplier = 1 + (totalEquippedStats.coins / 100);
+  const damageEffect = getEquippedDamageEffect(playerEquippedItems);
+  const effectChance = getEquippedDamageEffectInfo(playerEquippedItems).chance;
 
   const currentRankObj = getRankForXp(userData?.xp || 0, userData?.classId);
   const calculatedRankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRankObj.name));
@@ -89,6 +93,12 @@ export default function QuestGameplay() {
   const [monsterBubble, setMonsterBubble] = useState<string>('');
   const [playerAnim, setPlayerAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
+  const [effectLevel, setEffectLevel] = useState(0);
+  const [effectFlash, setEffectFlash] = useState(false);
+  const [frozen, setFrozen] = useState(false);
+  const [drainBlink, setDrainBlink] = useState(false);
+  const fallenPartsRef = useRef<string[]>([]);
+  const [torsoAdvantage, setTorsoAdvantage] = useState(false);
   // Fração do coração ATUAL do monstro (1 = cheio, 0.5 = metade, 0.333 = 1/3, 0.25 = 1/4).
   // Golpe crítico danifica o coração atual e o renderiza conforme o RNG sorteado.
   const [monsterHeartFrac, setMonsterHeartFrac] = useState<number>(1);
@@ -539,7 +549,7 @@ export default function QuestGameplay() {
           targetClasses: snap.target_classes || snap.targetClasses || [],
           chestConfig: snap.chestconfig || snap.chestConfig || null,
           combatCoinDrop: snap.combatcoindrop || snap.combatCoinDrop || null,
-          monsterAvatarConfig: snap.monster_avatar_config || snap.monsterAvatarConfig || null,
+          monsterAvatarConfig: (() => { try { const v = snap.monster_avatar_config || snap.monsterAvatarConfig || null; return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } })(),
           monsterModelUrl: snap.monster_model_url || snap.monsterModelUrl || null,
           monsterQuotes: snap.monster_quotes || snap.monsterQuotes || null,
           monsterDefeatQuotes: snap.monster_defeat_quotes || snap.monsterDefeatQuotes || null,
@@ -677,6 +687,7 @@ export default function QuestGameplay() {
                 if (data.adds) {
                   try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch(e){}
                 }
+                parsedAdds = orderEffectFirst(parsedAdds);
                 const eqItem: EquippedItem = { 
                   docId: d.id,
                   itemId: d.item_id,
@@ -695,6 +706,7 @@ export default function QuestGameplay() {
                   rarity: data.rarity,
                   customAnimation: data.customAnimation,
                   battleSoundUrl: data.battleSoundUrl,
+                  damageEffect: data.damageEffect || 'none',
                 };
                 eLoaded.push(eqItem);
 
@@ -843,6 +855,11 @@ export default function QuestGameplay() {
       setCurrentQIndex(0);
       setEliminatedOptions([]);
       setHasShield(false);
+      setEffectLevel(0);
+      setFrozen(false);
+      setEffectFlash(false);
+      fallenPartsRef.current = [];
+      setTorsoAdvantage(false);
       
       if (newHearts === 0) {
         setBattleMessage('ATAQUE SURPRESA LETAL! O monstro te emboscou e você não resistiu!');
@@ -938,17 +955,20 @@ export default function QuestGameplay() {
     const deaths = hasAttackWeapon 
       ? ['death-fall', 'death-evaporate', 'death-slice', 'death-explode']
       : ['death-fall', 'death-evaporate'];
+    // Fatalidade temática do efeito da arma
+    const effectFatal: Record<string, string> = { burn: 'death-explode', poison: 'death-evaporate', impact: 'death-explode', bleed: 'death-slice', electric: 'death-explode' };
+    const effectFatality = hasAttackWeapon && damageEffect !== 'none' ? effectFatal[damageEffect] : null;
     // Força uma fatalidade específica via Arena Debug (SÓ para quem tem acesso ao Debug — alunos usam aleatória)
     const canForce = canArenaDebug('arena_debug', 'view') || isSuperAdmin || userData?.role === 'admin';
     const fatality = canForce && arenaDebug.forcedFatality && deaths.includes(arenaDebug.forcedFatality)
       ? arenaDebug.forcedFatality
-      : deaths[Math.floor(Math.random() * deaths.length)];
+      : (effectFatality || deaths[Math.floor(Math.random() * deaths.length)]);
     
     let msg = '';
     if (hasAttackWeapon) {
-      if (fatality === 'death-explode') msg = 'Agora EXPLODA!!!';
-      else if (fatality === 'death-slice') msg = 'Seja derrotado pela minha lâmina!';
-      else if (fatality === 'death-evaporate') msg = 'Vou te pulverizar!';
+      if (fatality === 'death-explode') msg = damageEffect === 'burn' ? 'Queime em chamas!' : (damageEffect === 'impact' ? 'Não sobrará nada!' : 'Agora EXPLODA!!!');
+      else if (fatality === 'death-slice') msg = 'Cortado ao meio!';
+      else if (fatality === 'death-evaporate') msg = damageEffect === 'poison' ? 'Desintegre-se!' : 'Vou te pulverizar!';
       else msg = 'Caia perante mim!';
     } else {
       if (fatality === 'death-evaporate') msg = 'Desapareça!';
@@ -1245,7 +1265,19 @@ export default function QuestGameplay() {
       } else {
         setPlayerAnim('attack');
         playPlayerAttackSound();
-        setTimeout(() => { setMonsterAnim('hurt'); dropCoins(isCritical); playMonsterDamageSound(); }, 500);
+        setTimeout(() => {
+          setMonsterAnim('hurt');
+          dropCoins(isCritical);
+          playMonsterDamageSound();
+          if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
+            setEffectLevel(l => l + 1);
+            setEffectFlash(true);
+            setTimeout(() => setEffectFlash(false), 600);
+            if (damageEffect === 'freeze' && effectLevel + 1 >= FREEZE_HITS_TO_FREEZE) {
+              setFrozen(true);
+            }
+          }
+        }, 500);
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
         setTimeout(() => {
           setFeedback(null);
@@ -1397,6 +1429,10 @@ export default function QuestGameplay() {
         toEliminateCount = Math.min(1, wrongOptionsCount - 1);
       } else if (nextQAdvantage === 'bonus-crit') {
         isBonusCrit = true;
+      }
+      // Vantagem do tronco destruído primeiro (estrondo): elimina 1 alternativa por questão
+      if (torsoAdvantage) {
+        toEliminateCount = Math.max(toEliminateCount, Math.min(1, wrongOptionsCount - 1));
       }
       
       if (toEliminateCount > 0) {
@@ -1731,6 +1767,57 @@ export default function QuestGameplay() {
     setTimeout(() => setCoinsToRescue(null), 2500);
   };
 
+  // VENENO/SANGRAMENTO: drena o coração, pisca em vermelho e dropa moedas extras.
+  useEffect(() => {
+    if (gameState !== 'playing' || (damageEffect !== 'poison' && damageEffect !== 'bleed') || effectLevel === 0) return;
+    const iv = setInterval(() => {
+      setDrainBlink(true);
+      setTimeout(() => setDrainBlink(false), 550);
+      setMonsterHeartFrac(f => Math.max(0.06, f - 0.18));
+      playMonsterDamageSound();
+      if (economySettings?.coinsDropInCombat) {
+        const extra = Array.from({ length: 1 + Math.floor(Math.random() * 3) }).map((_, i) => ({
+          id: Date.now() + Math.random() * 1000 + i,
+          x: 62 + Math.random() * 20,
+          y: 78 + Math.random() * 10,
+          value: Math.max(1, Math.floor(Math.random() * (economySettings.maxCoinsValue || 3)) + 1)
+        }));
+        setDroppedCoins(prev => [...prev, ...extra]);
+      }
+    }, 5000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState, damageEffect, effectLevel]);
+
+  // FOGO/SANGRAMENTO: moedas caídas queimam/somem após ~4s.
+  useEffect(() => {
+    if (gameState !== 'playing' || (damageEffect !== 'burn' && damageEffect !== 'bleed')) return;
+    const iv = setInterval(() => {
+      setDroppedCoins(prev => prev.filter(c => Date.now() - c.id < 4000));
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [gameState, damageEffect, effectLevel]);
+
+  // ESTRONDO: a cada acerto, uma parte aleatória do corpo CAI (a cabeça fica por último).
+  // 1% de chance do TRONCO cair PRIMEIRO → vantagem de eliminar 1 alternativa por questão;
+  // nesse caso os braços caem junto com o tronco.
+  useEffect(() => {
+    if (damageEffect !== 'impact' || effectLevel === 0) return;
+    const already = fallenPartsRef.current;
+    const isFirst = already.length === 0;
+    if (isFirst && Math.random() < 0.01) {
+      fallenPartsRef.current = ['body', 'leftArm', 'rightArm'];
+      setTorsoAdvantage(true);
+      setBattleMessage('💥 O tronco do monstro desabou! Vantagem: elimina 1 alternativa por questão.');
+      return;
+    }
+    const available = ['leftLeg', 'rightLeg', 'leftArm', 'rightArm', 'body'].filter(p => !already.includes(p));
+    if (available.length > 0) {
+      const pick = available[Math.floor(Math.random() * available.length)];
+      fallenPartsRef.current = [...already, pick];
+    }
+  }, [effectLevel, damageEffect]);
+
   const handleUsePowerup = async (item: UserItem) => {
     if (gameState !== 'playing') {
       await showAlert("Você só pode usar itens durante a batalha!");
@@ -1822,7 +1909,7 @@ export default function QuestGameplay() {
       position: 'relative', 
       height: '100vh',
       overflow: 'hidden',
-      background: quest?.coverImageUrl ? `url(${getSafeUrl(quest.coverImageUrl)}) center/cover no-repeat` : 'var(--bg-dark)'
+      background: quest?.battleBgUrl ? `url("${getSafeUrl(quest.battleBgUrl)}") center/cover no-repeat` : (quest?.coverImageUrl ? `url("${getSafeUrl(quest.coverImageUrl)}") center/cover no-repeat` : 'var(--bg-dark)')
     }}>
       {/* Dark overlay for readability */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(8px)' }} />
@@ -1914,7 +2001,7 @@ export default function QuestGameplay() {
               <div 
                 className="battle-arena-bg-image" 
                 style={quest?.battleBgUrl ? ({
-                  background: `url(${quest.battleBgUrl}) ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
+                  background: `url("${getSafeUrl(quest.battleBgUrl)}") ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
                   ...(quest.battleBgMoveEnabled !== false
                     ? {
                         '--bg-move-x': `${quest.battleBgMoveDirection === 'horizontal' || quest.battleBgMoveDirection === 'diagonal' ? (quest.battleBgMoveSpeed ?? 10) : 0}%`,
@@ -1944,14 +2031,14 @@ export default function QuestGameplay() {
                   <button
                     key={coin.id}
                     onClick={() => collectCoin(coin)}
-                    title="Coletar moeda"
+                    title={damageEffect === 'burn' ? 'Moeda queimando — colete rápido!' : damageEffect === 'bleed' ? 'Moeda coberta de sangue — colete rápido!' : 'Coletar moeda'}
                     style={{
                       position: 'absolute',
                       left: `${coin.x}%`,
                       top: `${coin.y}%`,
                       pointerEvents: 'auto',
-                      background: activeCoinModel ? 'transparent' : 'rgba(245, 158, 11, 0.2)',
-                      border: activeCoinModel ? 'none' : '2px solid var(--gold-primary)',
+                      background: activeCoinModel ? 'transparent' : (damageEffect === 'burn' ? 'rgba(255,120,0,0.25)' : damageEffect === 'bleed' ? 'rgba(220,30,30,0.3)' : 'rgba(245, 158, 11, 0.2)'),
+                      border: activeCoinModel ? 'none' : (damageEffect === 'burn' ? '2px solid #ff8800' : damageEffect === 'bleed' ? '2px solid #dc2626' : '2px solid var(--gold-primary)'),
                       borderRadius: '50%',
                       width: '30px',
                       height: '30px',
@@ -1959,9 +2046,9 @@ export default function QuestGameplay() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
-                      animation: 'coin-pop 0.4s ease-out',
+                      animation: `coin-pop 0.4s ease-out${damageEffect === 'burn' ? ', coin-burn 0.5s ease-in infinite alternate' : ''}${damageEffect === 'bleed' ? ', de-bleed-drop 0.8s ease-in infinite' : ''}`,
                       zIndex: 40,
-                      boxShadow: activeCoinModel ? 'none' : '0 0 12px rgba(245, 158, 11, 0.6)'
+                      boxShadow: activeCoinModel ? 'none' : (damageEffect === 'burn' ? '0 0 14px rgba(255,120,0,0.8)' : damageEffect === 'bleed' ? '0 0 12px rgba(220,30,30,0.7)' : '0 0 12px rgba(245, 158, 11, 0.6)')
                     }}
                   >
                     {activeCoinModel ? (
@@ -2175,14 +2262,19 @@ export default function QuestGameplay() {
                     const wrapperStyle = modelCfg ? { transform: `translate(${modelOX}px, ${modelOY}px) scale(${modelScale})`, transformOrigin: 'bottom center' } : {};
 
                     if (modelUrl) {
-                      return <div style={wrapperStyle}><CustomModelViewer modelUrl={modelUrl} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={190} animation={monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} /></div>;
+                      const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
+                      const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;
+                      return <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><CustomModelViewer modelUrl={modelUrl} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={190} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} /></div>;
                     } else if (quest?.monsterAvatarConfig) {
-                      return <div style={{ marginBottom: '-60px', ...wrapperStyle, transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={170} animation={(monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle'} interactive={false} role="monster" hurt={monsterAnim === 'hurt'} /></div>;
+                      const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
+                      const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;
+                      return <div style={{ marginBottom: '-60px', ...wrapperStyle, transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={170} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={effectTintColor} fallenBodyParts={fallenPartsRef.current} /></div>;
                     } else {
                       return <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />;
                     }
                   })()}
-                  <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, currentQIndex / Math.max(1, quest?.questions.length || 1))) } as any} />
+                  <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (currentQIndex / Math.max(1, quest?.questions.length || 1)) * (damageEffect === 'impact' ? 2 : 1))) } as any} />
+                  <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} drainBlink={drainBlink} />
                 </div>
                 </div>
                 </div>

@@ -13,6 +13,8 @@ import { fetchEquippedItems } from '../lib/equippedItems';
 import { useDialog } from '../contexts/DialogContext';
 import { playSound, resolveAudioUrl } from '../lib/audioBank';
 import BattleTransition from './BattleTransition';
+import DamageEffectOverlay from './DamageEffectOverlay';
+import { getEquippedDamageEffect, getEquippedDamageEffectInfo } from '../lib/damageEffects';
 
 interface PvpBattleProps {
   matchId: string;
@@ -61,6 +63,11 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
   const [specRightAttack, setSpecRightAttack] = useState(false);
   const [specLeftHurt, setSpecLeftHurt] = useState(false);
   const [specRightHurt, setSpecRightHurt] = useState(false);
+  // Efeitos especiais de dano (armas): aplicados ao oponente quando eu acerto, e em mim quando ele acerta
+  const [themEffectLevel, setThemEffectLevel] = useState(0);
+  const [themEffectFlash, setThemEffectFlash] = useState(false);
+  const [myEffectLevel, setMyEffectLevel] = useState(0);
+  const [myEffectFlash, setMyEffectFlash] = useState(false);
   const lastWinnerRef = useRef<{ id: string | null; at: number }>({ id: null, at: 0 });
   const [transition, setTransition] = useState<'none' | 'enter' | 'exit'>('none');
   const transitionDoneRef = useRef(false);
@@ -273,11 +280,23 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
         setTimeout(() => setLungeMe(false), 900);
         setHurtThem(true);
         setTimeout(() => setHurtThem(false), 650);
+        // Minha arma aplica efeito no oponente (conforme a chance)
+        if (myEffectInfo.effect !== 'none' && Math.random() * 100 < myEffectInfo.chance) {
+          setThemEffectLevel(l => l + 1);
+          setThemEffectFlash(true);
+          setTimeout(() => setThemEffectFlash(false), 600);
+        }
       } else {
         setLungeThem(true);
         setTimeout(() => setLungeThem(false), 900);
         setHurtMe(true);
         setTimeout(() => setHurtMe(false), 650);
+        // Arma do oponente aplica efeito em mim (conforme a chance)
+        if (themEffectInfo.effect !== 'none' && Math.random() * 100 < themEffectInfo.chance) {
+          setMyEffectLevel(l => l + 1);
+          setMyEffectFlash(true);
+          setTimeout(() => setMyEffectFlash(false), 600);
+        }
       }
     }
     const winnerItems = (winnerIsP1 ? m.player1?.equippedItems : m.player2?.equippedItems) || [];
@@ -438,6 +457,9 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
   const myEquip = myRealEquip.length ? myRealEquip : (isP1 ? p1Equip : p2Equip);
   const themConfig = (oppRealConfig && Object.keys(oppRealConfig).length > 0) ? oppRealConfig : (isP1 ? p2Config : p1Config);
   const themEquip = oppRealEquip.length ? oppRealEquip : (isP1 ? p2Equip : p1Equip);
+  // Efeitos das armas: a MINHA arma aplica efeito no oponente; a arma dele aplica em mim
+  const myEffectInfo = getEquippedDamageEffectInfo(myEquip);
+  const themEffectInfo = getEquippedDamageEffectInfo(themEquip);
 
   // Ainda não começou
   if (match.status === 'challenged' || match.status === 'accepted') {
@@ -708,7 +730,10 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
         )}
         <div style={{ position: 'absolute', inset: 0, zIndex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: `${arenaGap}px` }}>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: leftLunge ? `translateX(${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
-            <AvatarCharacter config={leftConfig} equippedItems={leftEquip} size={170} animation={leftAnswered ? 'attack' : (leftHurt ? 'hurt' : 'idle')} interactive={false} hurt={leftHurt} />
+            <div style={{ position: 'relative' }}>
+              <AvatarCharacter config={leftConfig} equippedItems={leftEquip} size={170} animation={leftAnswered ? 'attack' : (leftHurt ? 'hurt' : 'idle')} interactive={false} hurt={leftHurt} effectTint={!isSpectator ? (themEffectInfo.effect === 'burn' ? '#ff8833' : themEffectInfo.effect === 'poison' ? '#44ff66' : themEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null} />
+              {!isSpectator && <DamageEffectOverlay effect={themEffectInfo.effect} level={myEffectLevel} justHit={myEffectFlash} />}
+            </div>
             <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#fbbf24', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(safeLeft?.name)}</div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '1.3rem', fontWeight: '900', color: 'var(--gold-primary)' }}>{safeLeft?.score}</div>
@@ -720,7 +745,10 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
             </div>
           </div>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: rightLunge ? `translateX(-${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
-            <AvatarCharacter config={rightConfig} equippedItems={rightEquip} size={170} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'idle')} interactive={false} hurt={rightHurt} role="enemy" />
+            <div style={{ position: 'relative' }}>
+              <AvatarCharacter config={rightConfig} equippedItems={rightEquip} size={170} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'idle')} interactive={false} hurt={rightHurt} role="enemy" effectTint={!isSpectator ? (myEffectInfo.effect === 'burn' ? '#ff8833' : myEffectInfo.effect === 'poison' ? '#44ff66' : myEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null} />
+              {!isSpectator && <DamageEffectOverlay effect={myEffectInfo.effect} level={themEffectLevel} justHit={themEffectFlash} />}
+            </div>
             <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#94a3b8', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(safeRight?.name)}</div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '1.3rem', fontWeight: '900', color: '#94a3b8' }}>{safeRight?.score}</div>

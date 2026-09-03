@@ -14,7 +14,9 @@ import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
 import { Package, Coins } from 'lucide-react';
 import { RANKS, getRankForXp } from '../lib/ranks';
-import { normalizeCombatCoinDrop } from '../lib/utils';
+import { normalizeCombatCoinDrop, getSafeUrl } from '../lib/utils';
+import DamageEffectOverlay from '../components/DamageEffectOverlay';
+import { getEquippedDamageEffect, getEquippedDamageEffectInfo, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
 import { useDialog } from '../contexts/DialogContext';
 import { calculateTotalStats } from '../lib/gacha';
 import type { GameEffectType } from '../components/AdminStoreManager';
@@ -55,6 +57,10 @@ export default function LiveQuestStudent() {
   const [isEditingAvatar, setIsEditingAvatar] = useState(false);
   const [studentAnim, setStudentAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
+  const [effectLevel, setEffectLevel] = useState(0);
+  const [effectFlash, setEffectFlash] = useState(false);
+  const [drainBlink, setDrainBlink] = useState(false);
+  const [frozen, setFrozen] = useState(false);
   const [hasShield, setHasShield] = useState(false);
   
   const [economySettings, setEconomySettings] = useState<any>(null);
@@ -130,7 +136,21 @@ export default function LiveQuestStudent() {
             return;
           }
         }
-        setQuest(qDoc as QuestDef);
+        const qData = {
+          ...qDoc,
+          id: qDoc.id,
+          coverImageUrl: qDoc.cover_image_url || qDoc.coverImageUrl,
+          baseXp: qDoc.base_xp || qDoc.baseXp,
+          chestConfig: qDoc.chestconfig || qDoc.chestConfig || null,
+          combatCoinDrop: qDoc.combatcoindrop || qDoc.combatCoinDrop || null,
+          monsterAvatarConfig: (() => { try { const v = qDoc.monster_avatar_config || qDoc.monsterAvatarConfig || null; return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } })(),
+          monsterModelUrl: qDoc.monster_model_url || qDoc.monsterModelUrl || null,
+          monsterQuotes: qDoc.monster_quotes || qDoc.monsterQuotes || null,
+          monsterDrops: qDoc.monster_drops || qDoc.monsterDrops || null,
+          battleBgUrl: qDoc.battle_bg_url || qDoc.battleBgUrl || null,
+          podiumBgUrl: qDoc.podium_bg_url || qDoc.podiumBgUrl || null,
+        } as QuestDef;
+        setQuest(qData);
 
         // Load selected chest model & active coin for this live quest
         const chestModelId = (qDoc as any)?.chestConfig?.chestModelId;
@@ -187,6 +207,7 @@ export default function LiveQuestStudent() {
                 if (data.adds) {
                   try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch(e){}
                 }
+                parsedAdds = orderEffectFirst(parsedAdds);
                 equippedItems.push({ 
                   docId: d.id,
                   itemId: d.item_id,
@@ -197,6 +218,7 @@ export default function LiveQuestStudent() {
                   baseAttributeType: data.baseAttributeType,
                   baseAttributeValue: data.baseAttributeValue,
                   adds: parsedAdds,
+                  damageEffect: data.damageEffect || 'none',
                   gameModelUrl: data.gameModelUrl,
                   modelTextureUrl: data.modelTextureUrl,
                   minecraftHeadValue: data.minecraftHeadValue,
@@ -440,6 +462,27 @@ export default function LiveQuestStudent() {
 
   const me = session.players[userData.uid];
   const totalEquippedStats = me?.equippedItems ? calculateTotalStats(me.equippedItems, userData?.distributedStats) : { attack: 0, defense: 0, xp: 0, coins: 0, vitality: 0, fortitude: 0, persuasion: 0 };
+  const damageEffect = getEquippedDamageEffect(me?.equippedItems || []);
+  const effectChance = getEquippedDamageEffectInfo(me?.equippedItems || []).chance;
+
+  // VENENO/SANGRAMENTO (live): pisca em vermelho e dropa moedas extras (visual — o HP é compartilhado)
+  useEffect(() => {
+    if ((damageEffect !== 'poison' && damageEffect !== 'bleed') || effectLevel === 0) return;
+    const iv = setInterval(() => {
+      setDrainBlink(true);
+      setTimeout(() => setDrainBlink(false), 550);
+      if (economySettings?.coinsDropInCombat) {
+        setDroppedCoins(prev => [...prev, ...Array.from({ length: 1 + Math.floor(Math.random() * 3) }).map((_, i) => ({
+          id: Date.now() + Math.random() * 1000 + i,
+          x: 62 + Math.random() * 20,
+          y: 78 + Math.random() * 10,
+          value: Math.max(1, Math.floor(Math.random() * 3) + 1)
+        }))]);
+      }
+    }, 5000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [damageEffect, effectLevel]);
   const isStaff = userData.role === 'admin' || userData.role === 'teacher' || userData.role === 'coordinator';
   const rankObj = isStaff ? getRankForXp(userData.xp || 50000) : RANKS.find(r => r.name === userData.lastSeenRank) || RANKS[0];
   const rankIndex = Math.max(0, RANKS.findIndex(r => r.name === rankObj.name));
@@ -647,6 +690,15 @@ export default function LiveQuestStudent() {
     if (isCorrect) {
       setStudentAnim('attack');
       setMonsterAnim('hurt');
+      // Efeito especial com chance (aplica no golpe)
+      if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
+        setEffectLevel(l => l + 1);
+        setEffectFlash(true);
+        setTimeout(() => setEffectFlash(false), 600);
+        if (damageEffect === 'freeze' && effectLevel + 1 >= FREEZE_HITS_TO_FREEZE) {
+          setFrozen(true);
+        }
+      }
       setTimeout(() => {
         setStudentAnim('idle');
         setMonsterAnim('idle');
@@ -832,7 +884,7 @@ export default function LiveQuestStudent() {
               style={{ 
                 opacity: 0.7,
                 ...(quest?.battleBgUrl ? { 
-                  background: `url(${quest.battleBgUrl}) ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
+                  background: `url("${getSafeUrl(quest.battleBgUrl)}") ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
                   ...(quest.battleBgMoveEnabled !== false
                     ? {
                         '--bg-move-x': `${quest.battleBgMoveDirection === 'horizontal' || quest.battleBgMoveDirection === 'diagonal' ? (quest.battleBgMoveSpeed ?? 10) : 0}%`,
@@ -914,28 +966,50 @@ export default function LiveQuestStudent() {
                 }}
               >
                 <div style={{ transform: 'scaleX(-1)', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                  {quest?.monsterAvatarConfig ? (
-                    <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-30px' }}>
-                      <AvatarCharacter
-                        config={quest.monsterAvatarConfig}
-                        size={180}
-                        animation={monsterAnim === 'attack' ? 'attack' : (monsterAnim === 'hurt' ? 'hurt' : 'idle')}
-                        interactive={false}
+                  {(() => {
+                    const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;
+                    if (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) {
+                      return (
+                        <CustomModelViewer
+                          modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!}
+                          textureUrl={quest?.monsterAvatarConfig?.customSkinUrl}
+                          role="monster"
+                          size={190}
+                          animation={frozen ? 'none' : monsterAnim}
+                          zoom={quest?.monsterAvatarConfig?.customZoom}
+                          configRotY={quest?.monsterAvatarConfig?.customRotY}
+                          effectTint={effectTintColor}
+                        />
+                      );
+                    }
+                    if (quest?.monsterAvatarConfig) {
+                      return (
+                        <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-30px' }}>
+                          <AvatarCharacter
+                            config={quest.monsterAvatarConfig}
+                            size={180}
+                            animation={frozen ? 'idle' : (monsterAnim === 'attack' ? 'attack' : (monsterAnim === 'hurt' ? 'hurt' : 'idle'))}
+                            interactive={false}
+                            role="monster"
+                            hurt={!frozen && monsterAnim === 'hurt'}
+                            effectTint={effectTintColor}
+                          />
+                        </div>
+                      );
+                    }
+                    return (
+                      <CustomModelViewer
+                        modelUrl={quest?.monsterModelUrl || 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'}
                         role="monster"
-                        hurt={monsterAnim === 'hurt'}
+                        size={190}
+                        animation={frozen ? 'none' : monsterAnim}
+                        configRotY={quest?.monsterAvatarConfig?.customRotY}
                       />
-                    </div>
-                  ) : (
-                    <CustomModelViewer
-                      modelUrl={quest?.monsterModelUrl || 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'}
-                      role="monster"
-                      size={190}
-                      animation={monsterAnim}
-                      configRotY={quest?.monsterAvatarConfig?.customRotY}
-                    />
-                  )}
+                    );
+                  })()}
                 </div>
                 {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
+                <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} drainBlink={drainBlink} />
                 
                 {droppedCoins.length > 0 && (
                   <div style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}>

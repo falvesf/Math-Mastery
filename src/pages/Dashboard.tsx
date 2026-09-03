@@ -40,6 +40,7 @@ import StatDistributionModal from '../components/StatDistributionModal';
 import NintendoHeart from '../components/NintendoHeart';
 import { fetchStudentAchievementHistory } from '../lib/achievementHistory';
 import { fetchEquippedItems, invalidateEquippedItems } from '../lib/equippedItems';
+import { orderEffectFirst } from '../lib/damageEffects';
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
   classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
@@ -865,6 +866,7 @@ export default function Dashboard() {
               if (data.adds) {
                 try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch (e) { }
               }
+              parsedAdds = orderEffectFirst(parsedAdds);
               eq.push({
                 docId: d.id,
                 itemId: d.item_id,
@@ -895,7 +897,8 @@ export default function Dashboard() {
     fetchEquipped();
   }, [userData?.uid, userData?.studentViewActive, inventoryRefresh]);
 
-  // Invalida o cache de itens equipados quando o jogador equipa/desequipa algo
+  // Invalida o cache de itens equipados quando o jogador equipa/desequipa algo.
+  // Deve rodar ANTES do fetch (efeito acima) para o refetch vir com dados novos.
   useEffect(() => {
     if (inventoryRefresh > 0 && userData?.uid) invalidateEquippedItems(userData.uid);
   }, [inventoryRefresh, userData?.uid]);
@@ -2972,7 +2975,7 @@ export default function Dashboard() {
                               <Edit3 size={14} style={{ opacity: 0.7 }} />
                             </div>
                             {(liveAvatarConfig || userData?.avatarConfig) ? (
-                              <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 20 }} onClick={() => setIsCustomizingAvatar(true)}>
+                              <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 40 }} onClick={() => setIsCustomizingAvatar(true)}>
                                 <AvatarCharacter
                                   config={(liveAvatarConfig || userData.avatarConfig)}
                                   size={90}
@@ -3357,6 +3360,7 @@ export default function Dashboard() {
               {profileTab === 'inventory' && (
                 <div className="glass-panel" style={{ flex: '2 1 450px', width: '100%', padding: '1.25rem', display: 'flex', flexDirection: 'column', minHeight: '450px', maxHeight: '80vh', overflow: 'hidden' }}>
                   {userData && <StudentInventory userData={userData} onEquip={() => {
+                    invalidateEquippedItems(userData.uid);
                     setInventoryRefresh(r => r + 1);
                     setCubeRotation(prev => prev % 360 !== 0 ? Math.round(prev / 360) * 360 : prev);
                   }} inventoryRefresh={inventoryRefresh} />}

@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation, FunctionAnimation } from 'skinview3d';
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/DRACOLoader.js';
 // Importando THREE diretamente de dentro da dependência do skinview3d para evitar mismatch
 import * as THREE from 'skinview3d/node_modules/three';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
+import { isEffectAddType, EFFECT_ADD_LABELS } from '../lib/damageEffects';
 import { generateVoxelItemFromImage, updateVoxelCurve, setVoxelThickness } from '../lib/VoxelItemGenerator';
 import { getGlobalModelTransforms } from '../lib/itemTransforms';
 import { Eye, EyeOff, PackageX } from 'lucide-react';
@@ -308,11 +310,18 @@ export interface AvatarCharacterProps {
   ignoreHiddenSlots?: boolean;
   /** Esconde os modelos 3D de cabelo/acessórios gerados a partir do config (ex.: ao visualizar uma skin completa) */
   hideConfigAddons?: boolean;
+  /** Cor HEX aplicada persistentemente nos materiais do corpo (efeitos de dano: veneno, fogo, sangramento).
+   *  Usa a MESMA lógica do flash de dano normal (pinta os materiais do modelo). null = sem tint. */
+  effectTint?: string | null;
+  /** Partes do esqueleto que CAÍRAM (desmontagem do efeito estrondo): ficam visíveis no chão,
+ *  rotacionadas ao lado do corpo, e a cabeça desce conforme as partes abaixo caem.
+ *  Valores: 'leftLeg' | 'rightLeg' | 'leftArm' | 'rightArm' | 'body' | 'head' */
+  fallenBodyParts?: string[];
 }
 
 import CustomModelViewer from './CustomModelViewer';
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [] }: AvatarCharacterProps) {
   // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
   // useMemo garante uma referência ESTÁVEL (senão efeitos com [config] entrariam em loop).
   const configMemo = useMemo(() => config || ({} as any), [config]);
@@ -375,11 +384,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           materials.forEach((mat: any) => {
             if (mat._originalColor) {
               mat.color.copy(mat._originalColor);
-              mat.needsUpdate = true;
             } else if (mat.color) {
               mat.color.set(0xffffff);
-              mat.needsUpdate = true;
             }
+            // Re-aplica o tint do efeito de dano (veneno/fogo/sangramento) após o flash
+            if (effectTint && mat.color) {
+              mat.color.lerp(new THREE.Color(effectTint), 0.6);
+            }
+            if (mat.color) mat.needsUpdate = true;
           });
         }
       });
@@ -470,6 +482,12 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     // Armazena os modelos carregados para poder removê-los depois
     const loadedModels: { parent: THREE.Object3D, model: THREE.Object3D }[] = [];
     const loader = new GLTFLoader();
+    try {
+      // Suporte a GLBs comprimidos (Draco). Se o decoder falhar offline, mantém o carregamento normal.
+      const draco = new DRACOLoader();
+      draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+      loader.setDRACOLoader(draco);
+    } catch (e) { /* sem Draco */ }
 
     // Gera a máscara de forma (alpha) proporcional à célula do atlas
     const buildShapeMask = (shape: string, aspect: number): THREE.Texture | null => {
@@ -877,7 +895,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           }
         };
 
-        if (getExtension(finalUrl).endsWith('.png')) {
+        const IMG_EXT_RE = /\.(png|gif|jpe?g|webp|avif)$/;
+        if (IMG_EXT_RE.test(getExtension(finalUrl))) {
            let curveX = 0;
            let curveY = 0;
            let genThickness = 0.12;
@@ -912,9 +931,18 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                .catch(err => console.error(err));
            }
         } else {
-           loader.load(
-             finalUrl, 
-             (gltf) => {
+           // Tenta carregar o GLB direto; se falhar (ex.: CORS/blocked), tenta via proxy
+           const loadGltfWithFallback = (url: string, onOk: (gltf: any) => void, onFail: (err: any) => void) => {
+             loader.load(url, onOk, undefined, (err) => {
+               if (url.startsWith('http') && !url.includes('allorigins')) {
+                 console.warn(`Falha direta no modelo (${url}), tentando proxy...`);
+                 loader.load(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, onOk, undefined, (err2) => onFail(err2));
+               } else {
+                 onFail(err);
+               }
+             });
+           };
+           loadGltfWithFallback(finalUrl, (gltf) => {
                if (isCancelled) return;
                console.log(`Modelo ${finalUrl} carregado com sucesso!`);
                const model = gltf.scene;
@@ -1023,17 +1051,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                    processLoadedModel(cloneLeft, 'left', true); 
                    processLoadedModel(cloneRight, 'right', true);
                    processLoadedModel(cloneBody, 'body_part', true);
-                } else {
-                   processLoadedModel(model, undefined, true);
-                }
-             },
-             undefined,
-             (error) => {
-               console.error(`Falha ao carregar o modelo 3D (${finalUrl}):`, error);
-             }
-           );
-        }
-      } else if (item.minecraftHeadValue && item.minecraftHeadValue.trim() !== '' && item.avatarPart !== 'rightHand' && item.avatarPart !== 'leftHand' && item.avatarPart !== 'two_handed') {
+} else {
+                    processLoadedModel(model, undefined, true);
+                 }
+              }, (error) => {
+                console.error(`Falha ao carregar o modelo 3D (${finalUrl}):`, error);
+              });
+         }
+       } else if (item.minecraftHeadValue && item.minecraftHeadValue.trim() !== '' && item.avatarPart !== 'rightHand' && item.avatarPart !== 'leftHand' && item.avatarPart !== 'two_handed') {
         let textureUrl = item.minecraftHeadValue.trim();
         // Decode Base64 from Mojang format if it doesn't look like an HTTP URL
         if (!textureUrl.startsWith('http')) {
@@ -1412,6 +1437,158 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       }
     });
   }, [debugTransformJson, debugItemId, animation, config?.handedness, modelsLoadedCount, equippedItemsJson, config?.hiddenSlots?.join(','), ignoreHiddenSlots]);
+
+  // Efeito de dano persistente DIRETO nos materiais do modelo (veneno/fogo/sangramento).
+  // Usa a mesma lógica do flash de dano normal (pinta os materiais) mas sem temporizador.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !viewer.playerObject) return;
+    const skin = viewer.playerObject.skin;
+    const applyTint = () => {
+      const c = new THREE.Color(effectTint || '#ffffff');
+      skin.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((mat: any) => {
+            if (!mat.color) return;
+            if (!mat._originalColor) mat._originalColor = mat.color.clone();
+            if (effectTint) {
+              mat.color.copy(mat._originalColor).lerp(c, 0.6);
+            } else {
+              mat.color.copy(mat._originalColor);
+            }
+            mat.needsUpdate = true;
+          });
+        }
+      });
+    };
+    applyTint();
+  }, [effectTint, modelsLoadedCount]);
+
+  // Desmontagem (efeito estrondo): partes CAEM e ficam visíveis no chão como CLONES estáticos.
+  // Só as partes NOVAS caem a cada golpe; as já caídas ficam paradas (grupo separado, fora do skin).
+  // O corpo ENCOLHE: o tronco/cabeça restantes descem até o chão conforme as partes baixas caem.
+  const fallenClonesRef = useRef<Record<string, THREE.Group>>({});
+  const fallenDoneRef = useRef<Set<string>>(new Set());
+  const fallenGroundRef = useRef<number | null>(null);
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !viewer.playerObject) return;
+    const skin = viewer.playerObject.skin;
+    const root = viewer.playerObject;
+
+    // Grupo das partes caídas (filho do root, NÃO do skin — não encolhe junto com o corpo)
+    let fallenGroup = (root as any).userData._fallenGroup as THREE.Group;
+    if (!fallenGroup) {
+      fallenGroup = new THREE.Group();
+      root.add(fallenGroup);
+      (root as any).userData._fallenGroup = fallenGroup;
+    }
+
+    if (fallenGroundRef.current === null) {
+      const box = new THREE.Box3().setFromObject(skin);
+      fallenGroundRef.current = box.isEmpty() ? -12 : box.min.y;
+    }
+    const groundY = fallenGroundRef.current;
+
+    const fallenSet = new Set(fallenBodyParts || []);
+    let side = 1;
+
+    // 1) Apenas partes NOVAS caem (as já caídas não são recriadas/re-animadas)
+    ['head', 'body', 'rightArm', 'leftArm', 'rightLeg', 'leftLeg'].forEach(p => {
+      const g = (skin as any)[p];
+      if (!g || !fallenSet.has(p) || fallenDoneRef.current.has(p)) return;
+      fallenDoneRef.current.add(p);
+      g.visible = false;
+      try {
+        const fall = new THREE.Group();
+        g.traverse((child: any) => {
+          if (child.isMesh && child.geometry) {
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            const newMats = mats.map((m: any) => {
+              const cl = m.clone();
+              if (cl.color && cl._originalColor) cl.color.copy(cl._originalColor);
+              return cl;
+            });
+            const mesh = new THREE.Mesh(child.geometry.clone(), newMats.length === 1 ? newMats[0] : newMats);
+            mesh.position.copy(child.position);
+            mesh.rotation.copy(child.rotation);
+            mesh.scale.copy(child.scale);
+            mesh.frustumCulled = false;
+            fall.add(mesh);
+          } else if (child !== g) {
+            const sub = new THREE.Group();
+            sub.position.copy(child.position);
+            sub.rotation.copy(child.rotation);
+            sub.scale.copy(child.scale);
+            fall.add(sub);
+          }
+        });
+        side = p === 'head' ? side : -side;
+        const endX = side * (4 + Math.random() * 7);
+        const endZ = -2 + Math.random() * 4;
+        fall.rotation.set(Math.PI / 2, 0, (Math.random() - 0.5) * 0.6);
+        const startY = (groundY > -10 ? groundY : -12) + 30;
+        const endY = groundY + 0.4;
+        fall.position.set(endX, startY, endZ);
+        const t0 = performance.now();
+        const duration = 500 + Math.random() * 250;
+        let raf = 0;
+        const tick = (now: number) => {
+          const t = Math.min(1, (now - t0) / duration);
+          const eased = t * t;
+          fall.position.y = startY + (endY - startY) * eased;
+          if (t < 1) raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        fallenGroup.add(fall);
+        fallenClonesRef.current[p] = fall;
+      } catch (e) {
+        console.error('Falha ao desmontar parte:', p, e);
+      }
+    });
+
+    // 2) Encolhe o corpo: desce o skin até o membro mais baixo restante tocar o chão
+    const remaining = ['leftLeg', 'rightLeg', 'leftArm', 'rightArm', 'body', 'head'].filter(p => !fallenSet.has(p));
+    let lowestY = Infinity;
+    remaining.forEach(p => {
+      const g = (skin as any)[p];
+      if (!g || g.children.length === 0) return;
+      g.updateWorldMatrix(true, false);
+      const b = new THREE.Box3().setFromObject(g);
+      if (b.min.y < lowestY) lowestY = b.min.y;
+    });
+    if (lowestY !== Infinity) {
+      skin.position.y += (groundY - lowestY);
+    }
+
+    // Caso especial (tronco caiu mas as pernas continuam): a cabeça desce e assenta
+    // no topo das pernas (posição do tronco), já que não há mais tronco para sustentá-la.
+    const torsoFell = fallenSet.has('body');
+    const legsStanding = !fallenSet.has('leftLeg') && !fallenSet.has('rightLeg');
+    if (torsoFell && legsStanding) {
+      const head = (skin as any).head;
+      const leg = (skin as any).leftLeg || (skin as any).rightLeg;
+      if (head && leg) {
+        head.position.y = (leg as any).position.y + 2;
+      }
+    }
+  }, [JSON.stringify(fallenBodyParts), modelsLoadedCount]);
+
+  // Limpa os clones ao desmontar
+  useEffect(() => {
+    return () => {
+      const viewer = viewerRef.current;
+      if (!viewer || !viewer.playerObject) return;
+      const root = viewer.playerObject;
+      const fallenGroup = (root as any).userData?._fallenGroup;
+      if (fallenGroup && fallenGroup.parent) fallenGroup.parent.remove(fallenGroup);
+      delete (root as any).userData._fallenGroup;
+      fallenClonesRef.current = {};
+      fallenDoneRef.current = new Set();
+      fallenGroundRef.current = null;
+    };
+  }, []);
 
   // 3c. Add 3D Head Addons (Ponytail, Bow, etc)
   useEffect(() => {
@@ -2420,18 +2597,20 @@ if (config?.customModelUrl) {
                      : { top: '110%', bottom: 'auto' }),
                    left: '50%',
                    transform: 'translateX(-50%) translateZ(30px)',
-                   background: 'var(--bg-card)',
-                   border: '1px solid var(--border-glass)',
-                   borderRadius: '8px',
-                   padding: '1rem',
-                   width: 'max-content',
-                   minWidth: '200px',
-                   zIndex: 50,
-                   boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
-                   WebkitFontSmoothing: 'antialiased',
-                   pointerEvents: 'none',
-                   color: 'var(--text-primary)',
-                   textAlign: 'left'
+background: 'rgba(12, 15, 26, 0.97)',
+                    border: '1px solid rgba(255, 255, 255, 0.25)',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    width: 'max-content',
+                    minWidth: '200px',
+                    maxWidth: '280px',
+                    zIndex: 50,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.9)',
+                    backdropFilter: 'blur(8px)',
+                    WebkitFontSmoothing: 'antialiased',
+                    pointerEvents: 'none',
+                    color: 'var(--text-primary)',
+                    textAlign: 'left'
                  }}>
                    {item ? (
                      <>
@@ -2448,11 +2627,11 @@ if (config?.customModelUrl) {
                            <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
                            <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem' }}>
                              {item.adds.map((add: ItemAdd, i: number) => {
-                               const lbl = ATTRIBUTE_LABELS[add.type];
+                               const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
                                if (!lbl) return null;
                                return (
                                  <li key={i} style={{ color: lbl.color, marginBottom: '0.25rem' }}>
-                                   {lbl.icon} {lbl.label}: +{add.value}%
+                                   {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.value}%`}
                                  </li>
                                );
                              })}

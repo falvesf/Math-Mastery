@@ -13,6 +13,8 @@ import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
+import { invalidateEquippedItems } from '../lib/equippedItems';
+import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType } from '../lib/damageEffects';
 interface UserItem {
   id: string;
   itemId: string;
@@ -217,10 +219,31 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const data = row.data as any;
       // Itens ganhos em baú podem vir sem data (sem gameEffect) — completa do catálogo
       const patchedEffect = data?.gameEffect || storeEffects.get(row.item_id) || 'none';
-      loaded.push({ ...(data || {}), id: row.id, equipped: row.equipped, gameEffect: patchedEffect, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
+      // Normaliza adds (podem vir como string JSON no banco) e coloca os de EFEITO no topo
+      let parsedAdds: any[] = [];
+      if (data?.adds) {
+        try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch (e) { parsedAdds = []; }
+      }
+      parsedAdds = orderEffectFirst(parsedAdds);
+      loaded.push({ ...(data || {}), adds: parsedAdds, id: row.id, equipped: row.equipped, gameEffect: patchedEffect, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
     });
 
     const finalItems: UserItem[] = [];
+
+    // BACKFILL: itens antigos com damageEffect mas sem add de efeito ganham o add
+    // (chance 2-50% sorteada) — assim eles passam a exibir a descrição e a chance.
+    const toBackfill = loaded.filter(i =>
+      i.damageEffect && i.damageEffect !== 'none' && !(i.adds || []).some((a: any) => isEffectAddType(a.type))
+    );
+    toBackfill.forEach(i => {
+      const newAdds = applyEffectAdd(i.adds, i.damageEffect);
+      if (newAdds.length !== (i.adds || []).length) {
+        const { id, docIds, count, ...rest } = i as any;
+        supabase.from('user_items').update({ data: { ...rest, adds: newAdds } }).eq('id', i.id).then(() => {
+          invalidateEquippedItems(userData.uid);
+        });
+      }
+    });
 
     for (const item of loaded) {
       // Ocultar itens que foram dropados ou que estão à venda
@@ -306,39 +329,48 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const handleEquip = async (item: UserItem) => {
     const newState = !item.equipped;
     const docToUpdate = item.docIds ? item.docIds[0] : item.id;
-    
+
+    if (newState) {
+      // Item equipável SEM representação (URL do modelo/sprite e textura Minecraft vazios)
+      // ficaria invisível/bugando outros itens. Fundo e mascotes usam a imagem do item.
+      const isBgPet = item.avatarPart === 'background' || item.avatarPart === 'pet';
+      const hasRep = !!((item as any).gameModelUrl?.trim() || (item as any).minecraftHeadValue?.trim());
+      const hasImage = !!((item as any).imageUrl || (item as any).itemImageUrl || '').trim();
+      if (!hasRep && !(isBgPet && hasImage)) {
+        showToast(`"${item.itemTitle}" não pode ser equipado até ter o modelo 2D/3D definido (URL do modelo ou textura Minecraft).`);
+        return;
+      }
+    }
+
     if (newState && item.avatarPart) {
-      if (item.avatarPart === 'hand') {
-        const equippedHands = items.filter(i => i.equipped && i.avatarPart === 'hand' && i.id !== item.id);
-        const equippedTwoHanded = items.filter(i => i.equipped && i.avatarPart === 'two_handed' && i.id !== item.id);
-        
-        for (const th of equippedTwoHanded) {
-          const docId = th.docIds ? th.docIds[0] : th.id;
-          await _updateEq(docId, false);
-        }
-        
-        const sameCategoryEquipped = equippedHands.find(i => i.itemCategory === item.itemCategory);
-        if (sameCategoryEquipped) {
-          const docId = sameCategoryEquipped.docIds ? sameCategoryEquipped.docIds[0] : sameCategoryEquipped.id;
-          await _updateEq(docId, false);
-          equippedHands.splice(equippedHands.indexOf(sameCategoryEquipped), 1);
-        }
-        
-        if (equippedHands.length >= 2) {
-          const otherDoc = equippedHands[0].docIds ? equippedHands[0].docIds[0] : equippedHands[0].id;
-          await _updateEq(otherDoc, false);
+      const unequip = async (i: UserItem) => {
+        const did = i.docIds ? i.docIds[0] : i.id;
+        await _updateEq(did, false);
+      };
+      // Arma (tudo que não é escudo) x escudo ('defense'): não podem coexistir dois do mesmo tipo na mão.
+      const isWeapon = item.itemCategory !== 'defense';
+      if (item.avatarPart === 'hand' || item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand') {
+        // Equipar item de mão SUBSTITUI a arma/escudo do mesmo tipo no slot (e remove duas mãos).
+        const otherHands = items.filter(i => i.equipped && i.id !== item.id &&
+          (i.avatarPart === 'hand' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'two_handed'));
+        for (const o of otherHands) {
+          if (o.avatarPart === 'two_handed') {
+            await unequip(o);
+          } else {
+            const otherIsWeapon = o.itemCategory !== 'defense';
+            if (otherIsWeapon === isWeapon) await unequip(o);
+          }
         }
       } else if (item.avatarPart === 'two_handed') {
-        const equippedWeapons = items.filter(i => i.equipped && (i.avatarPart === 'hand' || i.avatarPart === 'two_handed') && i.id !== item.id);
+        const equippedWeapons = items.filter(i => i.equipped && i.id !== item.id &&
+          (i.avatarPart === 'hand' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'two_handed'));
         for (const w of equippedWeapons) {
-          const docId = w.docIds ? w.docIds[0] : w.id;
-          await _updateEq(docId, false);
+          await unequip(w);
         }
       } else {
         const alreadyEquipped = items.find(i => i.equipped && i.avatarPart === item.avatarPart && i.id !== item.id);
         if (alreadyEquipped) {
-          const otherDoc = alreadyEquipped.docIds ? alreadyEquipped.docIds[0] : alreadyEquipped.id;
-          await _updateEq(otherDoc, false);
+          await unequip(alreadyEquipped);
         }
       }
     }
@@ -644,7 +676,24 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         showToast("Você só pode usar este pergaminho em itens equipáveis!", 'error');
         return;
       }
-      const currentAddsCount = targetItem.adds ? targetItem.adds.length : 0;
+      const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
+      // Lê os adds FRESCOS do banco (o targetItem da interface pode estar desatualizado)
+      const { data: currentData } = await supabase.from('user_items').select('data').eq('id', targetDocId).single();
+      const freshAdds = toAddsArray(currentData?.data?.adds);
+      const effectAdd = freshAdds.find((a: any) => isEffectAddType(a.type));
+      // Se o item tem um ADD de EFEITO, o pergaminho AUMENTA a chance dele (nunca remove).
+      if (effectAdd) {
+        await consumeItemQuantity(dragItem.itemId, 1, dragItem.id);
+        const newChance = Math.min(50, (Number(effectAdd.value) || 0) + 8 + Math.floor(Math.random() * 5));
+        if (currentData) {
+          await supabase.from('user_items').update({ data: { ...(currentData.data as any), adds: freshAdds.map((a: any) => a.type === effectAdd.type ? { ...a, value: newChance } : a) } }).eq('id', targetDocId);
+        }
+        invalidateEquippedItems(userData.uid);
+        showToast(`✨ O pergaminho aprimorou o efeito "${EFFECT_ADD_LABELS[effectAdd.type as EffectAddType].label}" para ${newChance}% de chance!`, 'success');
+        fetchInventory();
+        return;
+      }
+      const currentAddsCount = freshAdds.length;
       if (currentAddsCount >= 2) {
         showToast("Este item já possui o limite máximo de atributos extras (2)!", 'error');
         return;
@@ -665,7 +714,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const storeItemData = storeItemSnap?.data as any;
       const globalGachaConfig = await fetchGlobalGachaConfig();
 
-      const existingTypes = targetItem.adds ? targetItem.adds.map((a: any) => a.type as AttributeType) : [];
+      const existingTypes = freshAdds.map((a: any) => a.type as AttributeType);
       const newAdds = rollExactAttributes(
         amountToGenerate, 
         existingTypes, 
@@ -673,14 +722,13 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         storeItemData?.fixedAttributes, 
         (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined
       );
-      const finalAdds = [...(targetItem.adds || []), ...newAdds].slice(0, 4);
+      const finalAdds = [...freshAdds, ...newAdds].slice(0, 4);
 
-      const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
-      const { data: currentData } = await supabase.from('user_items').select('data').eq('id', targetDocId).single();
       if (currentData) {
         await supabase.from('user_items').update({ data: { ...(currentData.data as any), adds: finalAdds } }).eq('id', targetDocId);
       }
       
+      invalidateEquippedItems(userData.uid);
       showToast("SUCESSO! O poder do pergaminho fluiu para o equipamento e gerou novos atributos!", 'success');
       fetchInventory();
     }
@@ -689,7 +737,11 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         showToast("Você só pode usar este pergaminho em itens equipáveis!", 'error');
         return;
       }
-      const currentAddsCount = targetItem.adds ? targetItem.adds.length : 0;
+      const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
+      // Lê os adds FRESCOS do banco (o targetItem da interface pode estar desatualizado)
+      const { data: currentData } = await supabase.from('user_items').select('data').eq('id', targetDocId).single();
+      const targetAdds = toAddsArray(currentData?.data?.adds);
+      const currentAddsCount = targetAdds.length;
       if (currentAddsCount === 0) {
         showToast("Este item não possui atributos extras para rerolar!", 'error');
         return;
@@ -706,26 +758,38 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return addsA.every((a, i) => a.type === addsB[i].type && a.value === addsB[i].value);
       };
 
-      let newAdds: ItemAdd[] = [];
+      // O add de EFEITO nunca é rerolado: preserva ele e AUMENTA sua chance (Pergaminho do Aprimoramento)
+      const effectAdds = targetAdds
+        .filter((a: any) => isEffectAddType(a.type))
+        .map((a: any) => ({ ...a, value: Math.min(50, (Number(a.value) || 0) + 8 + Math.floor(Math.random() * 5)) }));
+      const normalCount = currentAddsCount - effectAdds.length;
+
+      let newNormal: ItemAdd[] = [];
       let attempts = 0;
       do {
-        newAdds = rollExactAttributes(
-          currentAddsCount, 
-          [], 
-          storeItemData?.gachaConfig, 
-          storeItemData?.fixedAttributes, 
+        newNormal = normalCount > 0 ? rollExactAttributes(
+          normalCount,
+          [],
+          storeItemData?.gachaConfig,
+          storeItemData?.fixedAttributes,
           (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined
-        );
+        ) : [];
         attempts++;
-      } while (areAddsEqual(newAdds, targetItem.adds || []) && attempts < 10);
-      
-      const targetDocId = targetItem.docIds ? targetItem.docIds[0] : targetItem.id;
-      const { data: currentData } = await supabase.from('user_items').select('data').eq('id', targetDocId).single();
+      } while (areAddsEqual(newNormal, targetAdds.filter((a: any) => !isEffectAddType(a.type))) && attempts < 10);
+
+      const newAdds: ItemAdd[] = [...effectAdds, ...newNormal];
+
       if (currentData) {
         await supabase.from('user_items').update({ data: { ...(currentData.data as any), adds: newAdds } }).eq('id', targetDocId);
       }
       
-      showToast("SUCESSO! O equipamento brilhou e seus atributos foram completamente renovados!", 'success');
+      invalidateEquippedItems(userData.uid);
+      if (effectAdds.length > 0) {
+        const ef = effectAdds[0];
+        showToast(`SUCESSO! Atributos renovados. ✨ Efeito "${EFFECT_ADD_LABELS[ef.type as EffectAddType].label}" agora tem ${ef.value}% de chance!`, 'success');
+      } else {
+        showToast("SUCESSO! O equipamento brilhou e seus atributos foram completamente renovados!", 'success');
+      }
       fetchInventory();
     }
   };
@@ -1572,12 +1636,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               <div style={{ fontSize: '0.9rem' }}>
                 <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
                 <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.25rem', color: 'var(--text-secondary)' }}>
-                  {item.adds.map((add, i) => {
-                    const lbl = ATTRIBUTE_LABELS[add.type];
+{item.adds.map((add, i) => {
+                    const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
                     if (!lbl) return null;
                     return (
-                      <li key={i} style={{ color: add.value > 0 ? '#60A5FA' : '#F87171' }}>
-                        {lbl.icon} {lbl.label}: +{add.value}%
+                      <li key={i} style={{ color: lbl.color, marginBottom: '0.25rem' }}>
+                        {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.value}%`}
                       </li>
                     );
                   })}

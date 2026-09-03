@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, Search, UploadCloud, Settings, Save, Archive, Trash2, Loader2, Grid, Star, Image as ImageIcon, Palette } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { sanitizeFileName } from '../lib/utils';
 import { useDialog } from '../contexts/DialogContext';
 import TilesetPicker from './TilesetPicker';
 
@@ -249,7 +250,7 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
         folder = 'arena-backgrounds';
       }
 
-      const fileName = `${prefix}${Date.now()}_${file.name}`;
+      const fileName = `${prefix}${Date.now()}_${sanitizeFileName(file.name)}`;
       const filePath = `${folder}/${fileName}`;
       
       const { error } = await supabase.storage.from('uploads').upload(filePath, file, { contentType: file.type });

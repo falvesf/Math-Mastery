@@ -1,10 +1,11 @@
 import { supabase } from './supabase';
+import type { EffectAddType } from './damageEffects';
 
 export type ItemCategory = 'attack' | 'defense' | 'support' | 'none';
 export type AttributeType = 'attack' | 'defense' | 'xp' | 'coins' | 'vitality' | 'fortitude' | 'persuasion' | 'none';
 
 export interface ItemAdd {
-  type: AttributeType;
+  type: AttributeType | EffectAddType;
   value: number;
 }
 

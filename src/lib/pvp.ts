@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getRankForXp, RANKS } from './ranks';
+import { orderEffectFirst } from './damageEffects';
 
 // ============ Tipos ============
 
@@ -84,6 +85,7 @@ export function normalizeEquippedItems(userItemRows: any[]): any[] {
       if (data.adds) {
         try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch (e) { parsedAdds = []; }
       }
+      parsedAdds = orderEffectFirst(parsedAdds);
       out.push({
         docId: d.id,
         itemId: d.item_id,
@@ -101,6 +103,7 @@ export function normalizeEquippedItems(userItemRows: any[]): any[] {
         backColor: data.backColor || '',
         customAnimation: data.customAnimation,
         battleSoundUrl: data.battleSoundUrl,
+        damageEffect: data.damageEffect || 'none',
       });
     }
   });

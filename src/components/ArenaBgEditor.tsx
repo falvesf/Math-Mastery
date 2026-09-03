@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Move, ZoomIn, ZoomOut, RotateCcw, Check } from 'lucide-react';
+import { getSafeUrl } from '../lib/utils';
 
 interface ArenaBgEditorProps {
   imageUrl: string;
@@ -145,7 +146,7 @@ export default function ArenaBgEditor({
               }}
             >
               <img 
-                src={imageUrl} 
+                src={getSafeUrl(imageUrl)} 
                 alt="Arena background" 
                 style={{
                   width: '100%',
@@ -283,7 +284,7 @@ export default function ArenaBgEditor({
               <div style={{
                 position: 'absolute',
                 inset: '-20%',
-                backgroundImage: `url(${imageUrl})`,
+                backgroundImage: `url("${getSafeUrl(imageUrl)}")`,
                 backgroundSize: `${scale * 100}%`,
                 backgroundPosition: `${posX}% ${posY}%`,
                 backgroundRepeat: 'no-repeat',

@@ -8,6 +8,7 @@ import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp, resolveMinRankName, getMinRankIndex } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig, ATTRIBUTE_LABELS } from '../lib/gacha';
+import { applyEffectAdd, isEffectAddType, EFFECT_ADD_LABELS } from '../lib/damageEffects';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
@@ -373,12 +374,13 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             modelTextureUrl: item.modelTextureUrl || '',
             minecraftHeadValue: item.minecraftHeadValue || '',
             modelTransforms: item.modelTransforms || null,
-            adds: finalAdds,
+            adds: applyEffectAdd(finalAdds, (item as any).damageEffect),
             minSalePrice: item.minSalePrice || 0,
             rarity: item.rarity || 'common',
             unlockedSkinId: item.unlockedSkinId || '',
             buffDurationDays: item.buffDurationDays || 7,
-            backColor: item.backColor || ''
+            backColor: item.backColor || '',
+            damageEffect: (item as any).damageEffect || 'none'
           }
         });
         remainingToBuy -= qty;
@@ -1412,11 +1414,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
                 <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem' }}>
                   {item.adds.map((add, i) => {
-                    const lbl = ATTRIBUTE_LABELS[add.type];
+                    const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
                     if (!lbl) return null;
                     return (
-                      <li key={i} style={{ color: add.value > 0 ? '#60A5FA' : '#F87171' }}>
-                        {lbl.icon} {lbl.label}: +{add.value}%
+                      <li key={i} style={{ color: lbl.color }}>
+                        {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.value}%`}
                       </li>
                     );
                   })}

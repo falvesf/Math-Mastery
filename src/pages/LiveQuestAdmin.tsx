@@ -11,6 +11,7 @@ import CustomModelViewer from '../components/CustomModelViewer';
 import AvatarCharacter from '../components/AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
 import { rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
+import { getSafeUrl } from '../lib/utils';
 
 export interface LivePlayer {
   uid: string;
@@ -296,7 +297,20 @@ export default function LiveQuestAdmin() {
         navigate('/admin');
         return;
       }
-      const qData = { id: qDocData.id, ...qDocData } as QuestDef;
+      const qData = {
+        id: qDocData.id,
+        ...qDocData,
+        coverImageUrl: qDocData.cover_image_url || qDocData.coverImageUrl,
+        baseXp: qDocData.base_xp || qDocData.baseXp,
+        chestConfig: qDocData.chestconfig || qDocData.chestConfig || null,
+        combatCoinDrop: qDocData.combatcoindrop || qDocData.combatCoinDrop || null,
+        monsterAvatarConfig: (() => { try { const v = qDocData.monster_avatar_config || qDocData.monsterAvatarConfig || null; return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } })(),
+        monsterModelUrl: qDocData.monster_model_url || qDocData.monsterModelUrl || null,
+        monsterQuotes: qDocData.monster_quotes || qDocData.monsterQuotes || null,
+        monsterDrops: qDocData.monster_drops || qDocData.monsterDrops || null,
+        battleBgUrl: qDocData.battle_bg_url || qDocData.battleBgUrl || null,
+        podiumBgUrl: qDocData.podium_bg_url || qDocData.podiumBgUrl || null,
+      } as QuestDef;
       // Isolamento por escola (Superadmin pode acessar qualquer missão)
       if (tenantId && !isSuperAdmin) {
         const questTenant = (qDocData as any).tenant_id;
@@ -793,7 +807,7 @@ export default function LiveQuestAdmin() {
              style={{ 
                opacity: 0.5,
                ...(quest?.battleBgUrl ? { 
-                 background: `url(${quest.battleBgUrl}) ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
+                 background: `url("${getSafeUrl(quest.battleBgUrl)}") ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
                  ...(quest.battleBgMoveEnabled !== false
                    ? {
                        '--bg-move-x': `${quest.battleBgMoveDirection === 'horizontal' || quest.battleBgMoveDirection === 'diagonal' ? (quest.battleBgMoveSpeed ?? 10) : 0}%`,
@@ -900,8 +914,10 @@ export default function LiveQuestAdmin() {
               transition: 'transform 0.3s ease-in-out'
             }}
           >
-            {quest.monsterAvatarConfig ? (
-               <AvatarCharacter config={quest.monsterAvatarConfig} size={250} animation={monsterAnim === 'hurt' ? 'hurt' : 'idle'} interactive={false} />
+            {(quest.monsterModelUrl || quest.monsterAvatarConfig?.customModelUrl) ? (
+               <CustomModelViewer modelUrl={(quest.monsterModelUrl || quest.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest.monsterAvatarConfig?.customSkinUrl} role="monster" size={280} animation={monsterAnim} zoom={quest.monsterAvatarConfig?.customZoom} configRotY={quest.monsterAvatarConfig?.customRotY} />
+            ) : quest.monsterAvatarConfig ? (
+               <AvatarCharacter config={quest.monsterAvatarConfig} size={250} animation={monsterAnim === 'hurt' ? 'hurt' : 'idle'} interactive={false} role="monster" />
             ) : (
                <CustomModelViewer modelUrl={quest.monsterModelUrl || 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'} role="monster" size={280} animation={monsterAnim} configRotY={quest.monsterAvatarConfig?.customRotY} />
             )}

@@ -1,9 +1,9 @@
 export function getSafeUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith('http') || url.startsWith('data:')) return url;
-  
+  if (url.startsWith('http') || url.startsWith('data:')) return url.replace(/ /g, '%20');
+
   let safeUrl = url.replace(/\\/g, '/');
-  
+
   // Se for um caminho absoluto da raiz (ex: /img/...), remove a barra inicial para concatenar
   if (safeUrl.startsWith('/')) {
     safeUrl = import.meta.env.BASE_URL + safeUrl.substring(1);
@@ -11,8 +11,18 @@ export function getSafeUrl(url?: string | null): string | undefined {
     // Se for um caminho relativo puro (ex: img/...), concatena diretamente
     safeUrl = import.meta.env.BASE_URL + safeUrl;
   }
-  
-  return safeUrl;
+
+  return safeUrl.replace(/ /g, '%20');
+}
+
+/** Codifica cada segmento de um caminho de storage (corrige nomes com espaços/acentos). */
+export function encodeStoragePath(path: string): string {
+  return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
+}
+
+/** Nome de arquivo seguro para upload (remove espaços/caracteres inválidos). */
+export function sanitizeFileName(name: string): string {
+  return (name || 'arquivo').replace(/[^a-zA-Z0-9.-]/g, '_').replace(/_+/g, '_');
 }
 
 export function normalizeCombatCoinDrop(raw: any): { minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number } {

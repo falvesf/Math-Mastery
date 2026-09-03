@@ -21,6 +21,7 @@ import { RANKS, resolveMinRankName } from '../lib/ranks';
 import type { RankDef } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
+import { DAMAGE_EFFECTS } from '../lib/damageEffects';
 import { v4 as uuidv4 } from 'uuid';
 
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 'bazar_sale_permit';
@@ -60,6 +61,7 @@ export interface StoreItem {
   backColor?: string;
   importedFromId?: string;
   extractMeshName?: string;
+  damageEffect?: string; // Efeito especial de dano em batalha (burn, freeze, impact, electric, poison, none)
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -300,6 +302,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       buffDurationDays: item.buffDurationDays,
       avatarPart: item.avatarPart,
       itemCategory: item.itemCategory,
+      damageEffect: item.damageEffect || 'none',
       baseAttributeType: item.baseAttributeType,
       baseAttributeValue: item.baseAttributeValue,
       fixedAttributes: item.fixedAttributes,
@@ -392,6 +395,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           buffDurationDays: item.buffDurationDays,
           avatarPart: item.avatarPart,
           itemCategory: item.itemCategory,
+          damageEffect: item.damageEffect || 'none',
           baseAttributeType: item.baseAttributeType,
           baseAttributeValue: item.baseAttributeValue,
           fixedAttributes: item.fixedAttributes,
@@ -476,6 +480,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         const currentData = row.data as any;
         const newData = { ...currentData,
           itemCategory: itemData.itemCategory || 'none',
+          damageEffect: itemData.damageEffect || 'none',
           baseAttributeType: itemData.baseAttributeType || 'none',
           baseAttributeValue: itemData.baseAttributeValue || 0,
           itemTitle: itemData.title,
@@ -961,6 +966,18 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="support">Suporte</option>
                     </select>
                   </div>
+
+                  {(formData.itemCategory === 'attack' || ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(formData.avatarPart || '')) && (
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Efeito Especial de Dano (batalha)</label>
+                      <select value={formData.damageEffect || 'none'} onChange={e => setFormData({...formData, damageEffect: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                        {DAMAGE_EFFECTS.map(ef => <option key={ef.id} value={ef.id}>{ef.label}</option>)}
+                      </select>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>
+                        {DAMAGE_EFFECTS.find(ef => ef.id === (formData.damageEffect || 'none'))?.desc}
+                      </div>
+                    </div>
+                  )}
                   
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo de Atributo Base</label>
@@ -986,7 +1003,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>URL do Modelo 3D (.glb) ou Sprite Pixel Art (.png) [Opcional]</label>
                   <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
                     <input type="text" value={formData.gameModelUrl || ''} onChange={e => setFormData({...formData, gameModelUrl: e.target.value})} placeholder="/models/item.glb ou https://.../imagem.png" style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
-                    <DirectUploadButton folder="models" accept=".glb,.gltf,image/*" onUploadComplete={(url) => setFormData({...formData, gameModelUrl: url})} buttonStyle={{ minHeight: '100%' }} />
+                    <DirectUploadButton folder="models" accept=".glb,.gltf,image/*" maxImageSizeBytes={3 * 1024 * 1024} onUploadComplete={(url) => setFormData({...formData, gameModelUrl: url})} buttonStyle={{ minHeight: '100%' }} />
                     <button onClick={() => setShowGallery('model')} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                       <Search size={20} />
                     </button>

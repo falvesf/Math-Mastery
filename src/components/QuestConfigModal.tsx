@@ -3,6 +3,7 @@ import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, 
 import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
 import DirectUploadButton from './DirectUploadButton';
 import AudioBankPicker from './AudioBankPicker';
+import { getSafeUrl } from '../lib/utils';
 
 // Campo de som: input + botão "Banco" (abre o AudioBankPicker) + ouvir/parar + limpar.
 // O volume (se informado) controla a reprodução e atualiza ao vivo durante o toque.
@@ -596,7 +597,7 @@ function ArenaTab(p: QuestConfigModalProps) {
             <div style={{
               width: '100%',
               height: '100%',
-              backgroundImage: `url(${p.questBattleBgUrl})`,
+              backgroundImage: `url("${getSafeUrl(p.questBattleBgUrl)}")`,
               backgroundSize: `${p.questBattleBgScale * 100}%`,
               backgroundPosition: `${p.questBattleBgPosX}% ${p.questBattleBgPosY}%`,
               backgroundRepeat: 'no-repeat'

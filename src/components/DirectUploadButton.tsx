@@ -8,12 +8,14 @@ interface DirectUploadButtonProps {
   folder?: string;
   buttonStyle?: React.CSSProperties;
   accept?: string;
+  /** Limite de tamanho para imagens (bytes). Padrão 2 MB. */
+  maxImageSizeBytes?: number;
 }
 
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_GLB_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB (modelos 3D)
 
-export default function DirectUploadButton({ onUploadComplete, folder = 'uploads', buttonStyle, accept = 'image/*' }: DirectUploadButtonProps) {
+export default function DirectUploadButton({ onUploadComplete, folder = 'uploads', buttonStyle, accept = 'image/*', maxImageSizeBytes = MAX_IMAGE_SIZE_BYTES }: DirectUploadButtonProps) {
   const { showAlert } = useDialog();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -45,8 +47,8 @@ export default function DirectUploadButton({ onUploadComplete, folder = 'uploads
     }
 
     // Limites de tamanho
-    if (isImage && file.size > MAX_IMAGE_SIZE_BYTES) {
-      showAlert(`Não é possível subir imagens maiores que 2 MB. Este arquivo tem ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
+    if (isImage && file.size > maxImageSizeBytes) {
+      showAlert(`Não é possível subir imagens maiores que ${(maxImageSizeBytes / (1024 * 1024)).toFixed(0)} MB. Este arquivo tem ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
       return;
     }
     if (isGlb && file.size > MAX_GLB_SIZE_BYTES) {

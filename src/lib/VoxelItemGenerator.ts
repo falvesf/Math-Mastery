@@ -10,7 +10,18 @@ export async function generateVoxelItemFromImage(imageUrl: string, backColor?: s
       ? imageUrl 
       : `https://${imageUrl}`;
 
-    loader.load(
+    const tryLoad = (url: string, onOk: (tex: THREE.Texture) => void, onFail: (err: any) => void) => {
+      loader.load(url, onOk, undefined, (err) => {
+        if (url.startsWith('http') && !url.includes('allorigins')) {
+          console.warn(`Falha direta na sprite (${url}), tentando proxy...`);
+          loader.load(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, onOk, undefined, (err2) => onFail(err2));
+        } else {
+          onFail(err);
+        }
+      });
+    };
+
+    tryLoad(
       finalUrl,
       (texture) => {
         texture.colorSpace = THREE.SRGBColorSpace;
@@ -149,7 +160,6 @@ export async function generateVoxelItemFromImage(imageUrl: string, backColor?: s
         
         resolve(group);
       },
-      undefined,
       (err) => reject(new Error("Falha ao carregar textura: " + err.message))
     );
   });
