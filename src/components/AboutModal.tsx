@@ -334,9 +334,23 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
           </div>
         </div>
 
-        <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+        <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '1.5rem', borderTop: '1px solid var(--border-glass)', paddingTop: '1.25rem' }}>
           <Shield size={14} style={{ verticalAlign: 'middle', marginRight: '0.3rem' }} />
           Criado com carinho para tornar o aprendizado uma grande aventura. <Trophy size={14} style={{ verticalAlign: 'middle', marginLeft: '0.3rem', color: 'var(--gold-primary)' }} />
+          <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.45rem', alignItems: 'center' }}>
+            <div>
+              <Crown size={14} color="var(--gold-primary)" style={{ verticalAlign: 'middle', marginRight: '0.35rem' }} />
+              <strong style={{ color: 'var(--text-primary)' }}>Idealizador:</strong> Professor Jefferson Jeremias de Goes
+            </div>
+            <div>
+              <Users size={14} color="var(--accent-blue)" style={{ verticalAlign: 'middle', marginRight: '0.35rem' }} />
+              <strong style={{ color: 'var(--text-primary)' }}>Análise e idealização do site:</strong> Fabio Alves Feitoza
+            </div>
+            <div>
+              <Sparkles size={14} color="var(--accent-green)" style={{ verticalAlign: 'middle', marginRight: '0.35rem' }} />
+              <strong style={{ color: 'var(--text-primary)' }}>Programadores:</strong> As IAs que programaram e fizeram o projeto acontecer
+            </div>
+          </div>
         </div>
       </div>
     </div>

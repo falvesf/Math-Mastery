@@ -1983,7 +1983,7 @@ export default function QuestGameplay() {
               {monsterAnim === 'death-slice' ? (
                 <div className="quest-arena-avatars" style={{ position: 'relative', width: '160px', height: (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? '240px' : '228px' }}>
                   {/* Nome do monstro - acompanha death-slice */}
-                  <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                  <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY - ((quest?.monsterAvatarConfig?.customZoom || 1) - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 140 : 216)}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', opacity: 0.3 }}>{quest?.monsterName || 'Inimigo'}</span>
                   </div>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -2010,7 +2010,7 @@ export default function QuestGameplay() {
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
                   }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center' }}>
                   {/* Nome do monstro - acompanha animações de morte */}
-                  <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
+                  <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY - ((quest?.monsterAvatarConfig?.customZoom || 1) - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 140 : 216)}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
                       {(() => {
