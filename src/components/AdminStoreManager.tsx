@@ -17,6 +17,7 @@ import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usePermissions } from '../lib/permissions';
 import { fetchEconomyType } from '../lib/economy';
+import { invalidateEquippedItems } from '../lib/equippedItems';
 import { RANKS, resolveMinRankName } from '../lib/ranks';
 import type { RankDef } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
@@ -626,9 +627,29 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
         rarity: itemData.rarity, avatar_part: itemData.avatarPart, data: itemData
       }).eq('id', editingId);
-      
-      // Cascade update retroativo para itens já no inventário dos alunos
-      const { data: snapUserItems } = await supabase.from('user_items').select('*').eq('item_id', editingId);
+
+      // Cascade update retroativo para itens já no inventário dos alunos.
+      // Propaga para TODAS as cópias relacionadas (não só o item editado):
+      //  - o próprio item (compra direta);
+      //  - a origem global (se for uma cópia importada);
+      //  - todas as cópias locais que vieram da MESMA origem global (outros tenants).
+      // Assim, itens comprados ANTES de adicionar imagens 2D/3D ficam funcionais
+      // após a edição, sem precisar comprar de novo.
+      let cascadeIds = new Set<string>([editingId]);
+      try {
+        const { data: editingRow } = await supabase.from('store_items').select('data').eq('id', editingId).maybeSingle();
+        const importedFromId = (editingRow?.data as any)?.importedFromId;
+        const sourceId = importedFromId || editingId;
+        const { data: related } = await supabase.from('store_items').select('id')
+          .eq('is_global', false)
+          .filter('data->>importedFromId', 'eq', sourceId);
+        if (sourceId !== editingId) cascadeIds.add(sourceId);
+        (related || []).forEach(r => cascadeIds.add(r.id));
+      } catch (e) {
+        console.error('Erro ao calcular itens relacionados para cascade:', e);
+      }
+
+      const { data: snapUserItems } = await supabase.from('user_items').select('*').in('item_id', Array.from(cascadeIds));
       const updatePromises: Promise<any>[] = [];
       (snapUserItems || []).forEach(row => {
         const currentData = row.data as any;
@@ -639,6 +660,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           baseAttributeValue: itemData.baseAttributeValue || 0,
           itemTitle: itemData.title,
           itemImageUrl: itemData.imageUrl || '',
+          imageUrl: itemData.imageUrl || '',
+          gameImage2dUrl: itemData.gameImage2dUrl || '',
           itemType: itemData.type || 'consumable',
           gameEffect: itemData.gameEffect || 'none',
           gameModelUrl: itemData.gameModelUrl || '',
@@ -660,6 +683,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         updatePromises.push(supabase.from('user_items').update({ data: newData }).eq('id', row.id) as any);
       });
       await Promise.all(updatePromises);
+      // Invalida o cache de itens equipados de TODOS os alunos afetados (para o
+      // boneco refletir a nova configuração sem recarregar a página).
+      const affectedStudents = new Set<string>();
+      (snapUserItems || []).forEach((row: any) => { if (row.student_id) affectedStudents.add(row.student_id); });
+      affectedStudents.forEach(uid => invalidateEquippedItems(uid));
       
     } else {
       // Cópia local (da escola) — editável pelo admin local
