@@ -2491,17 +2491,27 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                     {showAvatars3D ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
                   <div style={{ width: '1px', height: '16px', background: 'var(--border-glass)' }} />
-<button onClick={() => {
-                    const studentIds = students.filter(s => s.role === 'student').map(s => s.uid);
-                    const allSelected = studentIds.length > 0 && studentIds.every(id => selectedStudentIds.includes(id));
-                    if (allSelected) {
-                      setSelectedStudentIds([]);
-                    } else {
-                      setSelectedStudentIds(studentIds);
-                    }
-                  }} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.35rem', display: 'flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.75rem', gap: '0.25rem' }} title="Selecionar/Desselecionar Todos os Alunos">
-                    <Users size={14} />
-</button>
+<label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', padding: '0.35rem', color: selectedStudentIds.length > 0 ? 'var(--gold-primary)' : 'var(--text-secondary)', borderRadius: '6px', fontSize: '0.75rem', userSelect: 'none' }} title="Selecionar/Desselecionar todos os alunos">
+  {(() => {
+    const ids = students.filter(s => s.role === 'student').map(s => s.uid);
+    const all = ids.length > 0 && ids.every(id => selectedStudentIds.includes(id));
+    return (
+      <>
+        <input
+          type="checkbox"
+          checked={all}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => {
+            if (all) setSelectedStudentIds([]);
+            else setSelectedStudentIds(ids);
+          }}
+          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--gold-primary)' }}
+        />
+        <Users size={14} /> Selecionar todos
+      </>
+    );
+  })()}
+</label>
                 </div>
                 {canView('users', 'create') && (
                   <button className="login-btn" onClick={openLocalAccountModal} style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#c084fc', border: '1px solid rgba(139, 92, 246, 0.4)' }}>
