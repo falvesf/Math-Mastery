@@ -317,11 +317,15 @@ export interface AvatarCharacterProps {
  *  rotacionadas ao lado do corpo, e a cabeça desce conforme as partes abaixo caem.
  *  Valores: 'leftLeg' | 'rightLeg' | 'leftArm' | 'rightArm' | 'body' | 'head' */
   fallenBodyParts?: string[];
+  /** Elemento DOM (camada estática da arena, FORA do contêiner animado do monstro) onde as
+   *  partes caídas são renderizadas num canvas próprio. Assim elas NÃO acompanham o monstro
+   *  quando ele ataca ou sofre dano — ficam imóveis no chão. */
+  fallenLayerPortal?: HTMLElement | null;
 }
 
 import CustomModelViewer from './CustomModelViewer';
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [] }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null }: AvatarCharacterProps) {
   // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
   // useMemo garante uma referência ESTÁVEL (senão efeitos com [config] entrariam em loop).
   const configMemo = useMemo(() => config || ({} as any), [config]);
@@ -880,6 +884,35 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               loadedModels.push({ parent: targetGroup, model: finalModelToAdd });
               loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
               spawnSprite(model, item);
+            } else if (item.avatarPart === 'accessory' || item.avatarPart === 'face' || item.avatarPart === 'pet') {
+              // Acessórios (colar/óculos/mochila/etc.), máscaras/óculos (face) e pets
+              // anexam no tronco (acessório/pet) ou na cabeça (face).
+              const targetGroup = item.avatarPart === 'face' ? viewer.playerObject.skin.head : viewer.playerObject.skin.body;
+              model.scale.set(16, 16, 16);
+              let appliedTransform = false;
+              const itemId = item.itemId || item.docId;
+              if (debugItemTransform && debugItemId === itemId) {
+                applyItemScale(model, debugItemTransform.scale ?? 16, debugItemTransform.thickness ?? 1);
+                model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+                model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+                model.translateY(debugItemTransform.slide);
+                appliedTransform = true;
+              } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
+                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
+                applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
+                model.position.set(t.posX, t.posY, t.posZ);
+                model.rotation.set(t.rotX, t.rotY, t.rotZ);
+                model.translateY(t.slide);
+                appliedTransform = true;
+              }
+              if (!appliedTransform) {
+                model.position.set(0, item.avatarPart === 'face' ? 4 : 0, 0);
+                model.rotation.set(0, Math.PI, 0);
+              }
+              targetGroup.add(model);
+              loadedModels.push({ parent: targetGroup, model });
+              loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model, item });
+              spawnSprite(model, item);
             }
             if (!isCancelled) {
               setModelsLoadedCount(prev => prev + 1);
@@ -1434,6 +1467,29 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
           }
         }
+      } else if (avatarPart === 'accessory' || avatarPart === 'face' || avatarPart === 'pet') {
+        const isTargetDebugItem = debugItemId === itemId;
+        if (debugItemTransform && isTargetDebugItem) {
+          applyItemScale(model, debugItemTransform.scale ?? 16, debugItemTransform.thickness ?? 1);
+          model.position.set(debugItemTransform.posX, debugItemTransform.posY, debugItemTransform.posZ);
+          model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
+          model.translateY(debugItemTransform.slide);
+          if (model.userData.is25D) {
+            updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
+          }
+        } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
+          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
+          applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
+          model.position.set(t.posX, t.posY, t.posZ);
+          model.rotation.set(t.rotX, t.rotY, t.rotZ);
+          model.translateY(t.slide);
+          if (model.userData.is25D) {
+            updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+          }
+        } else {
+          model.position.set(0, avatarPart === 'face' ? 4 : 0, 0);
+          model.rotation.set(0, Math.PI, 0);
+        }
       }
     });
   }, [debugTransformJson, debugItemId, animation, config?.handedness, modelsLoadedCount, equippedItemsJson, config?.hiddenSlots?.join(','), ignoreHiddenSlots]);
@@ -1471,18 +1527,30 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   const fallenClonesRef = useRef<Record<string, THREE.Group>>({});
   const fallenDoneRef = useRef<Set<string>>(new Set());
   const fallenGroundRef = useRef<number | null>(null);
+  // Grupo desacoplado das partes caídas (só para o snapshot da camada estática) +
+  // matriz congelada do monstro (posição de repouso) — as partes não acompanham ataques/dano.
+  const fallSceneRef = useRef<THREE.Group | null>(null);
+  const fallRootMatrixRef = useRef<THREE.Matrix4 | null>(null);
+  const fallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const captureFallenRef = useRef<() => void>(() => {});
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !viewer.playerObject) return;
     const skin = viewer.playerObject.skin;
     const root = viewer.playerObject;
 
-    // Grupo das partes caídas (filho do root, NÃO do skin — não encolhe junto com o corpo)
-    let fallenGroup = (root as any).userData._fallenGroup as THREE.Group;
+    // Grupo das partes caídas. Com camada de portal (fallLayerPortal), o grupo fica
+    // DESACOPLADO (renderiza como SNAPSHOT numa camada estática — não acompanha o monstro).
+    // Sem portal, fica no root (comportamento original).
+    let fallenGroup = fallSceneRef.current;
     if (!fallenGroup) {
       fallenGroup = new THREE.Group();
-      root.add(fallenGroup);
-      (root as any).userData._fallenGroup = fallenGroup;
+      fallSceneRef.current = fallenGroup;
+    }
+    if (fallenLayerPortal && fallenGroup.parent === root) root.remove(fallenGroup);
+    else if (!fallenLayerPortal && fallenGroup.parent !== root) root.add(fallenGroup);
+    if (!fallRootMatrixRef.current) {
+      fallRootMatrixRef.current = root.matrixWorld.clone();
     }
 
     if (fallenGroundRef.current === null) {
@@ -1493,8 +1561,11 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
     const fallenSet = new Set(fallenBodyParts || []);
     let side = 1;
+    const newFalls: THREE.Group[] = [];
 
-    // 1) Apenas partes NOVAS caem (as já caídas não são recriadas/re-animadas)
+    // 1) Apenas partes NOVAS caem (as já caídas não são recriadas/re-animadas).
+    //    Durante a queda, a parte fica no ROOT (anima no canvas principal); depois é
+    //    movida para o grupo desacoplado e entra no snapshot da camada estática.
     ['head', 'body', 'rightArm', 'leftArm', 'rightLeg', 'leftLeg'].forEach(p => {
       const g = (skin as any)[p];
       if (!g || !fallenSet.has(p) || fallenDoneRef.current.has(p)) return;
@@ -1525,12 +1596,19 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           }
         });
         side = p === 'head' ? side : -side;
-        const endX = side * (4 + Math.random() * 7);
-        const endZ = -2 + Math.random() * 4;
-        fall.rotation.set(Math.PI / 2, 0, (Math.random() - 0.5) * 0.6);
+        // Espalha as partes ALEATORIAMENTE pelo chão: cada uma cai num ponto distinto
+        // (lado + profundidade + inclinação/rolagem variados), em vez de amontoar no mesmo lugar.
+        const endX = side * (4 + Math.random() * 9);
+        const endZ = -3 + Math.random() * 6;
+        fall.rotation.set(
+          Math.PI / 2 + (Math.random() - 0.5) * 0.6,
+          (Math.random() - 0.5) * 0.5,
+          (Math.random() - 0.5) * 1.4
+        );
         const startY = (groundY > -10 ? groundY : -12) + 30;
         const endY = groundY + 0.4;
         fall.position.set(endX, startY, endZ);
+        root.add(fall); // anima no canvas principal durante a queda
         const t0 = performance.now();
         const duration = 500 + Math.random() * 250;
         let raf = 0;
@@ -1541,8 +1619,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           if (t < 1) raf = requestAnimationFrame(tick);
         };
         raf = requestAnimationFrame(tick);
-        fallenGroup.add(fall);
         fallenClonesRef.current[p] = fall;
+        newFalls.push(fall);
       } catch (e) {
         console.error('Falha ao desmontar parte:', p, e);
       }
@@ -1562,28 +1640,119 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       skin.position.y += (groundY - lowestY);
     }
 
-    // Caso especial (tronco caiu mas as pernas continuam): a cabeça desce e assenta
-    // no topo das pernas (posição do tronco), já que não há mais tronco para sustentá-la.
+    // Quando o TRONCO cai, a cabeça (que está no topo) precisa DESCER e continuar viva,
+    // assentando no topo das pernas (se ainda estiverem de pé) ou no chão (se caíram).
+    // Antes, só descia se as pernas estivessem de pé — mas na sequência normal do estrondo
+    // as pernas caem antes do corpo, então a cabeça ficava "voando" no topo.
     const torsoFell = fallenSet.has('body');
-    const legsStanding = !fallenSet.has('leftLeg') && !fallenSet.has('rightLeg');
-    if (torsoFell && legsStanding) {
+    if (torsoFell && !fallenSet.has('head')) {
       const head = (skin as any).head;
-      const leg = (skin as any).leftLeg || (skin as any).rightLeg;
-      if (head && leg) {
-        head.position.y = (leg as any).position.y + 2;
+      if (head) {
+        const legsStanding = !fallenSet.has('leftLeg') && !fallenSet.has('rightLeg');
+        const leg = (skin as any).leftLeg || (skin as any).rightLeg;
+        skin.updateWorldMatrix(true, true);
+        const skinWorldY = new THREE.Vector3().setFromMatrixPosition(skin.matrixWorld).y;
+        let targetWorldY: number;
+        if (legsStanding && leg) {
+          const legWorldY = new THREE.Vector3().setFromMatrixPosition(leg.matrixWorld).y;
+          targetWorldY = legWorldY + 2; // assenta no topo das pernas
+        } else {
+          targetWorldY = groundY + 2; // pernas caídas: assenta no chão
+        }
+        head.position.y = targetWorldY - skinWorldY;
       }
     }
-  }, [JSON.stringify(fallenBodyParts), modelsLoadedCount]);
+
+    // 3) Após a queda, move as partes para o grupo desacoplado e captura o SNAPSHOT
+    //    da camada estática (usando o renderer PRINCIPAL — sem criar WebGL context novo).
+    if (newFalls.length > 0 && fallenLayerPortal) {
+      if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
+      fallTimerRef.current = setTimeout(() => {
+        const group = fallSceneRef.current;
+        if (group) {
+          // "Assa" a matriz de MUNDO de cada parte (onde ela realmente caiu) antes de
+          // removê-la do root — assim o snapshot preserva exatamente a posição espalhada.
+          const baked: { f: THREE.Group; world: THREE.Matrix4 }[] = [];
+          newFalls.forEach(f => {
+            if (f.parent === root) {
+              f.updateWorldMatrix(true, true);
+              baked.push({ f, world: f.matrixWorld.clone() });
+              root.remove(f);
+            }
+          });
+          baked.forEach(({ f, world }) => {
+            f.matrix.copy(world);
+            f.matrixAutoUpdate = false;
+            group.add(f);
+          });
+        }
+        captureFallenRef.current();
+      }, 850);
+    }
+  }, [JSON.stringify(fallenBodyParts), modelsLoadedCount, fallenLayerPortal]);
+
+  // Captura as partes caídas (grupo desacoplado) num snapshot 2D e coloca na camada
+  // estática. Usa o RENDERER PRINCIPAL (viewer.renderer) + WebGLRenderTarget — NÃO cria
+  // um novo WebGL context, então não há risco de estourar o limite do navegador.
+  useEffect(() => {
+    captureFallenRef.current = () => {
+      const viewer = viewerRef.current;
+      const group = fallSceneRef.current;
+      const layer = fallenLayerPortal;
+      if (!viewer || !viewer.renderer || !viewer.camera || !group || !layer) return;
+      const root = viewer.playerObject;
+      const wasAttached = !!root && group.parent === root;
+      if (wasAttached) root.remove(group);
+      try {
+        // As partes já têm a matriz de MUNDO "assada" (matrixAutoUpdate = false), então
+        // renderizamos numa cena IDENTIDADE — cada parte aparece exatamente onde caiu.
+        const scene = new THREE.Group();
+        scene.add(group);
+        const w = Math.max(1, size);
+        const h = Math.max(1, Math.round(size * 1.8));
+        const rt = new THREE.WebGLRenderTarget(w, h);
+        const prev = viewer.renderer.getRenderTarget();
+        viewer.renderer.setRenderTarget(rt);
+        viewer.renderer.render(scene, viewer.camera);
+        viewer.renderer.setRenderTarget(prev);
+        const px = new Uint8Array(w * h * 4);
+        viewer.renderer.readRenderTargetPixels(rt, 0, 0, w, h, px);
+        rt.dispose();
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        if (ctx) {
+          // readRenderTargetPixels vem de baixo para cima → inverte as linhas.
+          const flipped = new Uint8ClampedArray(px.length);
+          for (let y = 0; y < h; y++) {
+            const src = y * w * 4;
+            const dst = (h - 1 - y) * w * 4;
+            flipped.set(px.subarray(src, src + w * 4), dst);
+          }
+          ctx.putImageData(new ImageData(flipped, w, h), 0, 0);
+          layer.style.backgroundImage = `url(${c.toDataURL('image/png')})`;
+          layer.style.backgroundSize = '100% 100%';
+          layer.style.backgroundRepeat = 'no-repeat';
+        }
+      } catch (e) {
+        console.warn('Falha ao capturar partes caídas:', e);
+        if (wasAttached && root) root.add(group); // fallback: mantém no canvas principal
+      }
+    };
+  }, [fallenLayerPortal, size]);
 
   // Limpa os clones ao desmontar
   useEffect(() => {
     return () => {
+      if (fallTimerRef.current) { clearTimeout(fallTimerRef.current); fallTimerRef.current = null; }
       const viewer = viewerRef.current;
       if (!viewer || !viewer.playerObject) return;
       const root = viewer.playerObject;
-      const fallenGroup = (root as any).userData?._fallenGroup;
-      if (fallenGroup && fallenGroup.parent) fallenGroup.parent.remove(fallenGroup);
-      delete (root as any).userData._fallenGroup;
+      if (fallSceneRef.current) {
+        if (fallSceneRef.current.parent) fallSceneRef.current.parent.remove(fallSceneRef.current);
+        fallSceneRef.current = null;
+      }
+      fallRootMatrixRef.current = null;
       fallenClonesRef.current = {};
       fallenDoneRef.current = new Set();
       fallenGroundRef.current = null;

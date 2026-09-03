@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X } from 'lucide-react';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import GachaConfigModal from './GachaConfigModal';
@@ -102,6 +102,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [showExtractorModal, setShowExtractorModal] = useState(false);
   const [showGachaModal, setShowGachaModal] = useState(false);
   const [showItemBank, setShowItemBank] = useState(false);
+  // Modal de seleção das opções para "Sincronizar do Banco"
+  const [showSyncOptions, setShowSyncOptions] = useState(false);
+  const [syncSelection, setSyncSelection] = useState<Record<string, boolean>>({});
   const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
 
   // Item montado para PREVIEW 3D no personagem (config de posição e visualização da textura)
@@ -236,13 +239,96 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     }
   };
 
-  // Superadmin: sincroniza os ícones/imagens do catálogo desta escola com os itens
-  // do Banco de Itens (global). Atualiza APENAS a imagem dos itens que já existem
-  // no banco e têm o mesmo nome, tipo e efeito — não cria cópia.
-  const syncIconsToBank = async () => {
+  // ---- Sincronização inteligente (diff) entre catálogo da escola e Banco de Itens ----
+  // Chaves voláteis/identidade que não devem ser copiadas entre itens.
+  const SYNC_EXCLUDE = new Set(['id', 'importedFromId', '_isGlobal', '_tenantId', '_rawId', 'extractMeshName']);
+
+  // Opções sincronizáveis ao puxar do Banco para o tenant. Cada grupo cobre um
+  // conjunto de chaves do `data` do item. Desmarcar um grupo preserva o valor
+  // definido no tenant para aquelas chaves.
+  const SYNC_GROUPS: { key: string; label: string; hint: string; keys: string[] }[] = [
+    { key: 'image', label: 'Ícone / Imagem', hint: 'imageUrl', keys: ['imageUrl'] },
+    { key: 'title', label: 'Nome do item', hint: 'title', keys: ['title'] },
+    { key: 'description', label: 'Descrição', hint: 'description', keys: ['description'] },
+    { key: 'price', label: 'Preço', hint: 'cost', keys: ['cost'] },
+    { key: 'effect', label: 'Efeito do item (uso em missão, buffs, cooldown)', hint: 'gameEffect, usableInQuest, buffs', keys: ['gameEffect', 'usableInQuest', 'hpCooldownReductionMinutes', 'buffDurationHours', 'buffDurationDays', 'unlockedSkinId'] },
+    { key: 'stats', label: 'Atributos / Poder (ataque, defesa, dano)', hint: 'fixedAttributes, baseAttribute, damageEffect', keys: ['baseAttributeType', 'baseAttributeValue', 'fixedAttributes', 'itemCategory', 'damageEffect'] },
+    { key: 'rank', label: 'Patente mínima exigida', hint: 'minRankRequired', keys: ['minRankRequired'] },
+    { key: 'model', label: 'Modelo 2D/3D', hint: 'gameModelUrl, textura, cabeça Minecraft, paper doll 2D', keys: ['gameModelUrl', 'modelTextureUrl', 'minecraftHeadValue', 'gameImage2dUrl', 'backColor'] },
+    { key: 'transforms', label: 'Transformação 3D (Debug 3D)', hint: 'modelTransforms', keys: ['modelTransforms'] },
+    { key: 'rarity', label: 'Raridade', hint: 'rarity', keys: ['rarity'] },
+    { key: 'gacha', label: 'Configuração de Gacha', hint: 'gachaConfig', keys: ['gachaConfig', 'useGlobalGacha'] },
+    { key: 'slot', label: 'Parte do corpo (slot)', hint: 'avatarPart', keys: ['avatarPart'] },
+    { key: 'active', label: 'Disponível na loja', hint: 'active', keys: ['active'] },
+    { key: 'sale', label: 'Bazar (preço mínimo de revenda)', hint: 'minSalePrice', keys: ['minSalePrice'] },
+  ];
+
+  const deepEqualSync = (a: any, b: any): boolean => {
+    if (a === b) return true;
+    if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
+    const ka = Object.keys(a);
+    const kb = Object.keys(b);
+    if (ka.length !== kb.length) return false;
+    return ka.every(k => deepEqualSync(a[k], b[k]));
+  };
+
+  // Mescla "source" em "target" aplicando APENAS o que for diferente (comparação
+  // profunda). Nunca remove chaves que o source não possui. Retorna o objeto
+  // resultante e se houve mudança. `allowedKeys` limita a sincronização às
+  // chaves marcadas no modal de opções.
+  const mergeDeepChanged = (target: any, source: any, allowedKeys?: Set<string>): { result: any; changed: boolean } => {
+    if (source === null || source === undefined) return { result: target, changed: false };
+    if (typeof source !== 'object' || Array.isArray(source)) {
+      const changed = !deepEqualSync(target, source);
+      return { result: changed ? JSON.parse(JSON.stringify(source)) : target, changed };
+    }
+    if (target && typeof target === 'object' && !Array.isArray(target)) {
+      const result: any = { ...target };
+      let changed = false;
+      for (const k of Object.keys(source)) {
+        if (SYNC_EXCLUDE.has(k)) continue;
+        if (allowedKeys && !allowedKeys.has(k)) continue;
+        const sVal = source[k];
+        if (sVal === null || sVal === undefined) {
+          if (result[k] !== undefined && result[k] !== null) {
+            result[k] = null;
+            changed = true;
+          }
+          continue;
+        }
+        const { result: r, changed: c } = mergeDeepChanged(result[k], sVal);
+        if (c) {
+          result[k] = r;
+          changed = true;
+        }
+      }
+      return { result, changed };
+    }
+    const changed = !deepEqualSync(target, source);
+    return { result: changed ? JSON.parse(JSON.stringify(source)) : target, changed };
+  };
+
+  // Espelha os campos do data nas colunas da tabela store_items.
+  const deriveStoreColumns = (data: any) => ({
+    name: data.title || '',
+    description: data.description || '',
+    type: data.type || 'consumable',
+    price: typeof data.cost === 'number' ? data.cost : Number(data.cost || 0),
+    image_url: data.imageUrl || data.image_url || '',
+    active: data.active ?? true,
+    rarity: data.rarity || 'common',
+    avatar_part: data.avatarPart || null
+  });
+
+  // Superadmin: sincroniza o catálogo DESTA escola com o Banco de Itens (global).
+  // Compara item por item (nome/tipo/efeito) e aplica APENAS os ajustes que
+  // realmente diferem: ícone, nome, atributos, custo, transformação 3D (Debug 3D)
+  // etc. Não cria cópia e não sobrescreve itens iguais.
+  const syncCatalogToBank = async () => {
     if (!isSuperAdmin) return;
     const confirmed = await showConfirm(
-      'Sincronizar ícones/imagens do catálogo desta escola com o Banco de Itens?\n\nItens com o MESMO nome, tipo e efeito terão a imagem do banco atualizada para a imagem da escola. Nenhum item é criado — apenas a imagem é atualizada.'
+      'Sincronizar o catálogo DESTA escola com o Banco de Itens?\n\nTodos os ajustes feitos nesta escola (ícone, nome, atributos, custo, transformação 3D do Debug 3D etc.) serão comparados e aplicados ao Banco de Itens — apenas nos itens que realmente mudaram. Nenhum item é criado.'
     );
     if (!confirmed) return;
     if (!tenantId) { showAlert('Selecione uma escola para sincronizar.'); return; }
@@ -252,29 +338,97 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       const { data: bankRows } = await supabase.from('store_items').select('*').eq('is_global', true);
 
       const norm = (s?: string) => (s || '').trim().toLowerCase();
-      let synced = 0;
-      let updatedCount = 0;
+      let matched = 0, updated = 0, unchanged = 0;
 
       for (const bank of (bankRows || [])) {
         const bankData = bank.data || {};
-        const match = (localRows || []).find(local => {
-          const ld = local.data || {};
+        const local = (localRows || []).find(l => {
+          const ld = l.data || {};
           return norm(ld.title) === norm(bankData.title)
             && (ld.type || '') === (bankData.type || '')
             && (ld.gameEffect || 'none') === (bankData.gameEffect || 'none');
         });
-        if (!match) continue;
-        synced++;
-        const ld = match.data || {};
-        const newImage = ld.itemImageUrl || ld.imageUrl || '';
-        const bankImage = bankData.itemImageUrl || bankData.imageUrl || '';
-        if (newImage && newImage !== bankImage) {
-          const newData = { ...bankData, imageUrl: newImage, itemImageUrl: newImage };
-          const { error } = await supabase.from('store_items').update({ data: newData }).eq('id', bank.id);
-          if (!error) updatedCount++;
+        if (!local) continue;
+        matched++;
+        const localData = local.data || {};
+        const { result, changed } = mergeDeepChanged(bankData, localData);
+        if (!changed) { unchanged++; continue; }
+        const columns = deriveStoreColumns(result);
+        const { error } = await supabase.from('store_items').update({ data: result, ...columns }).eq('id', bank.id);
+        if (!error) updated++; else console.error('Erro ao sincronizar item do banco:', error);
+      }
+      showAlert(`Sincronização com o Banco concluída: ${updated} item(ns) atualizado(s), ${unchanged} já estavam iguais (de ${matched} correspondências por nome/tipo/efeito).`);
+    } catch (e) {
+      console.error(e);
+      showAlert('Erro ao sincronizar: ' + ((e as any)?.message || 'erro desconhecido'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Superadmin: abre o modal de seleção das opções que serão sincronizadas do
+  // Banco de Itens para o catálogo DESTA escola. Cada opção marcada é comparada
+  // e aplicada; as desmarcadas preservam o valor já definido no tenant.
+  const syncCatalogFromBank = async () => {
+    if (!isSuperAdmin) return;
+    if (!tenantId) { showAlert('Selecione a escola que será atualizada.'); return; }
+    const init: Record<string, boolean> = {};
+    SYNC_GROUPS.forEach(g => { init[g.key] = true; });
+    setSyncSelection(init);
+    setShowSyncOptions(true);
+  };
+
+  // Executa a sincronização do Banco para a escola atual, respeitando a seleção.
+  const runSyncFromBank = async (selection: Record<string, boolean>) => {
+    const allowedKeys = new Set<string>();
+    SYNC_GROUPS.forEach(g => {
+      if (selection[g.key]) g.keys.forEach(k => allowedKeys.add(k));
+    });
+    if (allowedKeys.size === 0) {
+      showAlert('Nenhuma opção selecionada — nada será sincronizado.');
+      return;
+    }
+    setShowSyncOptions(false);
+    setLoading(true);
+    try {
+      const { data: localRows } = await supabase.from('store_items').select('*').eq('tenant_id', tenantId);
+      const { data: bankRows } = await supabase.from('store_items').select('*').eq('is_global', true);
+
+      const norm = (s?: string) => (s || '').trim().toLowerCase();
+      let matched = 0, updated = 0, unchanged = 0;
+
+      for (const bank of (bankRows || [])) {
+        const bankData = bank.data || {};
+        const local = (localRows || []).find(l => {
+          const ld = l.data || {};
+          return norm(ld.title) === norm(bankData.title)
+            && (ld.type || '') === (bankData.type || '')
+            && (ld.gameEffect || 'none') === (bankData.gameEffect || 'none');
+        });
+        if (!local) continue;
+        matched++;
+        const localData = local.data || {};
+        const { result, changed } = mergeDeepChanged(localData, bankData, allowedKeys);
+        if (!changed) { unchanged++; continue; }
+        const columns = deriveStoreColumns(result);
+        const { error } = await supabase.from('store_items').update({ data: result, ...columns }).eq('id', local.id);
+        if (error) { console.error('Erro ao atualizar item local:', error); continue; }
+        updated++;
+
+        // Cascateia a nova configuração (principalmente modelTransforms do Debug 3D)
+        // para os inventários dos jogadores desta escola que já possuem o item.
+        const { data: userItems } = await supabase.from('user_items').select('id, data').eq('item_id', local.id);
+        if (userItems) {
+          for (const ui of userItems) {
+            const uiData = ui.data || {};
+            const { result: uiResult, changed: uiChanged } = mergeDeepChanged(uiData, result, allowedKeys);
+            if (uiChanged) {
+              await supabase.from('user_items').update({ data: uiResult }).eq('id', ui.id);
+            }
+          }
         }
       }
-      showAlert(`Sincronização concluída: ${updatedCount} item(ns) do banco tiveram a imagem atualizada (de ${synced} correspondências por nome/tipo/efeito).`);
+      showAlert(`Atualização a partir do Banco concluída: ${updated} item(ns) desta escola atualizado(s), ${unchanged} já estavam iguais (de ${matched} correspondências por nome/tipo/efeito).`);
     } catch (e) {
       console.error(e);
       showAlert('Erro ao sincronizar: ' + ((e as any)?.message || 'erro desconhecido'));
@@ -599,8 +753,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             </h2>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               {isSuperAdmin && (
-                <button className="login-btn" onClick={syncIconsToBank} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)' }} title="Atualiza as imagens dos itens do Banco de Itens com as imagens deste catálogo (itens com mesmo nome, tipo e efeito)">
-                  <RefreshCcw size={18} /> Sincronizar Ícones com o Banco
+                <button className="login-btn" onClick={syncCatalogToBank} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)' }} title="Compara o catálogo desta escola com o Banco de Itens e aplica no banco apenas os itens que sofreram modificações (ícone, nome, atributos, transformação 3D do Debug 3D etc.)">
+                  <RefreshCcw size={18} /> Sincronizar com o Banco
+                </button>
+              )}
+              {isSuperAdmin && (
+                <button className="login-btn" onClick={syncCatalogFromBank} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)' }} title="Aplica as configurações ATUAIS do Banco de Itens no catálogo desta escola (atualiza tenants que ainda estão com as configurações antigas)">
+                  <RefreshCcw size={18} /> Sincronizar do Banco
                 </button>
               )}
               {canItems('items', 'create') && (
@@ -1280,6 +1439,51 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           }}
           onClose={() => setShowExtractorModal(false)}
         />
+      )}
+
+      {/* Modal: selecionar quais opções sincronizar do Banco para esta escola */}
+      {showSyncOptions && createPortal(
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000000, padding: '1rem' }}>
+          <div style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '16px', padding: '1.75rem', width: '100%', maxWidth: '620px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>Sincronizar do Banco — opções</h3>
+              <button onClick={() => setShowSyncOptions(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}><X size={20} /></button>
+            </div>
+            <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Marque apenas o que você deseja que o Banco de Itens sobreponha no catálogo desta escola. <b>Desmarcar uma opção preserva o valor já definido aqui.</b> Somente itens correspondentes (mesmo nome, tipo e efeito) e que realmente diferem são atualizados.
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <button onClick={() => { const all: Record<string, boolean> = {}; SYNC_GROUPS.forEach(g => { all[g.key] = true; }); setSyncSelection(all); }} style={{ padding: '0.3rem 0.8rem', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Marcar tudo</button>
+              <button onClick={() => { const none: Record<string, boolean> = {}; SYNC_GROUPS.forEach(g => { none[g.key] = false; }); setSyncSelection(none); }} style={{ padding: '0.3rem 0.8rem', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Desmarcar tudo</button>
+              <span style={{ marginLeft: 'auto', alignSelf: 'center', fontSize: '0.8rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
+                {SYNC_GROUPS.filter(g => syncSelection[g.key]).length} de {SYNC_GROUPS.length} opções
+              </span>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {SYNC_GROUPS.map(g => (
+                <label key={g.key} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.6rem 0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: syncSelection[g.key] ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid var(--border-glass)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!syncSelection[g.key]}
+                    onChange={e => setSyncSelection(prev => ({ ...prev, [g.key]: e.target.checked }))}
+                    style={{ marginTop: '0.15rem', accentColor: 'var(--gold-primary)', width: '16px', height: '16px', flexShrink: 0 }}
+                  />
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                    <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 600 }}>{g.label}</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>{g.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+              <button onClick={() => setShowSyncOptions(false)} style={{ flex: 1, padding: '0.75rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.9rem' }}>Cancelar</button>
+              <button onClick={() => runSyncFromBank(syncSelection)} style={{ flex: 1, padding: '0.75rem', background: 'var(--gold-primary)', border: 'none', borderRadius: '8px', color: 'var(--text-on-gold, #000)', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                Sincronizar selecionados
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

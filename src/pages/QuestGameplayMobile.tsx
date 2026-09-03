@@ -98,6 +98,12 @@ export default function QuestGameplay() {
   const [frozen, setFrozen] = useState(false);
   const [drainBlink, setDrainBlink] = useState(false);
   const fallenPartsRef = useRef<string[]>([]);
+  // Camada estática das partes caídas (efeito estrondo): fica FORA do contêiner animado
+  // do monstro, então as partes não seguem ataques/dano.
+  const monsterCharWrapRef = useRef<HTMLDivElement | null>(null);
+  const fallenLayerElRef = useRef<HTMLDivElement | null>(null);
+  const [fallenLayerEl, setFallenLayerEl] = useState<HTMLDivElement | null>(null);
+  const [fallenLayerBox, setFallenLayerBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [torsoAdvantage, setTorsoAdvantage] = useState(false);
   // Fração do coração ATUAL do monstro (1 = cheio, 0.5 = metade, 0.333 = 1/3, 0.25 = 1/4).
   // Golpe crítico danifica o coração atual e o renderiza conforme o RNG sorteado.
@@ -1818,6 +1824,23 @@ export default function QuestGameplay() {
     }
   }, [effectLevel, damageEffect]);
 
+  // Mede a posição do canvas do monstro em REPOUSO para posicionar a camada estática
+  // das partes caídas (fica parada no chão mesmo durante ataques/dano).
+  useEffect(() => {
+    const sync = () => {
+      const arena = arenaRef.current;
+      const wrap = monsterCharWrapRef.current;
+      if (!arena || !wrap) return;
+      const aRect = arena.getBoundingClientRect();
+      const wRect = wrap.getBoundingClientRect();
+      setFallenLayerBox({ left: wRect.left - aRect.left, top: wRect.top - aRect.top, width: wRect.width, height: wRect.height });
+    };
+    const isRest = !monsterAnim?.startsWith('attack') && monsterAnim !== 'hurt' && monsterAnim !== 'attack-fatal' && monsterAnim !== 'attack-fatal-slow' && !monsterAnim?.startsWith('death-');
+    if (isRest) sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  }, [monsterAnim, arenaDebug, currentQIndex]);
+
   const handleUsePowerup = async (item: UserItem) => {
     if (gameState !== 'playing') {
       await showAlert("Você só pode usar itens durante a batalha!");
@@ -2268,7 +2291,7 @@ export default function QuestGameplay() {
                     } else if (quest?.monsterAvatarConfig) {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
                       const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;
-                      return <div style={{ marginBottom: '-60px', ...wrapperStyle, transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={170} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={effectTintColor} fallenBodyParts={fallenPartsRef.current} /></div>;
+                      return <div ref={monsterCharWrapRef} style={{ marginBottom: '-60px', ...wrapperStyle, transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={170} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={effectTintColor} fallenBodyParts={fallenPartsRef.current} fallenLayerPortal={fallenLayerEl} /></div>;
                     } else {
                       return <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />;
                     }
@@ -2280,6 +2303,12 @@ export default function QuestGameplay() {
                 </div>
               )}
             </div>
+
+            {/* Camada ESTÁTICA das partes caídas (fora do contêiner animado do monstro) */}
+            <div
+              ref={(el) => { fallenLayerElRef.current = el; if (el && !fallenLayerEl) setFallenLayerEl(el); }}
+              style={{ position: 'absolute', left: fallenLayerBox?.left ?? 0, top: fallenLayerBox?.top ?? 0, width: fallenLayerBox?.width ?? 0, height: fallenLayerBox?.height ?? 0, zIndex: 24, pointerEvents: 'none', overflow: 'hidden' }}
+            />
           </div>
         )}
 
