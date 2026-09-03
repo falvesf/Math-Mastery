@@ -1648,7 +1648,9 @@ export default function QuestGameplay() {
       const wrap = monsterCharWrapRef.current;
       if (!arena || !wrap) return;
       const aRect = arena.getBoundingClientRect();
-      const wRect = wrap.getBoundingClientRect();
+      // Mede o CANVAS real do boneco (área exata onde as partes aparecem no canvas principal).
+      const target = wrap.querySelector('canvas') || wrap;
+      const wRect = target.getBoundingClientRect();
       setFallenLayerBox({ left: wRect.left - aRect.left, top: wRect.top - aRect.top, width: wRect.width, height: wRect.height });
     };
     const isRest = !monsterAnim?.startsWith('attack') && monsterAnim !== 'hurt' && monsterAnim !== 'attack-fatal' && monsterAnim !== 'attack-fatal-slow' && !monsterAnim?.startsWith('death-');

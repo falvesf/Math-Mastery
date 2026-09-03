@@ -1533,6 +1533,11 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   const fallRootMatrixRef = useRef<THREE.Matrix4 | null>(null);
   const fallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captureFallenRef = useRef<() => void>(() => {});
+  // Descida da cabeça quando o tronco cai: a animação do skinview3d sobrescreve a
+  // posição da cabeça a cada frame, então um RAF (que roda DEPOIS do loop do viewer)
+  // re-aplica a descida continuamente enquanto o tronco estiver caído.
+  const headDescentRef = useRef<number | null>(null);
+  const headDescentKickRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !viewer.playerObject) return;
@@ -1642,8 +1647,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
     // Quando o TRONCO cai, a cabeça (que está no topo) precisa DESCER e continuar viva,
     // assentando no topo das pernas (se ainda estiverem de pé) ou no chão (se caíram).
-    // Antes, só descia se as pernas estivessem de pé — mas na sequência normal do estrondo
-    // as pernas caem antes do corpo, então a cabeça ficava "voando" no topo.
+    // A posição é re-aplicada por RAF (abaixo) porque a animação do skinview3d a sobrescreve.
     const torsoFell = fallenSet.has('body');
     if (torsoFell && !fallenSet.has('head')) {
       const head = (skin as any).head;
@@ -1659,8 +1663,13 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         } else {
           targetWorldY = groundY + 2; // pernas caídas: assenta no chão
         }
-        head.position.y = targetWorldY - skinWorldY;
+        const targetLocalY = targetWorldY - skinWorldY;
+        head.position.y = targetLocalY;
+        headDescentRef.current = targetLocalY;
+        if (headDescentKickRef.current) headDescentKickRef.current();
       }
+    } else {
+      headDescentRef.current = null;
     }
 
     // 3) Após a queda, move as partes para o grupo desacoplado e captura o SNAPSHOT
@@ -1708,8 +1717,11 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         // renderizamos numa cena IDENTIDADE — cada parte aparece exatamente onde caiu.
         const scene = new THREE.Group();
         scene.add(group);
-        const w = Math.max(1, size);
-        const h = Math.max(1, Math.round(size * 1.8));
+        // Usa a resolução REAL do canvas principal (inclui devicePixelRatio) para o
+        // snapshot ter a MESMA proporção/tamanho das partes vistas no canvas principal.
+        const domCanvas = viewer.renderer.domElement;
+        const w = Math.max(1, domCanvas.width || Math.round(size * (window.devicePixelRatio || 1)));
+        const h = Math.max(1, domCanvas.height || Math.round(size * 1.8 * (window.devicePixelRatio || 1)));
         const rt = new THREE.WebGLRenderTarget(w, h);
         const prev = viewer.renderer.getRenderTarget();
         viewer.renderer.setRenderTarget(rt);
@@ -1740,6 +1752,38 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       }
     };
   }, [fallenLayerPortal, size]);
+
+  // Re-aplica a descida da cabeça a cada frame enquanto o tronco estiver caído.
+  // O RAF é registrado DEPOIS do loop interno do skinview3d, então roda depois da
+  // animação (idle/hurt) e a posição da cabeça não é sobrescrita de volta para o topo.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    let raf = 0;
+    let running = false;
+    const ensureRunning = () => {
+      if (!running) {
+        running = true;
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    const tick = () => {
+      running = false;
+      const target = headDescentRef.current;
+      const skin = viewer.playerObject?.skin;
+      const head = skin ? (skin as any).head : null;
+      if (target === null || !head) return; // sem descida ativa → para o loop
+      head.position.y = target;
+      running = true;
+      raf = requestAnimationFrame(tick);
+    };
+    headDescentKickRef.current = ensureRunning;
+    return () => {
+      running = false;
+      cancelAnimationFrame(raf);
+      headDescentKickRef.current = null;
+    };
+  }, []);
 
   // Limpa os clones ao desmontar
   useEffect(() => {
