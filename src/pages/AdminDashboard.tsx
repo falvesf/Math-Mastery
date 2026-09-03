@@ -691,11 +691,16 @@ const [loadingCoinHistory, setLoadingCoinHistory] = useState(false);
   const [studentSortBy, setStudentSortBy] = useState<'xp' | 'name' | 'class'>('xp');
   const [studentSortOrder, setStudentSortOrder] = useState<'desc' | 'asc'>('desc');
   
-  // XP em Massa
-  const [isBulkXpModalOpen, setIsBulkXpModalOpen] = useState(false);
-  const [bulkXpAction, setBulkXpAction] = useState<'add' | 'remove'>('add');
-  const [bulkXpAmount, setBulkXpAmount] = useState('');
-  const [bulkXpReason, setBulkXpReason] = useState('');
+// XP em Massa
+const [isBulkXpModalOpen, setIsBulkXpModalOpen] = useState(false);
+const [bulkXpAction, setBulkXpAction] = useState<'add' | 'remove'>('add');
+const [bulkXpAmount, setBulkXpAmount] = useState('');
+const [bulkXpReason, setBulkXpReason] = useState('');
+// Moedas em Massa
+const [isBulkCoinsModalOpen, setIsBulkCoinsModalOpen] = useState(false);
+const [bulkCoinsAction, setBulkCoinsAction] = useState<'add' | 'remove'>('add');
+const [bulkCoinsAmount, setBulkCoinsAmount] = useState('');
+const [bulkCoinsReason, setBulkCoinsReason] = useState('');
   
   // Apagar Aluno
   const [deletingStudent, setDeletingStudent] = useState<UserData | null>(null);
@@ -1582,6 +1587,33 @@ const [loadingCoinHistory, setLoadingCoinHistory] = useState(false);
     setIsBulkXpModalOpen(false);
     setBulkXpAmount('');
     setBulkXpReason('');
+    setSelectedStudentIds([]);
+    fetchStudents();
+  };
+
+  // Moedas em Massa: adiciona/retira moedas de TODOS os alunos selecionados.
+  const handleBulkCoins = async () => {
+    if (selectedStudentIds.length === 0 || !bulkCoinsAmount) return;
+    const coinsChange = Math.round(parseFloat(bulkCoinsAmount.replace(',', '.')));
+    if (isNaN(coinsChange) || coinsChange <= 0) return;
+
+    for (const uid of selectedStudentIds) {
+      const student = students.find(s => s.uid === uid);
+      if (!student) continue;
+      const gain = bulkCoinsAction === 'add' ? coinsChange : -coinsChange;
+      const newCoins = Math.max(0, (student.coins || 0) + gain);
+      await supabase.from('users').update({ coins: newCoins }).eq('id', uid);
+      await supabase.from('coin_logs').insert({
+        student_id: uid,
+        amount: gain,
+        reason: `Ação em Massa | | ${bulkCoinsReason || 'Atribuição manual de moedas'}`,
+        justification: bulkCoinsReason || ''
+      });
+    }
+
+    setIsBulkCoinsModalOpen(false);
+    setBulkCoinsAmount('');
+    setBulkCoinsReason('');
     setSelectedStudentIds([]);
     fetchStudents();
   };
@@ -2493,6 +2525,13 @@ const [loadingCoinHistory, setLoadingCoinHistory] = useState(false);
                       <Star size={18} style={{ marginRight: '0.5rem' }} /> XP em Massa
                     </button>
                     <button 
+                      className="login-btn" 
+                      onClick={() => setIsBulkCoinsModalOpen(true)}
+                      style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0.5rem 1rem' }}
+                    >
+                      🪙 Moedas em Massa
+                    </button>
+                    <button 
                       onClick={() => setSelectedStudentIds([])}
                       style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
                     >
@@ -2644,21 +2683,26 @@ const [loadingCoinHistory, setLoadingCoinHistory] = useState(false);
                                 if (e.target.checked) setSelectedStudentIds([...selectedStudentIds, student.uid]);
                                 else setSelectedStudentIds(selectedStudentIds.filter(id => id !== student.uid));
                               }}
-                              style={{ width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0 }}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0, position: 'relative', zIndex: 5 }}
                             />
                             {student.avatarConfig && showAvatars3D ? (
                               <div 
                                 onClick={() => setViewingProfileUser(student)}
                                 style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: `2px solid ${currentRank.color}`, background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', flexShrink: 0, aspectRatio: '1' }}
                               >
-                                <LazyAnimatedAvatar
-                                  id={student.uid}
-                                  config={student.avatarConfig!}
-                                  equippedItems={allUserItems[student.uid] || []}
-                                  size={48}
-                                  animation={student.avatarConfig?.animationState as any || 'idle'}
-                                  faceCamera={true}
-                                />
+                                {/* Só o CÍRCULO abre o perfil: o personagem que vaza para fora
+                                    do círculo fica sem clique (pointerEvents none). */}
+                                <div style={{ pointerEvents: 'none', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <LazyAnimatedAvatar
+                                    id={student.uid}
+                                    config={student.avatarConfig!}
+                                    equippedItems={allUserItems[student.uid] || []}
+                                    size={48}
+                                    animation={student.avatarConfig?.animationState as any || 'idle'}
+                                    faceCamera={true}
+                                  />
+                                </div>
                               </div>
                             ) : (
                               <div
@@ -3691,6 +3735,48 @@ const [loadingCoinHistory, setLoadingCoinHistory] = useState(false);
             </div>
 
             <button className="login-btn" onClick={handleBulkXp} style={{ width: '100%', justifyContent: 'center', background: bulkXpAction === 'add' ? 'var(--gold-primary)' : 'var(--accent-red)', color: bulkXpAction === 'add'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none' }}>
+              Confirmar para {selectedStudentIds.length} Alunos
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isBulkCoinsModalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 100 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: '500px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                🪙 Moedas em Massa
+              </h3>
+              <button onClick={() => setIsBulkCoinsModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+            
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+              Você está alterando as moedas de <strong>{selectedStudentIds.length} alunos</strong> ao mesmo tempo.
+            </p>
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
+              <button onClick={() => setBulkCoinsAction('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: bulkCoinsAction === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: bulkCoinsAction === 'add'  ? 'var(--text-primary)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: bulkCoinsAction === 'add' ? 'bold' : 'normal' }}>
+                Adicionar Moedas
+              </button>
+              <button onClick={() => setBulkCoinsAction('remove')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: bulkCoinsAction === 'remove' ? 'rgba(239, 68, 68, 0.2)' : 'transparent', color: bulkCoinsAction === 'remove' ? 'var(--accent-red)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: bulkCoinsAction === 'remove' ? 'bold' : 'normal' }}>
+                Retirar Moedas
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Quantidade de Moedas</label>
+              <input type="number" value={bulkCoinsAmount} onChange={e => setBulkCoinsAmount(e.target.value)} placeholder="Ex: 100" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '1.2rem' }} />
+            </div>
+
+            <div style={{ marginBottom: '2rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Justificativa (Opcional)</label>
+              <input type="text" value={bulkCoinsReason} onChange={e => setBulkCoinsReason(e.target.value)} placeholder="Ex: Premiação do Desafio das Frações" style={{ width: '100%', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+            </div>
+
+            <button className="login-btn" onClick={handleBulkCoins} style={{ width: '100%', justifyContent: 'center', background: bulkCoinsAction === 'add' ? 'var(--gold-primary)' : 'var(--accent-red)', color: bulkCoinsAction === 'add'  ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none' }}>
               Confirmar para {selectedStudentIds.length} Alunos
             </button>
           </div>

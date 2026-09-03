@@ -298,6 +298,16 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           }
           continue;
         }
+        // Objetos (modelTransforms, gachaConfig etc.): sincronização AUTORITATIVA —
+        // se o objeto difere, substitui pelo do source (não mescla sub-chaves, para não
+        // deixar configurações antigas/misturadas que causam diferenças de funcionamento).
+        if (typeof sVal === 'object' && !Array.isArray(sVal)) {
+          if (!deepEqualSync(result[k], sVal)) {
+            result[k] = JSON.parse(JSON.stringify(sVal));
+            changed = true;
+          }
+          continue;
+        }
         const { result: r, changed: c } = mergeDeepChanged(result[k], sVal);
         if (c) {
           result[k] = r;
@@ -322,6 +332,24 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     avatar_part: data.avatarPart || null
   });
 
+  // Encontra o item local que corresponde a um item do Banco:
+  // 1) vínculo EXATO por importedFromId (mesmo que o nome/efeito tenha sido alterado no tenant);
+  // 2) fallback por nome + tipo + efeito.
+  const findLocalMatch = (localRows: any[], bankData: any, bankId: string) => {
+    const norm = (s?: string) => (s || '').trim().toLowerCase();
+    const byLink = (localRows || []).find(l => {
+      const ld = l.data || {};
+      return ld.importedFromId && ld.importedFromId === bankId;
+    });
+    if (byLink) return byLink;
+    return (localRows || []).find(l => {
+      const ld = l.data || {};
+      return norm(ld.title) === norm(bankData.title)
+        && (ld.type || '') === (bankData.type || '')
+        && (ld.gameEffect || 'none') === (bankData.gameEffect || 'none');
+    });
+  };
+
   // Superadmin: sincroniza o catálogo DESTA escola com o Banco de Itens (global).
   // Compara item por item (nome/tipo/efeito) e aplica APENAS os ajustes que
   // realmente diferem: ícone, nome, atributos, custo, transformação 3D (Debug 3D)
@@ -343,12 +371,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
       for (const bank of (bankRows || [])) {
         const bankData = bank.data || {};
-        const local = (localRows || []).find(l => {
-          const ld = l.data || {};
-          return norm(ld.title) === norm(bankData.title)
-            && (ld.type || '') === (bankData.type || '')
-            && (ld.gameEffect || 'none') === (bankData.gameEffect || 'none');
-        });
+        const local = findLocalMatch(localRows, bankData, bank.id);
         if (!local) continue;
         matched++;
         const localData = local.data || {};
@@ -400,12 +423,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
       for (const bank of (bankRows || [])) {
         const bankData = bank.data || {};
-        const local = (localRows || []).find(l => {
-          const ld = l.data || {};
-          return norm(ld.title) === norm(bankData.title)
-            && (ld.type || '') === (bankData.type || '')
-            && (ld.gameEffect || 'none') === (bankData.gameEffect || 'none');
-        });
+        const local = findLocalMatch(localRows, bankData, bank.id);
         if (!local) continue;
         matched++;
         const localData = local.data || {};

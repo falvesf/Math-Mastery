@@ -98,6 +98,7 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
               size={size}
               animation={finalAnimation}
               faceCamera={true}
+              alwaysAnimate={rankPos <= 3}
             />
           ) : (
             <img src={student.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />

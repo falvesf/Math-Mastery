@@ -452,10 +452,22 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     }
 
     return () => {
-        if (viewerRef.current) {
-            viewerRef.current.dispose();
-            viewerRef.current = null;
-        }
+        const v = viewerRef.current;
+        if (!v) return;
+        const renderer = (v as any).renderer as THREE.WebGLRenderer | undefined;
+        try { v.dispose(); } catch (e) { /* ignora */ }
+        viewerRef.current = null;
+        // Libera o context WebGL de forma STRICTMODE-safe: o React.StrictMode (dev) re-roda
+        // o effect logo após o cleanup. Se a re-inicialização já aconteceu (viewerRef preenchido),
+        // NÃO forçamos a perda do context (senão quebraria o avatar recém-criado → quadrado branco).
+        // Em unmount REAL, força a perda para o navegador liberar o slot imediatamente (evita
+        // acúmulo de contexts no vai-e-vem do scroll).
+        setTimeout(() => {
+          if (viewerRef.current) return; // re-inicializado (StrictMode) → preserva
+          if (renderer) {
+            try { renderer.dispose(); renderer.forceContextLoss(); } catch (e) {}
+          }
+        }, 0);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
