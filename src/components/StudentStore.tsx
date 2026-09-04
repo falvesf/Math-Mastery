@@ -8,7 +8,7 @@ import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp, resolveMinRankName, getMinRankIndex } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig, ATTRIBUTE_LABELS } from '../lib/gacha';
-import { applyEffectAdd, isEffectAddType, EFFECT_ADD_LABELS } from '../lib/damageEffects';
+import { applyEffectAdd, isEffectAddType, EFFECT_ADD_LABELS, DAMAGE_EFFECTS } from '../lib/damageEffects';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
@@ -1406,6 +1406,40 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             {item.type === 'equippable' && baseAttr && (
               <div style={{ marginBottom: '0.35rem', fontSize: '0.9rem' }}>
                 {baseAttr.icon} <strong>{baseAttr.label}:</strong> <span style={{ color: rColor }}>+{item.baseAttributeValue}{mainStatPct ? '%' : ''}</span>
+              </div>
+            )}
+
+            {/* Efeito de dano NATURAL (ex.: Sangramento) + Atributos Fixos garantidos.
+                Mostrados ANTES da compra para o jogador decidir com informação. */}
+            {item.type === 'equippable' && (!item.adds || item.adds.length === 0) && (
+              <div style={{ marginBottom: '0.35rem', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                {item.damageEffect && item.damageEffect !== 'none' && (() => {
+                  const eff = DAMAGE_EFFECTS.find(d => d.id === item.damageEffect);
+                  if (!eff) return null;
+                  return (
+                    <div>
+                      <strong style={{ color: '#fb7185' }}>{eff.label}</strong>
+                      {eff.desc && <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{eff.desc}</div>}
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>(a força/chance é sorteada no momento da compra)</div>
+                    </div>
+                  );
+                })()}
+                {item.fixedAttributes && item.fixedAttributes.length > 0 && (
+                  <div>
+                    <strong style={{ color: '#D8B4FE' }}>✨ Atributos Fixos:</strong>
+                    <ul style={{ margin: '0.15rem 0 0 0', paddingLeft: '1.2rem' }}>
+                      {item.fixedAttributes.map((add, i) => {
+                        const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
+                        if (!lbl) return null;
+                        return (
+                          <li key={i} style={{ color: lbl.color }}>
+                            {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.value}%`}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
 
