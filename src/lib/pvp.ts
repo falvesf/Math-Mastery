@@ -899,16 +899,16 @@ export async function awardSpectateRewards(
       //    campo já ficou 1 → nunca mais recebe a recompensa máxima de novo)
       await supabase.from('users').update({ spectate_rewarded: 1 }).eq('id', spectatorUid);
 
-      // 2. Concede a recompensa
+      // 2. Concede a recompensa (validada no servidor — teto + anti-spam)
       const giftItem = await findGiftBoxItem(tenantId);
       const coins = giftItem ? 100 : 200;
       let prize = '';
       if (giftItem) {
-        await supabase.from('users').update({ coins: (u?.coins || 0) + 100 }).eq('id', spectatorUid);
+        await supabase.rpc('award_spectate_coins', { p_student_id: spectatorUid, p_coins: 100, p_reason: 'Recompensa de espectador (primeira vez)' });
         await grantStoreItem(spectatorUid, giftItem, tenantId);
         prize = '100 moedas + Caixa de Presente';
       } else {
-        await supabase.from('users').update({ coins: (u?.coins || 0) + 200 }).eq('id', spectatorUid);
+        await supabase.rpc('award_spectate_coins', { p_student_id: spectatorUid, p_coins: 200, p_reason: 'Recompensa de espectador (primeira vez)' });
         prize = '200 moedas';
       }
 
@@ -933,8 +933,7 @@ export async function awardSpectateRewards(
         const divisor = Math.max(1, specsOnWinner);
         const share = Math.floor((totalBet * 0.0025) / divisor);
         if (share > 0) {
-          const { data: u2 } = await supabase.from('users').select('coins').eq('id', spectatorUid).single();
-          await supabase.from('users').update({ coins: (u2?.coins || 0) + share }).eq('id', spectatorUid);
+          await supabase.rpc('award_spectate_coins', { p_student_id: spectatorUid, p_coins: share, p_reason: 'Recompensa de espectador (0,25% da aposta)' });
           const sharePrize = `+${share} moedas (0,25% da aposta)`;
           const rewards = await readSpectateRewards(spectatorUid);
           await appendSpectateReward(spectatorUid, [...rewards, { matchId: match.id, date: nowIso, score, prize: sharePrize, coins: share, kind: 'share' }]);

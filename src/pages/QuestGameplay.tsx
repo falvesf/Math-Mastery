@@ -1427,22 +1427,36 @@ export default function QuestGameplay() {
       
       // Log XP and Coins only if won
       if (isWin && (actualXpGained > 0 || earnedCoins > 0)) {
-        const updates: any = {};
-        
-        if (actualXpGained > 0) {
-          updates.xp = (userData?.xp || 0) + actualXpGained;
-          // Invalida o cache de histórico para que o Dashboard mostre a nova entrada
-          sessionCache.invalidate(CACHE_KEYS.xpHistory(userData!.uid));
-        }
-        
-        if (earnedCoins > 0) {
-          updates.coins = (userData?.coins || 0) + earnedCoins;
-        }
+        // Recompensa VALIDADA NO SERVIDOR (anti-fraude via console): a função
+        // apply_quest_reward confere tetos e anti-spam antes de aplicar. O valor é
+        // limitado no servidor; o cliente não tem como inflar arbitrariamente.
+        const { data: reward, error: rewardErr } = await supabase.rpc('apply_quest_reward', {
+          p_student_id: userData!.uid,
+          p_quest_id: quest?.id || '',
+          p_earned_xp: actualXpGained,
+          p_earned_coins: earnedCoins,
+          p_reason: `Missão: ${quest?.title || ''}`
+        });
 
-        const { error: userErr } = await supabase.from('users').update(updates).eq('id', userData!.uid);
-        if (userErr) console.error("Falha ao atualizar users (possível bloqueio de RLS):", userErr);
-        // Atualiza o estado local para refletir XP/moedas imediatamente (evita valor desatualizado na loja)
-        updateUserDataLocally({ xp: updates.xp ?? userData?.xp, coins: updates.coins ?? userData?.coins });
+        if (rewardErr) {
+          // Fallback seguro: se a migration da função não rodou, usa o comportamento
+          // antigo (grava direto) para NÃO quebrar a recompensa.
+          console.error("apply_quest_reward indisponível, usando fallback direto:", rewardErr);
+          const updates: any = {};
+          if (actualXpGained > 0) {
+            updates.xp = (userData?.xp || 0) + actualXpGained;
+            sessionCache.invalidate(CACHE_KEYS.xpHistory(userData!.uid));
+          }
+          if (earnedCoins > 0) updates.coins = (userData?.coins || 0) + earnedCoins;
+          const { error: userErr } = await supabase.from('users').update(updates).eq('id', userData!.uid);
+          if (userErr) console.error("Falha ao atualizar users:", userErr);
+          updateUserDataLocally({ xp: updates.xp ?? userData?.xp, coins: updates.coins ?? userData?.coins });
+        } else if (reward && reward.ok) {
+          updateUserDataLocally({ xp: reward.xp, coins: reward.coins });
+          if (actualXpGained > 0) sessionCache.invalidate(CACHE_KEYS.xpHistory(userData!.uid));
+        } else if (reward && !reward.ok) {
+          console.error("Recompensa rejeitada pelo servidor:", reward.error, reward);
+        }
       }
 
       // Buffs and Debuffs only applied if eligible for XP
@@ -1533,10 +1547,14 @@ export default function QuestGameplay() {
 
   const collectCoin = (coin: { id: number; x: number; y: number; value: number }) => {
     if (!userData) return;
-    const currentCoins = userData.coins || 0;
-    const newCoins = currentCoins + coin.value;
-    supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
-    userData.coins = newCoins;
+    // Recompensa VALIDADA NO SERVIDOR (teto + anti-spam): o cliente não define o valor livremente.
+    supabase.rpc('collect_combat_coin', { p_student_id: userData.uid, p_value: coin.value }).then(({ data, error }) => {
+      if (error) {
+        console.error("collect_combat_coin:", error);
+      } else if (data && data.ok) {
+        userData.coins = data.coins;
+      }
+    });
     setDroppedCoins(prev => prev.filter(c => c.id !== coin.id));
     setCoinPops(prev => [...prev, { id: Date.now() + Math.random(), x: coin.x, y: coin.y, value: coin.value }]);
     // Som de coleta da moeda (coinSoundUrl da moeda ativa ou blip padrão)
