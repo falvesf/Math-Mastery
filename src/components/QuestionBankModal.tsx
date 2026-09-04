@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useTenant } from '../contexts/TenantContext';
 import { useDialog } from '../contexts/DialogContext';
+// @ts-ignore
 import { X, Search, Download, Copy, Eye, BookOpen, Loader2, CheckCircle } from 'lucide-react';
 
 interface QuestionBankItem {

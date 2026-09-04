@@ -41,6 +41,7 @@ interface UserItem {
   preferredCurrency?: 'xp' | 'coins';
   itemDescription?: string;
   rarity?: string;
+  damageEffect?: string;
   minecraftHeadValue?: string;
   unlockedSkinId?: string;
   buffDurationDays?: number;
@@ -208,7 +209,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     const storeRarities = new Map<string, string>();
     const storeEffects = new Map<string, string>();
     (storeSnap || []).forEach(d => {
-      storeRarities.set(d.id, d.rarity || 'common');
+      storeRarities.set(d.id, d.data?.rarity || 'common');
       const effect = d.data?.gameEffect || (d.data?.type === 'consumable' ? '' : '');
       storeEffects.set(d.id, effect || '');
     });

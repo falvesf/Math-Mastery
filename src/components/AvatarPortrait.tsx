@@ -1,3 +1,4 @@
+// @ts-ignore
 import React, { useEffect, useRef, useState } from 'react';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 

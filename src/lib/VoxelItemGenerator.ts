@@ -1,3 +1,4 @@
+// @ts-ignore
 import * as THREE from 'skinview3d/node_modules/three';
 
 export async function generateVoxelItemFromImage(imageUrl: string, backColor?: string, curveX = 0, curveY = 0, split?: 'left' | 'right', thickness = 0.12): Promise<THREE.Group> {
@@ -11,10 +12,10 @@ export async function generateVoxelItemFromImage(imageUrl: string, backColor?: s
       : `https://${imageUrl}`;
 
     const tryLoad = (url: string, onOk: (tex: THREE.Texture) => void, onFail: (err: any) => void) => {
-      loader.load(url, onOk, undefined, (err) => {
+      loader.load(url, onOk, undefined, (err: any) => {
         if (url.startsWith('http') && !url.includes('allorigins')) {
           console.warn(`Falha direta na sprite (${url}), tentando proxy...`);
-          loader.load(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, onOk, undefined, (err2) => onFail(err2));
+          loader.load(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, onOk, undefined, (err2: any) => onFail(err2));
         } else {
           onFail(err);
         }

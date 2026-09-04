@@ -25,7 +25,7 @@ import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import OnboardingModal from '../components/OnboardingModal';
 import SchoolSelectorModal from '../components/SchoolSelectorModal';
 import ClassSelectorModal from '../components/ClassSelectorModal';
-import CustomThemeModal, { type CustomTheme, DEFAULT_FANTASY_THEME } from '../components/CustomThemeModal';
+import CustomThemeModal, { type CustomTheme } from '../components/CustomThemeModal';
 import { applyCustomTheme, applyFontPreset, applyFontScale } from '../lib/theme';
 import { validateCharacterName, normalizeForComparison, normalizeNameForMatch, formatFirstAndLastName } from '../lib/nameValidation';
 import { fetchModel3DById } from '../lib/model3d';
@@ -3157,7 +3157,7 @@ export default function Dashboard() {
                                     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '4px' }}>
                                       {Object.entries(stats).map(([key, value]) => {
                                         if (value === 0 && key !== 'attack' && key !== 'defense' && key !== 'vitality') return null;
-                                        const labelInfo = ATTRIBUTE_LABELS[key] || ATTRIBUTE_LABELS['none'];
+                                        const labelInfo = (ATTRIBUTE_LABELS as any)[key] || ATTRIBUTE_LABELS['none'];
                                         let displayValue = `+${value}`;
                                         if (key === 'xp' || key === 'coins') displayValue += '%';
 

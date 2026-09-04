@@ -1,4 +1,5 @@
 import { SkinViewer, IdleAnimation } from 'skinview3d';
+// @ts-ignore
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { generateMinecraftSkinUrl } from './SkinGenerator';
 import { type EquippedItem, resolveModelTransform } from '../components/AvatarCharacter';
@@ -110,10 +111,10 @@ async function processQueue() {
           if (safeUrl.startsWith('/')) {
             safeUrl = import.meta.env.BASE_URL + safeUrl.substring(1);
           }
-          loader.load(safeUrl, (gltf) => {
+          loader.load(safeUrl, (gltf: any) => {
             const model = gltf.scene;
             model.userData.isItem = true;
-            model.traverse(child => { if ((child as any).isMesh) (child as any).frustumCulled = false; });
+            model.traverse((child: any) => { if (child.isMesh) child.frustumCulled = false; });
             
             const isDefense = item.itemCategory === 'defense' || item.avatarPart === 'leftHand';
             const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;

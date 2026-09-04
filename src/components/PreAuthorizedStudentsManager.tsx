@@ -233,12 +233,12 @@ export default function PreAuthorizedStudentsManager() {
                 {(() => {
                   const status = getStudentStatus(student);
                   if (status === 'authorized') {
-                    return <Check size={18} color="#10b981" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} title="Aluno já autorizado/cadastrado" />;
+                    return <span title="Aluno já autorizado/cadastrado" style={{ marginRight: '0.5rem', verticalAlign: 'middle', display: 'inline-flex' }}><Check size={18} color="#10b981" /></span>;
                   }
                   if (status === 'rejected') {
-                    return <X size={18} color="#ef4444" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} title="Aluno foi recusado" />;
+                    return <span title="Aluno foi recusado" style={{ marginRight: '0.5rem', verticalAlign: 'middle', display: 'inline-flex' }}><X size={18} color="#ef4444" /></span>;
                   }
-                  return <Clock size={18} color="#f59e0b" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} title="Aguardando primeiro acesso" />;
+                  return <span title="Aguardando primeiro acesso" style={{ marginRight: '0.5rem', verticalAlign: 'middle', display: 'inline-flex' }}><Clock size={18} color="#f59e0b" /></span>;
                 })()}
                 <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{student.name}</span>
                 <span style={{ marginLeft: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>

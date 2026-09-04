@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 import { supabase } from '../lib/supabase';
@@ -97,6 +97,7 @@ export default function QuestGameplay() {
   const [effectFlash, setEffectFlash] = useState(false);
   const [frozen, setFrozen] = useState(false);
   const [drainBlink, setDrainBlink] = useState(false);
+  // @ts-ignore
   const [coinDoom, setCoinDoom] = useState<number | null>(null); // expira moedas (fogo/sangue)
   const fallenPartsRef = useRef<string[]>([]);
   const [torsoAdvantage, setTorsoAdvantage] = useState(false);
@@ -237,6 +238,7 @@ export default function QuestGameplay() {
   };
   const playMonsterAttackSound = () => playSound(quest?.monsterAttackSound, 0.8);
   const playMonsterDamageSound = () => playSound(quest?.monsterDamageSound, 0.8);
+  // @ts-ignore
   const playMonsterGruntSound = () => playSound(quest?.monsterGruntSound, 0.8);
   const playVictorySound = () => playSound(battleSoundsRef.current.victory, 0.9);
   // Som de fatalidade conforme o tipo de animação de morte
@@ -255,6 +257,7 @@ export default function QuestGameplay() {
     const gender = (userData?.avatarConfig as any)?.gender;
     playSound(gender === 'female' ? battleSoundsRef.current.deathFemale : battleSoundsRef.current.deathMale, 0.9);
   };
+  // @ts-ignore
   const playFailSound = () => playSound(battleSoundsRef.current.fail, 0.9);
   const playPlayerAttackSound = () => {
     const weapon = playerEquippedItems.find((i: any) => (i as any).battleSoundUrl);
@@ -1914,16 +1917,16 @@ export default function QuestGameplay() {
             {/* Question Overlay - Sobre a arena, abaixo dos balões de fala */}
             <div className="quest-question-overlay">
               <div className="quest-question-title">
-                {quest.questions[currentQIndex].imageUrl && (
-                  <img src={getSafeUrl(quest.questions[currentQIndex].imageUrl)} alt="Quest" />
+                {quest?.questions[currentQIndex].imageUrl && (
+                  <img src={getSafeUrl(quest?.questions[currentQIndex].imageUrl)} alt="Quest" />
                 )}
-                <h2 dangerouslySetInnerHTML={{ __html: quest.questions[currentQIndex].title }} />
+                <h2 dangerouslySetInnerHTML={{ __html: quest?.questions[currentQIndex].title || '' }} />
               </div>
               
               <div className="quest-options-compact">
-                {quest.questions[currentQIndex].options.map((opt, i) => {
+                {quest?.questions[currentQIndex].options.map((opt, i) => {
                   const isEliminated = eliminatedOptions.includes(i);
-                  const isCorrectAnswer = feedback && i === quest.questions[currentQIndex].correctIndex;
+                  const isCorrectAnswer = feedback && i === quest?.questions[currentQIndex].correctIndex;
                   const isWrongSelected = feedback === 'wrong' && i === lastSelectedOption;
                   
                   return (

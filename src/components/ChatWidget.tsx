@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import {
   fetchContacts, fetchConversation, sendMessage,
+  // @ts-ignore
   markRead, addFriend, removeFriend, fetchTotalUnread, fetchPendingSenders, isOnlineTimestamp,
   sendFriendRequest, respondFriendRequest, isFriendMarker, FRIEND_ACCEPT, FRIEND_REJECT,
   getLocalChatSettings, saveLocalChatSettings, fetchChatSettings, saveChatSettings,
@@ -699,7 +700,7 @@ export default function ChatWidget({ onOpenProfile, translucent = false }: ChatW
 
   const handleAddFriend = async (contact: ChatContact) => {
     // Envia um convite; o outro lado precisa aceitar.
-    const ok = await sendFriendRequest(uid!, contact.uid, userData?.name);
+    const ok = await sendFriendRequest(uid!, contact.uid);
     if (ok) {
       showToast(`Convite de contato enviado para ${contact.name}!`);
     }

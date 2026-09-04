@@ -84,7 +84,7 @@ export async function createLocalAccount(params: {
 
   // Captura a sessão do admin para restaurar caso o signUp crie uma nova sessão
   // (acontece quando "Confirm email" está DESLIGADO no Supabase).
-  const before = await supabase.auth.getSession();
+  const { data: before } = await supabase.auth.getSession();
 
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
     email: authEmail,
@@ -96,9 +96,9 @@ export async function createLocalAccount(params: {
   if (signUpError) throw new Error(signUpError.message);
 
   // Se o signUp substituiu a sessão do admin, restaura a sessão original
-  const after = await supabase.auth.getSession();
-  if (after.session && before.session && after.session.user.id !== before.session.user.id) {
-    await supabase.auth.setSession(before.session);
+  const { data: after } = await supabase.auth.getSession();
+  if (after?.session && before?.session && after.session.user.id !== before.session.user.id) {
+    await supabase.auth.setSession({ access_token: before.session.access_token, refresh_token: before.session.refresh_token });
   }
 
   const userId = signUpData.user?.id;

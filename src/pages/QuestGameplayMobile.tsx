@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 import { supabase } from '../lib/supabase';
@@ -1653,7 +1653,7 @@ export default function QuestGameplay() {
         const updates: any = {};
         const now = Date.now();
         
-        const rankIdx = Math.max(0, RANKS.findIndex(r => r.name === userData.lastSeenRank));
+        const rankIdx = Math.max(0, RANKS.findIndex(r => r.name === userData?.lastSeenRank));
         const baseHearts = Math.max(3, 3 + Math.floor(rankIdx / 2));
         const bonusHearts = Math.floor(totalEquippedStats.vitality / 30);
         const mHearts = baseHearts + bonusHearts;
@@ -1665,8 +1665,8 @@ export default function QuestGameplay() {
           updates.happy_buff_duration = null;
         } else if (hpPerc === 100) {
           let newDuration = 5;
-          if (userData.happyBuffUntil && userData.happyBuffUntil > now) {
-            newDuration = (userData.happyBuffDuration || 5) * 2;
+          if (userData?.happyBuffUntil && userData.happyBuffUntil > now) {
+            newDuration = (userData?.happyBuffDuration || 5) * 2;
           }
           updates.happy_buff_until = now + newDuration * 60 * 1000;
           updates.happy_buff_duration = newDuration;
@@ -1677,7 +1677,7 @@ export default function QuestGameplay() {
           updates.stunned_until = null;
         }
         
-        await supabase.from('users').update(updates).eq('id', userData.uid);
+        await supabase.from('users').update(updates).eq('id', userData?.uid);
       }
 
       // Garantir que o HP final do jogo seja gravado em users e updateUserDataLocally
@@ -2142,16 +2142,16 @@ export default function QuestGameplay() {
             {/* Question Overlay - Sobre a arena, abaixo dos balões de fala */}
             <div className="quest-question-overlay">
               <div className="quest-question-title">
-                {quest.questions[currentQIndex].imageUrl && (
-                  <img src={getSafeUrl(quest.questions[currentQIndex].imageUrl)} alt="Quest" />
+                {quest?.questions[currentQIndex].imageUrl && (
+                  <img src={getSafeUrl(quest?.questions[currentQIndex].imageUrl)} alt="Quest" />
                 )}
-                <h2 dangerouslySetInnerHTML={{ __html: quest.questions[currentQIndex].title }} />
+                <h2 dangerouslySetInnerHTML={{ __html: quest?.questions[currentQIndex].title || '' }} />
               </div>
               
               <div className="quest-options-compact">
-                {quest.questions[currentQIndex].options.map((opt, i) => {
+                {quest?.questions[currentQIndex].options.map((opt, i) => {
                   const isEliminated = eliminatedOptions.includes(i);
-                  const isCorrectAnswer = feedback && i === quest.questions[currentQIndex].correctIndex;
+                  const isCorrectAnswer = feedback && i === quest?.questions[currentQIndex].correctIndex;
                   const isWrongSelected = feedback === 'wrong' && i === lastSelectedOption;
                   
                   return (

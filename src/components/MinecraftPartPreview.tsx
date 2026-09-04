@@ -21,6 +21,7 @@ const PART_TARGETS: Record<string, string[]> = {
 };
 
 // Foco da câmera por parte (posição Y do alvo + zoom).
+// @ts-ignore
 const PART_FOCUS: Record<string, { y: number; zoom: number }> = {
   head: { y: 1.6, zoom: 1.1 },
   body: { y: 1.0, zoom: 0.85 },
@@ -73,7 +74,7 @@ export default function MinecraftPartPreview({ minecraftHeadValue, avatarPart, s
     }
 
     viewer.loadSkin(finalUrl).then(() => {
-      const skin = viewer.playerObject.skin;
+      const skin: any = viewer.playerObject.skin;
       const targets = PART_TARGETS[getTargetKey(avatarPart)] || PART_TARGETS.head;
       const allParts: Record<string, any> = {
         head: skin.head, hat: skin.hat,

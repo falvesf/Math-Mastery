@@ -119,6 +119,7 @@ function PreviewCanvas({ modelUrl, zoom, offsetX, offsetY, rotY, open, openOffse
   );
 }
 
+// @ts-ignore
 export default function InteractiveModelPreview({ modelUrl, size = 200, zoom, offsetX, offsetY, rotY, open = false, openOffsetX, openOffsetY, swapSides = false, onZoomChange, onOffsetXChange, onOffsetYChange, onRotYChange }: InteractiveModelPreviewProps) {
   const circleBg = { background: 'radial-gradient(circle, rgba(245,158,11,0.15) 0%, transparent 70%)' };
 

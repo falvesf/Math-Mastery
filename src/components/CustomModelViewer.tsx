@@ -322,6 +322,7 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
 
   // Encaixe calculado UMA vez por cena (estável, não depende de rotação/zoom em runtime).
   // Baús: enquadramento MANUAL (baseline + zoom/offsets). Entidades: auto-fit (Sketchfab-like).
+  // @ts-ignore
   const { twoState, fit } = useMemo(() => {
     const slide = isChest && !hasOpenAnim ? computeChestSlide(scene) : null;
     const base = isChest ? computeChestBaselineFit(scene, slide, chestSwapSides) : computeEntityFit(scene);

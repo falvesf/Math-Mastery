@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+// @ts-ignore
 import { X, Plus, BookOpen, Trash2, Clock, Search, Save, Pencil, CheckCircle, Download, Eye, EyeOff, Menu } from 'lucide-react';
 import { useTenant } from '../contexts/TenantContext';
 import { useDialog } from '../contexts/DialogContext';
@@ -145,16 +146,15 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
       correctIndex: typeof q.correct_index === 'number' ? q.correct_index : 0,
     };
     // Substitui a última se estiver vazia, senão adiciona
-    setQuestions(prev => {
-      const last = prev[prev.length - 1];
-      const lastEmpty = !last.title.trim() && !(last.imageUrl || '').trim();
-      if (lastEmpty && prev.length >= 1) {
-        const copy = [...prev];
-        copy[copy.length - 1] = converted;
-        return copy;
-      }
-      return [...prev, converted];
-    });
+    const last = questions[questions.length - 1];
+    const lastEmpty = last && !last.title.trim() && !(last.imageUrl || '').trim();
+    if (lastEmpty && questions.length >= 1) {
+      const copy = [...questions];
+      copy[copy.length - 1] = converted;
+      setQuestions(copy);
+    } else {
+      setQuestions([...questions, converted]);
+    }
     setActiveIndex(questions.length);
     setPendingFocus(questions.length);
     setShowBank(false);

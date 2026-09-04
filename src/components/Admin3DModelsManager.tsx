@@ -716,7 +716,7 @@ export default function Admin3DModelsManager() {
                               </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-                              <audio controls src={chestAudioUrl} playbackRate={chestAudioRate} style={{ flex: 1, height: '38px' }} />
+                              <audio controls src={chestAudioUrl} style={{ flex: 1, height: '38px' }} />
                               <button
                                 onClick={() => playChestAudio(chestAudioUrl, chestAudioRate, chestAudioStart, chestAudioDuration)}
                                 style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem', background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.5)', whiteSpace: 'nowrap' }}

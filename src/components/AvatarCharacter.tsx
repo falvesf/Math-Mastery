@@ -76,6 +76,8 @@ export interface EquippedItem {
   /** Sprite animado (atlas) ao redor do item — efeito de brilho/encanto */
   spriteAnimation?: SpriteAnimation;
   gameEffect?: string;
+  damageEffect?: string;
+  battleSoundUrl?: string;
   hpCooldownReductionMinutes?: number;
 }
 
@@ -1628,14 +1630,13 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         root.add(fall); // anima no canvas principal durante a queda
         const t0 = performance.now();
         const duration = 500 + Math.random() * 250;
-        let raf = 0;
         const tick = (now: number) => {
           const t = Math.min(1, (now - t0) / duration);
           const eased = t * t;
           fall.position.y = startY + (endY - startY) * eased;
-          if (t < 1) raf = requestAnimationFrame(tick);
+          if (t < 1) requestAnimationFrame(tick);
         };
-        raf = requestAnimationFrame(tick);
+        requestAnimationFrame(tick);
         fallenClonesRef.current[p] = fall;
         newFalls.push(fall);
       } catch (e) {
@@ -1803,7 +1804,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       if (fallTimerRef.current) { clearTimeout(fallTimerRef.current); fallTimerRef.current = null; }
       const viewer = viewerRef.current;
       if (!viewer || !viewer.playerObject) return;
-      const root = viewer.playerObject;
+      // const root = viewer.playerObject;
       if (fallSceneRef.current) {
         if (fallSceneRef.current.parent) fallSceneRef.current.parent.remove(fallSceneRef.current);
         fallSceneRef.current = null;

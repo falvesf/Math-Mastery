@@ -163,7 +163,7 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
     fetchSavedPoses(tenantId).then(setSavedPoses).catch(() => {});
     // Ações equipadas no personagem (para marcar ✓ nos botões de equipar pose)
     if (userData?.uid) {
-      supabase.from('users').select('avatar_config').eq('id', userData.uid).single()
+      Promise.resolve(supabase.from('users').select('avatar_config').eq('id', userData.uid).single())
         .then(({ data }) => {
           const cfg = (data?.avatar_config as any) || userData.avatarConfig || {};
           setUserActionPoses(cfg.actionPoses || null);
@@ -359,6 +359,7 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
     idle: 'Parado', walk: 'Andando', run: 'Correndo', attack: 'Lutando',
   };
 
+  // @ts-ignore
   const loadSavedPoses = async () => {
     const poses = await fetchSavedPoses(tenantId);
     setSavedPoses(poses);

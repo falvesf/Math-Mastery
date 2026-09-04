@@ -11,13 +11,18 @@ const cache = new Map<string, Promise<any[]>>();
 export function fetchEquippedItems(uid: string): Promise<any[]> {
   const existing = cache.get(uid);
   if (existing) return existing;
-  const p = supabase
-    .from('user_items')
-    .select('*')
-    .eq('student_id', uid)
-    .eq('equipped', true)
-    .then(({ data }) => (data || []))
-    .catch(() => []);
+  const p = new Promise<any[]>(async (resolve) => {
+    try {
+      const { data } = await supabase
+        .from('user_items')
+        .select('*')
+        .eq('student_id', uid)
+        .eq('equipped', true);
+      resolve(data || []);
+    } catch {
+      resolve([]);
+    }
+  });
   cache.set(uid, p);
   return p;
 }

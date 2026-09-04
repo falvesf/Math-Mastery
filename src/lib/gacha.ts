@@ -124,9 +124,9 @@ export function rollExactAttributes(count: number, existingTypes: AttributeType[
   while (adds.length < count && safety < 1000) {
     const rolled = rollItemAdds(config, undefined, globalConfig);
     for (const r of rolled) {
-      if (adds.length < count && !excludedTypes.has(r.type)) {
+      if (adds.length < count && !excludedTypes.has(r.type as AttributeType)) {
         adds.push(r);
-        excludedTypes.add(r.type);
+        excludedTypes.add(r.type as AttributeType);
       }
     }
     safety++;

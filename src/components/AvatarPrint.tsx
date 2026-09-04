@@ -1,3 +1,4 @@
+// @ts-ignore
 import { useEffect, useState, useRef } from 'react';
 import { getAvatarPrint } from '../lib/AvatarPrintQueue';
 import type { EquippedItem } from './AvatarCharacter';

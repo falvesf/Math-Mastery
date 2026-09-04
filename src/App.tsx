@@ -28,10 +28,12 @@ const PrivateRoute = ({ children, requiredRole }: { children: React.ReactNode, r
     if (!userData?.uid) return;
     let active = true;
     setHasHierarchyRoles(false);
-    supabase
-      .from('user_roles')
-      .select('role_id', { count: 'exact', head: true })
-      .eq('user_id', userData.uid)
+    Promise.resolve(
+      supabase
+        .from('user_roles')
+        .select('role_id', { count: 'exact', head: true })
+        .eq('user_id', userData.uid)
+    )
       .then(({ count }) => { if (active) setHasHierarchyRoles(!!count && count > 0); })
       .catch(() => {});
     return () => { active = false; };

@@ -47,7 +47,7 @@ export async function getGrokConfig(): Promise<GrokConfig | null> {
 export async function saveGrokConfig(apiKey: string, model?: string): Promise<boolean> {
   try {
     const payload = { collection_name: COLLECTION, doc_id: DOC, tenant_id: null, data: { apiKey, model: model || 'grok-3-mini' } };
-    const existing = await supabase
+    const { data: existing } = await supabase
       .from('system_collections')
       .select('id')
       .eq('collection_name', COLLECTION)

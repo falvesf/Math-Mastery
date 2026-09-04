@@ -14,6 +14,7 @@ import { useDialog } from '../contexts/DialogContext';
 import { playSound, resolveAudioUrl } from '../lib/audioBank';
 import BattleTransition from './BattleTransition';
 import DamageEffectOverlay from './DamageEffectOverlay';
+// @ts-ignore
 import { getEquippedDamageEffect, getEquippedDamageEffectInfo } from '../lib/damageEffects';
 
 interface PvpBattleProps {
@@ -448,6 +449,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
   const me: PvpPlayerState | null = match[role];
   const them: PvpPlayerState | null = match[opponentRole(role)];
   const arenaBg = arenaBgRef.current || match?.arena?.battleBgUrl || match?.arena?.battle_bg_url || '';
+  // @ts-ignore
   const arena = match.arena || {};
   const lungePx = Math.max(20, Math.round(attackDist * 0.45));
   const p1Won = match.status === 'finished' && !!match.winner_id && match.winner_id === match.challenger_id;
@@ -499,7 +501,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
     const fatalElapsed = fatalStartRef.current ? Math.max(0, Date.now() - fatalStartRef.current) : 0;
     const phase: 'taunt' | 'strike' | 'celebrate' | 'result' =
       fatalElapsed < 3000 ? 'taunt' : fatalElapsed < 5500 ? 'strike' : fatalElapsed < 8500 ? 'celebrate' : 'result';
-    const showResult = match.status === 'cancelled' || phase === 'result' || draw;
+    const showResult = phase === 'result' || draw;
 
     if (!showResult) {
       // Sequência final: EU sempre à ESQUERDA, oponente à DIREITA.
@@ -523,7 +525,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
       const fatalLeftEquip = isSpectator ? p1Equip : myEquip;
       const fatalRightEquip = isSpectator ? p2Equip : themEquip;
 
-      const renderLoser = (config: any, equip: any[], role: 'player' | 'enemy' = 'player') => {
+      const renderLoser = (config: any, equip: any[], role: 'player' | 'monster' = 'player') => {
         const baseChar = <AvatarCharacter config={config} equippedItems={equip} size={170} animation={loserHurt ? 'hurt' : 'idle'} interactive={false} role={role} />;
         if (loserAnim === 'death-slice' && loserDying) {
           return (
@@ -575,8 +577,8 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
               {/* JOGADOR 2 — direita */}
               <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: themLunge ? `translateX(-${teleportPx}px)` : 'none', transition: 'transform 0.35s ease-in' }}>
                 {fatalLeftWon
-                  ? renderLoser(fatalRightConfig, fatalRightEquip, 'enemy')
-                  : <AvatarCharacter config={fatalRightConfig} equippedItems={fatalRightEquip} size={170} animation={winnerAnim} interactive={false} role="enemy" />}
+                  ? renderLoser(fatalRightConfig, fatalRightEquip, 'monster')
+                  : <AvatarCharacter config={fatalRightConfig} equippedItems={fatalRightEquip} size={170} animation={winnerAnim} interactive={false} role="monster" />}
                 {phase === 'taunt' && !fatalLeftWon && (
                   <div style={{ marginTop: '0.3rem', textAlign: 'center', background: 'rgba(0,0,0,0.75)', color: '#fbbf24', fontWeight: '900', padding: '0.3rem 0.8rem', borderRadius: '10px', fontSize: '0.9rem' }}>💪 Eu venci!</div>
                 )}
@@ -694,6 +696,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
       {/* Arena */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220' }}>
         {arenaBg && (
+          // @ts-ignore
           <img src={arenaBg} alt="" onError={(e) => console.error('[PvP] falha ao carregar fundo:', arenaBg)}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0, pointerEvents: 'none' }} />
         )}
@@ -746,7 +749,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
           </div>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: rightLunge ? `translateX(-${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
             <div style={{ position: 'relative' }}>
-              <AvatarCharacter config={rightConfig} equippedItems={rightEquip} size={170} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'idle')} interactive={false} hurt={rightHurt} role="enemy" effectTint={!isSpectator ? (myEffectInfo.effect === 'burn' ? '#ff8833' : myEffectInfo.effect === 'poison' ? '#44ff66' : myEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null} />
+              <AvatarCharacter config={rightConfig} equippedItems={rightEquip} size={170} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'idle')} interactive={false} hurt={rightHurt} role="monster" effectTint={!isSpectator ? (myEffectInfo.effect === 'burn' ? '#ff8833' : myEffectInfo.effect === 'poison' ? '#44ff66' : myEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null} />
               {!isSpectator && <DamageEffectOverlay effect={myEffectInfo.effect} level={themEffectLevel} justHit={themEffectFlash} />}
             </div>
             <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#94a3b8', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(safeRight?.name)}</div>

@@ -25,7 +25,7 @@ import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharact
 import { DAMAGE_EFFECTS } from '../lib/damageEffects';
 import { v4 as uuidv4 } from 'uuid';
 
-export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 'add_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 'bazar_sale_permit';
+export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 'bazar_sale_permit';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mestre' | 'legendary';
 
 export interface StoreItem {
@@ -56,6 +56,7 @@ export interface StoreItem {
   modelTransforms?: ModelTransformsConfig;
   gachaConfig?: GachaConfig;
   fixedAttributes?: ItemAdd[];
+  adds?: ItemAdd[];
   useGlobalGacha?: boolean;
   unlockedSkinId?: string;
   buffDurationDays?: number;
@@ -63,6 +64,7 @@ export interface StoreItem {
   importedFromId?: string;
   extractMeshName?: string;
   damageEffect?: string; // Efeito especial de dano em batalha (burn, freeze, impact, electric, poison, none)
+  battleSoundUrl?: string;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -366,6 +368,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       const { data: localRows } = await supabase.from('store_items').select('*').eq('tenant_id', tenantId);
       const { data: bankRows } = await supabase.from('store_items').select('*').eq('is_global', true);
 
+      // @ts-ignore
       const norm = (s?: string) => (s || '').trim().toLowerCase();
       let matched = 0, updated = 0, unchanged = 0;
 
@@ -418,6 +421,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       const { data: localRows } = await supabase.from('store_items').select('*').eq('tenant_id', tenantId);
       const { data: bankRows } = await supabase.from('store_items').select('*').eq('is_global', true);
 
+      // @ts-ignore
       const norm = (s?: string) => (s || '').trim().toLowerCase();
       let matched = 0, updated = 0, unchanged = 0;
 

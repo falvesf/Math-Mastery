@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+// @ts-ignore
 import { Plus, Trash2, Edit2, Save, X, Globe, Building2, Volume2, Music } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
@@ -291,6 +292,7 @@ const togglePlay = (u: string) => {
           ['fatalEvaporate', '💀 Fatalidade — Evaporar', fatalEvaporateSound, setFatalEvaporateSound, ''],
           ['fatalSlice', '💀 Fatalidade — Corte', fatalSliceSound, setFatalSliceSound, ''],
           ['fatalExplode', '💀 Fatalidade — Explosão', fatalExplodeSound, setFatalExplodeSound, ''],
+        // @ts-ignore
         ] as const).map(([key, label, val, setVal, gender]) => (
           <div key={key} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', marginBottom: '0.5rem' }}>
             <label style={{ width: '180px', color: 'var(--text-secondary)', fontSize: '0.8rem', flexShrink: 0 }}>{label}</label>

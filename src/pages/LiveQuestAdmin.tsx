@@ -915,11 +915,11 @@ export default function LiveQuestAdmin() {
             }}
           >
             {(quest.monsterModelUrl || quest.monsterAvatarConfig?.customModelUrl) ? (
-               <CustomModelViewer modelUrl={(quest.monsterModelUrl || quest.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest.monsterAvatarConfig?.customSkinUrl} role="monster" size={280} animation={monsterAnim} zoom={quest.monsterAvatarConfig?.customZoom} configRotY={quest.monsterAvatarConfig?.customRotY} />
+               <CustomModelViewer modelUrl={(quest.monsterModelUrl || quest.monsterAvatarConfig?.customModelUrl)!} textureUrl={(quest.monsterAvatarConfig as any)?.customSkinUrl} role="monster" size={280} animation={monsterAnim} zoom={(quest.monsterAvatarConfig as any)?.customZoom} configRotY={(quest.monsterAvatarConfig as any)?.customRotY} />
             ) : quest.monsterAvatarConfig ? (
-               <AvatarCharacter config={quest.monsterAvatarConfig} size={250} animation={monsterAnim === 'hurt' ? 'hurt' : 'idle'} interactive={false} role="monster" />
+               <AvatarCharacter config={quest.monsterAvatarConfig as any} size={250} animation={monsterAnim === 'hurt' ? 'hurt' : 'idle'} interactive={false} role="monster" />
             ) : (
-               <CustomModelViewer modelUrl={quest.monsterModelUrl || 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'} role="monster" size={280} animation={monsterAnim} configRotY={quest.monsterAvatarConfig?.customRotY} />
+               <CustomModelViewer modelUrl={quest.monsterModelUrl || 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'} role="monster" size={280} animation={monsterAnim} configRotY={(quest.monsterAvatarConfig as any)?.customRotY} />
             )}
             {monsterAnim === 'hurt' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(239, 68, 68, 0.5)', mixBlendMode: 'overlay', animation: 'pulse 0.5s infinite', borderRadius: '8px' }} />}
           </div>

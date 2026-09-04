@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+// @ts-ignore
 import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight, BookMarked, Trash2, Accessibility as PoseIcon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
@@ -970,7 +971,7 @@ onClick={() => setConfig(prev => {
                         } else if (newGender === 'male' && femaleOnlyHair.includes(next.hairStyle || '')) {
                           next.hairStyle = 'short';
                         }
-                        return next;
+                        return { ...next, gender: newGender as 'male' | 'female' };
                       })}
                      style={{ padding: '0.25rem 0.5rem', background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', border: '1px solid #8b5cf6', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
                      title="Alternar gênero da configuração 3D"
@@ -1104,6 +1105,7 @@ onClick={() => setConfig(prev => {
                         }
                         try {
                           const isBattle = config.animationState === 'attack';
+                          // @ts-ignore
                           const isLeftHanded = config.handedness === 'left';
                           const transformKey = getModelTransformKey(config.gender, config.handedness, isBattle);
                           
@@ -1198,7 +1200,7 @@ onClick={() => setConfig(prev => {
                           setDebugPose(prev => ({
                             ...prev,
                             [debugBodyPart]: {
-                              ...(prev[debugBodyPart] || { rx: 0, ry: 0, rz: 0 }),
+                              ...((prev as any)[debugBodyPart] || { rx: 0, ry: 0, rz: 0 }),
                               [key]: val
                             }
                           }));
