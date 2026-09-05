@@ -235,8 +235,8 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
   return (
     <div className="modal-overlay" style={{ zIndex: 25000, padding: '1rem' }}>
       <div className="glass-panel" style={{ width: '100%', maxWidth: '900px', maxHeight: '92vh', overflowY: 'auto', position: 'relative', padding: '1.5rem' }}>
-        <button 
-          onClick={onClose} 
+        <button
+          onClick={onClose}
           style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '50%', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.4rem', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           className="hover-brightness"
           title="Fechar"

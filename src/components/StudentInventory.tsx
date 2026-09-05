@@ -1568,93 +1568,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         </div>
       )}
       {/* Tooltip Portal */}
-      {hoveredItem && (() => {
-        const item = items.find(i => i.id === hoveredItem);
-        if (!item) return null;
-        return createPortal(
-          <div ref={tooltipRef} className="item-tooltip" style={{
-            position: 'fixed',
-            top: mousePos.y + 15,
-            left: mousePos.x + 15,
-            background: 'var(--bg-card)',
-            border: `2px solid ${RARITY_COLORS[item.rarity || 'common'] || '#9ca3af'}`,
-            borderRadius: '8px',
-            padding: '1rem',
-            width: 'max-content',
-            minWidth: '200px',
-            zIndex: 999999,
-            boxShadow: `0 4px 20px rgba(0,0,0,0.5), 0 0 12px ${RARITY_COLORS[item.rarity || 'common'] || '#9ca3af'}55`,
-            backdropFilter: 'blur(10px)',
-            pointerEvents: 'none',
-            color: 'var(--text-primary)',
-            textAlign: 'left'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <h4 style={{ margin: 0, color: 'var(--gold-primary)' }}>{item.itemTitle}</h4>
-              <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px', color: RARITY_COLORS[item.rarity || 'common'] || '#9ca3af', border: `1px solid ${RARITY_COLORS[item.rarity || 'common'] || '#9ca3af'}`, background: `${RARITY_COLORS[item.rarity || 'common'] || '#9ca3af'}22` }}>
-                {getRarityLabel(item.rarity)}
-              </span>
-            </div>
-            
-            {item.itemDescription ? (
-              <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', maxWidth: '250px', whiteSpace: 'normal' }}>
-                "{item.itemDescription}"
-              </div>
-            ) : (
-              item.itemType === 'consumable' && (
-                <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', maxWidth: '250px', whiteSpace: 'normal' }}>
-                  {item.gameEffect === 'restore_hp' ? '"Restaura todos os pontos de vida."' :
-                   item.gameEffect === 'heal_1_hp' ? '"Recupera 1 coração de vida."' :
-                   item.gameEffect === 'reduce_hp_cooldown' ? `"Acelera a recarga de vida: -${item.hpCooldownReductionMinutes || 10} min por coração."` :
-                   item.gameEffect === 'add_attribute' ? '"Adiciona um novo atributo aleatório a um equipamento."' :
-                   item.gameEffect === 'remove_attribute' ? '"Remove um atributo negativo de um equipamento."' :
-                   item.gameEffect === 'reroll_attributes' ? '"Sorteia novamente todos os atributos extras de um equipamento."' :
-                   item.gameEffect === 'none' ? '"Um item comum sem efeitos mágicos."' :
-                   '"Item consumível."'}
-                </div>
-              )
-            )}
-            
-            {item.gameEffect === 'reduce_hp_cooldown' && (
-              <div style={{ marginTop: '0.25rem', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#f87171', fontWeight: 'bold' }}>
-                ⚡ Recarga Acelerada: -{item.hpCooldownReductionMinutes || 10} min por coração (cada coração enche em {30 - (item.hpCooldownReductionMinutes || 10)} min)
-              </div>
-            )}
-            
-            {item.itemType === 'consumable' && ['add_attribute', 'remove_attribute', 'reroll_attributes'].includes(item.gameEffect || '') && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#60A5FA', fontWeight: 'bold' }}>
-                🖐️ Arraste sobre um equipamento para usar.
-              </div>
-            )}
-            
-            {item.itemType === 'equippable' && item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
-              <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
-              </div>
-            )}
-            
-            {item.itemType === 'equippable' && item.adds && item.adds.length > 0 && (
-              <div style={{ fontSize: '0.9rem' }}>
-                <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
-                <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.25rem', color: 'var(--text-secondary)' }}>
-{item.adds.map((add, i) => {
-                    const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
-                    if (!lbl) return null;
-                    return (
-                      <li key={i} style={{ color: lbl.color, marginBottom: '0.25rem' }}>
-                        {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.value}%`}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-            
-
-          </div>,
-          document.body
-        );
-      })()}
+      {hoveredItem && (
+        <ItemTooltip 
+          item={items.find(i => i.id === hoveredItem)} 
+          mousePos={mousePos} 
+        />
+      )}
       
     </div>
   );
