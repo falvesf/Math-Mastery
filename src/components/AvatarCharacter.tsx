@@ -2654,6 +2654,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       case 'rare': return { border: '3px solid #3b82f6', boxShadow: `${baseInset}, 0 0 15px rgba(59, 130, 246, 0.6), inset 0 0 20px rgba(59, 130, 246, 0.4)` };
       case 'epic': return { border: '4px solid #8b5cf6', boxShadow: `${baseInset}, 0 0 20px rgba(139, 92, 246, 0.7), inset 0 0 25px rgba(139, 92, 246, 0.5)` };
       case 'legendary': return { border: '4px solid #f59e0b', boxShadow: `${baseInset}, 0 0 25px rgba(245, 158, 11, 0.9), inset 0 0 30px rgba(245, 158, 11, 0.7)` };
+      case 'mestre': return { border: '4px solid #ef4444', boxShadow: `${baseInset}, 0 0 25px rgba(239, 68, 68, 0.9), inset 0 0 30px rgba(239, 68, 68, 0.7)` };
       default: return { border: '2px solid var(--border-glass)', boxShadow: baseInset };
     }
   };
