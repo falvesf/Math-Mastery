@@ -150,7 +150,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
         console.warn('Não foi possível limpar a URL:', e);
       }
       const { data } = await supabase.from('tenants').select('*').eq('id', urlTenant).single();
-      const urlResolved = (data as Tenant) || { id: urlTenant, name: 'Escola', slug: '' };
+      const urlResolved = (data as Tenant) || ({ id: urlTenant, name: 'Escola', slug: '', status: 'active' } as Tenant);
       setTenant(urlResolved);
       setTenantId(urlResolved.id);
       setNoTenants(false);

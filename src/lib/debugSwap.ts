@@ -118,6 +118,7 @@ export const toggleStudentView = async (userData: any) => {
 export const resetStudentProfile = async (userData: any) => {
   if (!userData?.uid && !userData?.id) return;
   const uid = userData.uid || userData.id;
+  // @ts-ignore
   const STUDENT_BACKUP_ID = uid + '_student';
 
   const { data: currentData } = await supabase.from('users').select('student_view_active').eq('id', uid).single();

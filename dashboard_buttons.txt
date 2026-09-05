@@ -1,0 +1,885 @@
+﻿
+  src\pages\Dashboard.tsx:68:
+  src\pages\Dashboard.tsx:69:  return (
+  src\pages\Dashboard.tsx:70:    <div
+  src\pages\Dashboard.tsx:71:      onMouseEnter={() => setIsHovered(true)}
+  src\pages\Dashboard.tsx:72:      onMouseLeave={() => setIsHovered(false)}
+> src\pages\Dashboard.tsx:73:      onClick={onAvatarClick}
+  src\pages\Dashboard.tsx:74:      style={{ position: 'relative', width: size, height: size, borderRadius: '50%', 
+overflow: 'visible', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+cursor: 'pointer' }}
+  src\pages\Dashboard.tsx:75:    >
+  src\pages\Dashboard.tsx:76:      {showAvatars && activeBubbleId === student.uid && student.customStatusText && (
+  src\pages\Dashboard.tsx:77:        <div style={{ position: 'absolute', top: -30, left: '50%', transform: 
+'translateX(-50%)', background: 'white', color: 'black', padding: '4px 10px', borderRadius: '12px', fontSize: 
+'0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap', zIndex: 50, boxShadow: '0 4px 10px rgba(0,0,0,0.5)', animation: 
+'epicZoom 0.3s ease-out' }}>
+  src\pages\Dashboard.tsx:78:          {student.customStatusText}
+  src\pages\Dashboard.tsx:1691:        <h2 style={{ fontSize: '2rem', margin: 0 }}>Aguardando Aprovação</h2>
+  src\pages\Dashboard.tsx:1692:        <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', maxWidth: 
+'500px' }}>
+  src\pages\Dashboard.tsx:1693:          Sua solicitação de acesso como Professor / Coordenador está em análise pelo 
+Administrador do sistema.
+  src\pages\Dashboard.tsx:1694:          Por favor, aguarde a liberação.
+  src\pages\Dashboard.tsx:1695:        </p>
+> src\pages\Dashboard.tsx:1696:        <button className="login-btn" onClick={() => supabase.auth.signOut()} style={{ 
+padding: '0.75rem 2rem', fontSize: '1.1rem' }}>
+  src\pages\Dashboard.tsx:1697:          Sair
+> src\pages\Dashboard.tsx:1698:        </button>
+  src\pages\Dashboard.tsx:1699:      </div>
+  src\pages\Dashboard.tsx:1700:    );
+  src\pages\Dashboard.tsx:1701:  }
+  src\pages\Dashboard.tsx:1702:
+  src\pages\Dashboard.tsx:1703:  // Novo aluno - precisa selecionar escola e turma
+  src\pages\Dashboard.tsx:1836:            <h2 style={{ color: 'var(--gold-primary)', marginBottom: '1rem', fontSize: 
+'1.8rem' }}>Aguardando Aprovação</h2>
+  src\pages\Dashboard.tsx:1837:            <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', lineHeight: 
+'1.6', marginBottom: '2rem' }}>
+  src\pages\Dashboard.tsx:1838:              Sua solicitação de matrícula na escola <strong style={{ color: 'white' 
+}}>{selectedSchool?.name}</strong> foi enviada com sucesso.<br /><br />
+  src\pages\Dashboard.tsx:1839:              Aguarde o administrador aprovar sua conta para ter acesso ao sistema.
+  src\pages\Dashboard.tsx:1840:            </p>
+> src\pages\Dashboard.tsx:1841:            <button
+> src\pages\Dashboard.tsx:1842:              onClick={() => supabase.auth.signOut()}
+  src\pages\Dashboard.tsx:1843:              style={{ padding: '0.75rem 2rem', background: 'transparent', color: 
+'var(--text-secondary)', border: '1px solid var(--text-secondary)', borderRadius: '8px', cursor: 'pointer', fontSize: 
+'1rem' }}
+  src\pages\Dashboard.tsx:1844:            >
+  src\pages\Dashboard.tsx:1845:              Sair
+> src\pages\Dashboard.tsx:1846:            </button>
+  src\pages\Dashboard.tsx:1847:          </div>
+  src\pages\Dashboard.tsx:1848:        </div>
+  src\pages\Dashboard.tsx:1849:      );
+  src\pages\Dashboard.tsx:1850:    }
+  src\pages\Dashboard.tsx:1851:  }
+  src\pages\Dashboard.tsx:1909:      )}
+  src\pages\Dashboard.tsx:1910:
+  src\pages\Dashboard.tsx:1911:      {/* Modal de Reabertura de Baú da Missão */}
+  src\pages\Dashboard.tsx:1912:      {questChestToOpen && (
+  src\pages\Dashboard.tsx:1913:        <div style={{ position: 'fixed', inset: 0, zIndex: 25000, display: 'flex', 
+alignItems: 'center', justifyContent: 'center' }}>
+> src\pages\Dashboard.tsx:1914:          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', 
+backdropFilter: 'blur(8px)' }} onClick={() => setQuestChestToOpen(null)} />
+  src\pages\Dashboard.tsx:1915:          <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 
+'600px', padding: '1.5rem' }}>
+> src\pages\Dashboard.tsx:1916:            <button 
+> src\pages\Dashboard.tsx:1917:              onClick={() => { setQuestChestToOpen(null); setQuestChestWonItems([]); }} 
+  src\pages\Dashboard.tsx:1918:              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 
+'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '50%', padding: '0.4rem', color: 
+'var(--text-secondary)', cursor: 'pointer', zIndex: 10, display: 'flex' }}
+  src\pages\Dashboard.tsx:1919:            >
+  src\pages\Dashboard.tsx:1920:              <X size={20} />
+> src\pages\Dashboard.tsx:1921:            </button>
+  src\pages\Dashboard.tsx:1922:            <ChestReveal
+  src\pages\Dashboard.tsx:1923:              title={`Baú da Missão: ${questChestToOpen.quest.title}`}
+  src\pages\Dashboard.tsx:1924:              subtitle="Recompensa de conquista da missão!"
+  src\pages\Dashboard.tsx:1925:              onOpen={async () => {
+  src\pages\Dashboard.tsx:1926:                const cc = questChestToOpen.quest.chestConfig;
+  src\pages\Dashboard.tsx:2027:                <h3 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', 
+alignItems: 'center', gap: '0.5rem' }}>
+  src\pages\Dashboard.tsx:2028:                  <Settings size={20} color="var(--gold-primary)" /> Ajustes
+  src\pages\Dashboard.tsx:2029:                </h3>
+  src\pages\Dashboard.tsx:2030:              </div>
+  src\pages\Dashboard.tsx:2031:              <div className="settings-modal-sidebar-nav">
+> src\pages\Dashboard.tsx:2032:                <button
+> src\pages\Dashboard.tsx:2033:                  onClick={() => setSettingsTab('cube')}
+  src\pages\Dashboard.tsx:2034:                  className={`settings-modal-tab-btn ${settingsTab === 'cube' ? 
+'active' : ''}`}
+  src\pages\Dashboard.tsx:2035:                >
+  src\pages\Dashboard.tsx:2036:                  <Box size={18} /> Cubo 3D
+> src\pages\Dashboard.tsx:2037:                </button>
+  src\pages\Dashboard.tsx:2038:                {canView('themes', 'view') && (
+> src\pages\Dashboard.tsx:2039:                  <button
+> src\pages\Dashboard.tsx:2040:                    onClick={() => setSettingsTab('theme')}
+  src\pages\Dashboard.tsx:2041:                    className={`settings-modal-tab-btn ${settingsTab === 'theme' ? 
+'active' : ''}`}
+  src\pages\Dashboard.tsx:2042:                  >
+  src\pages\Dashboard.tsx:2043:                    <Palette size={18} /> Temas
+> src\pages\Dashboard.tsx:2044:                  </button>
+  src\pages\Dashboard.tsx:2045:                )}
+  src\pages\Dashboard.tsx:2046:                {(userData?.role !== 'student' || userData?.studentViewActive) && (
+> src\pages\Dashboard.tsx:2047:                  <button
+> src\pages\Dashboard.tsx:2048:                    onClick={() => setSettingsTab('debug')}
+  src\pages\Dashboard.tsx:2049:                    className={`settings-modal-tab-btn ${settingsTab === 'debug' ? 
+'active' : ''}`}
+  src\pages\Dashboard.tsx:2050:                    style={{ marginTop: 'auto' }}
+  src\pages\Dashboard.tsx:2051:                  >
+  src\pages\Dashboard.tsx:2052:                    <ShieldAlert size={18} /> Debug (Staff)
+> src\pages\Dashboard.tsx:2053:                  </button>
+  src\pages\Dashboard.tsx:2054:                )}
+  src\pages\Dashboard.tsx:2055:              </div>
+  src\pages\Dashboard.tsx:2056:            </div>
+  src\pages\Dashboard.tsx:2057:
+  src\pages\Dashboard.tsx:2058:            {/* Conteúdo Principal do Modal */}
+  src\pages\Dashboard.tsx:2059:            <div className="settings-modal-content">
+> src\pages\Dashboard.tsx:2060:              <button 
+> src\pages\Dashboard.tsx:2061:                onClick={() => setIsSettingsModalOpen(false)} 
+  src\pages\Dashboard.tsx:2062:                style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', 
+background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '50%', padding: '0.35rem', 
+color: 'var(--text-secondary)', cursor: 'pointer', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 
+'center' }} 
+  src\pages\Dashboard.tsx:2063:                className="hover-brightness"
+  src\pages\Dashboard.tsx:2064:                title="Fechar"
+  src\pages\Dashboard.tsx:2065:              >
+  src\pages\Dashboard.tsx:2066:                <X size={20} />
+> src\pages\Dashboard.tsx:2067:              </button>
+  src\pages\Dashboard.tsx:2068:
+  src\pages\Dashboard.tsx:2069:              {settingsTab === 'cube' && (
+  src\pages\Dashboard.tsx:2070:                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', 
+textAlign: 'left', flex: 1 }}>
+  src\pages\Dashboard.tsx:2071:                  <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: 
+'var(--text-primary)' }}>Configurações do Cubo</h4>
+  src\pages\Dashboard.tsx:2072:                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', 
+justifyContent: 'space-between' }}>
+  src\pages\Dashboard.tsx:2125:              {settingsTab === 'theme' && (
+  src\pages\Dashboard.tsx:2126:                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', 
+textAlign: 'left', flex: 1 }}>
+  src\pages\Dashboard.tsx:2127:                  <div style={{ display: 'flex', justifyContent: 'space-between', 
+alignItems: 'center', margin: '0 0 0.5rem 0' }}>
+  src\pages\Dashboard.tsx:2128:                    <h4 style={{ margin: 0, fontSize: '1.2rem', color: 
+'var(--text-primary)' }}>Temas</h4>
+  src\pages\Dashboard.tsx:2129:                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+> src\pages\Dashboard.tsx:2130:                      <button
+> src\pages\Dashboard.tsx:2131:                        onClick={() => {
+  src\pages\Dashboard.tsx:2132:                          if (userThemes.length >= MAX_USER_THEMES) {
+  src\pages\Dashboard.tsx:2133:                            alert(`Limite de ${MAX_USER_THEMES} temas pessoais 
+atingido.`);
+  src\pages\Dashboard.tsx:2134:                            return;
+  src\pages\Dashboard.tsx:2135:                          }
+  src\pages\Dashboard.tsx:2136:                          const baseTheme = getComputedTheme();
+  src\pages\Dashboard.tsx:2140:                        }}
+  src\pages\Dashboard.tsx:2141:                        style={{ padding: '0.4rem 0.75rem', background: 
+'rgba(16,185,129,0.15)', color: '#10b981', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.4)', fontWeight: 
+'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
+  src\pages\Dashboard.tsx:2142:                        className="hover-brightness"
+  src\pages\Dashboard.tsx:2143:                      >
+  src\pages\Dashboard.tsx:2144:                        <Plus size={16} /> Novo Tema
+> src\pages\Dashboard.tsx:2145:                      </button>
+> src\pages\Dashboard.tsx:2146:                      <button
+> src\pages\Dashboard.tsx:2147:                        onClick={() => {
+  src\pages\Dashboard.tsx:2148:                          let tData: CustomTheme;
+  src\pages\Dashboard.tsx:2149:                          if (appTheme.startsWith('user_')) {
+  src\pages\Dashboard.tsx:2150:                            const ut = userThemes.find(t => t.id === appTheme);
+  src\pages\Dashboard.tsx:2151:                            tData = ut ? { ...ut } : getComputedTheme();
+  src\pages\Dashboard.tsx:2152:                          } else if (appTheme.startsWith('global_') || 
+appTheme.startsWith('custom_')) {
+  src\pages\Dashboard.tsx:2161:                        }}
+  src\pages\Dashboard.tsx:2162:                        style={{ padding: '0.4rem 0.75rem', background: 
+'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', borderRadius: '8px', border: 'none', fontWeight: 'bold', 
+fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
+  src\pages\Dashboard.tsx:2163:                        className="hover-brightness"
+  src\pages\Dashboard.tsx:2164:                      >
+  src\pages\Dashboard.tsx:2165:                        <Palette size={16} /> Personalizar
+> src\pages\Dashboard.tsx:2166:                      </button>
+  src\pages\Dashboard.tsx:2167:                    </div>
+  src\pages\Dashboard.tsx:2168:                  </div>
+  src\pages\Dashboard.tsx:2169:
+  src\pages\Dashboard.tsx:2170:                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 
+'0.75rem' }}>
+  src\pages\Dashboard.tsx:2171:                    {[
+  src\pages\Dashboard.tsx:2172:                      { id: 'default', name: 'Padrão (Dark RPG)', color: '#0f172a', 
+isCustom: false },
+  src\pages\Dashboard.tsx:2173:                      { id: 'light', name: 'Amanhecer (Claro)', color: '#f8fafc', 
+isCustom: false },
+  src\pages\Dashboard.tsx:2174:                    ].map(t => (
+  src\pages\Dashboard.tsx:2175:                      <div
+  src\pages\Dashboard.tsx:2176:                        key={t.id}
+> src\pages\Dashboard.tsx:2177:                        onClick={() => {
+  src\pages\Dashboard.tsx:2178:                          setAppTheme(t.id);
+  src\pages\Dashboard.tsx:2179:                          localStorage.setItem('appTheme', t.id);
+  src\pages\Dashboard.tsx:2180:                          localStorage.removeItem('appThemeType');
+  src\pages\Dashboard.tsx:2181:                          document.body.setAttribute('data-theme', t.id);
+  src\pages\Dashboard.tsx:2182:                          applyCustomTheme(null);
+  src\pages\Dashboard.tsx:2196:                      <h4 style={{ margin: '0.5rem 0 0 0', fontSize: '1rem', color: 
+'var(--text-secondary)' }}>Temas Globais</h4>
+  src\pages\Dashboard.tsx:2197:                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 
+'0.75rem' }}>
+  src\pages\Dashboard.tsx:2198:                        {globalThemes.map(gt => (
+  src\pages\Dashboard.tsx:2199:                          <div
+  src\pages\Dashboard.tsx:2200:                            key={gt.id}
+> src\pages\Dashboard.tsx:2201:                            onClick={() => {
+  src\pages\Dashboard.tsx:2202:                              setAppTheme(gt.id);
+  src\pages\Dashboard.tsx:2203:                              localStorage.setItem('appTheme', gt.id);
+  src\pages\Dashboard.tsx:2204:                              localStorage.setItem('appThemeType', 'global');
+  src\pages\Dashboard.tsx:2205:                              document.body.setAttribute('data-theme', gt.id);
+  src\pages\Dashboard.tsx:2206:                              applyCustomTheme(gt);
+  src\pages\Dashboard.tsx:2211:                            <div style={{ width: '24px', height: '24px', borderRadius: 
+'50%', background: gt.colors.bgDark, border: '2px solid var(--border-glass)', flexShrink: 0 }} />
+  src\pages\Dashboard.tsx:2212:                            <span style={{ fontWeight: appTheme === gt.id ? 'bold' : 
+'normal', color: appTheme === gt.id ? 'var(--gold-primary)' : 'var(--text-primary)', fontSize: '0.9rem', flex: 1 
+}}>{gt.name}</span>
+  src\pages\Dashboard.tsx:2213:                            {appTheme === gt.id && <CheckCircle size={16} 
+color="var(--gold-primary)" />}
+  src\pages\Dashboard.tsx:2214:                            {userData?.role !== 'student' && (
+  src\pages\Dashboard.tsx:2215:                              <>
+> src\pages\Dashboard.tsx:2216:                                <button
+> src\pages\Dashboard.tsx:2217:                                  onClick={(e) => {
+  src\pages\Dashboard.tsx:2218:                                    e.stopPropagation();
+  src\pages\Dashboard.tsx:2219:                                    setEditingTheme({ ...gt });
+  src\pages\Dashboard.tsx:2220:                                    setShowCustomThemeModal(true);
+  src\pages\Dashboard.tsx:2221:                                  }}
+  src\pages\Dashboard.tsx:2222:                                  style={{ background: 'transparent', border: 'none', 
+color: 'var(--gold-primary)', cursor: 'pointer', padding: '0.25rem' }}
+  src\pages\Dashboard.tsx:2223:                                  title="Editar"
+  src\pages\Dashboard.tsx:2224:                                >
+  src\pages\Dashboard.tsx:2225:                                  <Edit3 size={16} />
+> src\pages\Dashboard.tsx:2226:                                </button>
+> src\pages\Dashboard.tsx:2227:                                <button
+> src\pages\Dashboard.tsx:2228:                                  onClick={async (e) => {
+  src\pages\Dashboard.tsx:2229:                                    e.stopPropagation();
+  src\pages\Dashboard.tsx:2230:                                    if (!confirm(`Excluir o tema global 
+"${gt.name}"?`)) return;
+  src\pages\Dashboard.tsx:2231:                                    await 
+supabase.from('system_collections').delete().eq('id', gt.id);
+  src\pages\Dashboard.tsx:2232:                                    setGlobalThemes(prev => prev.filter(t => t.id !== 
+gt.id));
+  src\pages\Dashboard.tsx:2233:                                    if (appTheme === gt.id) {
+  src\pages\Dashboard.tsx:2240:                                  }}
+  src\pages\Dashboard.tsx:2241:                                  style={{ background: 'transparent', border: 'none', 
+color: 'var(--accent-red)', cursor: 'pointer', padding: '0.25rem' }}
+  src\pages\Dashboard.tsx:2242:                                  title="Excluir"
+  src\pages\Dashboard.tsx:2243:                                >
+  src\pages\Dashboard.tsx:2244:                                  <Trash2 size={16} />
+> src\pages\Dashboard.tsx:2245:                                </button>
+  src\pages\Dashboard.tsx:2246:                              </>
+  src\pages\Dashboard.tsx:2247:                            )}
+  src\pages\Dashboard.tsx:2248:                          </div>
+  src\pages\Dashboard.tsx:2249:                        ))}
+  src\pages\Dashboard.tsx:2250:                      </div>
+  src\pages\Dashboard.tsx:2256:                      <h4 style={{ margin: '0.5rem 0 0 0', fontSize: '1rem', color: 
+'var(--text-secondary)' }}>Meus Temas ({userThemes.length}/{MAX_USER_THEMES})</h4>
+  src\pages\Dashboard.tsx:2257:                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 
+'0.75rem' }}>
+  src\pages\Dashboard.tsx:2258:                        {userThemes.map(t => (
+  src\pages\Dashboard.tsx:2259:                          <div
+  src\pages\Dashboard.tsx:2260:                            key={t.id}
+> src\pages\Dashboard.tsx:2261:                            onClick={() => {
+  src\pages\Dashboard.tsx:2262:                              setAppTheme(t.id);
+  src\pages\Dashboard.tsx:2263:                              localStorage.setItem('appTheme', t.id);
+  src\pages\Dashboard.tsx:2264:                              localStorage.setItem('appThemeType', 'user');
+  src\pages\Dashboard.tsx:2265:                              document.body.setAttribute('data-theme', t.id);
+  src\pages\Dashboard.tsx:2266:                              applyCustomTheme(t);
+  src\pages\Dashboard.tsx:2269:                            className="hover-brightness"
+  src\pages\Dashboard.tsx:2270:                          >
+  src\pages\Dashboard.tsx:2271:                            <div style={{ width: '24px', height: '24px', borderRadius: 
+'50%', background: t.colors.bgDark, border: '2px solid var(--border-glass)', flexShrink: 0 }} />
+  src\pages\Dashboard.tsx:2272:                            <span style={{ fontWeight: appTheme === t.id ? 'bold' : 
+'normal', color: appTheme === t.id ? 'var(--gold-primary)' : 'var(--text-primary)', fontSize: '0.9rem', flex: 1 
+}}>{t.name}</span>
+  src\pages\Dashboard.tsx:2273:                            {appTheme === t.id && <CheckCircle size={16} 
+color="var(--gold-primary)" />}
+> src\pages\Dashboard.tsx:2274:                            <button
+> src\pages\Dashboard.tsx:2275:                              onClick={(e) => {
+  src\pages\Dashboard.tsx:2276:                                e.stopPropagation();
+  src\pages\Dashboard.tsx:2277:                                setEditingTheme(t);
+  src\pages\Dashboard.tsx:2278:                                setShowCustomThemeModal(true);
+  src\pages\Dashboard.tsx:2279:                              }}
+  src\pages\Dashboard.tsx:2280:                              style={{ background: 'transparent', border: 'none', 
+color: 'var(--gold-primary)', cursor: 'pointer', padding: '0.25rem' }}
+  src\pages\Dashboard.tsx:2281:                              title="Editar"
+  src\pages\Dashboard.tsx:2282:                            >
+  src\pages\Dashboard.tsx:2283:                              <Edit3 size={16} />
+> src\pages\Dashboard.tsx:2284:                            </button>
+> src\pages\Dashboard.tsx:2285:                            <button
+> src\pages\Dashboard.tsx:2286:                              onClick={async (e) => {
+  src\pages\Dashboard.tsx:2287:                                e.stopPropagation();
+  src\pages\Dashboard.tsx:2288:                                if (!confirm(`Excluir o tema "${t.name}"?`)) return;
+  src\pages\Dashboard.tsx:2289:                                await supabase.from('user_themes').delete().eq('id', 
+t.id);
+  src\pages\Dashboard.tsx:2290:                                setUserThemes(prev => prev.filter(ut => ut.id !== 
+t.id));
+  src\pages\Dashboard.tsx:2291:                                if (appTheme === t.id) {
+  src\pages\Dashboard.tsx:2297:                              }}
+  src\pages\Dashboard.tsx:2298:                              style={{ background: 'transparent', border: 'none', 
+color: 'var(--accent-red)', cursor: 'pointer', padding: '0.25rem' }}
+  src\pages\Dashboard.tsx:2299:                              title="Excluir"
+  src\pages\Dashboard.tsx:2300:                            >
+  src\pages\Dashboard.tsx:2301:                              <Trash2 size={16} />
+> src\pages\Dashboard.tsx:2302:                            </button>
+  src\pages\Dashboard.tsx:2303:                          </div>
+  src\pages\Dashboard.tsx:2304:                        ))}
+  src\pages\Dashboard.tsx:2305:                      </div>
+  src\pages\Dashboard.tsx:2306:                    </>
+  src\pages\Dashboard.tsx:2307:                  )}
+  src\pages\Dashboard.tsx:2326:                      { id: 'retro', name: 'Retrô (Pixel Art)', desc: 'Press Start 2P & 
+VT323' },
+  src\pages\Dashboard.tsx:2327:                      { id: 'clean', name: 'Limpo (Corporativo)', desc: 'Oswald & Open 
+Sans' }
+  src\pages\Dashboard.tsx:2328:                    ].map(f => (
+  src\pages\Dashboard.tsx:2329:                      <div
+  src\pages\Dashboard.tsx:2330:                        key={f.id}
+> src\pages\Dashboard.tsx:2331:                        onClick={() => {
+  src\pages\Dashboard.tsx:2332:                          setAppFonts(f.id);
+  src\pages\Dashboard.tsx:2333:                          localStorage.setItem('appFonts', f.id);
+  src\pages\Dashboard.tsx:2334:                        }}
+  src\pages\Dashboard.tsx:2335:                        style={{ padding: '0.75rem 1rem', border: appFonts === f.id ? 
+'2px solid var(--gold-primary)' : '2px solid transparent', background: 'var(--bg-card)', borderRadius: '12px', cursor: 
+'pointer', display: 'flex', alignItems: 'center', gap: '1rem', transition: '0.2s' }}
+  src\pages\Dashboard.tsx:2336:                        className="hover-brightness"
+  src\pages\Dashboard.tsx:2390:                  <div style={{ marginTop: '0.5rem', padding: '0.75rem 1rem', 
+background: 'rgba(0,0,0,0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 
+'space-between', gap: '1rem' }}>
+  src\pages\Dashboard.tsx:2391:                    <div>
+  src\pages\Dashboard.tsx:2392:                      <span style={{ color: 'var(--text-primary)', display: 'block', 
+fontWeight: 'bold', fontSize: '0.9rem' }}>Resetar Perfil de Aluno</span>
+  src\pages\Dashboard.tsx:2393:                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' 
+}}>Apaga todo o progresso do mundo paralelo e começa do zero.</span>
+  src\pages\Dashboard.tsx:2394:                    </div>
+> src\pages\Dashboard.tsx:2395:                    <button
+> src\pages\Dashboard.tsx:2396:                      onClick={async () => {
+  src\pages\Dashboard.tsx:2397:                        const confirmed = await showConfirm(
+  src\pages\Dashboard.tsx:2398:                          'Isso vai apagar TODO o progresso do seu perfil de aluno: XP, 
+Moedas, Avatar, Histórico de Missões e Inventário.\n\nOs seus dados de Administrador (50.000 XP, itens, patente, etc.) 
+ficam 100% intactos.\n\nDeseja continuar?',
+  src\pages\Dashboard.tsx:2399:                          'Resetar Perfil de Aluno'
+  src\pages\Dashboard.tsx:2400:                        );
+  src\pages\Dashboard.tsx:2401:                        if (!confirmed) return;
+  src\pages\Dashboard.tsx:2412:                      }}
+  src\pages\Dashboard.tsx:2413:                      className="login-btn"
+  src\pages\Dashboard.tsx:2414:                      style={{ padding: '0.5rem 1rem', background: 
+'rgba(239,68,68,0.2)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', whiteSpace: 'nowrap', 
+flexShrink: 0 }}
+  src\pages\Dashboard.tsx:2415:                    >
+  src\pages\Dashboard.tsx:2416:                      Resetar
+> src\pages\Dashboard.tsx:2417:                    </button>
+  src\pages\Dashboard.tsx:2418:                  </div>
+  src\pages\Dashboard.tsx:2419:                </div>
+  src\pages\Dashboard.tsx:2420:              )}
+  src\pages\Dashboard.tsx:2421:
+  src\pages\Dashboard.tsx:2422:              <div style={{ marginTop: 'auto', paddingTop: '1rem', display: 'flex', 
+justifyContent: 'flex-end', borderTop: '1px solid var(--border-glass)' }}>
+> src\pages\Dashboard.tsx:2423:                <button onClick={() => setIsSettingsModalOpen(false)} 
+className="login-btn" style={{ padding: '0.5rem 1.5rem', background: 'var(--gold-primary)', color: 
+'var(--text-on-gold, #000000)', border: 'none' }}>
+  src\pages\Dashboard.tsx:2424:                  Concluir
+> src\pages\Dashboard.tsx:2425:                </button>
+  src\pages\Dashboard.tsx:2426:              </div>
+  src\pages\Dashboard.tsx:2427:            </div>
+  src\pages\Dashboard.tsx:2428:          </div>
+  src\pages\Dashboard.tsx:2429:        </div>
+  src\pages\Dashboard.tsx:2430:      )}
+  src\pages\Dashboard.tsx:2548:        />
+  src\pages\Dashboard.tsx:2549:      )}
+  src\pages\Dashboard.tsx:2550:
+  src\pages\Dashboard.tsx:2551:      <div className="dashboard-header-sticky">
+  src\pages\Dashboard.tsx:2552:        <nav className="navbar glass-panel compact-nav" style={{ position: 'static', 
+marginBottom: '0.5rem' }}>
+> src\pages\Dashboard.tsx:2553:          <div className="logo-container" onClick={handleLogoClick} style={{ cursor: 
+'pointer', userSelect: 'none' }} title="Clique 3x para ver o Sobre">
+  src\pages\Dashboard.tsx:2554:            <div style={{ width: 48, height: 48, flexShrink: 0, display: 'flex', 
+alignItems: 'center', justifyContent: 'center' }}>
+  src\pages\Dashboard.tsx:2555:              <img src={`${import.meta.env.BASE_URL}logo-math-mastery.png`} alt="Math 
+Mastery" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+  src\pages\Dashboard.tsx:2556:            </div>
+  src\pages\Dashboard.tsx:2557:            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 
+'flex-start', gap: '0.15rem', minWidth: 0 }}>
+  src\pages\Dashboard.tsx:2558:              <h1 className="title-glow">Painel do Aluno</h1>
+  src\pages\Dashboard.tsx:2562:            </div>
+  src\pages\Dashboard.tsx:2563:          </div>
+  src\pages\Dashboard.tsx:2564:          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', 
+justifyContent: 'flex-end' }}>
+  src\pages\Dashboard.tsx:2565:
+  src\pages\Dashboard.tsx:2566:            {(userData?.role === 'admin' || userData?.role === 'teacher' || 
+hasAdminAccess) && !userData?.studentViewActive && (
+> src\pages\Dashboard.tsx:2567:              <button
+  src\pages\Dashboard.tsx:2568:                className="login-btn hide-on-mobile"
+> src\pages\Dashboard.tsx:2569:                onClick={() => navigate('/admin')}
+  src\pages\Dashboard.tsx:2570:                style={{ padding: '0.4rem 0.8rem', display: 'flex', gap: '0.4rem', 
+alignItems: 'center', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)', fontSize: '0.85rem' }}
+  src\pages\Dashboard.tsx:2571:                title={panelLabel(panelRoleName)}
+  src\pages\Dashboard.tsx:2572:              >
+  src\pages\Dashboard.tsx:2573:                <ShieldAlert size={16} color="var(--gold-primary)" />
+  src\pages\Dashboard.tsx:2574:                <span style={{ color: 'var(--gold-primary)' 
+}}>{panelLabel(panelRoleName)}</span>
+> src\pages\Dashboard.tsx:2575:              </button>
+  src\pages\Dashboard.tsx:2576:            )}
+  src\pages\Dashboard.tsx:2577:
+> src\pages\Dashboard.tsx:2578:            <button
+> src\pages\Dashboard.tsx:2579:              onClick={async () => {
+  src\pages\Dashboard.tsx:2580:                setIsSettingsModalOpen(true);
+  src\pages\Dashboard.tsx:2581:                const { data } = await 
+supabase.from('system_collections').select('*').eq('collection_name', 'themes');
+  src\pages\Dashboard.tsx:2582:                if (data) setGlobalThemes(data.map(d => ({ id: d.id, ...(d.data as any) 
+} as CustomTheme)));
+  src\pages\Dashboard.tsx:2583:              }}
+  src\pages\Dashboard.tsx:2584:              className="hover-brightness hide-on-mobile"
+  src\pages\Dashboard.tsx:2585:              style={{ background: 'transparent', border: 'none', color: 
+'var(--gold-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.4rem' }}
+  src\pages\Dashboard.tsx:2586:              title="Configurações do Sistema"
+  src\pages\Dashboard.tsx:2587:            >
+  src\pages\Dashboard.tsx:2588:              <Settings size={22} />
+> src\pages\Dashboard.tsx:2589:            </button>
+  src\pages\Dashboard.tsx:2590:
+  src\pages\Dashboard.tsx:2591:            <div className="hide-on-mobile" style={{ display: 'flex', alignItems: 
+'center', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.35rem 0.75rem', borderRadius: '50px' }}>
+  src\pages\Dashboard.tsx:2592:              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+  src\pages\Dashboard.tsx:2593:                {userData && (
+  src\pages\Dashboard.tsx:2594:                  <div style={{ width: 32, height: 32, borderRadius: '50%', overflow: 
+'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
+  src\pages\Dashboard.tsx:2597:                )}
+  src\pages\Dashboard.tsx:2598:                <span style={{ fontWeight: 'bold', fontSize: '0.85rem' 
+}}>{userData?.name?.split(' ')[0]}</span>
+  src\pages\Dashboard.tsx:2599:              </div>
+  src\pages\Dashboard.tsx:2600:            </div>
+  src\pages\Dashboard.tsx:2601:
+> src\pages\Dashboard.tsx:2602:            <button className="login-btn hide-on-mobile" onClick={handleLogout} 
+style={{ padding: '0.5rem', borderRadius: '50%' }} title="Sair">
+  src\pages\Dashboard.tsx:2603:              <LogOut size={18} />
+> src\pages\Dashboard.tsx:2604:            </button>
+  src\pages\Dashboard.tsx:2605:
+  src\pages\Dashboard.tsx:2606:            {/* Menu Hambúrguer Mobile com todas as ações acopladas */}
+  src\pages\Dashboard.tsx:2607:            <div className="tenant-switcher-mobile">
+> src\pages\Dashboard.tsx:2608:              <button className="login-btn mobile-menu-btn" onClick={() => 
+setStudentMobileMenuOpen(o => !o)} style={{ padding: '0.5rem', borderRadius: '8px' }} title="Menu">
+  src\pages\Dashboard.tsx:2609:                <Menu size={22} />
+> src\pages\Dashboard.tsx:2610:              </button>
+  src\pages\Dashboard.tsx:2611:              {studentMobileMenuOpen && typeof document !== 'undefined' && createPortal(
+  src\pages\Dashboard.tsx:2612:                <>
+  src\pages\Dashboard.tsx:2613:                  <div 
+  src\pages\Dashboard.tsx:2614:                    style={{ position: 'fixed', inset: 0, zIndex: 99999998, background: 
+'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} 
+> src\pages\Dashboard.tsx:2615:                    onClick={() => setStudentMobileMenuOpen(false)} 
+  src\pages\Dashboard.tsx:2616:                  />
+  src\pages\Dashboard.tsx:2617:                  <div style={{ 
+  src\pages\Dashboard.tsx:2618:                    position: 'fixed', 
+  src\pages\Dashboard.tsx:2619:                    right: '12px', 
+  src\pages\Dashboard.tsx:2620:                    top: '64px', 
+  src\pages\Dashboard.tsx:2650:                      <TenantSwitcher variant="menu" />
+  src\pages\Dashboard.tsx:2651:                    </div>
+  src\pages\Dashboard.tsx:2652:
+  src\pages\Dashboard.tsx:2653:                    {/* Acesso Staff */}
+  src\pages\Dashboard.tsx:2654:                    {(userData?.role === 'admin' || userData?.role === 'teacher' || 
+hasAdminAccess) && !userData?.studentViewActive && (
+> src\pages\Dashboard.tsx:2655:                      <button
+  src\pages\Dashboard.tsx:2656:                        className="login-btn"
+> src\pages\Dashboard.tsx:2657:                        onClick={() => { setStudentMobileMenuOpen(false); 
+navigate('/admin'); }}
+  src\pages\Dashboard.tsx:2658:                        style={{ width: '100%', justifyContent: 'flex-start', padding: 
+'0.5rem 0.75rem', gap: '0.5rem', background: 'rgba(251, 191, 36, 0.1)', borderColor: 'var(--gold-primary)', fontSize: 
+'0.85rem' }}
+  src\pages\Dashboard.tsx:2659:                      >
+  src\pages\Dashboard.tsx:2660:                        <ShieldAlert size={16} color="var(--gold-primary)" />
+  src\pages\Dashboard.tsx:2661:                        <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' 
+}}>{panelLabel(panelRoleName)}</span>
+> src\pages\Dashboard.tsx:2662:                      </button>
+  src\pages\Dashboard.tsx:2663:                    )}
+  src\pages\Dashboard.tsx:2664:
+  src\pages\Dashboard.tsx:2665:                    {/* Ajustes e Temas */}
+> src\pages\Dashboard.tsx:2666:                    <button
+  src\pages\Dashboard.tsx:2667:                      className="login-btn"
+> src\pages\Dashboard.tsx:2668:                      onClick={async () => { setStudentMobileMenuOpen(false); 
+setIsSettingsModalOpen(true); const { data } = await 
+supabase.from('system_collections').select('*').eq('collection_name', 'themes'); if (data) setGlobalThemes(data.map(d 
+=> ({ id: d.id, ...(d.data as any) } as CustomTheme))); }}
+  src\pages\Dashboard.tsx:2669:                      style={{ width: '100%', justifyContent: 'flex-start', padding: 
+'0.5rem 0.75rem', gap: '0.5rem', background: 'var(--btn-bg)', fontSize: '0.85rem' }}
+  src\pages\Dashboard.tsx:2670:                    >
+  src\pages\Dashboard.tsx:2671:                      <Settings size={16} color="var(--gold-primary)" />
+  src\pages\Dashboard.tsx:2672:                      <span>Temas & Ajustes</span>
+> src\pages\Dashboard.tsx:2673:                    </button>
+  src\pages\Dashboard.tsx:2674:
+  src\pages\Dashboard.tsx:2675:                    {/* Sair */}
+> src\pages\Dashboard.tsx:2676:                    <button
+  src\pages\Dashboard.tsx:2677:                      className="login-btn"
+> src\pages\Dashboard.tsx:2678:                      onClick={() => { setStudentMobileMenuOpen(false); handleLogout(); 
+}}
+  src\pages\Dashboard.tsx:2679:                      style={{ width: '100%', justifyContent: 'flex-start', padding: 
+'0.5rem 0.75rem', gap: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', color: 
+'var(--accent-red)', fontSize: '0.85rem' }}
+  src\pages\Dashboard.tsx:2680:                    >
+  src\pages\Dashboard.tsx:2681:                      <LogOut size={16} />
+  src\pages\Dashboard.tsx:2682:                      <span>Sair da Conta</span>
+> src\pages\Dashboard.tsx:2683:                    </button>
+  src\pages\Dashboard.tsx:2684:                  </div>
+  src\pages\Dashboard.tsx:2685:                </>,
+  src\pages\Dashboard.tsx:2686:                document.body
+  src\pages\Dashboard.tsx:2687:              )}
+  src\pages\Dashboard.tsx:2688:            </div>
+  src\pages\Dashboard.tsx:2691:        </nav>
+  src\pages\Dashboard.tsx:2692:
+  src\pages\Dashboard.tsx:2693:        {/* Navegação de Abas do Aluno */}
+  src\pages\Dashboard.tsx:2694:        <div className="scrollable-menu-container">
+  src\pages\Dashboard.tsx:2695:          {canView('quests', 'view') && (
+> src\pages\Dashboard.tsx:2696:            <button
+> src\pages\Dashboard.tsx:2697:              onClick={() => setActiveTab('quests')}
+  src\pages\Dashboard.tsx:2698:              title="Central de Missões"
+  src\pages\Dashboard.tsx:2699:              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', 
+justifyContent: 'center', gap: '0.4rem', background: activeTab === 'quests' ? 'var(--gold-primary)' : 
+'var(--bg-card)', color: activeTab === 'quests' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 
+'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+  src\pages\Dashboard.tsx:2700:            >
+  src\pages\Dashboard.tsx:2701:              <Swords size={20} /> <span className="tab-text">Central de Missões</span>
+> src\pages\Dashboard.tsx:2702:            </button>
+  src\pages\Dashboard.tsx:2703:          )}
+  src\pages\Dashboard.tsx:2704:          {canView('profile', 'view') && (
+> src\pages\Dashboard.tsx:2705:            <button
+> src\pages\Dashboard.tsx:2706:              onClick={() => setActiveTab('profile')}
+  src\pages\Dashboard.tsx:2707:              title="Meu Perfil"
+  src\pages\Dashboard.tsx:2708:              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', 
+justifyContent: 'center', gap: '0.4rem', background: activeTab === 'profile' ? 'var(--gold-primary)' : 
+'var(--bg-card)', color: activeTab === 'profile' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 
+'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+  src\pages\Dashboard.tsx:2709:            >
+  src\pages\Dashboard.tsx:2710:              <Star size={20} /> <span className="tab-text">Meu Perfil</span>
+> src\pages\Dashboard.tsx:2711:            </button>
+  src\pages\Dashboard.tsx:2712:          )}
+  src\pages\Dashboard.tsx:2713:          {canView('ranking', 'view') && (
+> src\pages\Dashboard.tsx:2714:            <button
+> src\pages\Dashboard.tsx:2715:              onClick={() => setActiveTab('ranking_class')}
+  src\pages\Dashboard.tsx:2716:              title="Ranking da Turma"
+  src\pages\Dashboard.tsx:2717:              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', 
+justifyContent: 'center', gap: '0.4rem', background: activeTab === 'ranking_class' ? 'var(--gold-primary)' : 
+'var(--bg-card)', color: activeTab === 'ranking_class' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', 
+border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 
+'nowrap' }}
+  src\pages\Dashboard.tsx:2718:            >
+  src\pages\Dashboard.tsx:2719:              <Users size={20} /> <span className="tab-text">Ranking Turma</span>
+> src\pages\Dashboard.tsx:2720:            </button>
+  src\pages\Dashboard.tsx:2721:          )}
+  src\pages\Dashboard.tsx:2722:          {canView('ranking', 'view') && (
+> src\pages\Dashboard.tsx:2723:            <button
+> src\pages\Dashboard.tsx:2724:              onClick={() => setActiveTab('ranking_general')}
+  src\pages\Dashboard.tsx:2725:              title="Ranking Geral"
+  src\pages\Dashboard.tsx:2726:              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', 
+justifyContent: 'center', gap: '0.4rem', background: activeTab === 'ranking_general' ? 'var(--gold-primary)' : 
+'var(--bg-card)', color: activeTab === 'ranking_general' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', 
+border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 
+'nowrap' }}
+  src\pages\Dashboard.tsx:2727:            >
+  src\pages\Dashboard.tsx:2728:              <TrendingUp size={20} /> <span className="tab-text">Ranking Geral</span>
+> src\pages\Dashboard.tsx:2729:            </button>
+  src\pages\Dashboard.tsx:2730:          )}
+  src\pages\Dashboard.tsx:2731:          {canView('store', 'view') && (
+> src\pages\Dashboard.tsx:2732:            <button
+> src\pages\Dashboard.tsx:2733:              onClick={() => setActiveTab('store')}
+  src\pages\Dashboard.tsx:2734:              title="Mercado"
+  src\pages\Dashboard.tsx:2735:              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', 
+justifyContent: 'center', gap: '0.4rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', 
+color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 
+'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+  src\pages\Dashboard.tsx:2736:            >
+  src\pages\Dashboard.tsx:2737:              <Store size={20} /> <span className="tab-text">Mercado</span>
+> src\pages\Dashboard.tsx:2738:            </button>
+  src\pages\Dashboard.tsx:2739:          )}
+  src\pages\Dashboard.tsx:2740:        </div>
+  src\pages\Dashboard.tsx:2741:      </div>
+  src\pages\Dashboard.tsx:2742:
+  src\pages\Dashboard.tsx:2743:      <main className="main-content">
+  src\pages\Dashboard.tsx:2779:                        opacity: isCompleted ? 0.7 : 1,
+  src\pages\Dashboard.tsx:2780:                        filter: isCompleted ? 'grayscale(30%)' : 'none'
+  src\pages\Dashboard.tsx:2781:                      }}
+  src\pages\Dashboard.tsx:2782:                      onMouseEnter={(e) => e.currentTarget.style.transform = 
+'scale(1.02)'}
+  src\pages\Dashboard.tsx:2783:                      onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+> src\pages\Dashboard.tsx:2784:                      onClick={() => {
+  src\pages\Dashboard.tsx:2785:                        if (quest.mode === 'live') {
+  src\pages\Dashboard.tsx:2786:                          // Don't navigate to a completed or inactive live quest
+  src\pages\Dashboard.tsx:2787:                          if (isCompleted || !activeLiveQuests[quest.id]) return;
+  src\pages\Dashboard.tsx:2788:                          navigate(`/live/${quest.id}`);
+  src\pages\Dashboard.tsx:2789:                        } else {
+  src\pages\Dashboard.tsx:2835:                              <span>{quest.randomQuestionSelection && 
+quest.randomQuestionCount ? quest.randomQuestionCount : (quest.questions?.length || 0)} Desafios</span>
+  src\pages\Dashboard.tsx:2836:                            </span>
+  src\pages\Dashboard.tsx:2837:                          </div>
+  src\pages\Dashboard.tsx:2838:                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 
+'center' }}>
+  src\pages\Dashboard.tsx:2839:                            {isCompleted && !claimedChestIds.has(quest.id) && 
+((quest.chestConfig?.itemIds?.some((id: string) => id) || quest.chestConfig?.maxCoins) || (quest as 
+any).liveChest1stPlace) && (
+> src\pages\Dashboard.tsx:2840:                              <button
+  src\pages\Dashboard.tsx:2841:                                className="login-btn"
+> src\pages\Dashboard.tsx:2842:                                onClick={(e) => handleOpenQuestChestModal(e, quest)}
+  src\pages\Dashboard.tsx:2843:                                style={{
+  src\pages\Dashboard.tsx:2844:                                  background: 'linear-gradient(45deg, #f59e0b, 
+#fbbf24)',
+  src\pages\Dashboard.tsx:2845:                                  color: '#000000',
+  src\pages\Dashboard.tsx:2846:                                  border: 'none',
+  src\pages\Dashboard.tsx:2847:                                  padding: '0.5rem 0.8rem',
+  src\pages\Dashboard.tsx:2854:                                  boxShadow: '0 0 10px rgba(245, 158, 11, 0.4)'
+  src\pages\Dashboard.tsx:2855:                                }}
+  src\pages\Dashboard.tsx:2856:                                title="Abrir Baú de Recompensa da Missão"
+  src\pages\Dashboard.tsx:2857:                              >
+  src\pages\Dashboard.tsx:2858:                                <Package size={16} /> Baú
+> src\pages\Dashboard.tsx:2859:                              </button>
+  src\pages\Dashboard.tsx:2860:                            )}
+> src\pages\Dashboard.tsx:2861:                            <button
+  src\pages\Dashboard.tsx:2862:                              className="login-btn"
+  src\pages\Dashboard.tsx:2863:                              disabled={quest.mode === 'live' && 
+(!activeLiveQuests[quest.id] && !isCompleted)}
+  src\pages\Dashboard.tsx:2864:                              style={{
+  src\pages\Dashboard.tsx:2865:                                background: (isCompleted || (quest.mode === 'live' && 
+!activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--btn-bg)' : 'var(--gold-primary)',
+  src\pages\Dashboard.tsx:2866:                                color: (isCompleted || (quest.mode === 'live' && 
+!activeLiveQuests[quest.id] && !isCompleted)) ? 'var(--text-primary)' : 'var(--text-on-gold, #000000)',
+  src\pages\Dashboard.tsx:2868:                                padding: '0.5rem 1.2rem',
+  src\pages\Dashboard.tsx:2869:                                fontSize: '1rem',
+  src\pages\Dashboard.tsx:2870:                                opacity: (quest.mode === 'live' && 
+(!activeLiveQuests[quest.id] && !isCompleted)) ? 0.6 : 1,
+  src\pages\Dashboard.tsx:2871:                                cursor: (quest.mode === 'live' && 
+(!activeLiveQuests[quest.id] && !isCompleted)) ? 'not-allowed' : 'pointer'
+  src\pages\Dashboard.tsx:2872:                              }}
+> src\pages\Dashboard.tsx:2873:                              onClick={async (e) => {
+  src\pages\Dashboard.tsx:2874:                                e.stopPropagation();
+  src\pages\Dashboard.tsx:2875:                                // Block access to inactive live quests if NOT completed
+  src\pages\Dashboard.tsx:2876:                                if (quest.mode === 'live' && 
+(!activeLiveQuests[quest.id] && !isCompleted)) return;
+  src\pages\Dashboard.tsx:2877:                                // Require avatar if in student mode or is a student
+  src\pages\Dashboard.tsx:2878:                                const isActingAsStudent = userData?.role === 'student' 
+|| !!userData?.studentViewActive;
+  src\pages\Dashboard.tsx:2893:                              }}
+  src\pages\Dashboard.tsx:2894:                            >
+  src\pages\Dashboard.tsx:2895:                              {quest.mode === 'live' && !isCompleted
+  src\pages\Dashboard.tsx:2896:                                ? (activeLiveQuests[quest.id] ? 'Batalha Ao Vivo' : 
+'Não Iniciada')
+  src\pages\Dashboard.tsx:2897:                                : ((isCompleted && userData?.role !== 'admin' && 
+userData?.role !== 'superadmin') ? 'Revisar' : 'Jogar Agora')}
+> src\pages\Dashboard.tsx:2898:                            </button>
+  src\pages\Dashboard.tsx:2899:                          </div>
+  src\pages\Dashboard.tsx:2900:                        </div>
+  src\pages\Dashboard.tsx:2901:                      </div>
+  src\pages\Dashboard.tsx:2902:                    </div>
+  src\pages\Dashboard.tsx:2903:                  );
+  src\pages\Dashboard.tsx:2908:        )}
+  src\pages\Dashboard.tsx:2909:
+  src\pages\Dashboard.tsx:2910:        {activeTab === 'profile' && (
+  src\pages\Dashboard.tsx:2911:          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+  src\pages\Dashboard.tsx:2912:            <div style={{ display: 'flex', gap: '1rem', padding: '0.5rem 0', 
+marginBottom: '0.5rem', justifyContent: 'center', position: 'sticky', top: '60px', zIndex: 95, background: 
+'transparent', backdropFilter: 'blur(12px)' }}>
+> src\pages\Dashboard.tsx:2913:              <button
+> src\pages\Dashboard.tsx:2914:                onClick={() => setProfileTab('overview')}
+  src\pages\Dashboard.tsx:2915:                className="login-btn"
+  src\pages\Dashboard.tsx:2916:                style={{ background: profileTab === 'overview' ? 'var(--gold-primary)' 
+: 'var(--btn-bg)', color: profileTab === 'overview' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', display: 
+'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+  src\pages\Dashboard.tsx:2917:              >
+  src\pages\Dashboard.tsx:2918:                <Star size={16} /> Personagem
+> src\pages\Dashboard.tsx:2919:              </button>
+> src\pages\Dashboard.tsx:2920:              <button
+> src\pages\Dashboard.tsx:2921:                onClick={() => {
+  src\pages\Dashboard.tsx:2922:                  // Snap cube to character face (nearest multiple of 360°) before 
+showing inventory
+  src\pages\Dashboard.tsx:2923:                  setCubeRotation(prev => Math.round(prev / 360) * 360);
+  src\pages\Dashboard.tsx:2924:                  setProfileTab('inventory');
+  src\pages\Dashboard.tsx:2925:                }}
+  src\pages\Dashboard.tsx:2926:                className="login-btn"
+  src\pages\Dashboard.tsx:2927:                style={{ background: profileTab === 'inventory' ? 'var(--gold-primary)' 
+: 'var(--btn-bg)', color: profileTab === 'inventory' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', 
+display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', padding: '0.4rem 1rem', fontSize: '0.85rem' 
+}}
+  src\pages\Dashboard.tsx:2928:              >
+  src\pages\Dashboard.tsx:2929:                <Package size={16} /> Mochila
+> src\pages\Dashboard.tsx:2930:              </button>
+  src\pages\Dashboard.tsx:2931:            </div>
+  src\pages\Dashboard.tsx:2932:
+  src\pages\Dashboard.tsx:2933:            <div className="responsive-stack-mobile" style={{ display: 'flex', gap: 
+'1.5rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: (userData?.role === 'student' || 
+userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center', width: '100%' }}>
+  src\pages\Dashboard.tsx:2934:              {/* Perfil do Aluno (Esquerda - Fixo ao rolar) */}
+  src\pages\Dashboard.tsx:2935:              <div className={`glass-panel profile-glass-panel ${profileTab === 
+'inventory' ? 'backpack-open' : 'backpack-closed'}`} style={{ flex: (userData?.role === 'student' || 
+userData?.studentViewActive) ? '1 1 min(100%, 380px)' : '0 1 500px', width: '100%', maxWidth: '100%', padding: 
+'1.25rem', textAlign: 'center', position: 'sticky', top: '115px', zIndex: 105, minHeight: 'auto', display: 'flex', 
+flexDirection: 'column', overflow: 'hidden', alignSelf: 'flex-start', boxSizing: 'border-box', backdropFilter: 
+'blur(16px)' }}>
+  src\pages\Dashboard.tsx:2937:                <div style={{ flexShrink: 0, paddingRight: '0.5rem', display: 'flex', 
+flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem', height: '100%' }}>
+  src\pages\Dashboard.tsx:2938:                  <div
+  src\pages\Dashboard.tsx:2939:                    style={{ position: 'relative', display: 'flex', flexDirection: 
+'column', alignItems: 'center', perspective: '1000px', width: '100%' }}
+  src\pages\Dashboard.tsx:2940:                  >
+  src\pages\Dashboard.tsx:2941:                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', 
+marginBottom: '1.5rem' }}>
+> src\pages\Dashboard.tsx:2942:                      <button onClick={() => setCubeRotation(prev => prev + 90)} 
+style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 
+'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
+  src\pages\Dashboard.tsx:2943:                        {'<'}
+> src\pages\Dashboard.tsx:2944:                      </button>
+  src\pages\Dashboard.tsx:2945:
+  src\pages\Dashboard.tsx:2946:                      <div className="cube-container" style={{ position: 'relative', 
+zIndex: 100 }}>
+  src\pages\Dashboard.tsx:2947:                        <div className="cube" style={{ transform: 
+`rotateY(${cubeRotation}deg)` }}>
+  src\pages\Dashboard.tsx:2948:                          {/* Frente: Avatar */}
+  src\pages\Dashboard.tsx:2949:                          <div className="cube-face cube-face-front" style={{
+  src\pages\Dashboard.tsx:2967:                              borderBottomRightRadius: '12px',
+  src\pages\Dashboard.tsx:2968:                              zIndex: 0
+  src\pages\Dashboard.tsx:2969:                            }} />
+  src\pages\Dashboard.tsx:2970:
+  src\pages\Dashboard.tsx:2971:                            <div 
+> src\pages\Dashboard.tsx:2972:                              onClick={(e) => { e.stopPropagation(); 
+handleRenameCharacter(); }}
+  src\pages\Dashboard.tsx:2973:                              title={userData?.characterName ? 'Renomear personagem' : 
+'Criar nome do personagem'}
+  src\pages\Dashboard.tsx:2974:                              style={{ position: 'absolute', bottom: -24, left: '50%', 
+transform: 'translateX(-50%)', background: currentRank.color, padding: '0.25rem 1rem', borderRadius: '20px', color: 
+getContrastColor(currentRank.color), fontWeight: 'bold', fontSize: '0.9rem', whiteSpace: 'nowrap', boxShadow: `0 0 
+10px ${currentRank.color}80`, zIndex: 30, display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
+  src\pages\Dashboard.tsx:2975:                              {userData?.characterName || 'Personagem'}
+  src\pages\Dashboard.tsx:2976:                              <Edit3 size={14} style={{ opacity: 0.7 }} />
+  src\pages\Dashboard.tsx:2977:                            </div>
+  src\pages\Dashboard.tsx:2978:                            {(liveAvatarConfig || userData?.avatarConfig) ? (
+> src\pages\Dashboard.tsx:2979:                              <div style={{ width: '100%', height: '100%', display: 
+'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', position: 'relative', zIndex: 40 }} 
+onClick={() => setIsCustomizingAvatar(true)}>
+  src\pages\Dashboard.tsx:2980:                                <AvatarCharacter
+  src\pages\Dashboard.tsx:2981:                                  config={(liveAvatarConfig || userData.avatarConfig)}
+  src\pages\Dashboard.tsx:2982:                                  size={90}
+  src\pages\Dashboard.tsx:2983:                                  equippedItems={equippedItems}
+  src\pages\Dashboard.tsx:2984:                                  interactive={false}
+  src\pages\Dashboard.tsx:2991:                                  onSlotClick={handleUnequipItem}
+  src\pages\Dashboard.tsx:2992:                                  onToggleSlotVisibility={handleToggleSlotVisibility}
+  src\pages\Dashboard.tsx:2993:                                />
+  src\pages\Dashboard.tsx:2994:                              </div>
+  src\pages\Dashboard.tsx:2995:                            ) : (
+> src\pages\Dashboard.tsx:2996:                              <img onClick={() => setIsCustomizingAvatar(true)} 
+src={userData?.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 
+'12px', cursor: 'pointer' }} />
+  src\pages\Dashboard.tsx:2997:                            )}
+  src\pages\Dashboard.tsx:2998:                          </div>
+  src\pages\Dashboard.tsx:2999:
+  src\pages\Dashboard.tsx:3000:                          {/* Trás: Patente */}
+  src\pages\Dashboard.tsx:3001:                          <div className="cube-face cube-face-back" style={{ border: 
+`3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 
+'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))' }}>
+  src\pages\Dashboard.tsx:3138:                                return (
+  src\pages\Dashboard.tsx:3139:                                  <div style={{ marginTop: '2px' }}>
+  src\pages\Dashboard.tsx:3140:                                    <div style={{ display: 'flex', justifyContent: 
+'space-between', alignItems: 'center', marginBottom: '4px' }}>
+  src\pages\Dashboard.tsx:3141:                                      <h4 style={{ color: 'var(--text-secondary)', 
+fontSize: '0.7rem', margin: 0 }}>Estatísticas</h4>
+  src\pages\Dashboard.tsx:3142:                                      {unspentPoints > 0 && (
+> src\pages\Dashboard.tsx:3143:                                        <button
+> src\pages\Dashboard.tsx:3144:                                          onClick={() => 
+setShowStatDistributionModal(true)}
+  src\pages\Dashboard.tsx:3145:                                          className="glow-effect hover-brightness"
+  src\pages\Dashboard.tsx:3146:                                          style={{
+  src\pages\Dashboard.tsx:3147:                                            background: 'var(--gold-primary)', color: 
+'#ffffff', border: '1px solid rgba(255,255,255,0.3)',
+  src\pages\Dashboard.tsx:3148:                                            borderRadius: '4px', padding: '0.1rem 
+0.3rem', fontSize: '0.65rem', fontWeight: 'bold',
+  src\pages\Dashboard.tsx:3149:                                            display: 'flex', alignItems: 'center', gap: 
+'2px', cursor: 'pointer',
+  src\pages\Dashboard.tsx:3150:                                            boxShadow: '0 0 5px var(--gold-primary)'
+  src\pages\Dashboard.tsx:3151:                                          }}
+  src\pages\Dashboard.tsx:3152:                                        >
+  src\pages\Dashboard.tsx:3153:                                          <Plus size={10} /> <span style={{ textShadow: 
+'0 1px 2px rgba(0,0,0,0.5)' }}>{unspentPoints} pts</span>
+> src\pages\Dashboard.tsx:3154:                                        </button>
+  src\pages\Dashboard.tsx:3155:                                      )}
+  src\pages\Dashboard.tsx:3156:                                    </div>
+  src\pages\Dashboard.tsx:3157:                                    <div style={{ display: 'grid', gridTemplateColumns: 
+'minmax(0, 1fr) minmax(0, 1fr)', gap: '4px' }}>
+  src\pages\Dashboard.tsx:3158:                                      {Object.entries(stats).map(([key, value]) => {
+  src\pages\Dashboard.tsx:3159:                                        if (value === 0 && key !== 'attack' && key !== 
+'defense' && key !== 'vitality') return null;
+  src\pages\Dashboard.tsx:3185:                            </div>
+  src\pages\Dashboard.tsx:3186:                          </div>
+  src\pages\Dashboard.tsx:3187:                        </div>
+  src\pages\Dashboard.tsx:3188:                      </div>
+  src\pages\Dashboard.tsx:3189:
+> src\pages\Dashboard.tsx:3190:                      <button onClick={() => setCubeRotation(prev => prev - 90)} 
+style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 
+'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
+  src\pages\Dashboard.tsx:3191:                        {'>'}
+> src\pages\Dashboard.tsx:3192:                      </button>
+  src\pages\Dashboard.tsx:3193:                    </div>
+  src\pages\Dashboard.tsx:3194:
+  src\pages\Dashboard.tsx:3195:                    {/* Balão do companheiro (boneco) */}
+  src\pages\Dashboard.tsx:3196:                    {bubble && (Math.round((((cubeRotation % 360) + 360) % 360) / 90) % 
+4) === 0 && (
+> src\pages\Dashboard.tsx:3197:                      <div className="companion-bubble" onClick={handleBubbleClick} 
+title="Clique para continuar">
+  src\pages\Dashboard.tsx:3198:                        {companionTips.find(t => t.id === 
+bubble.tipId)?.lines[bubble.step]}
+  src\pages\Dashboard.tsx:3199:                      </div>
+  src\pages\Dashboard.tsx:3200:                    )}
+  src\pages\Dashboard.tsx:3201:                  </div>
+  src\pages\Dashboard.tsx:3202:
+  src\pages\Dashboard.tsx:3232:                        </div>
+  src\pages\Dashboard.tsx:3233:                      ) : (
+  src\pages\Dashboard.tsx:3234:                        <div style={{ display: 'flex', alignItems: 'center', gap: 
+'0.5rem', marginBottom: '1rem', background: 'var(--btn-bg)', padding: '0.5rem 1rem', borderRadius: '20px', color: 
+'var(--text-secondary)', minHeight: '36px', width: '100%', maxWidth: '400px', fontSize: '0.9rem' }}>
+  src\pages\Dashboard.tsx:3235:                          <MessageCircle size={16} />
+  src\pages\Dashboard.tsx:3236:                          <span style={{ fontStyle: 'italic', flex: 1 
+}}>{userData?.customStatusText ? `"${userData.customStatusText}"` : "Escreva seu status..."}</span>
+> src\pages\Dashboard.tsx:3237:                          <button onClick={() => { 
+setStatusInputValue(userData?.customStatusText || ''); setIsEditingStatus(true); }} style={{ background: 
+'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0 0.25rem', display: 'flex' 
+}} className="hover-brightness" title="Editar Status">
+  src\pages\Dashboard.tsx:3238:                            <Edit3 size={16} />
+> src\pages\Dashboard.tsx:3239:                          </button>
+  src\pages\Dashboard.tsx:3240:                        </div>
+  src\pages\Dashboard.tsx:3241:                      )}
+  src\pages\Dashboard.tsx:3242:                  </div>
+  src\pages\Dashboard.tsx:3243:                </div>
+  src\pages\Dashboard.tsx:3244:              </div>
+  src\pages\Dashboard.tsx:3290:                        }
+  src\pages\Dashboard.tsx:3291:
+  src\pages\Dashboard.tsx:3292:                        const dateObj = item.timestamp ? (typeof item.timestamp === 
+'number' ? new Date(item.timestamp) : (item.timestamp.seconds ? new Date(item.timestamp.seconds * 1000) : new 
+Date(item.timestamp))) : new Date();
+  src\pages\Dashboard.tsx:3293:
+  src\pages\Dashboard.tsx:3294:                        return (
+> src\pages\Dashboard.tsx:3295:                          <div key={item.id || index} style={{ padding: '0.9rem 
+1.1rem', background: 'rgba(0,0,0,0.25)', borderRadius: '12px', borderLeft: `4px solid ${borderColor}`, cursor: 
+hasPvpDetails ? 'pointer' : 'default' }} onClick={hasPvpDetails ? () => setExpandedPvpId(isPvpExpanded ? null : 
+item.id) : undefined}>
+  src\pages\Dashboard.tsx:3296:                            <div style={{ display: 'flex', justifyContent: 
+'space-between', alignItems: 'center', gap: '0.75rem' }}>
+  src\pages\Dashboard.tsx:3297:                              <div style={{ display: 'flex', alignItems: 'center', gap: 
+'0.75rem', minWidth: 0, flex: 1 }}>
+  src\pages\Dashboard.tsx:3298:                                {item.imageUrl ? (
+  src\pages\Dashboard.tsx:3299:                                  <img src={item.imageUrl} alt="" style={{ width: 
+'38px', height: '38px', objectFit: 'contain', borderRadius: '8px', flexShrink: 0 }} />
+  src\pages\Dashboard.tsx:3300:                                ) : (
+  src\pages\Dashboard.tsx:3396:                  </div>
+  src\pages\Dashboard.tsx:3397:                ) : (
+  src\pages\Dashboard.tsx:3398:                  <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Sua sala: 
+{userData?.classId || 'Não definida'}</p>
+  src\pages\Dashboard.tsx:3399:                )}
+  src\pages\Dashboard.tsx:3400:              </div>
+> src\pages\Dashboard.tsx:3401:              <button
+> src\pages\Dashboard.tsx:3402:                onClick={() => setShowRankingAvatars(!showRankingAvatars)}
+  src\pages\Dashboard.tsx:3403:                className="login-btn hide-text-mobile"
+  src\pages\Dashboard.tsx:3404:                style={{ background: 'transparent', border: '1px solid 
+var(--gold-primary)', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: 
+'0.5rem 1rem' }}
+  src\pages\Dashboard.tsx:3405:                title={showRankingAvatars ? "Ocultar Avatares" : "Mostrar Avatares"}
+  src\pages\Dashboard.tsx:3406:              >
+  src\pages\Dashboard.tsx:3407:                {showRankingAvatars ? <EyeOff size={18} /> : <Eye size={18} />}
+  src\pages\Dashboard.tsx:3408:                <span>{showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar 
+Avatares'}</span>
+> src\pages\Dashboard.tsx:3409:              </button>
+  src\pages\Dashboard.tsx:3410:            </div>
+  src\pages\Dashboard.tsx:3411:            <div style={{ padding: '2rem', flex: 1, overflowY: 'auto' }}>
+  src\pages\Dashboard.tsx:3412:              {targetClassRanking ? renderRankingList(classStudents, 'class') : <p 
+style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
+  src\pages\Dashboard.tsx:3413:            </div>
+  src\pages\Dashboard.tsx:3414:          </div>
+  src\pages\Dashboard.tsx:3420:              <Trophy size={32} color="var(--gold-primary)" />
+  src\pages\Dashboard.tsx:3421:              <div style={{ flex: 1, minWidth: '200px' }}>
+  src\pages\Dashboard.tsx:3422:                <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Top 10 Geral</h2>
+  src\pages\Dashboard.tsx:3423:                <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Os maiores 
+pontuadores de toda a escola.</p>
+  src\pages\Dashboard.tsx:3424:              </div>
+> src\pages\Dashboard.tsx:3425:              <button
+> src\pages\Dashboard.tsx:3426:                onClick={() => setShowRankingAvatars(!showRankingAvatars)}
+  src\pages\Dashboard.tsx:3427:                className="login-btn hide-text-mobile"
+  src\pages\Dashboard.tsx:3428:                style={{ background: 'transparent', border: '1px solid 
+var(--gold-primary)', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: 
+'0.5rem 1rem' }}
+  src\pages\Dashboard.tsx:3429:                title={showRankingAvatars ? "Ocultar Avatares" : "Mostrar Avatares"}
+  src\pages\Dashboard.tsx:3430:              >
+  src\pages\Dashboard.tsx:3431:                {showRankingAvatars ? <EyeOff size={18} /> : <Eye size={18} />}
+  src\pages\Dashboard.tsx:3432:                <span>{showRankingAvatars ? 'Ocultar Avatares' : 'Mostrar 
+Avatares'}</span>
+> src\pages\Dashboard.tsx:3433:              </button>
+  src\pages\Dashboard.tsx:3434:            </div>
+  src\pages\Dashboard.tsx:3435:            <div style={{ padding: '2rem', flex: 1, overflowY: 'auto' }}>
+  src\pages\Dashboard.tsx:3436:              {renderRankingList(top10General, 'general')}
+  src\pages\Dashboard.tsx:3437:            </div>
+  src\pages\Dashboard.tsx:3438:          </div>
+
+

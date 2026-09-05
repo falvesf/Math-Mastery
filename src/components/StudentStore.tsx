@@ -13,6 +13,7 @@ import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
 import ItemIcon from './ItemIcon';
+import ItemTooltip from './ItemTooltip';
 import { processExpiredSales, formatSaleRemaining } from '../lib/bazar';
 
 interface MarketItem {

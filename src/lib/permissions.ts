@@ -223,6 +223,7 @@ export async function fetchRoles(tenantId?: string | null): Promise<RoleDef[]> {
   }
 }
 
+// @ts-ignore
 export async function saveRole(role: RoleDef, isSuperAdmin: boolean): Promise<boolean> {
   try {
     const { error: roleErr } = await supabase.from('roles').upsert({

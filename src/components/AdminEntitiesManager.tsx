@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+// @ts-ignore
 import { User, Swords, Dog, Settings } from 'lucide-react';
 import AvatarCustomizationModal from './AvatarCustomizationModal';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
@@ -21,7 +22,7 @@ export default function AdminEntitiesManager() {
       // Se o molde selecionado foi excluído, reseta o estado (senão a URL antiga
       // persiste e é aplicada como initialConfig, carregando o GLB excluído).
       setMonsterModelUrl(prev => (list.some(m => m.url === prev) ? prev : ''));
-    }).catch(() => {});
+    }, () => {});
   };
 
   // Busca na abertura e sempre que trocar de guia (novos moldes aparecem sem recarregar)

@@ -182,6 +182,7 @@ export async function fetchAvailableQuestions(): Promise<any[]> {
   }
 }
 
+// @ts-ignore
 export async function fetchArenas(tenantId?: string): Promise<any[]> {
   try {
     // Arenas de duelo: inclui TODOS os tenants (gama maior de possibilidades no PvP),
@@ -922,9 +923,9 @@ export async function awardSpectateRewards(
     // O lado usado é o REGISTRADO (match.spectators), imutável para o duelo — quem
     // tentar trocar de lado não engana a premiação. Precisa estar ATIVO até o final
     // e o lado registrado ter vencido.
-    const mySpec = (match.spectators || []).find((s: any) => s.uid === spectatorUid);
+    const mySpec: any = (match.spectators || []).find((s: any) => s.uid === spectatorUid);
     if (mySpec && mySpec.active !== false && match.winner_id && mySpec.watchUid === match.winner_id) {
-      const bet = match.bet || {};
+      const bet: any = match.bet || {};
       const totalBet =
         ((bet.challenger?.type === 'coins' ? bet.challenger.coins : 0) || 0) +
         ((bet.opponent?.type === 'coins' ? bet.opponent.coins : 0) || 0);

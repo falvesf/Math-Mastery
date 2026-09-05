@@ -2939,7 +2939,7 @@ export default function Dashboard() {
                     style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', perspective: '1000px', width: '100%' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-                      <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
+                      <button onClick={() => setCubeRotation(prev => prev + 90)} style={{ position: 'relative', zIndex: 200, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
                         {'<'}
                       </button>
 
@@ -3187,7 +3187,7 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ position: 'relative', zIndex: 1, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
+                      <button onClick={() => setCubeRotation(prev => prev - 90)} style={{ position: 'relative', zIndex: 200, background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer' }}>
                         {'>'}
                       </button>
                     </div>
