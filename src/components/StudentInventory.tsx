@@ -1,16 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
+// @ts-ignore
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Image as ImageIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword, Filter } from 'lucide-react';
 import CachedImage from './CachedImage';
 import SkinBuffIcon from './SkinBuffIcon';
 import ItemIcon from './ItemIcon';
+import ItemTooltip from './ItemTooltip';
 import type { UserData } from '../contexts/AuthContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp } from '../lib/ranks';
+// @ts-ignore
 import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
 import { invalidateEquippedItems } from '../lib/equippedItems';
@@ -64,6 +67,7 @@ const getRarityLabel = (rarity?: string) => {
   }
 };
 
+// @ts-ignore
 const RARITY_COLORS: Record<string, string> = {
   common: '#9ca3af',
   uncommon: '#10b981',

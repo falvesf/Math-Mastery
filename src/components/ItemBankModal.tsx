@@ -4,6 +4,7 @@ import { useTenant } from '../contexts/TenantContext';
 import { useDialog } from '../contexts/DialogContext';
 import { X, Search, Download, Copy, Eye, Package, Loader2, Edit2, Trash2, Check, CheckCheck } from 'lucide-react';
 import ItemIcon from './ItemIcon';
+import ItemTooltip from './ItemTooltip';
 
 interface StoreItemData {
   id: string;
@@ -34,6 +35,8 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
   const { showAlert, showConfirm } = useDialog();
   const [items, setItems] = useState<StoreItemData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'consumable' | 'equippable'>('all');
   const [filterRarity, setFilterRarity] = useState<string>('all');
@@ -306,8 +309,15 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
                     outline: selected ? '2px solid #8b5cf6' : 'none',
                   }}
                   onClick={() => handleImportClick(item)}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = rarityColor)}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = rarityColor)}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = rarityColor;
+                    setHoveredItem(item.id);
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = rarityColor;
+                    setHoveredItem(null);
+                  }}
+                  onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}
                 >
                   <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem', alignItems: 'center' }}>
                     <ItemIcon item={item} size={48} />
@@ -421,6 +431,13 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
             </button>
           </div>
         </div>
+      )}
+      
+      {hoveredItem && (
+        <ItemTooltip 
+          item={items.find(i => i.id === hoveredItem)} 
+          mousePos={mousePos} 
+        />
       )}
     </div>
   );

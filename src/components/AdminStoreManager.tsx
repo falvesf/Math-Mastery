@@ -9,6 +9,7 @@ import ItemBankModal from './ItemBankModal';
 import GlbMeshExtractorModal from './GlbMeshExtractorModal';
 import SkinBuffIcon from '../components/SkinBuffIcon';
 import ItemIcon from './ItemIcon';
+import ItemTooltip from './ItemTooltip';
 import AvatarCharacter from './AvatarCharacter';
 import MinecraftPartPreview from './MinecraftPartPreview';
 import AudioBankPicker from './AudioBankPicker';
@@ -84,6 +85,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const { tenantId, isSuperAdmin } = useTenant();
   const { can: canItems } = usePermissions();
   const [items, setItems] = useState<StoreItem[]>([]);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [loading, setLoading] = useState(true);
   const [tenantRanks, setTenantRanks] = useState<RankDef[]>([]);
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
@@ -883,6 +886,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 return (
                   <div key={item.id} 
                     className={`rarity-${item.rarity || 'common'}`}
+                    onMouseEnter={() => setHoveredItem(item.id)}
+                    onMouseLeave={() => setHoveredItem(null)}
+                    onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
                     style={{ position: 'relative', display: 'flex', flexDirection: isGridMode ? 'column' : 'row', alignItems: 'center', justifyContent: isGridMode ? 'center' : 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: isGridMode ? 'center' : 'left', minWidth: 0, overflow: 'hidden' }}>
                     <div style={{ display: 'flex', flexDirection: isGridMode ? 'column' : 'row', alignItems: 'center', gap: '1rem', width: isGridMode ? '100%' : 'auto', minWidth: 0 }}>
                       <div className={`rarity-badge ${item.rarity || 'common'}`}>
@@ -1534,6 +1540,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           </div>
         </div>,
         document.body
+      )}
+      
+      {hoveredItem && (
+        <ItemTooltip 
+          item={items.find(i => i.id === hoveredItem)} 
+          mousePos={mousePos} 
+        />
       )}
     </div>
   );

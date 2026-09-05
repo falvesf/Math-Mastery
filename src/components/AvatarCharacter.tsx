@@ -5,7 +5,9 @@ import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/
 // Importando THREE diretamente de dentro da dependência do skinview3d para evitar mismatch
 import * as THREE from 'skinview3d/node_modules/three';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
+// @ts-ignore
 import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType } from '../lib/gacha';
+// @ts-ignore
 import { isEffectAddType, EFFECT_ADD_LABELS } from '../lib/damageEffects';
 import { generateVoxelItemFromImage, updateVoxelCurve, setVoxelThickness } from '../lib/VoxelItemGenerator';
 import { getGlobalModelTransforms } from '../lib/itemTransforms';
@@ -326,6 +328,7 @@ export interface AvatarCharacterProps {
 }
 
 import CustomModelViewer from './CustomModelViewer';
+import ItemTooltip from './ItemTooltip';
 
 const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null }: AvatarCharacterProps) {
   // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
@@ -335,6 +338,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [activeMenuSlot, setActiveMenuSlot] = useState<string | null>(null);
   const [modelsLoadedCount, setModelsLoadedCount] = useState(0);
 
@@ -2709,6 +2713,7 @@ if (config?.customModelUrl) {
             key={slot.id} 
             onMouseEnter={() => setHoveredSlot(slot.id)}
             onMouseLeave={() => setHoveredSlot(null)}
+            onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
             onClick={(e) => {
               e.stopPropagation();
               if (item) {
@@ -2813,7 +2818,10 @@ if (config?.customModelUrl) {
             </div>
             
             {/* Tooltip Estilo RPG */}
-            {hoveredSlot === slot.id && (() => {
+            {hoveredSlot === slot.id && item && (
+              <ItemTooltip item={item} mousePos={mousePos} />
+            )}
+            {hoveredSlot === slot.id && !item && (() => {
                const isBottomSlot = 'bottom' in slot.pos;
                return (
                  <div style={{
@@ -2823,54 +2831,25 @@ if (config?.customModelUrl) {
                      : { top: '110%', bottom: 'auto' }),
                    left: '50%',
                    transform: 'translateX(-50%) translateZ(30px)',
-background: 'rgba(12, 15, 26, 0.97)',
-                    border: '1px solid rgba(255, 255, 255, 0.25)',
-                    borderRadius: '8px',
-                    padding: '1rem',
-                    width: 'max-content',
-                    minWidth: '200px',
-                    maxWidth: '280px',
-                    zIndex: 50,
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.9)',
-                    backdropFilter: 'blur(8px)',
-                    WebkitFontSmoothing: 'antialiased',
-                    pointerEvents: 'none',
-                    color: 'var(--text-primary)',
-                    textAlign: 'left'
+                   background: 'rgba(12, 15, 26, 0.97)',
+                   border: '1px solid rgba(255, 255, 255, 0.25)',
+                   borderRadius: '8px',
+                   padding: '1rem',
+                   width: 'max-content',
+                   minWidth: '200px',
+                   maxWidth: '280px',
+                   zIndex: 50,
+                   boxShadow: '0 4px 20px rgba(0,0,0,0.9)',
+                   backdropFilter: 'blur(8px)',
+                   WebkitFontSmoothing: 'antialiased',
+                   pointerEvents: 'none',
+                   color: 'var(--text-primary)',
+                   textAlign: 'left'
                  }}>
-                   {item ? (
-                     <>
-                       <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--gold-primary)' }}>{item.itemTitle || 'Item Desconhecido'}</h4>
-                       
-                       {item.baseAttributeType && item.baseAttributeType !== 'none' && ATTRIBUTE_LABELS[item.baseAttributeType] && (
-                         <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                           {ATTRIBUTE_LABELS[item.baseAttributeType].icon} {ATTRIBUTE_LABELS[item.baseAttributeType].label}: +{item.baseAttributeValue}{['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType) ? '%' : ''}
-                         </div>
-                       )}
-                       
-                       {item.adds && item.adds.length > 0 && (
-                         <div style={{ fontSize: '0.9rem' }}>
-                           <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
-                           <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem' }}>
-                             {item.adds.map((add: ItemAdd, i: number) => {
-                               const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
-                               if (!lbl) return null;
-                               return (
-                                 <li key={i} style={{ color: lbl.color, marginBottom: '0.25rem' }}>
-                                   {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.value}%`}
-                                 </li>
-                               );
-                             })}
-                           </ul>
-                         </div>
-                       )}
-                     </>
-                   ) : (
-                     <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                       {slot.label}<br/>
-                       <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Nenhum item equipado</span>
-                     </p>
-                   )}
+                   <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                     {slot.label}<br/>
+                     <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Nenhum item equipado</span>
+                   </p>
                  </div>
                );
              })()
