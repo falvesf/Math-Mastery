@@ -1926,7 +1926,7 @@ export default function QuestGameplay() {
               <div className="quest-options-compact">
                 {quest?.questions[currentQIndex].options.map((opt, i) => {
                   const isEliminated = eliminatedOptions.includes(i);
-                  const isCorrectAnswer = feedback && i === quest?.questions[currentQIndex].correctIndex;
+                  const isCorrectAnswer = feedback === 'correct' && i === quest?.questions[currentQIndex].correctIndex;
                   const isWrongSelected = feedback === 'wrong' && i === lastSelectedOption;
                   
                   return (

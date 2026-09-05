@@ -224,13 +224,24 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       setTotalEquippedStats(calculateTotalStats(equippedItemsForStats, userData?.distributedStats));
     }
 
-    const { data: userSnap } = await supabase.from('users').select('*').eq('role', 'student');
+    let userQuery = supabase.from('users').select('*').eq('role', 'student');
+    if (tenantId) {
+      userQuery = userQuery.eq('tenant_id', tenantId);
+    }
+    const { data: userSnap } = await userQuery;
     const loadedStudents: UserData[] = [];
     (userSnap || []).forEach(d => {
        const u = d.data as UserData;
        loadedStudents.push({ ...u, uid: d.id, name: d.name, email: d.email, xp: d.xp, coins: d.coins, role: d.role, photoURL: d.photo_url, classId: d.class_id });
     });
-    loadedStudents.sort((a,b) => a.name.localeCompare(b.name));
+    loadedStudents.sort((a, b) => {
+      const classA = a.classId || 'Sem Turma';
+      const classB = b.classId || 'Sem Turma';
+      if (classA !== classB) {
+        return classA.localeCompare(classB);
+      }
+      return a.name.localeCompare(b.name);
+    });
     setStudents(loadedStudents);
     
     // Processar anúncios expirados (buff vencido -> item volta ao inventário
@@ -1083,9 +1094,21 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                             style={{ width: '100%', padding: '0.25rem', borderRadius: '4px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.75rem' }}
                           >
                             <option value="">Selecione um aluno...</option>
-                            {students.filter(s => s.uid !== userData.uid).map(s => (
-                              <option key={s.uid} value={s.uid}>{s.name} ({s.classId || 'Sem Turma'})</option>
-                            ))}
+                            {(() => {
+                              const grouped: Record<string, typeof students> = {};
+                              students.filter(s => s.uid !== userData.uid).forEach(s => {
+                                const cName = s.classId || 'Sem Turma';
+                                if (!grouped[cName]) grouped[cName] = [];
+                                grouped[cName].push(s);
+                              });
+                              return Object.entries(grouped).map(([cName, classStudents]) => (
+                                <optgroup key={cName} label={cName}>
+                                  {classStudents.map(s => (
+                                    <option key={s.uid} value={s.uid}>{s.name}</option>
+                                  ))}
+                                </optgroup>
+                              ));
+                            })()}
                           </select>
                           <div style={{ display: 'flex', gap: '0.25rem' }}>
                             <button
