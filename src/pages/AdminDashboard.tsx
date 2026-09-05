@@ -1618,6 +1618,20 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     fetchStudents();
   };
 
+  const resetQuestForm = () => {
+    setIsCreatingQuest(false);
+    setEditingQuestId(null);
+    setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
+    setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestPodiumBgUrl(''); setQuestBattleMusicUrl(''); setQuestBattleMusicVolume(0.5); setQuestMonsterGender(''); setQuestMonsterAttackSound(''); setQuestMonsterGruntSound(''); setQuestMonsterDamageSound(''); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
+    setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+    setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+    setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
+    setQuestCreatedBy(null); setQuestCreatorRole(null); setQuestTargetClasses([]);
+    setQuestShuffleQuestions(false); setQuestShuffleAnswers(false);
+    setQuestRandomSelection(false); setQuestRandomCount(10);
+    setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
+  };
+
   const handleSaveQuest = async () => {
     if (!questTitle || !questTitle.trim() || questQuestions.length === 0) {
       await showAlert("Preencha o título da missão e adicione perguntas!");
@@ -2850,7 +2864,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                       <button className="login-btn" onClick={() => setShowAudioBank(v => !v)} style={{ background: showAudioBank ? 'rgba(139,92,246,0.25)' : 'var(--btn-bg)', color: showAudioBank ? '#c084fc' : 'var(--text-primary)', border: `1px solid ${showAudioBank ? 'rgba(139,92,246,0.5)' : 'var(--border-glass)'}` }}>
                         <Volume2 size={18} style={{ marginRight: '0.4rem' }} /> Banco de Áudio
                       </button>
-                      <button className="login-btn" onClick={() => setIsCreatingQuest(true)} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
+                      <button className="login-btn" onClick={() => { resetQuestForm(); setIsCreatingQuest(true); }} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
                         <Plus size={18} style={{ marginRight: '0.5rem' }} /> Nova Missão
                       </button>
                     </div>
@@ -2938,7 +2952,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                           <History size={18} /> Ver Histórico
                         </button>
                       )}
-                      <button className="login-btn" onClick={() => { setIsCreatingQuest(false); setEditingQuestId(null); }} style={{ background: 'transparent', border: '1px solid var(--border-glass)' }}>
+                      <button className="login-btn" onClick={() => { resetQuestForm(); }} style={{ background: 'transparent', border: '1px solid var(--border-glass)' }}>
                         Cancelar
                       </button>
                     </div>
