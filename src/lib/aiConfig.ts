@@ -27,40 +27,46 @@ let cache: GrokConfig | null = null;
 export async function getGrokConfig(): Promise<GrokConfig | null> {
   if (cache) return cache;
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('system_collections')
       .select('data')
       .eq('collection_name', COLLECTION)
       .eq('doc_id', DOC)
-      .maybeSingle();
-    if (data?.data?.apiKey) {
-      const savedModel = data.data.model || DEFAULT_MODEL;
+      .limit(1);
+      
+    if (error) console.error("Erro ao buscar IA Config:", error);
+      
+    if (data && data.length > 0 && data[0]?.data?.apiKey) {
+      const savedModel = data[0].data.model || DEFAULT_MODEL;
       // Garante um modelo compatível com o Groq (ignora grok-*/xai-* antigos)
       const model = VALID_MODELS.includes(savedModel) ? savedModel : DEFAULT_MODEL;
-      cache = { apiKey: data.data.apiKey, model };
+      cache = { apiKey: data[0].data.apiKey, model };
       return cache;
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) { console.error("Exception fetching IA config:", e); }
   return null;
 }
 
 export async function saveGrokConfig(apiKey: string, model?: string): Promise<boolean> {
   try {
     const payload = { collection_name: COLLECTION, doc_id: DOC, tenant_id: null, data: { apiKey, model: model || 'grok-3-mini' } };
-    const { data: existing } = await supabase
+    const { data: existing, error: existError } = await supabase
       .from('system_collections')
       .select('id')
       .eq('collection_name', COLLECTION)
       .eq('doc_id', DOC)
-      .maybeSingle();
-    if (existing?.id) {
-      const { error } = await supabase.from('system_collections').update({ data: payload.data }).eq('id', existing.id);
-      if (error) return false;
+      .limit(1);
+      
+    if (existError) console.error("Erro ao verificar IA Config existente:", existError);
+      
+    if (existing && existing.length > 0) {
+      const { error } = await supabase.from('system_collections').update({ data: payload.data }).eq('id', existing[0].id);
+      if (error) { console.error("Erro no update IA:", error); return false; }
     } else {
       const { error } = await supabase.from('system_collections').insert(payload);
-      if (error) return false;
+      if (error) { console.error("Erro no insert IA:", error); return false; }
     }
-    cache = payload.data;
+    cache = payload.data as GrokConfig;
     return true;
   } catch (e) {
     return false;
