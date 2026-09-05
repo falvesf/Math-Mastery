@@ -61,6 +61,8 @@ export interface EquippedItem {
   itemId?: string;
   imageUrl: string;
   modelUrl?: string;
+  description?: string;
+  type?: string;
   avatarPart: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'two_handed' | 'rightHand' | 'leftHand' | 'accessory' | 'back' | 'background' | 'pet';
   itemTitle?: string;
   itemCategory?: ItemCategory;

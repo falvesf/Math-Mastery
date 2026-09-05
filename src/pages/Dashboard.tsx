@@ -884,6 +884,11 @@ export default function Dashboard() {
                 modelTransforms: data.modelTransforms,
                 backColor: data.backColor || '',
                 customAnimation: data.customAnimation,
+                rarity: data.rarity,
+                gameEffect: data.gameEffect,
+                damageEffect: data.damageEffect,
+                description: data.itemDescription || data.description,
+                type: data.itemType || data.type || 'equippable',
               });
             }
           });
@@ -1068,7 +1073,12 @@ export default function Dashboard() {
                 modelTextureUrl: data.modelTextureUrl,
                 minecraftHeadValue: data.minecraftHeadValue,
                 modelTransforms: data.modelTransforms,
-                backColor: data.backColor || ''
+                backColor: data.backColor || '',
+                rarity: data.rarity,
+                gameEffect: data.gameEffect,
+                damageEffect: data.damageEffect,
+                description: data.itemDescription || data.description,
+                type: data.itemType || data.type || 'equippable',
               } as EquippedItem);
             }
           });

@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { ATTRIBUTE_LABELS, type AttributeType } from '../lib/gacha';
-import { DAMAGE_EFFECTS, EFFECT_ADD_LABELS, isEffectAddType } from '../lib/damageEffects';
+import { DAMAGE_EFFECTS, EFFECT_ADD_LABELS, isEffectAddType, orderEffectFirst } from '../lib/damageEffects';
 
 export const RARITY_COLORS: Record<string, string> = {
   common: '#9ca3af',
@@ -8,7 +8,7 @@ export const RARITY_COLORS: Record<string, string> = {
   rare: '#3b82f6',
   epic: '#8b5cf6',
   legendary: '#f59e0b',
-  mythic: '#ef4444'
+  mestre: '#ef4444'
 };
 
 export const CATEGORY_LABELS: Record<string, string> = {
@@ -30,7 +30,7 @@ const getRarityLabel = (rarity?: string) => {
     rare: 'Raro',
     epic: 'Épico',
     legendary: 'Lendário',
-    mythic: 'Mítico'
+    mestre: 'Mestre'
   };
   return labels[r] || 'Comum';
 };
@@ -164,7 +164,7 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
             <div>
               <strong style={{ color: '#D8B4FE' }}>✨ Atributos Fixos:</strong>
               <ul style={{ margin: '0.15rem 0 0 0', paddingLeft: '1.2rem' }}>
-                {item.fixedAttributes.map((add: any, i: number) => {
+                {orderEffectFirst(item.fixedAttributes).map((add: any, i: number) => {
                   const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
                   if (!lbl) return null;
                   return (
@@ -183,7 +183,7 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
         <div style={{ fontSize: '0.85rem' }}>
           <strong style={{ color: '#D8B4FE' }}>✨ Atributos Adicionais:</strong>
           <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem' }}>
-            {item.adds.map((add: any, i: number) => {
+            {orderEffectFirst(item.adds).map((add: any, i: number) => {
               const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
               if (!lbl) return null;
               return (
