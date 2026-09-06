@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer } from 'lucide-react';
-import { forgeStrengthFraction, forgeAttributeValue, nextForgeCost, DEFAULT_FORGE_SUCCESS } from '../lib/forge';
+import { forgeAttributeValue, nextForgeCost, DEFAULT_FORGE_SUCCESS } from '../lib/forge';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import GachaConfigModal from './GachaConfigModal';
@@ -38,7 +38,7 @@ export interface StoreItem {
   description: string;
   imageUrl?: string;
   cost: number;
-  type: 'consumable' | 'equippable';
+  type: 'consumable' | 'equippable' | 'other';
   gameEffect?: GameEffectType;
   hpCooldownReductionMinutes?: number;
   buffDurationHours?: number;
@@ -1248,7 +1248,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                           const baseVal = formData.baseAttributeValue || 0;
                           const calcStrength = forgeAttributeValue(baseVal, lvl);
                           const calcCost = lvl === 0 ? 0 : nextForgeCost(lvl - 1, formData.cost || 100);
-                          const setOverride = (key: 'statsPerLevel' | 'coinsCostPerLevel', l: number, val: number) => {
+                          const setOverride = (key: 'successChancePerLevel' | 'statsPerLevel' | 'coinsCostPerLevel', l: number, val: number) => {
                             const updated = { ...(formData.forgeConfig || {}), [key]: { ...(formData.forgeConfig?.[key] || {}), [l]: val } };
                             setFormData({ ...formData, forgeConfig: updated });
                           };
@@ -1485,18 +1485,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               </div>
             )}
 
-            {formData.type === 'equippable' && (() => {
-              const isTransmuteResult = items.some(i => (i.data?.transmuteConfig?.resultItemId || (i as any).transmuteConfig?.resultItemId) === editingId);
-              if (!isTransmuteResult) return null;
-              return (
+            {formData.type === 'equippable' && formData.isTransmuted && (
                 <div style={{ marginBottom: '1.5rem', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '0.75rem 1rem', background: 'rgba(139,92,246,0.08)' }}>
                   <span style={{ color: '#c084fc', fontWeight: 'bold', fontSize: '0.85rem' }}>🧪 Item de Transmutação</span>
                   <p style={{ margin: '0.3rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                    Este item é o <strong>resultado</strong> de uma transmutação configurada em outro item. Ele <strong>não aparecerá na loja</strong> — só poderá ser obtido por transmutação.
+                    Este item é marcado como <strong>resultado de transmutação</strong>. Ele <strong>não aparecerá na loja</strong> — só poderá ser obtido por transmutação.
                   </p>
                 </div>
-              );
-            })()}
+              )}
 
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
               <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>

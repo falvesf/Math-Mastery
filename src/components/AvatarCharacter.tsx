@@ -59,6 +59,7 @@ export interface AvatarConfig {
 export interface EquippedItem {
   docId?: string;
   forgeLevel?: number;
+  forgeConfig?: any;
   itemId?: string;
   imageUrl: string;
   modelUrl?: string;
