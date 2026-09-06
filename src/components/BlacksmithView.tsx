@@ -283,14 +283,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           {/* Left Side: Sketchfab & Inventory */}
           <div style={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-glass)', background: 'var(--bg-dark)' }}>
             
-            {activeTab === 'forge' && (
-              /* Sketchfab Embed */
-              <div style={{ height: '300px', background: 'black', position: 'relative', overflow: 'hidden', pointerEvents: 'none' }}>
-                <div className="sketchfab-embed-wrapper" style={{ position: 'absolute', top: '-65px', bottom: '-65px', left: '-10px', right: '-10px' }}>
-                  <iframe ref={iframeRef} title="Blacksmith and his anvil" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" style={{ width: '100%', height: '100%', border: 'none' }}> </iframe>
-                </div>
+            {/* Sketchfab Embed (visível nas duas guias) */}
+            <div style={{ height: '300px', background: 'black', position: 'relative', overflow: 'hidden', pointerEvents: 'none' }}>
+              <div className="sketchfab-embed-wrapper" style={{ position: 'absolute', top: '-65px', bottom: '-65px', left: '-10px', right: '-10px' }}>
+                <iframe ref={iframeRef} title="Blacksmith and his anvil" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" style={{ width: '100%', height: '100%', border: 'none' }}> </iframe>
               </div>
-            )}
+            </div>
 
 
             {/* Inventory List */}
@@ -361,11 +359,6 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
                         <div style={{ width: '100px', height: '100px', background: 'black', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px solid #555', position: 'relative' }}>
                           {selectedForgeItem.itemImageUrl && <CachedImage src={selectedForgeItem.itemImageUrl} alt={selectedForgeItem.itemTitle} style={{ width: '80px', height: '80px', objectFit: 'contain' }} />}
-                          {curLevel > 0 && (
-                            <div style={{ position: 'absolute', top: '-10px', right: '-10px', background: 'var(--accent-red)', color: 'white', fontSize: '1.2rem', fontWeight: 'bold', padding: '4px 8px', borderRadius: '6px', border: '2px solid black' }}>
-                              +{curLevel}
-                            </div>
-                          )}
                         </div>
                         <div>
                           <h4 style={{ color: 'white', margin: '0 0 0.5rem 0', fontSize: '1.2rem' }}>{forgeItemName(selectedForgeItem.itemTitle, curLevel)}</h4>
