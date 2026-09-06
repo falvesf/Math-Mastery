@@ -22,7 +22,7 @@ interface BlacksmithModalProps {
   userData: any;
   currentRankIndex: number;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (newCoins?: number) => void;
 }
 
 export default function BlacksmithModal({ userData, currentRankIndex, onClose, onSuccess }: BlacksmithModalProps) {
@@ -216,7 +216,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     }
     
     fetchItems();
-    onSuccess();
+    onSuccess(userData.coins - cost);
   };
 
   const handleTransmute = async () => {
@@ -301,7 +301,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     }
     
     fetchItems();
-    onSuccess();
+    onSuccess(userData.coins - (config.coinsCost || 0));
   };
   const forgeableItems = items.filter(item => {
     // items are spread: item.itemType === 'equippable', item.forgeLevel, etc.
@@ -374,11 +374,6 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                         }}
                       >
                         {item.itemImageUrl ? <CachedImage src={item.itemImageUrl} alt={item.itemTitle} style={{ width: '50px', height: '50px', objectFit: 'contain' }} /> : <Hammer size={30} color="gray" />}
-                        {item.forgeLevel > 0 && (
-                          <div style={{ position: 'absolute', top: '-5px', right: '-5px', background: 'var(--accent-red)', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 4px', borderRadius: '4px' }}>
-                            +{item.forgeLevel}
-                          </div>
-                        )}
                         {item.equipped && (
                           <div style={{ position: 'absolute', bottom: '2px', fontSize: '0.6rem', color: 'var(--gold-primary)', fontWeight: 'bold', background: 'rgba(0,0,0,0.7)', padding: '2px 4px', borderRadius: '4px' }}>
                             Eqp
