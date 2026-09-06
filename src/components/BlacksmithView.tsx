@@ -26,7 +26,7 @@ interface BlacksmithModalProps {
 }
 
 export default function BlacksmithModal({ userData, currentRankIndex, onClose, onSuccess }: BlacksmithModalProps) {
-  const { showConfirm } = useDialog();
+  const { showConfirm, showToast } = useDialog();
   const [activeTab, setActiveTab] = useState<'forge' | 'transmute'>('forge');
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,7 +152,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     if (!selectedForgeItem) return;
     const currentLevel = selectedForgeItem.forgeLevel || 0;
     if (currentLevel >= MAX_FORGE_LEVEL) {
-      alert("Item já está no nível máximo (+9)!");
+      showToast("Item já está no nível máximo (+9)!", 'error');
       return;
     }
 
@@ -162,11 +162,11 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const finalChance = useScroll ? 100 : forgeSuccessChance(nextLevel, selectedForgeItem.forgeConfig);
     
     if (userData.coins < cost) {
-      alert(`Você não tem moedas suficientes! Custo: ${cost}`);
+      showToast(`Você não tem moedas suficientes! Custo: ${cost}`, 'error');
       return;
     }
     if (useScroll && scrollCount <= 0) {
-      alert("Você não possui Pergaminho do Ferreiro!");
+      showToast("Você não possui Pergaminho do Ferreiro!", 'error');
       return;
     }
 
@@ -198,7 +198,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     setIsForging(false);
     
     if (isSuccess) {
-      alert("🔥 SUCESSO! O item foi forjado!");
+      showToast("🔥 SUCESSO! O item foi forjado!", 'success');
       await supabase.from('user_items').update({
         data: {
           ...selectedForgeItem,
@@ -207,9 +207,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       }).eq('id', selectedForgeItem.docId);
     } else {
       if (useScroll) {
-        alert("❌ FALHA! A forja falhou, mas o Pergaminho do Ferreiro protegeu o item da destruição.");
+        showToast("❌ FALHA! A forja falhou, mas o Pergaminho do Ferreiro protegeu o item da destruição.", 'error');
       } else {
-        alert("💥 QUEBROU! A forja falhou e o item foi destruído nas chamas!");
+        showToast("💥 QUEBROU! A forja falhou e o item foi destruído nas chamas!", 'error');
         await supabase.from('user_items').delete().eq('id', selectedForgeItem.docId);
         setSelectedForgeItem(null);
       }
@@ -223,7 +223,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     if (!selectedTransmuteItem) return;
     const config = selectedTransmuteItem.transmuteConfig;
     if (!config || !config.resultItemId) {
-      alert("Este item não possui configuração de transmutação.");
+      showToast("Este item não possui configuração de transmutação.", 'error');
       return;
     }
 
@@ -233,11 +233,11 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     consumables.forEach(c => { haveMats[c.itemId] = (haveMats[c.itemId] || 0) + (c.quantity || 1); });
     const missingMats = requiredMats.filter(id => !haveMats[id] || haveMats[id] <= 0);
     if (missingMats.length > 0) {
-      alert("Você não possui os materiais consumíveis exigidos para a transmutação!");
+      showToast("Você não possui os materiais consumíveis exigidos para a transmutação!", 'error');
       return;
     }
     if (userData.coins < (config.coinsCost || 0)) {
-      alert(`Você não tem moedas suficientes! Custo: ${config.coinsCost}`);
+      showToast(`Você não tem moedas suficientes! Custo: ${config.coinsCost}`, 'error');
       return;
     }
 
@@ -261,7 +261,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     }
 
     if (isSuccess) {
-      alert("✨ SUCESSO ESPETACULAR! O item foi transmutado para uma nova forma!");
+      showToast("✨ SUCESSO ESPETACULAR! O item foi transmutado para uma nova forma!", 'success');
       // Fetch result item store data
       const { data: storeSnap } = await supabase.from('store_items').select('data').eq('id', config.resultItemId).single();
       if (storeSnap) {
@@ -291,7 +291,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         await supabase.from('user_items').update({ data: newItemData }).eq('id', selectedTransmuteItem.docId);
       }
     } else {
-      alert("❌ FALHA! A energia se dissipou e o item caiu para o nível +8.");
+      showToast("❌ FALHA! A energia se dissipou e o item caiu para o nível +8.", 'error');
       await supabase.from('user_items').update({
         data: {
           ...selectedTransmuteItem,
