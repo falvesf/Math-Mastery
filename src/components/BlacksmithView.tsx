@@ -15,7 +15,7 @@ import { useTenant } from '../contexts/TenantContext';
 // @ts-ignore
 import { calculateTotalStats } from '../lib/gacha';
 // @ts-ignore
-import { forgeStrengthFraction, forgeAttributeValue, nextForgeCost, forgeSuccessChance, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
+import { forgeStrengthFraction, forgeAttributeValue, forgeAttributeValueWithConfig, nextForgeCost, nextForgeCostWithConfig, forgeSuccessChance, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
 
 interface BlacksmithModalProps {
   userData: any;
@@ -156,7 +156,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
     const nextLevel = currentLevel + 1;
     const buyPrice = selectedForgeItem.cost || selectedForgeItem.price || 100;
-    const cost = nextForgeCost(currentLevel, buyPrice);
+    const cost = nextForgeCostWithConfig(currentLevel, buyPrice, selectedForgeItem.forgeConfig);
     const finalChance = useScroll ? 100 : forgeSuccessChance(nextLevel, selectedForgeItem.forgeConfig);
     
     if (userData.coins < cost) {
@@ -413,10 +413,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       const curLevel = selectedForgeItem.forgeLevel || 0;
                       const baseAttr = selectedForgeItem.baseAttributeValue || 0;
                       const buyPrice = selectedForgeItem.cost || selectedForgeItem.price || 100;
-                      const curAttr = forgeAttributeValue(baseAttr, curLevel);
-                      const maxAttr = forgeAttributeValue(baseAttr, MAX_FORGE_LEVEL);
-                      const nextAttr = forgeAttributeValue(baseAttr, curLevel + 1);
-                      const nextCost = nextForgeCost(curLevel, buyPrice);
+                      const curAttr = forgeAttributeValueWithConfig(baseAttr, curLevel, selectedForgeItem.forgeConfig);
+                      const maxAttr = forgeAttributeValueWithConfig(baseAttr, MAX_FORGE_LEVEL, selectedForgeItem.forgeConfig);
+                      const nextAttr = forgeAttributeValueWithConfig(baseAttr, curLevel + 1, selectedForgeItem.forgeConfig);
+                      const nextCost = nextForgeCostWithConfig(curLevel, buyPrice, selectedForgeItem.forgeConfig);
                       const nextChance = useScroll ? 100 : forgeSuccessChance(curLevel + 1, selectedForgeItem.forgeConfig);
                       return (
                         <>

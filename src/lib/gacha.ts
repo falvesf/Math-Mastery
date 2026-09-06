@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { EffectAddType } from './damageEffects';
-import { forgeAttributeValue } from './forge';
+import { forgeAttributeValueWithConfig } from './forge';
 
 export type ItemCategory = 'attack' | 'defense' | 'support' | 'none';
 export type AttributeType = 'attack' | 'defense' | 'xp' | 'coins' | 'vitality' | 'fortitude' | 'persuasion' | 'none';
@@ -160,7 +160,8 @@ export function calculateTotalStats(equippedItems: any[], distributedStats?: Rec
 
   equippedItems.forEach(item => {
     // Força forjada: o item comprado (+0) tem 90% menos do atributo base; forjado +9 atinge 100%.
-    const effBase = forgeAttributeValue(item.baseAttributeValue || 0, item.forgeLevel || 0);
+    // Respeita override manual do painel (statsPerLevel) se existir.
+    const effBase = forgeAttributeValueWithConfig(item.baseAttributeValue || 0, item.forgeLevel || 0, item.forgeConfig);
     // Base Attributes
     if (item.baseAttributeType === 'attack') stats.attack += effBase;
     if (item.baseAttributeType === 'defense') stats.defense += effBase;

@@ -14,6 +14,13 @@ export function forgeAttributeValue(base: number, level: number): number {
   return Math.round((base || 0) * forgeStrengthFraction(level));
 }
 
+/** Força efetiva: usa o valor configurado no painel (se houver) ou o cálculo automático. */
+export function forgeAttributeValueWithConfig(base: number, level: number, config: any): number {
+  const override = config?.statsPerLevel?.[Math.max(0, Math.min(9, Math.floor(level || 0)))];
+  if (typeof override === 'number' && !isNaN(override)) return override;
+  return forgeAttributeValue(base, level);
+}
+
 // ============ Custo da forja (moedas) ============
 // Regra: o item é comprado enfraquecido por `buyPrice`. Para forjar ao próximo nível:
 //   custo = (valorAcumuladoAtual / 2) + (grauN * 10% do valorAcumuladoAtual)
@@ -52,6 +59,14 @@ export function forgeCostForLevel(level: number, buyPrice: number, cache: Record
 /** Custo de forja do item atual (já no nível `level`) até o próximo nível. */
 export function nextForgeCost(level: number, buyPrice: number): number {
   return forgeCostForLevel(level + 1, buyPrice);
+}
+
+/** Custo efetivo: usa o valor configurado no painel (se houver) ou o cálculo automático. */
+export function nextForgeCostWithConfig(level: number, buyPrice: number, config: any): number {
+  const n = Math.max(1, Math.min(MAX_FORGE_LEVEL, Math.floor((level || 0) + 1)));
+  const override = config?.coinsCostPerLevel?.[n];
+  if (typeof override === 'number' && !isNaN(override)) return override;
+  return nextForgeCost(level, buyPrice);
 }
 
 // ============ Chances de forja (fallback padrão) ============

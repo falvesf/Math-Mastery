@@ -105,6 +105,7 @@ export function normalizeEquippedItems(userItemRows: any[]): any[] {
         battleSoundUrl: data.battleSoundUrl,
         damageEffect: data.damageEffect || 'none',
         forgeLevel: data.forgeLevel || 0,
+        forgeConfig: data.forgeConfig || null,
       });
     }
   });

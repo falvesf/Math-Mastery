@@ -706,6 +706,7 @@ export default function QuestGameplay() {
                   baseAttributeType: data.baseAttributeType,
                   baseAttributeValue: data.baseAttributeValue,
                   forgeLevel: data.forgeLevel || 0,
+                  forgeConfig: data.forgeConfig || null,
                   adds: parsedAdds,
                   gameModelUrl: data.gameModelUrl,
                   modelTextureUrl: data.modelTextureUrl,

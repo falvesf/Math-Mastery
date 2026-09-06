@@ -219,6 +219,7 @@ export default function LiveQuestStudent() {
                   baseAttributeType: data.baseAttributeType,
                   baseAttributeValue: data.baseAttributeValue,
                   forgeLevel: data.forgeLevel || 0,
+                  forgeConfig: data.forgeConfig || null,
                   adds: parsedAdds,
                   damageEffect: data.damageEffect || 'none',
                   gameModelUrl: data.gameModelUrl,

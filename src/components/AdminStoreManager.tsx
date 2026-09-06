@@ -1239,31 +1239,38 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                         <tr style={{ background: 'rgba(234,88,12,0.2)' }}>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Nível</th>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Chance (%)</th>
-                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Força (calculado)</th>
-                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Custo (calculado)</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Força (calculado = padrão)</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Custo (calculado = padrão)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {[0,1,2,3,4,5,6,7,8,9].map(lvl => {
                           const baseVal = formData.baseAttributeValue || 0;
-                          const strengthFrac = forgeStrengthFraction(lvl);
-                          const curCost = lvl === 0 ? 0 : nextForgeCost(lvl - 1, formData.cost || 100);
+                          const calcStrength = forgeAttributeValue(baseVal, lvl);
+                          const calcCost = lvl === 0 ? 0 : nextForgeCost(lvl - 1, formData.cost || 100);
+                          const setOverride = (key: 'statsPerLevel' | 'coinsCostPerLevel', l: number, val: number) => {
+                            const updated = { ...(formData.forgeConfig || {}), [key]: { ...(formData.forgeConfig?.[key] || {}), [l]: val } };
+                            setFormData({ ...formData, forgeConfig: updated });
+                          };
                           return (
                             <tr key={lvl} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                               <td style={{ padding: '4px 8px', textAlign: 'center', color: lvl === 0 ? '#888' : 'var(--gold-primary)', fontWeight: 'bold' }}>+{lvl}</td>
                               <td style={{ padding: '4px 8px' }}>
                                 {lvl === 0 ? <span style={{ color: '#666', fontSize: '0.75rem' }}>—</span> : (
-                                  <input type="number" min={0} max={100} value={formData.forgeConfig?.successChancePerLevel?.[lvl] ?? DEFAULT_FORGE_SUCCESS[lvl]} onChange={e => {
-                                    const updated = { ...(formData.forgeConfig || {}), successChancePerLevel: { ...(formData.forgeConfig?.successChancePerLevel || {}), [lvl]: Number(e.target.value) } };
-                                    setFormData({ ...formData, forgeConfig: updated });
-                                  }} style={{ width: '60px', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-glass)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                                  <input type="number" min={0} max={100} value={formData.forgeConfig?.successChancePerLevel?.[lvl] ?? DEFAULT_FORGE_SUCCESS[lvl]} onChange={e => setOverride('successChancePerLevel', lvl, Number(e.target.value))} style={{ width: '60px', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-glass)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
                                 )}
                               </td>
-                              <td style={{ padding: '4px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                {lvl === 0 ? `${forgeAttributeValue(baseVal, 0)} (10%)` : `${forgeAttributeValue(baseVal, lvl)} (${Math.round(strengthFrac * 100)}%)`}
+                              <td style={{ padding: '4px 8px' }}>
+                                <input type="number" min={0} value={formData.forgeConfig?.statsPerLevel?.[lvl] ?? calcStrength} onChange={e => setOverride('statsPerLevel', lvl, Number(e.target.value))} style={{ width: '70px', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-glass)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                                <div style={{ fontSize: '0.62rem', color: '#666' }}>(calc {calcStrength})</div>
                               </td>
-                              <td style={{ padding: '4px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                {lvl === 0 ? '—' : `${curCost} moedas`}
+                              <td style={{ padding: '4px 8px' }}>
+                                {lvl === 0 ? <span style={{ color: '#666', fontSize: '0.75rem' }}>—</span> : (
+                                  <>
+                                    <input type="number" min={0} value={formData.forgeConfig?.coinsCostPerLevel?.[lvl] ?? calcCost} onChange={e => setOverride('coinsCostPerLevel', lvl, Number(e.target.value))} style={{ width: '90px', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-glass)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                                    <div style={{ fontSize: '0.62rem', color: '#666' }}>(calc {calcCost})</div>
+                                  </>
+                                )}
                               </td>
                             </tr>
                           );

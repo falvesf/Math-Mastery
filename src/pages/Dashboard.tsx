@@ -881,6 +881,7 @@ export default function Dashboard() {
                 baseAttributeType: data.baseAttributeType,
                 baseAttributeValue: data.baseAttributeValue,
                 forgeLevel: data.forgeLevel || 0,
+                forgeConfig: data.forgeConfig || null,
                 adds: parsedAdds,
                 gameModelUrl: data.gameModelUrl,
                 modelTextureUrl: data.modelTextureUrl,
