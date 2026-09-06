@@ -57,7 +57,7 @@ export interface TooltipItemData {
 export function normalizeItemForTooltip(item: any): TooltipItemData {
   return {
     id: item.id || item.itemId,
-    title: item.title || item.itemTitle || item.name || 'Item Desconhecido',
+    title: (item.title || item.itemTitle || item.name || 'Item Desconhecido').trim(),
     type: item.type || item.itemType,
     forgeLevel: item.forgeLevel,
     rarity: item.rarity,
