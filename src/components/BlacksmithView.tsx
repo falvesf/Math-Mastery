@@ -16,6 +16,7 @@ import { useTenant } from '../contexts/TenantContext';
 import { calculateTotalStats } from '../lib/gacha';
 // @ts-ignore
 import { forgeStrengthFraction, forgeAttributeValue, forgeAttributeValueWithConfig, nextForgeCost, nextForgeCostWithConfig, forgeSuccessChance, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
+import { useDialog } from '../contexts/DialogContext';
 
 interface BlacksmithModalProps {
   userData: any;
@@ -25,6 +26,7 @@ interface BlacksmithModalProps {
 }
 
 export default function BlacksmithModal({ userData, currentRankIndex, onClose, onSuccess }: BlacksmithModalProps) {
+  const { showConfirm } = useDialog();
   const [activeTab, setActiveTab] = useState<'forge' | 'transmute'>('forge');
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,7 +171,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     }
 
     const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nChance: ${Math.min(100, finalChance)}%\n${useScroll ? 'Pergaminho ativo: O item será protegido em caso de falha.' : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}`;
-    if (!window.confirm(confirmMsg)) return;
+    if (!await showConfirm(confirmMsg)) return;
 
     // Deduct coins
     await supabase.from('users').update({ coins: userData.coins - cost }).eq('uid', userData.uid);
@@ -240,7 +242,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     }
 
     const confirmMsg = `Deseja tentar transmutar este item?\nChance de Sucesso: ${config.successChance}%\nCusto: ${config.coinsCost} moedas\nConsome ${requiredMats.length} material(is).\nSe falhar, o item voltará para o +8!`;
-    if (!window.confirm(confirmMsg)) return;
+    if (!await showConfirm(confirmMsg)) return;
 
     const isSuccess = (Math.random() * 100) <= (config.successChance || 25);
 

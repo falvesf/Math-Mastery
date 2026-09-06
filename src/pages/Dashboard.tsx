@@ -2243,7 +2243,7 @@ export default function Dashboard() {
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    if (!confirm(`Excluir o tema global "${gt.name}"?`)) return;
+                                    if (!await showConfirm(`Excluir o tema global "${gt.name}"?`)) return;
                                     await supabase.from('system_collections').delete().eq('id', gt.id);
                                     setGlobalThemes(prev => prev.filter(t => t.id !== gt.id));
                                     if (appTheme === gt.id) {
@@ -2301,7 +2301,7 @@ export default function Dashboard() {
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (!confirm(`Excluir o tema "${t.name}"?`)) return;
+                                if (!await showConfirm(`Excluir o tema "${t.name}"?`)) return;
                                 await supabase.from('user_themes').delete().eq('id', t.id);
                                 setUserThemes(prev => prev.filter(ut => ut.id !== t.id));
                                 if (appTheme === t.id) {
