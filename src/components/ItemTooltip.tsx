@@ -121,7 +121,7 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
         
         <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)' }}>
-          {forgeItemName(item.title, item.forgeLevel || 0)}
+          {item.type === 'equippable' ? forgeItemName(item.title, item.forgeLevel || 0) : item.title}
         </h4>
 
         <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px', color: rColor, border: `1px solid ${rColor}`, background: `${rColor}22` }}>
