@@ -15,7 +15,7 @@ import { useTenant } from '../contexts/TenantContext';
 // @ts-ignore
 import { calculateTotalStats } from '../lib/gacha';
 // @ts-ignore
-import { forgeStrengthFraction, forgeAttributeValue, nextForgeCost, forgeSuccessChance, MAX_FORGE_LEVEL } from '../lib/forge';
+import { forgeStrengthFraction, forgeAttributeValue, nextForgeCost, forgeSuccessChance, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
 
 interface BlacksmithModalProps {
   userData: any;
@@ -429,7 +429,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                           )}
                         </div>
                         <div>
-                          <h4 style={{ color: 'white', margin: '0 0 0.5rem 0', fontSize: '1.2rem' }}>{selectedForgeItem.itemTitle}</h4>
+                          <h4 style={{ color: 'white', margin: '0 0 0.5rem 0', fontSize: '1.2rem' }}>{forgeItemName(selectedForgeItem.itemTitle, curLevel)}</h4>
                           <div style={{ color: '#aaa', fontSize: '0.9rem', marginBottom: '0.5rem' }}>Nível Atual: +{curLevel}</div>
                           <div style={{ color: '#aaa', fontSize: '0.9rem' }}>
                             {selectedForgeItem.baseAttributeType && selectedForgeItem.baseAttributeType !== 'none'

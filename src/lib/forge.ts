@@ -75,3 +75,8 @@ export function formatForgeLevel(level: number): string {
   const n = Math.max(0, Math.floor(level || 0));
   return n > 0 ? `+${n}` : '+0';
 }
+
+/** Nome do item sempre com o nível de forja (ex: "Armadura de couro +1"). */
+export function forgeItemName(title: string, level: number): string {
+  return `${title || 'Item'} ${formatForgeLevel(level)}`;
+}

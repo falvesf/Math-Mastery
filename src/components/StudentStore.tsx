@@ -12,6 +12,7 @@ import { RANKS, getRankForXp, resolveMinRankName, getMinRankIndex, getMaxAddsLim
 import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig, ATTRIBUTE_LABELS } from '../lib/gacha';
 // @ts-ignore
 import { applyEffectAdd, isEffectAddType, EFFECT_ADD_LABELS, DAMAGE_EFFECTS } from '../lib/damageEffects';
+import { forgeItemName } from '../lib/forge';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
@@ -1187,7 +1188,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 )}
                 <div style={{ padding: '0.5rem 0.65rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.25rem', minWidth: 0, justifyContent: 'center' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
-                    <h3 title={item.itemTitle} style={{ fontSize: viewMode === 'grid-small' ? '0.85rem' : '0.95rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, lineHeight: 1.2, fontWeight: 'bold' }}>{item.itemTitle}</h3>
+                    <h3 title={item.itemTitle} style={{ fontSize: viewMode === 'grid-small' ? '0.85rem' : '0.95rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, lineHeight: 1.2, fontWeight: 'bold' }}>{forgeItemName(item.itemTitle, 0)}</h3>
                     {isList && (
                       <div style={{ flexShrink: 0, background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.75rem' }}>
                         {item.price || 0} {economyType === 'xp' ? 'XP' : 'M'}

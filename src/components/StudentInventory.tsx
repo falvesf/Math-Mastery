@@ -18,6 +18,7 @@ import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type Attribut
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
 import { invalidateEquippedItems } from '../lib/equippedItems';
 import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType } from '../lib/damageEffects';
+import { forgeItemName } from '../lib/forge';
 interface UserItem {
   id: string;
   itemId: string;
@@ -1319,7 +1320,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   
                   {viewMode === 'list' ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1, minWidth: 0, justifyContent: 'center' }}>
-                      <h4 style={{ margin: 0, fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{item.itemTitle}</h4>
+                      <h4 style={{ margin: 0, fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{forgeItemName(item.itemTitle, item.forgeLevel || 0)}</h4>
                       <div style={{ display: 'flex', gap: '0.25rem', marginTop: '2px' }}>
                         <span style={{ 
                           fontSize: '0.6rem', 
@@ -1378,7 +1379,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                     <div style={{ textAlign: 'center', position: 'relative' }} />
                   ) : (
                     <div style={{ textAlign: 'center', position: 'relative' }}>
-                      <h4 style={{ margin: '0 0 0.15rem 0', fontSize: viewMode === 'grid-small' ? '0.6rem' : '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{item.itemTitle}</h4>
+                      <h4 style={{ margin: '0 0 0.15rem 0', fontSize: viewMode === 'grid-small' ? '0.6rem' : '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{forgeItemName(item.itemTitle, item.forgeLevel || 0)}</h4>
                       <span style={{ fontSize: viewMode === 'grid-small' ? '0.55rem' : '0.7rem', color: 'var(--text-secondary)' }}>
                         {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
                       </span>
