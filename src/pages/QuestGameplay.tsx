@@ -15,6 +15,7 @@ import BattleTransition from '../components/BattleTransition';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
+import { getMaxAddsLimit } from '../lib/ranks';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
@@ -38,6 +39,7 @@ interface UserItem {
   docIds?: string[];
   hpCooldownReductionMinutes?: number;
   buffDurationHours?: number;
+  forgeLevel?: number;
 }
 
 export default function QuestGameplay() {
@@ -566,6 +568,7 @@ export default function QuestGameplay() {
                   itemCategory: data.itemCategory,
                   baseAttributeType: data.baseAttributeType,
                   baseAttributeValue: data.baseAttributeValue,
+                  forgeLevel: data.forgeLevel || 0,
                   adds: parsedAdds,
                   gameModelUrl: data.gameModelUrl,
                   modelTextureUrl: data.modelTextureUrl,
@@ -1316,7 +1319,7 @@ export default function QuestGameplay() {
           finalRewards.coins = Math.floor(Math.random() * (max - min + 1)) + min;
           earnedCoins += finalRewards.coins;
           
-          const wonSlots: { id: string, quantity: number }[] = [];
+          const wonSlots: { id: string, quantity: number, forgeLevel?: number }[] = [];
           const slotCount = selectedChestModel?.slot_count || (quest?.chestConfig as any)?.slotCount || 4;
           for (let i = 0; i < slotCount; i++) {
             const itemId = quest.chestConfig.itemIds?.[i];
@@ -1325,7 +1328,7 @@ export default function QuestGameplay() {
             const defaultChance = i === 0 ? 50 : i === 1 ? 25 : i === 2 ? 10 : 5;
             const chance = Math.max(0.01, (configured ?? defaultChance) / 100);
             if (Math.random() <= chance) {
-              wonSlots.push({ id: itemId, quantity: quest.chestConfig.itemQuantities?.[i] || 1 });
+              wonSlots.push({ id: itemId, quantity: quest.chestConfig.itemQuantities?.[i] || 1, forgeLevel: quest.chestConfig.itemForgeLevels?.[i] || 0 });
             } else {
               break;
             }
@@ -1361,8 +1364,9 @@ export default function QuestGameplay() {
                   baseAttributeType: item.baseAttributeType || 'none',
                   baseAttributeValue: item.baseAttributeValue || 0,
                   modelTransforms: item.modelTransforms || null,
-                  adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : [],
-                  minSalePrice: item.minSalePrice || 0
+                  adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired)) : [],
+                  minSalePrice: item.minSalePrice || 0,
+                  forgeLevel: slot.forgeLevel || 0
                 };
                 await supabase.from('user_items').insert({
                   student_id: userData!.uid,
@@ -1409,7 +1413,8 @@ export default function QuestGameplay() {
               baseAttributeType: item.baseAttributeType || 'none',
               baseAttributeValue: item.baseAttributeValue || 0,
               modelTransforms: item.modelTransforms || null,
-              adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : []
+              adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired)) : [],
+              forgeLevel: drop.forgeLevel || 0
             };
             await supabase.from('user_items').insert({
               student_id: userData!.uid,

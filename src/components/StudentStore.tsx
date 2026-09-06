@@ -7,7 +7,7 @@ import type { UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
-import { RANKS, getRankForXp, resolveMinRankName, getMinRankIndex } from '../lib/ranks';
+import { RANKS, getRankForXp, resolveMinRankName, getMinRankIndex, getMaxAddsLimit } from '../lib/ranks';
 // @ts-ignore
 import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig, ATTRIBUTE_LABELS } from '../lib/gacha';
 // @ts-ignore
@@ -295,8 +295,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       }
 
       if (!isGift) {
-        const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
-        const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
+        const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
+        const maxInventorySpace = 12 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
         const availableSlots = Math.max(0, maxInventorySpace - myInventoryCount);
 
         let maxQuantityAllowed = 0;
@@ -363,7 +363,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
       let finalAdds: ItemAdd[] = [];
       if (item.type === 'equippable') {
         const globalGachaConfig = await fetchGlobalGachaConfig();
-        finalAdds = rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined);
+        finalAdds = rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired));
       }
       
       let remainingToBuy = quantityToBuy;
@@ -387,6 +387,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             itemCategory: item.itemCategory || 'none',
             baseAttributeType: item.baseAttributeType || 'none',
             baseAttributeValue: item.baseAttributeValue || 0,
+            forgeLevel: 0,
             gameModelUrl: item.gameModelUrl || '',
             modelTextureUrl: item.modelTextureUrl || '',
             minecraftHeadValue: item.minecraftHeadValue || '',
@@ -397,7 +398,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             unlockedSkinId: item.unlockedSkinId || '',
             buffDurationDays: item.buffDurationDays || 7,
             backColor: item.backColor || '',
-            damageEffect: (item as any).damageEffect || 'none'
+            damageEffect: (item as any).damageEffect || 'none',
+            forgeConfig: (item as any).forgeConfig || null
           }
         });
         remainingToBuy -= qty;
@@ -445,8 +447,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
     const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
-    const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
+    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
+    const maxInventorySpace = 12 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
     if (!isStaff && myInventoryCount >= maxInventorySpace) {
       await showAlert("Sua mochila está cheia!");
       return;
@@ -538,8 +540,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
-    const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
+    const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
+    const maxInventorySpace = 12 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
 
     if (!isStaff && myInventoryCount >= maxInventorySpace) {
       await showAlert("Sua mochila está cheia! Você não pode cancelar a venda enquanto não tiver espaço para receber o item de volta.");
@@ -589,8 +591,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
   
-  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
-  const maxInventorySpace = 6 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
+  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
+  const maxInventorySpace = 12 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
 
   const getProcessedItems = () => {
     let result = [...items];

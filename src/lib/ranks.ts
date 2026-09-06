@@ -17,6 +17,7 @@ export interface RankDef {
   rankUpChestModelId?: string;
   hideFromHistory?: boolean;
   hide_from_history?: boolean;
+  maxAddsLimit?: number;
 }
 
 export const RANKS: RankDef[] = [
@@ -117,6 +118,7 @@ export const initRanks = async (tenantId?: string) => {
         return { 
           ...rest, 
           hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
+          maxAddsLimit: d.max_adds_limit ?? null,
           _isGlobal: d.is_global ?? false 
         } as RankDef & { _isGlobal?: boolean };
       }).sort((a,b) => a.minXp - b.minXp);
@@ -147,6 +149,7 @@ export async function ensureGlobalRanks(): Promise<void> {
       rankUpChestItems: r.rankUpChestItems || [],
       rankUpChestModelId: r.rankUpChestModelId || '',
       hide_from_history: r.hideFromHistory ?? (r.minXp === 0),
+      max_adds_limit: r.maxAddsLimit ?? null,
       tenant_id: null,
       is_global: true
     }));
@@ -156,4 +159,19 @@ export async function ensureGlobalRanks(): Promise<void> {
   } catch (e) {
     console.error('Erro em ensureGlobalRanks:', e);
   }
+}
+
+export function getMaxAddsLimit(value: number | string | null | undefined): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const name = DEFAULT_RANKS[value]?.name;
+    if (name) {
+      const rank = RANKS.find(r => r.name === name);
+      return rank?.maxAddsLimit;
+    }
+  }
+  if (typeof value === 'string' && value) {
+    const rank = RANKS.find(r => r.name === value);
+    return rank?.maxAddsLimit;
+  }
+  return undefined;
 }

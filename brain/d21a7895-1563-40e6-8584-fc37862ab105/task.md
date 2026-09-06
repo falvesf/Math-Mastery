@@ -1,0 +1,7 @@
+- [ ] Renomear e refatorar `BlacksmithModal.tsx` para `BlacksmithView.tsx`
+- [ ] Remover classes e tags de modal (`modal-overlay`, `modal-content`) do componente
+- [ ] Atualizar `Dashboard.tsx` para adicionar a aba `A Forja` e rotear o `BlacksmithView`
+- [ ] Corrigir o background do Sketchfab (remover `transparent: 1`)
+- [ ] Corrigir lógica de itens elegíveis (`itemType === 'equippable'`) para fazer os itens aparecerem
+- [ ] Atualizar a interface da aba "Transmutação" no `BlacksmithView` para esconder o ferreiro 3D e exibir 4 slots (1 principal, 3 ingredientes)
+- [ ] Testar a interface modificada

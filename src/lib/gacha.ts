@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { EffectAddType } from './damageEffects';
+import { forgeAttributeValue } from './forge';
 
 export type ItemCategory = 'attack' | 'defense' | 'support' | 'none';
 export type AttributeType = 'attack' | 'defense' | 'xp' | 'coins' | 'vitality' | 'fortitude' | 'persuasion' | 'none';
@@ -95,24 +96,25 @@ export async function fetchGlobalGachaConfig(): Promise<GachaConfig> {
   return DEFAULT_GACHA_CONFIG;
 }
 
-export function rollItemAdds(config?: GachaConfig, fixedAttributes?: ItemAdd[], globalConfig?: GachaConfig): ItemAdd[] {
+export function rollItemAdds(config?: GachaConfig, fixedAttributes?: ItemAdd[], globalConfig?: GachaConfig, maxAddsLimit?: number): ItemAdd[] {
   if (fixedAttributes && fixedAttributes.length > 0) {
     return [...fixedAttributes].slice(0, 4);
   }
 
   const cfg = config || globalConfig || DEFAULT_GACHA_CONFIG;
   const adds: ItemAdd[] = [];
+  const limit = maxAddsLimit ?? 4;
   
-  if (Math.random() < cfg.chances.xp) adds.push({ type: 'xp', value: rollValue(cfg.weights.xp) });
-  if (adds.length < 2 && Math.random() < cfg.chances.persuasion) adds.push({ type: 'persuasion', value: rollValue(cfg.weights.persuasion) });
-  if (adds.length < 2 && Math.random() < cfg.chances.coins) adds.push({ type: 'coins', value: rollValue(cfg.weights.coins) });
-  if (adds.length < 2 && Math.random() < cfg.chances.vitality) adds.push({ type: 'vitality', value: rollValue(cfg.weights.vitality) });
-  if (adds.length < 2 && Math.random() < cfg.chances.fortitude) adds.push({ type: 'fortitude', value: rollValue(cfg.weights.fortitude) });
+  if (adds.length < limit && Math.random() < cfg.chances.xp) adds.push({ type: 'xp', value: rollValue(cfg.weights.xp) });
+  if (adds.length < limit && Math.random() < cfg.chances.persuasion) adds.push({ type: 'persuasion', value: rollValue(cfg.weights.persuasion) });
+  if (adds.length < limit && Math.random() < cfg.chances.coins) adds.push({ type: 'coins', value: rollValue(cfg.weights.coins) });
+  if (adds.length < limit && Math.random() < cfg.chances.vitality) adds.push({ type: 'vitality', value: rollValue(cfg.weights.vitality) });
+  if (adds.length < limit && Math.random() < cfg.chances.fortitude) adds.push({ type: 'fortitude', value: rollValue(cfg.weights.fortitude) });
   
   return adds;
 }
 
-export function rollExactAttributes(count: number, existingTypes: AttributeType[] = [], config?: GachaConfig, fixedAttributes?: ItemAdd[], globalConfig?: GachaConfig): ItemAdd[] {
+export function rollExactAttributes(count: number, existingTypes: AttributeType[] = [], config?: GachaConfig, fixedAttributes?: ItemAdd[], globalConfig?: GachaConfig, maxAddsLimit?: number): ItemAdd[] {
   if (fixedAttributes && fixedAttributes.length > 0) {
     return [...fixedAttributes].slice(0, 4);
   }
@@ -121,8 +123,8 @@ export function rollExactAttributes(count: number, existingTypes: AttributeType[
   let safety = 0;
   const excludedTypes = new Set<AttributeType>(existingTypes);
 
-  while (adds.length < count && safety < 1000) {
-    const rolled = rollItemAdds(config, undefined, globalConfig);
+  while (adds.length < count && adds.length < (maxAddsLimit ?? 4) && safety < 1000) {
+    const rolled = rollItemAdds(config, undefined, globalConfig, maxAddsLimit);
     for (const r of rolled) {
       if (adds.length < count && !excludedTypes.has(r.type as AttributeType)) {
         adds.push(r);
@@ -157,9 +159,11 @@ export function calculateTotalStats(equippedItems: any[], distributedStats?: Rec
   };
 
   equippedItems.forEach(item => {
+    // Força forjada: o item comprado (+0) tem 90% menos do atributo base; forjado +9 atinge 100%.
+    const effBase = forgeAttributeValue(item.baseAttributeValue || 0, item.forgeLevel || 0);
     // Base Attributes
-    if (item.baseAttributeType === 'attack') stats.attack += (item.baseAttributeValue || 0);
-    if (item.baseAttributeType === 'defense') stats.defense += (item.baseAttributeValue || 0);
+    if (item.baseAttributeType === 'attack') stats.attack += effBase;
+    if (item.baseAttributeType === 'defense') stats.defense += effBase;
 
     // Extra Adds
     if (item.adds && Array.isArray(item.adds)) {

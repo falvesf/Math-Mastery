@@ -11,6 +11,7 @@ import CustomModelViewer from '../components/CustomModelViewer';
 import AvatarCharacter from '../components/AvatarCharacter';
 import { useDialog } from '../contexts/DialogContext';
 import { rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
+import { getMaxAddsLimit } from '../lib/ranks';
 import { getSafeUrl } from '../lib/utils';
 
 export interface LivePlayer {
@@ -603,7 +604,7 @@ export default function LiveQuestAdmin() {
                     baseAttributeType: item.baseAttributeType || 'none',
                     baseAttributeValue: item.baseAttributeValue || 0,
                     modelTransforms: item.modelTransforms || null,
-                    adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined) : []
+                    adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired)) : []
                  };
                  promises.push(supabase.from('user_items').insert({ student_id: playerUid, item_id: item.id, equipped: false, data: itemData }));
                }

@@ -51,8 +51,8 @@ export async function getSellerSpace(studentId: string): Promise<{ max: number; 
     Object.values(consumableCounts).forEach(qty => { current += Math.ceil(qty / 99); });
 
     const totalEquippedStats = calculateTotalStats(equippedStats, user.distributed_stats || {});
-    const fortitudeSlots = Math.floor(totalEquippedStats.fortitude / 30);
-    const max = 6 + rankIndex + extra + fortitudeSlots;
+    const fortitudeSlots = Math.floor(totalEquippedStats.fortitude / 1);
+    const max = 12 + rankIndex + extra + fortitudeSlots;
     return { max, current, available: Math.max(0, max - current) };
   } catch (e) {
     return { max: 0, current: 0, available: 0 };

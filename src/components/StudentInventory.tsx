@@ -12,7 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
-import { RANKS, getRankForXp } from '../lib/ranks';
+import { RANKS, getRankForXp, getMaxAddsLimit } from '../lib/ranks';
 // @ts-ignore
 import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
@@ -53,6 +53,7 @@ interface UserItem {
   saleExpiresAt?: number;
   saleBuffDays?: number;
   hiddenFromMarket?: boolean;
+  forgeLevel?: number;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -164,8 +165,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
   const totalEquippedStats = calculateTotalStats(items.filter(i => i.equipped), userData?.distributedStats);
-  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 4);
-  const maxInventorySpace = 6 + currentRankIndex + (userData?.extraInventorySpace || 0) + extraSlotsFromFortitude;
+  const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
+  const maxInventorySpace = 12 + currentRankIndex + (userData?.extraInventorySpace || 0) + extraSlotsFromFortitude;
   const currentSpaceOccupied = items.filter(i => !i.equipped).length;
 
   // Licenças de venda no bazar (usadas/consumidas ao colocar um item à venda)
@@ -699,8 +700,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return;
       }
       const currentAddsCount = freshAdds.length;
-      if (currentAddsCount >= 2) {
-        showToast("Este item já possui o limite máximo de atributos extras (2)!", 'error');
+      const maxAddsLimit = getMaxAddsLimit(currentRank.name) ?? 2;
+      if (currentAddsCount >= maxAddsLimit) {
+        showToast(`Este item já possui o limite máximo de atributos extras (${maxAddsLimit})!`, 'error');
         return;
       }
 
@@ -725,7 +727,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         existingTypes, 
         storeItemData?.gachaConfig, 
         storeItemData?.fixedAttributes, 
-        (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined
+        (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined,
+        getMaxAddsLimit(storeItemData?.minRankRequired)
       );
       const finalAdds = [...freshAdds, ...newAdds].slice(0, 4);
 
@@ -777,7 +780,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
           [],
           storeItemData?.gachaConfig,
           storeItemData?.fixedAttributes,
-          (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined
+          (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined,
+          getMaxAddsLimit(storeItemData?.minRankRequired)
         ) : [];
         attempts++;
       } while (areAddsEqual(newNormal, targetAdds.filter((a: any) => !isEffectAddType(a.type))) && attempts < 10);

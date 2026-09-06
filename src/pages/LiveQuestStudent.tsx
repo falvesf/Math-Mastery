@@ -36,6 +36,7 @@ interface UserItem {
   docIds?: string[];
   hpCooldownReductionMinutes?: number;
   buffDurationHours?: number;
+  forgeLevel?: number;
 }
 
 export default function LiveQuestStudent() {
@@ -217,6 +218,7 @@ export default function LiveQuestStudent() {
                   itemCategory: data.itemCategory,
                   baseAttributeType: data.baseAttributeType,
                   baseAttributeValue: data.baseAttributeValue,
+                  forgeLevel: data.forgeLevel || 0,
                   adds: parsedAdds,
                   damageEffect: data.damageEffect || 'none',
                   gameModelUrl: data.gameModelUrl,

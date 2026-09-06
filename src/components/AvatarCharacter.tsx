@@ -58,6 +58,7 @@ export interface AvatarConfig {
 
 export interface EquippedItem {
   docId?: string;
+  forgeLevel?: number;
   itemId?: string;
   imageUrl: string;
   modelUrl?: string;
@@ -424,6 +425,19 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     happy: { base: string; blink: string };
     smile: { base: string; blink: string };
   } | null>(null);
+
+
+  const highestForgeLevel = equippedItems.length > 0 ? Math.max(...equippedItems.map(i => i.forgeLevel || 0), 0) : 0;
+  let auraStyle: React.CSSProperties = { position: 'absolute', top: '-20%', left: '-20%', right: '-20%', bottom: '-20%', pointerEvents: 'none', zIndex: -1, borderRadius: '50%' };
+  if (highestForgeLevel >= 9) {
+    auraStyle.background = 'radial-gradient(circle, rgba(239, 68, 68, 0.5) 0%, transparent 70%)';
+    auraStyle.animation = 'pulse 2s infinite alternate';
+  } else if (highestForgeLevel >= 7) {
+    auraStyle.background = 'radial-gradient(circle, rgba(245, 158, 11, 0.4) 0%, transparent 70%)';
+    auraStyle.animation = 'pulse 3s infinite alternate';
+  } else {
+    auraStyle.display = 'none';
+  }
 
   const bgItems = equippedItems.filter(i => i.avatarPart === 'background');
 
@@ -2691,7 +2705,10 @@ if (config?.customModelUrl) {
 
       {/* 3D Canvas — o boneco cresce da BASE (pés) para cima ao dar zoom:
           desloca o canvas para baixo conforme o zoom aumenta, para a cabeça não cortar no topo */}
-      <canvas 
+
+      <div style={auraStyle} className="forge-aura"></div>
+      <canvas
+ 
         ref={canvasRef} 
         onClick={() => onAvatarClick && onAvatarClick()}
         style={{ 

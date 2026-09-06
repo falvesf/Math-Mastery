@@ -197,13 +197,16 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
       }
       
       const clean = cleanRankForDb(g);
-      const { error } = await supabase.from('custom_ranks').insert({
+      const rankDataToSave = {
         id: `rank_${tenantPrefix}_${currentCount + addedCount}_${Date.now()}`,
         ...clean,
         hide_from_history: (g as any).hideFromHistory ?? ((g as any).hide_from_history ?? (g.minXp === 0)),
+        max_adds_limit: (g as any).maxAddsLimit ?? null,
         tenant_id: tenantId || null,
         is_global: false
-      });
+      };
+      
+      const { error } = await supabase.from('custom_ranks').insert(rankDataToSave);
       if (error) {
         lastError = error;
         console.error('Erro ao importar patente local:', error);
@@ -591,6 +594,11 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Cor do Brilho/Borda</label>
                     <input type="color" value={formData.color} onChange={e => setFormData({ ...formData, color: e.target.value })} style={{ width: '100%', height: '45px', padding: '0.2rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', cursor: 'pointer' }} />
+                  </div>
+                  
+                  <div style={{ flex: '1 1 150px' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Max Adds</label>
+                    <input type="number" min="0" value={formData.maxAddsLimit || ''} onChange={e => setFormData({ ...formData, maxAddsLimit: e.target.value ? Number(e.target.value) : undefined })} placeholder="Ex: 2" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                   </div>
                 </div>
 

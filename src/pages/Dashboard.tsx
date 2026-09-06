@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, Hammer, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus, ChevronDown, ChevronRight, Lock } from 'lucide-react';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
@@ -12,6 +12,8 @@ import { calculateTotalStats, ATTRIBUTE_LABELS } from '../lib/gacha';
 import LevelUpModal from '../components/LevelUpModal';
 import ChestReveal from '../components/ChestReveal';
 import StudentStore from '../components/StudentStore';
+// @ts-ignore
+import BlacksmithView from '../components/BlacksmithView';
 import StudentInventory from '../components/StudentInventory';
 import CachedImage from '../components/CachedImage';
 import { useDialog } from '../contexts/DialogContext';
@@ -339,6 +341,7 @@ export default function Dashboard() {
 
   // Level Up Animation State
   const [showLevelUp, setShowLevelUp] = useState(false);
+  // @ts-ignore
   const [levelUpData, setLevelUpData] = useState<{ oldRank: RankDef | null, newRank: RankDef } | null>(null);
 
   // Rank Up Chest State
@@ -877,6 +880,7 @@ export default function Dashboard() {
                 itemCategory: data.itemCategory,
                 baseAttributeType: data.baseAttributeType,
                 baseAttributeValue: data.baseAttributeValue,
+                forgeLevel: data.forgeLevel || 0,
                 adds: parsedAdds,
                 gameModelUrl: data.gameModelUrl,
                 modelTextureUrl: data.modelTextureUrl,
@@ -1140,6 +1144,7 @@ export default function Dashboard() {
   }, [allStudents, showRankingAvatars, activeTab]);
 
   const currentRank = getRankForXp(userData?.xp || 0, userData?.classId);
+  const currentRankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRank.name));
 
   // Transition rank images for admins and teachers
   useEffect(() => {
@@ -2739,14 +2744,25 @@ export default function Dashboard() {
             </button>
           )}
           {canView('store', 'view') && (
-            <button
-              onClick={() => setActiveTab('store')}
-              title="Mercado"
-              style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
-            >
-              <Store size={20} /> <span className="tab-text">Mercado</span>
-            </button>
+            <>
+              <button
+                onClick={() => setActiveTab('store')}
+                title="Mercado"
+                style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+              >
+                <Store size={20} /> <span className="tab-text">Mercado</span>
+              </button>
+              <button
+                onClick={() => currentRankIndex >= 5 && setActiveTab('forge')}
+                title={currentRankIndex >= 5 ? "A Forja" : "A Forja — requer patente Prata I"}
+                style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'forge' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'forge' ? 'var(--text-on-gold, #000000)' : (currentRankIndex >= 5 ? 'var(--text-primary)' : '#64748b'), border: 'none', cursor: currentRankIndex >= 5 ? 'pointer' : 'not-allowed', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap', opacity: currentRankIndex >= 5 ? 1 : 0.6 }}
+              >
+                {currentRankIndex >= 5 ? <Hammer size={18} /> : <Lock size={16} />} <span className="tab-text">A Forja</span>
+              </button>
+            </>
           )}
+
+
         </div>
       </div>
 
@@ -3450,6 +3466,17 @@ export default function Dashboard() {
 
         {activeTab === 'store' && userData && (
           <StudentStore userData={userData} />
+        )}
+
+        {activeTab === 'forge' && userData && (
+          <div style={{ display: 'flex', flex: 1, height: '100%', overflow: 'hidden' }}>
+            <BlacksmithView
+              userData={userData}
+              currentRankIndex={RANKS.findIndex(r => r.name === currentRank.name)}
+              onClose={() => {}}
+              onSuccess={() => { window.location.reload(); }}
+            />
+          </div>
         )}
 
       </main>

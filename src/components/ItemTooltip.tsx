@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { ATTRIBUTE_LABELS, type AttributeType } from '../lib/gacha';
 import { DAMAGE_EFFECTS, EFFECT_ADD_LABELS, isEffectAddType, orderEffectFirst } from '../lib/damageEffects';
+import { forgeAttributeValue } from '../lib/forge';
 
 export const RARITY_COLORS: Record<string, string> = {
   common: '#9ca3af',
@@ -50,6 +51,7 @@ export interface TooltipItemData {
   fixedAttributes?: any[];
   adds?: any[];
   unlockedSkinId?: string;
+  forgeLevel?: number;
 }
 
 export function normalizeItemForTooltip(item: any): TooltipItemData {
@@ -57,6 +59,7 @@ export function normalizeItemForTooltip(item: any): TooltipItemData {
     id: item.id || item.itemId,
     title: item.title || item.itemTitle || item.name || 'Item Desconhecido',
     type: item.type || item.itemType,
+    forgeLevel: item.forgeLevel,
     rarity: item.rarity,
     itemCategory: item.itemCategory,
     description: item.description || item.desc,
@@ -116,7 +119,16 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
       textAlign: 'left'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
-        <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)' }}>{item.title}</h4>
+        
+        <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)' }}>
+          {item.title}
+          {item.forgeLevel > 0 && (
+            <span style={{ marginLeft: '0.4rem', color: item.forgeLevel >= 9 ? 'var(--accent-red)' : item.forgeLevel >= 7 ? '#f97316' : 'var(--gold-primary)' }}>
+              +{item.forgeLevel}
+            </span>
+          )}
+        </h4>
+
         <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px', color: rColor, border: `1px solid ${rColor}`, background: `${rColor}22` }}>
           {getRarityLabel(item.rarity)}
         </span>
@@ -143,7 +155,8 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
 
       {item.type === 'equippable' && baseAttr && (
         <div style={{ marginBottom: '0.35rem', fontSize: '0.9rem' }}>
-          {baseAttr.icon} <strong>{baseAttr.label}:</strong> <span style={{ color: rColor }}>+{item.baseAttributeValue}{mainStatPct ? '%' : ''}</span>
+          {baseAttr.icon} <strong>{baseAttr.label}:</strong> <span style={{ color: rColor }}>+{forgeAttributeValue(item.baseAttributeValue || 0, item.forgeLevel || 0)}{mainStatPct ? '%' : ''}</span>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}> / +{forgeAttributeValue(item.baseAttributeValue || 0, 9)}{mainStatPct ? '%' : ''} (máx +9)</span>
         </div>
       )}
 

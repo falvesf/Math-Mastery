@@ -19,6 +19,10 @@ interface StoreItemData {
   modelTextureUrl?: string;
   minecraftHeadValue?: string;
   [key: string]: any;
+  isForgeable?: boolean;
+  forgeConfig?: any;
+  isTransmutable?: boolean;
+  transmuteConfig?: any;
 }
 
 interface ItemBankModalProps {

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer } from 'lucide-react';
+import { forgeStrengthFraction, forgeAttributeValue, nextForgeCost, DEFAULT_FORGE_SUCCESS } from '../lib/forge';
 import ImageGalleryModal from './ImageGalleryModal';
 import DirectUploadButton from './DirectUploadButton';
 import GachaConfigModal from './GachaConfigModal';
@@ -66,6 +67,10 @@ export interface StoreItem {
   extractMeshName?: string;
   damageEffect?: string; // Efeito especial de dano em batalha (burn, freeze, impact, electric, poison, none)
   battleSoundUrl?: string;
+  isForgeable?: boolean;
+  forgeConfig?: any;
+  isTransmutable?: boolean;
+  transmuteConfig?: any;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -703,7 +708,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           hpCooldownReductionMinutes: itemData.hpCooldownReductionMinutes || null,
           buffDurationHours: itemData.buffDurationHours || null,
           backColor: itemData.backColor || '',
-          extractMeshName: itemData.extractMeshName || null
+          extractMeshName: itemData.extractMeshName || null,
+          isForgeable: true,
+          forgeConfig: itemData.forgeConfig || null,
+          isTransmutable: itemData.isTransmutable || false,
+          transmuteConfig: itemData.transmuteConfig || null
         };
         updatePromises.push(supabase.from('user_items').update({ data: newData }).eq('id', row.id) as any);
       });
@@ -1209,8 +1218,56 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   </div>
                   
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Força do Atributo Base</label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Força do Atributo Base (poder MÁXIMO no +9)</label>
                     <input type="number" value={formData.baseAttributeValue || 0} onChange={e => setFormData({...formData, baseAttributeValue: parseInt(e.target.value) || 0})} className="login-input" style={{ width: '100%' }} />
+                  </div>
+                </div>
+
+                {/* ===== FORJA (todos os equipáveis são forjáveis automaticamente) ===== */}
+                <div style={{ marginBottom: '1.5rem', border: '1px solid rgba(234,88,12,0.4)', borderRadius: '10px', padding: '1rem', background: 'rgba(234,88,12,0.05)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer', fontWeight: 'bold', color: 'var(--accent-red)' }}>
+                    <Hammer size={18} /> Forja do Item (+1 a +9)
+                  </label>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>
+                    Todos os equipamentos são forjáveis. A <strong>força</strong> é calculada automaticamente a partir do Atributo Base (90% menor no +0, crescendo até 100% no +9). O <strong>custo em moedas</strong> é calculado automaticamente com base no valor de compra (metade do valor acumulado + % do grau). Aqui você configura apenas a <strong>chance de sucesso</strong> de cada nível (o fallback já vem preenchido).
+                  </p>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(234,88,12,0.2)' }}>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Nível</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Chance (%)</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Força (calculado)</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Custo (calculado)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[0,1,2,3,4,5,6,7,8,9].map(lvl => {
+                          const baseVal = formData.baseAttributeValue || 0;
+                          const strengthFrac = forgeStrengthFraction(lvl);
+                          const curCost = lvl === 0 ? 0 : nextForgeCost(lvl - 1, formData.cost || 100);
+                          return (
+                            <tr key={lvl} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              <td style={{ padding: '4px 8px', textAlign: 'center', color: lvl === 0 ? '#888' : 'var(--gold-primary)', fontWeight: 'bold' }}>+{lvl}</td>
+                              <td style={{ padding: '4px 8px' }}>
+                                {lvl === 0 ? <span style={{ color: '#666', fontSize: '0.75rem' }}>—</span> : (
+                                  <input type="number" min={0} max={100} value={formData.forgeConfig?.successChancePerLevel?.[lvl] ?? DEFAULT_FORGE_SUCCESS[lvl]} onChange={e => {
+                                    const updated = { ...(formData.forgeConfig || {}), successChancePerLevel: { ...(formData.forgeConfig?.successChancePerLevel || {}), [lvl]: Number(e.target.value) } };
+                                    setFormData({ ...formData, forgeConfig: updated });
+                                  }} style={{ width: '60px', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-glass)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                                )}
+                              </td>
+                              <td style={{ padding: '4px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                {lvl === 0 ? `${forgeAttributeValue(baseVal, 0)} (10%)` : `${forgeAttributeValue(baseVal, lvl)} (${Math.round(strengthFrac * 100)}%)`}
+                              </td>
+                              <td style={{ padding: '4px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                {lvl === 0 ? '—' : `${curCost} moedas`}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
                 
@@ -1317,6 +1374,68 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem', justifyContent: 'flex-end' }}>
                     <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{formData.backColor}</span>
                     <input type="color" value={formData.backColor} onChange={(e) => setFormData({...formData, backColor: e.target.value})} style={{ width: '50px', height: '40px', padding: 0, border: 'none', borderRadius: '4px', cursor: 'pointer' }} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ===== FORGE CONFIG ===== */}
+            {/* ===== TRANSMUTATION CONFIG ===== */}
+            {formData.type === 'equippable' && (
+              <div style={{ marginBottom: '1.5rem', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '1rem', background: 'rgba(139,92,246,0.05)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', cursor: 'pointer', fontWeight: 'bold', color: '#8b5cf6' }}>
+                  <input type="checkbox" checked={!!formData.isTransmutable} onChange={e => setFormData({ ...formData, isTransmutable: e.target.checked, transmuteConfig: e.target.checked ? (formData.transmuteConfig || { successChance: 25, coinsCost: 500, resultItemId: '' }) : undefined })} style={{ width: '18px', height: '18px' }} />
+                  ✨ Item Transmutável (requer +9)
+                </label>
+
+                {formData.isTransmutable && formData.transmuteConfig && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: '140px' }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Custo em Moedas</label>
+                        <input type="number" min={0} value={formData.transmuteConfig.coinsCost ?? 500} onChange={e => setFormData({ ...formData, transmuteConfig: { ...formData.transmuteConfig!, coinsCost: Number(e.target.value) } })} style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-glass)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: '140px' }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Chance de Sucesso (%)</label>
+                        <input type="number" min={0} max={100} value={formData.transmuteConfig.successChance ?? 25} onChange={e => setFormData({ ...formData, transmuteConfig: { ...formData.transmuteConfig!, successChance: Number(e.target.value) } })} style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-glass)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Item Resultado (ID do item na loja que o jogador receberá no +0)</label>
+                      <select value={formData.transmuteConfig.resultItemId || ''} onChange={e => setFormData({ ...formData, transmuteConfig: { ...formData.transmuteConfig!, resultItemId: e.target.value } })} style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                        <option value="">— Selecionar item resultado —</option>
+                        {items.filter(i => i.type === 'equippable').map(i => (
+                          <option key={i.id} value={i.id}>{i.title}</option>
+                        ))}
+                      </select>
+                      {formData.transmuteConfig.resultItemId && (
+                        <p style={{ color: '#8b5cf6', fontSize: '0.75rem', margin: '4px 0 0 0' }}>✓ Resultado: {items.find(i => i.id === formData.transmuteConfig!.resultItemId)?.title || 'Item não encontrado'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Materiais Consumíveis (2 itens exigidos no ritual)</label>
+                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        {[0, 1].map(matIdx => (
+                          <div key={matIdx} style={{ flex: 1, minWidth: '150px' }}>
+                            <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Material {matIdx + 1}</label>
+                            <select
+                              value={formData.transmuteConfig.materials?.[matIdx] || ''}
+                              onChange={e => {
+                                const mats = [...(formData.transmuteConfig!.materials || ['', ''])];
+                                mats[matIdx] = e.target.value;
+                                setFormData({ ...formData, transmuteConfig: { ...formData.transmuteConfig!, materials: mats } });
+                              }}
+                              style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                            >
+                              <option value="">— Selecionar material —</option>
+                              {items.filter(i => i.type === 'consumable').map(i => (
+                                <option key={i.id} value={i.id}>{i.title}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
