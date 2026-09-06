@@ -173,50 +173,29 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nChance: ${Math.min(100, finalChance)}%\n${useScroll ? 'Pergaminho ativo: O item será protegido em caso de falha.' : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}`;
     if (!await showConfirm(confirmMsg)) return;
 
-    // Deduct coins
-    await supabase.from('users').update({ coins: userData.coins - cost }).eq('uid', userData.uid);
-    
-    // Deduct scroll if used
-    if (useScroll) {
-      const { data: scrollItem } = await supabase.from('user_items').select('*').eq('student_id', userData.uid).filter('data->>gameEffect', 'eq', 'blacksmith_scroll').limit(1).single();
-      if (scrollItem) {
-        const currentData = scrollItem.data as any;
-        if (currentData.quantity > 1) {
-          await supabase.from('user_items').update({ data: { ...currentData, quantity: currentData.quantity - 1 } }).eq('id', scrollItem.id);
-        } else {
-          await supabase.from('user_items').delete().eq('id', scrollItem.id);
-        }
-      }
-    }
-
-    const isSuccess = (Math.random() * 100) <= finalChance;
-    
     setIsForging(true);
     if (sketchfabApi) sketchfabApi.play();
+    const rpcPromise = supabase.rpc('forge_item', { p_item_id: selectedForgeItem.docId, p_use_scroll: useScroll });
     await new Promise(r => setTimeout(r, 2500));
     if (sketchfabApi) sketchfabApi.pause();
     setIsForging(false);
-    
-    if (isSuccess) {
-      showToast("🔥 SUCESSO! O item foi forjado!", 'success');
-      await supabase.from('user_items').update({
-        data: {
-          ...selectedForgeItem,
-          forgeLevel: nextLevel
-        }
-      }).eq('id', selectedForgeItem.docId);
-    } else {
-      if (useScroll) {
-        showToast("❌ FALHA! A forja falhou, mas o Pergaminho do Ferreiro protegeu o item da destruição.", 'error');
-      } else {
-        showToast("💥 QUEBROU! A forja falhou e o item foi destruído nas chamas!", 'error');
-        await supabase.from('user_items').delete().eq('id', selectedForgeItem.docId);
-        setSelectedForgeItem(null);
-      }
+
+    const { data, error } = await rpcPromise;
+    if (error || !data?.ok) {
+      showToast(data?.error || 'Não foi possível forjar o item.', 'error');
+      fetchItems();
+      return;
     }
-    
+    if (data.success) {
+      showToast("🔥 SUCESSO! O item foi forjado!", 'success');
+    } else if (data.destroyed) {
+      showToast("💥 QUEBROU! A forja falhou e o item foi destruído nas chamas!", 'error');
+      setSelectedForgeItem(null);
+    } else {
+      showToast("❌ FALHA! A forja falhou, mas o Pergaminho do Ferreiro protegeu o item da destruição.", 'error');
+    }
     fetchItems();
-    onSuccess(userData.coins - cost);
+    onSuccess(data.coins);
   };
 
   const handleTransmute = async () => {
@@ -244,64 +223,25 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const confirmMsg = `Deseja tentar transmutar este item?\nChance de Sucesso: ${config.successChance}%\nCusto: ${config.coinsCost} moedas\nConsome ${requiredMats.length} material(is).\nSe falhar, o item voltará para o +8!`;
     if (!await showConfirm(confirmMsg)) return;
 
-    const isSuccess = (Math.random() * 100) <= (config.successChance || 25);
+    setIsForging(true);
+    const rpcPromise = supabase.rpc('transmute_item', { p_item_id: selectedTransmuteItem.docId });
+    await new Promise(r => setTimeout(r, 800));
+    setIsForging(false);
 
-    // Consome moedas e materiais (sucesso E falha consomem os materiais)
-    if (config.coinsCost) {
-      await supabase.from('users').update({ coins: userData.coins - (config.coinsCost || 0) }).eq('uid', userData.uid);
+    const { data, error } = await rpcPromise;
+    if (error || !data?.ok) {
+      showToast(data?.error || 'Não foi possível transmutar o item.', 'error');
+      fetchItems();
+      return;
     }
-    for (const matId of requiredMats) {
-      const mat = consumables.find(c => c.itemId === matId && (c.quantity || 1) > 0);
-      if (!mat) continue;
-      if (mat.quantity > 1) {
-        await supabase.from('user_items').update({ data: { ...(mat as any).data, quantity: mat.quantity - 1 } }).eq('id', mat.docId);
-      } else {
-        await supabase.from('user_items').delete().eq('id', mat.docId);
-      }
-    }
-
-    if (isSuccess) {
+    if (data.success) {
       showToast("✨ SUCESSO ESPETACULAR! O item foi transmutado para uma nova forma!", 'success');
-      // Fetch result item store data
-      const { data: storeSnap } = await supabase.from('store_items').select('data').eq('id', config.resultItemId).single();
-      if (storeSnap) {
-        const storeItem = storeSnap.data as any;
-        const newItemData = {
-          ...selectedTransmuteItem,
-          itemId: storeItem.id,
-          itemTitle: storeItem.title,
-          itemImageUrl: storeItem.imageUrl || '',
-          gameEffect: storeItem.gameEffect || 'none',
-          gameModelUrl: storeItem.gameModelUrl || '',
-          modelTextureUrl: storeItem.modelTextureUrl || '',
-          minecraftHeadValue: storeItem.minecraftHeadValue || '',
-          avatarPart: storeItem.avatarPart || null,
-          itemCategory: storeItem.itemCategory || 'none',
-          baseAttributeType: storeItem.baseAttributeType || 'none',
-          baseAttributeValue: storeItem.baseAttributeValue || 0,
-          modelTransforms: storeItem.modelTransforms || null,
-          forgeLevel: 0,
-          isForgeable: storeItem.isForgeable,
-          forgeConfig: storeItem.forgeConfig,
-          isTransmutable: storeItem.isTransmutable,
-          isTransmuted: storeItem.isTransmuted || false,
-          transmuteConfig: storeItem.transmuteConfig,
-          adds: []
-        };
-        await supabase.from('user_items').update({ data: newItemData }).eq('id', selectedTransmuteItem.docId);
-      }
+      setSelectedTransmuteItem(null);
     } else {
       showToast("❌ FALHA! A energia se dissipou e o item caiu para o nível +8.", 'error');
-      await supabase.from('user_items').update({
-        data: {
-          ...selectedTransmuteItem,
-          forgeLevel: 8
-        }
-      }).eq('id', selectedTransmuteItem.docId);
     }
-    
     fetchItems();
-    onSuccess(userData.coins - (config.coinsCost || 0));
+    onSuccess(data.coins);
   };
   const forgeableItems = items.filter(item => {
     // items are spread: item.itemType === 'equippable', item.forgeLevel, etc.
