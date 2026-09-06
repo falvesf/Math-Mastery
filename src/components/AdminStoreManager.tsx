@@ -1441,6 +1441,19 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               </div>
             )}
 
+            {formData.type === 'equippable' && (() => {
+              const isTransmuteResult = items.some(i => (i.data?.transmuteConfig?.resultItemId || (i as any).transmuteConfig?.resultItemId) === editingId);
+              if (!isTransmuteResult) return null;
+              return (
+                <div style={{ marginBottom: '1.5rem', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '0.75rem 1rem', background: 'rgba(139,92,246,0.08)' }}>
+                  <span style={{ color: '#c084fc', fontWeight: 'bold', fontSize: '0.85rem' }}>🧪 Item de Transmutação</span>
+                  <p style={{ margin: '0.3rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                    Este item é o <strong>resultado</strong> de uma transmutação configurada em outro item. Ele <strong>não aparecerá na loja</strong> — só poderá ser obtido por transmutação.
+                  </p>
+                </div>
+              );
+            })()}
+
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
               <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
               <button onClick={handleSaveItem} className="login-btn" style={{ padding: '0.75rem 1.5rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>Salvar Item</button>
