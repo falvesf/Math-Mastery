@@ -25,6 +25,7 @@ interface BlacksmithModalProps {
   onSuccess: (newCoins?: number) => void;
 }
 
+// @ts-ignore — onClose é parte do contrato da interface (mantido; pode ser usado por consumidores)
 export default function BlacksmithModal({ userData, currentRankIndex, onClose, onSuccess }: BlacksmithModalProps) {
   const { showConfirm, showToast } = useDialog();
   const [activeTab, setActiveTab] = useState<'forge' | 'transmute'>('forge');
@@ -95,7 +96,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     setLoading(true);
     const { data: userItemsSnap } = await supabase
       .from('user_items')
-      .select('id, equipped, data')
+      .select('id, item_id, equipped, data')
       .eq('student_id', userData.uid);
 
     let parsedItems = [];
