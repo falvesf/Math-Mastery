@@ -22,6 +22,7 @@ interface StoreItemData {
   isForgeable?: boolean;
   forgeConfig?: any;
   isTransmutable?: boolean;
+  isTransmuted?: boolean;
   transmuteConfig?: any;
 }
 

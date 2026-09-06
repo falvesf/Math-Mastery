@@ -181,14 +181,9 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     }
     const { data: storeSnap } = await storeQuery;
     const rawItems = (storeSnap || []).map((d: any) => ({ ...(d.data as any), id: d.id, price: d.price }));
-    // Itens que são RESULTADO de transmutação só podem ser obtidos por transmutação —
-    // não aparecem na loja (o item-fonte continua disponível para compra e forja).
-    const transmuteResultIds = new Set<string>();
-    rawItems.forEach((i: any) => {
-      const rid = i.transmuteConfig?.resultItemId;
-      if (rid) transmuteResultIds.add(rid);
-    });
-    const loaded: StoreItem[] = rawItems.filter((i: any) => !transmuteResultIds.has(i.id));
+    // Não aparecem na loja: itens "Transmutados" (só obtidos por transmutação) e
+    // itens "Outros / Diversos" (materiais dropados por monstros/baús).
+    const loaded: StoreItem[] = rawItems.filter((i: any) => !i.isTransmuted && i.type !== 'other');
     setItems(loaded);
 
     if (userData.uid) {

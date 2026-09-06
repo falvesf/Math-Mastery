@@ -120,7 +120,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             equipped: row.equipped,
             forgeLevel: itemData.forgeLevel || 0
           });
-        } else if (itemData.itemType === 'consumable') {
+        } else if (itemData.itemType === 'consumable' || itemData.itemType === 'other') {
           consumables.push({ docId: row.id, itemId: row.item_id, quantity: itemData.quantity || 1, itemTitle: itemData.itemTitle, itemImageUrl: itemData.itemImageUrl || '' });
         }
       }
@@ -282,6 +282,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           isForgeable: storeItem.isForgeable,
           forgeConfig: storeItem.forgeConfig,
           isTransmutable: storeItem.isTransmutable,
+          isTransmuted: storeItem.isTransmuted || false,
           transmuteConfig: storeItem.transmuteConfig,
           adds: []
         };

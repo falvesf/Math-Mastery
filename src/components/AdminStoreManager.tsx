@@ -67,9 +67,10 @@ export interface StoreItem {
   extractMeshName?: string;
   damageEffect?: string; // Efeito especial de dano em batalha (burn, freeze, impact, electric, poison, none)
   battleSoundUrl?: string;
-  isForgeable?: boolean;
+isForgeable?: boolean;
   forgeConfig?: any;
   isTransmutable?: boolean;
+  isTransmuted?: boolean; // Item obtido SOMENTE por transmutação (não aparece na loja)
   transmuteConfig?: any;
 }
 
@@ -969,6 +970,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
                   <option value="consumable">Consumível (Usa 1x)</option>
                   <option value="equippable">Equipável (Ex: Título)</option>
+                  <option value="other">Outros / Diversos (materiais, drop de monstros/baú — não aparece na loja)</option>
                 </select>
               </div>
             </div>
@@ -1383,10 +1385,43 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             {/* ===== TRANSMUTATION CONFIG ===== */}
             {formData.type === 'equippable' && (
               <div style={{ marginBottom: '1.5rem', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '1rem', background: 'rgba(139,92,246,0.05)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', cursor: 'pointer', fontWeight: 'bold', color: '#8b5cf6' }}>
-                  <input type="checkbox" checked={!!formData.isTransmutable} onChange={e => setFormData({ ...formData, isTransmutable: e.target.checked, transmuteConfig: e.target.checked ? (formData.transmuteConfig || { successChance: 25, coinsCost: 500, resultItemId: '' }) : undefined })} style={{ width: '18px', height: '18px' }} />
-                  ✨ Item Transmutável (requer +9)
-                </label>
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 'bold', color: '#8b5cf6' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!formData.isTransmutable}
+                      disabled={!!formData.isTransmuted}
+                      onChange={e => setFormData({
+                        ...formData,
+                        isTransmutable: e.target.checked,
+                        isTransmuted: e.target.checked ? false : formData.isTransmuted,
+                        transmuteConfig: e.target.checked ? (formData.transmuteConfig || { successChance: 25, coinsCost: 500, resultItemId: '' }) : undefined
+                      })}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    ✨ Item Transmutável (requer +9)
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 'bold', color: '#c084fc' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!formData.isTransmuted}
+                      disabled={!!formData.isTransmutable}
+                      onChange={e => setFormData({
+                        ...formData,
+                        isTransmuted: e.target.checked,
+                        isTransmutable: e.target.checked ? false : formData.isTransmutable,
+                        transmuteConfig: e.target.checked ? undefined : formData.transmuteConfig
+                      })}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    🧪 Item Transmutado (resultado — não aparece na loja)
+                  </label>
+                </div>
+                {formData.isTransmuted && (
+                  <p style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                    Este item só poderá ser obtido como <strong>resultado de transmutação</strong>. Ele <strong>não aparecerá na loja</strong>.
+                  </p>
+                )}
 
                 {formData.isTransmutable && formData.transmuteConfig && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1401,10 +1436,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       </div>
                     </div>
                     <div>
-                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Item Resultado (ID do item na loja que o jogador receberá no +0)</label>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        Item Resultado (só itens marcados como "Item Transmutado", da MESMA categoria: {formData.itemCategory === 'attack' ? 'arma' : formData.itemCategory === 'defense' ? 'defesa/escudo' : 'suporte'})
+                      </label>
                       <select value={formData.transmuteConfig.resultItemId || ''} onChange={e => setFormData({ ...formData, transmuteConfig: { ...formData.transmuteConfig!, resultItemId: e.target.value } })} style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
                         <option value="">— Selecionar item resultado —</option>
-                        {items.filter(i => i.type === 'equippable').map(i => (
+                        {items.filter(i => i.type === 'equippable' && (i as any).isTransmuted && (i.itemCategory || 'none') === (formData.itemCategory || 'none')).map(i => (
                           <option key={i.id} value={i.id}>{i.title}</option>
                         ))}
                       </select>
@@ -1413,7 +1450,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       )}
                     </div>
                     <div>
-                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Materiais Consumíveis (2 itens exigidos no ritual)</label>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Materiais (2 itens da categoria "Outros / Diversos", dropados por monstros/baús)</label>
                       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                         {[0, 1].map(matIdx => (
                           <div key={matIdx} style={{ flex: 1, minWidth: '150px' }}>
@@ -1428,7 +1465,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                               style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
                             >
                               <option value="">— Selecionar material —</option>
-                              {items.filter(i => i.type === 'consumable').map(i => (
+                              {items.filter(i => i.type === 'other').map(i => (
                                 <option key={i.id} value={i.id}>{i.title}</option>
                               ))}
                             </select>
