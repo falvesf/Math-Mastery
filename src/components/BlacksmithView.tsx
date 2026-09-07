@@ -318,7 +318,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             {/* Sketchfab Embed (visível só na Forja; oculto via CSS na Transmutação para não recarregar) */}
             <div style={{ height: '300px', background: 'black', position: 'relative', overflow: 'hidden', pointerEvents: 'none', display: activeTab === 'forge' ? 'block' : 'none' }}>
               <div className="sketchfab-embed-wrapper" style={{ position: 'absolute', top: '-65px', bottom: '-65px', left: '-10px', right: '-10px' }}>
-                <iframe ref={iframeRef} title="Blacksmith and his anvil" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" style={{ width: '100%', height: '100%', border: 'none' }}> </iframe>
+                <iframe ref={iframeRef} title="Blacksmith and his anvil" frameBorder="0" allow="autoplay; fullscreen; xr-spatial-tracking" style={{ width: '100%', height: '100%', border: 'none' }}> </iframe>
               </div>
             </div>
 
