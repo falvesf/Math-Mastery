@@ -180,10 +180,9 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
     return map;
   }, [scene]);
 
-  // Desmontagem progressiva (efeito estrondo) para GLB — mesma regra do modelo cubo:
+  // Desmontagem progressiva (efeito estrondo) para GLB:
 //  - as malhas INFERIORES caem primeiro e ficam no chão aleatoriamente;
-//  - as malhas VIVAS descem para ocupar o lugar das que caíram (o corpo "assenta"),
-//    então a parte de cima acaba no nível da base quando tudo cair.
+//  - as malhas VIVAS ficam no lugar → o monstro nunca desaparece durante a luta.
 // Offsets são DELTAS sobre a pose original; estáveis para o mesmo count.
   const shatteredOffsets = useMemo(() => {
     const count = Math.max(0, Math.floor(shatteredCount || 0));
@@ -193,10 +192,6 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
       if ((child as THREE.Mesh).isMesh) meshes.push(child as THREE.Mesh);
     });
     if (meshes.length === 0) return null;
-    // Altura do modelo para dimensionar os deslocamentos
-    const box = new THREE.Box3().setFromObject(scene);
-    const height = Math.max(0.01, box.max.y - box.min.y);
-    const step = height / meshes.length;
     // Ordena de BAIXO para CIMA (as partes de baixo caem antes)
     meshes.sort((a, b) => {
       const ay = a.getWorldPosition(new THREE.Vector3()).y;
@@ -211,19 +206,15 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
       const original = initialTransforms.get(m.uuid);
       if (!original) return;
       if (idx < n) {
-        // Parte desmembrada: DELTA que a leva para o chão (cai ~80% da altura) + rotação
+        // Parte desmembrada: cai no chão (delta para a base) + rotação aleatória.
+        // Usa o próprio Y original para o delta: a parte desce até a base, nunca para baixo dela.
+        const deltaY = -Math.max(0.2, original.position.y);
         map.set(m.uuid, {
-          posDelta: new THREE.Vector3((Math.random() - 0.5) * 4, -height * 0.8, (Math.random() - 0.5) * 4),
+          posDelta: new THREE.Vector3((Math.random() - 0.5) * 4, deltaY, (Math.random() - 0.5) * 4),
           rot: new THREE.Euler((Math.random() - 0.5) * Math.PI * 1.5, (Math.random() - 0.5) * Math.PI * 2, (Math.random() - 0.5) * Math.PI * 1.5),
         });
-      } else {
-        // Parte viva: desce para ocupar o espaço das que caíram, mas NUNCA abaixo da base
-        const sink = Math.min(n * step, Math.max(0, original.position.y));
-        map.set(m.uuid, {
-          posDelta: new THREE.Vector3(0, -sink, 0),
-          rot: null,
-        });
       }
+      // As partes VIVAS ficam no lugar (não afundam) → o monstro nunca desaparece.
     });
     return map;
   }, [shatteredCount, scene, initialTransforms]);
