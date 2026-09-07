@@ -180,9 +180,11 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
     return map;
   }, [scene]);
 
-  // Desmontagem progressiva (efeito estrondo) para GLB: conforme `shatteredCount`
-// cresce, mais malhas "caem". As inferiores caem primeiro (como pernas/braços).
-// Offsets estáveis para o mesmo count (não embaralha entre acertos).
+  // Desmontagem progressiva (efeito estrondo) para GLB — mesma regra do modelo cubo:
+//  - as malhas INFERIORES caem primeiro e ficam no chão aleatoriamente;
+//  - as malhas VIVAS descem para ocupar o lugar das que caíram (o corpo "assenta"),
+//    então a parte de cima acaba no nível da base quando tudo cair.
+// Offsets são DELTAS sobre a pose original; estáveis para o mesmo count.
   const shatteredOffsets = useMemo(() => {
     const count = Math.max(0, Math.floor(shatteredCount || 0));
     if (count <= 0) return null;
@@ -191,31 +193,47 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
       if ((child as THREE.Mesh).isMesh) meshes.push(child as THREE.Mesh);
     });
     if (meshes.length === 0) return null;
-    // Ordena de BAIXO para CIMA (as partes de baixo do corpo caem antes)
+    // Altura do modelo para dimensionar os deslocamentos
+    const box = new THREE.Box3().setFromObject(scene);
+    const height = Math.max(0.01, box.max.y - box.min.y);
+    const step = height / meshes.length;
+    // Ordena de BAIXO para CIMA (as partes de baixo caem antes)
     meshes.sort((a, b) => {
       const ay = a.getWorldPosition(new THREE.Vector3()).y;
       const by = b.getWorldPosition(new THREE.Vector3()).y;
       return ay - by;
     });
-    const toScatter = meshes.slice(0, Math.min(count, meshes.length));
+    const n = Math.min(count, meshes.length);
     const map = new Map();
-    toScatter.forEach((m) => {
-      map.set(m.uuid, {
-        pos: new THREE.Vector3((Math.random() - 0.5) * 4, -Math.random() * 4, (Math.random() - 0.5) * 4),
-        rot: new THREE.Euler((Math.random() - 0.5) * Math.PI * 1.5, (Math.random() - 0.5) * Math.PI * 2, (Math.random() - 0.5) * Math.PI * 1.5),
-      });
+    meshes.forEach((m, idx) => {
+      const original = initialTransforms.get(m.uuid);
+      if (!original) return;
+      if (idx < n) {
+        // Parte desmembrada: DELTA que a leva para o chão (cai ~80% da altura) + rotação
+        map.set(m.uuid, {
+          posDelta: new THREE.Vector3((Math.random() - 0.5) * 4, -height * 0.8, (Math.random() - 0.5) * 4),
+          rot: new THREE.Euler((Math.random() - 0.5) * Math.PI * 1.5, (Math.random() - 0.5) * Math.PI * 2, (Math.random() - 0.5) * Math.PI * 1.5),
+        });
+      } else {
+        // Parte viva: desce n*step para ocupar o espaço das que caíram (mantém rotação)
+        map.set(m.uuid, {
+          posDelta: new THREE.Vector3(0, -n * step, 0),
+          rot: null,
+        });
+      }
     });
     return map;
-  }, [shatteredCount, scene]);
+  }, [shatteredCount, scene, initialTransforms]);
 
   useEffect(() => {
     if (!shatteredOffsets) return;
     scene.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
+        const initial = initialTransforms.get(child.uuid);
         const o = shatteredOffsets.get(child.uuid);
-        if (o) {
-          child.position.copy(o.pos);
-          child.rotation.copy(o.rot);
+        if (initial && o) {
+          child.position.copy(initial.position).add(o.posDelta);
+          if (o.rot) child.rotation.copy(o.rot);
         }
       }
     });

@@ -170,6 +170,7 @@ export default function QuestGameplay() {
   // --- Áudio da batalha ---
   const musicAudioRef = useRef<HTMLAudioElement | null>(null);
   const musicUrlRef = useRef('');
+  const musicStoppedRef = useRef(false);
   const playerDamageSoundsRef = useRef<{ male: string; female: string }>({ male: '', female: '' });
   const battleSoundsRef = useRef<{ victory: string; deathMale: string; deathFemale: string; fail: string; punch: string; fatalFall: string; fatalEvaporate: string; fatalSlice: string; fatalExplode: string }>({ victory: '', deathMale: '', deathFemale: '', fail: '', punch: '', fatalFall: '', fatalEvaporate: '', fatalSlice: '', fatalExplode: '' });
 
@@ -241,6 +242,11 @@ export default function QuestGameplay() {
     const url = quest?.battleMusicUrl ? resolveAudioUrl(quest.battleMusicUrl) : '';
     const isActive = gameState === 'playing' || gameState === 'result';
     const a = musicAudioRef.current;
+    // Música já foi encerrada de propósito (vitória/baú) → não reinicia
+    if (musicStoppedRef.current) {
+      if (a) a.pause();
+      return;
+    }
     if (isActive && url) {
       if (a && musicUrlRef.current === url) {
         if (a.paused) a.play().catch(() => {});
@@ -302,6 +308,7 @@ export default function QuestGameplay() {
 
   // Fade-out gradual da música antes do golpe final (vitória)
   const fadeOutMusic = (durationMs = 2200) => {
+    musicStoppedRef.current = true;
     const audio = musicAudioRef.current;
     if (!audio) return;
     const startVol = audio.volume;
