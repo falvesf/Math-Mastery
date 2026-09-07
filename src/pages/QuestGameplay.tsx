@@ -1902,7 +1902,7 @@ export default function QuestGameplay() {
 
         {/* Battle Arena Fixed */}
         {gameState === 'playing' && (
-          <div ref={arenaRef} className="battle-arena-bg quest-arena" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '130px', paddingBottom: '60px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20 } as any}>
+          <div ref={arenaRef} className="battle-arena-bg quest-arena" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '130px', paddingBottom: '60px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, userSelect: 'none', WebkitUserSelect: 'none' } as any}>
             <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
               <div 
                 className="battle-arena-bg-image" 
@@ -2149,7 +2149,7 @@ export default function QuestGameplay() {
         )}
 
         {/* Content Area */}
-        <div className="quest-content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: 'auto' }}>
+        <div className="quest-content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: 'auto', userSelect: 'none', WebkitUserSelect: 'none' }}>
 
           
           {gameState === 'intro' && quest && (

@@ -880,7 +880,7 @@ export default function LiveQuestStudent() {
         </div>
 
         {/* BATTLE SCENE 3D */}
-        <div style={{ flex: '1 1 50%', position: 'relative', background: 'var(--bg-primary)', overflow: 'hidden', borderBottom: '2px solid var(--border-glass)' } as any}>
+        <div style={{ flex: '1 1 50%', position: 'relative', background: 'var(--bg-primary)', overflow: 'hidden', borderBottom: '2px solid var(--border-glass)', userSelect: 'none', WebkitUserSelect: 'none' } as any}>
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', zIndex: 0 }}>
             <div 
               className="battle-arena-bg-image" 
