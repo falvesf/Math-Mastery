@@ -20,6 +20,7 @@ export interface UserData {
   selectedTenantId?: string;
   xp?: number;
   coins?: number;
+  last_seen_at?: string | null;
   lastSeenRank?: string;
   hp?: number;
   hpRecoveryStartTimestamp?: number | null;
