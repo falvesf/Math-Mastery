@@ -180,7 +180,7 @@ function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { item
 }
 
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
-  const { showAlert, showConfirm } = useDialog();
+  const { showAlert, showConfirm, showToast } = useDialog();
   const { tenantId, isSuperAdmin } = useTenant();
   const { can: canItems } = usePermissions();
   const [items, setItems] = useState<StoreItem[]>([]);
@@ -753,11 +753,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     };
 
     if (editingId) {
-      await supabase.from('store_items').update({
+      const { error: saveErr } = await supabase.from('store_items').update({
         name: itemData.title, description: itemData.description, type: itemData.type,
         price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
         rarity: itemData.rarity, avatar_part: itemData.avatarPart, data: itemData
       }).eq('id', editingId);
+      if (saveErr) {
+        showToast(`Erro ao salvar o item: ${saveErr.message}`, 'error');
+        return;
+      }
 
       // Cascade update retroativo para itens já no inventário dos alunos.
       // Propaga para TODAS as cópias relacionadas (não só o item editado):
@@ -826,13 +830,17 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       
     } else {
       // Cópia local (da escola) — editável pelo admin local
-      await supabase.from('store_items').insert({
+      const { error: saveErr } = await supabase.from('store_items').insert({
         name: itemData.title, description: itemData.description, type: itemData.type,
         price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
         rarity: itemData.rarity, avatar_part: itemData.avatarPart, data: itemData,
         tenant_id: tenantId || null,
         is_global: false
       });
+      if (saveErr) {
+        showToast(`Erro ao criar o item: ${saveErr.message}`, 'error');
+        return;
+      }
       // Só a CRIAÇÃO MANUAL cria também a cópia-base GLOBAL (banco de itens).
       // Importações (importadoFromId presente) NÃO geram global.
       if (!itemData.importedFromId && !isImportCustomize) {
@@ -852,6 +860,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     setIsImportCustomize(false);
     setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', minRankRequired: 0, active: true, imageUrl: '' });
     fetchData(false);
+    showToast(`Item ${editingId ? 'atualizado' : 'criado'} com sucesso!`, 'success');
   };
 
   const handleDeleteItem = async (id: string) => {
