@@ -1531,7 +1531,13 @@ export default function Dashboard() {
 
   // Filtragem de Rankings (Top 10)
   const uniqueClasses = Array.from(new Set(allStudents.map(s => s.classId).filter(Boolean))).sort() as string[];
-  const targetClassRanking = isAdminOrTeacher ? (selectedClassForRanking || userData?.classId || uniqueClasses[0] || '') : userData?.classId;
+  // Só usa a turma do próprio admin/professor se ela TIVER alunos na lista — senão cai na
+  // primeira turma com alunos. Antes, um classId do admin sem alunos fazia o <select> EXIBIR
+  // uma turma (primeira opção) mas FILTRAR por outra (classId dele) → lista vazia até o
+  // usuário trocar o seletor e voltar (quando selectedClassForRanking passava a valer a turma real).
+  const targetClassRanking = isAdminOrTeacher
+    ? (selectedClassForRanking || ((userData?.classId && uniqueClasses.includes(userData.classId)) ? userData.classId : '') || uniqueClasses[0] || '')
+    : userData?.classId;
   const classStudents = allStudents.filter(s => s.classId === targetClassRanking).slice(0, 10);
   const top10General = allStudents.slice(0, 10);
 
