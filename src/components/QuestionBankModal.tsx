@@ -210,6 +210,22 @@ export default function QuestionBankModal({ isOpen, onClose, onSelect }: Questio
                           </span>
                         ))}
                       </div>
+                      {(question.options || []).length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.55rem', paddingLeft: '0.25rem', borderLeft: '2px solid rgba(139,92,246,0.35)' }}>
+                          {(question.options || []).slice(0, 4).map((opt, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', lineHeight: 1.3, minWidth: 0 }}>
+                              <span style={{ fontWeight: 'bold', color: i === question.correct_index ? '#10b981' : 'var(--text-secondary)', flexShrink: 0 }}>
+                                {String.fromCharCode(65 + i)}.
+                              </span>
+                              <span
+                                style={{ color: i === question.correct_index ? '#10b981' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                dangerouslySetInnerHTML={{ __html: opt.text }}
+                              />
+                              {i === question.correct_index && <CheckCircle size={12} color="#10b981" style={{ flexShrink: 0 }} />}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
                       <button
