@@ -5,6 +5,11 @@ import { forgeAttributeValueWithConfig } from './forge';
 export type ItemCategory = 'attack' | 'defense' | 'support' | 'none';
 export type AttributeType = 'attack' | 'defense' | 'xp' | 'coins' | 'vitality' | 'fortitude' | 'persuasion' | 'none';
 
+/** Tipos de item que empilham na mochila (quantidade > 1 na mesma pilha). */
+export function isStackableItemType(t?: string): boolean {
+  return t === 'consumable' || t === 'other';
+}
+
 export interface ItemAdd {
   type: AttributeType | EffectAddType;
   value: number;

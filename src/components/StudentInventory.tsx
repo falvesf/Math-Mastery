@@ -14,7 +14,7 @@ import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp, getMaxAddsLimit } from '../lib/ranks';
 // @ts-ignore
-import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig } from '../lib/gacha';
+import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig, isStackableItemType } from '../lib/gacha';
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
 import { invalidateEquippedItems } from '../lib/equippedItems';
 import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType } from '../lib/damageEffects';
@@ -23,7 +23,7 @@ interface UserItem {
   id: string;
   itemId: string;
   itemTitle: string;
-  itemType: 'consumable' | 'equippable';
+  itemType: 'consumable' | 'equippable' | 'other';
   itemImageUrl: string;
   quantity: number;
   equipped: boolean;
@@ -256,7 +256,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       // Ocultar itens que foram dropados ou que estão à venda
       if (item.forSale || item.studentId === 'dropped') continue;
       
-      if (item.itemType === 'consumable') {
+      if (isStackableItemType(item.itemType)) {
         const qty = item.quantity || 1;
         if (qty > 99) {
           const excess = qty - 99;
@@ -293,7 +293,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const { data: specificDocSnap } = await supabase.from('user_items').select('*').eq('id', specificDocId).single();
       if (specificDocSnap) {
         const data = specificDocSnap.data as any;
-        if (data.itemType === 'consumable' && !data.forSale && specificDocSnap.student_id === userData.uid) {
+        if (isStackableItemType(data.itemType) && !data.forSale && specificDocSnap.student_id === userData.uid) {
           const qty = data.quantity || 1;
           if (qty <= remainingToRemove) {
             await supabase.from('user_items').delete().eq('id', specificDocId);
@@ -315,7 +315,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       if (d.id === specificDocId) continue;
       if (remainingToRemove <= 0) break;
       const data = d.data as any;
-      if (data.itemType !== 'consumable' || data.forSale) continue;
+      if (!isStackableItemType(data.itemType) || data.forSale) continue;
       
       const qty = data.quantity || 1;
       if (qty <= remainingToRemove) {
@@ -599,7 +599,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
 
-    if (item.itemType === 'consumable' && item.count && item.count > 1) {
+    if (isStackableItemType(item.itemType) && item.count && item.count > 1) {
       setTrashModalItem(item);
       setTrashQuantity(1);
       return;
@@ -611,7 +611,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     );
     if (!result || !result.confirmed) return;
     
-    if (item.itemType === 'consumable') {
+    if (isStackableItemType(item.itemType)) {
       await consumeItemQuantity(item.itemId, 1, item.id);
       if (!result.checked) {
         const { id, count, docIds, ...itemDataToDrop } = item;
@@ -830,7 +830,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     const buffDays = Math.min(15, license.buffDurationDays || 3);
     const saleExpiresAt = Date.now() + buffDays * 24 * 60 * 60 * 1000;
     const consumeLicense = async () => {
-      if (license.itemType === 'consumable') {
+      if (isStackableItemType(license.itemType)) {
         await consumeItemQuantity(license.itemId, 1, license.id);
       } else {
         const docToDelete = license.docIds ? license.docIds[0] : license.id;
@@ -839,7 +839,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     };
     await consumeLicense();
     
-    if (sellModalItem.itemType === 'consumable') {
+    if (isStackableItemType(sellModalItem.itemType)) {
       if (sellQuantity < 1 || sellQuantity > (sellModalItem.count || 1)) {
         await showAlert('Quantidade inválida!');
         return;
@@ -969,8 +969,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const handleGridSwap = async (draggedItem: UserItem, targetIndex: number, targetItem: UserItem | null) => {
     if (draggedItem.id === targetItem?.id) return;
     
-    // Combinar pilhas de itens consumíveis iguais
-    if (targetItem && draggedItem.itemId === targetItem.itemId && draggedItem.itemType === 'consumable' && targetItem.itemType === 'consumable') {
+    // Combinar pilhas de itens empilháveis iguais (consumível ou outro)
+    if (targetItem && draggedItem.itemId === targetItem.itemId && isStackableItemType(draggedItem.itemType) && isStackableItemType(targetItem.itemType)) {
       const draggedQty = draggedItem.count || 1;
       const targetQty = targetItem.count || 1;
       
@@ -1330,7 +1330,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                           borderRadius: '4px',
                           border: '1px solid var(--border-glass)'
                         }}>
-                          {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
+                          {item.itemType === 'consumable' ? 'Consumível' : item.itemType === 'other' ? 'Material' : 'Equipável'}
                         </span>
                         <div style={{ display: 'flex', gap: '2px', marginLeft: 'auto', alignItems: 'center' }}>
                           {item.itemType === 'equippable' ? (
@@ -1381,7 +1381,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                     <div style={{ textAlign: 'center', position: 'relative' }}>
                       <h4 style={{ margin: '0 0 0.15rem 0', fontSize: viewMode === 'grid-small' ? '0.6rem' : '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{item.itemType === 'equippable' ? forgeItemName(item.itemTitle, item.forgeLevel || 0) : item.itemTitle}</h4>
                       <span style={{ fontSize: viewMode === 'grid-small' ? '0.55rem' : '0.7rem', color: 'var(--text-secondary)' }}>
-                        {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
+                        {item.itemType === 'consumable' ? 'Consumível' : item.itemType === 'other' ? 'Material' : 'Equipável'}
                       </span>
                       
 

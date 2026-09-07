@@ -9,7 +9,7 @@ import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp, resolveMinRankName, getMinRankIndex, getMaxAddsLimit } from '../lib/ranks';
 // @ts-ignore
-import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig, ATTRIBUTE_LABELS } from '../lib/gacha';
+import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig, ATTRIBUTE_LABELS, isStackableItemType } from '../lib/gacha';
 // @ts-ignore
 import { applyEffectAdd, isEffectAddType, EFFECT_ADD_LABELS, DAMAGE_EFFECTS } from '../lib/damageEffects';
 import { forgeItemName } from '../lib/forge';
@@ -208,7 +208,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           if (doc.equipped) {
             equippedItemsForStats.push(d);
           }
-          if (d.itemType === 'consumable') {
+          if (isStackableItemType(d.itemType)) {
             const key = doc.item_id;
             if (!doc.equipped) {
               consumableQuantities[key] = (consumableQuantities[key] || 0) + (d.quantity || 1);
@@ -292,7 +292,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
     const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     const method = paymentMethod || economyType;
-    let quantityToBuy = item.type === 'consumable' ? (quantities[item.id] || 1) : 1;
+    let quantityToBuy = isStackableItemType(item.type) ? (quantities[item.id] || 1) : 1;
     let wasCapped = false;
     
     if (!isStaff) {
@@ -1223,7 +1223,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.2rem' }}>
                     <div>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
-                        {item.itemType === 'consumable' ? 'Consumível' : 'Equipável'}
+                        {item.itemType === 'consumable' ? 'Consumível' : item.itemType === 'other' ? 'Material' : 'Equipável'}
                       </span>
                     </div>
                     {item.itemType === 'equippable' && item.baseAttributeType && item.baseAttributeType !== 'none' && (
@@ -1331,7 +1331,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               </div>
             </div>
 
-            {marketBuyModalItem.itemType === 'consumable' && (
+            {isStackableItemType(marketBuyModalItem.itemType) && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Quantidade (Máx: {marketBuyModalItem.quantity || 1}):</label>
                 <input 

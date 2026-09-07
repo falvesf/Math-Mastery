@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { RANKS, getRankForXp } from './ranks';
-import { calculateTotalStats } from './gacha';
+import { calculateTotalStats, isStackableItemType } from './gacha';
 
 /**
  * Sistema de LICENÇA DE VENDA no Bazar.
@@ -42,7 +42,7 @@ export async function getSellerSpace(studentId: string): Promise<{ max: number; 
         equippedStats.push(d);
         return;
       }
-      if (d.itemType === 'consumable') {
+      if (isStackableItemType(d.itemType)) {
         consumableCounts[row.item_id] = (consumableCounts[row.item_id] || 0) + (d.quantity || 1);
       } else {
         current++;
