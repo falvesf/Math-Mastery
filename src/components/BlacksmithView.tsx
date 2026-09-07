@@ -101,6 +101,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   }, [tenantId]);
   
   const isTransmuteUnlocked = currentRankIndex >= 11; // 11 = Diamante I
+  const isStaff = userData.role !== 'student' && !userData.studentViewActive;
   const coinUrl = activeCoin?.open_url || activeCoin?.url || '';
 
   const fetchItems = async () => {
@@ -173,7 +174,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const cost = nextForgeCostWithConfig(currentLevel, buyPrice, selectedForgeItem.forgeConfig);
     const finalChance = useScroll ? 100 : forgeSuccessChance(nextLevel, selectedForgeItem.forgeConfig);
     
-    if (userData.coins < cost) {
+    if (!isStaff && userData.coins < cost) {
       showToast(`Você não tem moedas suficientes! Custo: ${cost}`, 'error');
       return;
     }
@@ -227,7 +228,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       showToast("Você não possui os materiais consumíveis exigidos para a transmutação!", 'error');
       return;
     }
-    if (userData.coins < (config.coinsCost || 0)) {
+    if (!isStaff && userData.coins < (config.coinsCost || 0)) {
       showToast(`Você não tem moedas suficientes! Custo: ${config.coinsCost}`, 'error');
       return;
     }
@@ -288,15 +289,14 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           </button>
         </div>
 
-        {/* Saldo de moedas (visível nas duas guias) */}
-        <div style={{ background: 'rgba(0,0,0,0.4)', borderBottom: '1px solid var(--border-glass)', padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', fontWeight: 'bold', flexShrink: 0 }}>
+        {/* Saldo de moedas (visível nas duas guias; label + valor à direita) */}
+        <div style={{ background: 'rgba(0,0,0,0.4)', borderBottom: '1px solid var(--border-glass)', padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', color: 'white', fontWeight: 'bold', flexShrink: 0 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 22, height: 22, objectFit: 'contain' }} /> : <Coins size={20} color="var(--gold-primary)" />}
-            Moedas disponíveis
-          </span>
-          <span style={{ color: 'var(--gold-primary)', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 20, height: 20, objectFit: 'contain' }} /> : null}
-            {userData.coins || 0}
+            {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 20, height: 20, objectFit: 'contain' }} /> : <Coins size={18} color="var(--gold-primary)" />}
+            Moedas disponíveis:
+            <span style={{ color: 'var(--gold-primary)', fontSize: '1.1rem' }}>
+              {isStaff ? '∞' : (userData.coins || 0)}
+            </span>
           </span>
         </div>
 
@@ -437,8 +437,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
                         <button 
                           onClick={handleForge}
-                          disabled={userData.coins < nextCost || isForging}
-                          style={{ width: '100%', padding: '1.2rem', background: (userData.coins < nextCost || isForging) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #ea580c, #dc2626)', color: 'white', border: 'none', borderRadius: '12px', fontSize: '1.2rem', fontWeight: 'bold', cursor: (userData.coins < nextCost || isForging) ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 15px rgba(220, 38, 38, 0.3)', opacity: (userData.coins < nextCost || isForging) ? 0.5 : 1 }}
+                          disabled={(!isStaff && userData.coins < nextCost) || isForging}
+                          style={{ width: '100%', padding: '1.2rem', background: ((!isStaff && userData.coins < nextCost) || isForging) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #ea580c, #dc2626)', color: 'white', border: 'none', borderRadius: '12px', fontSize: '1.2rem', fontWeight: 'bold', cursor: ((!isStaff && userData.coins < nextCost) || isForging) ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 15px rgba(220, 38, 38, 0.3)', opacity: ((!isStaff && userData.coins < nextCost) || isForging) ? 0.5 : 1 }}
                         >
                           <Hammer size={24} className={isForging ? "animate-bounce" : ""} /> {isForging ? 'FORJANDO...' : 'BATER O MARTELO'}
                         </button>
@@ -542,8 +542,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                     </div>
                     <button
                       onClick={handleTransmute}
-                      disabled={isForging || userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)}
-                      style={{ width: '100%', padding: '1.2rem', background: (isForging || userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #8b5cf6, #c084fc)', color: 'white', border: 'none', borderRadius: '12px', fontSize: '1.1rem', fontWeight: 'bold', cursor: (isForging || userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)) ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)', opacity: (isForging || userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)) ? 0.5 : 1 }}
+                      disabled={isForging || (!isStaff && userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0)) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)}
+                      style={{ width: '100%', padding: '1.2rem', background: (isForging || (!isStaff && userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0)) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #8b5cf6, #c084fc)', color: 'white', border: 'none', borderRadius: '12px', fontSize: '1.1rem', fontWeight: 'bold', cursor: (isForging || (!isStaff && userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0)) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)) ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)', opacity: (isForging || (!isStaff && userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0)) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)) ? 0.5 : 1 }}
                     >
                       <Sparkles size={22} className={isForging ? "animate-pulse" : ""} /> {isForging ? 'TRANSMUTANDO...' : 'INICIAR RITUAL DE TRANSMUTAÇÃO'}
                     </button>

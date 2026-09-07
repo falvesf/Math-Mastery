@@ -116,11 +116,17 @@ DECLARE
   v_chance numeric;
   v_success boolean;
   v_coins numeric;
+  v_staff boolean;
   v_defaults int[] := ARRAY[90,80,70,60,50,40,30,20,10];
 BEGIN
   IF v_uid IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'error', 'não autenticado');
   END IF;
+
+  -- Staff (superadmin/admin/teacher) tem saldo infinito: não valida nem deduz moedas
+  SELECT EXISTS (
+    SELECT 1 FROM users WHERE id = v_uid AND role IN ('superadmin', 'admin', 'teacher')
+  ) INTO v_staff;
 
   SELECT * INTO v_item FROM user_items WHERE id = p_item_id AND student_id = v_uid;
   IF NOT FOUND THEN
@@ -169,11 +175,19 @@ BEGIN
     v_chance := v_defaults[v_next];
   END IF;
 
-  -- Saldo de moedas
+  -- Saldo de moedas (staff: saldo infinito, não valida nem deduz)
   SELECT COALESCE(coins, 0) INTO v_coins FROM users WHERE id = v_uid;
-  IF v_coins < v_cost THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'moedas insuficientes', 'cost', v_cost, 'coins', v_coins);
+  IF NOT v_staff THEN
+    IF v_coins < v_cost THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'moedas insuficientes', 'cost', v_cost, 'coins', v_coins);
+    END IF;
+
+    -- Deduz moedas + registro
+    UPDATE users SET coins = coins - v_cost WHERE id = v_uid;
+    INSERT INTO coin_logs (student_id, amount, reason, justification, tenant_id)
+    VALUES (v_uid, -v_cost, 'Forja', 'item ' || v_item.item_id::text, v_item.tenant_id);
   END IF;
+  v_coins := v_coins - (CASE WHEN v_staff THEN 0 ELSE v_cost END);
 
   -- Pergaminho (se pediu proteção): valida existência ANTES de rolar
   IF p_use_scroll THEN
@@ -185,11 +199,6 @@ BEGIN
       RETURN jsonb_build_object('ok', false, 'error', 'sem pergaminho do ferreiro');
     END IF;
   END IF;
-
-  -- Deduz moedas + registro
-  UPDATE users SET coins = coins - v_cost WHERE id = v_uid;
-  INSERT INTO coin_logs (student_id, amount, reason, justification, tenant_id)
-  VALUES (v_uid, -v_cost, 'Forja', 'item ' || v_item.item_id::text, v_item.tenant_id);
 
   -- Rola a chance NO SERVIDOR
   v_success := (random() * 100) <= v_chance;
@@ -231,6 +240,7 @@ DECLARE
   v_coins_cost int;
   v_chance numeric;
   v_coins numeric;
+  v_staff boolean;
   v_success boolean;
   v_i int;
   v_result_store_id uuid;
@@ -240,6 +250,11 @@ BEGIN
   IF v_uid IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'error', 'não autenticado');
   END IF;
+
+  -- Staff (superadmin/admin/teacher) tem saldo infinito: não valida nem deduz moedas
+  SELECT EXISTS (
+    SELECT 1 FROM users WHERE id = v_uid AND role IN ('superadmin', 'admin', 'teacher')
+  ) INTO v_staff;
 
   SELECT * INTO v_item FROM user_items WHERE id = p_item_id AND student_id = v_uid;
   IF NOT FOUND THEN
@@ -273,11 +288,19 @@ BEGIN
   SELECT ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_cfg->'materials', '[]'::jsonb))::uuid)
   INTO v_mats;
 
-  -- Saldo de moedas
+  -- Saldo de moedas (staff: saldo infinito, não valida nem deduz)
   SELECT COALESCE(coins, 0) INTO v_coins FROM users WHERE id = v_uid;
-  IF v_coins < v_coins_cost THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'moedas insuficientes', 'cost', v_coins_cost, 'coins', v_coins);
+  IF NOT v_staff THEN
+    IF v_coins < v_coins_cost THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'moedas insuficientes', 'cost', v_coins_cost, 'coins', v_coins);
+    END IF;
+
+    -- Deduz moedas + registro
+    UPDATE users SET coins = coins - v_coins_cost WHERE id = v_uid;
+    INSERT INTO coin_logs (student_id, amount, reason, justification, tenant_id)
+    VALUES (v_uid, -v_coins_cost, 'Transmutação', 'item ' || v_item.item_id::text, v_item.tenant_id);
   END IF;
+  v_coins := v_coins - (CASE WHEN v_staff THEN 0 ELSE v_coins_cost END);
 
   -- Todos os materiais presentes?
   IF array_length(v_mats, 1) > 0 THEN
@@ -291,11 +314,6 @@ BEGIN
       END IF;
     END LOOP;
   END IF;
-
-  -- Deduz moedas + registro
-  UPDATE users SET coins = coins - v_coins_cost WHERE id = v_uid;
-  INSERT INTO coin_logs (student_id, amount, reason, justification, tenant_id)
-  VALUES (v_uid, -v_coins_cost, 'Transmutação', 'item ' || v_item.item_id::text, v_item.tenant_id);
 
   -- Consome materiais (sucesso E falha consomem)
   IF array_length(v_mats, 1) > 0 THEN
