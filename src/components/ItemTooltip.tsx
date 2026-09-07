@@ -90,6 +90,11 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
   const mainStatPct = baseAttr && ['xp','coins','vitality','fortitude','persuasion'].includes(item.baseAttributeType || '');
   const consumableDesc = item.gameEffect === 'restore_hp' ? 'Restaura todos os pontos de vida.' :
     item.gameEffect === 'heal_1_hp' ? 'Recupera 1 coração de vida.' :
+    item.gameEffect === 'cure_bleed' ? 'Estanca o sangramento ativo no personagem.' :
+    item.gameEffect === 'cure_poison' ? 'Cura o envenenamento ativo no personagem.' :
+    item.gameEffect === 'cure_freeze' ? 'Descongela o personagem.' :
+    item.gameEffect === 'cure_burn' ? 'Apaga o fogo ativo no personagem.' :
+    item.gameEffect === 'cure_electric' ? 'Elimina o choque elétrico ativo no personagem.' :
     item.gameEffect === 'reduce_hp_cooldown' ? `Acelera a recarga de vida: -${item.hpCooldownReductionMinutes || 10} min por coração.` :
     item.gameEffect === 'add_attribute' ? 'Adiciona um novo atributo aleatório a um equipamento.' :
     item.gameEffect === 'remove_attribute' ? 'Remove um atributo negativo de um equipamento.' :

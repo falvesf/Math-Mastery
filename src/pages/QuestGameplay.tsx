@@ -1318,14 +1318,13 @@ setPlayerBleedActive(false);
               setTransformState({ ...tr, consecutiveCorrect: newStreak });
             }
           }
-          // Rato: ao levar dano, volta a ser monstro IMEDIATAMENTE
+          // Rato: ao levar dano, volta a ser monstro IMEDIATAMENTE — mas o SANGRAMENTO
+          // continua (é consequência da mordida e dura 2 turnos).
           if (tr?.animal === 'rato') {
-            setPlayerBleedActive(false);
-            setPlayerBleedWound(null);
-            setPlayerBleedTurns(0);
+            advanceBleedTurn(); // o golpe é uma ação de ataque
             triggerTransformPuff('revert');
             setTransformState(null);
-            setBattleMessage('O RATO voltou a ser monstro!');
+            setBattleMessage('O RATO voltou a ser monstro, mas você continua sangrando!');
           }
           // CURA: chance de ativar a aura ao acertar o monstro (máx 3x, sem cumulativo)
           if (damageEffect === 'heal' && Math.random() * 100 < effectChance) {
@@ -1364,10 +1363,15 @@ setPlayerBleedActive(false);
       }
       // Rato: errar faz o rato atacar e infligir SANGRAMENTO no jogador (2 turnos)
       if (tr?.animal === 'rato') {
-        setPlayerBleedActive(true);
-        setPlayerBleedTurns(2);
-        setPlayerBleedWound(rollBleedWound('rato'));
-        setBattleMessage('O RATO TE MORDEU! Você está sangrando — perderá corações e moedas por 2 turnos!');
+        if (playerBleedActive) {
+          // Sangramento já ativo: a mordida é uma ação de ataque → consome 1 turno
+          advanceBleedTurn();
+        } else {
+          setPlayerBleedActive(true);
+          setPlayerBleedTurns(2);
+          setPlayerBleedWound(rollBleedWound('rato'));
+          setBattleMessage('O RATO TE MORDEU! Você está sangrando — perderá corações e moedas por 2 turnos!');
+        }
       }
 
       if (economySettings?.coinsLostInCombat && !isStudyMode && !hasShield) {
@@ -1504,8 +1508,6 @@ setPlayerBleedActive(false);
     if (tr) {
 if (tr.turnsLeft <= 1) {
         setTransformState(null);
-        setPlayerBleedActive(false);
-        setPlayerBleedTurns(0);
         triggerTransformPuff('revert');
         if (tr.animal !== 'rato') setBattleMessage(`${TRANSFORM_LABELS[tr.animal]} voltou ao normal!`);
       } else {
@@ -1857,11 +1859,33 @@ if (tr.turnsLeft <= 1) {
     setTimeout(() => setCoinsToRescue(null), 2500);
   };
 
-  // SANGRAMENTO DO RATO no JOGADOR: por 2 turnos, drena 0,5 coração + moedas a cada tick.
-// Usa heartsRef para SEMPRE ler o coração ATUAL (closure de currentHearts ficaria obsoleto).
+  // SANGRAMENTO DO RATO no JOGADOR: dura 2 TURNOS (ações de ataque). O dano contínuo
+// (0,5 coração + moedas) é CONSEQUÊNCIA do ataque e continua enquanto durar.
+// Usa heartsRef/bleedTurnsRef para sempre ler o valor ATUAL.
+const bleedTurnsRef = useRef(0);
+useEffect(() => { bleedTurnsRef.current = playerBleedTurns; }, [playerBleedTurns]);
+
+// Consome 1 turno de sangramento a cada ação de ataque (não é ação de ataque em si)
+const advanceBleedTurn = () => {
+  if (!playerBleedActive) return;
+  setPlayerBleedTurns(t => {
+    const left = Math.max(0, t - 1);
+    if (left <= 0) {
+      setPlayerBleedActive(false);
+      setPlayerBleedWound(null);
+    }
+    return left;
+  });
+};
+
 useEffect(() => {
-  if (gameState !== 'playing' || !playerBleedActive || playerBleedTurns <= 0) return;
+  if (gameState !== 'playing' || !playerBleedActive) return;
   const iv = setInterval(() => {
+    if (bleedTurnsRef.current <= 0) {
+      setPlayerBleedActive(false);
+      setPlayerBleedWound(null);
+      return;
+    }
     const hp = heartsRef.current;
     if (hp <= 0.5) {
       setPlayerBleedActive(false);
@@ -1888,17 +1912,10 @@ useEffect(() => {
       supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
       updateUserDataLocally({ coins: newCoins });
     }
-    // Cada tick consome 1 turno de sangramento
-    setPlayerBleedTurns(t => {
-      const left = t - 1;
-      if (left <= 0) setPlayerBleedActive(false);
-      setPlayerBleedWound(null);
-      return Math.max(0, left);
-    });
-  }, 3500);
+  }, 3200);
   return () => clearInterval(iv);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [gameState, playerBleedActive, playerBleedTurns]);
+}, [gameState, playerBleedActive]);
 
   // VENENO/SANGRAMENTO: a cada alguns segundos drena o coração do monstro (visual),
   // pisca em vermelho e dropa moedas extras.
@@ -2024,9 +2041,26 @@ useEffect(() => {
       const newHearts = Math.min(maxHearts, currentHearts + 1);
       setCurrentHearts(newHearts);
       
-      if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
+if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
         updateUserHearts(newHearts);
       }
+    } else if (item.gameEffect === 'cure_bleed') {
+      if (!playerBleedActive) {
+        await showAlert("Você não está sangrando!");
+        return;
+      }
+      setPlayerBleedActive(false);
+      setPlayerBleedWound(null);
+      setPlayerBleedTurns(0);
+      setBattleMessage('🩹 Bandagem aplicada! O sangramento foi estancado!');
+    } else if (item.gameEffect === 'cure_poison') {
+      setBattleMessage('🧪 Antídoto usado! O veneno foi removido!');
+    } else if (item.gameEffect === 'cure_freeze') {
+      setBattleMessage('☕ Chá quente! Você se descongelou!');
+    } else if (item.gameEffect === 'cure_burn') {
+      setBattleMessage('🧴 Pomada aplicada! O fogo foi apagado!');
+    } else if (item.gameEffect === 'cure_electric') {
+      setBattleMessage('🛡️ Isolante! O choque elétrico foi eliminado!');
     }
     
     await supabase.from('user_items').delete().eq('id', item.id);

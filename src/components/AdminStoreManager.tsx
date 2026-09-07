@@ -29,7 +29,9 @@ import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharact
 import { DAMAGE_EFFECTS } from '../lib/damageEffects';
 import { v4 as uuidv4 } from 'uuid';
 
-export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 'bazar_sale_permit';
+export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 
+  'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 
+  'bazar_sale_permit' | 'cure_bleed' | 'cure_poison' | 'cure_freeze' | 'cure_burn' | 'cure_electric';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mestre' | 'legendary';
 
 export interface StoreItem {
@@ -1214,6 +1216,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="unlock_gender">Liberar Troca de Gênero (15 min)</option>
                       <option value="rename_character">Carta de Troca de Nome (Renomear personagem)</option>
                       <option value="bazar_sale_permit">Licença de Venda no Bazar (Permite vender itens no bazar com validade)</option>
+                      <option value="cure_bleed">Bandagem (Estanca o sangramento)</option>
+                      <option value="cure_poison">Antídoto (Cura o envenenamento)</option>
+                      <option value="cure_freeze">Chá Quente (Descongela)</option>
+                      <option value="cure_burn">Pomada Refrescante (Apaga o fogo)</option>
+                      <option value="cure_electric">Isolante (Elimina o choque elétrico)</option>
                     </select>
                   </div>
                   {formData.gameEffect === 'reduce_hp_cooldown' && (
