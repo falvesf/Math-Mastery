@@ -218,6 +218,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [showForgeSounds, setShowForgeSounds] = useState(false);
   const [forgeSoundsConfig, setForgeSoundsConfig] = useState<ForgeSoundsConfig>({});
   const [soundPickerTarget, setSoundPickerTarget] = useState<keyof ForgeSoundsConfig | null>(null);
+  const [copyForgeFromId, setCopyForgeFromId] = useState('');
   // Modal de seleção das opções para "Sincronizar do Banco"
   const [showSyncOptions, setShowSyncOptions] = useState(false);
   const [syncSelection, setSyncSelection] = useState<Record<string, boolean>>({});
@@ -380,6 +381,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     { key: 'slot', label: 'Parte do corpo (slot)', hint: 'avatarPart', keys: ['avatarPart'] },
     { key: 'active', label: 'Disponível na loja', hint: 'active', keys: ['active'] },
     { key: 'sale', label: 'Bazar (preço mínimo de revenda)', hint: 'minSalePrice', keys: ['minSalePrice'] },
+    { key: 'forge', label: 'Forja e Transmutação (chance, custo, materiais, resultado)', hint: 'forgeConfig, isForgeable, isTransmutable, transmuteConfig, isTransmuted', keys: ['forgeConfig', 'isForgeable', 'isTransmutable', 'transmuteConfig', 'isTransmuted'] },
   ];
 
   const deepEqualSync = (a: any, b: any): boolean => {
@@ -1404,6 +1406,31 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>
                     Todos os equipamentos são forjáveis. A <strong>força</strong> é calculada automaticamente a partir do Atributo Base (90% menor no +0, crescendo até 100% no +9). O <strong>custo em moedas</strong> é calculado automaticamente com base no valor de compra (metade do valor acumulado + % do grau). Aqui você configura apenas a <strong>chance de sucesso</strong> de cada nível (o fallback já vem preenchido).
                   </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>📋 Copiar Forja/Transmutação de outro item:</span>
+                    <ItemSelect
+                      items={allItems.filter(i => i.type === 'equippable' && i.id !== (formData as any).id).map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl }))}
+                      value={copyForgeFromId}
+                      onChange={(id) => {
+                        if (!id) { setCopyForgeFromId(''); return; }
+                        const src = allItems.find(i => i.id === id);
+                        if (src) {
+                          setFormData({
+                            ...formData,
+                            isForgeable: src.isForgeable ?? true,
+                            forgeConfig: src.forgeConfig || null,
+                            isTransmutable: src.isTransmutable || false,
+                            transmuteConfig: src.transmuteConfig || undefined,
+                            isTransmuted: src.isTransmuted || false,
+                          });
+                          showToast(`Forja/Transmutação copiadas de "${src.title}". Revise e salve.`, 'success');
+                        }
+                        setCopyForgeFromId('');
+                      }}
+                      placeholder="— selecionar item —"
+                      width={260}
+                    />
+                  </div>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                       <thead>
