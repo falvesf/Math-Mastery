@@ -92,6 +92,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const { tenantId, isSuperAdmin } = useTenant();
   const { can: canItems } = usePermissions();
   const [items, setItems] = useState<StoreItem[]>([]);
+  const [bankOtherItems, setBankOtherItems] = useState<StoreItem[]>([]);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [loading, setLoading] = useState(true);
@@ -218,6 +219,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       const loaded: StoreItem[] = [];
       (snap || []).forEach(row => loaded.push({ id: row.id, _isGlobal: row.is_global ?? false, _tenantId: row.tenant_id ?? null, ...row.data } as StoreItem));
       setItems(loaded);
+
+      // Itens do Banco (globais) tipo 'other' — materiais disponíveis para forja/transmutação
+      const { data: bankSnap } = await supabase.from('store_items').select('*').eq('is_global', true);
+      const bankLoaded: StoreItem[] = [];
+      (bankSnap || []).forEach(row => {
+        const d = (row.data || {}) as any;
+        if ((d.type || '') === 'other') bankLoaded.push({ id: row.id, _isGlobal: true, _tenantId: row.tenant_id ?? null, ...d } as StoreItem);
+      });
+      setBankOtherItems(bankLoaded);
     
     try {
       const { data: gachaSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'gacha').single();
@@ -1260,7 +1270,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                             const updated = { ...(formData.forgeConfig || {}), materialsPerLevel: { ...(formData.forgeConfig?.materialsPerLevel || {}), [l]: list.filter(Boolean) } };
                             setFormData({ ...formData, forgeConfig: updated });
                           };
-                          const otherItems = items.filter(i => i.type === 'other');
+                          const otherItems = [...items, ...bankOtherItems].filter((i, idx, arr) => arr.findIndex(x => x.id === i.id) === idx).filter(i => (i.type || '') === 'other');
                           return (
                             <tr key={lvl} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                               <td style={{ padding: '4px 8px', textAlign: 'center', color: lvl === 0 ? '#888' : 'var(--gold-primary)', fontWeight: 'bold' }}>+{lvl}</td>
@@ -1290,7 +1300,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                                         <select key={matIdx} value={current} onChange={e => setMaterial(lvl, matIdx, e.target.value)} style={{ width: '150px', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.72rem' }}>
                                           <option value="">— sem material —</option>
                                           {otherItems.map(i => (
-                                            <option key={i.id} value={i.id}>{i.title}</option>
+                                            <option key={i.id} value={i.id}>{i.title}{i._isGlobal ? ' (Banco)' : ''}</option>
                                           ))}
                                         </select>
                                       );
@@ -1498,8 +1508,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                               style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
                             >
                               <option value="">— Selecionar material —</option>
-                              {items.filter(i => i.type === 'other').map(i => (
-                                <option key={i.id} value={i.id}>{i.title}</option>
+                              {otherItems.map(i => (
+                                <option key={i.id} value={i.id}>{i.title}{i._isGlobal ? ' (Banco)' : ''}</option>
                               ))}
                             </select>
                           </div>
