@@ -2590,6 +2590,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                     <option value="xp">Por XP</option>
                     <option value="name">Por Nome</option>
                     <option value="class">Por Turma</option>
+                    <option value="lastLogin">Por Último Acesso</option>
                   </select>
                   <button 
                     onClick={() => setStudentSortOrder(studentSortOrder === 'desc' ? 'asc' : 'desc')}
@@ -2683,6 +2684,10 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                     const classA = a.classId || '';
                     const classB = b.classId || '';
                     comparison = classA.localeCompare(classB);
+                  } else if (studentSortBy === 'lastLogin') {
+                    const aT = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
+                    const bT = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
+                    comparison = aT - bT;
                   }
                   
                   return studentSortOrder === 'desc' ? -comparison : comparison;
@@ -2699,6 +2704,11 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                       const sClass = schoolClasses.find(c => c.name === student.classId);
                       const classColor = sClass ? sClass.color : 'var(--text-secondary)';
                       const isSelected = selectedStudentIds.includes(student.uid);
+                      const lastSeenTs = student.last_seen_at ? new Date(student.last_seen_at).getTime() : 0;
+                      const lastSeenLabel = lastSeenTs > 0
+                        ? new Date(lastSeenTs).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + new Date(lastSeenTs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                        : 'Nunca acessou';
+                      const lastSeenRecent = lastSeenTs > 0 && (Date.now() - lastSeenTs) < 7 * 24 * 60 * 60 * 1000;
 
                       return (
                         <div key={student.uid} className="glass-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', background: isSelected ? 'rgba(251, 191, 36, 0.05)' : 'rgba(255,255,255,0.02)', border: isSelected ? '1px solid var(--gold-primary)' : '1px solid transparent' }}>
@@ -2794,6 +2804,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                                 )}
                                 <span style={{ color: currentRank.color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}><ShieldAlert size={14} /> {currentRank.name}</span>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--gold-primary)' }}><Star size={14} /> {student.xp || 0} XP</span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: lastSeenTs > 0 ? (lastSeenRecent ? '#34d399' : '#94a3b8') : '#ef4444', fontWeight: lastSeenRecent ? 'bold' : 'normal' }} title="Último acesso (login/atividade)"><History size={14} /> {lastSeenLabel}</span>
                               </div>
                             </div>
                           </div>
