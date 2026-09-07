@@ -290,45 +290,42 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
       const blob = await response.blob();
 
       if (blob.size > 2 * 1024 * 1024) {
-        showToast('O arquivo não pode exceder 2 MB. Usando o link original.', 'error');
-        onSelectImage(url);
+        showAlert('O arquivo excede 2 MB. Escolha outra imagem (o link do Pixabay expira e não pode ser salvo).');
         setUploading(false);
-        onClose();
         return;
       }
 
       const filePath = `quests/pixabay_${Date.now()}.jpg`;
       const progressInterval = setInterval(() => setProgress(p => Math.min(p + 10, 90)), 200);
 
-      supabase.storage.from('uploads').upload(filePath, blob, { contentType: 'image/jpeg', cacheControl: '3600', upsert: false })
-        .then(({ data, error }) => {
-          clearInterval(progressInterval);
-          setProgress(100);
-          if (error) {
-            console.error('Upload falhou:', error);
-            showAlert('Erro no Storage. Usando link original.');
-            onSelectImage(url);
-          } else if (data) {
-            const { data: publicData } = supabase.storage.from('uploads').getPublicUrl(filePath);
-            onSelectImage(publicData.publicUrl);
-          }
-        })
-        .catch(err => {
-          clearInterval(progressInterval);
-          console.error('Download falhou:', err);
-          showAlert('Erro ao processar imagem. Usando link temporário.');
-          onSelectImage(url);
-        })
-        .finally(() => {
+      try {
+        const { data, error } = await supabase.storage.from('uploads').upload(filePath, blob, { contentType: 'image/jpeg', cacheControl: '3600', upsert: false });
+        clearInterval(progressInterval);
+        setProgress(100);
+        if (error) {
+          console.error('Upload falhou:', error);
+          showAlert('Erro ao salvar a imagem no bucket. Nenhuma imagem foi aplicada (o link do Pixabay expira).');
           setUploading(false);
-          onClose();
-        });
+          return;
+        }
+        if (data) {
+          const { data: publicData } = supabase.storage.from('uploads').getPublicUrl(filePath);
+          onSelectImage(publicData.publicUrl);
+        }
+      } catch (err) {
+        clearInterval(progressInterval);
+        console.error('Download falhou:', err);
+        showAlert('Erro ao processar a imagem. Nenhuma imagem foi aplicada (o link do Pixabay expira).');
+        setUploading(false);
+        return;
+      } finally {
+        setUploading(false);
+        onClose();
+      }
     } catch (err) {
       console.error('Download falhou:', err);
-      showAlert('Erro ao processar imagem. Usando link temporário.');
-      onSelectImage(url);
+      showAlert('Erro ao baixar a imagem do Pixabay. Nenhuma imagem foi aplicada (o link externo expira).');
       setUploading(false);
-      onClose();
     }
   };
 
@@ -381,9 +378,13 @@ export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: Im
             onClick={() => {
               if (openTilesetPicker) {
                 setSelectedTileset({ url: img.url, refPath: img.refPath });
-              } else {
+              } else if (img.url.includes('supabase.co/storage') || img.url.startsWith('data:') || img.url.startsWith('/')) {
+                // Já está no nosso bucket: usa direto (não expira)
                 onSelectImage(img.url);
                 onClose();
+              } else {
+                // URL externa (ex: Pixabay) expira → baixa para o bucket antes de salvar
+                handleSelectPixabayImage(img.url);
               }
             }}
             title={img.name}
