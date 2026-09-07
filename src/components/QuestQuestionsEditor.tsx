@@ -427,6 +427,22 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
                   <div key={bq.id} style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal' }} dangerouslySetInnerHTML={{ __html: bq.title }} />
+                      {(bq.options || []).length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0.45rem', paddingLeft: '0.25rem', borderLeft: '2px solid rgba(139,92,246,0.35)' }}>
+                          {(bq.options || []).slice(0, 4).map((opt: any, i: number) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', lineHeight: 1.3, minWidth: 0 }}>
+                              <span style={{ fontWeight: 'bold', color: i === bq.correct_index ? '#10b981' : 'var(--text-secondary)', flexShrink: 0 }}>
+                                {String.fromCharCode(65 + i)}.
+                              </span>
+                              <span
+                                style={{ color: i === bq.correct_index ? '#10b981' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                dangerouslySetInnerHTML={{ __html: opt.text || '' }}
+                              />
+                              {i === bq.correct_index && <CheckCircle size={12} color="#10b981" style={{ flexShrink: 0 }} />}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
                         {bq.category} · {bq.difficulty} · {(bq.tags || []).slice(0, 3).map((t: string) => `#${t}`).join(' ')}
                       </div>
