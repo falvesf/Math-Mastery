@@ -3481,6 +3481,7 @@ export default function Dashboard() {
               userData={userData}
               currentRankIndex={RANKS.findIndex(r => r.name === currentRank.name)}
               onClose={() => {}}
+              onGoToStore={() => setActiveTab('store')}
               onSuccess={(newCoins?: number) => {
                 if (typeof newCoins === 'number') updateUserDataLocally({ coins: newCoins });
               }}

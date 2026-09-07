@@ -27,10 +27,11 @@ interface BlacksmithModalProps {
   currentRankIndex: number;
   onClose: () => void;
   onSuccess: (newCoins?: number) => void;
+  onGoToStore?: () => void;
 }
 
 // @ts-ignore — onClose é parte do contrato da interface (mantido; pode ser usado por consumidores)
-export default function BlacksmithModal({ userData, currentRankIndex, onClose, onSuccess }: BlacksmithModalProps) {
+export default function BlacksmithModal({ userData, currentRankIndex, onClose, onSuccess, onGoToStore }: BlacksmithModalProps) {
   const { showConfirm, showToast } = useDialog();
   const { tenantId } = useTenant();
   const [activeTab, setActiveTab] = useState<'forge' | 'transmute'>('forge');
@@ -46,6 +47,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   // Transmute State
   const [selectedTransmuteItem, setSelectedTransmuteItem] = useState<any | null>(null);
   const [consumables, setConsumables] = useState<any[]>([]);
+  // Catálogo (loja) dos materiais — para mostrar nome/ícone mesmo sem possuir
+  const [materialCatalog, setMaterialCatalog] = useState<Record<string, { title: string; imageUrl: string }>>({});
   
   // Sketchfab State
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -205,6 +208,19 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       .from('user_items')
       .select('id, item_id, equipped, data')
       .eq('student_id', userData.uid);
+
+    // Catálogo de materiais (nome/ícone) — mesmo os que o jogador ainda não possui
+    try {
+      let catQ = supabase.from('store_items').select('id, data');
+      if (tenantId) catQ = catQ.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+      const { data: catSnap } = await catQ;
+      const catMap: Record<string, { title: string; imageUrl: string }> = {};
+      (catSnap || []).forEach((s: any) => {
+        const d = (s.data || {}) as any;
+        catMap[s.id] = { title: d.title || 'Material', imageUrl: d.imageUrl || '' };
+      });
+      setMaterialCatalog(catMap);
+    } catch (e) { /* catálogo opcional */ }
 
     let parsedItems = [];
     let scrollAmt = 0;
@@ -566,20 +582,37 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                         {requiredMats.length > 0 && (
                           <div style={{ background: 'rgba(139,92,246,0.1)', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid rgba(139,92,246,0.3)' }}>
                             <div style={{ color: '#c084fc', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '0.4rem' }}>🧪 Materiais exigidos (consumidos no sucesso ou falha)</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                               {requiredMats.map(id => {
                                 const qty = matCount(id);
-                                const title = consumables.find(c => c.itemId === id)?.itemTitle || 'Material';
+                                const owned = consumables.find(c => c.itemId === id);
+                                const cat = materialCatalog[id];
+                                const title = owned?.itemTitle || cat?.title || 'Material';
+                                const img = owned?.itemImageUrl || cat?.imageUrl || '';
                                 return (
-                                  <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                                    <span style={{ color: 'white' }}>{title}</span>
-                                    <strong style={{ color: qty > 0 ? '#10B981' : '#ef4444' }}>
+                                  <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', gap: '0.5rem' }}>
+                                    <span style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                                      {img ? <CachedImage src={img} alt={title} style={{ width: 22, height: 22, objectFit: 'contain', flexShrink: 0 }} /> : <Sparkles size={18} color="#c084fc" style={{ flexShrink: 0 }} />}
+                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+                                    </span>
+                                    <strong style={{ color: qty > 0 ? '#10B981' : '#ef4444', flexShrink: 0 }}>
                                       {qty > 0 ? `✓ ${qty}x` : 'FALTA'}
                                     </strong>
                                   </div>
                                 );
                               })}
                             </div>
+                            <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed rgba(139,92,246,0.3)', fontSize: '0.75rem', color: '#a78bfa' }}>
+                              💡 Estes materiais podem ser encontrados em <strong>missões</strong> (drops de monstros/baús) ou no <strong>Bazar</strong> (itens à venda por outros jogadores). Junte-os na mochila antes de forjar.
+                            </div>
+                            {onGoToStore && (
+                              <button
+                                onClick={onGoToStore}
+                                style={{ marginTop: '0.6rem', width: '100%', padding: '0.45rem', background: 'rgba(139,92,246,0.2)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}
+                              >
+                                🛒 Ir à Loja / Bazar para tentar conseguir
+                              </button>
+                            )}
                           </div>
                         )}
 
