@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer } from 'lucide-react';
@@ -87,12 +87,60 @@ const getRarityLabel = (rarity?: string) => {
   }
 };
 
+interface ItemSelectOption {
+  id: string;
+  title: string;
+  imageUrl?: string;
+  badge?: string;
+}
+
+// Combobox customizado com ícone + nome (os <select> nativos não renderizam imagem)
+function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { items: ItemSelectOption[]; value: string; onChange: (id: string) => void; placeholder: string; width?: number | string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const selected = items.find(i => i.id === value);
+  return (
+    <div ref={ref} style={{ position: 'relative', width }}>
+      <button type="button" onClick={() => setOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.72rem', cursor: 'pointer', minHeight: 26, textAlign: 'left' }}>
+        {selected ? (
+          <>
+            {selected.imageUrl ? <img src={selected.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{selected.title}</span>
+            {selected.badge ? <span style={{ flexShrink: 0, fontSize: '0.6rem', color: '#c084fc' }}>{selected.badge}</span> : null}
+          </>
+        ) : (
+          <span style={{ color: 'var(--text-secondary)' }}>{placeholder}</span>
+        )}
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 220, overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border-glass)', borderRadius: '6px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
+          {items.map(i => (
+            <div key={i.id} onClick={() => { onChange(i.id); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '5px 8px', cursor: 'pointer', fontSize: '0.72rem', background: i.id === value ? 'rgba(255,215,0,0.15)' : 'transparent', whiteSpace: 'nowrap' }}>
+              {i.imageUrl ? <img src={i.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.title}</span>
+              {i.badge ? <span style={{ marginLeft: 'auto', fontSize: '0.6rem', color: '#c084fc', flexShrink: 0 }}>{i.badge}</span> : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }) {
   const { showAlert, showConfirm } = useDialog();
   const { tenantId, isSuperAdmin } = useTenant();
   const { can: canItems } = usePermissions();
   const [items, setItems] = useState<StoreItem[]>([]);
-  const [bankOtherItems, setBankOtherItems] = useState<StoreItem[]>([]);
+  const [bankItems, setBankItems] = useState<StoreItem[]>([]);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [loading, setLoading] = useState(true);
@@ -220,14 +268,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       (snap || []).forEach(row => loaded.push({ id: row.id, _isGlobal: row.is_global ?? false, _tenantId: row.tenant_id ?? null, ...row.data } as StoreItem));
       setItems(loaded);
 
-      // Itens do Banco (globais) tipo 'other' — materiais disponíveis para forja/transmutação
+      // Itens do Banco (globais) — para materiais e resultado de transmutação
       const { data: bankSnap } = await supabase.from('store_items').select('*').eq('is_global', true);
       const bankLoaded: StoreItem[] = [];
-      (bankSnap || []).forEach(row => {
-        const d = (row.data || {}) as any;
-        if ((d.type || '') === 'other') bankLoaded.push({ id: row.id, _isGlobal: true, _tenantId: row.tenant_id ?? null, ...d } as StoreItem);
-      });
-      setBankOtherItems(bankLoaded);
+      (bankSnap || []).forEach(row => bankLoaded.push({ id: row.id, _isGlobal: true, _tenantId: row.tenant_id ?? null, ...(row.data || {}) } as StoreItem));
+      setBankItems(bankLoaded);
     
     try {
       const { data: gachaSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'gacha').single();
@@ -797,8 +842,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Carregando Loja...</div>;
 
-  // Materiais disponíveis para forja/transmutação: itens locais 'other' + itens 'other' do Banco (global)
-  const otherItems = [...items, ...bankOtherItems].filter((i, idx, arr) => arr.findIndex(x => x.id === i.id) === idx).filter(i => (i.type || '') === 'other');
+  // Todos os itens: locais + Banco (global), sem duplicar por id
+  const allItems = [...items, ...bankItems].filter((i, idx, arr) => arr.findIndex(x => x.id === i.id) === idx);
+  const sortByTitle = (a: StoreItem, b: StoreItem) => (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase());
+  // Materiais disponíveis para forja/transmutação: itens 'other' (locais + banco), ordem alfabética
+  const materialOptions = allItems.filter(i => (i.type || '') === 'other').sort(sortByTitle);
+  // Itens resultado de transmutação: equipáveis marcados como isTransmuted, ordem alfabética
+  const transmuteResultOptions = allItems.filter(i => i.type === 'equippable' && (i as any).isTransmuted).sort(sortByTitle);
 
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
@@ -1299,12 +1349,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                                     {[0, 1].map(matIdx => {
                                       const current = (formData.forgeConfig?.materialsPerLevel?.[lvl] || [])[matIdx] || '';
                                       return (
-                                        <select key={matIdx} value={current} onChange={e => setMaterial(lvl, matIdx, e.target.value)} style={{ width: '150px', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.72rem' }}>
-                                          <option value="">— sem material —</option>
-                                          {otherItems.map(i => (
-                                            <option key={i.id} value={i.id}>{i.title}{i._isGlobal ? ' (Banco)' : ''}</option>
-                                          ))}
-                                        </select>
+                                        <ItemSelect
+                                          key={matIdx}
+                                          items={materialOptions.map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined }))}
+                                          value={current}
+                                          onChange={id => setMaterial(lvl, matIdx, id)}
+                                          placeholder="— sem material —"
+                                          width={170}
+                                        />
                                       );
                                     })}
                                   </div>
@@ -1484,14 +1536,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
                         Item Resultado (só itens marcados como "Item Transmutado", da MESMA categoria: {formData.itemCategory === 'attack' ? 'arma' : formData.itemCategory === 'defense' ? 'defesa/escudo' : 'suporte'})
                       </label>
-                      <select value={formData.transmuteConfig.resultItemId || ''} onChange={e => setFormData({ ...formData, transmuteConfig: { ...formData.transmuteConfig!, resultItemId: e.target.value } })} style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                        <option value="">— Selecionar item resultado —</option>
-                        {items.filter(i => i.type === 'equippable' && (i as any).isTransmuted && (i.itemCategory || 'none') === (formData.itemCategory || 'none')).map(i => (
-                          <option key={i.id} value={i.id}>{i.title}</option>
-                        ))}
-                      </select>
+                      <ItemSelect
+                        items={transmuteResultOptions.filter(i => (i.itemCategory || 'none') === (formData.itemCategory || 'none')).map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined }))}
+                        value={formData.transmuteConfig.resultItemId || ''}
+                        onChange={id => setFormData({ ...formData, transmuteConfig: { ...formData.transmuteConfig!, resultItemId: id } })}
+                        placeholder="— Selecionar item resultado —"
+                        width={280}
+                      />
                       {formData.transmuteConfig.resultItemId && (
-                        <p style={{ color: '#8b5cf6', fontSize: '0.75rem', margin: '4px 0 0 0' }}>✓ Resultado: {items.find(i => i.id === formData.transmuteConfig!.resultItemId)?.title || 'Item não encontrado'}</p>
+                        <p style={{ color: '#8b5cf6', fontSize: '0.75rem', margin: '4px 0 0 0' }}>✓ Resultado: {transmuteResultOptions.find(i => i.id === formData.transmuteConfig!.resultItemId)?.title || 'Item não encontrado'}</p>
                       )}
                     </div>
                     <div>
@@ -1500,20 +1553,17 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                         {[0, 1].map(matIdx => (
                           <div key={matIdx} style={{ flex: 1, minWidth: '150px' }}>
                             <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Material {matIdx + 1}</label>
-                            <select
+                            <ItemSelect
+                              items={materialOptions.map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined }))}
                               value={formData.transmuteConfig.materials?.[matIdx] || ''}
-                              onChange={e => {
+                              onChange={id => {
                                 const mats = [...(formData.transmuteConfig!.materials || ['', ''])];
-                                mats[matIdx] = e.target.value;
+                                mats[matIdx] = id;
                                 setFormData({ ...formData, transmuteConfig: { ...formData.transmuteConfig!, materials: mats } });
                               }}
-                              style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
-                            >
-                              <option value="">— Selecionar material —</option>
-                              {otherItems.map(i => (
-                                <option key={i.id} value={i.id}>{i.title}{i._isGlobal ? ' (Banco)' : ''}</option>
-                              ))}
-                            </select>
+                              placeholder="— Selecionar material —"
+                              width="100%"
+                            />
                           </div>
                         ))}
                       </div>
