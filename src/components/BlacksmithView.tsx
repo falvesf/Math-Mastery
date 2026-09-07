@@ -286,7 +286,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     startAnvilHits(forgeSounds.forgeAnvilSoundUrl);
     if (sketchfabApi) sketchfabApi.play();
     const rpcPromise = supabase.rpc('forge_item', { p_item_id: selectedForgeItem.docId, p_use_scroll: useScroll });
-    await new Promise(r => setTimeout(r, 2500));
+    await new Promise(r => setTimeout(r, 7000));
     stopAnvilHits();
     if (sketchfabApi) sketchfabApi.pause();
     setIsForging(false);
