@@ -2360,13 +2360,22 @@ useEffect(() => {
                       const isRat = tr.animal === 'rato';
                       const isFrog = tr.animal === 'sapo';
                       const isPig = tr.animal === 'porco';
-                      const animCls = isFrog ? 'transform-hop' : (isRat ? 'transform-fast-wobble' : '');
-                      const scale = isRat ? 0.62 : 1;
+                      const animCls = isFrog ? 'transform-hop' : (isRat ? 'rat-dart' : '');
+                      // Rato: o modelo .glb já é pequeno — NÃO encolher mais.
+                      // Porco: o modelo fica de costas para a câmera — gira 180° para olhar para ela.
+                      const rotY = isPig ? 180 : 0;
                       const tint = isPig && tr.enraged ? '#ff2222' : null;
                       return (
-                        <div style={{ transform: `scale(${scale})`, transformOrigin: 'bottom center' }}>
+                        <div style={{ transformOrigin: 'bottom center' }}>
                           <div className={animCls || undefined} style={{ position: 'relative' }}>
-                            <CustomModelViewer modelUrl={animalUrl} size={240} animation={frozen ? 'none' : (monsterAnim === 'hurt' || monsterAnim === 'attack' ? monsterAnim : 'none')} role="monster" effectTint={tint} />
+                            {isRat && (
+                              <>
+                                <span className="rat-speed-line" style={{ top: '28%' }} />
+                                <span className="rat-speed-line" style={{ top: '52%', animationDelay: '0.15s' }} />
+                                <span className="rat-speed-line" style={{ top: '74%', animationDelay: '0.3s' }} />
+                              </>
+                            )}
+                            <CustomModelViewer modelUrl={animalUrl} size={240} configRotY={rotY} animation={frozen ? 'none' : (monsterAnim === 'hurt' || monsterAnim === 'attack' ? monsterAnim : 'none')} role="monster" effectTint={tint} />
                             {/* Badge da transformação */}
                             <div style={{ position: 'absolute', top: -18, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
                               <span style={{ fontSize: '0.65rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', background: isPig && tr.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>

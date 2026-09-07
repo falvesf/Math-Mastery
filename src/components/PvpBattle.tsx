@@ -741,8 +741,8 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
             <div style={{ position: 'relative' }}>
               {safeLeft?.transform ? (
                 <div style={{ position: 'relative' }}>
-                  <div className={safeLeft.transform.animal === 'sapo' ? 'transform-hop' : (safeLeft.transform.animal === 'rato' ? 'transform-fast-wobble' : undefined)} style={{ transform: safeLeft.transform.animal === 'rato' ? 'scale(0.62)' : undefined, transformOrigin: 'bottom center' }}>
-                    <CustomModelViewer modelUrl={getTransformModelUrl(safeLeft.transform.animal)} size={190} animation={leftAnswered ? 'attack' : (leftHurt ? 'hurt' : 'none')} role="monster" effectTint={safeLeft.transform.animal === 'porco' && safeLeft.transform.enraged ? '#ff2222' : null} />
+                  <div className={safeLeft.transform.animal === 'sapo' ? 'transform-hop' : (safeLeft.transform.animal === 'rato' ? 'rat-dart' : undefined)} style={{ transformOrigin: 'bottom center' }}>
+                    <CustomModelViewer modelUrl={getTransformModelUrl(safeLeft.transform.animal)} size={190} configRotY={safeLeft.transform.animal === 'porco' ? 180 : 0} animation={leftAnswered ? 'attack' : (leftHurt ? 'hurt' : 'none')} role="monster" effectTint={safeLeft.transform.animal === 'porco' && safeLeft.transform.enraged ? '#ff2222' : null} />
                   </div>
                   <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
                     <span style={{ fontSize: '0.6rem', fontWeight: 'bold', textTransform: 'uppercase', background: safeLeft.transform.animal === 'porco' && safeLeft.transform.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '1px 7px', borderRadius: '8px' }}>
@@ -782,8 +782,8 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
             <div style={{ position: 'relative' }}>
               {safeRight?.transform ? (
                 <div style={{ position: 'relative' }}>
-                  <div className={safeRight.transform.animal === 'sapo' ? 'transform-hop' : (safeRight.transform.animal === 'rato' ? 'transform-fast-wobble' : undefined)} style={{ transform: safeRight.transform.animal === 'rato' ? 'scale(0.62)' : undefined, transformOrigin: 'bottom center' }}>
-                    <CustomModelViewer modelUrl={getTransformModelUrl(safeRight.transform.animal)} size={190} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'none')} role="monster" effectTint={safeRight.transform.animal === 'porco' && safeRight.transform.enraged ? '#ff2222' : null} />
+                  <div className={safeRight.transform.animal === 'sapo' ? 'transform-hop' : (safeRight.transform.animal === 'rato' ? 'rat-dart' : undefined)} style={{ transformOrigin: 'bottom center' }}>
+                    <CustomModelViewer modelUrl={getTransformModelUrl(safeRight.transform.animal)} size={190} configRotY={safeRight.transform.animal === 'porco' ? 180 : 0} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'none')} role="monster" effectTint={safeRight.transform.animal === 'porco' && safeRight.transform.enraged ? '#ff2222' : null} />
                   </div>
                   <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
                     <span style={{ fontSize: '0.6rem', fontWeight: 'bold', textTransform: 'uppercase', background: safeRight.transform.animal === 'porco' && safeRight.transform.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '1px 7px', borderRadius: '8px' }}>

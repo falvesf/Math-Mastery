@@ -397,15 +397,36 @@
   transform-origin: bottom center;
 }
 
-/* Rato transformado: rápido e tremendo no lugar */
-@keyframes transform-fast-wobble {
-  0%, 100% { transform: translateX(0) rotate(0deg); }
-  25% { transform: translateX(-3px) rotate(-4deg); }
-  75% { transform: translateX(3px) rotate(4deg); }
+/* Rato transformado: rápido — dardejos laterais rápidos (sem rotacionar, que
+   parecia "ataque cardíaco") + linhas de velocidade ao lado */
+@keyframes rat-dart {
+  0%, 100% { transform: translateX(0) scaleX(1); }
+  20% { transform: translateX(-8px) scaleX(1.06); }
+  40% { transform: translateX(0) scaleX(1); }
+  60% { transform: translateX(-8px) scaleX(1.06); }
+  80% { transform: translateX(0) scaleX(1); }
 }
-.transform-fast-wobble {
-  animation: transform-fast-wobble 0.3s linear infinite;
+.rat-dart {
+  animation: rat-dart 0.5s linear infinite;
   transform-origin: bottom center;
+}
+
+@keyframes rat-speed-line {
+  0%, 100% { opacity: 0; transform: translateX(8px); }
+  30% { opacity: 0.85; }
+  60% { opacity: 0; transform: translateX(-4px); }
+}
+.rat-speed-line {
+  position: absolute;
+  right: -16px;
+  height: 2px;
+  width: 18px;
+  border-radius: 2px;
+  background: linear-gradient(to left, rgba(190, 195, 205, 0.9), transparent);
+  opacity: 0;
+  animation: rat-speed-line 0.5s linear infinite;
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* Aura de cura ao redor do jogador */
