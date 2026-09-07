@@ -47,11 +47,12 @@ async function processQueue() {
   try {
     if (!globalViewer) {
       const canvas = document.createElement('canvas');
+      // Sem `skin` no construtor: o loadSkin interno do skinview3d não captura rejeição
+      // e lança IndexSizeError "Uncaught (in promise)" se a imagem falhar (largura 0).
       globalViewer = new SkinViewer({
         canvas,
         width: 150,
-        height: 250,
-        skin: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" // dummy
+        height: 250
       });
       // Set up camera for full body shot
       globalViewer.camera.position.set(0, 15, 60);
@@ -60,6 +61,8 @@ async function processQueue() {
       if (globalViewer.renderer) {
         globalViewer.renderer.setClearColor(0x000000, 0);
       }
+      // Skin dummy carregada com .catch() para nunca virar erro não tratado.
+      globalViewer.loadSkin("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=").catch(() => {});
     }
 
     // 1. Generate skin
