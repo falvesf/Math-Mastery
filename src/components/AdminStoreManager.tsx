@@ -144,6 +144,11 @@ function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { item
             {selected.imageUrl ? <img src={selected.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{selected.title}</span>
             {selected.badge ? <span style={{ flexShrink: 0, fontSize: '0.6rem', color: '#c084fc' }}>{selected.badge}</span> : null}
+            <span
+              title="Limpar (nenhum)"
+              onMouseDown={(e) => { e.stopPropagation(); onChange(''); setOpen(false); }}
+              style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', background: 'rgba(239,68,68,0.25)', color: '#ef4444', fontSize: '0.75rem', lineHeight: 1, cursor: 'pointer', fontWeight: 'bold' }}
+            >×</span>
           </>
         ) : (
           <span style={{ color: 'var(--text-secondary)' }}>{placeholder}</span>
@@ -153,13 +158,20 @@ function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { item
         <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 2147483000, maxHeight: 200, overflowY: 'auto', background: 'rgba(22,22,28,0.98)', border: '1px solid rgba(139,92,246,0.6)', borderRadius: '6px', boxShadow: '0 10px 30px rgba(0,0,0,0.7)', padding: '2px 0' }}>
           {items.length === 0 ? (
             <div style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>Nenhum item disponível</div>
-          ) : items.map(i => (
+          ) : (
+            <>
+            <div onMouseDown={(e) => { e.stopPropagation(); onChange(''); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '5px 8px', cursor: 'pointer', fontSize: '0.72rem', color: '#ef4444', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontWeight: 'bold' }}>✕ Limpar (nenhum)</span>
+            </div>
+            {items.map(i => (
             <div key={i.id} onMouseDown={(e) => { e.stopPropagation(); onChange(i.id); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '5px 8px', cursor: 'pointer', fontSize: '0.72rem', background: i.id === value ? 'rgba(255,215,0,0.15)' : 'transparent', whiteSpace: 'nowrap' }}>
               {i.imageUrl ? <img src={i.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.title}</span>
               {i.badge ? <span style={{ marginLeft: 'auto', fontSize: '0.6rem', color: '#c084fc', flexShrink: 0 }}>{i.badge}</span> : null}
             </div>
           ))}
+            </>
+          )}
         </div>,
         document.body
       )}
