@@ -1395,7 +1395,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 </div>
 
                 {/* ===== FORJA (todos os equipáveis são forjáveis automaticamente) ===== */}
-                <div style={{ marginBottom: '1.5rem', border: '1px solid rgba(234,88,12,0.4)', borderRadius: '10px', padding: '1rem', background: 'rgba(234,88,12,0.05)' }}>
+                <div style={{ clear: 'both', marginBottom: '1.5rem', border: '1px solid rgba(234,88,12,0.4)', borderRadius: '10px', padding: '1rem', background: 'rgba(234,88,12,0.05)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer', fontWeight: 'bold', color: 'var(--accent-red)' }}>
                     <Hammer size={18} /> Forja do Item (+1 a +9)
                   </label>
@@ -1498,7 +1498,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
                 {/* ===== TRANSMUTAÇÃO ===== */}
                 {formData.type === 'equippable' && (
-                  <div style={{ marginBottom: '1.5rem', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '1rem', background: 'rgba(139,92,246,0.05)' }}>
+                  <div style={{ clear: 'both', marginBottom: '1.5rem', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '1rem', background: 'rgba(139,92,246,0.05)' }}>
                     <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 'bold', color: '#8b5cf6' }}>
                         <input
