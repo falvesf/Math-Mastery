@@ -1897,6 +1897,15 @@ export default function QuestGameplay() {
                     <Heart key={i} size={18} fill="#ef4444" color="#ef4444" />
                   ))}
                 </div>
+
+                <div title="Moedas que você tem" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--gold-primary)' }}>
+                  {activeCoinModel && activeCoinModel.url ? (
+                    <img src={activeCoinModel.open_url || activeCoinModel.url} alt="Moeda" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                  ) : (
+                    <Coins size={18} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
+                  )}
+                  <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)' }}>{userData?.coins ?? 0}</span>
+                </div>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5  ? 'var(--accent-red)'  : 'var(--text-primary)' }}>
                   <Clock size={18} />

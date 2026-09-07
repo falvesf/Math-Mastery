@@ -1740,6 +1740,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       battle_bg_move_speed: newQuest.battleBgMoveSpeed,
       battle_bg_move_duration: newQuest.battleBgMoveDuration,
       podium_bg_url: newQuest.podiumBgUrl || null,
+      combatcoindrop: newQuest.combatCoinDrop || null,
       battle_music_url: newQuest.battleMusicUrl || null,
       battle_music_volume: newQuest.battleMusicVolume ?? 0.5,
       monster_gender: newQuest.monsterGender || null,
