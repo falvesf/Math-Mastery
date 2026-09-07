@@ -20,6 +20,7 @@ interface GalleryImage {
   name: string;
 }
 export default function ImageGalleryModal({ onSelectImage, onClose, apiKey }: ImageGalleryModalProps) {
+  // @ts-ignore
   const { showAlert, showConfirm, showToast } = useDialog();
   // @ts-ignore
   const [customUrl, setCustomUrl] = useState('');

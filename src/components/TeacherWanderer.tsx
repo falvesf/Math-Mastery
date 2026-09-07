@@ -21,6 +21,7 @@ interface OnlineTeacher {
   equippedItems?: EquippedItem[];
 }
 
+// @ts-ignore
 const ONLINE_WINDOW_MS = 5 * 60 * 1000; // 5 min (abas em background podem atrasar o heartbeat)
 const DISMISS_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 1 dia
 
