@@ -729,7 +729,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   };
 
   const handleSaveItem = async () => {
-    if (!formData.title || !formData.cost) return;
+    // Validações de campos obrigatórios (feedback explícito, sem erro silencioso)
+    if (!formData.title || !formData.title.trim()) {
+      showToast('Informe o nome (título) do item.', 'error');
+      return;
+    }
+    if (!formData.cost || Number(formData.cost) <= 0) {
+      showToast('Informe um custo válido (maior que zero).', 'error');
+      return;
+    }
 
     // Permissões: editar exige 'update', criar exige 'create'
     if (editingId && !canItems('items', 'update')) {
@@ -849,7 +857,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       // Só a CRIAÇÃO MANUAL cria também a cópia-base GLOBAL (banco de itens).
       // Importações (importadoFromId presente) NÃO geram global.
       if (!itemData.importedFromId && !isImportCustomize) {
-        await supabase.from('store_items').insert({
+        const { error: globalErr } = await supabase.from('store_items').insert({
           id: uuidv4(),
           name: itemData.title, description: itemData.description, type: itemData.type,
           price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
@@ -857,6 +865,10 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           tenant_id: null,
           is_global: true
         });
+        if (globalErr) {
+          console.error('Erro ao criar cópia global do item:', globalErr);
+          showToast(`Item criado localmente, mas a cópia GLOBAL (banco) falhou: ${globalErr.message}`, 'error');
+        }
       }
     }
 
@@ -1134,7 +1146,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             <div className="responsive-grid" style={{ marginBottom: '1.5rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Custo ({economyType === 'coins' ? 'Moedas' : 'XP'})</label>
-                <input type="number" value={formData.cost} onChange={e => setFormData({...formData, cost: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                <input type="number" value={formData.cost ?? 0} onChange={e => setFormData({...formData, cost: Number(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
               </div>
 
               <div>
@@ -1684,7 +1696,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 {formData.backColor !== undefined && formData.backColor !== '' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem', justifyContent: 'flex-end' }}>
                     <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{formData.backColor}</span>
-                    <input type="color" value={formData.backColor} onChange={(e) => setFormData({...formData, backColor: e.target.value})} style={{ width: '50px', height: '40px', padding: 0, border: 'none', borderRadius: '4px', cursor: 'pointer' }} />
+                    <input type="color" value={formData.backColor || ''} onChange={(e) => setFormData({...formData, backColor: e.target.value})} style={{ width: '50px', height: '40px', padding: 0, border: 'none', borderRadius: '4px', cursor: 'pointer' }} />
                   </div>
                 )}
               </div>
