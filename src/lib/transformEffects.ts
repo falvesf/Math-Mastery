@@ -91,13 +91,15 @@ export const HEAL_MAX_ACTIVATIONS = 3;
 // ---- Sangramento do jogador (mordida) ----
 // Retorna a posição (%) do ferimento no corpo do jogador. Inimigos pequenos
 // (rato) só alcançam partes BAIXAS; inimigos maiores podem acertar qualquer parte.
+// Os % são relativos ao box do avatar (altura = size*1.8), onde o corpo fica
+// centralizado — então a faixa baixa deve ficar ~40-75% (pernas/barriga).
 export function rollBleedWound(attacker: 'rato' | 'monstro'): { x: number; y: number } {
   if (attacker === 'rato') {
-    // Partes baixas: barriga baixa / pernas / pés (62%–94% da altura)
-    return { x: 30 + Math.random() * 40, y: 62 + Math.random() * 32 };
+    // Partes baixas: barriga baixa / pernas (40%–75% da altura do avatar)
+    return { x: 32 + Math.random() * 36, y: 42 + Math.random() * 33 };
   }
-  // Monstro grande: cabeça, tronco, barriga, pernas (10%–94%)
-  return { x: 20 + Math.random() * 60, y: 10 + Math.random() * 84 };
+  // Monstro grande: cabeça, tronco, barriga, pernas (12%–75%)
+  return { x: 25 + Math.random() * 50, y: 12 + Math.random() * 63 };
 }
 
 // ---- Sons dos animais transformados ----

@@ -2598,7 +2598,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       const isRat = tr.animal === 'rato';
                       const isFrog = tr.animal === 'sapo';
                       const isPig = tr.animal === 'porco';
-                      const animCls = isFrog ? 'transform-hop' : (isRat ? 'rat-dart' : '');
+                      const animCls = isFrog ? 'transform-hop' : (isRat ? 'rat-scurry' : '');
                       // Rato: o modelo .glb já é pequeno — NÃO encolher mais.
                       // Porco: o modelo fica de costas para a câmera — gira 180° para olhar para ela.
                       const rotY = isPig ? 180 : 0;
