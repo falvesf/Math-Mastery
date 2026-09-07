@@ -1730,6 +1730,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
 
     // Sanitize object to remove undefined values for Firestore
     const sanitizedQuest = JSON.parse(JSON.stringify({ ...newQuest, ...{
+      cover_image_url: newQuest.coverImageUrl || null,
       battle_bg_url: newQuest.battleBgUrl || null,
       battle_bg_pos_x: newQuest.battleBgPosX,
       battle_bg_pos_y: newQuest.battleBgPosY,
