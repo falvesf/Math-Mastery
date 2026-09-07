@@ -973,7 +973,7 @@ export default function Dashboard() {
 
     const checkAndSyncRankings = async () => {
       try {
-        const { data: snap } = await supabase.from('system_collections').select('data').eq('type', 'rankings').single();
+        const { data: snap } = await supabase.from('system_collections').select('data').eq('collection_name', 'settings').eq('doc_id', 'rankings').single();
         let history: RankingHistory = { general: {}, classes: {} };
         if (snap && snap.data) {
           history = snap.data as RankingHistory;
@@ -1024,12 +1024,12 @@ export default function Dashboard() {
         });
 
         if (changed) {
-          // upsert com onConflict requer constraint única em 'type' (não existe no banco) → select/update/insert
-          const { data: existingRank } = await supabase.from('system_collections').select('id').eq('type', 'rankings').limit(1);
+          // system_collections não tem coluna 'type' → usa collection_name/doc_id
+          const { data: existingRank } = await supabase.from('system_collections').select('id').eq('collection_name', 'settings').eq('doc_id', 'rankings').limit(1);
           if (existingRank && existingRank.length > 0) {
             await supabase.from('system_collections').update({ data: history }).eq('id', existingRank[0].id);
           } else {
-            await supabase.from('system_collections').insert({ type: 'rankings', data: history });
+            await supabase.from('system_collections').insert({ collection_name: 'settings', doc_id: 'rankings', data: history });
           }
         }
         setRankingHistory(history);
