@@ -988,7 +988,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             { display: 'flex', flexDirection: 'column', gap: '1rem' }
           }>
             {(() => {
-              const RARITY_WEIGHTS: any = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
+              const RARITY_WEIGHTS: any = { common: 1, uncommon: 2, rare: 3, epic: 4, mestre: 5, legendary: 6 };
               const sortedItems = [...items].sort((a, b) => {
                 let comparison = 0;
                 if (sortBy === 'name') {
