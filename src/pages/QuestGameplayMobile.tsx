@@ -1340,13 +1340,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
           triggerFatality(true);
         }
       } else {
+        // Porco enfurecido: danos do jogador são SEMPRE críticos
+        const effectiveCrit = isCritical || (transformRef.current?.animal === 'porco' && transformRef.current.enraged);
         setPlayerAnim('attack');
         playPlayerAttackSound();
         setTimeout(() => {
           setMonsterAnim('hurt');
           playMonsterDamageSound();
-          // Porco enfurecido: danos do jogador são SEMPRE críticos
-          const effectiveCrit = isCritical || (transformRef.current?.animal === 'porco' && transformRef.current.enraged);
           dropCoins(effectiveCrit);
           if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
             setEffectLevel(l => l + 1);

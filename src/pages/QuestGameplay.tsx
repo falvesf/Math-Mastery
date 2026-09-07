@@ -1225,13 +1225,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (!nextQExists) {
         triggerFatality(true);
       } else {
+        // Porco enfurecido: danos do jogador são SEMPRE críticos
+        const effectiveCrit = isCritical || (transformRef.current?.animal === 'porco' && transformRef.current.enraged);
         setPlayerAnim('attack');
         playPlayerAttackSound();
         setTimeout(() => {
           setMonsterAnim('hurt');
           playMonsterDamageSound();
-          // Porco enfurecido: danos do jogador são SEMPRE críticos
-          const effectiveCrit = isCritical || (transformRef.current?.animal === 'porco' && transformRef.current.enraged);
           dropCoins(effectiveCrit);
           // Efeito especial só no momento do GOLPE e conforme a CHANCE do add de efeito
           if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
