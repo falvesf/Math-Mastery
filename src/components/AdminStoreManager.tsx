@@ -94,22 +94,37 @@ interface ItemSelectOption {
   badge?: string;
 }
 
-// Combobox customizado com ícone + nome (os <select> nativos não renderizam imagem)
+// Combobox customizado com ícone + nome (os <select> nativos não renderizam imagem).
+// O dropdown é renderizado em PORTAL com position:fixed — não expande o scroll do modal
+// e não cria espaço em branco, mesmo com muitos itens.
 function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { items: ItemSelectOption[]; value: string; onChange: (id: string) => void; placeholder: string; width?: number | string }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const update = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (r) setPos({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 220) });
+    };
+    update();
+    const close = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
   }, [open]);
 
   const selected = items.find(i => i.id === value);
   return (
-    <div ref={ref} style={{ position: 'relative', width }}>
-      <button type="button" onClick={() => setOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.72rem', cursor: 'pointer', minHeight: 26, textAlign: 'left' }}>
+    <div ref={rootRef} style={{ width }}>
+      <button ref={btnRef} type="button" onClick={() => setOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.72rem', cursor: 'pointer', minHeight: 26, textAlign: 'left' }}>
         {selected ? (
           <>
             {selected.imageUrl ? <img src={selected.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
@@ -120,16 +135,19 @@ function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { item
           <span style={{ color: 'var(--text-secondary)' }}>{placeholder}</span>
         )}
       </button>
-      {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 220, overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border-glass)', borderRadius: '6px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
-          {items.map(i => (
+      {open && pos && createPortal(
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999, maxHeight: 200, overflowY: 'auto', background: 'rgba(22,22,28,0.98)', border: '1px solid rgba(139,92,246,0.6)', borderRadius: '6px', boxShadow: '0 10px 30px rgba(0,0,0,0.7)', padding: '2px 0' }}>
+          {items.length === 0 ? (
+            <div style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>Nenhum item disponível</div>
+          ) : items.map(i => (
             <div key={i.id} onClick={() => { onChange(i.id); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '5px 8px', cursor: 'pointer', fontSize: '0.72rem', background: i.id === value ? 'rgba(255,215,0,0.15)' : 'transparent', whiteSpace: 'nowrap' }}>
               {i.imageUrl ? <img src={i.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.title}</span>
               {i.badge ? <span style={{ marginLeft: 'auto', fontSize: '0.6rem', color: '#c084fc', flexShrink: 0 }}>{i.badge}</span> : null}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -140,7 +158,6 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const { tenantId, isSuperAdmin } = useTenant();
   const { can: canItems } = usePermissions();
   const [items, setItems] = useState<StoreItem[]>([]);
-  const [bankItems, setBankItems] = useState<StoreItem[]>([]);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [loading, setLoading] = useState(true);
@@ -267,12 +284,6 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       const loaded: StoreItem[] = [];
       (snap || []).forEach(row => loaded.push({ id: row.id, _isGlobal: row.is_global ?? false, _tenantId: row.tenant_id ?? null, ...row.data } as StoreItem));
       setItems(loaded);
-
-      // Itens do Banco (globais) — para materiais e resultado de transmutação
-      const { data: bankSnap } = await supabase.from('store_items').select('*').eq('is_global', true);
-      const bankLoaded: StoreItem[] = [];
-      (bankSnap || []).forEach(row => bankLoaded.push({ id: row.id, _isGlobal: true, _tenantId: row.tenant_id ?? null, ...(row.data || {}) } as StoreItem));
-      setBankItems(bankLoaded);
     
     try {
       const { data: gachaSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'settings').eq('doc_id', 'gacha').single();
@@ -842,12 +853,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Carregando Loja...</div>;
 
-  // Todos os itens: locais + Banco (global), sem duplicar por id
-  const allItems = [...items, ...bankItems].filter((i, idx, arr) => arr.findIndex(x => x.id === i.id) === idx);
+  // Todos os itens do TENANT ATUAL (sem duplicar com o Banco — o Banco entra quando importado)
+  const allItems = items;
   const sortByTitle = (a: StoreItem, b: StoreItem) => (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase());
-  // Materiais disponíveis para forja/transmutação: itens 'other' (locais + banco), ordem alfabética
+  // Materiais disponíveis para forja/transmutação: itens 'other' do tenant atual, ordem alfabética
   const materialOptions = allItems.filter(i => (i.type || '') === 'other').sort(sortByTitle);
-  // Itens resultado de transmutação: equipáveis marcados como isTransmuted, ordem alfabética
+  // Itens resultado de transmutação: equipáveis marcados como isTransmuted (tenant atual), ordem alfabética
   const transmuteResultOptions = allItems.filter(i => i.type === 'equippable' && (i as any).isTransmuted).sort(sortByTitle);
 
   return (
