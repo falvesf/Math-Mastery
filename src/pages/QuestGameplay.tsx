@@ -939,8 +939,8 @@ export default function QuestGameplay() {
 
         setTimeout(() => {
           setMonsterAnim(fatality);
-          // A música de vitória entra com um pequeno atraso para o efeito do fatality ser ouvido
-          setTimeout(() => playVictorySound(), 1200);
+          // A música de vitória entra com um pequeno atraso; antes, abaixa a de batalha
+          setTimeout(() => { fadeOutMusic(1200); playVictorySound(); }, 1200);
           setMonsterBubble(monsterDefeatQuote);
           setBattleMessage(getVictoryMessage());
           
