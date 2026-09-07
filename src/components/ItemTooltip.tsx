@@ -130,8 +130,8 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
       </div>
 
       <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: item.type === 'consumable' ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)', color: item.type === 'consumable' ? '#10b981' : '#3b82f6' }}>
-          {item.type === 'consumable' ? 'Consumível' : 'Equipável'}
+        <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: item.type === 'consumable' ? 'rgba(16,185,129,0.2)' : item.type === 'other' ? 'rgba(139,92,246,0.2)' : 'rgba(59,130,246,0.2)', color: item.type === 'consumable' ? '#10b981' : item.type === 'other' ? '#c084fc' : '#3b82f6' }}>
+          {item.type === 'consumable' ? 'Consumível' : item.type === 'other' ? 'Material' : 'Equipável'}
         </span>
         {item.itemCategory && item.itemCategory !== 'none' && (
           <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}>
