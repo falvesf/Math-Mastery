@@ -183,6 +183,17 @@ export default function GachaConfigModal({ itemData, initialConfig, initialFixed
                       <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Valor (+X)</label>
                       <input type="number" min="1" value={attr.value} onChange={e => handleUpdateFixedAttribute(index, 'value', parseInt(e.target.value) || 1)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)' }} />
                     </div>
+                    <div style={{ flex: 2 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!!attr.maxAtForge9} onChange={e => handleUpdateFixedAttribute(index, 'maxAtForge9', e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                        <strong style={{ color: attr.maxAtForge9 ? 'var(--gold-primary)' : 'inherit' }}>Força máxima em +9</strong>
+                      </label>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>
+                        {attr.maxAtForge9
+                          ? `O valor (+${attr.value}) é o MÁXIMO, alcançado em +9. Em +0 vale ${(attr.value / 10).toFixed(1)}, +1 ${(attr.value / 9).toFixed(1)}, +2 ${(attr.value / 8).toFixed(1)} ... +9 ${attr.value}.`
+                          : 'Desmarcado: o valor vale igual em qualquer nível de forja.'}
+                      </span>
+                    </div>
                     <button onClick={() => handleRemoveFixedAttribute(index)} style={{ marginTop: '1.2rem', padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '4px', cursor: 'pointer' }}>
                       <Trash2 size={18} />
                     </button>

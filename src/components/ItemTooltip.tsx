@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { ATTRIBUTE_LABELS, type AttributeType } from '../lib/gacha';
+import { ATTRIBUTE_LABELS, type AttributeType, getAddEffectiveValue } from '../lib/gacha';
 import { DAMAGE_EFFECTS, EFFECT_ADD_LABELS, isEffectAddType, orderEffectFirst } from '../lib/damageEffects';
 import { forgeAttributeValue, forgeItemName } from '../lib/forge';
 
@@ -174,9 +174,10 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
                 {orderEffectFirst(item.fixedAttributes).map((add: any, i: number) => {
                   const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
                   if (!lbl) return null;
+                  const effV = isEffectAddType(add.type) ? null : getAddEffectiveValue(add, item.forgeLevel || 0);
                   return (
                     <li key={i} style={{ color: lbl.color }}>
-                      {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.value}%`}
+                      {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.maxAtForge9 ? effV!.toFixed(1) : add.value}%${add.maxAtForge9 ? ` (máx +${add.value}% em +9)` : ''}`}
                     </li>
                   );
                 })}
@@ -193,9 +194,10 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
             {orderEffectFirst(item.adds).map((add: any, i: number) => {
               const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
               if (!lbl) return null;
+              const effV = isEffectAddType(add.type) ? null : getAddEffectiveValue(add, item.forgeLevel || 0);
               return (
                 <li key={i} style={{ color: lbl.color }}>
-                  {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.value}%`}
+                  {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.maxAtForge9 ? effV!.toFixed(1) : add.value}%${add.maxAtForge9 ? ` (máx +${add.value}% em +9)` : ''}`}
                 </li>
               );
             })}

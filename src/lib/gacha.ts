@@ -13,6 +13,18 @@ export function isStackableItemType(t?: string): boolean {
 export interface ItemAdd {
   type: AttributeType | EffectAddType;
   value: number;
+  /** Quando true, `value` é a força MÁXIMA do add (alcançada só em +9). Nos níveis
+   *  abaixo vale value/(10 - forgeLevel): +0 → 1/10, +1 → 1/9, ... +9 → 1/1 (máximo). */
+  maxAtForge9?: boolean;
+}
+
+/** Força efetiva de um add conforme o nível de forja da arma. */
+export function getAddEffectiveValue(add: ItemAdd, forgeLevel = 0): number {
+  if (add.maxAtForge9) {
+    const divisor = Math.max(1, 10 - (forgeLevel || 0));
+    return add.value / divisor;
+  }
+  return add.value;
 }
 
 export function rollValue(weights: { value: number, weight: number }[]): number {
@@ -174,13 +186,15 @@ export function calculateTotalStats(equippedItems: any[], distributedStats?: Rec
     // Extra Adds
     if (item.adds && Array.isArray(item.adds)) {
       item.adds.forEach((add: ItemAdd) => {
-        if (add.type === 'attack') stats.attack += add.value;
-        if (add.type === 'defense') stats.defense += add.value;
-        if (add.type === 'xp') stats.xp += add.value;
-        if (add.type === 'coins') stats.coins += add.value;
-        if (add.type === 'vitality') stats.vitality += add.value;
-        if (add.type === 'fortitude') stats.fortitude += add.value;
-        if (add.type === 'persuasion') stats.persuasion += add.value;
+        // Add fixo com "força máxima em +9": escala conforme o nível de forja da arma
+        const v = getAddEffectiveValue(add, item.forgeLevel || 0);
+        if (add.type === 'attack') stats.attack += v;
+        if (add.type === 'defense') stats.defense += v;
+        if (add.type === 'xp') stats.xp += v;
+        if (add.type === 'coins') stats.coins += v;
+        if (add.type === 'vitality') stats.vitality += v;
+        if (add.type === 'fortitude') stats.fortitude += v;
+        if (add.type === 'persuasion') stats.persuasion += v;
       });
     }
   });
