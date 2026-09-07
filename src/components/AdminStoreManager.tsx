@@ -194,6 +194,10 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [showChanceFill, setShowChanceFill] = useState(false);
   const [chanceFillStart, setChanceFillStart] = useState(90);
   const [chanceFillStep, setChanceFillStep] = useState(10);
+  const [showCostFill, setShowCostFill] = useState(false);
+  const [costFillStart, setCostFillStart] = useState(550);
+  const [costFillStep, setCostFillStep] = useState(380);
+  const [costFillMode, setCostFillMode] = useState<'add' | 'multiply'>('add');
   const [showMinecraftPreview, setShowMinecraftPreview] = useState(false);
   const [showExtractorModal, setShowExtractorModal] = useState(false);
   const [showGachaModal, setShowGachaModal] = useState(false);
@@ -1338,7 +1342,19 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                             Chance (%) <span style={{ fontSize: '0.65rem', color: '#f59e0b' }}>⚡ preencher</span>
                           </th>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Força (calculado = padrão)</th>
-                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Custo (calculado = padrão)</th>
+                          <th
+                            onClick={() => {
+                              const bp = formData.cost || 100;
+                              setCostFillStart(nextForgeCost(0, bp));
+                              setCostFillStep(nextForgeCost(1, bp) - nextForgeCost(0, bp));
+                              setCostFillMode('add');
+                              setShowCostFill(true);
+                            }}
+                            style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
+                            title="Clique para preencher todos os custos de uma vez (início + pulo/multiplicador)"
+                          >
+                            Custo (calculado = padrão) <span style={{ fontSize: '0.65rem', color: '#f59e0b' }}>⚡ preencher</span>
+                          </th>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Materiais (item outro)</th>
                         </tr>
                       </thead>
@@ -1887,6 +1903,71 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   for (let lvl = 1; lvl <= 9; lvl++) perLevel[lvl] = Math.max(0, Math.min(100, chanceFillStart - (lvl - 1) * chanceFillStep));
                   setFormData({ ...formData, forgeConfig: { ...(formData.forgeConfig || {}), successChancePerLevel: { ...(formData.forgeConfig?.successChancePerLevel || {}), ...perLevel } } });
                   setShowChanceFill(false);
+                }}
+                className="login-btn"
+                style={{ padding: '0.6rem 1.5rem', background: 'var(--accent-red)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Aplicar
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal: preencher os custos de forja de uma vez (início + pulo/multiplicador) */}
+      {showCostFill && createPortal(
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000001, padding: '1rem' }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowCostFill(false); }}
+        >
+          <div style={{ background: 'var(--bg-card)', border: '1px solid rgba(234,88,12,0.5)', borderRadius: '14px', padding: '1.5rem', maxWidth: '520px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.7)' }}>
+            <h3 style={{ margin: '0 0 0.25rem 0', color: 'var(--accent-red)', fontSize: '1.15rem' }}>⚡ Preencher Custos de Forja</h3>
+            <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+              Preenche os custos de <strong>+1 a +9</strong> para <strong>ESTE item</strong>. O +1 recebe o valor inicial e os próximos crescem pelo "pulo" escolhido (soma ou multiplicador).
+            </p>
+
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '140px' }}>
+                <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Valor inicial (+1)</label>
+                <input type="number" min={1} value={costFillStart} onChange={e => setCostFillStart(Math.max(1, Number(e.target.value) || 1))} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'var(--text-primary)' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: '140px' }}>
+                <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{costFillMode === 'add' ? 'Pulo (+ por nível)' : 'Multiplicador (× por nível)'}</label>
+                <input type="number" min={1} value={costFillStep} onChange={e => setCostFillStep(Math.max(1, Number(e.target.value) || 1))} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'var(--text-primary)' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: '120px' }}>
+                <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Modo</label>
+                <select value={costFillMode} onChange={e => setCostFillMode(e.target.value as 'add' | 'multiply')} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'var(--text-primary)' }}>
+                  <option value="add">Somar (+X por nível)</option>
+                  <option value="multiply">Multiplicar (×X por nível)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(0,0,0,0.35)', borderRadius: '8px', padding: '0.6rem 0.9rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <div style={{ marginBottom: '0.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Prévia:</div>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                {[1,2,3,4,5,6,7,8,9].map(lvl => {
+                  const v = costFillMode === 'add'
+                    ? Math.max(0, Math.round(costFillStart + (lvl - 1) * costFillStep))
+                    : Math.max(0, Math.round(costFillStart * Math.pow(costFillStep, lvl - 1)));
+                  return <span key={lvl} style={{ padding: '2px 6px', borderRadius: '4px', background: 'rgba(234,88,12,0.15)', border: '1px solid rgba(234,88,12,0.4)' }}>+{lvl}: {v}</span>;
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowCostFill(false)} style={{ padding: '0.6rem 1.2rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancelar</button>
+              <button
+                onClick={() => {
+                  const perLevel: Record<number, number> = {};
+                  for (let lvl = 1; lvl <= 9; lvl++) {
+                    perLevel[lvl] = costFillMode === 'add'
+                      ? Math.max(0, Math.round(costFillStart + (lvl - 1) * costFillStep))
+                      : Math.max(0, Math.round(costFillStart * Math.pow(costFillStep, lvl - 1)));
+                  }
+                  setFormData({ ...formData, forgeConfig: { ...(formData.forgeConfig || {}), coinsCostPerLevel: { ...(formData.forgeConfig?.coinsCostPerLevel || {}), ...perLevel } } });
+                  setShowCostFill(false);
                 }}
                 className="login-btn"
                 style={{ padding: '0.6rem 1.5rem', background: 'var(--accent-red)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
