@@ -2320,7 +2320,7 @@ export default function QuestGameplay() {
                     if (modelUrl) {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
                       const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;
-                      return <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><CustomModelViewer modelUrl={modelUrl} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={190} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} /></div>;
+                      return <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><CustomModelViewer modelUrl={modelUrl} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={190} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} shatteredCount={fallenPartsRef.current.length} /></div>;
                     } else if (quest?.monsterAvatarConfig) {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
                       const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;

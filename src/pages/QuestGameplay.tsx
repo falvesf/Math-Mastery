@@ -2121,7 +2121,7 @@ export default function QuestGameplay() {
                     if (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) {
                       return (
                         <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}>
-                          <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} />
+                          <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} shatteredCount={fallenPartsRef.current.length} />
                         </div>
                       );
                     }
