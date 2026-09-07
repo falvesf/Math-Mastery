@@ -184,7 +184,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         ui_animations: 0,
         ui_theme: 'dark',
         dnt: 1,
-        transparent: 1
+        transparent: 0
       });
     }
   }, []);
@@ -427,10 +427,15 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           <div style={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-glass)', background: 'var(--bg-dark)' }}>
             
             {/* Sketchfab Embed (visível só na Forja; oculto via CSS na Transmutação para não recarregar) */}
-            <div style={{ height: '300px', background: 'black', position: 'relative', overflow: 'hidden', pointerEvents: 'none', display: activeTab === 'forge' ? 'block' : 'none' }}>
+            <div style={{ height: '300px', background: '#0f0f12', position: 'relative', overflow: 'hidden', pointerEvents: 'none', display: activeTab === 'forge' ? 'block' : 'none' }}>
               <div className="sketchfab-embed-wrapper" style={{ position: 'absolute', top: '-65px', bottom: '-65px', left: '-10px', right: '-10px' }}>
-                <iframe ref={iframeRef} title="Blacksmith and his anvil" frameBorder="0" allow="autoplay; fullscreen; xr-spatial-tracking" style={{ width: '100%', height: '100%', border: 'none' }}> </iframe>
+                <iframe ref={iframeRef} title="Blacksmith and his anvil" frameBorder="0" allow="autoplay; fullscreen; xr-spatial-tracking" style={{ width: '100%', height: '100%', border: 'none', background: '#0f0f12' }}> </iframe>
               </div>
+              {!sketchfabApi && (
+                <div style={{ position: 'absolute', inset: 0, background: '#0f0f12', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#777', fontSize: '0.85rem', fontWeight: 'bold', gap: '0.5rem' }}>
+                  <Hammer size={18} /> Carregando o ferreiro...
+                </div>
+              )}
             </div>
 
 
