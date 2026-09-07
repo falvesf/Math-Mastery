@@ -25,7 +25,7 @@ interface MarketItem {
   id: string;
   itemId: string;
   itemTitle: string;
-  itemType: 'consumable' | 'equippable';
+  itemType: 'consumable' | 'equippable' | 'other';
   itemImageUrl: string;
   quantity: number;
   price?: number;
