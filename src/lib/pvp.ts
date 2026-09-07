@@ -1,6 +1,16 @@
 import { supabase } from './supabase';
 import { getRankForXp, RANKS } from './ranks';
-import { orderEffectFirst } from './damageEffects';
+import { orderEffectFirst, getEquippedDamageEffectInfo } from './damageEffects';
+import {
+  type TransformState,
+  rollTransformAnimal,
+  TRANSFORM_LABELS,
+  TRANSFORM_TURNS,
+  TRANSFORM_ENRAGE_HITS,
+  HEAL_AURA_TURNS,
+  HEAL_AURA_PER_TURN,
+  HEAL_MAX_ACTIVATIONS,
+} from './transformEffects';
 
 // ============ Tipos ============
 
@@ -40,6 +50,10 @@ export interface PvpPlayerState {
   lastSeen: number; // epoch ms — heartbeat p/ detectar desconexão
   avatarConfig: any;
   equippedItems: any[];
+  // Efeitos de itens mágicos (transformação / aura de cura)
+  transform?: TransformState | null;
+  healAuraTurns?: number;
+  healActivations?: number;
 }
 
 export interface PvpMatch {
@@ -485,6 +499,18 @@ async function fetchReplacementQuestion(usedIds: string[]): Promise<any | null> 
   }
 }
 
+// Efeitos de itens mágicos no PvP: lê o efeito da arma equipada do jogador.
+function weaponEffectOf(player: any): { effect: string; chance: number } {
+  if (!player?.equippedItems) return { effect: 'none', chance: 0 };
+  return getEquippedDamageEffectInfo(player.equippedItems);
+}
+
+// Rola a chance do efeito especial (transform / heal) com base no add de efeito da arma.
+function rollEffectProc(effect: string, chance: number): boolean {
+  if (!effect || effect === 'none' || chance <= 0) return false;
+  return Math.random() * 100 < chance;
+}
+
 // Resolve a questão atual e avança (CAS-guarded — só um cliente aplica)
 async function resolveAndAdvance(match: PvpMatch): Promise<void> {
   const q = match.questions[match.current_question_index];
@@ -510,8 +536,72 @@ async function resolveAndAdvance(match: PvpMatch): Promise<void> {
 
   const nextP1 = { ...p1, answered: false, answerIndex: -1, answerTime: 0, isCorrect: false };
   const nextP2 = { ...p2, answered: false, answerIndex: -1, answerTime: 0, isCorrect: false };
-  if (winnerRole === 'player1') { nextP1.score += 1; nextP2.hp = Math.max(0, nextP2.hp - 1); }
-  else if (winnerRole === 'player2') { nextP2.score += 1; nextP1.hp = Math.max(0, nextP1.hp - 1); }
+
+  // ---- Efeitos de itens mágicos (transformação / cura) ----
+  const winInfo = weaponEffectOf(winnerRole === 'player1' ? p1 : p2); // arma do vencedor
+  const losePlayer = winnerRole === 'player1' ? p2 : p1;
+  // Transformar: o vencedor com arma "transformar" pode transformar o PERDEDOR
+  if (winnerRole && !losePlayer.transform && rollEffectProc(winInfo.effect, winInfo.chance) && winInfo.effect === 'transform') {
+    const animal = rollTransformAnimal();
+    (winnerRole === 'player1' ? nextP2 : nextP1)['transform'] = { animal, turnsLeft: TRANSFORM_TURNS, consecutiveCorrect: 0, enraged: false, ratBleeding: false };
+  }
+  // Cura: o vencedor com arma "cura" pode ativar a aura (máx 3x, sem cumulativo)
+  if (winnerRole && rollEffectProc(winInfo.effect, winInfo.chance) && winInfo.effect === 'heal') {
+    const me = winnerRole === 'player1' ? nextP1 : nextP2;
+    if (!me.healAuraTurns && (me.healActivations || 0) < HEAL_MAX_ACTIVATIONS) {
+      me.healAuraTurns = HEAL_AURA_TURNS;
+      me.healActivations = (me.healActivations || 0) + 1;
+    }
+  }
+
+  // Dano do vencedor conforme a transformação do VENCEDOR (o animal atacante)
+  let dmg = 1;
+  const winnerTransform = (winnerRole === 'player1' ? p1 : p2).transform as TransformState | undefined;
+  if (winnerRole) {
+    if (winnerTransform?.animal === 'sapo') dmg = 0.5; // nunca fatal
+    else if (winnerTransform?.animal === 'porco' && winnerTransform.enraged) dmg = 2;
+    else if (winnerTransform?.animal === 'rato') dmg = 1.5; // ataque + sangramento (aprox.)
+  }
+
+  if (winnerRole === 'player1') { nextP1.score += 1; nextP2.hp = Math.max(0, nextP2.hp - dmg); }
+  else if (winnerRole === 'player2') { nextP2.score += 1; nextP1.hp = Math.max(0, nextP1.hp - dmg); }
+
+  // Rato: ao LEVAR dano, volta a ser monstro imediatamente
+  if (losePlayer.transform?.animal === 'rato' && winnerRole) {
+    (winnerRole === 'player1' ? nextP2 : nextP1).transform = null;
+  }
+
+  // Porco: 2 golpes certos seguidos sem errar → enfurece (vermelho)
+  if (losePlayer.transform?.animal === 'porco' && winnerRole) {
+    const losing = winnerRole === 'player1' ? nextP2 : nextP1;
+    const cur = losing.transform as TransformState;
+    if (!cur.enraged) {
+      const streak = (cur.consecutiveCorrect || 0) + 1;
+      cur.consecutiveCorrect = streak;
+      if (streak >= TRANSFORM_ENRAGE_HITS) cur.enraged = true;
+    }
+  }
+  // Porco: se o porco GANHOU a questão, a sequência do jogador quebra
+  if (winnerRole && (winnerRole === 'player1' ? p1 : p2).transform?.animal === 'porco') {
+    const losing = winnerRole === 'player1' ? nextP2 : nextP1;
+    if (losing.transform?.animal === 'porco' && !losing.transform.enraged) {
+      losing.transform.consecutiveCorrect = 0;
+    }
+  }
+
+  // Tick de turnos: transformação (3 turnos) e aura de cura (cura 0,5 por turno)
+  const tickPlayer = (pl: any) => {
+    if (pl.transform) {
+      if (pl.transform.turnsLeft <= 1) pl.transform = null;
+      else pl.transform.turnsLeft -= 1;
+    }
+    if (pl.healAuraTurns > 0) {
+      pl.hp = Math.min(pl.maxHp, pl.hp + HEAL_AURA_PER_TURN);
+      pl.healAuraTurns -= 1;
+    }
+  };
+  tickPlayer(nextP1);
+  tickPlayer(nextP2);
 
   let questions = match.questions;
   if (tie) {

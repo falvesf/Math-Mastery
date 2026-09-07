@@ -384,3 +384,42 @@
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+/* ==== Efeitos de transformação de batalha (itens mágicos) ==== */
+
+/* Sapo transformado: pula no lugar enquanto aguarda a resposta */
+@keyframes transform-hop {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+.transform-hop {
+  animation: transform-hop 0.55s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+/* Rato transformado: rápido e tremendo no lugar */
+@keyframes transform-fast-wobble {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  25% { transform: translateX(-3px) rotate(-4deg); }
+  75% { transform: translateX(3px) rotate(4deg); }
+}
+.transform-fast-wobble {
+  animation: transform-fast-wobble 0.3s linear infinite;
+  transform-origin: bottom center;
+}
+
+/* Aura de cura ao redor do jogador */
+@keyframes heal-aura-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+.heal-aura {
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  border: 3px solid rgba(52, 211, 153, 0.7);
+  box-shadow: 0 0 22px rgba(52, 211, 153, 0.6);
+  animation: heal-aura-pulse 1.2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
+}

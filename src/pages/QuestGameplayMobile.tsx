@@ -24,6 +24,21 @@ import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 import DamageEffectOverlay from '../components/DamageEffectOverlay';
 import { getEquippedDamageEffect, getEquippedDamageEffectInfo, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
+import {
+  type TransformState,
+  rollTransformAnimal,
+  getTransformModelUrl,
+  effectiveTimeLimit,
+  computeMonsterDamageToPlayer,
+  isMonsterDamageFatal,
+  heartIsHalf,
+  TRANSFORM_LABELS,
+  TRANSFORM_TURNS,
+  TRANSFORM_ENRAGE_HITS,
+  HEAL_AURA_TURNS,
+  HEAL_AURA_PER_TURN,
+  HEAL_MAX_ACTIVATIONS,
+} from '../lib/transformEffects';
 
 interface UserItem {
   id: string;
@@ -100,6 +115,16 @@ export default function QuestGameplay() {
   const [frozen, setFrozen] = useState(false);
   const [drainBlink, setDrainBlink] = useState(false);
   const fallenPartsRef = useRef<string[]>([]);
+  // Efeitos de itens mágicos: transformação do monstro + aura de cura
+  const [transformState, setTransformState] = useState<TransformState | null>(null);
+  const transformRef = useRef<TransformState | null>(null);
+  const [healAuraTurns, setHealAuraTurns] = useState(0);
+  const healActivationsRef = useRef(0);
+  const [playerBleedActive, setPlayerBleedActive] = useState(false);
+
+  useEffect(() => {
+    transformRef.current = transformState;
+  }, [transformState]);
   // Camada estática das partes caídas (efeito estrondo): fica FORA do contêiner animado
   // do monstro, então as partes não seguem ataques/dano.
   const monsterCharWrapRef = useRef<HTMLDivElement | null>(null);
@@ -365,6 +390,27 @@ export default function QuestGameplay() {
       if (onComplete) onComplete();
     }, heartsToLose * 150); // 150ms per heart for stagger effect
   };
+
+  // Dano causado ao JOGADOR por efeitos de transformação (porco no momento da
+// transformação e sangramento do rato). Não aplica escudo/penalidade de XP.
+const dealTransformDamageToPlayer = (damage: number) => {
+  const newHearts = Math.max(0, currentHearts - damage);
+  if (newHearts <= 0.001) {
+    triggerFatality(false, 0);
+    return;
+  }
+  setMonsterAnim('attack');
+  playMonsterAttackSound();
+  setTimeout(() => { setPlayerAnim('hurt'); playPlayerDamageSound(); }, 500);
+  setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
+  drainHeartsAnimated(newHearts, () => {
+    if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
+      updateUserHearts(newHearts);
+    }
+  });
+  setBattleMessage(`O PORCO TE ATACOU! Você perdeu ${damage} coração(ões)!`);
+  setStressFactors(prev => ({ ...prev, hpLost: Math.max(prev.hpLost, 1 - (newHearts / maxHearts)) }));
+};
 
   const [deviceKey, setDeviceKey] = useState(window.innerWidth < 768 ? 'mobile' : 'desktop');
 
@@ -791,7 +837,7 @@ export default function QuestGameplay() {
   useEffect(() => {
     if (gameState === 'playing' && quest && !feedback) {
       const q = quest.questions[currentQIndex];
-      setTimeLeft(q.timeLimit);
+      setTimeLeft(effectiveTimeLimit(q.timeLimit, transformState));
       
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => {
@@ -809,7 +855,7 @@ export default function QuestGameplay() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [gameState, currentQIndex, feedback, quest]);
+  }, [gameState, currentQIndex, feedback, quest, transformState]);
 
   const handleTimeOut = () => {
     handleAnswer(-1); // -1 means timeout/wrong
@@ -859,6 +905,11 @@ export default function QuestGameplay() {
     const initialHearts = isStaffUser
       ? calculatedMaxHearts
       : Math.min(userData?.hp ?? calculatedMaxHearts, calculatedMaxHearts);
+    // Reset dos efeitos de itens mágicos
+    setTransformState(null);
+    setHealAuraTurns(0);
+    healActivationsRef.current = 0;
+    setPlayerBleedActive(false);
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
       await showAlert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
@@ -1293,8 +1344,10 @@ export default function QuestGameplay() {
         playPlayerAttackSound();
         setTimeout(() => {
           setMonsterAnim('hurt');
-          dropCoins(isCritical);
           playMonsterDamageSound();
+          // Porco enfurecido: danos do jogador são SEMPRE críticos
+          const effectiveCrit = isCritical || (transformRef.current?.animal === 'porco' && transformRef.current.enraged);
+          dropCoins(effectiveCrit);
           if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
             setEffectLevel(l => l + 1);
             setEffectFlash(true);
@@ -1302,13 +1355,51 @@ export default function QuestGameplay() {
             if (damageEffect === 'freeze' && effectLevel + 1 >= FREEZE_HITS_TO_FREEZE) {
               setFrozen(true);
             }
+            // TRANSFORMAR: só se o monstro estiver na forma NORMAL
+            if (damageEffect === 'transform' && !transformRef.current) {
+              const animal = rollTransformAnimal();
+              setTransformState({ animal, turnsLeft: TRANSFORM_TURNS, consecutiveCorrect: 0, enraged: false, ratBleeding: false });
+              setBattleMessage(`TRANSFORMADO! O monstro virou ${TRANSFORM_LABELS[animal]}!`);
+              // Porco ataca o jogador NO MOMENTO da transformação
+              if (animal === 'porco') {
+                setTimeout(() => dealTransformDamageToPlayer(1), 600);
+              }
+              if (animal === 'rato') {
+                setPlayerBleedActive(false);
+              }
+            }
+          }
+          // Porco: golpes certos seguidos sem errar → enfurece com 2 acertos
+          const tr = transformRef.current;
+          if (tr?.animal === 'porco' && !tr.enraged) {
+            const newStreak = tr.consecutiveCorrect + 1;
+            if (newStreak >= TRANSFORM_ENRAGE_HITS) {
+              setTransformState({ ...tr, enraged: true, consecutiveCorrect: newStreak });
+              setBattleMessage('O PORCO FICOU ENFURECIDO! Ele está vermelho e furioso!');
+            } else {
+              setTransformState({ ...tr, consecutiveCorrect: newStreak });
+            }
+          }
+          // Rato: ao levar dano, volta a ser monstro IMEDIATAMENTE
+          if (tr?.animal === 'rato') {
+            setPlayerBleedActive(false);
+            setTransformState(null);
+            setBattleMessage('O RATO voltou a ser monstro!');
+          }
+          // CURA: chance de ativar a aura ao acertar o monstro (máx 3x, sem cumulativo)
+          if (damageEffect === 'heal' && Math.random() * 100 < effectChance) {
+            if (healAuraTurns <= 0 && healActivationsRef.current < HEAL_MAX_ACTIVATIONS) {
+              healActivationsRef.current += 1;
+              setHealAuraTurns(HEAL_AURA_TURNS);
+              setBattleMessage('AURA DE CURA ATIVADA! +0,5 coração por turno por 3 turnos!');
+            }
           }
         }, 500);
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
         setTimeout(() => {
           setFeedback(null);
           setLastSelectedOption(null);
-          if (!isCritical) setBattleMessage(getRoundMessage(currentQIndex + 1, currentHearts));
+          if (!effectiveCrit) setBattleMessage(getRoundMessage(currentQIndex + 1, currentHearts));
           nextQuestion();
         }, 2000);
       }
@@ -1318,9 +1409,10 @@ export default function QuestGameplay() {
       const chance = getMonsterSpecialChance();
       const isMonsterCrit = (userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode && (Math.random() * 100 < chance);
       
-      // Hardcore Mode: errou, perdeu todos os corações
+      // Hardcore Mode: errou, perdeu todos os corações (Sapo nunca é fatal)
       const isHardcore = !quest.allowRetries;
-      let damage = isHardcore ? currentHearts : (isMonsterCrit ? 2 : 1);
+      const tr = transformRef.current;
+      let damage = computeMonsterDamageToPlayer(currentHearts, isHardcore, tr, isMonsterCrit);
       // Debug: admin imortal
       if (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin)) damage = 0;
       // Debug: evitar 1-hit kill - nunca deixa morrer de uma vez
@@ -1329,7 +1421,16 @@ export default function QuestGameplay() {
       let newHearts = Math.max(0, currentHearts - damage);
       // Debug: se admin imortal, nunca é fatal
       // Debug: se noInstantKill, nunca é fatal se ainda tem corações
-      const isFatalForPlayer = !hasShield && (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin) ? false : (((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.noInstantKill) ? newHearts === 0 : (newHearts === 0 || isHardcore)));
+      const isFatalForPlayer = !hasShield && (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin) ? false : (((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.noInstantKill) ? newHearts === 0 : (isMonsterDamageFatal(damage, currentHearts) || (isHardcore && tr?.animal !== 'sapo'))));
+
+      // Porco: errar quebra a sequência de golpes certos (enfurecer)
+      if (tr?.animal === 'porco' && tr.consecutiveCorrect > 0 && !tr.enraged) {
+        setTransformState({ ...tr, consecutiveCorrect: 0 });
+      }
+      // Rato: errar faz o rato atacar e infligir SANGRAMENTO no jogador
+      if (tr?.animal === 'rato') {
+        setPlayerBleedActive(true);
+      }
 
       const shouldLoseCoins = economySettings?.coinsLostInCombat || arenaDebug.forceCoinLoss;
       if (shouldLoseCoins && !isStudyMode && !hasShield) {
@@ -1387,8 +1488,10 @@ export default function QuestGameplay() {
       }
       setMonsterAnim('attack');
       playMonsterAttackSound();
-      setTimeout(() => { setPlayerAnim('hurt'); playPlayerDamageSound(); }, 500);
-      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
+      // Coelho: ataca o jogador mais cedo
+      const monsterAttackDelay = transformRef.current?.animal === 'coelho' ? 250 : 500;
+      setTimeout(() => { setPlayerAnim('hurt'); playPlayerDamageSound(); }, monsterAttackDelay);
+      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, monsterAttackDelay + 1000);
       
       if (hasShield) {
         setHasShield(false);
@@ -1476,6 +1579,23 @@ export default function QuestGameplay() {
     setBonusCritActive(isBonusCrit);
     setEliminatedOptions(newEliminated);
     setMonsterHeartFrac(1); // próximo coração do monstro nasce cheio
+
+    // Tick de turno: transformação dura 3 turnos e a aura de cura cura 0,5 por turno
+    const tr = transformRef.current;
+    if (tr) {
+      if (tr.turnsLeft <= 1) {
+        setTransformState(null);
+        setPlayerBleedActive(false);
+        if (tr.animal !== 'rato') setBattleMessage(`${TRANSFORM_LABELS[tr.animal]} voltou ao normal!`);
+      } else {
+        setTransformState({ ...tr, turnsLeft: tr.turnsLeft - 1 });
+      }
+    }
+    if (healAuraTurns > 0) {
+      const heal = Math.min(maxHearts, currentHearts + HEAL_AURA_PER_TURN);
+      setCurrentHearts(heal);
+      setHealAuraTurns(healAuraTurns - 1);
+    }
 
     if (currentQIndex < quest.questions.length - 1) {
       setCurrentQIndex(nextIndex);
@@ -1774,6 +1894,11 @@ export default function QuestGameplay() {
 
   const dropCoins = (isCrit = false) => {
     if (!economySettings?.coinsDropInCombat) return;
+    const tr = transformRef.current;
+    // Porco enfurecido NÃO dropa moedas
+    if (tr?.animal === 'porco' && tr.enraged) return;
+    // Coelho: acertou resposta → DOBRA o drop de moedas configurado
+    const coelhoDouble = tr?.animal === 'coelho';
     // Som quando as moedas CAEM no chão (coinSoundUrl da moeda ativa ou blip padrão)
     playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
     const cfg = combatCoinConfigRef.current;
@@ -1793,8 +1918,9 @@ export default function QuestGameplay() {
       dropped = Math.floor(Math.random() * rankIndex) + 1;
     }
 
-    // Golpe crítico DOBRA o drop de moedas
+    // Golpe crítico DOBRA o drop de moedas (e coelho também)
     if (isCrit) dropped = dropped * 2;
+    if (coelhoDouble) dropped = dropped * 2;
 
     const minV = Math.max(1, cfg.minValue ?? 1);
     const maxV = Math.max(minV, cfg.maxValue ?? minV);
@@ -1810,6 +1936,37 @@ export default function QuestGameplay() {
     setCoinsToRescue(dropped);
     setTimeout(() => setCoinsToRescue(null), 2500);
   };
+
+  // SANGRAMENTO DO RATO no JOGADOR: perde meia coração + moedas de tempos em tempos
+  useEffect(() => {
+    if (gameState !== 'playing' || !playerBleedActive) return;
+    const iv = setInterval(() => {
+      if (currentHearts <= 0.5) {
+        triggerFatality(false, 0);
+        return;
+      }
+      const newHearts = Math.max(0, currentHearts - 0.5);
+      setPlayerAnim('hurt');
+      playPlayerDamageSound();
+      setTimeout(() => setPlayerAnim('idle'), 600);
+      drainHeartsAnimated(newHearts, () => {
+        if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
+          updateUserHearts(newHearts);
+        }
+      });
+      setBattleMessage('SANGRANDO! O rato te feriu — perdendo sangue e moedas...');
+      // Perde moedas junto com o sangue
+      if (userData?.uid && economySettings?.coinsLostInCombat) {
+        const lostCoins = 1 + Math.floor(Math.random() * 3);
+        const currentCoins = userData.coins || 0;
+        const newCoins = Math.max(0, currentCoins - lostCoins);
+        supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
+        updateUserDataLocally({ coins: newCoins });
+      }
+    }, 4500);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState, playerBleedActive]);
 
   // VENENO/SANGRAMENTO: drena o coração, pisca em vermelho e dropa moedas extras.
   useEffect(() => {
@@ -2033,9 +2190,28 @@ export default function QuestGameplay() {
                 </div>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.1rem', background: 'rgba(0,0,0,0.5)', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid #ef4444', flexShrink: 0 }}>
-                  {Array.from({ length: currentHearts }).map((_, i) => (
-                    <Heart key={i} size={12} fill="#ef4444" color="#ef4444" />
-                  ))}
+                  {Array.from({ length: Math.ceil(currentHearts) }).map((_, i) => {
+                    const isHalf = i === Math.floor(currentHearts) && heartIsHalf(currentHearts);
+                    return (
+                      <span key={i} style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+                        <Heart size={12} fill="rgba(239, 68, 68, 0.12)" color="#ef4444" />
+                        {isHalf ? (
+                          <span style={{ position: 'absolute', inset: 0, width: '50%', overflow: 'hidden' }}>
+                            <Heart size={12} fill="#ef4444" color="#ef4444" />
+                          </span>
+                        ) : (
+                          <span style={{ position: 'absolute', inset: 0 }}>
+                            <Heart size={12} fill="#ef4444" color="#ef4444" />
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })}
+                  {healAuraTurns > 0 && (
+                    <span title={`Aura de cura ativa por ${healAuraTurns} turno(s)`} style={{ display: 'flex', alignItems: 'center', gap: '0.15rem', color: '#34d399', fontWeight: 'bold', fontSize: '0.6rem', marginLeft: '0.3rem' }}>
+                      💚 +{healAuraTurns}
+                    </span>
+                  )}
                 </div>
 
                 <div title="Moedas que você tem" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(0,0,0,0.5)', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid var(--gold-primary)', flexShrink: 0 }}>
@@ -2226,7 +2402,11 @@ export default function QuestGameplay() {
               </div>
               <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', marginRight: '-20px', transform: `translate(${arenaDebug.playerOffsetX}px, ${arenaDebug.playerOffsetY}px) scale(${arenaDebug.playerScale})` }}>
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
+                  {healAuraTurns > 0 && <div className="heal-aura" />}
                   <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={170} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
+                  {playerBleedActive && (
+                    <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid rgba(248, 113, 113, 0.7)', boxShadow: '0 0 18px rgba(248,113,113,0.6)', animation: 'transform-fast-wobble 0.4s linear infinite', pointerEvents: 'none' }} title="Sangrando!" />
+                  )}
                   {!quest?.allowRetries ? (
                     (() => {
                       // Suor baseado em estresse real (tempo, vida, erros)
@@ -2329,6 +2509,28 @@ export default function QuestGameplay() {
                   </div>
                 <div style={{ position: 'relative', display: 'inline-block' }}>
                   {(() => {
+                    if (transformState) {
+                      const tr = transformState;
+                      const animalUrl = getTransformModelUrl(tr.animal);
+                      const isRat = tr.animal === 'rato';
+                      const isFrog = tr.animal === 'sapo';
+                      const isPig = tr.animal === 'porco';
+                      const animCls = isFrog ? 'transform-hop' : (isRat ? 'transform-fast-wobble' : '');
+                      const scale = isRat ? 0.45 : 1;
+                      const tint = isPig && tr.enraged ? '#ff2222' : null;
+                      return (
+                        <div style={{ transform: `scale(${scale})`, transformOrigin: 'bottom center' }}>
+                          <div className={animCls || undefined} style={{ position: 'relative' }}>
+                            <CustomModelViewer modelUrl={animalUrl} size={190} animation={frozen ? 'none' : (monsterAnim === 'hurt' || monsterAnim === 'attack' ? monsterAnim : 'none')} role="monster" effectTint={tint} />
+                            <div style={{ position: 'absolute', top: -16, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
+                              <span style={{ fontSize: '0.55rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', background: isPig && tr.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '1px 6px', borderRadius: '8px' }}>
+                                {TRANSFORM_LABELS[tr.animal]}{isPig && tr.enraged ? ' (ENFURECIDO!)' : ''} · {tr.turnsLeft} turno{tr.turnsLeft > 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
                     const modelUrl = quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl;
                     const modelCfg = modelUrl ? arenaDebug.modelConfigs[modelUrl] : null;
                     const modelScale = modelCfg?.scale ?? 1;

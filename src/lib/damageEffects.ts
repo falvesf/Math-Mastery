@@ -3,7 +3,7 @@
 // sorteada na compra. O pergaminho de aprimoramento altera a chance, mas NUNCA
 // remove/troca o efeito (o add é sempre o mesmo).
 
-export type EffectAddType = 'burn' | 'freeze' | 'impact' | 'electric' | 'poison' | 'bleed';
+export type EffectAddType = 'burn' | 'freeze' | 'impact' | 'electric' | 'poison' | 'bleed' | 'transform' | 'heal';
 
 export const DAMAGE_EFFECTS: { id: string; label: string; desc: string }[] = [
   { id: 'none', label: 'Nenhum', desc: 'Dano normal (blocos ficam vermelhos)' },
@@ -13,6 +13,8 @@ export const DAMAGE_EFFECTS: { id: string; label: string; desc: string }[] = [
   { id: 'electric', label: '⚡ Elétrico', desc: 'Add "Eletrocutar": chance de causar choques elétricos' },
   { id: 'poison', label: '☠️ Veneno', desc: 'Add "Envenenar": chance de envenenar e drenar a vida' },
   { id: 'bleed', label: '🩸 Sangramento', desc: 'Add "Perfurar": chance de sangrar o inimigo' },
+  { id: 'transform', label: '🐸 Transformar', desc: 'Add "Transformar": chance de transformar o monstro em Sapo, Coelho, Porco ou Rato (3 turnos)' },
+  { id: 'heal', label: '💚 Cura', desc: 'Add "Cura": chance de ativar uma aura que cura 0,5 coração por turno (3 turnos)' },
 ];
 
 // Rótulos/ícones dos ADDS de efeito (exibidos no tooltip igual aos atributos)
@@ -23,6 +25,8 @@ export const EFFECT_ADD_LABELS: Record<EffectAddType, { label: string; icon: str
   bleed: { label: 'Perfurar', icon: '🩸', color: '#f87171' },
   freeze: { label: 'Congelar', icon: '❄️', color: '#60a5fa' },
   electric: { label: 'Eletrocutar', icon: '⚡', color: '#fbbf24' },
+  transform: { label: 'Transformar', icon: '🐸', color: '#a78bfa' },
+  heal: { label: 'Cura', icon: '💚', color: '#34d399' },
 };
 
 export function isEffectAddType(t?: string): t is EffectAddType {

@@ -16,6 +16,8 @@ import BattleTransition from './BattleTransition';
 import DamageEffectOverlay from './DamageEffectOverlay';
 // @ts-ignore
 import { getEquippedDamageEffect, getEquippedDamageEffectInfo } from '../lib/damageEffects';
+import { getTransformModelUrl, TRANSFORM_LABELS, heartIsHalf } from '../lib/transformEffects';
+import CustomModelViewer from './CustomModelViewer';
 
 interface PvpBattleProps {
   matchId: string;
@@ -633,9 +635,12 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
 
   const q = match.questions[match.current_question_index];
   const timeLimitMs = (q?.timeLimit || 20) * 1000;
+  // Coelho transformado: tempo de resposta cai 30%
+  const rabbitActive = safeLeft?.transform?.animal === 'coelho' || safeRight?.transform?.animal === 'coelho';
+  const effTimeLimitMs = rabbitActive ? timeLimitMs * 0.7 : timeLimitMs;
   const elapsed = Math.max(0, now - (match.question_started_at || now));
-  const remaining = Math.max(0, timeLimitMs - elapsed);
-  const timePct = Math.min(100, (remaining / timeLimitMs) * 100);
+  const remaining = Math.max(0, effTimeLimitMs - elapsed);
+  const timePct = Math.min(100, (remaining / effTimeLimitMs) * 100);
 
   const myAnswered = me?.answered;
   const themAnswered = them?.answered;
@@ -734,31 +739,83 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
         <div style={{ position: 'absolute', inset: 0, zIndex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: `${arenaGap}px` }}>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: leftLunge ? `translateX(${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
             <div style={{ position: 'relative' }}>
-              <AvatarCharacter config={leftConfig} equippedItems={leftEquip} size={170} animation={leftAnswered ? 'attack' : (leftHurt ? 'hurt' : 'idle')} interactive={false} hurt={leftHurt} effectTint={!isSpectator ? (themEffectInfo.effect === 'burn' ? '#ff8833' : themEffectInfo.effect === 'poison' ? '#44ff66' : themEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null} />
+              {safeLeft?.transform ? (
+                <div style={{ position: 'relative' }}>
+                  <div className={safeLeft.transform.animal === 'sapo' ? 'transform-hop' : (safeLeft.transform.animal === 'rato' ? 'transform-fast-wobble' : undefined)} style={{ transform: safeLeft.transform.animal === 'rato' ? 'scale(0.45)' : undefined, transformOrigin: 'bottom center' }}>
+                    <CustomModelViewer modelUrl={getTransformModelUrl(safeLeft.transform.animal)} size={190} animation={leftAnswered ? 'attack' : (leftHurt ? 'hurt' : 'none')} role="monster" effectTint={safeLeft.transform.animal === 'porco' && safeLeft.transform.enraged ? '#ff2222' : null} />
+                  </div>
+                  <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
+                    <span style={{ fontSize: '0.6rem', fontWeight: 'bold', textTransform: 'uppercase', background: safeLeft.transform.animal === 'porco' && safeLeft.transform.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '1px 7px', borderRadius: '8px' }}>
+                      {TRANSFORM_LABELS[safeLeft.transform.animal]}{safeLeft.transform.animal === 'porco' && safeLeft.transform.enraged ? ' (ENFURECIDO!)' : ''}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <AvatarCharacter config={leftConfig} equippedItems={leftEquip} size={170} animation={leftAnswered ? 'attack' : (leftHurt ? 'hurt' : 'idle')} interactive={false} hurt={leftHurt} effectTint={!isSpectator ? (themEffectInfo.effect === 'burn' ? '#ff8833' : themEffectInfo.effect === 'poison' ? '#44ff66' : themEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null} />
+              )}
+              {safeLeft?.healAuraTurns ? <div className="heal-aura" style={{ position: 'absolute', inset: 0 }} /> : null}
               {!isSpectator && <DamageEffectOverlay effect={themEffectInfo.effect} level={myEffectLevel} justHit={myEffectFlash} />}
             </div>
             <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#fbbf24', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(safeLeft?.name)}</div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '1.3rem', fontWeight: '900', color: 'var(--gold-primary)' }}>{safeLeft?.score}</div>
               <div style={{ display: 'flex', gap: '2px' }}>
-                {Array.from({ length: safeLeft?.maxHp || 3 }).map((_, i) => (
-                  <Heart key={i} size={16} fill={i < (safeLeft?.hp || 0) ? '#ef4444' : 'transparent'} color={i < (safeLeft?.hp || 0) ? '#ef4444' : '#444'} />
-                ))}
+                {Array.from({ length: safeLeft?.maxHp || 3 }).map((_, i) => {
+                  const hp = safeLeft?.hp || 0;
+                  const isHalf = i === Math.floor(hp) && heartIsHalf(hp);
+                  const filled = i < Math.floor(hp) || isHalf;
+                  return (
+                    <span key={i} style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+                      <Heart size={16} fill="rgba(239,68,68,0.15)" color="#444" />
+                      {filled && (
+                        <span style={{ position: 'absolute', inset: 0, width: isHalf ? '50%' : '100%', overflow: 'hidden' }}>
+                          <Heart size={16} fill="#ef4444" color="#ef4444" />
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           </div>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: rightLunge ? `translateX(-${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
             <div style={{ position: 'relative' }}>
-              <AvatarCharacter config={rightConfig} equippedItems={rightEquip} size={170} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'idle')} interactive={false} hurt={rightHurt} role="monster" effectTint={!isSpectator ? (myEffectInfo.effect === 'burn' ? '#ff8833' : myEffectInfo.effect === 'poison' ? '#44ff66' : myEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null} />
+              {safeRight?.transform ? (
+                <div style={{ position: 'relative' }}>
+                  <div className={safeRight.transform.animal === 'sapo' ? 'transform-hop' : (safeRight.transform.animal === 'rato' ? 'transform-fast-wobble' : undefined)} style={{ transform: safeRight.transform.animal === 'rato' ? 'scale(0.45)' : undefined, transformOrigin: 'bottom center' }}>
+                    <CustomModelViewer modelUrl={getTransformModelUrl(safeRight.transform.animal)} size={190} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'none')} role="monster" effectTint={safeRight.transform.animal === 'porco' && safeRight.transform.enraged ? '#ff2222' : null} />
+                  </div>
+                  <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
+                    <span style={{ fontSize: '0.6rem', fontWeight: 'bold', textTransform: 'uppercase', background: safeRight.transform.animal === 'porco' && safeRight.transform.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '1px 7px', borderRadius: '8px' }}>
+                      {TRANSFORM_LABELS[safeRight.transform.animal]}{safeRight.transform.animal === 'porco' && safeRight.transform.enraged ? ' (ENFURECIDO!)' : ''}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <AvatarCharacter config={rightConfig} equippedItems={rightEquip} size={170} animation={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'idle')} interactive={false} hurt={rightHurt} role="monster" effectTint={!isSpectator ? (myEffectInfo.effect === 'burn' ? '#ff8833' : myEffectInfo.effect === 'poison' ? '#44ff66' : myEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null} />
+              )}
+              {safeRight?.healAuraTurns ? <div className="heal-aura" style={{ position: 'absolute', inset: 0 }} /> : null}
               {!isSpectator && <DamageEffectOverlay effect={myEffectInfo.effect} level={themEffectLevel} justHit={themEffectFlash} />}
             </div>
             <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#94a3b8', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(safeRight?.name)}</div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '1.3rem', fontWeight: '900', color: '#94a3b8' }}>{safeRight?.score}</div>
               <div style={{ display: 'flex', gap: '2px' }}>
-                {Array.from({ length: safeRight?.maxHp || 3 }).map((_, i) => (
-                  <Heart key={i} size={16} fill={i < (safeRight?.hp || 0) ? '#ef4444' : 'transparent'} color={i < (safeRight?.hp || 0) ? '#ef4444' : '#444'} />
-                ))}
+                {Array.from({ length: safeRight?.maxHp || 3 }).map((_, i) => {
+                  const hp = safeRight?.hp || 0;
+                  const isHalf = i === Math.floor(hp) && heartIsHalf(hp);
+                  const filled = i < Math.floor(hp) || isHalf;
+                  return (
+                    <span key={i} style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+                      <Heart size={16} fill="rgba(239,68,68,0.15)" color="#444" />
+                      {filled && (
+                        <span style={{ position: 'absolute', inset: 0, width: isHalf ? '50%' : '100%', overflow: 'hidden' }}>
+                          <Heart size={16} fill="#ef4444" color="#ef4444" />
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           </div>
