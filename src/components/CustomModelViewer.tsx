@@ -203,7 +203,9 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
       const by = b.getWorldPosition(new THREE.Vector3()).y;
       return ay - by;
     });
-    const n = Math.min(count, meshes.length);
+    // SEMPRE mantém ao menos 1 malha viva (a "cabeça"), como no modelo cubo — o GLB
+    // costuma ter poucas malhas, então sem esse cap o monstro sumiria no meio da luta.
+    const n = Math.min(count, Math.max(0, meshes.length - 1));
     const map = new Map();
     meshes.forEach((m, idx) => {
       const original = initialTransforms.get(m.uuid);
@@ -215,9 +217,10 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
           rot: new THREE.Euler((Math.random() - 0.5) * Math.PI * 1.5, (Math.random() - 0.5) * Math.PI * 2, (Math.random() - 0.5) * Math.PI * 1.5),
         });
       } else {
-        // Parte viva: desce n*step para ocupar o espaço das que caíram (mantém rotação)
+        // Parte viva: desce para ocupar o espaço das que caíram, mas NUNCA abaixo da base
+        const sink = Math.min(n * step, Math.max(0, original.position.y));
         map.set(m.uuid, {
-          posDelta: new THREE.Vector3(0, -n * step, 0),
+          posDelta: new THREE.Vector3(0, -sink, 0),
           rot: null,
         });
       }
