@@ -4,7 +4,7 @@
 //  - Cura: aura que cura o jogador 0,5 coração por turno (3 turnos).
 // =====================================================================
 
-import { playSound, resolveAudioUrl } from './audioBank';
+import { playSound } from './audioBank';
 
 export type TransformAnimal = 'sapo' | 'coelho' | 'porco' | 'rato';
 
@@ -108,35 +108,7 @@ export function getTransformSoundUrl(animal: TransformAnimal, kind: TransformSou
   return `/sounds/transform/${animal}_${kind}.mp3`;
 }
 
-const transformSoundCache: Record<string, boolean> = {};
-
-// Pré-checa os sons dos animais no carregamento, para o 1º som já usar o do animal.
-TRANSFORM_ANIMALS.forEach(a =>
-  (['grunt', 'attack', 'hurt'] as TransformSoundKind[]).forEach(k => {
-    const u = getTransformSoundUrl(a, k);
-    fetch(resolveAudioUrl(u), { method: 'HEAD' })
-      .then(r => { transformSoundCache[u] = r.ok; })
-      .catch(() => { transformSoundCache[u] = false; });
-  })
-);
-
-/** Toca o som do animal (se o arquivo existir) ou cai no som original do monstro.
- *  Na 1ª vez toca o som do animal JÁ e confirma a existência em paralelo; se o
- *  arquivo não existir, as próximas chamadas caem no som do monstro. */
-export function playTransformSound(animal: TransformAnimal, kind: TransformSoundKind, fallbackUrl?: string | null, volume = 0.8) {
-  const url = getTransformSoundUrl(animal, kind);
-  const cached = transformSoundCache[url];
-  if (cached === false) {
-    // Arquivo já verificado e NÃO existe → usa o som original do monstro
-    playSound(fallbackUrl, volume);
-    return;
-  }
-  if (cached === undefined) {
-    // 1ª vez: toca o som do animal agora e checa em paralelo (para as próximas)
-    transformSoundCache[url] = true;
-    fetch(resolveAudioUrl(url), { method: 'HEAD' })
-      .then(r => { transformSoundCache[url] = r.ok; })
-      .catch(() => { transformSoundCache[url] = false; });
-  }
-  playSound(url, volume);
+/** Toca o som do animal. Se o arquivo não existir, fica em silêncio (sem erro). */
+export function playTransformSound(animal: TransformAnimal, kind: TransformSoundKind, _fallbackUrl?: string | null, volume = 0.8) {
+  playSound(getTransformSoundUrl(animal, kind), volume);
 }
