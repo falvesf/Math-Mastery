@@ -83,6 +83,15 @@ export function forgeSuccessChance(level: number, config: any): number {
   return DEFAULT_FORGE_SUCCESS[n] ?? 50;
 }
 
+// ============ Materiais (ingredientes) por nível ============
+// `level` é o nível ALVO (1..9). Retorna os ids (store_items) dos itens
+// necessários para forjar DO nível anterior ATÉ `level`.
+export function forgeMaterialsForLevel(level: number, config: any): string[] {
+  const n = Math.max(1, Math.min(MAX_FORGE_LEVEL, Math.floor(level || 0)));
+  const mats = config?.materialsPerLevel?.[n];
+  return Array.isArray(mats) ? mats.filter(Boolean) : [];
+}
+
 // ============ Fracionamento (mais resistência por nível) ============
 // (opcional, para uso futuro)
 

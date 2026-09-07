@@ -17,7 +17,7 @@ import { calculateTotalStats } from '../lib/gacha';
 // @ts-ignore
 import { fetchActiveCoin } from '../lib/model3d';
 // @ts-ignore
-import { forgeStrengthFraction, forgeAttributeValue, forgeAttributeValueWithConfig, nextForgeCost, nextForgeCostWithConfig, forgeSuccessChance, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
+import { forgeStrengthFraction, forgeAttributeValue, forgeAttributeValueWithConfig, nextForgeCost, nextForgeCostWithConfig, forgeSuccessChance, forgeMaterialsForLevel, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
 import { useDialog } from '../contexts/DialogContext';
 
 interface BlacksmithModalProps {
@@ -182,8 +182,17 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       showToast("Você não possui Pergaminho do Ferreiro!", 'error');
       return;
     }
-
-    const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nChance: ${Math.min(100, finalChance)}%\n${useScroll ? 'Pergaminho ativo: O item será protegido em caso de falha.' : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}`;
+    const requiredMats = forgeMaterialsForLevel(nextLevel, selectedForgeItem.forgeConfig);
+    const matCounts = (id: string) => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0);
+    const missingMats = requiredMats.filter(id => matCounts(id) <= 0);
+    if (missingMats.length > 0) {
+      showToast("Você não possui os materiais exigidos para esta forja!", 'error');
+      return;
+    }
+    const matsLabel = requiredMats.length > 0
+      ? requiredMats.map(id => consumables.find(c => c.itemId === id)?.itemTitle || 'Material').join(', ')
+      : 'Nenhum';
+    const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nMateriais: ${matsLabel}\nChance: ${Math.min(100, finalChance)}%\n${useScroll ? 'Pergaminho ativo: O item será protegido em caso de falha.' : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}\nOs materiais serão consumidos em caso de sucesso ou falha.`;
     if (!await showConfirm(confirmMsg)) return;
 
     setIsForging(true);
@@ -377,6 +386,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       const nextAttr = forgeAttributeValueWithConfig(baseAttr, curLevel + 1, selectedForgeItem.forgeConfig);
                       const nextCost = nextForgeCostWithConfig(curLevel, buyPrice, selectedForgeItem.forgeConfig);
                       const nextChance = useScroll ? 100 : forgeSuccessChance(curLevel + 1, selectedForgeItem.forgeConfig);
+                      const requiredMats = forgeMaterialsForLevel(curLevel + 1, selectedForgeItem.forgeConfig);
+                      const matCount = (id: string) => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0);
+                      const materialsMissing = requiredMats.some(id => matCount(id) <= 0);
                       return (
                         <>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -435,10 +447,30 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                           </div>
                         </div>
 
+                        {requiredMats.length > 0 && (
+                          <div style={{ background: 'rgba(139,92,246,0.1)', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid rgba(139,92,246,0.3)' }}>
+                            <div style={{ color: '#c084fc', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '0.4rem' }}>🧪 Materiais exigidos (consumidos no sucesso ou falha)</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                              {requiredMats.map(id => {
+                                const qty = matCount(id);
+                                const title = consumables.find(c => c.itemId === id)?.itemTitle || 'Material';
+                                return (
+                                  <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                                    <span style={{ color: 'white' }}>{title}</span>
+                                    <strong style={{ color: qty > 0 ? '#10B981' : '#ef4444' }}>
+                                      {qty > 0 ? `✓ ${qty}x` : 'FALTA'}
+                                    </strong>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
                         <button 
                           onClick={handleForge}
-                          disabled={(!isStaff && userData.coins < nextCost) || isForging}
-                          style={{ width: '100%', padding: '1.2rem', background: ((!isStaff && userData.coins < nextCost) || isForging) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #ea580c, #dc2626)', color: 'white', border: 'none', borderRadius: '12px', fontSize: '1.2rem', fontWeight: 'bold', cursor: ((!isStaff && userData.coins < nextCost) || isForging) ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 15px rgba(220, 38, 38, 0.3)', opacity: ((!isStaff && userData.coins < nextCost) || isForging) ? 0.5 : 1 }}
+                          disabled={((!isStaff && userData.coins < nextCost) || materialsMissing) || isForging}
+                          style={{ width: '100%', padding: '1.2rem', background: (((!isStaff && userData.coins < nextCost) || materialsMissing) || isForging) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #ea580c, #dc2626)', color: 'white', border: 'none', borderRadius: '12px', fontSize: '1.2rem', fontWeight: 'bold', cursor: (((!isStaff && userData.coins < nextCost) || materialsMissing) || isForging) ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 15px rgba(220, 38, 38, 0.3)', opacity: (((!isStaff && userData.coins < nextCost) || materialsMissing) || isForging) ? 0.5 : 1 }}
                         >
                           <Hammer size={24} className={isForging ? "animate-bounce" : ""} /> {isForging ? 'FORJANDO...' : 'BATER O MARTELO'}
                         </button>

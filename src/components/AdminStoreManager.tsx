@@ -1242,6 +1242,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Chance (%)</th>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Força (calculado = padrão)</th>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Custo (calculado = padrão)</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Materiais (item outro)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1253,6 +1254,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                             const updated = { ...(formData.forgeConfig || {}), [key]: { ...(formData.forgeConfig?.[key] || {}), [l]: val } };
                             setFormData({ ...formData, forgeConfig: updated });
                           };
+                          const setMaterial = (l: number, matIdx: number, val: string) => {
+                            const list = [...((formData.forgeConfig?.materialsPerLevel?.[l]) || [])];
+                            if (val) list[matIdx] = val; else list.splice(matIdx, 1);
+                            const updated = { ...(formData.forgeConfig || {}), materialsPerLevel: { ...(formData.forgeConfig?.materialsPerLevel || {}), [l]: list.filter(Boolean) } };
+                            setFormData({ ...formData, forgeConfig: updated });
+                          };
+                          const otherItems = items.filter(i => i.type === 'other');
                           return (
                             <tr key={lvl} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                               <td style={{ padding: '4px 8px', textAlign: 'center', color: lvl === 0 ? '#888' : 'var(--gold-primary)', fontWeight: 'bold' }}>+{lvl}</td>
@@ -1271,6 +1279,23 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                                     <input type="number" min={0} value={formData.forgeConfig?.coinsCostPerLevel?.[lvl] ?? calcCost} onChange={e => setOverride('coinsCostPerLevel', lvl, Number(e.target.value))} style={{ width: '90px', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-glass)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
                                     <div style={{ fontSize: '0.62rem', color: '#666' }}>(calc {calcCost})</div>
                                   </>
+                                )}
+                              </td>
+                              <td style={{ padding: '4px 8px' }}>
+                                {lvl === 0 ? <span style={{ color: '#666', fontSize: '0.75rem' }}>—</span> : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                    {[0, 1].map(matIdx => {
+                                      const current = (formData.forgeConfig?.materialsPerLevel?.[lvl] || [])[matIdx] || '';
+                                      return (
+                                        <select key={matIdx} value={current} onChange={e => setMaterial(lvl, matIdx, e.target.value)} style={{ width: '150px', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.72rem' }}>
+                                          <option value="">— sem material —</option>
+                                          {otherItems.map(i => (
+                                            <option key={i.id} value={i.id}>{i.title}</option>
+                                          ))}
+                                        </select>
+                                      );
+                                    })}
+                                  </div>
                                 )}
                               </td>
                             </tr>

@@ -117,6 +117,8 @@ DECLARE
   v_success boolean;
   v_coins numeric;
   v_staff boolean;
+  v_mats uuid[];
+  v_i int;
   v_defaults int[] := ARRAY[90,80,70,60,50,40,30,20,10];
 BEGIN
   IF v_uid IS NULL THEN
@@ -189,6 +191,21 @@ BEGIN
   END IF;
   v_coins := v_coins - (CASE WHEN v_staff THEN 0 ELSE v_cost END);
 
+  -- Materiais exigidos (materialsPerLevel do nível alvo)
+  SELECT ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_cfg->'materialsPerLevel'->v_next::text, '[]'::jsonb))::uuid)
+  INTO v_mats;
+  IF array_length(v_mats, 1) > 0 THEN
+    FOR v_i IN 1..array_length(v_mats, 1) LOOP
+      IF NOT EXISTS (
+        SELECT 1 FROM user_items
+        WHERE student_id = v_uid AND item_id = v_mats[v_i]
+          AND (COALESCE((data->>'quantity')::int, 1)) >= 1
+      ) THEN
+        RETURN jsonb_build_object('ok', false, 'error', 'materiais insuficientes');
+      END IF;
+    END LOOP;
+  END IF;
+
   -- Pergaminho (se pediu proteção): valida existência ANTES de rolar
   IF p_use_scroll THEN
     IF NOT EXISTS (
@@ -198,6 +215,13 @@ BEGIN
     ) THEN
       RETURN jsonb_build_object('ok', false, 'error', 'sem pergaminho do ferreiro');
     END IF;
+  END IF;
+
+  -- Consome materiais (sucesso E falha consomem)
+  IF array_length(v_mats, 1) > 0 THEN
+    FOR v_i IN 1..array_length(v_mats, 1) LOOP
+      PERFORM public.consume_one_user_item(v_uid, v_mats[v_i]);
+    END LOOP;
   END IF;
 
   -- Rola a chance NO SERVIDOR
@@ -210,14 +234,14 @@ BEGIN
     UPDATE user_items
     SET data = jsonb_set(v_item.data, '{forgeLevel}', to_jsonb(v_next))
     WHERE id = p_item_id;
-    RETURN jsonb_build_object('ok', true, 'success', true, 'level', v_next, 'coins', v_coins - v_cost, 'message', 'sucesso');
+    RETURN jsonb_build_object('ok', true, 'success', true, 'level', v_next, 'coins', v_coins, 'message', 'sucesso');
   ELSE
     IF p_use_scroll THEN
       PERFORM public.consume_one_scroll(v_uid);
-      RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins - v_cost, 'protected', true, 'message', 'falha protegida');
+      RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins, 'protected', true, 'message', 'falha protegida');
     ELSE
       DELETE FROM user_items WHERE id = p_item_id;
-      RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins - v_cost, 'destroyed', true, 'message', 'item destruído');
+      RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins, 'destroyed', true, 'message', 'item destruído');
     END IF;
   END IF;
 END;
@@ -360,7 +384,7 @@ BEGIN
 
     RETURN jsonb_build_object(
       'ok', true, 'success', true,
-      'coins', v_coins - v_coins_cost,
+      'coins', v_coins,
       'newTitle', v_result_store_data->>'title',
       'message', 'sucesso'
     );
@@ -368,7 +392,7 @@ BEGIN
     UPDATE user_items
     SET data = jsonb_set(v_item.data, '{forgeLevel}', to_jsonb(8))
     WHERE id = p_item_id;
-    RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins - v_coins_cost, 'message', 'falha');
+    RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins, 'message', 'falha');
   END IF;
 END;
 $$;
