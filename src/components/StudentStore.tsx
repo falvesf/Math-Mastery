@@ -97,6 +97,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const { showAlert, showConfirm, showPrompt, showToast } = useDialog();
   const { tenantId } = useTenant();
   const [activeTab, setActiveTab] = useState<'official' | 'market'>('official');
+  const [showHiddenItems, setShowHiddenItems] = useState(false);
   const [officialCategoryTab, setOfficialCategoryTab] = useState<'all' | 'consumable' | 'attack' | 'defense' | 'other'>('all');
   const [items, setItems] = useState<StoreItem[]>([]);
   const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
@@ -158,6 +159,12 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     fetchStoreData();
   }, [tenantId]);
 
+  // Ao alternar o modo "itens ocultos" (staff), recarrega a lista da loja
+  useEffect(() => {
+    fetchStoreData(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHiddenItems]);
+
   // Moeda ativa (arte definida em Moldes 3D > Moedas)
   useEffect(() => {
     let isMounted = true;
@@ -192,7 +199,8 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     const rawItems = (storeSnap || []).map((d: any) => ({ ...(d.data as any), id: d.id, price: d.price }));
     // Não aparecem na loja: itens "Transmutados" (só obtidos por transmutação) e
     // itens "Outros / Diversos" (materiais dropados por monstros/baús).
-    const loaded: StoreItem[] = rawItems.filter((i: any) => !i.isTransmuted && i.type !== 'other');
+    // Staff (admin/teacher) pode revelá-los pelo ícone de olho para comprar direto.
+    const loaded: StoreItem[] = rawItems.filter((i: any) => (showHiddenItems ? true : !i.isTransmuted && i.type !== 'other'));
     setItems(loaded);
 
     if (userData.uid) {
@@ -283,6 +291,38 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   const handlePurchase = async (item: StoreItem, isGift: boolean = false, paymentMethod?: 'xp' | 'coins') => {
     if (!userData.uid) return;
+
+    // Itens OCULTOS (transmutáveis / Material) só podem ser comprados por staff via RPC
+    // validada no servidor — o aluno NÃO tem permissão e não consegue forçar a compra.
+    const isHiddenItem = (item as any).isTransmuted === true || item.type === 'other';
+    if (isHiddenItem) {
+      const isStaff = userData.role !== 'student' && !userData.studentViewActive;
+      if (!isStaff) {
+        showToast('Este item só pode ser obtido por transmutação.', 'error');
+        return;
+      }
+      if (isGift) {
+        showToast('Itens ocultos não podem ser presenteados.', 'error');
+        return;
+      }
+      setPurchasing(item.id);
+      try {
+        const { data, error } = await supabase.rpc('buy_hidden_store_item', { p_item_id: item.id });
+        if (error || !data?.ok) {
+          showToast(data?.error || 'Permissão negada para comprar este item.', 'error');
+          setPurchasing(null);
+          return;
+        }
+        showToast(`Compra realizada: ${item.title}!`);
+        setPurchasing(null);
+        fetchStoreData(false);
+        return;
+      } catch (err) {
+        showToast('Erro ao processar a compra.', 'error');
+        setPurchasing(null);
+        return;
+      }
+    }
 
     const recipientId = isGift ? selectedGiftRecipient : userData.uid;
     if (isGift && !recipientId) {
@@ -791,6 +831,16 @@ export default function StudentStore({ userData }: { userData: UserData }) {
           >
             <Filter size={16} />
           </button>
+          {(userData.role !== 'student' && !userData.studentViewActive) && (
+            <button
+              onClick={() => setShowHiddenItems(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.4rem 0.75rem', background: showHiddenItems ? 'rgba(168,85,247,0.25)' : 'var(--btn-bg)', color: showHiddenItems ? '#c084fc' : 'var(--text-secondary)', borderRadius: '8px', border: `1px solid ${showHiddenItems ? '#a855f7' : 'var(--border-glass)'}`, cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.85rem' }}
+              title={showHiddenItems ? "Ocultar itens transmutáveis/Materiais" : "Ver itens transmutáveis e Materiais (compra direta para staff)"}
+            >
+              {showHiddenItems ? <Eye size={16} /> : <Eye size={16} />}
+              {showHiddenItems && <span style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>Ocultos</span>}
+            </button>
+          )}
         </div>
 
         {/* Barra de Filtros */}
@@ -1195,6 +1245,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                     {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}
                   </div>
                 )}
+                {(item as any).isTransmuted === true || (item as any).type === 'other' ? (
+                  <div style={{ position: 'absolute', top: '5px', left: '5px', background: 'rgba(168,85,247,0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', color: 'white', fontWeight: 'bold', fontSize: '0.65rem', zIndex: 3 }}>
+                    {(item as any).type === 'other' ? 'MATERIAL' : 'TRANSMUTÁVEL'}
+                  </div>
+                ) : null}
                 <div style={{ padding: '0.5rem 0.65rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.25rem', minWidth: 0, justifyContent: 'center' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
                     <h3 title={item.itemTitle} style={{ fontSize: viewMode === 'grid-small' ? '0.85rem' : '0.95rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, lineHeight: 1.2, fontWeight: 'bold' }}>{((item as any).type || (item as any).itemType) === 'equippable' ? forgeItemName(item.itemTitle, 0) : item.itemTitle}</h3>
