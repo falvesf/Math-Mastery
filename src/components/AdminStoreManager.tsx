@@ -898,6 +898,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   };
 
   const openEdit = (item: StoreItem) => {
+    setHoveredItem(null);
     setFormData({ ...item, minRankRequired: resolveMinRankName(item.minRankRequired) });
     setEditingId(item.id);
     setIsEditing(true);
@@ -905,6 +906,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   // Superadmin edita um item GLOBAL do banco (abre o mesmo editor; salvar atualiza o global)
   const openEditGlobal = (item: any) => {
+    setHoveredItem(null);
     setFormData({ ...item, id: item._rawId, _isGlobal: true, minRankRequired: resolveMinRankName(item.minRankRequired) } as StoreItem);
     setEditingId(item._rawId);
     setIsEditing(true);
@@ -970,7 +972,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 </button>
               )}
               {canItems('items', 'create') && (
-                <button className="login-btn" onClick={() => { setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
+                <button className="login-btn" onClick={() => { setHoveredItem(null); setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
                   <Plus size={18} /> Novo Item
                 </button>
               )}
@@ -1405,12 +1407,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <thead>
                         <tr style={{ background: 'rgba(234,88,12,0.2)' }}>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Nível</th>
-                          <th
-                            onPointerDown={(e) => { e.preventDefault(); setChanceFillStart(typeof formData.forgeConfig?.successChancePerLevel?.[1] === 'number' ? formData.forgeConfig.successChancePerLevel[1] : (DEFAULT_FORGE_SUCCESS[1] ?? 90)); setShowChanceFill(true); }}
-                            style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
-                            title="Clique para preencher todas as chances de uma vez (início + pulo)"
-                          >
-                            Chance (%) <span style={{ fontSize: '0.65rem', color: '#f59e0b' }}>⚡ preencher</span>
+                          <th style={{ padding: '4px 8px', textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => { setChanceFillStart(typeof formData.forgeConfig?.successChancePerLevel?.[1] === 'number' ? formData.forgeConfig.successChancePerLevel[1] : (DEFAULT_FORGE_SUCCESS[1] ?? 90)); setShowChanceFill(true); }}
+                              style={{ cursor: 'pointer', background: 'rgba(234,88,12,0.15)', border: '1px solid rgba(234,88,12,0.45)', color: 'var(--text-secondary)', borderRadius: '6px', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                              title="Clique para preencher todas as chances de uma vez (início + pulo)"
+                            >
+                              Chance (%) ⚡ preencher
+                            </button>
                           </th>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Força (calculado = padrão)</th>
                           <th
