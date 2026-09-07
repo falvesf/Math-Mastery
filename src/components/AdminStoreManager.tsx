@@ -1394,7 +1394,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                         <tr style={{ background: 'rgba(234,88,12,0.2)' }}>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Nível</th>
                           <th
-                            onClick={() => { setChanceFillStart((formData.forgeConfig?.successChancePerLevel?.[1] ?? DEFAULT_FORGE_SUCCESS[1])); setShowChanceFill(true); }}
+                            onPointerDown={(e) => { e.preventDefault(); setChanceFillStart(typeof formData.forgeConfig?.successChancePerLevel?.[1] === 'number' ? formData.forgeConfig.successChancePerLevel[1] : (DEFAULT_FORGE_SUCCESS[1] ?? 90)); setShowChanceFill(true); }}
                             style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
                             title="Clique para preencher todas as chances de uma vez (início + pulo)"
                           >
