@@ -103,28 +103,34 @@ function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { item
   const btnRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
+  const place = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 220) });
+  };
+
   useEffect(() => {
     if (!open) return;
-    const update = () => {
-      const r = btnRef.current?.getBoundingClientRect();
-      if (r) setPos({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 220) });
-    };
-    update();
+    place();
     const close = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', close);
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
     return () => {
       document.removeEventListener('mousedown', close);
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
     };
   }, [open]);
 
   const selected = items.find(i => i.id === value);
   return (
     <div ref={rootRef} style={{ width }}>
-      <button ref={btnRef} type="button" onClick={() => setOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.72rem', cursor: 'pointer', minHeight: 26, textAlign: 'left' }}>
+      <button
+        ref={btnRef}
+        type="button"
+        onMouseDown={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.72rem', cursor: 'pointer', minHeight: 26, textAlign: 'left' }}
+      >
         {selected ? (
           <>
             {selected.imageUrl ? <img src={selected.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
@@ -140,7 +146,7 @@ function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { item
           {items.length === 0 ? (
             <div style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>Nenhum item disponível</div>
           ) : items.map(i => (
-            <div key={i.id} onClick={() => { onChange(i.id); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '5px 8px', cursor: 'pointer', fontSize: '0.72rem', background: i.id === value ? 'rgba(255,215,0,0.15)' : 'transparent', whiteSpace: 'nowrap' }}>
+            <div key={i.id} onMouseDown={(e) => { e.stopPropagation(); onChange(i.id); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '5px 8px', cursor: 'pointer', fontSize: '0.72rem', background: i.id === value ? 'rgba(255,215,0,0.15)' : 'transparent', whiteSpace: 'nowrap' }}>
               {i.imageUrl ? <img src={i.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.title}</span>
               {i.badge ? <span style={{ marginLeft: 'auto', fontSize: '0.6rem', color: '#c084fc', flexShrink: 0 }}>{i.badge}</span> : null}
