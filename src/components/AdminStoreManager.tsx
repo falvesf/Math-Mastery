@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer, Volume2 } from 'lucide-react';
 // @ts-ignore — força/custo de forja (mantido no import por segurança; usado em cálculo quando necessário)
 import { forgeStrengthFraction, forgeAttributeValue, nextForgeCost, DEFAULT_FORGE_SUCCESS } from '../lib/forge';
 import ImageGalleryModal from './ImageGalleryModal';
@@ -15,6 +15,7 @@ import ItemTooltip from './ItemTooltip';
 import AvatarCharacter from './AvatarCharacter';
 import MinecraftPartPreview from './MinecraftPartPreview';
 import AudioBankPicker from './AudioBankPicker';
+import { fetchForgeSounds, saveForgeSounds, type ForgeSoundsConfig } from '../lib/forgeSounds';
 import { playSound } from '../lib/audioBank';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
@@ -214,6 +215,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [showExtractorModal, setShowExtractorModal] = useState(false);
   const [showGachaModal, setShowGachaModal] = useState(false);
   const [showItemBank, setShowItemBank] = useState(false);
+  const [showForgeSounds, setShowForgeSounds] = useState(false);
+  const [forgeSoundsConfig, setForgeSoundsConfig] = useState<ForgeSoundsConfig>({});
+  const [soundPickerTarget, setSoundPickerTarget] = useState<keyof ForgeSoundsConfig | null>(null);
   // Modal de seleção das opções para "Sincronizar do Banco"
   const [showSyncOptions, setShowSyncOptions] = useState(false);
   const [syncSelection, setSyncSelection] = useState<Record<string, boolean>>({});
@@ -946,6 +950,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               {canItems('items', 'create') && (
                 <button className="login-btn" onClick={() => setShowItemBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
                   <Package size={18} /> Banco de Itens
+                </button>
+              )}
+              {canItems('items', 'create') && (
+                <button className="login-btn" onClick={async () => { setForgeSoundsConfig(await fetchForgeSounds(tenantId)); setShowForgeSounds(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(234, 88, 12, 0.15)', color: '#f97316', border: '1px solid rgba(234, 88, 12, 0.4)' }}>
+                  <Volume2 size={18} /> Sons da Forja
                 </button>
               )}
               {canItems('items', 'create') && (
@@ -2029,6 +2038,68 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         </div>,
         document.body
       )}
+
+      {/* Modal: Sons da Forja & Transmutação */}
+      {showForgeSounds && createPortal(
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000001, padding: '1rem' }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForgeSounds(false); }}
+        >
+          <div style={{ background: 'var(--bg-card)', border: '1px solid rgba(234,88,12,0.5)', borderRadius: '14px', padding: '1.5rem', maxWidth: '640px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.7)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 0.25rem 0', color: 'var(--accent-red)', fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Volume2 size={20} /> Sons da Forja & Transmutação</h3>
+            <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+              Música de fundo em loop por guia. Ao forjar/transmutar a música diminui, toca o efeito e depois sucesso/falha, e a música volta do ponto em que parou.
+            </p>
+
+            {([
+              { key: 'forgeMusicUrl', label: '🎵 Música da guia Forja', cat: 'music' },
+              { key: 'transmuteMusicUrl', label: '🎵 Música da guia Transmutação', cat: 'music' },
+              { key: 'forgeAnvilSoundUrl', label: '🔨 Som do martelo na bigorna', cat: 'effect' },
+              { key: 'transmuteEffectUrl', label: '✨ Efeito sonoro da transmutação', cat: 'effect' },
+              { key: 'successSoundUrl', label: '✅ Som de SUCESSO', cat: 'effect' },
+              { key: 'failSoundUrl', label: '❌ Som de FALHA', cat: 'effect' },
+            ] as const).map(f => (
+              <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem', padding: '0.6rem 0.75rem', background: 'rgba(0,0,0,0.25)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--text-primary)' }}>{f.label}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {forgeSoundsConfig[f.key] || '(nenhum)'}
+                  </div>
+                </div>
+                <button onClick={() => { if (forgeSoundsConfig[f.key]) playSound(forgeSoundsConfig[f.key], 0.9); }} disabled={!forgeSoundsConfig[f.key]} style={{ padding: '0.4rem 0.7rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: forgeSoundsConfig[f.key] ? 'pointer' : 'not-allowed', fontSize: '0.8rem', opacity: forgeSoundsConfig[f.key] ? 1 : 0.4 }} title="Prévia">▶</button>
+                <button onClick={() => setSoundPickerTarget(f.key)} style={{ padding: '0.4rem 0.7rem', background: 'rgba(139,92,246,0.2)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco</button>
+                <button onClick={() => setForgeSoundsConfig({ ...forgeSoundsConfig, [f.key]: '' })} disabled={!forgeSoundsConfig[f.key]} style={{ padding: '0.4rem 0.6rem', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', cursor: forgeSoundsConfig[f.key] ? 'pointer' : 'not-allowed', fontSize: '0.85rem', opacity: forgeSoundsConfig[f.key] ? 1 : 0.4 }} title="Limpar">×</button>
+              </div>
+            ))}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <button onClick={() => setShowForgeSounds(false)} style={{ padding: '0.6rem 1.2rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancelar</button>
+              <button
+                onClick={async () => {
+                  const ok = await saveForgeSounds(tenantId, forgeSoundsConfig);
+                  showToast(ok ? 'Sons da forja salvos com sucesso!' : 'Erro ao salvar os sons da forja.', ok ? 'success' : 'error');
+                  if (ok) setShowForgeSounds(false);
+                }}
+                className="login-btn"
+                style={{ padding: '0.6rem 1.5rem', background: 'var(--accent-red)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <AudioBankPicker
+        open={!!soundPickerTarget}
+        onClose={() => setSoundPickerTarget(null)}
+        categoryFilter={soundPickerTarget === 'forgeMusicUrl' || soundPickerTarget === 'transmuteMusicUrl' ? 'music' : 'effect'}
+        title={soundPickerTarget ? ({ forgeMusicUrl: 'Música da guia Forja', transmuteMusicUrl: 'Música da guia Transmutação', forgeAnvilSoundUrl: 'Som do martelo na bigorna', transmuteEffectUrl: 'Efeito da transmutação', successSoundUrl: 'Som de sucesso', failSoundUrl: 'Som de falha' } as Record<string, string>)[soundPickerTarget] : ''}
+        onSelect={(url) => {
+          if (soundPickerTarget) setForgeSoundsConfig(c => ({ ...c, [soundPickerTarget]: url }));
+          setSoundPickerTarget(null);
+        }}
+      />
     </div>
   );
 }

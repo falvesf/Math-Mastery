@@ -19,6 +19,8 @@ import { fetchActiveCoin } from '../lib/model3d';
 // @ts-ignore
 import { forgeStrengthFraction, forgeAttributeValue, forgeAttributeValueWithConfig, nextForgeCost, nextForgeCostWithConfig, forgeSuccessChance, forgeMaterialsForLevel, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
 import { useDialog } from '../contexts/DialogContext';
+import { playSound, resolveAudioUrl } from '../lib/audioBank';
+import { fetchForgeSounds, type ForgeSoundsConfig } from '../lib/forgeSounds';
 
 interface BlacksmithModalProps {
   userData: any;
@@ -49,6 +51,90 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [sketchfabApi, setSketchfabApi] = useState<any>(null);
   const [isForging, setIsForging] = useState(false);
+  const [forgeSounds, setForgeSounds] = useState<ForgeSoundsConfig>({});
+
+  // ---- Música de fundo (loop) com fade ----
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
+  const bgVolumeRef = useRef(0.5);
+  const anvilTimerRef = useRef<any>(null);
+  const bgFadeRafRef = useRef<number | null>(null);
+
+  const ensureBgAudio = (): HTMLAudioElement => {
+    if (!bgAudioRef.current) {
+      const a = new Audio();
+      a.loop = true;
+      a.volume = 0;
+      bgAudioRef.current = a;
+    }
+    return bgAudioRef.current;
+  };
+
+  const rampVolume = (target: number, durMs: number, onDone?: () => void) => {
+    const a = ensureBgAudio();
+    const from = a.volume;
+    const start = performance.now();
+    if (bgFadeRafRef.current) cancelAnimationFrame(bgFadeRafRef.current);
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / durMs);
+      a.volume = Math.max(0, Math.min(1, from + (target - from) * t));
+      if (t < 1) { bgFadeRafRef.current = requestAnimationFrame(step); }
+      else { bgFadeRafRef.current = null; if (onDone) onDone(); }
+    };
+    bgFadeRafRef.current = requestAnimationFrame(step);
+  };
+
+  /** Toca a música da guia atual em loop, com fade-in. Retoma do ponto onde parou. */
+  const playTabMusic = (url?: string, volume = 0.5) => {
+    const a = ensureBgAudio();
+    bgVolumeRef.current = volume;
+    if (!url) return;
+    const resolved = resolveAudioUrl(url);
+    if (a.src !== resolved) {
+      a.src = resolved;
+      a.currentTime = 0;
+    }
+    a.play().catch(() => {});
+    rampVolume(volume, 700);
+  };
+
+  /** Fade-out e pausa a música (preserva currentTime p/ retomar do mesmo ponto). */
+  const pauseTabMusic = (durMs = 600) => {
+    const a = ensureBgAudio();
+    rampVolume(0, durMs, () => { a.pause(); });
+  };
+
+  /** Toca o som do martelo batendo na bigorna repetidamente durante a forja. */
+  const startAnvilHits = (anvilUrl?: string) => {
+    if (!anvilUrl) return;
+    const hit = () => { playSound(anvilUrl, 0.9); };
+    hit();
+    anvilTimerRef.current = setInterval(() => { if (!isForging) { clearInterval(anvilTimerRef.current); anvilTimerRef.current = null; return; } hit(); }, 480);
+  };
+  const stopAnvilHits = () => {
+    if (anvilTimerRef.current) { clearInterval(anvilTimerRef.current); anvilTimerRef.current = null; }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchForgeSounds(tenantId).then(c => { if (isMounted) setForgeSounds(c); });
+    return () => { isMounted = false; };
+  }, [tenantId]);
+
+  // Música da guia ativa (troca ao alternar entre Forja/Transmutação)
+  useEffect(() => {
+    const url = activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl;
+    if (!url) { pauseTabMusic(300); return; }
+    playTabMusic(url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, forgeSounds.forgeMusicUrl, forgeSounds.transmuteMusicUrl]);
+
+  // Limpa áudio ao desmontar
+  useEffect(() => () => {
+    stopAnvilHits();
+    if (bgFadeRafRef.current) cancelAnimationFrame(bgFadeRafRef.current);
+    const a = bgAudioRef.current;
+    if (a) { a.pause(); a.src = ''; }
+  }, []);
 
   useEffect(() => {
     if (!window.Sketchfab) {
@@ -196,26 +282,34 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     if (!await showConfirm(confirmMsg)) return;
 
     setIsForging(true);
+    pauseTabMusic(600);
+    startAnvilHits(forgeSounds.forgeAnvilSoundUrl);
     if (sketchfabApi) sketchfabApi.play();
     const rpcPromise = supabase.rpc('forge_item', { p_item_id: selectedForgeItem.docId, p_use_scroll: useScroll });
     await new Promise(r => setTimeout(r, 2500));
+    stopAnvilHits();
     if (sketchfabApi) sketchfabApi.pause();
     setIsForging(false);
 
     const { data, error } = await rpcPromise;
     if (error || !data?.ok) {
       showToast(data?.error || 'Não foi possível forjar o item.', 'error');
+      playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
       fetchItems();
       return;
     }
     if (data.success) {
+      playSound(forgeSounds.successSoundUrl, 0.9);
       showToast("🔥 SUCESSO! O item foi forjado!", 'success');
     } else if (data.destroyed) {
+      playSound(forgeSounds.failSoundUrl, 0.9);
       showToast("💥 QUEBROU! A forja falhou e o item foi destruído nas chamas!", 'error');
       setSelectedForgeItem(null);
     } else {
+      playSound(forgeSounds.failSoundUrl, 0.9);
       showToast("❌ FALHA! A forja falhou, mas o Pergaminho do Ferreiro protegeu o item da destruição.", 'error');
     }
+    playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
     fetchItems();
     onSuccess(data.coins);
   };
@@ -246,6 +340,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     if (!await showConfirm(confirmMsg)) return;
 
     setIsForging(true);
+    pauseTabMusic(600);
+    if (forgeSounds.transmuteEffectUrl) playSound(forgeSounds.transmuteEffectUrl, 0.9);
     const rpcPromise = supabase.rpc('transmute_item', { p_item_id: selectedTransmuteItem.docId });
     await new Promise(r => setTimeout(r, 800));
     setIsForging(false);
@@ -253,15 +349,19 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const { data, error } = await rpcPromise;
     if (error || !data?.ok) {
       showToast(data?.error || 'Não foi possível transmutar o item.', 'error');
+      playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
       fetchItems();
       return;
     }
     if (data.success) {
+      playSound(forgeSounds.successSoundUrl, 0.9);
       showToast("✨ SUCESSO ESPETACULAR! O item foi transmutado para uma nova forma!", 'success');
       setSelectedTransmuteItem(null);
     } else {
+      playSound(forgeSounds.failSoundUrl, 0.9);
       showToast("❌ FALHA! A energia se dissipou e o item caiu para o nível +8.", 'error');
     }
+    playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
     fetchItems();
     onSuccess(data.coins);
   };
