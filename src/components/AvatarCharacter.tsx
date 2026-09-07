@@ -448,12 +448,13 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     
     let viewer: SkinViewer;
     try {
+      // Sem `skin` no construtor: o SkinViewer (skinview3d) faz loadSkin internamente sem
+      // capturar a rejeição — quando a imagem falha (largura 0), lança IndexSizeError
+      // "Uncaught (in promise)". Carregamos a skin dummy abaixo com .catch().
       viewer = new SkinViewer({
           canvas: canvasRef.current,
           width: size,
-          height: size * 1.8,
-          // Fallback para evitar erro de inicialização sem skin
-          skin: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+          height: size * 1.8
       });
       viewer.animation = new IdleAnimation();
   
@@ -469,6 +470,11 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       }
       
       viewer.camera.position.set(0, 10, 60);
+
+      // Skin dummy (fallback transparente) — carregada com .catch() para nunca virar
+      // erro não tratado, mesmo se o navegador falhar ao decodificar.
+      const dummySkin = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+      viewer.loadSkin(dummySkin).catch(() => { /* skin dummy indisponível — avatar fica sem textura, sem crash */ });
     } catch (e) {
       console.error("Erro ao inicializar SkinViewer:", e);
       return;
@@ -2139,12 +2145,16 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           };
 
           if (animation === 'hurt') {
-              await viewerRef.current!.loadSkin(skinUrls.sad.blink, { model: modelType });
-              forceNearestFilter();
+              try {
+                await viewerRef.current!.loadSkin(skinUrls.sad.blink, { model: modelType });
+                forceNearestFilter();
+              } catch (e) { /* skin indisponível */ }
           } else {
               const activeUrls = skinUrls[expression] || skinUrls.normal;
-              await viewerRef.current!.loadSkin(activeUrls.base, { model: modelType });
-              forceNearestFilter();
+              try {
+                await viewerRef.current!.loadSkin(activeUrls.base, { model: modelType });
+                forceNearestFilter();
+              } catch (e) { /* skin indisponível */ }
               
               if (!isMounted) return;
               
