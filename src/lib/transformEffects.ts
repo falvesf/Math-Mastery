@@ -1,5 +1,3 @@
-import { supabase } from './supabase';
-
 // =====================================================================
 // Efeitos de batalha especiais para itens mágicos:
 //  - Transformar: transforma o monstro em Sapo, Coelho, Porco ou Rato.
@@ -38,16 +36,12 @@ export function rollTransformAnimal(): TransformAnimal {
 }
 
 /**
- * URL pública do GLB do animal. Os arquivos devem ser enviados para o bucket
- * `uploads` com estes nomes exatos:
- *   monsters/transform/sapo.glb
- *   monsters/transform/coelho.glb
- *   monsters/transform/porco.glb
- *   monsters/transform/rato.glb
+ * URL do GLB do animal (pasta pública local). Os arquivos devem estar em
+ *   public/models/monster/{sapo,coelho,porco,rato}.glb
  */
 export function getTransformModelUrl(animal: TransformAnimal): string {
-  const { data } = supabase.storage.from('uploads').getPublicUrl(`monsters/transform/${animal}.glb`);
-  return data.publicUrl;
+  // Caminho com barra inicial: o CustomModelViewer prefixa o BASE_URL (/Math-Mastery/)
+  return `/models/monster/${animal}.glb`;
 }
 
 /** Tempo de resposta efetivo da pergunta (Coelho: -30%). */
