@@ -869,7 +869,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
     if (gameState === 'playing' && quest && !feedback) {
       const q = quest.questions[currentQIndex];
       setTimeLeft(effectiveTimeLimit(q.timeLimit, transformState));
-      
+
+      // Coelho: o cronômetro roda 30% mais rápido (intervalo menor)
+      const isRabbit = transformState?.animal === 'coelho';
+      const tickMs = isRabbit ? 1000 / 1.3 : 1000;
+
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => {
           if (timerPausedRef.current) return prev;
@@ -880,7 +884,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           }
           return prev - 1;
         });
-      }, 1000);
+      }, tickMs);
     }
     
     return () => {
