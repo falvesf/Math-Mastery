@@ -486,3 +486,44 @@
   12% { opacity: 1; }
   100% { transform: translateY(36px) scaleY(1.1); opacity: 0; }
 }
+
+/* ==== PUFT! — fumaça de transformação (bexiga estourada) ====
+   Aparece quando o monstro se transforma e quando volta ao normal. */
+.transform-puff {
+  position: absolute;
+  inset: -12px;
+  z-index: 14;
+  pointer-events: none;
+}
+.puff-blob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 66px;
+  height: 66px;
+  margin-left: -33px;
+  margin-top: -33px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(240, 240, 250, 0.95) 0%, rgba(205, 205, 225, 0.6) 55%, transparent 78%);
+  animation: puff-blob 0.7s ease-out forwards;
+}
+.transform-puff.puff-revert .puff-blob {
+  background: radial-gradient(circle, rgba(205, 205, 215, 0.9) 0%, rgba(165, 165, 180, 0.55) 55%, transparent 78%);
+}
+@keyframes puff-blob {
+  0% { transform: scale(0.15); opacity: 0.95; }
+  100% { transform: scale(2.9); opacity: 0; }
+}
+.puff-sparkle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+  animation: puff-sparkle 0.6s ease-out forwards;
+}
+@keyframes puff-sparkle {
+  0% { transform: scale(0.2); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}

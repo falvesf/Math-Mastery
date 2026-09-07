@@ -120,6 +120,7 @@ export default function QuestGameplay() {
   // Efeitos de itens mágicos: transformação do monstro + aura de cura
   const [transformState, setTransformState] = useState<TransformState | null>(null);
   const transformRef = useRef<TransformState | null>(null);
+  const [transformPuff, setTransformPuff] = useState<{ id: number; kind: 'appear' | 'revert' } | null>(null);
   const [healAuraTurns, setHealAuraTurns] = useState(0);
   const healActivationsRef = useRef(0);
   const [playerBleedActive, setPlayerBleedActive] = useState(false);
@@ -134,6 +135,11 @@ export default function QuestGameplay() {
   useEffect(() => {
     transformRef.current = transformState;
   }, [transformState]);
+
+  const triggerTransformPuff = (kind: 'appear' | 'revert') => {
+    setTransformPuff({ id: Date.now() + Math.random(), kind });
+    setTimeout(() => setTransformPuff(null), 800);
+  };
   const fallenPartsRef = useRef<string[]>([]);
   const [torsoAdvantage, setTorsoAdvantage] = useState(false);
   // Camada estática das partes caídas (efeito estrondo): fica FORA do contêiner animado
@@ -1255,6 +1261,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             if (damageEffect === 'transform' && !transformRef.current) {
               const animal = rollTransformAnimal();
               setTransformState({ animal, turnsLeft: TRANSFORM_TURNS + 1, consecutiveCorrect: 0, enraged: false, ratBleeding: false });
+              triggerTransformPuff('appear');
               setBattleMessage(`TRANSFORMADO! O monstro virou ${TRANSFORM_LABELS[animal]}!`);
               // Porco ataca o jogador NO MOMENTO da transformação
               if (animal === 'porco') {
@@ -1283,6 +1290,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             setPlayerBleedActive(false);
             setPlayerBleedWound(null);
             setPlayerBleedTurns(0);
+            triggerTransformPuff('revert');
             setTransformState(null);
             setBattleMessage('O RATO voltou a ser monstro!');
           }
@@ -1461,11 +1469,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
     // Tick de turno: transformação dura 3 turnos e a aura de cura cura 0,5 por turno
     const tr = transformRef.current;
     if (tr) {
-      if (tr.turnsLeft <= 1) {
+if (tr.turnsLeft <= 1) {
         setTransformState(null);
         setPlayerBleedActive(false);
-        setPlayerBleedWound(null);
         setPlayerBleedTurns(0);
+        triggerTransformPuff('revert');
         if (tr.animal !== 'rato') setBattleMessage(`${TRANSFORM_LABELS[tr.animal]} voltou ao normal!`);
       } else {
         setTransformState({ ...tr, turnsLeft: tr.turnsLeft - 1 });
@@ -2404,6 +2412,21 @@ useEffect(() => {
                   })()}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (currentQIndex / Math.max(1, quest?.questions.length || 1)) * (damageEffect === 'impact' ? 2 : 1))) } as any} />
                   <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} drainBlink={drainBlink} />
+                  {transformPuff && (
+                    <div key={transformPuff.id} className={`transform-puff${transformPuff.kind === 'revert' ? ' puff-revert' : ''}`}>
+                      <span className="puff-blob" />
+                      <span className="puff-blob" style={{ left: '32%', top: '28%', animationDelay: '0.08s' }} />
+                      <span className="puff-blob" style={{ left: '68%', top: '34%', animationDelay: '0.15s' }} />
+                      <span className="puff-blob" style={{ left: '45%', top: '70%', animationDelay: '0.22s' }} />
+                      {transformPuff.kind === 'appear' && (
+                        <>
+                          <span className="puff-sparkle" style={{ left: '25%', top: '20%' }} />
+                          <span className="puff-sparkle" style={{ left: '75%', top: '30%', animationDelay: '0.1s' }} />
+                          <span className="puff-sparkle" style={{ left: '40%', top: '80%', animationDelay: '0.18s' }} />
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
                 </div>
                 </div>
