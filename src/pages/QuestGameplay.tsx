@@ -1980,7 +1980,10 @@ export default function QuestGameplay() {
               </div>
               
               <div className="quest-options-compact">
-                {quest?.questions[currentQIndex].options.map((opt, i) => {
+                {quest?.questions[currentQIndex].options
+                  .map((opt, idx) => ({ opt, idx }))
+                  .filter(({ opt }) => (opt.text && opt.text.trim() !== '') || (opt.imageUrl && opt.imageUrl.trim() !== ''))
+                  .map(({ opt, i }) => {
                   const isEliminated = eliminatedOptions.includes(i);
                   const isCorrectAnswer = feedback === 'correct' && i === quest?.questions[currentQIndex].correctIndex;
                   const isWrongSelected = feedback === 'wrong' && i === lastSelectedOption;
