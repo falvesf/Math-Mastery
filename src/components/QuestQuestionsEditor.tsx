@@ -18,6 +18,7 @@ export interface QQuestion {
   timeLimit: number;
   options: QOption[];
   correctIndex: number;
+  bankId?: string;
 }
 
 interface QuestQuestionsEditorProps {
@@ -144,6 +145,7 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
       timeLimit: q.time_limit || 30,
       options: (q.options || []).map((o: any) => ({ text: o.text || '', imageUrl: o.imageUrl || '' })),
       correctIndex: typeof q.correct_index === 'number' ? q.correct_index : 0,
+      bankId: q.id,
     };
     // Substitui a última se estiver vazia, senão adiciona
     const last = questions[questions.length - 1];
@@ -423,8 +425,10 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
               <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {bankLoading ? <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>Carregando...</p>
                 : filteredBank.length === 0 ? <p style={{ color: 'var(--text-secondary)', textAlign: 'center', fontStyle: 'italic' }}>Nenhuma pergunta no banco ainda.</p>
-                : filteredBank.map(bq => (
-                  <div key={bq.id} style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                : filteredBank.map(bq => {
+                  const isImported = questions.some(x => (x as any).bankId === bq.id);
+                  return (
+                  <div key={bq.id} style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', border: isImported ? '1px solid rgba(16,185,129,0.4)' : '1px solid var(--border-glass)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', opacity: isImported ? 0.7 : 1 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal' }} dangerouslySetInnerHTML={{ __html: bq.title }} />
                       {(bq.options || []).length > 0 && (
@@ -448,8 +452,8 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
-                      <button onClick={() => importFromBank(bq)} style={{ padding: '0.35rem 0.7rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                        <Download size={13} /> Importar
+                      <button onClick={() => importFromBank(bq)} disabled={isImported} style={{ padding: '0.35rem 0.7rem', background: isImported ? 'rgba(255,255,255,0.05)' : 'rgba(16,185,129,0.15)', color: isImported ? '#6b7280' : '#10b981', border: isImported ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: isImported ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <CheckCircle size={13} /> {isImported ? 'Importada' : 'Importar'}
                       </button>
                       {isSuperAdmin && (
                         <>
@@ -463,7 +467,8 @@ export default function QuestQuestionsEditor({ isOpen, onClose, questions, setQu
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
