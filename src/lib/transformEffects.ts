@@ -85,3 +85,15 @@ export function heartIsHalf(hp: number): boolean {
 export const HEAL_AURA_TURNS = 3;
 export const HEAL_AURA_PER_TURN = 0.5;
 export const HEAL_MAX_ACTIVATIONS = 3;
+
+// ---- Sangramento do jogador (mordida) ----
+// Retorna a posição (%) do ferimento no corpo do jogador. Inimigos pequenos
+// (rato) só alcançam partes BAIXAS; inimigos maiores podem acertar qualquer parte.
+export function rollBleedWound(attacker: 'rato' | 'monstro'): { x: number; y: number } {
+  if (attacker === 'rato') {
+    // Partes baixas: barriga baixa / pernas / pés (62%–94% da altura)
+    return { x: 30 + Math.random() * 40, y: 62 + Math.random() * 32 };
+  }
+  // Monstro grande: cabeça, tronco, barriga, pernas (10%–94%)
+  return { x: 20 + Math.random() * 60, y: 10 + Math.random() * 84 };
+}

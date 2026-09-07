@@ -38,6 +38,7 @@ import {
   HEAL_AURA_TURNS,
   HEAL_AURA_PER_TURN,
   HEAL_MAX_ACTIVATIONS,
+  rollBleedWound,
 } from '../lib/transformEffects';
 
 interface UserItem {
@@ -123,6 +124,7 @@ export default function QuestGameplay() {
   const healActivationsRef = useRef(0);
   const [playerBleedActive, setPlayerBleedActive] = useState(false);
   const [playerBleedTurns, setPlayerBleedTurns] = useState(0);
+  const [playerBleedWound, setPlayerBleedWound] = useState<{ x: number; y: number } | null>(null);
   const heartsRef = useRef(currentHearts);
 
   useEffect(() => {
@@ -818,6 +820,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setHealAuraTurns(0);
     healActivationsRef.current = 0;
     setPlayerBleedActive(false);
+    setPlayerBleedWound(null);
     setPlayerBleedTurns(0);
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
@@ -1259,6 +1262,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               }
               if (animal === 'rato') {
                 setPlayerBleedActive(false);
+                setPlayerBleedWound(null);
                 setPlayerBleedTurns(0);
               }
             }
@@ -1277,6 +1281,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           // Rato: ao levar dano, volta a ser monstro IMEDIATAMENTE
           if (tr?.animal === 'rato') {
             setPlayerBleedActive(false);
+            setPlayerBleedWound(null);
             setPlayerBleedTurns(0);
             setTransformState(null);
             setBattleMessage('O RATO voltou a ser monstro!');
@@ -1320,6 +1325,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (tr?.animal === 'rato') {
         setPlayerBleedActive(true);
         setPlayerBleedTurns(2);
+        setPlayerBleedWound(rollBleedWound('rato'));
         setBattleMessage('O RATO TE MORDEU! Você está sangrando — perderá corações e moedas por 2 turnos!');
       }
 
@@ -1458,6 +1464,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (tr.turnsLeft <= 1) {
         setTransformState(null);
         setPlayerBleedActive(false);
+        setPlayerBleedWound(null);
         setPlayerBleedTurns(0);
         if (tr.animal !== 'rato') setBattleMessage(`${TRANSFORM_LABELS[tr.animal]} voltou ao normal!`);
       } else {
@@ -1817,6 +1824,7 @@ useEffect(() => {
     const hp = heartsRef.current;
     if (hp <= 0.5) {
       setPlayerBleedActive(false);
+      setPlayerBleedWound(null);
       setPlayerBleedTurns(0);
       triggerFatality(false, 0);
       return;
@@ -1843,6 +1851,7 @@ useEffect(() => {
     setPlayerBleedTurns(t => {
       const left = t - 1;
       if (left <= 0) setPlayerBleedActive(false);
+      setPlayerBleedWound(null);
       return Math.max(0, left);
     });
   }, 3500);
@@ -2240,8 +2249,12 @@ useEffect(() => {
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-80px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
                   <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
-                  {playerBleedActive && (
-                    <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid rgba(248, 113, 113, 0.7)', boxShadow: '0 0 18px rgba(248,113,113,0.6)', animation: 'transform-fast-wobble 0.4s linear infinite', pointerEvents: 'none' }} title="Sangrando!" />
+                  {playerBleedActive && playerBleedWound && (
+                    <div className="bleed-wound" style={{ top: `${playerBleedWound.y}%`, left: `${playerBleedWound.x}%` }} title="Sangrando!">
+                      <span className="bleed-drip" />
+                      <span className="bleed-drip" style={{ animationDelay: '0.45s', left: '65%' }} />
+                      <span className="bleed-drip" style={{ animationDelay: '0.9s', left: '32%' }} />
+                    </div>
                   )}
                   {!quest?.allowRetries ? (
                     (() => {
