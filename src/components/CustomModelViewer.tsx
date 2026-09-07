@@ -23,6 +23,8 @@ interface CustomModelViewerProps {
   chestSwapSides?: boolean;
   /** Cor HEX aplicada nos materiais do modelo (efeitos de dano). null = sem tint */
   effectTint?: string | null;
+  /** Desmonta o modelo (malhas espalhadas/caídas) — efeito estrondo em monstros GLB */
+  shattered?: boolean;
 }
 
 // Para baús "de dois estados" (fechado à esquerda + aberto à direita no MESMO .glb,
@@ -126,7 +128,7 @@ export function computeEntityFit(scene: THREE.Object3D): { scale: number; posY: 
   return { scale: fitScale, posY };
 }
 
-function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, configRotY, effectTint = null }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean, configRotY?: number, effectTint?: string | null }) {
+function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, configRotY, effectTint = null, shattered = false }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean, configRotY?: number, effectTint?: string | null, shattered?: boolean }) {
   const safeModelUrl = modelUrl.startsWith('/') && !modelUrl.startsWith('http') 
     ? import.meta.env.BASE_URL + modelUrl.substring(1) 
     : modelUrl;
@@ -176,6 +178,46 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
     });
     return map;
   }, [scene]);
+
+  // Desmontagem (efeito estrondo) para GLB: as malhas do modelo "voam" para fora
+  // e caem, dando a impressão de desmembramento. Offsets fixos por ativação.
+  const shatteredOffsets = useMemo(() => {
+    if (!shattered) return null;
+    const map = new Map();
+    scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        map.set(child.uuid, {
+          pos: new THREE.Vector3((Math.random() - 0.5) * 4, -Math.random() * 4, (Math.random() - 0.5) * 4),
+          rot: new THREE.Euler((Math.random() - 0.5) * Math.PI * 1.5, (Math.random() - 0.5) * Math.PI * 2, (Math.random() - 0.5) * Math.PI * 1.5),
+        });
+      }
+    });
+    return map;
+  }, [shattered, scene]);
+
+  useEffect(() => {
+    if (!shattered || !shatteredOffsets) return;
+    scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const o = shatteredOffsets.get(child.uuid);
+        if (o) {
+          child.position.copy(o.pos);
+          child.rotation.copy(o.rot);
+        }
+      }
+    });
+    return () => {
+      // Restaura a pose original quando a desmontagem terminar
+      scene.traverse((child) => {
+        const initial = initialTransforms.get(child.uuid);
+        if (initial) {
+          child.position.copy(initial.position);
+          child.rotation.copy(initial.rotation);
+          child.scale.copy(initial.scale);
+        }
+      });
+    };
+  }, [shattered, shatteredOffsets, scene, initialTransforms]);
 
   useEffect(() => {
     if (textureUrl) {
@@ -307,10 +349,10 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
 // Decide como enquadrar o modelo na área:
 //  - Baús: enquadramento MANUAL (baseline + chestZoom + offsets + giro), WYSIWYG com o preview.
 //  - Jogadores/monstros: escala/posição fixas (comportamento atual).
-function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chestZoom = 1, chestOffsetX = 0, chestOffsetY = 0, chestRotY = 0, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides = false, configRotY = 0, effectTint = null }: {
+function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chestZoom = 1, chestOffsetX = 0, chestOffsetY = 0, chestRotY = 0, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides = false, configRotY = 0, effectTint = null, shattered = false }: {
   modelUrl: string; textureUrl?: string; animationName?: string; role?: 'player' | 'monster';
   zoom?: number; chestZoom?: number; chestOffsetX?: number; chestOffsetY?: number; chestRotY?: number;
-  chestOpenOffsetX?: number; chestOpenOffsetY?: number; chestSwapSides?: boolean; configRotY?: number; effectTint?: string | null;
+  chestOpenOffsetX?: number; chestOpenOffsetY?: number; chestSwapSides?: boolean; configRotY?: number; effectTint?: string | null; shattered?: boolean;
 }) {
   const safeModelUrl = modelUrl.startsWith('/') && !modelUrl.startsWith('http')
     ? import.meta.env.BASE_URL + modelUrl.substring(1)
@@ -330,7 +372,7 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
   }, [scene, isChest, hasOpenAnim, chestSwapSides]);
 
   const content = (
-    <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animationName} role={role} chestSwapSides={chestSwapSides} configRotY={configRotY} effectTint={effectTint} />
+    <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animationName} role={role} chestSwapSides={chestSwapSides} configRotY={configRotY} effectTint={effectTint} shattered={shattered} />
   );
 
   if (!isChest) {
@@ -357,7 +399,7 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
   );
 }
 
-export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, zoom = 1, configRotY, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides, effectTint = null }: CustomModelViewerProps) {
+export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, zoom = 1, configRotY, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides, effectTint = null, shattered = false }: CustomModelViewerProps) {
   const isChest = modelUrl.includes('chest');
   
   // Interação (girar/zoom) habilitada explicitamente pelo chamador (editores).
@@ -371,7 +413,7 @@ export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, ani
         <directionalLight position={[5, 10, 5]} intensity={0.5} />
         <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.5, 0]} />
         <React.Suspense fallback={null}>
-          <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} zoom={zoom} configRotY={configRotY} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} effectTint={effectTint} />
+          <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} zoom={zoom} configRotY={configRotY} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} effectTint={effectTint} shattered={shattered} />
         </React.Suspense>
       </Canvas>
     </div>

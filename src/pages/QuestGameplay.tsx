@@ -173,6 +173,7 @@ export default function QuestGameplay() {
   const battleSoundsRef = useRef<{ victory: string; deathMale: string; deathFemale: string; fail: string; punch: string; fatalFall: string; fatalEvaporate: string; fatalSlice: string; fatalExplode: string }>({ victory: '', deathMale: '', deathFemale: '', fail: '', punch: '', fatalFall: '', fatalEvaporate: '', fatalSlice: '', fatalExplode: '' });
   // --- Música ambiente da batalha (quest.battleMusicUrl, loop) ---
   const musicAudioRef = useRef<HTMLAudioElement | null>(null);
+  const musicUrlRef = useRef('');
 
   useEffect(() => {
     let active = true;
@@ -237,21 +238,31 @@ export default function QuestGameplay() {
   }, []);
 
   // Música ambiente da batalha — continua tocando na tela de recompensa
-  // (fade-out ao abrir o baú ou clicar em "Retornar ao Acampamento")
+  // (fade-out ao abrir o baú ou clicar em "Retornar ao Acampamento").
+  // Reutiliza o MESMO <audio>: pausa sem limpar o ref e retoma do ponto em que
+  // parou — não reinicia ao alternar playing/result nem passar por outros estados.
   useEffect(() => {
-    if (gameState !== 'playing' && gameState !== 'result') {
-      if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; }
-      return;
+    const url = quest?.battleMusicUrl ? resolveAudioUrl(quest.battleMusicUrl) : '';
+    const isActive = gameState === 'playing' || gameState === 'result';
+    const a = musicAudioRef.current;
+    if (isActive && url) {
+      if (a && musicUrlRef.current === url) {
+        if (a.paused) a.play().catch(() => {});
+        a.volume = Math.max(0, Math.min(1, quest?.battleMusicVolume ?? 0.5));
+      } else {
+        if (a) { a.pause(); a.src = ''; }
+        try {
+          const audio = new Audio(url);
+          audio.loop = true;
+          audio.volume = Math.max(0, Math.min(1, quest?.battleMusicVolume ?? 0.5));
+          audio.play().catch(() => {});
+          musicAudioRef.current = audio;
+          musicUrlRef.current = url;
+        } catch (e) {}
+      }
+    } else if (!isActive && a) {
+      a.pause();
     }
-    if (!quest?.battleMusicUrl) return;
-    if (musicAudioRef.current) return; // já tocando — mantém sem reiniciar ao trocar de estado
-    try {
-      const audio = new Audio(resolveAudioUrl(quest.battleMusicUrl));
-      audio.loop = true;
-      audio.volume = Math.max(0, Math.min(1, quest.battleMusicVolume ?? 0.5));
-      audio.play().catch(() => {});
-      musicAudioRef.current = audio;
-    } catch (e) {}
   }, [gameState, quest?.battleMusicUrl, quest?.battleMusicVolume]);
 
   // Para a música ao desmontar (saiu da missão)
