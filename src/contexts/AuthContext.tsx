@@ -318,6 +318,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!currentUser) return;
     const targetId = getImpersonatingId() || currentUser.id;
+    let isMounted = true;
 
     const channel = supabase.channel(`public:users:${targetId}_${Date.now()}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${targetId}` }, (payload) => {
@@ -334,6 +335,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }).subscribe();
 
     return () => {
+      isMounted = false;
       supabase.removeChannel(channel).catch(() => {});
     };
   }, [currentUser, impersonatingId]);
