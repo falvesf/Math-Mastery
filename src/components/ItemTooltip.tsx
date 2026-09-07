@@ -39,7 +39,7 @@ const getRarityLabel = (rarity?: string) => {
 export interface TooltipItemData {
   id?: string;
   title: string;
-  type?: 'consumable' | 'equippable';
+  type?: 'consumable' | 'equippable' | 'other';
   rarity?: string;
   itemCategory?: string;
   description?: string;
