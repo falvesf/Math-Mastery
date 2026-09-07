@@ -119,16 +119,61 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
 
   const stats = calculateTotalStats(equippedItems, user.distributedStats);
   const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === rankName) || 0) / 2) + Math.floor(stats.vitality / 30);
-  
-  let visualHp = user.hp !== undefined ? Number(user.hp) : maxHearts;
-  if (user.hpRecoveryStartTimestamp && visualHp < maxHearts) {
-    const startMs = typeof user.hpRecoveryStartTimestamp === 'string' ? new Date(user.hpRecoveryStartTimestamp).getTime() : Number(user.hpRecoveryStartTimestamp);
-    const timePassed = Date.now() - startMs;
+
+  // Busca o HP REAL do usuário no banco quando o perfil abre (o objeto `user` é um
+  // snapshot antigo da listagem, que não reflete a recuperação/estado atual) e
+  // recalcula a recuperação de corações ao vivo, igual ao Dashboard.
+  const [liveHp, setLiveHp] = useState<number | null>(null);
+  const [recoveryStartMs, setRecoveryStartMs] = useState<number | null>(null);
+  const [, setHpTick] = useState(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = setInterval(() => setHpTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !user.uid) return;
+    let active = true;
+    const fetchFreshHp = async () => {
+      try {
+        const { data } = await supabase.from('users').select('hp, hp_recovery_start_timestamp, hp_cooldown_reduction_until, hp_cooldown_reduction_minutes').eq('id', user.uid).maybeSingle();
+        if (!active) return;
+        const freshHp = data && data.hp !== undefined && data.hp !== null ? Number(data.hp) : (user.hp !== undefined ? Number(user.hp) : maxHearts);
+        setLiveHp(freshHp);
+        const rawTs = data && data.hp_recovery_start_timestamp !== undefined ? data.hp_recovery_start_timestamp : user.hpRecoveryStartTimestamp;
+        setRecoveryStartMs(typeof rawTs === 'string' ? new Date(rawTs).getTime() : (rawTs ? Number(rawTs) : null));
+      } catch (e) {
+        console.error(e);
+        setLiveHp(user.hp !== undefined ? Number(user.hp) : maxHearts);
+        setRecoveryStartMs(typeof user.hpRecoveryStartTimestamp === 'string' ? new Date(user.hpRecoveryStartTimestamp).getTime() : (user.hpRecoveryStartTimestamp ? Number(user.hpRecoveryStartTimestamp) : null));
+      }
+    };
+    fetchFreshHp();
+    return () => { active = false; };
+  }, [isOpen, user.uid]);
+
+  let visualHp = liveHp !== null ? liveHp : (user.hp !== undefined ? Number(user.hp) : maxHearts);
+  if (recoveryStartMs && visualHp < maxHearts) {
+    // Tempo de recuperação respeitando redução de cooldown (equipamentos/buff), como no Dashboard
+    const now = Date.now();
+    const equippedReduction = equippedItems
+      .filter(item => (item as any).gameEffect === 'reduce_hp_cooldown')
+      .reduce((acc, item) => acc + Number((item as any).hpCooldownReductionMinutes || 0), 0);
+    const isBuffActive = user.hpCooldownReductionUntil && new Date(user.hpCooldownReductionUntil).getTime() > now;
+    const buffReduction = isBuffActive ? Number(user.hpCooldownReductionMinutes || 0) : 0;
+    const effectiveMinutes = Math.max(1, 30 - Math.min(29, equippedReduction + buffReduction));
+    const recoveryMs = effectiveMinutes * 60 * 1000;
+    const timePassed = Math.max(0, now - recoveryStartMs);
     if (timePassed > 0) {
-      const recoveredHearts = Math.floor(timePassed / (30 * 60 * 1000));
-      visualHp = Math.min(maxHearts, visualHp + recoveredHearts);
+      visualHp = Math.min(maxHearts, visualHp + Math.floor(timePassed / recoveryMs));
     }
   }
+  // Nunca mostra mais que o máximo nem menos que o real
+  visualHp = Math.min(maxHearts, Math.max(0, visualHp));
+  // Professores/administradores sempre com corações cheios (como na batalha)
+  if (user.role === 'admin' || user.role === 'teacher') visualHp = maxHearts;
 
   let bgGradient = 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 100%)';
   if (rankPos === 1) bgGradient = 'linear-gradient(180deg, rgba(251, 191, 36, 0.3) 0%, rgba(0,0,0,0.5) 100%)'; // Ouro
