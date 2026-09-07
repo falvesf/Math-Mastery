@@ -142,7 +142,7 @@ function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { item
         )}
       </button>
       {open && pos && createPortal(
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999, maxHeight: 200, overflowY: 'auto', background: 'rgba(22,22,28,0.98)', border: '1px solid rgba(139,92,246,0.6)', borderRadius: '6px', boxShadow: '0 10px 30px rgba(0,0,0,0.7)', padding: '2px 0' }}>
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 2147483000, maxHeight: 200, overflowY: 'auto', background: 'rgba(22,22,28,0.98)', border: '1px solid rgba(139,92,246,0.6)', borderRadius: '6px', boxShadow: '0 10px 30px rgba(0,0,0,0.7)', padding: '2px 0' }}>
           {items.length === 0 ? (
             <div style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>Nenhum item disponível</div>
           ) : items.map(i => (
