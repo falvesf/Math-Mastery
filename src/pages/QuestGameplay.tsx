@@ -39,6 +39,7 @@ import {
   HEAL_AURA_PER_TURN,
   HEAL_MAX_ACTIVATIONS,
   rollBleedWound,
+  playTransformSound,
 } from '../lib/transformEffects';
 
 interface UserItem {
@@ -337,10 +338,23 @@ export default function QuestGameplay() {
     const gender = (userData?.avatarConfig as any)?.gender;
     playSound(gender === 'female' ? playerDamageSoundsRef.current.female : playerDamageSoundsRef.current.male, 0.8);
   };
-  const playMonsterAttackSound = () => playSound(quest?.monsterAttackSound, 0.8);
-  const playMonsterDamageSound = () => playSound(quest?.monsterDamageSound, 0.8);
+  // Sons do monstro: se estiver TRANSFORMADO, usam o som próprio do animal
+  const playMonsterAttackSound = () => {
+    const tr = transformRef.current;
+    if (tr) { playTransformSound(tr.animal, 'attack', quest?.monsterAttackSound, 0.8); return; }
+    playSound(quest?.monsterAttackSound, 0.8);
+  };
+  const playMonsterDamageSound = () => {
+    const tr = transformRef.current;
+    if (tr) { playTransformSound(tr.animal, 'hurt', quest?.monsterDamageSound, 0.8); return; }
+    playSound(quest?.monsterDamageSound, 0.8);
+  };
   // @ts-ignore
-  const playMonsterGruntSound = () => playSound(quest?.monsterGruntSound, 0.8);
+  const playMonsterGruntSound = () => {
+    const tr = transformRef.current;
+    if (tr) { playTransformSound(tr.animal, 'grunt', quest?.monsterGruntSound, 0.8); return; }
+    playSound(quest?.monsterGruntSound, 0.8);
+  };
   const playVictorySound = () => playSound(battleSoundsRef.current.victory, 0.9);
   // Som de fatalidade conforme o tipo de animação de morte
   const playFatalitySound = (fatality: string) => {
@@ -2400,7 +2414,7 @@ useEffect(() => {
                                 <span className="rat-speed-line" style={{ top: '74%', animationDelay: '0.3s' }} />
                               </>
                             )}
-                            <CustomModelViewer modelUrl={animalUrl} size={240} configRotY={rotY} animation="none" role="monster" effectTint={tint} />
+                            <CustomModelViewer modelUrl={animalUrl} size={240} configRotY={rotY} animation="none" role="monster" effectTint={tint} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
                             {/* Badge da transformação */}
                             <div style={{ position: 'absolute', top: -18, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
                               <span style={{ fontSize: '0.65rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', background: isPig && tr.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>

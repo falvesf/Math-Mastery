@@ -4,6 +4,8 @@
 //  - Cura: aura que cura o jogador 0,5 coração por turno (3 turnos).
 // =====================================================================
 
+import { playSound } from './audioBank';
+
 export type TransformAnimal = 'sapo' | 'coelho' | 'porco' | 'rato';
 
 export interface TransformState {
@@ -96,4 +98,30 @@ export function rollBleedWound(attacker: 'rato' | 'monstro'): { x: number; y: nu
   }
   // Monstro grande: cabeça, tronco, barriga, pernas (10%–94%)
   return { x: 20 + Math.random() * 60, y: 10 + Math.random() * 84 };
+}
+
+// ---- Sons dos animais transformados ----
+// Arquivos esperados em public/sounds/transform/{sapo,coelho,porco,rato}_{grunt,attack,hurt}.mp3
+export type TransformSoundKind = 'grunt' | 'attack' | 'hurt';
+
+export function getTransformSoundUrl(animal: TransformAnimal, kind: TransformSoundKind): string {
+  return `/sounds/transform/${animal}_${kind}.mp3`;
+}
+
+const transformSoundCache: Record<string, boolean> = {};
+
+/** Toca o som do animal (se o arquivo existir) ou cai no som original do monstro. */
+export function playTransformSound(animal: TransformAnimal, kind: TransformSoundKind, fallbackUrl?: string | null, volume = 0.8) {
+  const url = getTransformSoundUrl(animal, kind);
+  const cached = transformSoundCache[url];
+  if (cached === undefined) {
+    // 1ª vez: checa se o arquivo existe e toca o fallback por enquanto
+    transformSoundCache[url] = false;
+    fetch(url, { method: 'HEAD' })
+      .then(r => { transformSoundCache[url] = r.ok; })
+      .catch(() => { transformSoundCache[url] = false; });
+    playSound(fallbackUrl, volume);
+    return;
+  }
+  playSound(cached ? url : fallbackUrl, volume);
 }
