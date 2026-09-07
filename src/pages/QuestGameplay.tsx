@@ -127,6 +127,9 @@ export default function QuestGameplay() {
   const [playerBleedTurns, setPlayerBleedTurns] = useState(0);
   const [playerBleedWound, setPlayerBleedWound] = useState<{ x: number; y: number } | null>(null);
   const heartsRef = useRef(currentHearts);
+  // Fatality de corte: captura o modelo atual como "foto" (canvas) e corta a imagem.
+  const monsterCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [sliceSnapshot, setSliceSnapshot] = useState<string | null>(null);
 
   useEffect(() => {
     heartsRef.current = currentHearts;
@@ -825,9 +828,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setTransformState(null);
     setHealAuraTurns(0);
     healActivationsRef.current = 0;
-    setPlayerBleedActive(false);
-    setPlayerBleedWound(null);
+setPlayerBleedActive(false);
     setPlayerBleedTurns(0);
+    setPlayerBleedWound(null);
+    setSliceSnapshot(null);
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
       await showAlert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
@@ -942,14 +946,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
 */
 
   const triggerFatality = (isPlayerWinning: boolean, defeatHearts?: number) => {
-    // Monstro GLB: evita 'death-slice' (renderiza 2 viewers 3D ao mesmo tempo — trava/faz sumir)
-    const isGlbMonster = !!(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl);
-    const deaths = hasAttackWeapon
-      ? (isGlbMonster ? ['death-fall', 'death-evaporate', 'death-explode'] : ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'])
+    // Se não tem arma, só animações simples (sem explosão, corte)
+    const deaths = hasAttackWeapon 
+      ? ['death-fall', 'death-evaporate', 'death-slice', 'death-explode']
       : ['death-fall', 'death-evaporate'];
     // Fatalidade temática do efeito da arma (fogo→explosão, veneno→desintegra,
     // estrondo→explosão/destruição, sangramento→corte ao meio)
-    const effectFatal: Record<string, string> = { burn: 'death-explode', poison: 'death-evaporate', impact: 'death-explode', bleed: isGlbMonster ? 'death-explode' : 'death-slice', electric: 'death-explode' };
+    const effectFatal: Record<string, string> = { burn: 'death-explode', poison: 'death-evaporate', impact: 'death-explode', bleed: 'death-slice', electric: 'death-explode' };
     const effectFatality = hasAttackWeapon && damageEffect !== 'none' ? effectFatal[damageEffect] : null;
     // Força uma fatalidade específica via Arena Debug (SÓ para quem tem acesso ao Debug — alunos usam aleatória)
     const canForce = canArenaDebug('arena_debug', 'view') || isSuperAdmin || userData?.role === 'admin';
@@ -1014,6 +1017,15 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
         setTimeout(() => {
           setMonsterAnim(fatality);
+          // Fatality de corte: captura o modelo GLB atual como "foto" (evita renderizar
+          // 2 viewers 3D — que travavam/faziam o monstro sumir) e corta a imagem.
+          if (fatality === 'death-slice' && monsterCanvasRef.current) {
+            try {
+              setSliceSnapshot(monsterCanvasRef.current.toDataURL('image/png'));
+            } catch (e) { setSliceSnapshot(null); }
+          } else {
+            setSliceSnapshot(null);
+          }
           // A música de vitória entra com um pequeno atraso; antes, abaixa a de batalha
           setTimeout(() => { fadeOutMusic(1200); playVictorySound(); }, 1200);
           setMonsterBubble(monsterDefeatQuote);
@@ -2310,10 +2322,14 @@ useEffect(() => {
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', opacity: 0.3 }}>{quest?.monsterName || 'Inimigo'}</span>
                   </div>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} /> : <div style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
+                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) && sliceSnapshot
+                      ? <img src={sliceSnapshot} alt="" style={{ width: '240px', height: '240px', objectFit: 'contain', imageRendering: 'auto' }} />
+                      : (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} /> : <div style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                   <div className="death-slice-right" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} /> : <div style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
+                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) && sliceSnapshot
+                      ? <img src={sliceSnapshot} alt="" style={{ width: '240px', height: '240px', objectFit: 'contain', imageRendering: 'auto' }} />
+                      : (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} /> : <div style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                 </div>
               ) : (
@@ -2400,7 +2416,7 @@ useEffect(() => {
                     if (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) {
                       return (
                         <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}>
-                          <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} shatteredCount={fallenPartsRef.current.length} />
+                          <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} shatteredCount={fallenPartsRef.current.length} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
                         </div>
                       );
                     }
