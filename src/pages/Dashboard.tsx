@@ -1024,7 +1024,13 @@ export default function Dashboard() {
         });
 
         if (changed) {
-          await supabase.from('system_collections').upsert({ type: 'rankings', data: history }, { onConflict: 'type' });
+          // upsert com onConflict requer constraint única em 'type' (não existe no banco) → select/update/insert
+          const { data: existingRank } = await supabase.from('system_collections').select('id').eq('type', 'rankings').limit(1);
+          if (existingRank && existingRank.length > 0) {
+            await supabase.from('system_collections').update({ data: history }).eq('id', existingRank[0].id);
+          } else {
+            await supabase.from('system_collections').insert({ type: 'rankings', data: history });
+          }
         }
         setRankingHistory(history);
       } catch (err) {

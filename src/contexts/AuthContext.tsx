@@ -361,7 +361,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .update({ last_seen_at: new Date().toISOString() })
         .eq('id', uid)
         .then(
-          ({ error }) => { if (error) console.error('Heartbeat:', error); },
+          () => {},
           () => {}
         );
     };
