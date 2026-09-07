@@ -234,13 +234,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       itemTitle: f.title || 'Item',
       imageUrl: f.imageUrl || '',
       avatarPart: (f.avatarPart || 'head') as any,
-      itemCategory: 'attack',
-      baseAttributeType: 'attack',
-      baseAttributeValue: 0,
+      itemCategory: f.itemCategory || 'none',
+      baseAttributeType: f.baseAttributeType || 'none',
+      baseAttributeValue: f.baseAttributeValue || 0,
       gameModelUrl: f.gameModelUrl || '',
       modelTextureUrl: f.modelTextureUrl || '',
       minecraftHeadValue: f.minecraftHeadValue || '',
       modelTransforms: f.modelTransforms || undefined,
+      gameEffect: f.gameEffect || 'none',
+      rarity: f.rarity || 'common',
       adds: [],
     }] as any[];
   }, [formData]);
