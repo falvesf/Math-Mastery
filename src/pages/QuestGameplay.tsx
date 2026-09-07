@@ -122,6 +122,12 @@ export default function QuestGameplay() {
   const [healAuraTurns, setHealAuraTurns] = useState(0);
   const healActivationsRef = useRef(0);
   const [playerBleedActive, setPlayerBleedActive] = useState(false);
+  const [playerBleedTurns, setPlayerBleedTurns] = useState(0);
+  const heartsRef = useRef(currentHearts);
+
+  useEffect(() => {
+    heartsRef.current = currentHearts;
+  }, [currentHearts]);
 
   useEffect(() => {
     transformRef.current = transformState;
@@ -812,6 +818,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setHealAuraTurns(0);
     healActivationsRef.current = 0;
     setPlayerBleedActive(false);
+    setPlayerBleedTurns(0);
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
       await showAlert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
@@ -1252,6 +1259,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               }
               if (animal === 'rato') {
                 setPlayerBleedActive(false);
+                setPlayerBleedTurns(0);
               }
             }
           }
@@ -1269,6 +1277,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           // Rato: ao levar dano, volta a ser monstro IMEDIATAMENTE
           if (tr?.animal === 'rato') {
             setPlayerBleedActive(false);
+            setPlayerBleedTurns(0);
             setTransformState(null);
             setBattleMessage('O RATO voltou a ser monstro!');
           }
@@ -1307,9 +1316,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (tr?.animal === 'porco' && tr.consecutiveCorrect > 0 && !tr.enraged) {
         setTransformState({ ...tr, consecutiveCorrect: 0 });
       }
-      // Rato: errar faz o rato atacar e infligir SANGRAMENTO no jogador
+      // Rato: errar faz o rato atacar e infligir SANGRAMENTO no jogador (2 turnos)
       if (tr?.animal === 'rato') {
         setPlayerBleedActive(true);
+        setPlayerBleedTurns(2);
+        setBattleMessage('O RATO TE MORDEU! Você está sangrando — perderá corações e moedas por 2 turnos!');
       }
 
       if (economySettings?.coinsLostInCombat && !isStudyMode && !hasShield) {
@@ -1447,6 +1458,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (tr.turnsLeft <= 1) {
         setTransformState(null);
         setPlayerBleedActive(false);
+        setPlayerBleedTurns(0);
         if (tr.animal !== 'rato') setBattleMessage(`${TRANSFORM_LABELS[tr.animal]} voltou ao normal!`);
       } else {
         setTransformState({ ...tr, turnsLeft: tr.turnsLeft - 1 });
@@ -1797,15 +1809,19 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setTimeout(() => setCoinsToRescue(null), 2500);
   };
 
-  // SANGRAMENTO DO RATO no JOGADOR: perde meia coração + moedas de tempos em tempos
+  // SANGRAMENTO DO RATO no JOGADOR: por 2 turnos, drena 0,5 coração + moedas a cada tick.
+// Usa heartsRef para SEMPRE ler o coração ATUAL (closure de currentHearts ficaria obsoleto).
 useEffect(() => {
-  if (gameState !== 'playing' || !playerBleedActive) return;
+  if (gameState !== 'playing' || !playerBleedActive || playerBleedTurns <= 0) return;
   const iv = setInterval(() => {
-    if (currentHearts <= 0.5) {
+    const hp = heartsRef.current;
+    if (hp <= 0.5) {
+      setPlayerBleedActive(false);
+      setPlayerBleedTurns(0);
       triggerFatality(false, 0);
       return;
     }
-    const newHearts = Math.max(0, currentHearts - 0.5);
+    const newHearts = Math.max(0, hp - 0.5);
     setPlayerAnim('hurt');
     playPlayerDamageSound();
     setTimeout(() => setPlayerAnim('idle'), 600);
@@ -1815,18 +1831,24 @@ useEffect(() => {
       }
     });
     setBattleMessage('SANGRANDO! O rato te feriu — perdendo sangue e moedas...');
-    // Perde moedas junto com o sangue
-    if (userData?.uid && economySettings?.coinsLostInCombat) {
+    // Perde moedas junto com o sangue (sempre, no sangramento do rato)
+    if (userData?.uid) {
       const lostCoins = 1 + Math.floor(Math.random() * 3);
       const currentCoins = userData.coins || 0;
       const newCoins = Math.max(0, currentCoins - lostCoins);
       supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
       updateUserDataLocally({ coins: newCoins });
     }
-  }, 4500);
+    // Cada tick consome 1 turno de sangramento
+    setPlayerBleedTurns(t => {
+      const left = t - 1;
+      if (left <= 0) setPlayerBleedActive(false);
+      return Math.max(0, left);
+    });
+  }, 3500);
   return () => clearInterval(iv);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [gameState, playerBleedActive]);
+}, [gameState, playerBleedActive, playerBleedTurns]);
 
   // VENENO/SANGRAMENTO: a cada alguns segundos drena o coração do monstro (visual),
   // pisca em vermelho e dropa moedas extras.
@@ -2326,7 +2348,7 @@ useEffect(() => {
                       const isFrog = tr.animal === 'sapo';
                       const isPig = tr.animal === 'porco';
                       const animCls = isFrog ? 'transform-hop' : (isRat ? 'transform-fast-wobble' : '');
-                      const scale = isRat ? 0.45 : 1;
+                      const scale = isRat ? 0.62 : 1;
                       const tint = isPig && tr.enraged ? '#ff2222' : null;
                       return (
                         <div style={{ transform: `scale(${scale})`, transformOrigin: 'bottom center' }}>
