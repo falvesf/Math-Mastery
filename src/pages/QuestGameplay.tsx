@@ -1254,7 +1254,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             // TRANSFORMAR: só se o monstro estiver na forma NORMAL
             if (damageEffect === 'transform' && !transformRef.current) {
               const animal = rollTransformAnimal();
-              setTransformState({ animal, turnsLeft: TRANSFORM_TURNS, consecutiveCorrect: 0, enraged: false, ratBleeding: false });
+              setTransformState({ animal, turnsLeft: TRANSFORM_TURNS + 1, consecutiveCorrect: 0, enraged: false, ratBleeding: false });
               setBattleMessage(`TRANSFORMADO! O monstro virou ${TRANSFORM_LABELS[animal]}!`);
               // Porco ataca o jogador NO MOMENTO da transformação
               if (animal === 'porco') {
@@ -2375,11 +2375,11 @@ useEffect(() => {
                                 <span className="rat-speed-line" style={{ top: '74%', animationDelay: '0.3s' }} />
                               </>
                             )}
-                            <CustomModelViewer modelUrl={animalUrl} size={240} configRotY={rotY} animation={frozen ? 'none' : (monsterAnim === 'hurt' || monsterAnim === 'attack' ? monsterAnim : 'none')} role="monster" effectTint={tint} />
+                            <CustomModelViewer modelUrl={animalUrl} size={240} configRotY={rotY} animation="none" role="monster" effectTint={tint} />
                             {/* Badge da transformação */}
                             <div style={{ position: 'absolute', top: -18, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
                               <span style={{ fontSize: '0.65rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', background: isPig && tr.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>
-                                {TRANSFORM_LABELS[tr.animal]}{isPig && tr.enraged ? ' (ENFURECIDO!)' : ''} · {tr.turnsLeft} turno{tr.turnsLeft > 1 ? 's' : ''}
+                                {TRANSFORM_LABELS[tr.animal]}{isPig && tr.enraged ? ' (ENFURECIDO!)' : ''} · {Math.max(1, tr.turnsLeft - 1)} turno{Math.max(1, tr.turnsLeft - 1) > 1 ? 's' : ''}
                               </span>
                             </div>
                           </div>

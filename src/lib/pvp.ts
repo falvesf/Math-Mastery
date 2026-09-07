@@ -543,7 +543,7 @@ async function resolveAndAdvance(match: PvpMatch): Promise<void> {
   // Transformar: o vencedor com arma "transformar" pode transformar o PERDEDOR
   if (winnerRole && !losePlayer.transform && rollEffectProc(winInfo.effect, winInfo.chance) && winInfo.effect === 'transform') {
     const animal = rollTransformAnimal();
-    (winnerRole === 'player1' ? nextP2 : nextP1)['transform'] = { animal, turnsLeft: TRANSFORM_TURNS, consecutiveCorrect: 0, enraged: false, ratBleeding: false };
+    (winnerRole === 'player1' ? nextP2 : nextP1)['transform'] = { animal, turnsLeft: TRANSFORM_TURNS + 1, consecutiveCorrect: 0, enraged: false, ratBleeding: false };
   }
   // Cura: o vencedor com arma "cura" pode ativar a aura (máx 3x, sem cumulativo)
   if (winnerRole && rollEffectProc(winInfo.effect, winInfo.chance) && winInfo.effect === 'heal') {
