@@ -437,10 +437,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         </div>
 
         {/* Content */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
           
           {/* Left Side: Sketchfab & Inventory */}
-          <div style={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-glass)', background: 'var(--bg-dark)' }}>
+          <div style={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-glass)', background: 'var(--bg-dark)', minHeight: 0 }}>
             
             {/* Sketchfab Embed (visível só na Forja; oculto via CSS na Transmutação para não recarregar) */}
             <div style={{ height: '300px', background: '#0f0f12', position: 'relative', overflow: 'hidden', pointerEvents: 'none', display: activeTab === 'forge' ? 'block' : 'none' }}>
@@ -456,7 +456,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
 
             {/* Inventory List */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', minHeight: 0 }}>
               <h3 style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1rem' }}>Seus Equipamentos</h3>
               
               {loading ? (
@@ -496,7 +496,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           </div>
 
           {/* Right Side: Action Panel */}
-          <div style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <div style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', overflowY: 'auto', minHeight: 0 }}>
             
             {activeTab === 'forge' && (
               <>

@@ -3476,7 +3476,7 @@ export default function Dashboard() {
         )}
 
         {activeTab === 'forge' && userData && (
-          <div style={{ display: 'flex', flex: 1, height: '100%', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flex: 1, height: 'calc(100vh - 7rem)', maxHeight: 'calc(100vh - 7rem)', overflow: 'hidden' }}>
             <BlacksmithView
               userData={userData}
               currentRankIndex={RANKS.findIndex(r => r.name === currentRank.name)}
