@@ -169,14 +169,15 @@ export default function AudioBankManager() {
   };
 
 const togglePlay = (u: string) => {
-    // Se já está tocando este, para
-    if (previewAudioRef.current) {
-      previewAudioRef.current.pause();
-      previewAudioRef.current = null;
+    // Para qualquer áudio em reprodução antes de tocar outro (evita sobreposição)
+    const stop = () => {
+      if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
       setPlayingUrl('');
-      return;
-    }
+    };
     if (!u) return;
+    // Se já está tocando ESTE, para
+    if (playingUrl === u) { stop(); return; }
+    stop();
     try {
       const a = new Audio(u);
       a.volume = 0.8;

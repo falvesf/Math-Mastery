@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, Music, Volume2, Globe, Building2, Loader2, Plus } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -22,6 +22,7 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
   const [entries, setEntries] = useState<AudioBankEntry[]>([]);
   const [search, setSearch] = useState('');
   const [playingUrl, setPlayingUrl] = useState('');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [category, setCategory] = useState(categoryFilter);
   // Cadastro rápido de um áudio NOVO (sem sair do picker)
   const [showNewForm, setShowNewForm] = useState(false);
@@ -39,8 +40,9 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
   }, [open, tenantId, categoryFilter]);
 
   useEffect(() => {
-    if (!open) { setPlayingUrl(''); return; }
-    return () => { setPlayingUrl(''); };
+    const stop = () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } };
+    if (!open) { stop(); setPlayingUrl(''); return; }
+    return () => { stop(); setPlayingUrl(''); };
   }, [open]);
 
   const filtered = entries.filter(e => {
@@ -53,16 +55,27 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
   if (!open) return null;
 
   const togglePlay = (url: string) => {
+    // Para qualquer áudio em reprodução (evita sobreposição)
+    const stopCurrent = () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
     if (playingUrl === url) {
+      stopCurrent();
       setPlayingUrl('');
       return;
     }
+    stopCurrent();
     setPlayingUrl(url);
     try {
       const a = new Audio(url);
       a.volume = 0.8;
-      a.play().catch(() => {});
-      a.onended = () => setPlayingUrl('');
+      a.onended = () => { setPlayingUrl(''); if (audioRef.current === a) audioRef.current = null; };
+      a.onerror = () => { setPlayingUrl(''); if (audioRef.current === a) audioRef.current = null; };
+      audioRef.current = a;
+      a.play().catch(() => { setPlayingUrl(''); audioRef.current = null; });
     } catch (e) {}
   };
 
