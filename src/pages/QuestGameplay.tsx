@@ -19,7 +19,7 @@ import { getMaxAddsLimit } from '../lib/ranks';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
-import { playSound, playCoinCollect, resolveAudioUrl } from '../lib/audioBank';
+import { playSound, playCoinCollect, resolveAudioUrl, fadeOutAllSounds } from '../lib/audioBank';
 import { usePermissions } from '../lib/permissions';
 import ArenaDebugPanel, { type ArenaDebugConfig, DEFAULT_ARENA_DEBUG } from '../components/ArenaDebugPanel';
 import DamageEffectOverlay from '../components/DamageEffectOverlay';
@@ -171,6 +171,8 @@ export default function QuestGameplay() {
   // --- Áudio da batalha (sons globais: dano do personagem + batalha/fatalidades) ---
   const playerDamageSoundsRef = useRef<{ male: string; female: string }>({ male: '', female: '' });
   const battleSoundsRef = useRef<{ victory: string; deathMale: string; deathFemale: string; fail: string; punch: string; fatalFall: string; fatalEvaporate: string; fatalSlice: string; fatalExplode: string }>({ victory: '', deathMale: '', deathFemale: '', fail: '', punch: '', fatalFall: '', fatalEvaporate: '', fatalSlice: '', fatalExplode: '' });
+  // --- Música ambiente da batalha (quest.battleMusicUrl, loop) ---
+  const musicAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -233,6 +235,43 @@ export default function QuestGameplay() {
     });
     return () => { active = false; };
   }, []);
+
+  // Música ambiente da batalha — continua tocando na tela de recompensa
+  // (fade-out ao abrir o baú ou clicar em "Retornar ao Acampamento")
+  useEffect(() => {
+    if (gameState !== 'playing' && gameState !== 'result') {
+      if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; }
+      return;
+    }
+    if (!quest?.battleMusicUrl) return;
+    if (musicAudioRef.current) return; // já tocando — mantém sem reiniciar ao trocar de estado
+    try {
+      const audio = new Audio(resolveAudioUrl(quest.battleMusicUrl));
+      audio.loop = true;
+      audio.volume = Math.max(0, Math.min(1, quest.battleMusicVolume ?? 0.5));
+      audio.play().catch(() => {});
+      musicAudioRef.current = audio;
+    } catch (e) {}
+  }, [gameState, quest?.battleMusicUrl, quest?.battleMusicVolume]);
+
+  // Para a música ao desmontar (saiu da missão)
+  useEffect(() => {
+    return () => { if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; } };
+  }, []);
+
+  const fadeOutMusic = (durationMs = 1500) => {
+    const audio = musicAudioRef.current;
+    if (!audio) return;
+    const startVol = audio.volume;
+    const start = performance.now();
+    const step = () => {
+      const t = Math.min(1, (performance.now() - start) / durationMs);
+      audio.volume = Math.max(0, startVol * (1 - t));
+      if (t < 1) requestAnimationFrame(step);
+      else { audio.pause(); musicAudioRef.current = null; }
+    };
+    requestAnimationFrame(step);
+  };
 
   const playPlayerDamageSound = () => {
     const gender = (userData?.avatarConfig as any)?.gender;
@@ -2216,7 +2255,7 @@ export default function QuestGameplay() {
             <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               {!chestOpened ? (
                 <ChestReveal
-                  onOpen={() => setChestOpened(true)}
+                  onOpen={() => { setChestOpened(true); fadeOutMusic(1500); fadeOutAllSounds(1500); }}
                   chestModelUrl={selectedChestModel?.url}
                   chestOpenUrl={selectedChestModel?.open_url}
                   rarity={selectedChestModel?.rarity}
