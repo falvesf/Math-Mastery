@@ -250,6 +250,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(
     () => (localStorage.getItem('storeSortOrder') as any) || 'asc'
   );
+  const [catalogCategoryTab, setCatalogCategoryTab] = useState<'all' | 'consumable' | 'attack' | 'defense' | 'other'>('all');
 
   useEffect(() => {
     localStorage.setItem('storeLayoutMode', layoutMode);
@@ -956,6 +957,24 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {([
+                { key: 'all', label: 'Todos' },
+                { key: 'consumable', label: 'Consumíveis' },
+                { key: 'attack', label: 'Ataque' },
+                { key: 'defense', label: 'Defesa' },
+                { key: 'other', label: 'Outros' },
+              ] as const).map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setCatalogCategoryTab(tab.key)}
+                  style={{ padding: '0.3rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-glass)', background: catalogCategoryTab === tab.key ? 'var(--gold-primary)' : 'rgba(0,0,0,0.25)', color: catalogCategoryTab === tab.key ? '#000' : 'var(--text-primary)', fontSize: '0.85rem', cursor: 'pointer', fontWeight: catalogCategoryTab === tab.key ? 'bold' : 'normal' }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Ordenar por:</span>
               <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} style={{ background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.3rem 0.5rem', borderRadius: '4px', fontSize: '0.9rem' }}>
@@ -989,7 +1008,17 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           }>
             {(() => {
               const RARITY_WEIGHTS: any = { common: 1, uncommon: 2, rare: 3, epic: 4, mestre: 5, legendary: 6 };
-              const sortedItems = [...items].sort((a, b) => {
+              let filtered = [...items];
+              if (catalogCategoryTab === 'consumable') {
+                filtered = filtered.filter(i => i.type === 'consumable');
+              } else if (catalogCategoryTab === 'attack') {
+                filtered = filtered.filter(i => i.type === 'equippable' && i.itemCategory === 'attack');
+              } else if (catalogCategoryTab === 'defense') {
+                filtered = filtered.filter(i => i.type === 'equippable' && i.itemCategory === 'defense');
+              } else if (catalogCategoryTab === 'other') {
+                filtered = filtered.filter(i => i.type === 'other' || (i.type === 'equippable' && i.itemCategory !== 'attack' && i.itemCategory !== 'defense'));
+              }
+              const sortedItems = filtered.sort((a, b) => {
                 let comparison = 0;
                 if (sortBy === 'name') {
                   comparison = a.title.localeCompare(b.title);
