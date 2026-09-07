@@ -103,6 +103,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     rampVolume(0, durMs, () => { a.pause(); });
   };
 
+  /** Para a música imediatamente e zera o ponto de reprodução (troca de guia/saída). */
+  const stopTabMusic = () => {
+    const a = bgAudioRef.current;
+    if (!a) return;
+    if (bgFadeRafRef.current) cancelAnimationFrame(bgFadeRafRef.current);
+    bgFadeRafRef.current = null;
+    a.pause();
+    a.currentTime = 0;
+  };
+
   /** Toca o som do martelo batendo na bigorna repetidamente durante a forja. */
   const startAnvilHits = (anvilUrl?: string) => {
     if (!anvilUrl) return;
@@ -120,20 +130,19 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     return () => { isMounted = false; };
   }, [tenantId]);
 
-  // Música da guia ativa (troca ao alternar entre Forja/Transmutação)
+  // Música da guia ativa (a anterior para antes da nova começar, ao alternar guia)
   useEffect(() => {
     const url = activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl;
-    if (!url) { pauseTabMusic(300); return; }
+    stopTabMusic();
+    if (!url) return;
     playTabMusic(url);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, forgeSounds.forgeMusicUrl, forgeSounds.transmuteMusicUrl]);
 
-  // Limpa áudio ao desmontar
+  // Limpa áudio ao desmontar (sair da guia "A Forja" para a música)
   useEffect(() => () => {
     stopAnvilHits();
-    if (bgFadeRafRef.current) cancelAnimationFrame(bgFadeRafRef.current);
-    const a = bgAudioRef.current;
-    if (a) { a.pause(); a.src = ''; }
+    stopTabMusic();
   }, []);
 
   useEffect(() => {
@@ -385,13 +394,15 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         <div style={{ display: 'flex', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
           <button 
             onClick={() => setActiveTab('forge')}
-            style={{ flex: 1, padding: '1rem', background: activeTab === 'forge' ? 'var(--gold-primary)' : 'transparent', color: activeTab === 'forge' ? 'black' : 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}
+            disabled={isForging}
+            style={{ flex: 1, padding: '1rem', background: activeTab === 'forge' ? 'var(--gold-primary)' : 'transparent', color: activeTab === 'forge' ? 'black' : 'white', border: 'none', cursor: isForging ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', opacity: isForging ? 0.5 : 1 }}
           >
             <Hammer size={20} /> Forja (+1 a +9)
           </button>
           <button 
             onClick={() => isTransmuteUnlocked && setActiveTab('transmute')}
-            style={{ flex: 1, padding: '1rem', background: activeTab === 'transmute' ? 'var(--gold-primary)' : 'transparent', color: activeTab === 'transmute' ? 'black' : isTransmuteUnlocked ? 'white' : '#666', border: 'none', cursor: isTransmuteUnlocked ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}
+            disabled={isForging}
+            style={{ flex: 1, padding: '1rem', background: activeTab === 'transmute' ? 'var(--gold-primary)' : 'transparent', color: activeTab === 'transmute' ? 'black' : isTransmuteUnlocked ? 'white' : '#666', border: 'none', cursor: (isForging || !isTransmuteUnlocked) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', opacity: isForging ? 0.5 : 1 }}
           >
             {isTransmuteUnlocked ? <Sparkles size={20} /> : <Lock size={20} />} 
             Transmutação (Requer Diamante I)
