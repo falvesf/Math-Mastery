@@ -394,16 +394,22 @@ function MonsterTab(p: QuestConfigModalProps) {
                 const selected = p.availableMonsters.find(m => m.id === e.target.value);
                 if (selected) {
                   p.setQuestMonsterName(selected.name);
-                  p.setQuestMonsterConfig(selected.config || null);
+                  // Resolve o modelo 3D (customModelUrl do config ou o molde base)
+                  let modelUrl = '';
                   if (selected.config?.customModelUrl) {
-                    p.setQuestMonsterModelUrl(selected.config.customModelUrl);
+                    modelUrl = selected.config.customModelUrl;
                   } else if (selected.baseModelId) {
                     const rawModel = p.available3DModels.find(m => m.id === selected.baseModelId);
-                    if (rawModel) p.setQuestMonsterModelUrl(rawModel.url);
-                    else p.setQuestMonsterModelUrl('');
-                  } else {
-                    p.setQuestMonsterModelUrl('');
+                    modelUrl = rawModel ? rawModel.url : '';
                   }
+                  p.setQuestMonsterModelUrl(modelUrl);
+                  // Monta o config RENDERIZÁVEL: mescla o modelo + a skin do monstro,
+                  // senão o preview (e a missão) mostram o boneco padrão resetado.
+                  const baseCfg = selected.config && typeof selected.config === 'object' ? { ...selected.config } : {};
+                  const mergedCfg: any = { ...baseCfg };
+                  if (modelUrl && !mergedCfg.customModelUrl) mergedCfg.customModelUrl = modelUrl;
+                  if (selected.url && !mergedCfg.customSkinUrl) mergedCfg.customSkinUrl = selected.url;
+                  p.setQuestMonsterConfig(mergedCfg);
                 } else {
                   p.setQuestMonsterName('');
                   p.setQuestMonsterConfig(null);
