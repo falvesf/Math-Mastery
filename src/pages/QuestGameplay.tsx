@@ -942,13 +942,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
 */
 
   const triggerFatality = (isPlayerWinning: boolean, defeatHearts?: number) => {
-    // Se não tem arma, só animações simples (sem explosão, corte)
-    const deaths = hasAttackWeapon 
-      ? ['death-fall', 'death-evaporate', 'death-slice', 'death-explode']
+    // Monstro GLB: evita 'death-slice' (renderiza 2 viewers 3D ao mesmo tempo — trava/faz sumir)
+    const isGlbMonster = !!(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl);
+    const deaths = hasAttackWeapon
+      ? (isGlbMonster ? ['death-fall', 'death-evaporate', 'death-explode'] : ['death-fall', 'death-evaporate', 'death-slice', 'death-explode'])
       : ['death-fall', 'death-evaporate'];
     // Fatalidade temática do efeito da arma (fogo→explosão, veneno→desintegra,
     // estrondo→explosão/destruição, sangramento→corte ao meio)
-    const effectFatal: Record<string, string> = { burn: 'death-explode', poison: 'death-evaporate', impact: 'death-explode', bleed: 'death-slice', electric: 'death-explode' };
+    const effectFatal: Record<string, string> = { burn: 'death-explode', poison: 'death-evaporate', impact: 'death-explode', bleed: isGlbMonster ? 'death-explode' : 'death-slice', electric: 'death-explode' };
     const effectFatality = hasAttackWeapon && damageEffect !== 'none' ? effectFatal[damageEffect] : null;
     // Força uma fatalidade específica via Arena Debug (SÓ para quem tem acesso ao Debug — alunos usam aleatória)
     const canForce = canArenaDebug('arena_debug', 'view') || isSuperAdmin || userData?.role === 'admin';
