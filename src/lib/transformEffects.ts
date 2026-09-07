@@ -120,19 +120,23 @@ TRANSFORM_ANIMALS.forEach(a =>
   })
 );
 
-/** Toca o som do animal (se o arquivo existir) ou cai no som original do monstro. */
+/** Toca o som do animal (se o arquivo existir) ou cai no som original do monstro.
+ *  Na 1ª vez toca o som do animal JÁ e confirma a existência em paralelo; se o
+ *  arquivo não existir, as próximas chamadas caem no som do monstro. */
 export function playTransformSound(animal: TransformAnimal, kind: TransformSoundKind, fallbackUrl?: string | null, volume = 0.8) {
   const url = getTransformSoundUrl(animal, kind);
   const cached = transformSoundCache[url];
-  if (cached === undefined) {
-    // 1ª vez: checa se o arquivo existe e toca o fallback por enquanto.
-    // Usa resolveAudioUrl (prefixa o BASE_URL) — sem isso o HEAD dava 404 em produção.
-    transformSoundCache[url] = false;
-    fetch(resolveAudioUrl(url), { method: 'HEAD' })
-      .then(r => { transformSoundCache[url] = r.ok; })
-      .catch(() => { transformSoundCache[url] = false; });
+  if (cached === false) {
+    // Arquivo já verificado e NÃO existe → usa o som original do monstro
     playSound(fallbackUrl, volume);
     return;
   }
-  playSound(cached ? url : fallbackUrl, volume);
+  if (cached === undefined) {
+    // 1ª vez: toca o som do animal agora e checa em paralelo (para as próximas)
+    transformSoundCache[url] = true;
+    fetch(resolveAudioUrl(url), { method: 'HEAD' })
+      .then(r => { transformSoundCache[url] = r.ok; })
+      .catch(() => { transformSoundCache[url] = false; });
+  }
+  playSound(url, volume);
 }

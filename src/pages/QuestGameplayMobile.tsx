@@ -1389,8 +1389,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
         playPlayerAttackSound();
         setTimeout(() => {
           setMonsterAnim('hurt');
-          playMonsterDamageSound();
-          dropCoins(effectiveCrit);
+          // Efeito especial aplicado ANTES do som de dano para que o golpe que
+          // TRANSFORMA use o som do animal.
           if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
             setEffectLevel(l => l + 1);
             setEffectFlash(true);
@@ -1401,7 +1401,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
             // TRANSFORMAR: só se o monstro estiver na forma NORMAL
             if (damageEffect === 'transform' && !transformRef.current) {
               const animal = rollTransformAnimal();
-              setTransformState({ animal, turnsLeft: TRANSFORM_TURNS + 1, consecutiveCorrect: 0, enraged: false, ratBleeding: false });
+              const newTransform = { animal, turnsLeft: TRANSFORM_TURNS + 1, consecutiveCorrect: 0, enraged: false, ratBleeding: false };
+              transformRef.current = newTransform; // sincrono p/ o som do golpe já usar o do animal
+              setTransformState(newTransform);
               triggerTransformPuff('appear');
               setBattleMessage(`TRANSFORMADO! O monstro virou ${TRANSFORM_LABELS[animal]}!`);
               // Porco ataca o jogador NO MOMENTO da transformação
@@ -1415,6 +1417,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
               }
             }
           }
+          playMonsterDamageSound();
+          dropCoins(effectiveCrit);
           // Porco: golpes certos seguidos sem errar → enfurece com 2 acertos
           const tr = transformRef.current;
           if (tr?.animal === 'porco' && !tr.enraged) {
