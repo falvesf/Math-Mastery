@@ -73,38 +73,47 @@ export default function MinecraftPartPreview({ minecraftHeadValue, avatarPart, s
       finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(textureUrl)}`;
     }
 
-    viewer.loadSkin(finalUrl).then(() => {
-      const skin: any = viewer.playerObject.skin;
-      const targets = PART_TARGETS[getTargetKey(avatarPart)] || PART_TARGETS.head;
-      const allParts: Record<string, any> = {
-        head: skin.head, hat: skin.hat,
-        body: skin.body, jacket: skin.jacket,
-        leftArm: skin.leftArm, rightArm: skin.rightArm,
-        leftLeg: skin.leftLeg, rightLeg: skin.rightLeg,
-        leftPants: skin.leftPants, rightPants: skin.rightPants,
-      };
-      Object.entries(allParts).forEach(([name, part]) => {
-        if (part) part.visible = targets.includes(name);
-      });
+    // Pré-valida que a imagem carrega com dimensões > 0 antes de chamar o
+    // SkinViewer (evita o IndexSizeError interno do skinview3d com textura inválida).
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (!img.naturalWidth || !img.naturalHeight) return;
+      viewer.loadSkin(finalUrl).then(() => {
+        const skin: any = viewer.playerObject.skin;
+        const targets = PART_TARGETS[getTargetKey(avatarPart)] || PART_TARGETS.head;
+        const allParts: Record<string, any> = {
+          head: skin.head, hat: skin.hat,
+          body: skin.body, jacket: skin.jacket,
+          leftArm: skin.leftArm, rightArm: skin.rightArm,
+          leftLeg: skin.leftLeg, rightLeg: skin.rightLeg,
+          leftPants: skin.leftPants, rightPants: skin.rightPants,
+        };
+        Object.entries(allParts).forEach(([name, part]) => {
+          if (part) part.visible = targets.includes(name);
+        });
 
-      // Enquadra automaticamente a(s) parte(s) visível(eis) no canvas
-      const box = new THREE.Box3();
-      Object.values(allParts).forEach(part => {
-        if (part && part.visible) {
-          part.updateMatrixWorld(true);
-          box.expandByObject(part);
-        }
-      });
-      const center = new THREE.Vector3();
-      const size3 = new THREE.Vector3();
-      box.getCenter(center);
-      box.getSize(size3);
-      const dist = Math.max(size3.x, size3.y, 0.4) / (2 * Math.tan(((viewer.camera.fov || 45) / 2) * Math.PI / 180));
-      viewer.controls.target.set(center.x, center.y, center.z);
-      viewer.camera.position.set(center.x, center.y, center.z + dist * 1.6);
-      viewer.camera.lookAt(center);
-      viewer.controls.update();
-    }).catch((err) => console.error('Erro ao carregar skin:', err));
+        // Enquadra automaticamente a(s) parte(s) visível(eis) no canvas
+        const box = new THREE.Box3();
+        Object.values(allParts).forEach(part => {
+          if (part && part.visible) {
+            part.updateMatrixWorld(true);
+            box.expandByObject(part);
+          }
+        });
+        const center = new THREE.Vector3();
+        const size3 = new THREE.Vector3();
+        box.getCenter(center);
+        box.getSize(size3);
+        const dist = Math.max(size3.x, size3.y, 0.4) / (2 * Math.tan(((viewer.camera.fov || 45) / 2) * Math.PI / 180));
+        viewer.controls.target.set(center.x, center.y, center.z);
+        viewer.camera.position.set(center.x, center.y, center.z + dist * 1.6);
+        viewer.camera.lookAt(center);
+        viewer.controls.update();
+      }).catch((err) => console.error('Erro ao carregar skin:', err));
+    };
+    img.onerror = () => { console.error('Skin não pôde ser carregada:', finalUrl); };
+    img.src = finalUrl;
 
     return () => {
       viewer.dispose();

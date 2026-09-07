@@ -797,6 +797,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Carregando Loja...</div>;
 
+  // Materiais disponíveis para forja/transmutação: itens locais 'other' + itens 'other' do Banco (global)
+  const otherItems = [...items, ...bankOtherItems].filter((i, idx, arr) => arr.findIndex(x => x.id === i.id) === idx).filter(i => (i.type || '') === 'other');
+
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
       
@@ -1270,7 +1273,6 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                             const updated = { ...(formData.forgeConfig || {}), materialsPerLevel: { ...(formData.forgeConfig?.materialsPerLevel || {}), [l]: list.filter(Boolean) } };
                             setFormData({ ...formData, forgeConfig: updated });
                           };
-                          const otherItems = [...items, ...bankOtherItems].filter((i, idx, arr) => arr.findIndex(x => x.id === i.id) === idx).filter(i => (i.type || '') === 'other');
                           return (
                             <tr key={lvl} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                               <td style={{ padding: '4px 8px', textAlign: 'center', color: lvl === 0 ? '#888' : 'var(--gold-primary)', fontWeight: 'bold' }}>+{lvl}</td>
