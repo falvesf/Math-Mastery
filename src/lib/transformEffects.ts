@@ -4,7 +4,7 @@
 //  - Cura: aura que cura o jogador 0,5 coração por turno (3 turnos).
 // =====================================================================
 
-import { playSound } from './audioBank';
+import { playSound, resolveAudioUrl } from './audioBank';
 
 export type TransformAnimal = 'sapo' | 'coelho' | 'porco' | 'rato';
 
@@ -110,14 +110,25 @@ export function getTransformSoundUrl(animal: TransformAnimal, kind: TransformSou
 
 const transformSoundCache: Record<string, boolean> = {};
 
+// Pré-checa os sons dos animais no carregamento, para o 1º som já usar o do animal.
+TRANSFORM_ANIMALS.forEach(a =>
+  (['grunt', 'attack', 'hurt'] as TransformSoundKind[]).forEach(k => {
+    const u = getTransformSoundUrl(a, k);
+    fetch(resolveAudioUrl(u), { method: 'HEAD' })
+      .then(r => { transformSoundCache[u] = r.ok; })
+      .catch(() => { transformSoundCache[u] = false; });
+  })
+);
+
 /** Toca o som do animal (se o arquivo existir) ou cai no som original do monstro. */
 export function playTransformSound(animal: TransformAnimal, kind: TransformSoundKind, fallbackUrl?: string | null, volume = 0.8) {
   const url = getTransformSoundUrl(animal, kind);
   const cached = transformSoundCache[url];
   if (cached === undefined) {
-    // 1ª vez: checa se o arquivo existe e toca o fallback por enquanto
+    // 1ª vez: checa se o arquivo existe e toca o fallback por enquanto.
+    // Usa resolveAudioUrl (prefixa o BASE_URL) — sem isso o HEAD dava 404 em produção.
     transformSoundCache[url] = false;
-    fetch(url, { method: 'HEAD' })
+    fetch(resolveAudioUrl(url), { method: 'HEAD' })
       .then(r => { transformSoundCache[url] = r.ok; })
       .catch(() => { transformSoundCache[url] = false; });
     playSound(fallbackUrl, volume);
