@@ -13,6 +13,7 @@ import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calc
 // @ts-ignore
 import { applyEffectAdd, isEffectAddType, EFFECT_ADD_LABELS, DAMAGE_EFFECTS } from '../lib/damageEffects';
 import { forgeItemName } from '../lib/forge';
+import { fetchActiveCoin } from '../lib/model3d';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
@@ -105,6 +106,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const [economyType, setEconomyType] = useState<'xp' | 'coins'>('coins');
   const [economySettings, setEconomySettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [activeCoin, setActiveCoin] = useState<any>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -154,6 +156,13 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
   useEffect(() => {
     fetchStoreData();
+  }, [tenantId]);
+
+  // Moeda ativa (arte definida em Moldes 3D > Moedas)
+  useEffect(() => {
+    let isMounted = true;
+    fetchActiveCoin(tenantId).then(m => { if (isMounted) setActiveCoin(m); });
+    return () => { isMounted = false; };
   }, [tenantId]);
 
   // Enquanto o Bazar estiver aberto, processa anúncios expirados periodicamente
@@ -588,6 +597,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Carregando a loja...</div>;
 
   const currentBalance = economyType === 'xp' ? (userData.xp || 0) : (userData.coins || 0);
+  const coinUrl = activeCoin?.open_url || activeCoin?.url || '';
   const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
   
@@ -743,14 +753,14 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                 <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginRight: '0.5rem' }}>
                   {(userData.role !== 'student' && !userData.studentViewActive) ? 'Staff' : `${userData.xp || 0} XP`}
                 </span>
-                <Coins size={16} color="var(--gold-primary)" />
+                {coinUrl ? <img src={coinUrl} alt="Moeda" style={{ width: 16, height: 16, objectFit: 'contain' }} /> : <Coins size={16} color="var(--gold-primary)" />}
                 <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
                   {userData.role !== 'student' ? '' : `${userData.coins || 0} M`}
                 </span>
               </>
             ) : (
               <>
-                <Coins size={16} color="var(--gold-primary)" />
+                {coinUrl ? <img src={coinUrl} alt="Moeda" style={{ width: 16, height: 16, objectFit: 'contain' }} /> : <Coins size={16} color="var(--gold-primary)" />}
                 <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
                   {(userData.role !== 'student' && !userData.studentViewActive) ? 'Staff' : `${userData.coins || 0} Moedas`}
                 </span>

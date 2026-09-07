@@ -15,6 +15,8 @@ import { useTenant } from '../contexts/TenantContext';
 // @ts-ignore
 import { calculateTotalStats } from '../lib/gacha';
 // @ts-ignore
+import { fetchActiveCoin } from '../lib/model3d';
+// @ts-ignore
 import { forgeStrengthFraction, forgeAttributeValue, forgeAttributeValueWithConfig, nextForgeCost, nextForgeCostWithConfig, forgeSuccessChance, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
 import { useDialog } from '../contexts/DialogContext';
 
@@ -28,9 +30,11 @@ interface BlacksmithModalProps {
 // @ts-ignore — onClose é parte do contrato da interface (mantido; pode ser usado por consumidores)
 export default function BlacksmithModal({ userData, currentRankIndex, onClose, onSuccess }: BlacksmithModalProps) {
   const { showConfirm, showToast } = useDialog();
+  const { tenantId } = useTenant();
   const [activeTab, setActiveTab] = useState<'forge' | 'transmute'>('forge');
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeCoin, setActiveCoin] = useState<any>(null);
   
   // Forge State
   const [selectedForgeItem, setSelectedForgeItem] = useState<any | null>(null);
@@ -90,7 +94,14 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     }
   }, []);
   
+  useEffect(() => {
+    let isMounted = true;
+    fetchActiveCoin(tenantId).then(m => { if (isMounted) setActiveCoin(m); });
+    return () => { isMounted = false; };
+  }, [tenantId]);
+  
   const isTransmuteUnlocked = currentRankIndex >= 11; // 11 = Diamante I
+  const coinUrl = activeCoin?.open_url || activeCoin?.url || '';
 
   const fetchItems = async () => {
     setLoading(true);
@@ -278,8 +289,15 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         </div>
 
         {/* Saldo de moedas (visível nas duas guias) */}
-        <div style={{ background: 'rgba(0,0,0,0.4)', borderBottom: '1px solid var(--border-glass)', padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white', fontWeight: 'bold', flexShrink: 0 }}>
-          <Coins size={20} color="var(--gold-primary)" /> Moedas disponíveis: <span style={{ color: 'var(--gold-primary)' }}>{userData.coins || 0}</span>
+        <div style={{ background: 'rgba(0,0,0,0.4)', borderBottom: '1px solid var(--border-glass)', padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', fontWeight: 'bold', flexShrink: 0 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 22, height: 22, objectFit: 'contain' }} /> : <Coins size={20} color="var(--gold-primary)" />}
+            Moedas disponíveis
+          </span>
+          <span style={{ color: 'var(--gold-primary)', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 20, height: 20, objectFit: 'contain' }} /> : null}
+            {userData.coins || 0}
+          </span>
         </div>
 
         {/* Content */}
@@ -408,7 +426,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.5)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                            <Coins size={24} color="var(--gold-primary)" /> {nextCost} Moedas
+                            {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 26, height: 26, objectFit: 'contain' }} /> : <Coins size={24} color="var(--gold-primary)" />} {nextCost} Moedas
                           </div>
                           <div style={{ color: 'white', fontSize: '1.2rem' }}>
                             Chance: <strong style={{ color: useScroll ? '#10B981' : 'white' }}>
@@ -512,7 +530,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       <h4 style={{ color: 'white', margin: '0 0 0.75rem 0', fontSize: '1rem', textAlign: 'center' }}>{selectedTransmuteItem.itemTitle}</h4>
                       <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
                         <span>Custo:</span>
-                        <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>{selectedTransmuteItem.transmuteConfig?.coinsCost || 0} Moedas</span>
+                        <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 18, height: 18, objectFit: 'contain' }} /> : null}
+                          {selectedTransmuteItem.transmuteConfig?.coinsCost || 0} Moedas
+                        </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.9rem' }}>
                         <span>Chance de Sucesso:</span>
