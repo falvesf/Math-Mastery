@@ -191,6 +191,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   
   const [showGallery, setShowGallery] = useState<'image' | 'model' | null>(null);
   const [showTransformModal, setShowTransformModal] = useState(false);
+  const [showChanceFill, setShowChanceFill] = useState(false);
+  const [chanceFillStart, setChanceFillStart] = useState(90);
+  const [chanceFillStep, setChanceFillStep] = useState(10);
   const [showMinecraftPreview, setShowMinecraftPreview] = useState(false);
   const [showExtractorModal, setShowExtractorModal] = useState(false);
   const [showGachaModal, setShowGachaModal] = useState(false);
@@ -1327,7 +1330,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <thead>
                         <tr style={{ background: 'rgba(234,88,12,0.2)' }}>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Nível</th>
-                          <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Chance (%)</th>
+                          <th
+                            onClick={() => { setChanceFillStart((formData.forgeConfig?.successChancePerLevel?.[1] ?? DEFAULT_FORGE_SUCCESS[1])); setShowChanceFill(true); }}
+                            style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
+                            title="Clique para preencher todas as chances de uma vez (início + pulo)"
+                          >
+                            Chance (%) <span style={{ fontSize: '0.65rem', color: '#f59e0b' }}>⚡ preencher</span>
+                          </th>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Força (calculado = padrão)</th>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Custo (calculado = padrão)</th>
                           <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>Materiais (item outro)</th>
@@ -1831,6 +1840,63 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           item={items.find(i => i.id === hoveredItem)} 
           mousePos={mousePos} 
         />
+      )}
+
+      {/* Modal: preencher as chances de forja de uma vez (início + pulo) */}
+      {showChanceFill && createPortal(
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000001, padding: '1rem' }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowChanceFill(false); }}
+        >
+          <div style={{ background: 'var(--bg-card)', border: '1px solid rgba(234,88,12,0.5)', borderRadius: '14px', padding: '1.5rem', maxWidth: '480px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.7)' }}>
+            <h3 style={{ margin: '0 0 0.25rem 0', color: 'var(--accent-red)', fontSize: '1.15rem' }}>⚡ Preencher Chances de Forja</h3>
+            <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+              Preenche as chances de <strong>+1 a +9</strong> para <strong>ESTE item</strong>. O +1 recebe a chance inicial e os próximos níveis caem pelo "pulo" escolhido.
+            </p>
+
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '150px' }}>
+                <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Chance inicial (+1) (%)</label>
+                <input type="number" min={1} max={100} value={chanceFillStart} onChange={e => setChanceFillStart(Math.min(100, Math.max(1, Number(e.target.value) || 1)))} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'var(--text-primary)' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: '150px' }}>
+                <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Pulo a cada nível (%)</label>
+                <input type="number" min={1} max={100} value={chanceFillStep} onChange={e => setChanceFillStep(Math.max(1, Number(e.target.value) || 1))} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-glass)', background: 'var(--bg-dark)', color: 'var(--text-primary)' }} />
+                <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
+                  {[1, 2, 3, 5, 10, 15, 20].map(s => (
+                    <button key={s} onClick={() => setChanceFillStep(s)} style={{ padding: '2px 8px', fontSize: '0.72rem', borderRadius: '4px', background: chanceFillStep === s ? 'var(--accent-red)' : 'rgba(234,88,12,0.15)', border: `1px solid ${chanceFillStep === s ? 'var(--accent-red)' : 'rgba(234,88,12,0.4)'}`, color: 'var(--text-primary)', cursor: 'pointer' }}>{s}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(0,0,0,0.35)', borderRadius: '8px', padding: '0.6rem 0.9rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <div style={{ marginBottom: '0.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Prévia:</div>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                {[1,2,3,4,5,6,7,8,9].map(lvl => {
+                  const v = Math.max(0, Math.min(100, chanceFillStart - (lvl - 1) * chanceFillStep));
+                  return <span key={lvl} style={{ padding: '2px 6px', borderRadius: '4px', background: 'rgba(234,88,12,0.15)', border: '1px solid rgba(234,88,12,0.4)' }}>+{lvl}: {v}%</span>;
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowChanceFill(false)} style={{ padding: '0.6rem 1.2rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancelar</button>
+              <button
+                onClick={() => {
+                  const perLevel: Record<number, number> = {};
+                  for (let lvl = 1; lvl <= 9; lvl++) perLevel[lvl] = Math.max(0, Math.min(100, chanceFillStart - (lvl - 1) * chanceFillStep));
+                  setFormData({ ...formData, forgeConfig: { ...(formData.forgeConfig || {}), successChancePerLevel: { ...(formData.forgeConfig?.successChancePerLevel || {}), ...perLevel } } });
+                  setShowChanceFill(false);
+                }}
+                className="login-btn"
+                style={{ padding: '0.6rem 1.5rem', background: 'var(--accent-red)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Aplicar
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
