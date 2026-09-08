@@ -14,6 +14,7 @@
 --  - p_destroy = true  → DELETE permanente;
 --  - p_destroy = false → move para student_id = 'dropped' (outros
 --    jogadores podem encontrar), gravando droppedBy.
+--  - captura exceções e devolve a mensagem real (não estoura o PostgREST).
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.drop_user_item(p_uid uuid, p_doc_id uuid, p_destroy boolean)
@@ -48,6 +49,8 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object('ok', true);
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('ok', false, 'error', SQLERRM);
 END;
 $$;
 

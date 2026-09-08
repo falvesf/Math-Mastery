@@ -616,17 +616,27 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       if (!result.checked) {
         // Move para o bucket 'dropped' via RPC (SECURITY DEFINER — o UPDATE direto
         // de student_id é bloqueado pelo WITH CHECK do RLS).
-        const { error: dropErr } = await supabase.rpc('drop_user_item', { p_uid: userData.uid, p_doc_id: item.id, p_destroy: false });
+        const { data: rpcData, error: dropErr } = await supabase.rpc('drop_user_item', { p_uid: userData.uid, p_doc_id: item.id, p_destroy: false });
         if (dropErr) {
-          showToast('Erro ao jogar fora o item.', 'error');
+          console.error('drop_user_item RPC error:', dropErr);
+          showToast(`Erro ao jogar fora o item: ${dropErr.message || 'desconhecido'}`, 'error');
+          return;
+        }
+        if (rpcData && rpcData.ok === false) {
+          showToast(rpcData.error || 'Não foi possível jogar fora o item.', 'error');
           return;
         }
       }
     } else {
       const docToUpdate = item.docIds ? item.docIds[0] : item.id;
-      const { error: dropErr } = await supabase.rpc('drop_user_item', { p_uid: userData.uid, p_doc_id: docToUpdate, p_destroy: result.checked });
+      const { data: rpcData, error: dropErr } = await supabase.rpc('drop_user_item', { p_uid: userData.uid, p_doc_id: docToUpdate, p_destroy: result.checked });
       if (dropErr) {
-        showToast('Erro ao descartar o item.', 'error');
+        console.error('drop_user_item RPC error:', dropErr);
+        showToast(`Erro ao descartar o item: ${dropErr.message || 'desconhecido'}`, 'error');
+        return;
+      }
+      if (rpcData && rpcData.ok === false) {
+        showToast(rpcData.error || 'Não foi possível descartar o item.', 'error');
         return;
       }
     }
