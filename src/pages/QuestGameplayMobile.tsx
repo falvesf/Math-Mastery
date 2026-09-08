@@ -1169,8 +1169,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           setTimeout(() => {
              const hpPct = currentHearts / maxHearts;
              let vicAnim: any = 'victory-hard';
-             if (hpPct === 1) vicAnim = 'victory-easy';
-             else if (hpPct >= 0.5) vicAnim = 'victory-mid';
+             if (hpPct === 1) vicAnim = 'victory-mid';
+             else if (hpPct >= 0.5) vicAnim = 'victory-easy';
              
              setPlayerAnim(`${vicAnim}_${fatality}` as any);
              

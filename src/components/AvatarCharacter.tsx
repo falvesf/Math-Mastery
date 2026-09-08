@@ -2460,15 +2460,16 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         const cheerTime = time - 4.5;
 
         if (animation.startsWith('victory-easy')) {
-          // Vitória Fácil: Cruza os braços confiante e acena com a cabeça
+          // Vitória (≥50% HP): cruza os braços confiante e acena com a cabeça,
+          // PARADO no chão (sem levitar).
           player.skin.leftArm.rotation.x = -Math.PI / 2.5;
           player.skin.leftArm.rotation.z = 0.5;
           player.skin.rightArm.rotation.x = -Math.PI / 2.5;
           player.skin.rightArm.rotation.z = -0.5;
           player.skin.head.rotation.x = Math.sin(cheerTime * 2) * 0.1 + 0.1;
-          player.position.y = Math.sin(time * 3) * 1;
+          player.position.y = 0;
         } else if (animation.startsWith('victory-mid')) {
-          // Vitória Média: Pulos vibrantes
+          // Vitória (HP cheio): Pulos vibrantes
           player.position.y = Math.abs(Math.sin(cheerTime * 8)) * 8;
           player.skin.leftArm.rotation.x = Math.PI;
           player.skin.rightArm.rotation.x = Math.PI;
@@ -2478,8 +2479,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           player.skin.rightLeg.rotation.x = 0.2;
           player.skin.head.rotation.x = -0.2;
         } else if (animation.startsWith('victory-hard')) {
-          // Vitória Difícil: Arfando muito, levanta a mão com esforço
-          player.position.y = Math.sin(cheerTime * 6) * 2;
+          // Vitória (<50% HP): arfando de exaustão, levanta a mão com esforço.
+          // Respiração profunda no tronco/cabeça, SEM pulsar (fica no chão).
+          player.position.y = 0;
           player.skin.head.rotation.x = 0.3 + Math.sin(cheerTime * 6) * 0.1;
           
           if (cheerTime > 1.0) {
