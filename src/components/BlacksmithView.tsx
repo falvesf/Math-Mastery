@@ -8,8 +8,9 @@ declare global {
 }
 import { supabase } from '../lib/supabase';
 // @ts-ignore
-import { X, Hammer, ShieldAlert, Sparkles, Coins, Lock, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { X, Hammer, ShieldAlert, Sparkles, Coins, Lock, CheckCircle2, AlertTriangle, ArrowRight, ChevronUp, ChevronDown } from 'lucide-react';
 import CachedImage from './CachedImage';
+import ItemTooltip from './ItemTooltip';
 // @ts-ignore
 import { useTenant } from '../contexts/TenantContext';
 // @ts-ignore
@@ -49,6 +50,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const [loading, setLoading] = useState(true);
   const [activeCoin, setActiveCoin] = useState<any>(null);
   
+  // Tooltip State
+  const [hoveredTooltipItem, setHoveredTooltipItem] = useState<any | null>(null);
+  const [tooltipMousePos, setTooltipMousePos] = useState({ x: 0, y: 0 });
+
   // Forge State
   const [selectedForgeItem, setSelectedForgeItem] = useState<any | null>(null);
   const [useScroll, setUseScroll] = useState(false);
@@ -64,6 +69,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   // Sketchfab State
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [sketchfabApi, setSketchfabApi] = useState<any>(null);
+  const [showBlacksmith, setShowBlacksmith] = useState(true);
   const [isForging, setIsForging] = useState(false);
   const [forgeSounds, setForgeSounds] = useState<ForgeSoundsConfig>({});
 
@@ -178,6 +184,25 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           api.start();
           api.addEventListener('viewerready', function() {
             api.pause();
+            if (typeof api.seekTo === 'function') {
+              try { api.seekTo(0); } catch (_) {}
+            }
+            if (typeof api.setCameraConstraints === 'function') {
+              try {
+                api.setCameraConstraints({
+                  usePitchConstraints: true,
+                  up: 0.05,
+                  down: -0.05,
+                  useYawConstraints: false,
+                  useZoomConstraints: true,
+                  usePanConstraints: true
+                }, function(err: any) {
+                  if (!err && typeof api.setEnableCameraConstraints === 'function') {
+                    api.setEnableCameraConstraints(true, { preventCameraConstraintsFocus: true });
+                  }
+                });
+              } catch (_) {}
+            }
             setSketchfabApi(api);
           });
         },
@@ -185,6 +210,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           console.error('Sketchfab API error');
         },
         autostart: 1,
+        camera: 0,
+        ui_hint: 0,
+        autospin: 0,
+        preload: 0,
+        scrollwheel: 0,
+        ui_loading: 0,
         ui_infos: 0,
         ui_controls: 0,
         ui_stop: 0,
@@ -528,10 +559,34 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           <div style={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-glass)', background: 'var(--bg-dark)', minHeight: 0 }}>
             
             {/* Sketchfab Embed (visível só na Forja; oculto via CSS na Transmutação para não recarregar) */}
-            <div style={{ height: '300px', background: '#0f0f12', position: 'relative', overflow: 'hidden', pointerEvents: 'none', display: activeTab === 'forge' ? 'block' : 'none' }}>
-              <div className="sketchfab-embed-wrapper" style={{ position: 'absolute', top: '-65px', bottom: '-65px', left: '-10px', right: '-10px' }}>
-                <iframe ref={iframeRef} title="Blacksmith and his anvil" frameBorder="0" allow="autoplay; fullscreen; xr-spatial-tracking" style={{ width: '100%', height: '100%', border: 'none', background: '#0f0f12' }}> </iframe>
+            <div style={{ 
+              height: 'clamp(160px, 22vh, 195px)', 
+              background: '#0f0f12', 
+              position: 'relative', 
+              overflow: 'hidden', 
+              display: activeTab === 'forge' && showBlacksmith ? 'block' : 'none',
+              flexShrink: 0 
+            }}>
+              <div style={{ 
+                width: '142.8%', 
+                height: '265px', 
+                position: 'absolute', 
+                top: 0, 
+                left: '50%', 
+                transform: 'translateX(-50%) scale(0.7)', 
+                transformOrigin: 'top center' 
+              }}>
+                <div className="sketchfab-embed-wrapper" style={{ position: 'absolute', top: '-60px', bottom: '-60px', left: 0, right: 0 }}>
+                  <iframe 
+                    ref={iframeRef} 
+                    title="Blacksmith and his anvil" 
+                    frameBorder="0" 
+                    allow="autoplay; fullscreen; xr-spatial-tracking" 
+                    style={{ width: '100%', height: '100%', border: 'none', background: '#0f0f12', cursor: 'grab' }} 
+                  />
+                </div>
               </div>
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '16px', background: 'linear-gradient(to top, #0f0f12, transparent)', pointerEvents: 'none' }} />
               {!sketchfabApi && (
                 <div style={{ position: 'absolute', inset: 0, background: '#0f0f12', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#777', fontSize: '0.85rem', fontWeight: 'bold', gap: '0.5rem' }}>
                   <Hammer size={18} /> Carregando o ferreiro...
@@ -541,8 +596,41 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
 
             {/* Inventory List */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', minHeight: 0 }}>
-              <h3 style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1rem' }}>Seus Equipamentos</h3>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 1rem', minHeight: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h3 style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.95rem' }}>Seus Equipamentos</h3>
+                {activeTab === 'forge' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBlacksmith(!showBlacksmith)}
+                    title={showBlacksmith ? 'Recolher ferreiro 3D para expandir o inventário' : 'Exibir ferreiro 3D'}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      color: '#bbb',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'background 0.2s, color 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                      e.currentTarget.style.color = '#fff';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      e.currentTarget.style.color = '#bbb';
+                    }}
+                  >
+                    {showBlacksmith ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    {showBlacksmith ? 'Recolher 3D' : 'Exibir 3D'}
+                  </button>
+                )}
+              </div>
               
               {loading ? (
                 <p style={{ color: 'white', textAlign: 'center' }}>Carregando...</p>
@@ -554,6 +642,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       <div 
                         key={idx}
                         onClick={() => activeTab === 'forge' ? setSelectedForgeItem(item) : setSelectedTransmuteItem(item)}
+                        onMouseEnter={() => setHoveredTooltipItem(item)}
+                        onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                        onMouseLeave={() => setHoveredTooltipItem(null)}
                         style={{ 
                           width: '70px', height: '70px', background: isSelected ? 'rgba(255, 215, 0, 0.2)' : 'rgba(0,0,0,0.5)', 
                           border: isSelected ? '2px solid var(--gold-primary)' : '1px solid var(--border-glass)',
@@ -622,7 +713,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       return (
                         <>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                        <div style={{ width: '100px', height: '100px', background: 'black', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px solid #555', position: 'relative' }}>
+                        <div 
+                          onMouseEnter={() => selectedForgeItem && setHoveredTooltipItem(selectedForgeItem)}
+                          onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                          onMouseLeave={() => setHoveredTooltipItem(null)}
+                          style={{ width: '100px', height: '100px', background: 'black', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px solid #555', position: 'relative', cursor: 'pointer' }}
+                        >
                           {selectedForgeItem.itemImageUrl && <CachedImage src={selectedForgeItem.itemImageUrl} alt={selectedForgeItem.itemTitle} style={{ width: '80px', height: '80px', objectFit: 'contain' }} />}
                         </div>
                         <div>
@@ -727,7 +823,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                                 const title = owned?.itemTitle || cat?.title || 'Material';
                                 const img = owned?.itemImageUrl || cat?.imageUrl || '';
                                 return (
-                                  <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', gap: '0.5rem' }}>
+                                  <div 
+                                    key={id} 
+                                    onMouseEnter={() => {
+                                      const matObj = owned || cat;
+                                      if (matObj) setHoveredTooltipItem(matObj);
+                                    }}
+                                    onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                                    onMouseLeave={() => setHoveredTooltipItem(null)}
+                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', gap: '0.5rem', cursor: (owned || cat) ? 'pointer' : 'default' }}
+                                  >
                                     <span style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
                                       {img ? <CachedImage src={img} alt={title} style={{ width: 22, height: 22, objectFit: 'contain', flexShrink: 0 }} /> : <Sparkles size={18} color="#c084fc" style={{ flexShrink: 0 }} />}
                                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
@@ -778,7 +883,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
                   {/* Slot 1 – Item a transmutar (+9) */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
-                    <div style={{ width: '90px', height: '90px', background: 'rgba(0,0,0,0.7)', border: `2px solid ${selectedTransmuteItem ? 'var(--gold-primary)' : '#555'}`, borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', boxShadow: selectedTransmuteItem ? '0 0 16px rgba(255,215,0,0.4)' : 'none' }}>
+                    <div 
+                      onMouseEnter={() => selectedTransmuteItem && setHoveredTooltipItem(selectedTransmuteItem)}
+                      onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                      onMouseLeave={() => setHoveredTooltipItem(null)}
+                      style={{ width: '90px', height: '90px', background: 'rgba(0,0,0,0.7)', border: `2px solid ${selectedTransmuteItem ? 'var(--gold-primary)' : '#555'}`, borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', boxShadow: selectedTransmuteItem ? '0 0 16px rgba(255,215,0,0.4)' : 'none', cursor: selectedTransmuteItem ? 'pointer' : 'default' }}
+                    >
                       {selectedTransmuteItem ? (
                         <>
                           <img src={selectedTransmuteItem.itemImageUrl} alt={selectedTransmuteItem.itemTitle} style={{ width: '70px', height: '70px', objectFit: 'contain' }} />
@@ -805,7 +915,17 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       const matTitle = matId ? (materialCatalog[matId]?.title || consumables.find(c => c.itemId === matId)?.itemTitle || 'Material') : 'Material';
                       const matImg = matId ? (materialCatalog[matId]?.imageUrl || consumables.find(c => c.itemId === matId)?.itemImageUrl) : undefined;
                       return (
-                        <div key={matIdx} title={matTitle} style={{ width: '70px', height: '70px', background: 'rgba(139,92,246,0.1)', border: haveMat > 0 ? '1px solid #10B981' : '1px dashed #8b5cf6', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+                        <div 
+                          key={matIdx} 
+                          title={matTitle} 
+                          onMouseEnter={() => {
+                            const matObj = matId ? (materialCatalog[matId] || consumables.find(c => c.itemId === matId)) : null;
+                            if (matObj) setHoveredTooltipItem(matObj);
+                          }}
+                          onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                          onMouseLeave={() => setHoveredTooltipItem(null)}
+                          style={{ width: '70px', height: '70px', background: 'rgba(139,92,246,0.1)', border: haveMat > 0 ? '1px solid #10B981' : '1px dashed #8b5cf6', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', cursor: matId ? 'pointer' : 'default' }}
+                        >
                           {matImg ? (
                             <img src={matImg} alt={matTitle} style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
                           ) : (
@@ -828,7 +948,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                     const resultItemInfo = resultId ? materialCatalog[resultId] : null;
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
-                        <div style={{ width: '90px', height: '90px', background: 'rgba(139,92,246,0.15)', border: `2px solid ${resultItemInfo ? '#a855f7' : '#555'}`, borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', boxShadow: resultItemInfo ? '0 0 16px rgba(168,85,247,0.4)' : 'none' }}>
+                        <div 
+                          onMouseEnter={() => resultItemInfo && setHoveredTooltipItem(resultItemInfo)}
+                          onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                          onMouseLeave={() => setHoveredTooltipItem(null)}
+                          style={{ width: '90px', height: '90px', background: 'rgba(139,92,246,0.15)', border: `2px solid ${resultItemInfo ? '#a855f7' : '#555'}`, borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', boxShadow: resultItemInfo ? '0 0 16px rgba(168,85,247,0.4)' : 'none', cursor: resultItemInfo ? 'pointer' : 'default' }}
+                        >
                           {resultItemInfo ? (
                             <>
                               {resultItemInfo.imageUrl ? (
@@ -952,6 +1077,14 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
           </div>
         </div>
+
+      {/* Tooltip Portal */}
+      {hoveredTooltipItem && (
+        <ItemTooltip 
+          item={hoveredTooltipItem} 
+          mousePos={tooltipMousePos} 
+        />
+      )}
     </div>
   );
 }

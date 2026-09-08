@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer, Volume2 } from 'lucide-react';
@@ -91,42 +91,88 @@ const getRarityLabel = (rarity?: string) => {
   }
 };
 
+const getRarityColor = (rarity?: string) => {
+  switch (rarity) {
+    case 'legendary': return '#f59e0b';
+    case 'mestre': return '#ef4444';
+    case 'epic': return '#8b5cf6';
+    case 'rare': return '#3b82f6';
+    case 'uncommon': return '#10b981';
+    case 'common':
+    default: return '#9ca3af';
+  }
+};
+
+const RARITY_WEIGHTS: Record<string, number> = {
+  common: 1,
+  uncommon: 2,
+  rare: 3,
+  epic: 4,
+  mestre: 5,
+  legendary: 6,
+};
+
+const sortByRarityThenTitle = (a: { rarity?: string; title?: string }, b: { rarity?: string; title?: string }) => {
+  const wA = RARITY_WEIGHTS[a.rarity || 'common'] ?? 99;
+  const wB = RARITY_WEIGHTS[b.rarity || 'common'] ?? 99;
+  if (wA !== wB) return wA - wB;
+  return (a.title || '').localeCompare(b.title || '', 'pt-BR', { sensitivity: 'base' });
+};
+
 interface ItemSelectOption {
   id: string;
   title: string;
   imageUrl?: string;
   badge?: string;
+  rarity?: string;
 }
 
-// Combobox customizado com ícone + nome (os <select> nativos não renderizam imagem).
-// O dropdown é renderizado em PORTAL com position:fixed — não expande o scroll do modal
-// e não cria espaço em branco, mesmo com muitos itens.
+// Combobox customizado com ícone + nome + raridade (os <select> nativos não renderizam imagem).
+// O dropdown é renderizado em PORTAL com position:fixed — não expande o scroll do modal,
+// agrupa materiais por raridade com cabeçalhos visuais elegantes e permite busca instantânea.
 function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { items: ItemSelectOption[]; value: string; onChange: (id: string) => void; placeholder: string; width?: number | string }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
+  const portalRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const place = () => {
     const r = btnRef.current?.getBoundingClientRect();
     if (!r) return;
-    const ddHeight = 200;
+    const ddHeight = 270;
     const spaceBelow = window.innerHeight - r.bottom;
     const openUp = spaceBelow < ddHeight + 8;
     setPos({
       top: openUp ? Math.max(4, r.top - ddHeight - 4) : r.bottom + 4,
       left: r.left,
-      width: Math.max(r.width, 220)
+      width: Math.max(r.width, 240)
     });
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setSearch('');
+      return;
+    }
     place();
-    const close = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false); };
+    const close = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        rootRef.current && !rootRef.current.contains(target) &&
+        portalRef.current && !portalRef.current.contains(target)
+      ) {
+        setOpen(false);
+      }
+    };
     document.addEventListener('mousedown', close);
     window.addEventListener('scroll', place, true);
     window.addEventListener('resize', place);
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 50);
     return () => {
       document.removeEventListener('mousedown', close);
       window.removeEventListener('scroll', place, true);
@@ -134,48 +180,252 @@ function ItemSelect({ items, value, onChange, placeholder, width = 170 }: { item
     };
   }, [open]);
 
+  // Itens classificados por raridade (Comum -> Incomum -> Raro -> Épico -> Mestre -> Lendário) e por ordem alfabética A-Z
+  const sortedItems = [...items].sort(sortByRarityThenTitle);
+
+  const filteredItems = search.trim()
+    ? sortedItems.filter(i => {
+        const q = search.toLowerCase();
+        const t = (i.title || '').toLowerCase();
+        const r = getRarityLabel(i.rarity).toLowerCase();
+        return t.includes(q) || r.includes(q);
+      })
+    : sortedItems;
+
   const selected = items.find(i => i.id === value);
+  const selectedRarityColor = selected?.rarity ? getRarityColor(selected.rarity) : undefined;
+
   return (
     <div ref={rootRef} style={{ width }}>
       <button
         ref={btnRef}
         type="button"
         onMouseDown={(e) => { e.stopPropagation(); setOpen(o => !o); }}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.5)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.72rem', cursor: 'pointer', minHeight: 26, textAlign: 'left' }}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+          padding: '3px 8px',
+          borderRadius: '6px',
+          border: selectedRarityColor ? `1px solid ${selectedRarityColor}77` : '1px solid rgba(139,92,246,0.5)',
+          background: 'var(--bg-card)',
+          color: 'var(--text-primary)',
+          fontSize: '0.72rem',
+          cursor: 'pointer',
+          minHeight: 26,
+          textAlign: 'left'
+        }}
       >
         {selected ? (
           <>
-            {selected.imageUrl ? <img src={selected.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{selected.title}</span>
-            {selected.badge ? <span style={{ flexShrink: 0, fontSize: '0.6rem', color: '#c084fc' }}>{selected.badge}</span> : null}
+            {selected.imageUrl ? (
+              <img src={selected.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0, borderRadius: 2 }} />
+            ) : (
+              <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+            )}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={selected.title}>
+              {selected.title}
+            </span>
+            {selected.rarity && (
+              <span style={{
+                flexShrink: 0,
+                fontSize: '0.58rem',
+                fontWeight: 600,
+                padding: '1px 4px',
+                borderRadius: '3px',
+                background: `${selectedRarityColor}22`,
+                color: selectedRarityColor,
+                border: `1px solid ${selectedRarityColor}44`
+              }}>
+                {getRarityLabel(selected.rarity)}
+              </span>
+            )}
+            {selected.badge && (
+              <span style={{ flexShrink: 0, fontSize: '0.6rem', color: '#c084fc' }}>{selected.badge}</span>
+            )}
             <span
               title="Limpar (nenhum)"
               onMouseDown={(e) => { e.stopPropagation(); onChange(''); setOpen(false); }}
-              style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', background: 'rgba(239,68,68,0.25)', color: '#ef4444', fontSize: '0.75rem', lineHeight: 1, cursor: 'pointer', fontWeight: 'bold' }}
+              style={{
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 16,
+                height: 16,
+                borderRadius: '50%',
+                background: 'rgba(239,68,68,0.25)',
+                color: '#ef4444',
+                fontSize: '0.75rem',
+                lineHeight: 1,
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
             >×</span>
           </>
         ) : (
           <span style={{ color: 'var(--text-secondary)' }}>{placeholder}</span>
         )}
       </button>
+
       {open && pos && createPortal(
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 2147483000, maxHeight: 200, overflowY: 'auto', background: 'rgba(22,22,28,0.98)', border: '1px solid rgba(139,92,246,0.6)', borderRadius: '6px', boxShadow: '0 10px 30px rgba(0,0,0,0.7)', padding: '2px 0' }}>
-          {items.length === 0 ? (
-            <div style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>Nenhum item disponível</div>
-          ) : (
-            <>
-            <div onMouseDown={(e) => { e.stopPropagation(); onChange(''); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '5px 8px', cursor: 'pointer', fontSize: '0.72rem', color: '#ef4444', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div
+          ref={portalRef}
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: pos.top,
+            left: pos.left,
+            width: pos.width,
+            zIndex: 2147483000,
+            maxHeight: 270,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'rgba(20,20,26,0.98)',
+            border: '1px solid rgba(139,92,246,0.6)',
+            borderRadius: '8px',
+            boxShadow: '0 12px 35px rgba(0,0,0,0.85)',
+            overflow: 'hidden'
+          }}
+        >
+          {/* Quick Search */}
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Search size={14} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nome ou raridade..."
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                color: '#fff',
+                fontSize: '0.72rem'
+              }}
+            />
+            {search && (
+              <span
+                onClick={() => setSearch('')}
+                style={{ cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.75rem', padding: '0 2px' }}
+                title="Limpar busca"
+              >✕</span>
+            )}
+          </div>
+
+          <div style={{ overflowY: 'auto', flex: 1, padding: '2px 0' }}>
+            {/* Opção para limpar */}
+            <div
+              onMouseDown={(e) => { e.stopPropagation(); onChange(''); setOpen(false); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '6px 8px',
+                cursor: 'pointer',
+                fontSize: '0.72rem',
+                color: '#ef4444',
+                borderBottom: '1px solid rgba(255,255,255,0.06)'
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.1)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            >
               <span style={{ fontWeight: 'bold' }}>✕ Limpar (nenhum)</span>
             </div>
-            {items.map(i => (
-            <div key={i.id} onMouseDown={(e) => { e.stopPropagation(); onChange(i.id); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '5px 8px', cursor: 'pointer', fontSize: '0.72rem', background: i.id === value ? 'rgba(255,215,0,0.15)' : 'transparent', whiteSpace: 'nowrap' }}>
-              {i.imageUrl ? <img src={i.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0 }} /> : <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />}
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.title}</span>
-              {i.badge ? <span style={{ marginLeft: 'auto', fontSize: '0.6rem', color: '#c084fc', flexShrink: 0 }}>{i.badge}</span> : null}
-            </div>
-          ))}
-            </>
-          )}
+
+            {filteredItems.length === 0 ? (
+              <div style={{ padding: '10px 8px', color: 'var(--text-secondary)', fontSize: '0.72rem', textAlign: 'center' }}>
+                Nenhum item encontrado
+              </div>
+            ) : (
+              (() => {
+                let currentRarity: string | null = null;
+                const hasRarities = filteredItems.some(i => !!i.rarity);
+                return filteredItems.map((i) => {
+                  const itemRarity = i.rarity || 'common';
+                  const isNewSection = hasRarities && itemRarity !== currentRarity;
+                  if (isNewSection) {
+                    currentRarity = itemRarity;
+                  }
+                  const rColor = getRarityColor(itemRarity);
+                  const isSelected = i.id === value;
+
+                  return (
+                    <Fragment key={i.id}>
+                      {isNewSection && (
+                        <div style={{
+                          padding: '4px 8px',
+                          fontSize: '0.62rem',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                          color: rColor,
+                          background: 'rgba(255,255,255,0.04)',
+                          borderTop: '1px solid rgba(255,255,255,0.06)',
+                          borderBottom: '1px solid rgba(255,255,255,0.03)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 1,
+                          backdropFilter: 'blur(8px)'
+                        }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: rColor, display: 'inline-block' }} />
+                          <span>{getRarityLabel(itemRarity)}</span>
+                        </div>
+                      )}
+                      <div
+                        onMouseDown={(e) => { e.stopPropagation(); onChange(i.id); setOpen(false); }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          padding: '5px 8px',
+                          cursor: 'pointer',
+                          fontSize: '0.72rem',
+                          background: isSelected ? 'rgba(255,215,0,0.15)' : 'transparent',
+                          whiteSpace: 'nowrap',
+                          transition: 'background 0.12s ease'
+                        }}
+                        onMouseEnter={(e) => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)'; }}
+                        onMouseLeave={(e) => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                      >
+                        {i.imageUrl ? (
+                          <img src={i.imageUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0, borderRadius: 2 }} />
+                        ) : (
+                          <Package size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+                        )}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{i.title}</span>
+                        {i.rarity && (
+                          <span style={{
+                            fontSize: '0.58rem',
+                            padding: '1px 5px',
+                            borderRadius: '3px',
+                            background: `${rColor}22`,
+                            color: rColor,
+                            border: `1px solid ${rColor}44`,
+                            flexShrink: 0,
+                            marginLeft: 'auto'
+                          }}>
+                            {getRarityLabel(itemRarity)}
+                          </span>
+                        )}
+                        {i.badge && (
+                          <span style={{ fontSize: '0.58rem', color: '#c084fc', flexShrink: 0, marginLeft: i.rarity ? 4 : 'auto' }}>
+                            {i.badge}
+                          </span>
+                        )}
+                      </div>
+                    </Fragment>
+                  );
+                });
+              })()
+            )}
+          </div>
         </div>,
         document.body
       )}
@@ -946,10 +1196,10 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   // Todos os itens do TENANT ATUAL (sem duplicar com o Banco — o Banco entra quando importado)
   const allItems = items;
   const sortByTitle = (a: StoreItem, b: StoreItem) => (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase());
-  // Materiais disponíveis para forja/transmutação: itens 'other' do tenant atual, ordem alfabética
-  const materialOptions = allItems.filter(i => (i.type || '') === 'other').sort(sortByTitle);
-  // Itens resultado de transmutação: equipáveis marcados como isTransmuted (tenant atual), ordem alfabética
-  const transmuteResultOptions = allItems.filter(i => i.type === 'equippable' && (i as any).isTransmuted).sort(sortByTitle);
+  // Materiais disponíveis para forja/transmutação: itens 'other' do tenant atual, ordem alfabética por raridade
+  const materialOptions = allItems.filter(i => (i.type || '') === 'other').sort(sortByRarityThenTitle);
+  // Itens resultado de transmutação: equipáveis marcados como isTransmuted (tenant atual), ordem alfabética por raridade
+  const transmuteResultOptions = allItems.filter(i => i.type === 'equippable' && (i as any).isTransmuted).sort(sortByRarityThenTitle);
 
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
@@ -1059,7 +1309,6 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             { display: 'flex', flexDirection: 'column', gap: '1rem' }
           }>
             {(() => {
-              const RARITY_WEIGHTS: any = { common: 1, uncommon: 2, rare: 3, epic: 4, mestre: 5, legendary: 6 };
               let filtered = [...items];
               if (catalogCategoryTab === 'consumable') {
                 filtered = filtered.filter(i => i.type === 'consumable');
@@ -1077,7 +1326,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 } else if (sortBy === 'rarity') {
                   const wA = RARITY_WEIGHTS[a.rarity || 'common'] || 1;
                   const wB = RARITY_WEIGHTS[b.rarity || 'common'] || 1;
-                  comparison = wA - wB;
+                  comparison = (wA - wB) || a.title.localeCompare(b.title);
                 } else if (sortBy === 'type') {
                   comparison = a.type.localeCompare(b.type);
                 }
@@ -1472,7 +1721,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>📋 Copiar Forja/Transmutação de outro item:</span>
                     <ItemSelect
-                      items={allItems.filter(i => i.type === 'equippable' && i.id !== (formData as any).id).map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl }))}
+                      items={allItems.filter(i => i.type === 'equippable' && i.id !== (formData as any).id).sort(sortByRarityThenTitle).map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, rarity: i.rarity || 'common' }))}
                       value={copyForgeFromId}
                       onChange={(id) => {
                         if (!id) { setCopyForgeFromId(''); return; }
@@ -1569,7 +1818,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                                       return (
                                         <ItemSelect
                                           key={matIdx}
-                                          items={materialOptions.map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined }))}
+                                          items={materialOptions.map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined, rarity: i.rarity || 'common' }))}
                                           value={current}
                                           onChange={id => setMaterial(lvl, matIdx, id)}
                                           placeholder="— sem material —"
@@ -1646,7 +1895,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                             Item Resultado (só itens marcados como "Item Transmutado", da MESMA categoria: {formData.itemCategory === 'attack' ? 'arma' : formData.itemCategory === 'defense' ? 'defesa/escudo' : 'suporte'})
                           </label>
                           <ItemSelect
-                            items={transmuteResultOptions.filter(i => (i.itemCategory || 'none') === (formData.itemCategory || 'none')).map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined }))}
+                            items={transmuteResultOptions.filter(i => (i.itemCategory || 'none') === (formData.itemCategory || 'none')).map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined, rarity: i.rarity || 'common' }))}
                             value={formData.transmuteConfig.resultItemId || ''}
                             onChange={id => setFormData({ ...formData, transmuteConfig: { ...formData.transmuteConfig!, resultItemId: id } })}
                             placeholder="— Selecionar item resultado —"
@@ -1663,7 +1912,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                               <div key={matIdx} style={{ flex: 1, minWidth: '150px' }}>
                                 <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Material {matIdx + 1}</label>
                                 <ItemSelect
-                                  items={materialOptions.map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined }))}
+                                  items={materialOptions.map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined, rarity: i.rarity || 'common' }))}
                                   value={formData.transmuteConfig.materials?.[matIdx] || ''}
                                   onChange={id => {
                                     const mats = [...(formData.transmuteConfig!.materials || ['', ''])];

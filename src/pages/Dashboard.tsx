@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 import { LogOut, Trophy, Settings, History, ShieldAlert, Star, Hammer, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus, ChevronDown, ChevronRight, Lock } from 'lucide-react';
@@ -252,6 +252,23 @@ export default function Dashboard() {
   const [showRankingAvatars, setShowRankingAvatars] = useState(false);
   const [allStudents, setAllStudents] = useState<UserData[]>([]);
   const [selectedClassForRanking, setSelectedClassForRanking] = useState<string>('');
+
+  // Garante que o aluno atual esteja presente na lista de rankings com os dados e XP mais recentes
+  const normalizedAllStudents = useMemo(() => {
+    if (!userData || userData.role !== 'student') return allStudents;
+    let found = false;
+    const list = allStudents.map(s => {
+      if (s.uid === userData.uid) {
+        found = true;
+        return { ...s, ...userData };
+      }
+      return s;
+    });
+    if (!found && userData.uid) {
+      list.push(userData);
+    }
+    return list.sort((a, b) => (b.xp || 0) - (a.xp || 0));
+  }, [allStudents, userData]);
   const [cubeRotation, setCubeRotation] = useState(0);
   // Pausa temporária do giro do cubo (ex.: após subir de patente, para ver os status)
   const [cubePaused, setCubePaused] = useState(false);
@@ -982,7 +999,7 @@ export default function Dashboard() {
         let changed = false;
 
         // General ranks
-        allStudents.forEach((student, index) => {
+        normalizedAllStudents.forEach((student, index) => {
           const rank = index + 1;
           const currentData = history.general[student.uid];
           if (!currentData || currentData.currentRank !== rank) {
@@ -997,10 +1014,11 @@ export default function Dashboard() {
 
         // Class ranks
         const studentsByClass: Record<string, UserData[]> = {};
-        allStudents.forEach(s => {
-          if (s.classId) {
-            if (!studentsByClass[s.classId]) studentsByClass[s.classId] = [];
-            studentsByClass[s.classId].push(s);
+        normalizedAllStudents.forEach(s => {
+          const rawClass = s.classId?.trim();
+          if (rawClass) {
+            if (!studentsByClass[rawClass]) studentsByClass[rawClass] = [];
+            studentsByClass[rawClass].push(s);
           }
         });
 
@@ -1041,7 +1059,7 @@ export default function Dashboard() {
     // Pequeno delay para não atolar o Firestore caso vários usuários carreguem ao mesmo tempo
     const timeoutId = setTimeout(checkAndSyncRankings, 2000);
     return () => clearTimeout(timeoutId);
-  }, [allStudents]);
+  }, [normalizedAllStudents]);
 
   useEffect(() => {
     const fetchRankingItems = async () => {
@@ -1051,6 +1069,7 @@ export default function Dashboard() {
 
       classStudents.forEach(s => studentIds.add(s.uid));
       top10General.forEach(s => studentIds.add(s.uid));
+      if (userData?.uid) studentIds.add(userData.uid);
 
       if (studentIds.size === 0) return;
 
@@ -1530,7 +1549,7 @@ export default function Dashboard() {
   }
 
   // Filtragem de Rankings (Top 10)
-  const uniqueClasses = Array.from(new Set(allStudents.map(s => s.classId).filter(Boolean))).sort() as string[];
+  const uniqueClasses = Array.from(new Set(normalizedAllStudents.map(s => s.classId).filter(Boolean))).sort() as string[];
   // Só usa a turma do próprio admin/professor se ela TIVER alunos na lista — senão cai na
   // primeira turma com alunos. Antes, um classId do admin sem alunos fazia o <select> EXIBIR
   // uma turma (primeira opção) mas FILTRAR por outra (classId dele) → lista vazia até o
@@ -1538,29 +1557,52 @@ export default function Dashboard() {
   const targetClassRanking = isAdminOrTeacher
     ? (selectedClassForRanking || ((userData?.classId && uniqueClasses.includes(userData.classId)) ? userData.classId : '') || uniqueClasses[0] || '')
     : userData?.classId;
-  const classStudents = allStudents.filter(s => s.classId === targetClassRanking).slice(0, 10);
-  const top10General = allStudents.slice(0, 10);
+  const fullClassStudents = targetClassRanking
+    ? normalizedAllStudents.filter(s => s.classId === targetClassRanking)
+    : [];
+  const classStudents = fullClassStudents.slice(0, 10);
+  const top10General = normalizedAllStudents.slice(0, 10);
 
   // Moved outside to prevent remounting
 
-  const renderRankingList = (list: UserData[], type: 'general' | 'class') => {
+  const renderRankingList = (fullList: UserData[], type: 'general' | 'class') => {
     if (loadingRankings) return <p style={{ color: 'var(--text-secondary)' }}>Calculando as posições...</p>;
-    if (list.length === 0) return <p style={{ color: 'var(--text-secondary)' }}>Nenhum aluno no ranking.</p>;
+    if (fullList.length === 0) return <p style={{ color: 'var(--text-secondary)' }}>Nenhum aluno no ranking.</p>;
 
-    const getArrow = (student: UserData) => {
+    const getClassHistoryData = (student: UserData) => {
+      if (!rankingHistory?.classes) return null;
+      const target = (student.classId || targetClassRanking || '').trim().replace(/\s+/g, ' ').toLowerCase();
+      if (!target) return null;
+
+      // 1. Direct match por student.classId
+      if (student.classId && rankingHistory.classes[student.classId]?.[student.uid]) {
+        return rankingHistory.classes[student.classId][student.uid];
+      }
+      // 2. Direct match por targetClassRanking
+      if (targetClassRanking && rankingHistory.classes[targetClassRanking]?.[student.uid]) {
+        return rankingHistory.classes[targetClassRanking][student.uid];
+      }
+      // 3. Loose match normalizado (ignora espaçamento duplo ou maiúsculas)
+      for (const [cName, cStudents] of Object.entries(rankingHistory.classes)) {
+        if (cName.trim().replace(/\s+/g, ' ').toLowerCase() === target) {
+          if (cStudents?.[student.uid]) return cStudents[student.uid];
+        }
+      }
+      return null;
+    };
+
+    const getArrow = (student: UserData, currentRankPos: number) => {
       if (!rankingHistory) return null;
-      const historyData = type === 'general' ? rankingHistory.general[student.uid] : rankingHistory.classes?.[student.classId || '']?.[student.uid];
-      if (!historyData) return null;
+      const historyData = type === 'general'
+        ? rankingHistory.general[student.uid]
+        : getClassHistoryData(student);
 
-      const daysSince = (Date.now() - historyData.rankSince) / (1000 * 60 * 60 * 24);
-      if (daysSince > 15) return null;
+      const previousRank = historyData?.previousRank ?? currentRankPos;
+      const diff = previousRank - currentRankPos;
 
-      const diff = historyData.previousRank - historyData.currentRank;
-      if (diff === 0) return null;
-
-      const isUp = diff > 0;
-      const color = isUp ? '#4CAF50' : '#F44336';
-      const arrow = isUp ? '▲' : '▼';
+      const daysSince = historyData?.rankSince
+        ? (Date.now() - historyData.rankSince) / (1000 * 60 * 60 * 24)
+        : 0;
 
       let timeStr = '';
       if (daysSince < 1) {
@@ -1576,119 +1618,277 @@ export default function Dashboard() {
         timeStr = d === 1 ? '1 dia' : `${d} dias`;
       }
 
+      if (diff === 0) {
+        return (
+          <span
+            style={{
+              color: 'var(--text-secondary)',
+              fontSize: '0.72rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '4px',
+              padding: '1px 5px',
+              cursor: 'help',
+              fontWeight: 'bold',
+              opacity: 0.8
+            }}
+            title={historyData ? `Manteve esta posição há ${timeStr}` : 'Posição estável'}
+          >
+            ―
+          </span>
+        );
+      }
+
+      const isUp = diff > 0;
+      const color = isUp ? '#4ade80' : '#f87171';
+      const bgColor = isUp ? 'rgba(74, 222, 128, 0.12)' : 'rgba(248, 113, 113, 0.12)';
+      const borderColor = isUp ? 'rgba(74, 222, 128, 0.25)' : 'rgba(248, 113, 113, 0.25)';
+      const arrow = isUp ? '▲' : '▼';
+      const titleText = isUp
+        ? `Subiu ${diff} ${diff === 1 ? 'posição' : 'posições'} há ${timeStr}`
+        : `Caiu ${Math.abs(diff)} ${Math.abs(diff) === 1 ? 'posição' : 'posições'} há ${timeStr}`;
+
       return (
         <span
-          style={{ color, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'help', fontWeight: 'bold' }}
-          title={`Nesta posição há ${timeStr}`}
+          style={{
+            color,
+            fontSize: '0.75rem',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '2px',
+            background: bgColor,
+            border: `1px solid ${borderColor}`,
+            borderRadius: '4px',
+            padding: '1px 6px',
+            cursor: 'help',
+            fontWeight: 'bold'
+          }}
+          title={titleText}
         >
           {arrow} {Math.abs(diff)}
         </span>
       );
     };
 
-    rankingListRef.current = list;
+    const top10 = fullList.slice(0, 10);
+
+    // Se o usuário logado for aluno e não estiver no top 10 deste ranking, identifica sua posição real
+    const currentUserIndex = (userData?.role === 'student' && userData?.uid)
+      ? fullList.findIndex(s => s.uid === userData.uid)
+      : -1;
+    const currentUserRankPos = currentUserIndex !== -1 ? currentUserIndex + 1 : null;
+    const showCurrentUserSeparated = currentUserRankPos !== null && currentUserRankPos > 10;
+    const currentUserStudent = showCurrentUserSeparated ? fullList[currentUserIndex] : null;
+
+    rankingListRef.current = showCurrentUserSeparated && currentUserStudent
+      ? [...top10, currentUserStudent]
+      : top10;
+
+    const renderStudentCard = (student: UserData, rankPos: number, isSeparatedUser = false) => {
+      const sRank = getRankForXp(student.xp || 0, student.classId);
+
+      let medalColor = 'var(--text-secondary)';
+      let bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.02)';
+      let borderStyle = student.uid === userData?.uid ? '1px solid var(--gold-primary)' : '1px solid transparent';
+      let avatarSize = 40;
+      let fontSizeTitle = '0.95rem';
+      let fontSizeXp = '1.1rem';
+      let cardBoxShadow = 'none';
+
+      if (isSeparatedUser) {
+        // Destaque especial e diferenciado para a colocação do usuário após a 10ª posição
+        medalColor = '#c084fc';
+        avatarSize = 44;
+        fontSizeTitle = '1rem';
+        fontSizeXp = '1.15rem';
+        bgStyle = 'linear-gradient(90deg, rgba(139, 92, 246, 0.18), rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.18))';
+        borderStyle = '2px solid #a855f7';
+        cardBoxShadow = '0 0 20px rgba(168, 85, 247, 0.3), inset 0 0 12px rgba(139, 92, 246, 0.08)';
+      } else if (rankPos === 1) {
+        medalColor = '#fbbf24'; // Gold
+        avatarSize = 60;
+        fontSizeTitle = '1.2rem';
+        fontSizeXp = '1.3rem';
+        bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.2)' : 'linear-gradient(90deg, rgba(251, 191, 36, 0.1), rgba(0,0,0,0.2))';
+        borderStyle = '1px solid #fbbf24';
+        cardBoxShadow = '0 0 15px rgba(251, 191, 36, 0.2)';
+      } else if (rankPos === 2) {
+        medalColor = '#94a3b8'; // Silver
+        avatarSize = 50;
+        fontSizeTitle = '1.1rem';
+        fontSizeXp = '1.2rem';
+        bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.15)' : 'linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(0,0,0,0.2))';
+        borderStyle = '1px solid #94a3b8';
+      } else if (rankPos === 3) {
+        medalColor = '#b45309'; // Bronze
+        avatarSize = 45;
+        fontSizeTitle = '1rem';
+        fontSizeXp = '1.1rem';
+        bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'linear-gradient(90deg, rgba(180, 83, 9, 0.1), rgba(0,0,0,0.2))';
+        borderStyle = '1px solid #b45309';
+      }
+
+      return (
+        <div key={student.uid} className="glass-panel" style={{
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.65rem 1rem',
+          background: bgStyle,
+          border: borderStyle,
+          boxShadow: cardBoxShadow,
+          borderRadius: '12px'
+        }}>
+          {/* Oscilador de Posição fixado no canto superior direito do card */}
+          <div style={{
+            position: 'absolute',
+            top: '6px',
+            right: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            zIndex: 2
+          }}>
+            {getArrow(student, rankPos)}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1, paddingRight: '0.5rem' }}>
+            <div style={{
+              width: '34px',
+              textAlign: 'center',
+              fontSize: rankPos <= 3 ? '1.2rem' : (isSeparatedUser ? '1.1rem' : '1rem'),
+              fontWeight: 'bold',
+              color: medalColor,
+              textShadow: isSeparatedUser ? '0 0 10px rgba(192, 132, 252, 0.5)' : 'none',
+              flexShrink: 0
+            }}>
+              {rankPos}º
+            </div>
+
+            <div style={{
+              padding: '2px',
+              borderRadius: '50%',
+              border: `2px solid ${medalColor}`,
+              boxShadow: isSeparatedUser ? '0 0 10px rgba(168, 85, 247, 0.5)' : (rankPos === 1 ? '0 0 10px rgba(251,191,36,0.5)' : 'none'),
+              flexShrink: 0
+            }}>
+              <RankingAvatar
+                student={student}
+                size={avatarSize}
+                rankPos={rankPos}
+                activeBubbleId={activeBubbleId}
+                equippedItems={rankingEquippedItems[student.uid] || (student.uid === userData?.uid ? equippedItems : [])}
+                showAvatars={showRankingAvatars}
+                onAvatarClick={() => {
+                  if (student.customStatusText) {
+                    setActiveBubbleId(student.uid);
+                    setTimeout(() => setActiveBubbleId(null), 3000);
+                  }
+                  setPublicProfileUser({ user: student, rankPos });
+                }}
+              />
+            </div>
+
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <h4 style={{
+                margin: 0,
+                fontSize: fontSizeTitle,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                color: isSeparatedUser ? '#e9d5ff' : (rankPos === 1 ? '#fbbf24' : 'var(--text-primary)')
+              }}>
+                {student.characterName ? (
+                  student.characterName
+                ) : (
+                  <>
+                    <span className="student-name-desktop">{student.name}</span>
+                    <span className="student-name-mobile">
+                      {student.name && student.name.length > 24 ? formatFirstAndLastName(student.name) : student.name}
+                    </span>
+                  </>
+                )}
+                {student.uid === userData?.uid && (
+                  <span style={{
+                    fontSize: '0.7rem',
+                    background: isSeparatedUser ? 'linear-gradient(135deg, #8b5cf6, #d946ef)' : 'var(--gold-primary)',
+                    color: isSeparatedUser ? '#ffffff' : 'var(--text-on-gold, #000000)',
+                    fontWeight: isSeparatedUser ? 'bold' : 'normal',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    boxShadow: isSeparatedUser ? '0 2px 8px rgba(139, 92, 246, 0.4)' : 'none',
+                    flexShrink: 0
+                  }}>
+                    {isSeparatedUser ? 'Sua Posição' : 'Você'}
+                  </span>
+                )}
+              </h4>
+              {student.characterName && (
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
+                  (<span className="student-name-desktop">{student.name}</span><span className="student-name-mobile">{student.name && student.name.length > 24 ? formatFirstAndLastName(student.name) : student.name}</span>)
+                </div>
+              )}
+              <div style={{ fontSize: '0.75rem', color: sRank.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+                {sRank.name} {student.classId && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', textShadow: 'none' }}>| {student.classId}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            textAlign: 'right',
+            flexShrink: 0,
+            paddingTop: '8px'
+          }}>
+            <div style={{ fontSize: fontSizeXp, fontWeight: 'bold', color: 'var(--gold-primary)', whiteSpace: 'nowrap' }}>
+              {student.xp || 0} XP
+            </div>
+          </div>
+        </div>
+      );
+    };
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {list.map((student, index) => {
-          const rankPos = index + 1;
-          const sRank = getRankForXp(student.xp || 0, student.classId);
+        {top10.map((student, index) => renderStudentCard(student, index + 1, false))}
 
-          let medalColor = 'var(--text-secondary)';
-          let bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.02)';
-          let borderStyle = student.uid === userData?.uid ? '1px solid var(--gold-primary)' : '1px solid transparent';
-          let avatarSize = 40;
-          let fontSizeTitle = '0.95rem';
-          let fontSizeXp = '1.1rem';
-
-          if (rankPos === 1) {
-            medalColor = '#fbbf24'; // Gold
-            avatarSize = 60;
-            fontSizeTitle = '1.2rem';
-            fontSizeXp = '1.3rem';
-            bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.2)' : 'linear-gradient(90deg, rgba(251, 191, 36, 0.1), rgba(0,0,0,0.2))';
-            borderStyle = '1px solid #fbbf24';
-          } else if (rankPos === 2) {
-            medalColor = '#94a3b8'; // Silver
-            avatarSize = 50;
-            fontSizeTitle = '1.1rem';
-            fontSizeXp = '1.2rem';
-            bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.15)' : 'linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(0,0,0,0.2))';
-            borderStyle = '1px solid #94a3b8';
-          } else if (rankPos === 3) {
-            medalColor = '#b45309'; // Bronze
-            avatarSize = 45;
-            fontSizeTitle = '1rem';
-            fontSizeXp = '1.1rem';
-            bgStyle = student.uid === userData?.uid ? 'rgba(251, 191, 36, 0.1)' : 'linear-gradient(90deg, rgba(180, 83, 9, 0.1), rgba(0,0,0,0.2))';
-            borderStyle = '1px solid #b45309';
-          }
-
-          return (
-            <div key={student.uid} className="glass-panel" style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 1rem',
-              background: bgStyle,
-              border: borderStyle,
-              boxShadow: rankPos === 1 ? '0 0 15px rgba(251, 191, 36, 0.2)' : 'none'
+        {showCurrentUserSeparated && currentUserStudent && (
+          <>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.75rem',
+              margin: '0.6rem 0 0.4rem 0',
+              opacity: 0.95
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div style={{ width: '30px', textAlign: 'center', fontSize: rankPos <= 3 ? '1.2rem' : '1rem', fontWeight: 'bold', color: medalColor }}>
-                  {rankPos}º
-                </div>
-
-                <div style={{ padding: '2px', borderRadius: '50%', border: `2px solid ${medalColor}`, boxShadow: rankPos === 1 ? '0 0 10px rgba(251,191,36,0.5)' : 'none' }}>
-                  <RankingAvatar
-                    student={student}
-                    size={avatarSize}
-                    rankPos={rankPos}
-                    activeBubbleId={activeBubbleId}
-                    equippedItems={rankingEquippedItems[student.uid] || []}
-                    showAvatars={showRankingAvatars}
-                    onAvatarClick={() => {
-                      if (student.customStatusText) {
-                        setActiveBubbleId(student.uid);
-                        setTimeout(() => setActiveBubbleId(null), 3000);
-                      }
-                      setPublicProfileUser({ user: student, rankPos });
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <h4 style={{ margin: 0, fontSize: fontSizeTitle, display: 'flex', alignItems: 'center', gap: '0.5rem', color: rankPos === 1 ? '#fbbf24' : 'var(--text-primary)' }}>
-                    {student.characterName ? (
-                      student.characterName
-                    ) : (
-                      <>
-                        <span className="student-name-desktop">{student.name}</span>
-                        <span className="student-name-mobile">
-                          {student.name && student.name.length > 24 ? formatFirstAndLastName(student.name) : student.name}
-                        </span>
-                      </>
-                    )}
-                    {student.uid === userData?.uid && <span style={{ fontSize: '0.7rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>}
-                  </h4>
-                  {student.characterName && (
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
-                      (<span className="student-name-desktop">{student.name}</span><span className="student-name-mobile">{student.name && student.name.length > 24 ? formatFirstAndLastName(student.name) : student.name}</span>)
-                    </div>
-                  )}
-                  <div style={{ fontSize: '0.75rem', color: sRank.color, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
-                    {sRank.name} {student.classId && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', textShadow: 'none' }}>| {student.classId}</span>}
-                  </div>
-                </div>
+              <div style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.4), transparent)' }} />
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                color: '#c084fc',
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                letterSpacing: '0.75px',
+                textTransform: 'uppercase',
+                padding: '3px 12px',
+                borderRadius: '12px',
+                background: 'rgba(139, 92, 246, 0.12)',
+                border: '1px solid rgba(168, 85, 247, 0.3)',
+                boxShadow: '0 0 10px rgba(168, 85, 247, 0.15)'
+              }}>
+                {currentUserRankPos > 11 && <span style={{ letterSpacing: '2px', opacity: 0.7 }}>•••</span>}
+                <span>Sua Posição no Ranking</span>
+                {currentUserRankPos > 11 && <span style={{ letterSpacing: '2px', opacity: 0.7 }}>•••</span>}
               </div>
-
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-                {getArrow(student)}
-              </div>
-
-              <div style={{ fontSize: fontSizeXp, fontWeight: 'bold', color: 'var(--gold-primary)' }}>
-                {student.xp || 0} XP
-              </div>
+              <div style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.4), transparent)' }} />
             </div>
-          );
-        })}
+            {renderStudentCard(currentUserStudent, currentUserRankPos, true)}
+          </>
+        )}
       </div>
     );
   };
@@ -3448,7 +3648,7 @@ export default function Dashboard() {
               </button>
             </div>
             <div style={{ padding: '2rem', flex: 1, overflowY: 'auto' }}>
-              {targetClassRanking ? renderRankingList(classStudents, 'class') : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
+              {targetClassRanking ? renderRankingList(fullClassStudents, 'class') : <p style={{ color: 'var(--text-secondary)' }}>Você precisa estar em uma turma para ver o ranking dela.</p>}
             </div>
           </div>
         )}
@@ -3472,7 +3672,7 @@ export default function Dashboard() {
               </button>
             </div>
             <div style={{ padding: '2rem', flex: 1, overflowY: 'auto' }}>
-              {renderRankingList(top10General, 'general')}
+              {renderRankingList(normalizedAllStudents, 'general')}
             </div>
           </div>
         )}
