@@ -46,9 +46,30 @@ BEGIN
   v_data := COALESCE(v_item.data, '{}'::jsonb);
   v_tenant := v_item.tenant_id;
 
-  -- Item oculto: transmutado OU material (type 'other')
-  IF NOT (COALESCE((v_data->>'isTransmuted')::boolean, false) OR (v_data->>'type') = 'other') THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'item não é oculto (transmutável/material)');
+  -- Item oculto: transmutado OU material (type 'other') OU efeitos de refino do ferreiro (break_item / fuse_item)
+  IF NOT (
+    COALESCE((v_data->>'isTransmuted')::boolean, false)
+    OR (v_data->>'type') = 'other'
+    OR (v_data->>'gameEffect') IN ('break_item', 'fuse_item')
+  ) THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'item não é oculto (transmutável/material/ferreiro)');
+  END IF;
+
+  -- Se for empilhável (consumable ou other), tenta somar em pilha existente com espaço (< 99)
+  IF (v_data->>'type') IN ('consumable', 'other') THEN
+    UPDATE user_items
+    SET data = jsonb_set(data, '{quantity}', to_jsonb(COALESCE((data->>'quantity')::int, 1) + 1))
+    WHERE id = (
+      SELECT id FROM user_items
+      WHERE student_id = v_uid
+        AND item_id = p_item_id
+        AND equipped = false
+        AND COALESCE((data->>'quantity')::int, 1) < 99
+      LIMIT 1
+    );
+    IF FOUND THEN
+      RETURN jsonb_build_object('ok', true, 'itemId', p_item_id, 'stacked', true);
+    END IF;
   END IF;
 
   INSERT INTO user_items (student_id, item_id, equipped, data, tenant_id)
@@ -82,7 +103,15 @@ BEGIN
       'buffDurationDays', COALESCE((v_data->>'buffDurationDays')::int, 7),
       'backColor', COALESCE(v_data->>'backColor', ''),
       'damageEffect', COALESCE(v_data->>'damageEffect', 'none'),
-      'forgeConfig', v_data->'forgeConfig'
+      'forgeConfig', v_data->'forgeConfig',
+      'breakTargetItemId', v_data->>'breakTargetItemId',
+      'breakMinQty', COALESCE((v_data->>'breakMinQty')::int, 1),
+      'breakMaxQty', COALESCE((v_data->>'breakMaxQty')::int, 1),
+      'breakCost', COALESCE((v_data->>'breakCost')::int, 0),
+      'fuseTargetItemId', v_data->>'fuseTargetItemId',
+      'fuseRequiredQty', COALESCE((v_data->>'fuseRequiredQty')::int, 50),
+      'fuseResultQty', COALESCE((v_data->>'fuseResultQty')::int, 1),
+      'fuseCost', COALESCE((v_data->>'fuseCost')::int, 0)
     ),
     v_tenant
   );

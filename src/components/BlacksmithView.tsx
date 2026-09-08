@@ -59,6 +59,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const [useScroll, setUseScroll] = useState(false);
   const [availableScrolls, setAvailableScrolls] = useState<AvailableScroll[]>([]);
   const [selectedScrollDocId, setSelectedScrollDocId] = useState<string | null>(null);
+  const [inventoryFilter, setInventoryFilter] = useState<'all' | 'equipment' | 'materials'>('all');
+  const [breakQty, setBreakQty] = useState<number>(1);
+  const [fuseBatches, setFuseBatches] = useState<number>(1);
   
   // Transmute State
   const [selectedTransmuteItem, setSelectedTransmuteItem] = useState<any | null>(null);
@@ -71,11 +74,13 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const [sketchfabApi, setSketchfabApi] = useState<any>(null);
   const [showBlacksmith, setShowBlacksmith] = useState(true);
   const [isForging, setIsForging] = useState(false);
+  const isForgingRef = useRef(false);
   const [forgeSounds, setForgeSounds] = useState<ForgeSoundsConfig>({});
 
   // ---- Música de fundo (loop) com fade ----
   const bgAudioRef = useRef<HTMLAudioElement | null>(null);
   const bgVolumeRef = useRef(0.5);
+  const anvilAudioRef = useRef<HTMLAudioElement | null>(null);
   const anvilTimerRef = useRef<any>(null);
   const bgFadeRafRef = useRef<number | null>(null);
 
@@ -133,15 +138,30 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     a.currentTime = 0;
   };
 
-  /** Toca o som do martelo batendo na bigorna repetidamente durante a forja. */
+  /** Toca o som do martelo na bigorna durante o trabalho do ferreiro. */
   const startAnvilHits = (anvilUrl?: string) => {
+    stopAnvilHits();
     if (!anvilUrl) return;
-    const hit = () => { playSound(anvilUrl, 0.9); };
-    hit();
-    anvilTimerRef.current = setInterval(() => { if (!isForging) { clearInterval(anvilTimerRef.current); anvilTimerRef.current = null; return; } hit(); }, 480);
+    try {
+      const a = new Audio(resolveAudioUrl(anvilUrl));
+      a.volume = 0.9;
+      anvilAudioRef.current = a;
+      a.play().catch(() => {});
+    } catch (_) {}
   };
+
   const stopAnvilHits = () => {
-    if (anvilTimerRef.current) { clearInterval(anvilTimerRef.current); anvilTimerRef.current = null; }
+    if (anvilTimerRef.current) {
+      clearInterval(anvilTimerRef.current);
+      anvilTimerRef.current = null;
+    }
+    if (anvilAudioRef.current) {
+      try {
+        anvilAudioRef.current.pause();
+        anvilAudioRef.current.currentTime = 0;
+      } catch (_) {}
+      anvilAudioRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -253,7 +273,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
     // Catálogo de materiais/itens (nome/ícone/patente) — mesmo os que o jogador ainda não possui
     try {
-      let catQ = supabase.from('store_items').select('id, data');
+      let catQ = supabase.from('store_items').select('id, name, image_url, rarity, data');
       if (tenantId) catQ = catQ.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
       const { data: catSnap } = await catQ;
       const catMap: Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string }> = {};
@@ -261,10 +281,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         const d = (s.data || {}) as any;
         catMap[s.id] = {
           id: s.id,
-          title: d.title || 'Item',
-          imageUrl: d.imageUrl || '',
+          title: d.title || s.name || 'Item',
+          imageUrl: d.imageUrl || s.image_url || '',
           minRankRequired: d.minRankRequired,
-          rarity: d.rarity
+          rarity: d.rarity || s.rarity || 'common'
         };
       });
       setMaterialCatalog(catMap);
@@ -291,6 +311,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
         const storeItemData = storeDataMap[row.item_id] || {};
         const isScroll = itemData.gameEffect === 'blacksmith_scroll' || storeItemData.gameEffect === 'blacksmith_scroll';
+        const gameEffect = itemData.gameEffect || storeItemData.gameEffect;
+        const isBreakMaterial = gameEffect === 'break_item';
+        const isFuseMaterial = gameEffect === 'fuse_item';
 
         if (isScroll) {
           const rawBonus = itemData.scrollChanceBonus ?? storeItemData.scrollChanceBonus;
@@ -304,6 +327,27 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             bonus,
             quantity: qty
           });
+        } else if (isBreakMaterial || isFuseMaterial) {
+          parsedItems.push({
+            docId: row.id,
+            itemId: row.item_id,
+            ...itemData,
+            itemTitle: itemData.itemTitle || storeItemData.title || (isBreakMaterial ? 'Material Bruto' : 'Fragmento'),
+            itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '',
+            itemType: itemData.itemType || storeItemData.type || 'consumable',
+            rarity: itemData.rarity || storeItemData.rarity || 'common',
+            quantity: itemData.quantity || 1,
+            gameEffect,
+            breakTargetItemId: itemData.breakTargetItemId || storeItemData.breakTargetItemId,
+            breakMinQty: itemData.breakMinQty ?? storeItemData.breakMinQty ?? 1,
+            breakMaxQty: itemData.breakMaxQty ?? storeItemData.breakMaxQty ?? 1,
+            breakCost: itemData.breakCost ?? storeItemData.breakCost ?? 0,
+            fuseTargetItemId: itemData.fuseTargetItemId || storeItemData.fuseTargetItemId,
+            fuseRequiredQty: itemData.fuseRequiredQty ?? storeItemData.fuseRequiredQty ?? 50,
+            fuseResultQty: itemData.fuseResultQty ?? storeItemData.fuseResultQty ?? 1,
+            fuseCost: itemData.fuseCost ?? storeItemData.fuseCost ?? 0,
+          });
+          consumables.push({ docId: row.id, itemId: row.item_id, quantity: itemData.quantity || 1, itemTitle: itemData.itemTitle || storeItemData.title, itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '' });
         } else if (itemData.itemType === 'equippable') {
           // Autoridade da loja para flags e configurações de transmutação/forja
           const isTransmutable = storeItemData.isTransmutable !== undefined ? storeItemData.isTransmutable : itemData.isTransmutable;
@@ -328,7 +372,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             forgeLevel: itemData.forgeLevel || 0
           });
         } else if (itemData.itemType === 'consumable' || itemData.itemType === 'other') {
-          consumables.push({ docId: row.id, itemId: row.item_id, quantity: itemData.quantity || 1, itemTitle: itemData.itemTitle, itemImageUrl: itemData.itemImageUrl || '' });
+          consumables.push({ docId: row.id, itemId: row.item_id, quantity: itemData.quantity || 1, itemTitle: itemData.itemTitle || storeItemData.title, itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '' });
         }
       }
     }
@@ -398,6 +442,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     if (!await showConfirm(confirmMsg)) return;
 
     setIsForging(true);
+    isForgingRef.current = true;
     pauseTabMusic(600);
     startAnvilHits(forgeSounds.forgeAnvilSoundUrl);
     if (sketchfabApi) sketchfabApi.play();
@@ -419,6 +464,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     stopAnvilHits();
     if (sketchfabApi) sketchfabApi.pause();
     setIsForging(false);
+    isForgingRef.current = false;
 
     const { data, error } = rpcRes;
     if (error || !data?.ok) {
@@ -502,11 +548,310 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     fetchItems();
     onSuccess(data.coins);
   };
+
+  const handleBreakMaterial = async () => {
+    if (!selectedForgeItem || isForging) return;
+    const totalOwned = selectedForgeItem.quantity || 1;
+    const qtyToBreak = Math.max(1, Math.min(totalOwned, breakQty));
+    const unitCost = selectedForgeItem.breakCost ?? 0;
+    const totalCost = qtyToBreak * unitCost;
+
+    if (!isStaff && (userData.coins || 0) < totalCost) {
+      showToast(`Você precisa de ${totalCost} moedas para quebrar ${qtyToBreak}x este material.`, 'error');
+      return;
+    }
+
+    const targetItemId = selectedForgeItem.breakTargetItemId;
+    if (!targetItemId) {
+      showToast('Nenhum item/fragmento de destino configurado para este material.', 'error');
+      return;
+    }
+
+    const targetInfo = materialCatalog[targetItemId];
+    const targetTitle = targetInfo?.title || 'Fragmentos';
+
+    const confirmed = await showConfirm(
+      `Deseja pagar ${totalCost} moedas para quebrar ${qtyToBreak}x "${selectedForgeItem.itemTitle}" no Ferreiro?`
+    );
+    if (!confirmed) return;
+
+    setIsForging(true);
+    isForgingRef.current = true;
+    pauseTabMusic(600);
+    startAnvilHits(forgeSounds.forgeAnvilSoundUrl);
+    if (sketchfabApi) sketchfabApi.play();
+
+    try {
+      const minQ = selectedForgeItem.breakMinQty ?? 1;
+      const maxQ = Math.max(minQ, selectedForgeItem.breakMaxQty ?? minQ);
+      let totalYield = 0;
+      for (let i = 0; i < qtyToBreak; i++) {
+        const roll = Math.floor(Math.random() * (maxQ - minQ + 1)) + minQ;
+        totalYield += roll;
+      }
+
+      const dbPromise = (async () => {
+        // 1. Deduzir moedas
+        let newCoins = userData.coins || 0;
+        if (!isStaff && totalCost > 0) {
+          newCoins = Math.max(0, newCoins - totalCost);
+          await supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid);
+          userData.coins = newCoins;
+        }
+
+        // 2. Consumir material bruto
+        if (totalOwned <= qtyToBreak) {
+          await supabase.from('user_items').delete().eq('id', selectedForgeItem.docId);
+          setSelectedForgeItem(null);
+        } else {
+          const remaining = totalOwned - qtyToBreak;
+          const { data: curRow } = await supabase.from('user_items').select('data').eq('id', selectedForgeItem.docId).maybeSingle();
+          const curData = (curRow?.data || {}) as any;
+          await supabase.from('user_items').update({
+            data: { ...curData, quantity: remaining }
+          }).eq('id', selectedForgeItem.docId);
+        }
+
+        // 3. Adicionar fragmentos
+        const { data: existingSnap } = await supabase
+          .from('user_items')
+          .select('id, data')
+          .eq('student_id', userData.uid)
+          .eq('item_id', targetItemId);
+
+        const { data: targetStoreRow } = await supabase
+          .from('store_items')
+          .select('*')
+          .eq('id', targetItemId)
+          .maybeSingle();
+
+        const storeTargetData = (targetStoreRow?.data || {}) as any;
+        const baseItemPayload = {
+          ...storeTargetData,
+          itemTitle: storeTargetData.title || targetStoreRow?.name || targetTitle,
+          itemImageUrl: storeTargetData.imageUrl || targetStoreRow?.image_url || targetInfo?.imageUrl || '',
+          itemType: storeTargetData.type || targetStoreRow?.type || 'consumable',
+          gameEffect: storeTargetData.gameEffect || 'none',
+          rarity: storeTargetData.rarity || targetStoreRow?.rarity || targetInfo?.rarity || 'common',
+        };
+
+        let remainingToAdd = totalYield;
+        for (const row of (existingSnap || [])) {
+          if (remainingToAdd <= 0) break;
+          const d = (row.data || {}) as any;
+          if (d.forSale) continue;
+          const curQ = d.quantity || 1;
+          if (curQ < 99) {
+            const space = 99 - curQ;
+            const adding = Math.min(space, remainingToAdd);
+            await supabase.from('user_items').update({
+              data: { ...d, quantity: curQ + adding }
+            }).eq('id', row.id);
+            remainingToAdd -= adding;
+          }
+        }
+
+        while (remainingToAdd > 0) {
+          const stackQty = Math.min(99, remainingToAdd);
+          await supabase.from('user_items').insert({
+            student_id: userData.uid,
+            item_id: targetItemId,
+            equipped: false,
+            tenant_id: tenantId || null,
+            data: {
+              ...baseItemPayload,
+              quantity: stackQty
+            }
+          });
+          remainingToAdd -= stackQty;
+        }
+
+        return { newCoins };
+      })();
+
+      // Aguarda os 7 segundos exatamente como na forja de itens para casar áudio e animação
+      const [dbResult] = await Promise.all([
+        dbPromise,
+        new Promise(r => setTimeout(r, 7000))
+      ]);
+
+      stopAnvilHits();
+      if (sketchfabApi) sketchfabApi.pause();
+      setIsForging(false);
+      isForgingRef.current = false;
+
+      playSound(forgeSounds.successSoundUrl, 0.9);
+      showToast(`⛏️ Sucesso! Você quebrou ${qtyToBreak}x ${selectedForgeItem.itemTitle} e obteve ${totalYield}x ${targetTitle}!`, 'success');
+      playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
+      onSuccess(dbResult.newCoins);
+      await fetchItems();
+    } catch (err: any) {
+      console.error('Erro ao quebrar material:', err);
+      stopAnvilHits();
+      if (sketchfabApi) sketchfabApi.pause();
+      setIsForging(false);
+      isForgingRef.current = false;
+      playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
+      showToast('Ocorreu um erro ao quebrar o material no ferreiro.', 'error');
+    }
+  };
+
+  const handleFuseMaterial = async () => {
+    if (!selectedForgeItem || isForging) return;
+    const totalOwned = selectedForgeItem.quantity || 1;
+    const reqQty = selectedForgeItem.fuseRequiredQty ?? 50;
+    const resQty = selectedForgeItem.fuseResultQty ?? 1;
+    const unitCost = selectedForgeItem.fuseCost ?? 0;
+
+    const maxBatches = Math.floor(totalOwned / reqQty);
+    if (maxBatches < 1) {
+      showToast(`Você precisa de pelo menos ${reqQty}x deste fragmento para fundir.`, 'error');
+      return;
+    }
+
+    const batchesToFuse = Math.max(1, Math.min(maxBatches, fuseBatches));
+    const totalFragmentsConsumed = batchesToFuse * reqQty;
+    const totalYield = batchesToFuse * resQty;
+    const totalCost = batchesToFuse * unitCost;
+
+    if (!isStaff && (userData.coins || 0) < totalCost) {
+      showToast(`Você precisa de ${totalCost} moedas para fundir ${batchesToFuse} lote(s).`, 'error');
+      return;
+    }
+
+    const targetItemId = selectedForgeItem.fuseTargetItemId;
+    if (!targetItemId) {
+      showToast('Nenhum lingote/item de destino configurado para este fragmento.', 'error');
+      return;
+    }
+
+    const targetInfo = materialCatalog[targetItemId];
+    const targetTitle = targetInfo?.title || 'Lingote';
+
+    const confirmed = await showConfirm(
+      `Deseja pagar ${totalCost} moedas e consumir ${totalFragmentsConsumed}x "${selectedForgeItem.itemTitle}" para forjar ${totalYield}x "${targetTitle}"?`
+    );
+    if (!confirmed) return;
+
+    setIsForging(true);
+    isForgingRef.current = true;
+    pauseTabMusic(600);
+    startAnvilHits(forgeSounds.forgeAnvilSoundUrl);
+    if (sketchfabApi) sketchfabApi.play();
+
+    try {
+      const dbPromise = (async () => {
+        // 1. Deduzir moedas
+        let newCoins = userData.coins || 0;
+        if (!isStaff && totalCost > 0) {
+          newCoins = Math.max(0, newCoins - totalCost);
+          await supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid);
+          userData.coins = newCoins;
+        }
+
+        // 2. Consumir fragmentos
+        if (totalOwned <= totalFragmentsConsumed) {
+          await supabase.from('user_items').delete().eq('id', selectedForgeItem.docId);
+          setSelectedForgeItem(null);
+        } else {
+          const remaining = totalOwned - totalFragmentsConsumed;
+          const { data: curRow } = await supabase.from('user_items').select('data').eq('id', selectedForgeItem.docId).maybeSingle();
+          const curData = (curRow?.data || {}) as any;
+          await supabase.from('user_items').update({
+            data: { ...curData, quantity: remaining }
+          }).eq('id', selectedForgeItem.docId);
+        }
+
+        // 3. Adicionar lingotes
+        const { data: existingSnap } = await supabase
+          .from('user_items')
+          .select('id, data')
+          .eq('student_id', userData.uid)
+          .eq('item_id', targetItemId);
+
+        const { data: targetStoreRow } = await supabase
+          .from('store_items')
+          .select('*')
+          .eq('id', targetItemId)
+          .maybeSingle();
+
+        const storeTargetData = (targetStoreRow?.data || {}) as any;
+        const baseItemPayload = {
+          ...storeTargetData,
+          itemTitle: storeTargetData.title || targetStoreRow?.name || targetTitle,
+          itemImageUrl: storeTargetData.imageUrl || targetStoreRow?.image_url || targetInfo?.imageUrl || '',
+          itemType: storeTargetData.type || targetStoreRow?.type || 'other',
+          gameEffect: storeTargetData.gameEffect || 'none',
+          rarity: storeTargetData.rarity || targetStoreRow?.rarity || targetInfo?.rarity || 'common',
+        };
+
+        let remainingToAdd = totalYield;
+        for (const row of (existingSnap || [])) {
+          if (remainingToAdd <= 0) break;
+          const d = (row.data || {}) as any;
+          if (d.forSale) continue;
+          const curQ = d.quantity || 1;
+          if (curQ < 99) {
+            const space = 99 - curQ;
+            const adding = Math.min(space, remainingToAdd);
+            await supabase.from('user_items').update({
+              data: { ...d, quantity: curQ + adding }
+            }).eq('id', row.id);
+            remainingToAdd -= adding;
+          }
+        }
+
+        while (remainingToAdd > 0) {
+          const stackQty = Math.min(99, remainingToAdd);
+          await supabase.from('user_items').insert({
+            student_id: userData.uid,
+            item_id: targetItemId,
+            equipped: false,
+            tenant_id: tenantId || null,
+            data: {
+              ...baseItemPayload,
+              quantity: stackQty
+            }
+          });
+          remainingToAdd -= stackQty;
+        }
+
+        return { newCoins };
+      })();
+
+      // Aguarda os 7 segundos exatamente como na forja de itens para casar áudio e animação
+      const [dbResult] = await Promise.all([
+        dbPromise,
+        new Promise(r => setTimeout(r, 7000))
+      ]);
+
+      stopAnvilHits();
+      if (sketchfabApi) sketchfabApi.pause();
+      setIsForging(false);
+      isForgingRef.current = false;
+
+      playSound(forgeSounds.successSoundUrl, 0.9);
+      showToast(`🔥 Fundição concluída! Você forjou ${totalYield}x ${targetTitle}!`, 'success');
+      playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
+      onSuccess(dbResult.newCoins);
+      await fetchItems();
+    } catch (err: any) {
+      console.error('Erro ao fundir material:', err);
+      stopAnvilHits();
+      if (sketchfabApi) sketchfabApi.pause();
+      setIsForging(false);
+      isForgingRef.current = false;
+      playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
+      showToast('Ocorreu um erro ao fundir os fragmentos no ferreiro.', 'error');
+    }
+  };
+
   const forgeableItems = items.filter(item => {
-    // items are spread: item.itemType === 'equippable', item.forgeLevel, etc.
-    const isEquip = item.itemType === 'equippable';
-    const notMaxed = (item.forgeLevel || 0) < 9;
-    return isEquip && notMaxed;
+    const isEquip = item.itemType === 'equippable' && (item.forgeLevel || 0) < 9;
+    const isMaterial = item.gameEffect === 'break_item' || item.gameEffect === 'fuse_item';
+    if (inventoryFilter === 'equipment') return isEquip;
+    if (inventoryFilter === 'materials') return isMaterial;
+    return isEquip || isMaterial;
   });
 
   // Transmutação: apenas itens equipáveis que estão no +9 E possuem o checkbox "Item Transmutável"
@@ -597,8 +942,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
             {/* Inventory List */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 1rem', minHeight: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <h3 style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.95rem' }}>Seus Equipamentos</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <h3 style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.95rem' }}>
+                  {activeTab === 'forge' ? 'Inventário da Forja' : 'Seus Equipamentos'}
+                </h3>
                 {activeTab === 'forge' && (
                   <button
                     type="button"
@@ -631,6 +978,47 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                   </button>
                 )}
               </div>
+
+              {activeTab === 'forge' && (
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '0.75rem', background: 'rgba(0,0,0,0.3)', padding: '3px', borderRadius: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setInventoryFilter('all')}
+                    style={{
+                      flex: 1, padding: '4px 6px', fontSize: '0.75rem', fontWeight: inventoryFilter === 'all' ? 'bold' : 'normal',
+                      background: inventoryFilter === 'all' ? 'var(--gold-primary)' : 'transparent',
+                      color: inventoryFilter === 'all' ? '#000' : '#aaa',
+                      border: 'none', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.15s'
+                    }}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInventoryFilter('equipment')}
+                    style={{
+                      flex: 1, padding: '4px 6px', fontSize: '0.75rem', fontWeight: inventoryFilter === 'equipment' ? 'bold' : 'normal',
+                      background: inventoryFilter === 'equipment' ? 'var(--gold-primary)' : 'transparent',
+                      color: inventoryFilter === 'equipment' ? '#000' : '#aaa',
+                      border: 'none', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.15s'
+                    }}
+                  >
+                    Equipamentos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInventoryFilter('materials')}
+                    style={{
+                      flex: 1, padding: '4px 6px', fontSize: '0.75rem', fontWeight: inventoryFilter === 'materials' ? 'bold' : 'normal',
+                      background: inventoryFilter === 'materials' ? 'var(--gold-primary)' : 'transparent',
+                      color: inventoryFilter === 'materials' ? '#000' : '#aaa',
+                      border: 'none', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.15s'
+                    }}
+                  >
+                    Materiais
+                  </button>
+                </div>
+              )}
               
               {loading ? (
                 <p style={{ color: 'white', textAlign: 'center' }}>Carregando...</p>
@@ -641,7 +1029,15 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                     return (
                       <div 
                         key={idx}
-                        onClick={() => activeTab === 'forge' ? setSelectedForgeItem(item) : setSelectedTransmuteItem(item)}
+                        onClick={() => {
+                          if (activeTab === 'forge') {
+                            setSelectedForgeItem(item);
+                            setBreakQty(1);
+                            setFuseBatches(1);
+                          } else {
+                            setSelectedTransmuteItem(item);
+                          }
+                        }}
                         onMouseEnter={() => setHoveredTooltipItem(item)}
                         onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
                         onMouseLeave={() => setHoveredTooltipItem(null)}
@@ -658,6 +1054,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                             +{item.forgeLevel}
                           </div>
                         )}
+                        {item.gameEffect === 'break_item' && (
+                          <div style={{ position: 'absolute', top: '2px', left: '2px', fontSize: '0.65rem' }} title="Material Bruto (Triturável)">
+                            ⛏️
+                          </div>
+                        )}
+                        {item.gameEffect === 'fuse_item' && (
+                          <div style={{ position: 'absolute', top: '2px', left: '2px', fontSize: '0.65rem' }} title="Fragmento (Fundível)">
+                            🔥
+                          </div>
+                        )}
                         {activeTab === 'transmute' && (
                           <div style={{ position: 'absolute', top: '2px', left: '2px', fontSize: '0.65rem' }}>
                             ✨
@@ -668,13 +1074,18 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                             Eqp
                           </div>
                         )}
+                        {item.quantity && item.quantity > 1 && (
+                          <div style={{ position: 'absolute', bottom: '2px', right: '2px', fontSize: '0.65rem', color: '#fff', fontWeight: 'bold', background: 'rgba(0,0,0,0.85)', padding: '1px 4px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.15)' }}>
+                            x{item.quantity}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
                   
                   {(activeTab === 'forge' ? forgeableItems : transmutableItems).length === 0 && (
                     <p style={{ gridColumn: '1 / -1', color: 'gray', textAlign: 'center', padding: '2rem 0', fontSize: '0.85rem' }}>
-                      {activeTab === 'forge' ? 'Nenhum equipamento disponível para forjar.' : 'Nenhum equipamento +9 transmutável no inventário.'}
+                      {activeTab === 'forge' ? 'Nenhum equipamento ou material disponível.' : 'Nenhum equipamento +9 transmutável no inventário.'}
                     </p>
                   )}
                 </div>
@@ -688,12 +1099,362 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             
             {activeTab === 'forge' && (
               <>
-                <h3 style={{ color: 'var(--gold-primary)', fontSize: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>Bigorna de Forja</h3>
+                <h3 style={{ color: 'var(--gold-primary)', fontSize: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
+                  {selectedForgeItem?.gameEffect === 'break_item'
+                    ? 'Bancada de Quebra & Refino'
+                    : selectedForgeItem?.gameEffect === 'fuse_item'
+                    ? 'Crisol de Fundição de Materiais'
+                    : 'Bigorna de Forja'}
+                </h3>
                 
                 {!selectedForgeItem ? (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'var(--text-secondary)' }}>
                     <Hammer size={64} style={{ opacity: 0.2, marginBottom: '1rem' }} />
-                    <p>Selecione um equipamento no inventário à esquerda para forjá-lo.</p>
+                    <p>Selecione um equipamento ou material no inventário à esquerda.</p>
+                  </div>
+                ) : selectedForgeItem.gameEffect === 'break_item' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {(() => {
+                      const totalOwned = selectedForgeItem.quantity || 1;
+                      const minQ = selectedForgeItem.breakMinQty ?? 1;
+                      const maxQ = Math.max(minQ, selectedForgeItem.breakMaxQty ?? minQ);
+                      const unitCost = selectedForgeItem.breakCost ?? 0;
+                      const currentBreakQty = Math.max(1, Math.min(totalOwned, breakQty));
+                      const totalCost = currentBreakQty * unitCost;
+                      const targetItemId = selectedForgeItem.breakTargetItemId;
+                      const targetInfo = targetItemId ? materialCatalog[targetItemId] : null;
+                      const targetTitle = targetInfo?.title || 'Fragmento';
+                      const targetImg = targetInfo?.imageUrl || '';
+                      const canAfford = isStaff || (userData.coins || 0) >= totalCost;
+
+                      return (
+                        <>
+                          {/* Header Box com Material Bruto -> Seta -> Fragmentos */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: '1rem', background: 'rgba(0,0,0,0.35)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(234,88,12,0.3)', flexWrap: 'wrap' }}>
+                            {/* Origem */}
+                            <div 
+                              onMouseEnter={() => setHoveredTooltipItem(selectedForgeItem)}
+                              onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                              onMouseLeave={() => setHoveredTooltipItem(null)}
+                              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                            >
+                              <div style={{ width: '84px', height: '84px', background: 'rgba(0,0,0,0.7)', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px solid rgba(234,88,12,0.6)', position: 'relative' }}>
+                                {selectedForgeItem.itemImageUrl ? <CachedImage src={selectedForgeItem.itemImageUrl} alt={selectedForgeItem.itemTitle} style={{ width: '64px', height: '64px', objectFit: 'contain' }} /> : <Hammer size={40} color="#f97316" />}
+                                <div style={{ position: 'absolute', bottom: '4px', right: '4px', fontSize: '0.7rem', color: '#fff', fontWeight: 'bold', background: 'rgba(0,0,0,0.85)', padding: '1px 5px', borderRadius: '4px' }}>
+                                  x{totalOwned}
+                                </div>
+                              </div>
+                              <span style={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {selectedForgeItem.itemTitle}
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: '#f97316', background: 'rgba(234,88,12,0.15)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(234,88,12,0.3)' }}>
+                                Material Bruto
+                              </span>
+                            </div>
+
+                            {/* Seta e Rendimento */}
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                              <ArrowRight size={32} color="#f97316" />
+                              <span style={{ fontSize: '0.8rem', color: '#f97316', fontWeight: 'bold', background: 'rgba(234,88,12,0.12)', padding: '3px 8px', borderRadius: '6px' }}>
+                                {minQ === maxQ ? `${minQ}x un.` : `${minQ} a ${maxQ}x un.`}
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: '#aaa' }}>
+                                {unitCost > 0 ? `${unitCost} moedas / un.` : 'Grátis'}
+                              </span>
+                            </div>
+
+                            {/* Destino */}
+                            <div 
+                              onMouseEnter={() => targetInfo && setHoveredTooltipItem(targetInfo)}
+                              onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                              onMouseLeave={() => setHoveredTooltipItem(null)}
+                              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', cursor: targetInfo ? 'pointer' : 'default' }}
+                            >
+                              <div style={{ width: '84px', height: '84px', background: 'rgba(0,0,0,0.7)', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px solid rgba(251,191,36,0.6)', position: 'relative' }}>
+                                {targetImg ? <CachedImage src={targetImg} alt={targetTitle} style={{ width: '64px', height: '64px', objectFit: 'contain' }} /> : <Sparkles size={40} color="#fbbf24" />}
+                              </div>
+                              <span style={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {targetTitle}
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: '#fbbf24', background: 'rgba(251,191,36,0.15)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(251,191,36,0.3)' }}>
+                                Fragmento
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Seletor de Quantidade */}
+                          <div style={{ background: 'rgba(0,0,0,0.4)', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Quantidade a quebrar:</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setBreakQty(prev => Math.max(1, prev - 1))}
+                                  disabled={currentBreakQty <= 1 || isForging}
+                                  style={{ width: '32px', height: '32px', borderRadius: '6px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: currentBreakQty <= 1 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={totalOwned}
+                                  value={currentBreakQty}
+                                  onChange={e => setBreakQty(Math.max(1, Math.min(totalOwned, Number(e.target.value) || 1)))}
+                                  disabled={isForging}
+                                  style={{ width: '60px', textAlign: 'center', padding: '0.4rem', borderRadius: '6px', background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', color: 'white', fontWeight: 'bold' }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setBreakQty(prev => Math.min(totalOwned, prev + 1))}
+                                  disabled={currentBreakQty >= totalOwned || isForging}
+                                  style={{ width: '32px', height: '32px', borderRadius: '6px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: currentBreakQty >= totalOwned ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                                >
+                                  +
+                                </button>
+                                {totalOwned > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setBreakQty(totalOwned)}
+                                    disabled={isForging}
+                                    style={{ padding: '0.35rem 0.65rem', borderRadius: '6px', background: 'rgba(234,88,12,0.2)', color: '#f97316', border: '1px solid rgba(234,88,12,0.4)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                  >
+                                    Máx ({totalOwned})
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Resumo */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', background: 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '8px' }}>
+                              <div>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Consumo:</div>
+                                <div style={{ color: 'white', fontWeight: 'bold', fontSize: '0.95rem' }}>{currentBreakQty}x {selectedForgeItem.itemTitle}</div>
+                              </div>
+                              <div>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Rendimento Estimado:</div>
+                                <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                                  {currentBreakQty * minQ === currentBreakQty * maxQ ? `${currentBreakQty * minQ}x` : `${currentBreakQty * minQ} a ${currentBreakQty * maxQ}x`}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Taxa do Ferreiro:</div>
+                                <div style={{ color: canAfford ? 'var(--gold-primary)' : '#ef4444', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 16, height: 16, objectFit: 'contain' }} /> : <Coins size={15} color="var(--gold-primary)" />}
+                                  {totalCost} moedas
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Botão de Quebrar */}
+                          <button
+                            onClick={handleBreakMaterial}
+                            disabled={!canAfford || isForging || !targetItemId}
+                            style={{
+                              width: '100%',
+                              padding: '1.2rem',
+                              background: (!canAfford || isForging || !targetItemId) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #ea580c, #c2410c)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '12px',
+                              fontSize: '1.15rem',
+                              fontWeight: 'bold',
+                              cursor: (!canAfford || isForging || !targetItemId) ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              gap: '0.5rem',
+                              boxShadow: '0 4px 15px rgba(234,88,12,0.35)',
+                              opacity: (!canAfford || isForging || !targetItemId) ? 0.5 : 1
+                            }}
+                          >
+                            <Hammer size={22} className={isForging ? "animate-bounce" : ""} />
+                            {isForging ? 'TRITURANDO MATERIAL...' : (!targetItemId ? 'Destino não configurado' : !canAfford ? 'Moedas Insuficientes' : `TRITURAR (${totalCost} Moedas)`)}
+                          </button>
+                        </>
+                      );
+                    })()}
+                  </div>
+                ) : selectedForgeItem.gameEffect === 'fuse_item' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {(() => {
+                      const totalOwned = selectedForgeItem.quantity || 1;
+                      const reqQty = selectedForgeItem.fuseRequiredQty ?? 50;
+                      const resQty = selectedForgeItem.fuseResultQty ?? 1;
+                      const unitCost = selectedForgeItem.fuseCost ?? 0;
+                      const maxBatches = Math.floor(totalOwned / reqQty);
+                      const currentBatches = Math.max(1, Math.min(Math.max(1, maxBatches), fuseBatches));
+                      const totalFragmentsConsumed = currentBatches * reqQty;
+                      const totalYield = currentBatches * resQty;
+                      const totalCost = currentBatches * unitCost;
+                      const targetItemId = selectedForgeItem.fuseTargetItemId;
+                      const targetInfo = targetItemId ? materialCatalog[targetItemId] : null;
+                      const targetTitle = targetInfo?.title || 'Lingote';
+                      const targetImg = targetInfo?.imageUrl || '';
+                      const canAfford = isStaff || (userData.coins || 0) >= totalCost;
+                      const hasEnoughFragments = totalOwned >= reqQty;
+                      const progressPct = Math.min(100, Math.round((totalOwned / reqQty) * 100));
+
+                      return (
+                        <>
+                          {/* Header Box com Fragmentos -> Seta -> Lingote */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: '1rem', background: 'rgba(0,0,0,0.35)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(59,130,246,0.3)', flexWrap: 'wrap' }}>
+                            {/* Origem */}
+                            <div 
+                              onMouseEnter={() => setHoveredTooltipItem(selectedForgeItem)}
+                              onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                              onMouseLeave={() => setHoveredTooltipItem(null)}
+                              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                            >
+                              <div style={{ width: '84px', height: '84px', background: 'rgba(0,0,0,0.7)', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: `2px solid ${hasEnoughFragments ? '#10b981' : '#3b82f6'}`, position: 'relative' }}>
+                                {selectedForgeItem.itemImageUrl ? <CachedImage src={selectedForgeItem.itemImageUrl} alt={selectedForgeItem.itemTitle} style={{ width: '64px', height: '64px', objectFit: 'contain' }} /> : <Sparkles size={40} color="#3b82f6" />}
+                                <div style={{ position: 'absolute', bottom: '4px', right: '4px', fontSize: '0.7rem', color: '#fff', fontWeight: 'bold', background: 'rgba(0,0,0,0.85)', padding: '1px 5px', borderRadius: '4px' }}>
+                                  x{totalOwned}
+                                </div>
+                              </div>
+                              <span style={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {selectedForgeItem.itemTitle}
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: '#60a5fa', background: 'rgba(59,130,246,0.15)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(59,130,246,0.3)' }}>
+                                Fragmento
+                              </span>
+                            </div>
+
+                            {/* Seta e Requisito */}
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                              <ArrowRight size={32} color="#60a5fa" />
+                              <span style={{ fontSize: '0.8rem', color: '#60a5fa', fontWeight: 'bold', background: 'rgba(59,130,246,0.12)', padding: '3px 8px', borderRadius: '6px' }}>
+                                {reqQty}x ➔ {resQty}x
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: '#aaa' }}>
+                                {unitCost > 0 ? `${unitCost} moedas / lote` : 'Grátis'}
+                              </span>
+                            </div>
+
+                            {/* Destino */}
+                            <div 
+                              onMouseEnter={() => targetInfo && setHoveredTooltipItem(targetInfo)}
+                              onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
+                              onMouseLeave={() => setHoveredTooltipItem(null)}
+                              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', cursor: targetInfo ? 'pointer' : 'default' }}
+                            >
+                              <div style={{ width: '84px', height: '84px', background: 'rgba(0,0,0,0.7)', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px solid rgba(251,191,36,0.6)', position: 'relative' }}>
+                                {targetImg ? <CachedImage src={targetImg} alt={targetTitle} style={{ width: '64px', height: '64px', objectFit: 'contain' }} /> : <Sparkles size={40} color="#fbbf24" />}
+                              </div>
+                              <span style={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {targetTitle}
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: '#fbbf24', background: 'rgba(251,191,36,0.15)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(251,191,36,0.3)' }}>
+                                Lingote / Barra
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Barra de Progresso do Fragmento */}
+                          <div style={{ background: 'rgba(0,0,0,0.4)', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Progresso para fundição:</span>
+                              <span style={{ color: hasEnoughFragments ? '#10b981' : '#f59e0b', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                                {totalOwned} / {reqQty} ({progressPct}%)
+                              </span>
+                            </div>
+                            <div style={{ width: '100%', height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', marginBottom: '1rem' }}>
+                              <div style={{ width: `${progressPct}%`, height: '100%', background: hasEnoughFragments ? 'linear-gradient(to right, #10b981, #059669)' : 'linear-gradient(to right, #f59e0b, #d97706)', transition: 'width 0.3s' }} />
+                            </div>
+
+                            {/* Seletor de Lotes se tiver para mais de 1 */}
+                            {maxBatches > 1 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed rgba(255,255,255,0.1)' }}>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Lotes a fundir:</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setFuseBatches(prev => Math.max(1, prev - 1))}
+                                    disabled={currentBatches <= 1 || isForging}
+                                    style={{ width: '32px', height: '32px', borderRadius: '6px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: currentBatches <= 1 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={maxBatches}
+                                    value={currentBatches}
+                                    onChange={e => setFuseBatches(Math.max(1, Math.min(maxBatches, Number(e.target.value) || 1)))}
+                                    disabled={isForging}
+                                    style={{ width: '60px', textAlign: 'center', padding: '0.4rem', borderRadius: '6px', background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', color: 'white', fontWeight: 'bold' }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setFuseBatches(prev => Math.min(maxBatches, prev + 1))}
+                                    disabled={currentBatches >= maxBatches || isForging}
+                                    style={{ width: '32px', height: '32px', borderRadius: '6px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: currentBatches >= maxBatches ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                                  >
+                                    +
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setFuseBatches(maxBatches)}
+                                    disabled={isForging}
+                                    style={{ padding: '0.35rem 0.65rem', borderRadius: '6px', background: 'rgba(59,130,246,0.2)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                  >
+                                    Máx ({maxBatches})
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Resumo */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', background: 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '8px' }}>
+                              <div>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Consumo de Fragmentos:</div>
+                                <div style={{ color: 'white', fontWeight: 'bold', fontSize: '0.95rem' }}>{totalFragmentsConsumed}x {selectedForgeItem.itemTitle}</div>
+                              </div>
+                              <div>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Lingotes Produzidos:</div>
+                                <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                                  {totalYield}x {targetTitle}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Taxa do Ferreiro:</div>
+                                <div style={{ color: canAfford ? 'var(--gold-primary)' : '#ef4444', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 16, height: 16, objectFit: 'contain' }} /> : <Coins size={15} color="var(--gold-primary)" />}
+                                  {totalCost} moedas
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Botão de Fundir */}
+                          <button
+                            onClick={handleFuseMaterial}
+                            disabled={!hasEnoughFragments || !canAfford || isForging || !targetItemId}
+                            style={{
+                              width: '100%',
+                              padding: '1.2rem',
+                              background: (!hasEnoughFragments || !canAfford || isForging || !targetItemId) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #2563eb, #1d4ed8)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '12px',
+                              fontSize: '1.15rem',
+                              fontWeight: 'bold',
+                              cursor: (!hasEnoughFragments || !canAfford || isForging || !targetItemId) ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              gap: '0.5rem',
+                              boxShadow: '0 4px 15px rgba(37,99,235,0.35)',
+                              opacity: (!hasEnoughFragments || !canAfford || isForging || !targetItemId) ? 0.5 : 1
+                            }}
+                          >
+                            <Hammer size={22} className={isForging ? "animate-bounce" : ""} />
+                            {isForging ? 'FUNDINDO MATERIAL...' : (!targetItemId ? 'Destino não configurado' : !hasEnoughFragments ? `Faltam ${reqQty - totalOwned} Fragmentos` : !canAfford ? 'Moedas Insuficientes' : `FUNDIR NO FERREIRO (${totalCost} Moedas)`)}
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>

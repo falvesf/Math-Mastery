@@ -53,6 +53,10 @@ export interface TooltipItemData {
   unlockedSkinId?: string;
   forgeLevel?: number;
   scrollChanceBonus?: number;
+  breakMinQty?: number;
+  breakMaxQty?: number;
+  fuseRequiredQty?: number;
+  fuseResultQty?: number;
 }
 
 export function normalizeItemForTooltip(item: any): TooltipItemData {
@@ -72,7 +76,11 @@ export function normalizeItemForTooltip(item: any): TooltipItemData {
     fixedAttributes: item.fixedAttributes || (item.data ? item.data.fixedAttributes : []),
     adds: item.adds || (item.data ? item.data.adds : []),
     unlockedSkinId: item.unlockedSkinId || (item.data ? item.data.unlockedSkinId : undefined),
-    scrollChanceBonus: item.scrollChanceBonus ?? (item.data ? item.data.scrollChanceBonus : undefined)
+    scrollChanceBonus: item.scrollChanceBonus ?? (item.data ? item.data.scrollChanceBonus : undefined),
+    breakMinQty: item.breakMinQty ?? (item.data ? item.data.breakMinQty : undefined),
+    breakMaxQty: item.breakMaxQty ?? (item.data ? item.data.breakMaxQty : undefined),
+    fuseRequiredQty: item.fuseRequiredQty ?? (item.data ? item.data.fuseRequiredQty : undefined),
+    fuseResultQty: item.fuseResultQty ?? (item.data ? item.data.fuseResultQty : undefined),
   };
 }
 
@@ -105,6 +113,12 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
     item.gameEffect === 'bazar_sale_permit' ? 'Licença para vender itens no bazar.' :
     item.gameEffect === 'blacksmith_scroll' ? (
       `Pergaminho do Ferreiro: +${item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null ? item.scrollChanceBonus : 30}% de chance de sucesso na forja.`
+    ) :
+    item.gameEffect === 'break_item' ? (
+      `Material Bruto: Leve ao Ferreiro para quebrar em fragmentos (${item.breakMinQty ?? 1} a ${item.breakMaxQty ?? 5} un. por quebra).`
+    ) :
+    item.gameEffect === 'fuse_item' ? (
+      `Fragmento de Material: Reúna ${item.fuseRequiredQty ?? 50} unidades e leve ao Ferreiro para fundir em ${item.fuseResultQty ?? 1} lingote.`
     ) :
     item.gameEffect === 'none' ? 'Um item comum sem efeitos mágicos.' :
     null;

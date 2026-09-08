@@ -595,6 +595,16 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
 
+    if (item.gameEffect === 'break_item') {
+      await showAlert(`"${item.itemTitle}" é um material bruto que pode ser lapidado ou triturado no Ferreiro. Acesse a aba "Forja" para transformá-lo em fragmentos.`);
+      return;
+    }
+
+    if (item.gameEffect === 'fuse_item') {
+      await showAlert(`"${item.itemTitle}" são fragmentos de minério que podem ser fundidos no Ferreiro. Junte a quantidade necessária e acesse a aba "Forja" para forjar lingotes.`);
+      return;
+    }
+
     if (item.gameEffect && item.gameEffect !== 'none' && item.gameEffect !== 'restore_hp' && item.gameEffect !== 'reduce_hp_cooldown' && item.gameEffect !== 'unlock_skin' && item.gameEffect !== 'unlock_gender' && item.gameEffect !== 'rename_character') {
       await showAlert(`O item "${item.itemTitle}" é um Poder de Jogo! Você só pode utilizá-lo de dentro de uma Missão/Desafio ativo.`);
       return;

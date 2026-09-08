@@ -31,7 +31,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 
   'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 
-  'bazar_sale_permit' | 'cure_bleed' | 'cure_poison' | 'cure_freeze' | 'cure_burn' | 'cure_electric' | 'blacksmith_scroll';
+  'bazar_sale_permit' | 'cure_bleed' | 'cure_poison' | 'cure_freeze' | 'cure_burn' | 'cure_electric' | 'blacksmith_scroll' |
+  'break_item' | 'fuse_item';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mestre' | 'legendary';
 
 export interface StoreItem {
@@ -77,6 +78,14 @@ export interface StoreItem {
   isTransmuted?: boolean; // Item obtido SOMENTE por transmutação (não aparece na loja)
   transmuteConfig?: any;
   scrollChanceBonus?: number; // % de bônus de chance que o Pergaminho do Ferreiro concede (0–100)
+  breakTargetItemId?: string; // ID do item fragmento resultante ao quebrar no ferreiro
+  breakMinQty?: number; // Quantidade mínima de fragmentos ao quebrar
+  breakMaxQty?: number; // Quantidade máxima de fragmentos ao quebrar
+  breakCost?: number; // Custo em moedas para quebrar cada unidade no ferreiro
+  fuseTargetItemId?: string; // ID do item lingote resultante ao fundir no ferreiro
+  fuseRequiredQty?: number; // Quantidade de fragmentos necessária para fundir (ex: 50)
+  fuseResultQty?: number; // Quantidade gerada do item resultante (ex: 1)
+  fuseCost?: number; // Custo em moedas para realizar a fundição no ferreiro
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -624,7 +633,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     { key: 'title', label: 'Nome do item', hint: 'title', keys: ['title'] },
     { key: 'description', label: 'Descrição', hint: 'description', keys: ['description'] },
     { key: 'price', label: 'Preço', hint: 'cost', keys: ['cost'] },
-    { key: 'effect', label: 'Efeito do item (uso em missão, buffs, cooldown)', hint: 'gameEffect, usableInQuest, buffs', keys: ['gameEffect', 'usableInQuest', 'hpCooldownReductionMinutes', 'buffDurationHours', 'buffDurationDays', 'unlockedSkinId'] },
+    { key: 'effect', label: 'Efeito do item (uso em missão, buffs, cooldown, refino)', hint: 'gameEffect, usableInQuest, buffs, quebra e fundição', keys: ['gameEffect', 'usableInQuest', 'hpCooldownReductionMinutes', 'buffDurationHours', 'buffDurationDays', 'unlockedSkinId', 'breakTargetItemId', 'breakMinQty', 'breakMaxQty', 'breakCost', 'fuseTargetItemId', 'fuseRequiredQty', 'fuseResultQty', 'fuseCost'] },
     { key: 'stats', label: 'Atributos / Poder (ataque, defesa, dano)', hint: 'fixedAttributes, baseAttribute, damageEffect', keys: ['baseAttributeType', 'baseAttributeValue', 'fixedAttributes', 'itemCategory', 'damageEffect'] },
     { key: 'rank', label: 'Patente mínima exigida', hint: 'minRankRequired', keys: ['minRankRequired'] },
     { key: 'model', label: 'Modelo 2D/3D', hint: 'gameModelUrl, textura, cabeça Minecraft, paper doll 2D', keys: ['gameModelUrl', 'modelTextureUrl', 'minecraftHeadValue', 'gameImage2dUrl', 'backColor'] },
@@ -865,6 +874,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       gachaConfig: item.gachaConfig || null,
       useGlobalGacha: item.useGlobalGacha ?? true,
       scrollChanceBonus: item.scrollChanceBonus,
+      breakTargetItemId: item.breakTargetItemId,
+      breakMinQty: item.breakMinQty,
+      breakMaxQty: item.breakMaxQty,
+      breakCost: item.breakCost,
+      fuseTargetItemId: item.fuseTargetItemId,
+      fuseRequiredQty: item.fuseRequiredQty,
+      fuseResultQty: item.fuseResultQty,
+      fuseCost: item.fuseCost,
     };
 
     if (copyMode === 'direct') {
@@ -957,6 +974,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           gachaConfig: item.gachaConfig || null,
           useGlobalGacha: item.useGlobalGacha ?? true,
           scrollChanceBonus: item.scrollChanceBonus,
+          breakTargetItemId: item.breakTargetItemId,
+          breakMinQty: item.breakMinQty,
+          breakMaxQty: item.breakMaxQty,
+          breakCost: item.breakCost,
+          fuseTargetItemId: item.fuseTargetItemId,
+          fuseRequiredQty: item.fuseRequiredQty,
+          fuseResultQty: item.fuseResultQty,
+          fuseCost: item.fuseCost,
           minSalePrice: 0,
           importedFromId: item._rawId || null,
         };
@@ -1027,6 +1052,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             ? Number(formData.scrollChanceBonus)
             : 30)
         : undefined,
+      breakTargetItemId: formData.gameEffect === 'break_item' ? (formData.breakTargetItemId || undefined) : undefined,
+      breakMinQty: formData.gameEffect === 'break_item' ? (Number(formData.breakMinQty) || 1) : undefined,
+      breakMaxQty: formData.gameEffect === 'break_item' ? (Number(formData.breakMaxQty) || 1) : undefined,
+      breakCost: formData.gameEffect === 'break_item' ? (Number(formData.breakCost) || 0) : undefined,
+      fuseTargetItemId: formData.gameEffect === 'fuse_item' ? (formData.fuseTargetItemId || undefined) : undefined,
+      fuseRequiredQty: formData.gameEffect === 'fuse_item' ? (Number(formData.fuseRequiredQty) || 50) : undefined,
+      fuseResultQty: formData.gameEffect === 'fuse_item' ? (Number(formData.fuseResultQty) || 1) : undefined,
+      fuseCost: formData.gameEffect === 'fuse_item' ? (Number(formData.fuseCost) || 0) : undefined,
     };
 
     if (editingId) {
@@ -1095,7 +1128,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           forgeConfig: itemData.forgeConfig || null,
           isTransmutable: itemData.isTransmutable || false,
           transmuteConfig: itemData.transmuteConfig || null,
-          scrollChanceBonus: itemData.scrollChanceBonus ?? null
+          scrollChanceBonus: itemData.scrollChanceBonus ?? null,
+          breakTargetItemId: itemData.breakTargetItemId ?? null,
+          breakMinQty: itemData.breakMinQty ?? null,
+          breakMaxQty: itemData.breakMaxQty ?? null,
+          breakCost: itemData.breakCost ?? null,
+          fuseTargetItemId: itemData.fuseTargetItemId ?? null,
+          fuseRequiredQty: itemData.fuseRequiredQty ?? null,
+          fuseResultQty: itemData.fuseResultQty ?? null,
+          fuseCost: itemData.fuseCost ?? null
         };
         updatePromises.push(supabase.from('user_items').update({ data: newData }).eq('id', row.id) as any);
       });
@@ -1365,6 +1406,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                               Global
                             </span>
                           )}
+                          {(item.isTransmuted || item.type === 'other' || item.gameEffect === 'break_item' || item.gameEffect === 'fuse_item') && (
+                            <span style={{ fontSize: '0.68rem', background: 'rgba(234,88,12,0.18)', color: '#fb923c', border: '1px solid rgba(234,88,12,0.35)', padding: '0.1rem 0.45rem', borderRadius: '10px', whiteSpace: 'nowrap' }} title="Este item não aparece na loja dos alunos (obtido via missões, drops ou ferreiro)">
+                              Oculto na Loja
+                            </span>
+                          )}
                         </div>
                         {isGridMode ? (
                           <div style={{ fontSize: '0.85rem', color: 'var(--gold-primary)', fontWeight: 'bold', marginTop: '0.25rem' }}>
@@ -1373,7 +1419,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                         ) : (
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                             <span>Custo: <strong style={{ color: 'var(--gold-primary)' }}>{item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}</strong></span>
-                            <span>Tipo: {item.type === 'consumable' ? 'Consumível' : 'Equipável'}</span>
+                            <span>Tipo: {item.type === 'consumable' ? 'Consumível' : item.type === 'other' ? 'Material' : 'Equipável'}</span>
                             <span>Patente Mínima: {resolveMinRankName(item.minRankRequired) || 'Sem Patente'}</span>
                           </div>
                         )}
@@ -1470,7 +1516,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 </select>
               </div>
 
-              {formData.type === 'consumable' && (
+              {(formData.type === 'consumable' || formData.type === 'other') && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Poder no Jogo (Gameplay)</label>
@@ -1483,7 +1529,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                           gameEffect: eff,
                           scrollChanceBonus: eff === 'blacksmith_scroll'
                             ? (formData.scrollChanceBonus !== undefined && formData.scrollChanceBonus !== null ? formData.scrollChanceBonus : 30)
-                            : formData.scrollChanceBonus
+                            : formData.scrollChanceBonus,
+                          breakMinQty: eff === 'break_item' ? (formData.breakMinQty ?? 1) : formData.breakMinQty,
+                          breakMaxQty: eff === 'break_item' ? (formData.breakMaxQty ?? 5) : formData.breakMaxQty,
+                          breakCost: eff === 'break_item' ? (formData.breakCost ?? 10) : formData.breakCost,
+                          fuseRequiredQty: eff === 'fuse_item' ? (formData.fuseRequiredQty ?? 50) : formData.fuseRequiredQty,
+                          fuseResultQty: eff === 'fuse_item' ? (formData.fuseResultQty ?? 1) : formData.fuseResultQty,
+                          fuseCost: eff === 'fuse_item' ? (formData.fuseCost ?? 50) : formData.fuseCost
                         });
                       }}
                       style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
@@ -1508,6 +1560,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="cure_burn">Pomada Refrescante (Apaga o fogo)</option>
                       <option value="cure_electric">Isolante (Elimina o choque elétrico)</option>
                       <option value="blacksmith_scroll">Pergaminho do Ferreiro (Bônus de chance na forja)</option>
+                      <option value="break_item">⛏️ Quebrar / Triturar no Ferreiro (Material Bruto ➔ Fragmentos)</option>
+                      <option value="fuse_item">🔥 Fundir / Agrupar no Ferreiro (Fragmentos ➔ Lingote/Item)</option>
                     </select>
                   </div>
                   {formData.gameEffect === 'blacksmith_scroll' && (
@@ -1527,6 +1581,150 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                         Este valor (%) é somado à chance base de forja. Ex.: base 70% + 30% = 100% (limitado a 100%).
                         Se deixar em 100%, o pergaminho garante sucesso total como antes.
                       </small>
+                    </div>
+                  )}
+                  {formData.gameEffect === 'break_item' && (
+                    <div style={{ background: 'rgba(234, 88, 12, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(234, 88, 12, 0.3)' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#f97316', fontWeight: 'bold' }}>
+                        ⛏️ Quebra & Refino no Ferreiro (Material Bruto ➔ Fragmentos)
+                      </label>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>
+                        Ao levar este material bruto ao Ferreiro, o jogador paga a taxa para quebrar o item e obter fragmentos aleatórios (entre o mínimo e o máximo configurado por unidade).
+                      </p>
+                      <div style={{ background: 'rgba(234, 88, 12, 0.15)', border: '1px solid rgba(234, 88, 12, 0.35)', borderRadius: '6px', padding: '0.4rem 0.6rem', fontSize: '0.75rem', color: '#fb923c', marginBottom: '0.75rem' }}>
+                        🛡️ <strong>Oculto na Loja:</strong> Este item não é vendido na loja dos alunos (só pode ser obtido via missões, baús ou drops).
+                      </div>
+
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          Item / Fragmento Resultante:
+                        </label>
+                        <ItemSelect
+                          items={allItems.filter(i => i.id !== (formData as any).id).sort(sortByRarityThenTitle).map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, rarity: i.rarity || 'common' }))}
+                          value={formData.breakTargetItemId || ''}
+                          onChange={(id) => setFormData({ ...formData, breakTargetItemId: id })}
+                          placeholder="Selecione o fragmento resultante..."
+                          width="100%"
+                        />
+                      </div>
+
+                      <div className="responsive-grid-sm" style={{ gap: '0.75rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Rendimento Mín. (por un.)
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={999}
+                            value={formData.breakMinQty ?? 1}
+                            onChange={e => {
+                              const minVal = Math.max(1, Number(e.target.value) || 1);
+                              setFormData({
+                                ...formData,
+                                breakMinQty: minVal,
+                                breakMaxQty: Math.max(minVal, formData.breakMaxQty ?? minVal)
+                              });
+                            }}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Rendimento Máx. (por un.)
+                          </label>
+                          <input
+                            type="number"
+                            min={formData.breakMinQty ?? 1}
+                            max={999}
+                            value={formData.breakMaxQty ?? 5}
+                            onChange={e => {
+                              const maxVal = Math.max(formData.breakMinQty ?? 1, Number(e.target.value) || 1);
+                              setFormData({ ...formData, breakMaxQty: maxVal });
+                            }}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Taxa Ferreiro (Moedas/un.)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={formData.breakCost ?? 10}
+                            onChange={e => setFormData({ ...formData, breakCost: Math.max(0, Number(e.target.value) || 0) })}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {formData.gameEffect === 'fuse_item' && (
+                    <div style={{ background: 'rgba(59, 130, 246, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                        🔥 Fundição & Agrupamento no Ferreiro (Fragmentos ➔ Lingote/Item)
+                      </label>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>
+                        Ao juntar a quantidade necessária de fragmentos, o jogador pode levá-los ao Ferreiro e pagar a taxa para fundi-los no item/lingote resultante.
+                      </p>
+                      <div style={{ background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.35)', borderRadius: '6px', padding: '0.4rem 0.6rem', fontSize: '0.75rem', color: '#93c5fd', marginBottom: '0.75rem' }}>
+                        🛡️ <strong>Oculto na Loja:</strong> Este item não é vendido na loja dos alunos (só pode ser obtido via trituração no ferreiro ou missões).
+                      </div>
+
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          Item / Lingote Resultante:
+                        </label>
+                        <ItemSelect
+                          items={allItems.filter(i => i.id !== (formData as any).id).sort(sortByRarityThenTitle).map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, rarity: i.rarity || 'common' }))}
+                          value={formData.fuseTargetItemId || ''}
+                          onChange={(id) => setFormData({ ...formData, fuseTargetItemId: id })}
+                          placeholder="Selecione o lingote resultante..."
+                          width="100%"
+                        />
+                      </div>
+
+                      <div className="responsive-grid-sm" style={{ gap: '0.75rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Fragmentos Exigidos
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={9999}
+                            value={formData.fuseRequiredQty ?? 50}
+                            onChange={e => setFormData({ ...formData, fuseRequiredQty: Math.max(1, Number(e.target.value) || 1) })}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Quantidade Gerada
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={999}
+                            value={formData.fuseResultQty ?? 1}
+                            onChange={e => setFormData({ ...formData, fuseResultQty: Math.max(1, Number(e.target.value) || 1) })}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Taxa Ferreiro (Moedas/lote)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={formData.fuseCost ?? 50}
+                            onChange={e => setFormData({ ...formData, fuseCost: Math.max(0, Number(e.target.value) || 0) })}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   )}
                   {formData.gameEffect === 'reduce_hp_cooldown' && (

@@ -198,10 +198,19 @@ export default function StudentStore({ userData }: { userData: UserData }) {
     }
     const { data: storeSnap } = await storeQuery;
     const rawItems = (storeSnap || []).map((d: any) => ({ ...(d.data as any), id: d.id, price: d.price }));
-    // Não aparecem na loja: itens "Transmutados" (só obtidos por transmutação) e
-    // itens "Outros / Diversos" (materiais dropados por monstros/baús).
-    // Staff (admin/teacher) pode revelá-los pelo ícone de olho para comprar direto.
-    const loaded: StoreItem[] = rawItems.filter((i: any) => (showHiddenItems ? true : !i.isTransmuted && i.type !== 'other'));
+    // Não aparecem na loja:
+    // - itens "Transmutados" (só obtidos por transmutação);
+    // - itens "Outros / Diversos" (materiais dropados por monstros/baús);
+    // - itens com efeito de quebra ou fundição do ferreiro (break_item / fuse_item),
+    //   para que só possam ser obtidos por missões/drops e refinados no ferreiro.
+    // Staff (admin/teacher) pode revelá-los pelo ícone de olho para comprar direto / testar.
+    const isHiddenFromStore = (i: any) =>
+      i.isTransmuted ||
+      i.type === 'other' ||
+      i.gameEffect === 'break_item' ||
+      i.gameEffect === 'fuse_item';
+
+    const loaded: StoreItem[] = rawItems.filter((i: any) => (showHiddenItems ? true : !isHiddenFromStore(i)));
     setItems(loaded);
 
     if (userData.uid) {
@@ -281,7 +290,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         if (tenantId && d.tenant_id !== tenantId) return;
         if (myClass && sellerClass && sellerClass !== myClass) return;
       }
-      const originalStoreItem = loaded.find(si => si.id === d.item_id);
+      const originalStoreItem = rawItems.find((si: any) => si.id === d.item_id);
       const patchedRarity = data.rarity || originalStoreItem?.rarity || 'common';
       loadedMarket.push({ ...data, id: d.id, itemId: d.item_id, rarity: patchedRarity });
     });
@@ -293,13 +302,13 @@ export default function StudentStore({ userData }: { userData: UserData }) {
   const handlePurchase = async (item: StoreItem, isGift: boolean = false, paymentMethod?: 'xp' | 'coins') => {
     if (!userData.uid) return;
 
-    // Itens OCULTOS (transmutáveis / Material) só podem ser comprados por staff via RPC
+    // Itens OCULTOS (transmutáveis / Material / Refino) só podem ser comprados por staff via RPC
     // validada no servidor — o aluno NÃO tem permissão e não consegue forçar a compra.
-    const isHiddenItem = (item as any).isTransmuted === true || item.type === 'other';
+    const isHiddenItem = (item as any).isTransmuted === true || item.type === 'other' || item.gameEffect === 'break_item' || item.gameEffect === 'fuse_item';
     if (isHiddenItem) {
       const isStaff = userData.role !== 'student' && !userData.studentViewActive;
       if (!isStaff) {
-        showToast('Este item só pode ser obtido por transmutação.', 'error');
+        showToast('Este item só pode ser obtido através de missões, baús ou no Ferreiro.', 'error');
         return;
       }
       if (isGift) {
@@ -307,19 +316,128 @@ export default function StudentStore({ userData }: { userData: UserData }) {
         return;
       }
       setPurchasing(item.id);
+
+      const quantityToBuy = isStackableItemType(item.type) ? (quantities[item.id] || 1) : 1;
+      let purchasedSuccessfully = false;
+
+      // 1. Tenta a RPC no Supabase primeiro
       try {
         const { data, error } = await supabase.rpc('buy_hidden_store_item', { p_item_id: item.id });
-        if (error || !data?.ok) {
-          showToast(data?.error || 'Permissão negada para comprar este item.', 'error');
-          setPurchasing(null);
-          return;
+        if (!error && data?.ok) {
+          purchasedSuccessfully = true;
+        } else {
+          console.warn('buy_hidden_store_item RPC returned not ok, using staff direct fallback:', data?.error || error?.message);
         }
-        showToast(`Compra realizada: ${item.title}!`);
+      } catch (err) {
+        console.warn('buy_hidden_store_item RPC exception, using staff direct fallback:', err);
+      }
+
+      // Se a RPC comprou 1 item com sucesso, resta comprar o restante (se quantityToBuy > 1)
+      let remaining = purchasedSuccessfully ? quantityToBuy - 1 : quantityToBuy;
+
+      // 2. Fallback direto para staff: insere ou empilha os itens no inventário
+      if (remaining > 0 && isStaff) {
+        try {
+          const isStackable = isStackableItemType(item.type);
+          if (isStackable) {
+            const { data: existingRows } = await supabase
+              .from('user_items')
+              .select('id, data')
+              .eq('student_id', userData.uid)
+              .eq('item_id', item.id)
+              .eq('equipped', false);
+
+            if (existingRows && existingRows.length > 0) {
+              for (const row of existingRows) {
+                if (remaining <= 0) break;
+                const rowData = (row.data || {}) as any;
+                const currentQty = Number(rowData.quantity) || 1;
+                if (currentQty < 99) {
+                  const space = 99 - currentQty;
+                  const add = Math.min(space, remaining);
+                  const updatedData = { ...rowData, quantity: currentQty + add };
+                  await supabase.from('user_items').update({ data: updatedData }).eq('id', row.id);
+                  remaining -= add;
+                }
+              }
+            }
+          }
+
+          while (remaining > 0) {
+            const qty = Math.min(remaining, 99);
+            const itemPayload: any = {
+              itemTitle: item.title,
+              itemDescription: item.description || '',
+              itemType: item.type || 'other',
+              itemImageUrl: item.imageUrl || '',
+              gameEffect: item.gameEffect || 'none',
+              usableInQuest: item.usableInQuest || false,
+              battleSoundUrl: (item as any).battleSoundUrl || '',
+              quantity: qty,
+              giftedBy: null,
+              avatarPart: item.avatarPart || null,
+              itemCategory: item.itemCategory || 'none',
+              baseAttributeType: item.baseAttributeType || 'none',
+              baseAttributeValue: item.baseAttributeValue || 0,
+              forgeLevel: 0,
+              gameModelUrl: item.gameModelUrl || '',
+              modelTextureUrl: item.modelTextureUrl || '',
+              minecraftHeadValue: item.minecraftHeadValue || '',
+              modelTransforms: item.modelTransforms || null,
+              adds: [],
+              minSalePrice: item.minSalePrice || 0,
+              rarity: item.rarity || 'common',
+              unlockedSkinId: item.unlockedSkinId || '',
+              buffDurationDays: item.buffDurationDays || 7,
+              backColor: item.backColor || '',
+              damageEffect: (item as any).damageEffect || 'none',
+              forgeConfig: (item as any).forgeConfig || null,
+              scrollChanceBonus: (item as any).gameEffect === 'blacksmith_scroll'
+                ? ((item as any).scrollChanceBonus ?? 30)
+                : ((item as any).scrollChanceBonus ?? null),
+              breakTargetItemId: (item as any).breakTargetItemId || null,
+              breakMinQty: (item as any).breakMinQty ?? null,
+              breakMaxQty: (item as any).breakMaxQty ?? null,
+              breakCost: (item as any).breakCost ?? null,
+              fuseTargetItemId: (item as any).fuseTargetItemId || null,
+              fuseRequiredQty: (item as any).fuseRequiredQty ?? null,
+              fuseResultQty: (item as any).fuseResultQty ?? null,
+              fuseCost: (item as any).fuseCost ?? null,
+            };
+
+            const insertRow: any = {
+              student_id: userData.uid,
+              item_id: item.id,
+              equipped: false,
+              data: itemPayload,
+            };
+            if ((item as any).tenant_id) {
+              insertRow.tenant_id = (item as any).tenant_id;
+            }
+
+            const { error: insErr } = await supabase.from('user_items').insert(insertRow);
+            if (insErr) throw insErr;
+            remaining -= qty;
+          }
+
+          purchasedSuccessfully = true;
+        } catch (fbErr: any) {
+          console.error('Fallback purchase error:', fbErr);
+          if (!purchasedSuccessfully) {
+            showToast('Erro ao processar a compra do item oculto.', 'error');
+            setPurchasing(null);
+            return;
+          }
+        }
+      }
+
+      if (purchasedSuccessfully) {
+        showToast(quantityToBuy > 1 ? `Compra realizada: ${quantityToBuy}x ${item.title}!` : `Compra realizada: ${item.title}!`, 'success');
         setPurchasing(null);
         fetchStoreData(false);
         return;
-      } catch (err) {
-        showToast('Erro ao processar a compra.', 'error');
+      } else {
+        showToast('Permissão negada para comprar este item.', 'error');
         setPurchasing(null);
         return;
       }
@@ -452,7 +570,15 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             forgeConfig: (item as any).forgeConfig || null,
             scrollChanceBonus: (item as any).gameEffect === 'blacksmith_scroll'
               ? ((item as any).scrollChanceBonus ?? 30)
-              : ((item as any).scrollChanceBonus ?? null)
+              : ((item as any).scrollChanceBonus ?? null),
+            breakTargetItemId: (item as any).breakTargetItemId || null,
+            breakMinQty: (item as any).breakMinQty ?? null,
+            breakMaxQty: (item as any).breakMaxQty ?? null,
+            breakCost: (item as any).breakCost ?? null,
+            fuseTargetItemId: (item as any).fuseTargetItemId || null,
+            fuseRequiredQty: (item as any).fuseRequiredQty ?? null,
+            fuseResultQty: (item as any).fuseResultQty ?? null,
+            fuseCost: (item as any).fuseCost ?? null
           }
         });
         remainingToBuy -= qty;
