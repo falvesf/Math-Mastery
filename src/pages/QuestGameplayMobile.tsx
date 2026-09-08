@@ -126,6 +126,15 @@ export default function QuestGameplay() {
   const [playerBleeds, setPlayerBleeds] = useState<{ id: number; turns: number; x: number; y: number }[]>([]);
   // Envenenamento do SAPO: cada golpe do sapo aplica/renova veneno (3 turnos)
   const [playerPoisonTurns, setPlayerPoisonTurns] = useState(0);
+  // Coelho: aceleração do tempo persistente (+5%/golpe) e drop generoso (dobra por golpe)
+  const [coelhoHits, setCoelhoHits] = useState(0);
+  const [coelhoTransformHits, setCoelhoTransformHits] = useState(0);
+  const coelhoHitsRef = useRef(0);
+  const coelhoDropRef = useRef(0);
+  // Guarda de sequência de animação: impede hurt/efeitos obsoletos de cortar o ataque
+  const animSeqRef = useRef(0);
+  const playerAnimRef = useRef('idle');
+  useEffect(() => { playerAnimRef.current = playerAnim; }, [playerAnim]);
   const heartsRef = useRef(currentHearts);
   // Fatality de corte: captura o modelo atual como "foto" (canvas) e corta a imagem.
   const monsterCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -205,7 +214,7 @@ export default function QuestGameplay() {
   const [, setCoinsToRescue] = useState<number | null>(null);
   const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [coinPops, setCoinPops] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
-  const [fallingCoins, setFallingCoins] = useState<{ id: number; x: number; value: number }[]>([]);
+  const [fallingCoins, setFallingCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [, setLostCoinsDisplay] = useState<number | null>(null);
   const alreadyCompletedRef = useRef(false);
   const combatCoinConfigRef = useRef<{ minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number }>({});
@@ -870,9 +879,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
       const q = quest.questions[currentQIndex];
       setTimeLeft(effectiveTimeLimit(q.timeLimit, transformState));
 
-      // Coelho: o cronômetro roda 30% mais rápido (intervalo menor)
-      const isRabbit = transformState?.animal === 'coelho';
-      const tickMs = isRabbit ? 1000 / 1.3 : 1000;
+      // Coelho: cronômetro 30% mais rápido + 5% a cada golpe recebido (persiste após a transformação)
+      const rabbitBase = transformState?.animal === 'coelho' ? 1.3 : 1;
+      const speedMul = rabbitBase + 0.05 * coelhoHitsRef.current;
+      const tickMs = 1000 / speedMul;
 
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => {
@@ -890,7 +900,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [gameState, currentQIndex, feedback, quest, transformState]);
+  }, [gameState, currentQIndex, feedback, quest, transformState, coelhoHits]);
 
   const handleTimeOut = () => {
     handleAnswer(-1); // -1 means timeout/wrong
@@ -1309,6 +1319,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
   const handleAnswer = async (optIndex: number) => {
     if (!quest) return;
+    // Nova ação: invalida timeouts de animação obsoletos (hurt antigo não corta o ataque)
+    animSeqRef.current += 1;
     if (timerRef.current) clearInterval(timerRef.current);
 
     const q = quest.questions[currentQIndex];
@@ -1409,9 +1421,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
               setTransformState(newTransform);
               triggerTransformPuff('appear');
               setBattleMessage(`TRANSFORMADO! O monstro virou ${TRANSFORM_LABELS[animal]}!`);
-              // Porco ataca o jogador NO MOMENTO da transformação
+              // Porco ataca o jogador NO MOMENTO da transformação — com delay maior para o
+              // puff terminar e o porco virar para o boneco antes do golpe
               if (animal === 'porco') {
-                setTimeout(() => dealTransformDamageToPlayer(1), 600);
+                setTimeout(() => dealTransformDamageToPlayer(1), 1300);
               }
               if (animal === 'rato') {
                 // nova transformação em rato: limpa sangramentos anteriores
@@ -1425,6 +1438,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
           playMonsterDamageSound();
           dropCoins(effectiveCrit);
           advanceStatusTurns(); // o golpe do jogador é uma ação de ataque
+          // Coelho: cada golpe que ele recebe acelera o tempo (+5%) e dobra o drop
+          if (transformRef.current?.animal === 'coelho') {
+            coelhoHitsRef.current += 1;
+            coelhoDropRef.current += 1;
+            setCoelhoHits(coelhoHitsRef.current);
+            setCoelhoTransformHits(coelhoDropRef.current);
+          }
           // Porco: golpes certos seguidos sem errar → enfurece com 2 acertos
           const tr = transformRef.current;
           if (tr?.animal === 'porco' && !tr.enraged) {
@@ -1498,10 +1518,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
           
           setLostCoinsDisplay(lost);
           
-          // Moedas caindo na área configurável do jogador
+          // Moedas saem do CORPO do jogador e caem ao chão (efeito de perda)
           const newFalling = Array.from({ length: Math.min(lost, 6) }).map((_, i) => ({
             id: Date.now() + i,
             x: (arenaDebug.playerCoinAreaX || 10) + Math.random() * (arenaDebug.playerCoinAreaW || 40),
+            y: 45 + Math.random() * 15,
             value: Math.ceil(lost / Math.min(lost, 6))
           }));
           setFallingCoins(prev => [...prev, ...newFalling]);
@@ -1654,6 +1675,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     if (tr) {
       if (tr.turnsLeft <= 1) {
         setTransformState(null);
+        coelhoDropRef.current = 0;
+        setCoelhoTransformHits(0);
         triggerTransformPuff('revert');
         if (tr.animal !== 'rato') setBattleMessage(`${TRANSFORM_LABELS[tr.animal]} voltou ao normal!`);
       } else {
@@ -1966,40 +1989,38 @@ const dealTransformDamageToPlayer = (damage: number) => {
     const tr = transformRef.current;
     // Porco enfurecido NÃO dropa moedas
     if (tr?.animal === 'porco' && tr.enraged) return;
-    // Coelho: acertou resposta → DOBRA o drop de moedas configurado
-    const coelhoDouble = tr?.animal === 'coelho';
+    // Coelho: o drop DOBRA a cada golpe recebido (quantidade E valor) — generoso
+    const coelhoMult = tr?.animal === 'coelho' ? Math.pow(2, coelhoDropRef.current) : 1;
     // Som quando as moedas CAEM no chão (coinSoundUrl da moeda ativa ou blip padrão)
     playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
     const cfg = combatCoinConfigRef.current;
     let dropped: number;
 
-    const rankObj = getRankForXp(userData?.xp || 0);
-    const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
-
     if (cfg.minCoins && cfg.maxCoins) {
-      const minC = Math.max(1, cfg.minCoins);
-      const maxC = Math.max(minC, cfg.maxCoins);
+      // Aleatório entre o MÍNIMO e o MÁXIMO configurados (sem bônus fixo de patente)
+      const minC = Math.max(1, Math.floor(cfg.minCoins));
+      const maxC = Math.max(minC, Math.floor(cfg.maxCoins));
       dropped = Math.floor(Math.random() * (maxC - minC + 1)) + minC;
-      // Patente: patentes mais altas aumentam a quantidade do drop
-      dropped += (rankIndex - 1);
     } else {
       // Sem config da missão → fallback baseado na patente
+      const rankObj = getRankForXp(userData?.xp || 0);
+      const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
       dropped = Math.floor(Math.random() * rankIndex) + 1;
     }
 
-    // Golpe crítico DOBRA o drop de moedas (e coelho também)
+    // Golpe crítico DOBRA o drop de moedas (e coelho também, exponencial por golpe)
     if (isCrit) dropped = dropped * 2;
-    if (coelhoDouble) dropped = dropped * 2;
+    dropped = dropped * coelhoMult;
 
     const minV = Math.max(1, cfg.minValue ?? 1);
     const maxV = Math.max(minV, cfg.maxValue ?? minV);
 
-    // Moedas caem na área configurável — cada moeda tem valor aleatório (ex.: 1, 2 ou 3)
+    // Moedas caem na área configurável — cada moeda tem valor aleatório
     const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
       id: Date.now() + i,
       x: arenaDebug.coinAreaX + Math.random() * arenaDebug.coinAreaW,
       y: arenaDebug.coinAreaY + Math.random() * arenaDebug.coinAreaH,
-      value: Math.floor(Math.random() * (maxV - minV + 1)) + minV
+      value: Math.floor(((Math.random() * (maxV - minV + 1)) + minV) * coelhoMult)
     }));
     setDroppedCoins(prev => [...prev, ...newCoins]);
     setCoinsToRescue(dropped);
@@ -2036,9 +2057,16 @@ const dealTransformDamageToPlayer = (damage: number) => {
         return;
       }
       const newHearts = Math.max(0, hp - total);
-      setPlayerAnim('hurt');
-      playPlayerDamageSound();
-      setTimeout(() => setPlayerAnim('idle'), 600);
+      // O hurt do dano contínuo NÃO pode cortar o ataque: só aparece se o personagem
+      // está idle (o dano em si sempre acontece).
+      if (playerAnimRef.current === 'idle') {
+        const seq = animSeqRef.current;
+        setPlayerAnim('hurt');
+        playPlayerDamageSound();
+        setTimeout(() => { if (animSeqRef.current === seq) setPlayerAnim('idle'); }, 600);
+      } else {
+        playPlayerDamageSound();
+      }
       drainHeartsAnimated(newHearts, () => {
         if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
           updateUserHearts(newHearts);
@@ -2446,15 +2474,19 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     style={{
                       position: 'absolute',
                       left: `${coin.x}%`,
-                      top: '-30px',
-                      animation: 'coin-fall 2.5s ease-in forwards',
+                      top: `${coin.y}%`,
+                      animation: 'coin-loss 2.2s ease-in forwards',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.25rem',
                     }}
                   >
-                    <Coins size={16} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.5)" />
-                    <span style={{ fontSize: '0.65rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>-{coin.value}</span>
+                    {activeCoinModel?.url ? (
+                      <img src={activeCoinModel.open_url || activeCoinModel.url} alt="Moeda" style={{ width: 18, height: 18, objectFit: 'contain' }} />
+                    ) : (
+                      <Coins size={16} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.5)" />
+                    )}
+                    <span style={{ fontSize: '0.65rem', color: 'var(--accent-red)', fontWeight: 'bold' }}>-{coin.value}</span>
                   </div>
                 ))}
               </div>
@@ -2639,13 +2671,15 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       const isRat = tr.animal === 'rato';
                       const isFrog = tr.animal === 'sapo';
                       const isPig = tr.animal === 'porco';
-                      const animCls = isFrog ? 'transform-hop' : (isRat ? 'rat-scurry' : '');
-                      // Rato: o modelo .glb já é pequeno — NÃO encolher mais.
+                      // Rato: PARADO, olhando para o personagem (esperando para atacar) — só as
+                      // linhas de velocidade atrás indicam rapidez. Um pouco maior.
+                      const animCls = isFrog ? 'transform-hop' : '';
+                      const ratScale = isRat ? 1.2 : 1;
                       // Porco: o modelo fica de costas para a câmera — gira 180° para olhar para ela.
                       const rotY = isPig ? 180 : 0;
                       const tint = isPig && tr.enraged ? '#ff2222' : null;
                       return (
-                        <div style={{ transformOrigin: 'bottom center' }}>
+                        <div style={{ transformOrigin: 'bottom center', transform: ratScale !== 1 ? `scale(${ratScale})` : undefined }}>
                           <div className={animCls || undefined} style={{ position: 'relative' }}>
                             {isRat && (
                               <>

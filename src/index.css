@@ -182,6 +182,13 @@ h3 {
   100% { opacity: 0; transform: translateY(calc(100vh)) rotate(720deg); }
 }
 
+/* Moedas PERDIDAS: saem do corpo do jogador, sobem um pouco e caem ao chão */
+@keyframes coin-loss {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  20% { transform: translate(-16px, -36px) rotate(-14deg); opacity: 1; }
+  100% { transform: translate(-30px, 150px) rotate(-45deg); opacity: 0; }
+}
+
 @keyframes coin-pop {
   0% { transform: scale(0) translateY(-30px); opacity: 0; }
   60% { transform: scale(1.2); opacity: 1; }
