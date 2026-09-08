@@ -232,7 +232,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch (e) { parsedAdds = []; }
       }
       parsedAdds = orderEffectFirst(parsedAdds);
-      loaded.push({ ...(data || {}), adds: parsedAdds, id: row.id, equipped: row.equipped, gameEffect: patchedEffect, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
+      loaded.push({ ...(data || {}), adds: parsedAdds, id: row.id, equipped: row.equipped, studentId: row.student_id, gameEffect: patchedEffect, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
     });
 
     const finalItems: UserItem[] = [];
