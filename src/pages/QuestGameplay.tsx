@@ -124,9 +124,9 @@ export default function QuestGameplay() {
   const [transformPuff, setTransformPuff] = useState<{ id: number; kind: 'appear' | 'revert' } | null>(null);
   const [healAuraTurns, setHealAuraTurns] = useState(0);
   const healActivationsRef = useRef(0);
-  const [playerBleedActive, setPlayerBleedActive] = useState(false);
-  const [playerBleedTurns, setPlayerBleedTurns] = useState(0);
-  const [playerBleedWound, setPlayerBleedWound] = useState<{ x: number; y: number } | null>(null);
+  const [playerBleeds, setPlayerBleeds] = useState<{ id: number; turns: number; x: number; y: number }[]>([]);
+  // Envenenamento do SAPO: cada golpe do sapo aplica/renova veneno (3 turnos)
+  const [playerPoisonTurns, setPlayerPoisonTurns] = useState(0);
   const heartsRef = useRef(currentHearts);
   // Fatality de corte: captura o modelo atual como "foto" (canvas) e corta a imagem.
   const monsterCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -846,9 +846,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setTransformState(null);
     setHealAuraTurns(0);
     healActivationsRef.current = 0;
-setPlayerBleedActive(false);
-    setPlayerBleedTurns(0);
-    setPlayerBleedWound(null);
+    setPlayerBleeds([]);
+    setPlayerPoisonTurns(0);
     setSliceSnapshot(null);
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
@@ -1300,14 +1299,17 @@ setPlayerBleedActive(false);
                 setTimeout(() => dealTransformDamageToPlayer(1), 600);
               }
               if (animal === 'rato') {
-                setPlayerBleedActive(false);
-                setPlayerBleedWound(null);
-                setPlayerBleedTurns(0);
+                // nova transformação em rato: limpa sangramentos anteriores
+                setPlayerBleeds([]);
+              }
+              if (animal === 'sapo') {
+                setPlayerPoisonTurns(0);
               }
             }
           }
           playMonsterDamageSound();
           dropCoins(effectiveCrit);
+          advanceStatusTurns(); // o golpe do jogador é uma ação de ataque
           const tr = transformRef.current;
           if (tr?.animal === 'porco' && !tr.enraged) {
             const newStreak = tr.consecutiveCorrect + 1;
@@ -1321,7 +1323,6 @@ setPlayerBleedActive(false);
           // Rato: ao levar dano, volta a ser monstro IMEDIATAMENTE — mas o SANGRAMENTO
           // continua (é consequência da mordida e dura 2 turnos).
           if (tr?.animal === 'rato') {
-            advanceBleedTurn(); // o golpe é uma ação de ataque
             triggerTransformPuff('revert');
             setTransformState(null);
             setBattleMessage('O RATO voltou a ser monstro, mas você continua sangrando!');
@@ -1361,17 +1362,20 @@ setPlayerBleedActive(false);
       if (tr?.animal === 'porco' && tr.consecutiveCorrect > 0 && !tr.enraged) {
         setTransformState({ ...tr, consecutiveCorrect: 0 });
       }
-      // Rato: errar faz o rato atacar e infligir SANGRAMENTO no jogador (2 turnos)
+      // O ataque do monstro é uma ação de ataque: avança turnos do sangramento/veneno
+      // ANTES de aplicar os novos efeitos (para a nova pilha durar os turnos cheios).
+      advanceStatusTurns();
+      // Rato: errar faz o rato atacar e infligir SANGRAMENTO — CUMULATIVO. Cada mordida
+      // soma uma pilha (0,5 coração por tick cada) e a ferida é em ponto aleatório.
       if (tr?.animal === 'rato') {
-        if (playerBleedActive) {
-          // Sangramento já ativo: a mordida é uma ação de ataque → consome 1 turno
-          advanceBleedTurn();
-        } else {
-          setPlayerBleedActive(true);
-          setPlayerBleedTurns(2);
-          setPlayerBleedWound(rollBleedWound('rato'));
-          setBattleMessage('O RATO TE MORDEU! Você está sangrando — perderá corações e moedas por 2 turnos!');
-        }
+        const w = rollBleedWound('rato');
+        setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns: 2, x: w.x, y: w.y }]);
+        setBattleMessage(`O RATO TE MORDEU (${playerBleeds.length + 1}x)! Sangramento acumulado!`);
+      }
+      // Sapo: cada golpe do sapo aplica/renova VENENO no jogador (3 turnos)
+      if (tr?.animal === 'sapo') {
+        setPlayerPoisonTurns(3);
+        setBattleMessage('O SAPO TE ENVENENOU! Você perderá coração por 3 turnos!');
       }
 
       if (economySettings?.coinsLostInCombat && !isStudyMode && !hasShield) {
@@ -1859,42 +1863,36 @@ if (tr.turnsLeft <= 1) {
     setTimeout(() => setCoinsToRescue(null), 2500);
   };
 
-  // SANGRAMENTO DO RATO no JOGADOR: dura 2 TURNOS (ações de ataque). O dano contínuo
-// (0,5 coração + moedas) é CONSEQUÊNCIA do ataque e continua enquanto durar.
-// Usa heartsRef/bleedTurnsRef para sempre ler o valor ATUAL.
-const bleedTurnsRef = useRef(0);
-useEffect(() => { bleedTurnsRef.current = playerBleedTurns; }, [playerBleedTurns]);
+  // SANGRAMENTO DO RATO (CUMULATIVO) e VENENO DO SAPO no JOGADOR.
+// Cada pilha de sangramento dura 2 turnos (ações de ataque) e drena 0,5 coração por
+// tick; 2 pilhas drenam 1 coração por tick. O veneno dura 3 turnos e drena 0,5/tick.
+const bleedsRef = useRef(playerBleeds);
+useEffect(() => { bleedsRef.current = playerBleeds; }, [playerBleeds]);
+const poisonRef = useRef(playerPoisonTurns);
+useEffect(() => { poisonRef.current = playerPoisonTurns; }, [playerPoisonTurns]);
 
-// Consome 1 turno de sangramento a cada ação de ataque (não é ação de ataque em si)
-const advanceBleedTurn = () => {
-  if (!playerBleedActive) return;
-  setPlayerBleedTurns(t => {
-    const left = Math.max(0, t - 1);
-    if (left <= 0) {
-      setPlayerBleedActive(false);
-      setPlayerBleedWound(null);
-    }
-    return left;
-  });
+// Consome 1 turno de sangramento/veneno a cada ação de ataque (não é ação de ataque)
+const advanceStatusTurns = () => {
+  setPlayerBleeds(prev => prev.map(b => ({ ...b, turns: b.turns - 1 })).filter(b => b.turns > 0));
+  setPlayerPoisonTurns(t => Math.max(0, t - 1));
 };
 
+// DANO CONTÍNUO (sangramento + veneno) — consequência dos ataques
 useEffect(() => {
-  if (gameState !== 'playing' || !playerBleedActive) return;
+  if (gameState !== 'playing' || (playerBleeds.length === 0 && playerPoisonTurns <= 0)) return;
   const iv = setInterval(() => {
-    if (bleedTurnsRef.current <= 0) {
-      setPlayerBleedActive(false);
-      setPlayerBleedWound(null);
-      return;
-    }
+    const bleedCount = bleedsRef.current.length;
+    const poisonOn = poisonRef.current > 0;
+    if (bleedCount === 0 && !poisonOn) return;
+    const total = bleedCount * 0.5 + (poisonOn ? 0.5 : 0);
     const hp = heartsRef.current;
-    if (hp <= 0.5) {
-      setPlayerBleedActive(false);
-      setPlayerBleedWound(null);
-      setPlayerBleedTurns(0);
+    if (hp <= total) {
+      setPlayerBleeds([]);
+      setPlayerPoisonTurns(0);
       triggerFatality(false, 0);
       return;
     }
-    const newHearts = Math.max(0, hp - 0.5);
+    const newHearts = Math.max(0, hp - total);
     setPlayerAnim('hurt');
     playPlayerDamageSound();
     setTimeout(() => setPlayerAnim('idle'), 600);
@@ -1903,10 +1901,14 @@ useEffect(() => {
         updateUserHearts(newHearts);
       }
     });
-    setBattleMessage('SANGRANDO! O rato te feriu — perdendo sangue e moedas...');
+    setBattleMessage(bleedCount > 0 && poisonOn
+      ? `SANGRANDO (${bleedCount}x) E ENVENENADO! Perdendo ${total} coração por vez...`
+      : bleedCount > 0
+        ? `SANGRANDO (${bleedCount}x)! Perdendo ${bleedCount * 0.5} coração por vez...`
+        : 'ENVENENADO! O veneno do sapo drena sua vida...');
     // Perde moedas junto com o sangue (sempre, no sangramento do rato)
-    if (userData?.uid) {
-      const lostCoins = 1 + Math.floor(Math.random() * 3);
+    if (userData?.uid && bleedCount > 0) {
+      const lostCoins = bleedCount * (1 + Math.floor(Math.random() * 3));
       const currentCoins = userData.coins || 0;
       const newCoins = Math.max(0, currentCoins - lostCoins);
       supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({ error }) => { if (error) console.error(error); });
@@ -1915,7 +1917,7 @@ useEffect(() => {
   }, 3200);
   return () => clearInterval(iv);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [gameState, playerBleedActive]);
+}, [gameState, playerBleeds.length > 0, playerPoisonTurns > 0]);
 
   // VENENO/SANGRAMENTO: a cada alguns segundos drena o coração do monstro (visual),
   // pisca em vermelho e dropa moedas extras.
@@ -2045,15 +2047,18 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
         updateUserHearts(newHearts);
       }
     } else if (item.gameEffect === 'cure_bleed') {
-      if (!playerBleedActive) {
+      if (playerBleeds.length === 0) {
         await showAlert("Você não está sangrando!");
         return;
       }
-      setPlayerBleedActive(false);
-      setPlayerBleedWound(null);
-      setPlayerBleedTurns(0);
+      setPlayerBleeds([]);
       setBattleMessage('🩹 Bandagem aplicada! O sangramento foi estancado!');
     } else if (item.gameEffect === 'cure_poison') {
+      if (playerPoisonTurns <= 0) {
+        await showAlert("Você não está envenenado!");
+        return;
+      }
+      setPlayerPoisonTurns(0);
       setBattleMessage('🧪 Antídoto usado! O veneno foi removido!');
     } else if (item.gameEffect === 'cure_freeze') {
       setBattleMessage('☕ Chá quente! Você se descongelou!');
@@ -2323,14 +2328,15 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
               <div className="quest-arena-avatars" style={{ position: 'relative', width: playerAnim.startsWith('attack-fatal') ? '220px' : '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease' }}>
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-80px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
+                  {playerPoisonTurns > 0 && <div className="poison-aura" title={`Envenenado por ${playerPoisonTurns} turno(s)`} />}
                   <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={160} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
-                  {playerBleedActive && playerBleedWound && (
-                    <div className="bleed-wound" style={{ top: `${playerBleedWound.y}%`, left: `${playerBleedWound.x}%` }} title="Sangrando!">
+                  {playerBleeds.map(b => (
+                    <div key={b.id} className="bleed-wound" style={{ top: `${b.y}%`, left: `${b.x}%` }} title="Sangrando!">
                       <span className="bleed-drip" />
                       <span className="bleed-drip" style={{ animationDelay: '0.45s', left: '65%' }} />
                       <span className="bleed-drip" style={{ animationDelay: '0.9s', left: '32%' }} />
                     </div>
-                  )}
+                  ))}
                   {!quest?.allowRetries ? (
                     (() => {
                       // Suor baseado em estresse real (tempo, vida, erros)
