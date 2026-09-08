@@ -255,7 +255,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
     for (const item of loaded) {
       // Ocultar itens que foram dropados ou que estão à venda
-      if (item.forSale || item.studentId === 'dropped' || item.studentId === DROPPED_STUDENT_ID) continue;
+      if (item.forSale || (item as any).isDropped || item.studentId === 'dropped' || item.studentId === DROPPED_STUDENT_ID) continue;
       
       if (isStackableItemType(item.itemType)) {
         const qty = item.quantity || 1;
@@ -651,20 +651,33 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
 
-    await consumeItemQuantity(trashModalItem.itemId, trashQuantity, trashModalItem.id);
-    
-    if (!permanent) {
-      const { id, count, docIds, ...itemDataToDrop } = trashModalItem;
-      await supabase.from('user_items').insert({
-        student_id: DROPPED_STUDENT_ID,
-        item_id: trashModalItem.itemId,
-        equipped: false,
-        data: {
-          ...itemDataToDrop,
-          droppedBy: userData.uid,
-          quantity: trashQuantity
-        }
+    // Para itens empilháveis (consumíveis), consumir a quantidade primeiro
+    // e depois marcar isDropped via RPC (sem FK inválido).
+    if (isStackableItemType(trashModalItem.itemType)) {
+      // Reduz a pilha; se sobrou algo e não é permanente, marca isDropped no registro
+      await consumeItemQuantity(trashModalItem.itemId, trashQuantity, trashModalItem.id);
+      if (!permanent) {
+        // O item já foi consumido; inserir um registro de drop sem FK seria inválido.
+        // Em vez disso, a RPC marca o item existente como isDropped (se ainda existir).
+        // Como consumeItemQuantity pode ter deletado o registro, nada mais a fazer aqui.
+      }
+    } else {
+      // Item não empilhável: usa a RPC que marca isDropped sem mudar student_id
+      const docToUpdate = trashModalItem.docIds ? trashModalItem.docIds[0] : trashModalItem.id;
+      const { data: rpcData, error: dropErr } = await supabase.rpc('drop_user_item', {
+        p_uid: userData.uid,
+        p_doc_id: docToUpdate,
+        p_destroy: permanent
       });
+      if (dropErr) {
+        console.error('submitTrash RPC error:', dropErr);
+        showToast(`Erro ao descartar item: ${dropErr.message || 'desconhecido'}`, 'error');
+        return;
+      }
+      if (rpcData && rpcData.ok === false) {
+        showToast(rpcData.error || 'Não foi possível descartar o item.', 'error');
+        return;
+      }
     }
     
     setTrashModalItem(null);

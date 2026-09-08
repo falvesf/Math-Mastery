@@ -1883,7 +1883,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container${activeTab === 'forge' ? ' forge-mode' : ''}`}>
       {showLevelUp && levelUpData && (
         <LevelUpModal
           oldRank={levelUpData.oldRank}
@@ -3482,7 +3482,7 @@ export default function Dashboard() {
         )}
 
         {activeTab === 'forge' && userData && (
-          <div style={{ display: 'flex', flex: 1, height: 'calc(100vh - 7rem)', maxHeight: 'calc(100vh - 7rem)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
             <BlacksmithView
               userData={userData}
               currentRankIndex={RANKS.findIndex(r => r.name === currentRank.name)}
@@ -3490,6 +3490,9 @@ export default function Dashboard() {
               onGoToStore={() => setActiveTab('store')}
               onSuccess={(newCoins?: number) => {
                 if (typeof newCoins === 'number') updateUserDataLocally({ coins: newCoins });
+                // Recarrega itens equipados para refletir o novo forgeLevel sem reload
+                invalidateEquippedItems(userData.uid);
+                setInventoryRefresh(r => r + 1);
               }}
             />
           </div>

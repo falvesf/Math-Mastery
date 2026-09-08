@@ -237,7 +237,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         const itemData = row.data as any;
         if (itemData.gameEffect === 'blacksmith_scroll') {
           scrollAmt += itemData.quantity || 1;
-        } else if (itemData.itemType === 'equippable') {
+        } else if (itemData.itemType === 'equippable' && !itemData.isDropped) {
           parsedItems.push({
             docId: row.id,
             itemId: row.item_id,

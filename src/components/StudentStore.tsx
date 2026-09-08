@@ -213,7 +213,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
       (myItemsSnap || []).forEach(doc => {
         const d = doc.data as any;
-        if (!d.forSale && doc.student_id !== 'dropped' && doc.student_id !== DROPPED_STUDENT_ID) {
+        if (!d.forSale && !d.isDropped && doc.student_id !== 'dropped' && doc.student_id !== DROPPED_STUDENT_ID) {
           if (doc.equipped) {
             equippedItemsForStats.push(d);
           }

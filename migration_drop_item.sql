@@ -2,21 +2,22 @@
 -- Descarte de itens VALIDADO NO SERVIDOR (SECURITY DEFINER).
 -- Rode manualmente no Supabase SQL Editor.
 --
--- Por que precisa: a política RLS de user_items tem
+-- HISTÓRICO: a coluna user_items.student_id tem FOREIGN KEY para
+-- users(id) → não dá para usar 'dropped' (texto) nem um UUID sentinela
+-- sem criar um usuário fake. Além disso, a política RLS
 --   FOR ALL USING (student_id = auth.uid())
--- que, sem WITH CHECK, HERDA o USING como WITH CHECK → qualquer
--- UPDATE/INSERT com student_id <> auth.uid() é REJEITADO.
--- Além disso, a coluna student_id é UUID → 'dropped' (texto) não
--- converte. Usamos um UUID SENTINELA para o bucket de itens
--- descartados:
---   00000000-0000-0000-0000-000000000000
+-- herda o USING como WITH CHECK → mudar student_id é rejeitado.
 --
--- Esta RPC roda como definidor (SECURITY DEFINER), ignora o RLS e:
+-- SOLUÇÃO: o item NÃO troca de dono. Marca-se data.isDropped = true
+-- (e droppedBy). O student_id permanece o do usuário (FK e RLS ok), e
+-- os filtros da mochila/loja/bazar ignoram itens com isDropped. Assim o
+-- item "sai" da mochila sem violar FK/RLS.
+--
+-- Esta RPC roda como definidor (SECURITY DEFINER) e:
 --  - só permite descartar item do PRÓPRIO usuário;
 --  - p_destroy = true  → DELETE permanente;
---  - p_destroy = false → move para student_id = sentinela (outros
---    jogadores podem encontrar), gravando droppedBy.
---  - captura exceções e devolve a mensagem real.
+--  - p_destroy = false → marca isDropped (fica "fora" da mochila);
+--  - valida tenant (item pertence à escola do usuário).
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.drop_user_item(p_uid uuid, p_doc_id uuid, p_destroy boolean)
@@ -37,9 +38,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'item não encontrado ou não pertence ao usuário');
   END IF;
 
-  -- Segurança por TENANT: o item só pode ser descartado se pertencer à escola do
-  -- usuário (ou ao tenant padrão). O tenant_id NÃO é alterado no descarte — o
-  -- bucket sentinela é apenas o "dono" do item, então as escolas ficam isoladas.
+  -- Segurança por TENANT: item só pode ser descartado se for da escola do usuário
   IF v_item.tenant_id IS NOT NULL AND v_item.tenant_id <> '00000000-0000-0000-0000-000000000001' THEN
     SELECT EXISTS (
       SELECT 1 FROM tenant_users WHERE user_id = p_uid AND tenant_id = v_item.tenant_id
@@ -52,14 +51,13 @@ BEGIN
   IF COALESCE(p_destroy, false) THEN
     DELETE FROM user_items WHERE id = p_doc_id;
   ELSE
+    -- Não muda student_id (FK/RLS) — apenas marca como descartado
     UPDATE user_items
-    SET student_id = '00000000-0000-0000-0000-000000000000',
-        equipped = false,
-        data = jsonb_set(
-          COALESCE(data, '{}'::jsonb),
-          '{droppedBy}',
-          to_jsonb(p_uid::text)
-        )
+    SET data = jsonb_set(
+      jsonb_set(COALESCE(data, '{}'::jsonb), '{isDropped}', 'true'::jsonb),
+      '{droppedBy}',
+      to_jsonb(p_uid::text)
+    )
     WHERE id = p_doc_id;
   END IF;
 

@@ -9,6 +9,26 @@
   box-sizing: border-box;
 }
 
+/* Quando a guia Forja está ativa: layout fixo ao viewport, sem scroll da página */
+.app-container.forge-mode {
+  height: 100vh;
+  min-height: 0;
+  max-height: 100vh;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.app-container.forge-mode .main-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+}
+
+
 @media (max-width: 768px) {
   .app-container {
     padding: 0.5rem 0.75rem;
