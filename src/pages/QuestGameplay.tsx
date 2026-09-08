@@ -1394,6 +1394,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
         
         setLostCoinsDisplay(lost);
 
+        // Som da perda: mesmo som definido na moeda ativa (Moldes 3D > Moedas)
+        playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
+
         // Moedas saem do CORPO do jogador e caem ao chão (efeito de perda)
         const newFalling = Array.from({ length: Math.min(lost, 6) }).map((_, i) => ({
           id: Date.now() + i,
