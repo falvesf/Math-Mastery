@@ -635,6 +635,20 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
 
   const q = match.questions[match.current_question_index];
   const timeLimitMs = (q?.timeLimit || 20) * 1000;
+
+  // Visão do espectador: mostra os DOIS jogadores de forma neutra (player1 esquerda,
+  // player2 direita), sem "meu" personagem. Participante: eu à esquerda, oponente à direita.
+  const left = isSpectator ? match.player1 : me;
+  const right = isSpectator ? match.player2 : them;
+  // Fallback: se um player vier nulo/quebrado (durante respostas), mantém o último
+  // estado válido — evita o nome virar "?" e os corações zerarem por alguns instantes.
+  const isValidPlayer = (p: PvpPlayerState | null | undefined): p is PvpPlayerState =>
+    !!p && typeof p.maxHp === 'number' && typeof p.hp === 'number' && !!p.name;
+  if (isValidPlayer(left)) leftRef.current = left;
+  if (isValidPlayer(right)) rightRef.current = right;
+  const safeLeft = isValidPlayer(left) ? left : leftRef.current;
+  const safeRight = isValidPlayer(right) ? right : rightRef.current;
+
   // Coelho transformado: tempo de resposta cai 30%
   const rabbitActive = safeLeft?.transform?.animal === 'coelho' || safeRight?.transform?.animal === 'coelho';
   const effTimeLimitMs = rabbitActive ? timeLimitMs * 0.7 : timeLimitMs;
@@ -666,18 +680,6 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
 
   const answerDisabled = answerLock || myLocalAnswer !== null;
 
-  // Visão do espectador: mostra os DOIS jogadores de forma neutra (player1 esquerda,
-  // player2 direita), sem "meu" personagem. Participante: eu à esquerda, oponente à direita.
-  const left = isSpectator ? match.player1 : me;
-  const right = isSpectator ? match.player2 : them;
-  // Fallback: se um player vier nulo/quebrado (durante respostas), mantém o último
-  // estado válido — evita o nome virar "?" e os corações zerarem por alguns instantes.
-  const isValidPlayer = (p: PvpPlayerState | null | undefined): p is PvpPlayerState =>
-    !!p && typeof p.maxHp === 'number' && typeof p.hp === 'number' && !!p.name;
-  if (isValidPlayer(left)) leftRef.current = left;
-  if (isValidPlayer(right)) rightRef.current = right;
-  const safeLeft = isValidPlayer(left) ? left : leftRef.current;
-  const safeRight = isValidPlayer(right) ? right : rightRef.current;
   const leftConfig = isSpectator ? p1Config : myConfig;
   const rightConfig = isSpectator ? p2Config : themConfig;
   const leftEquip = isSpectator ? p1Equip : myEquip;
