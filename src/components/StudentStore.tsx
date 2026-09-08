@@ -14,6 +14,7 @@ import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calc
 import { applyEffectAdd, isEffectAddType, EFFECT_ADD_LABELS, DAMAGE_EFFECTS } from '../lib/damageEffects';
 import { forgeItemName } from '../lib/forge';
 import { fetchActiveCoin } from '../lib/model3d';
+import { DROPPED_STUDENT_ID } from '../lib/utils';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
@@ -212,7 +213,7 @@ export default function StudentStore({ userData }: { userData: UserData }) {
 
       (myItemsSnap || []).forEach(doc => {
         const d = doc.data as any;
-        if (!d.forSale && doc.student_id !== 'dropped') {
+        if (!d.forSale && doc.student_id !== 'dropped' && doc.student_id !== DROPPED_STUDENT_ID) {
           if (doc.equipped) {
             equippedItemsForStats.push(d);
           }

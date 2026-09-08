@@ -19,6 +19,7 @@ import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
 import { invalidateEquippedItems } from '../lib/equippedItems';
 import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType } from '../lib/damageEffects';
 import { forgeItemName } from '../lib/forge';
+import { DROPPED_STUDENT_ID } from '../lib/utils';
 interface UserItem {
   id: string;
   itemId: string;
@@ -254,7 +255,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
     for (const item of loaded) {
       // Ocultar itens que foram dropados ou que estão à venda
-      if (item.forSale || item.studentId === 'dropped') continue;
+      if (item.forSale || item.studentId === 'dropped' || item.studentId === DROPPED_STUDENT_ID) continue;
       
       if (isStackableItemType(item.itemType)) {
         const qty = item.quantity || 1;
@@ -658,7 +659,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (!permanent) {
       const { id, count, docIds, ...itemDataToDrop } = trashModalItem;
       await supabase.from('user_items').insert({
-        student_id: 'dropped',
+        student_id: DROPPED_STUDENT_ID,
         item_id: trashModalItem.itemId,
         equipped: false,
         data: {

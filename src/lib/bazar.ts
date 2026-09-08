@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { RANKS, getRankForXp } from './ranks';
 import { calculateTotalStats, isStackableItemType } from './gacha';
+import { DROPPED_STUDENT_ID } from './utils';
 
 /**
  * Sistema de LICENÇA DE VENDA no Bazar.
@@ -37,7 +38,7 @@ export async function getSellerSpace(studentId: string): Promise<{ max: number; 
 
     (items || []).forEach(row => {
       const d = row.data as any;
-      if (d.forSale || row.student_id === 'dropped') return;
+      if (d.forSale || row.student_id === 'dropped' || row.student_id === DROPPED_STUDENT_ID) return;
       if (row.equipped) {
         equippedStats.push(d);
         return;

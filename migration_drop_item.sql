@@ -5,16 +5,18 @@
 -- Por que precisa: a política RLS de user_items tem
 --   FOR ALL USING (student_id = auth.uid())
 -- que, sem WITH CHECK, HERDA o USING como WITH CHECK → qualquer
--- UPDATE/INSERT com student_id <> auth.uid() (ex.: 'dropped') é
--- REJEITADO. O descarte "sem destruir" movia o item para o bucket
--- 'dropped' via UPDATE e falhava em silêncio — o item ficava na mochila.
+-- UPDATE/INSERT com student_id <> auth.uid() é REJEITADO.
+-- Além disso, a coluna student_id é UUID → 'dropped' (texto) não
+-- converte. Usamos um UUID SENTINELA para o bucket de itens
+-- descartados:
+--   00000000-0000-0000-0000-000000000000
 --
 -- Esta RPC roda como definidor (SECURITY DEFINER), ignora o RLS e:
 --  - só permite descartar item do PRÓPRIO usuário;
 --  - p_destroy = true  → DELETE permanente;
---  - p_destroy = false → move para student_id = 'dropped' (outros
+--  - p_destroy = false → move para student_id = sentinela (outros
 --    jogadores podem encontrar), gravando droppedBy.
---  - captura exceções e devolve a mensagem real (não estoura o PostgREST).
+--  - captura exceções e devolve a mensagem real.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.drop_user_item(p_uid uuid, p_doc_id uuid, p_destroy boolean)
@@ -38,7 +40,7 @@ BEGIN
     DELETE FROM user_items WHERE id = p_doc_id;
   ELSE
     UPDATE user_items
-    SET student_id = 'dropped',
+    SET student_id = '00000000-0000-0000-0000-000000000000',
         equipped = false,
         data = jsonb_set(
           COALESCE(data, '{}'::jsonb),

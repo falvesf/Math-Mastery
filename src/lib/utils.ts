@@ -1,3 +1,7 @@
+// UUID sentinela do bucket de itens DESCARTADOS (student_id da coluna é UUID,
+// então 'dropped' como texto não converte).
+export const DROPPED_STUDENT_ID = '00000000-0000-0000-0000-000000000000';
+
 export function getSafeUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
   if (url.startsWith('http') || url.startsWith('data:')) return url.replace(/ /g, '%20');
