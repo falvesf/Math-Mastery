@@ -41,7 +41,8 @@ import {
   rollBleedWound,
   playTransformSound,
 } from '../lib/transformEffects';
-import { normalizeMonsterAttacks } from '../lib/monsterAttacks';
+// @ts-ignore
+import { normalizeMonsterAttacks, applyMonsterAttackEffect } from '../lib/monsterAttacks';
 
 interface UserItem {
   id: string;
