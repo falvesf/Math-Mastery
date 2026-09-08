@@ -56,6 +56,7 @@ interface UserItem {
   saleBuffDays?: number;
   hiddenFromMarket?: boolean;
   forgeLevel?: number;
+  scrollChanceBonus?: number;
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -215,10 +216,14 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     const { data: storeSnap } = await supabase.from('store_items').select('id, data');
     const storeRarities = new Map<string, string>();
     const storeEffects = new Map<string, string>();
+    const storeScrollBonuses = new Map<string, number>();
     (storeSnap || []).forEach(d => {
       storeRarities.set(d.id, d.data?.rarity || 'common');
       const effect = d.data?.gameEffect || (d.data?.type === 'consumable' ? '' : '');
       storeEffects.set(d.id, effect || '');
+      if (d.data?.scrollChanceBonus !== undefined && d.data?.scrollChanceBonus !== null && d.data?.scrollChanceBonus !== '') {
+        storeScrollBonuses.set(d.id, Number(d.data.scrollChanceBonus));
+      }
     });
 
     const { data: snap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
@@ -227,13 +232,16 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const data = row.data as any;
       // Itens ganhos em baú podem vir sem data (sem gameEffect) — completa do catálogo
       const patchedEffect = data?.gameEffect || storeEffects.get(row.item_id) || 'none';
+      const patchedScrollBonus = (data?.scrollChanceBonus !== undefined && data?.scrollChanceBonus !== null && data?.scrollChanceBonus !== '')
+        ? Number(data.scrollChanceBonus)
+        : (storeScrollBonuses.get(row.item_id) ?? (patchedEffect === 'blacksmith_scroll' ? 30 : undefined));
       // Normaliza adds (podem vir como string JSON no banco) e coloca os de EFEITO no topo
       let parsedAdds: any[] = [];
       if (data?.adds) {
         try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch (e) { parsedAdds = []; }
       }
       parsedAdds = orderEffectFirst(parsedAdds);
-      loaded.push({ ...(data || {}), adds: parsedAdds, id: row.id, equipped: row.equipped, studentId: row.student_id, gameEffect: patchedEffect, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
+      loaded.push({ ...(data || {}), adds: parsedAdds, id: row.id, equipped: row.equipped, studentId: row.student_id, gameEffect: patchedEffect, scrollChanceBonus: patchedScrollBonus, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
     });
 
     const finalItems: UserItem[] = [];
@@ -578,6 +586,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
     if (item.gameEffect === BAZAR_LICENSE_EFFECT) {
       await showAlert(`"${item.itemTitle}" é uma Licença de Venda do Bazar. Ela é consumida automaticamente quando você coloca um item à venda (em "Vender"), mantendo o anúncio ativo por ${item.buffDurationDays || 3} dia(s).`);
+      return;
+    }
+
+    if (item.gameEffect === 'blacksmith_scroll') {
+      const bonus = item.scrollChanceBonus ?? 30;
+      await showAlert(`"${item.itemTitle}" é um Pergaminho do Ferreiro (+${bonus}% de chance de sucesso na forja). Para utilizá-lo, acesse a aba "A Forja", selecione um equipamento e marque a opção do pergaminho.`);
       return;
     }
 

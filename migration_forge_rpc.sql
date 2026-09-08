@@ -71,7 +71,7 @@ END;
 $$;
 
 -- Consome 1 Pergaminho do Ferreiro (gameEffect = 'blacksmith_scroll')
-CREATE OR REPLACE FUNCTION public.consume_one_scroll(p_uid uuid)
+CREATE OR REPLACE FUNCTION public.consume_one_scroll(p_uid uuid, p_scroll_doc_id uuid DEFAULT NULL)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public
@@ -81,12 +81,22 @@ DECLARE
   v_data jsonb;
   v_qty int;
 BEGIN
-  SELECT id, data INTO v_id, v_data
-  FROM user_items
-  WHERE student_id = p_uid AND data->>'gameEffect' = 'blacksmith_scroll'
-    AND (COALESCE((data->>'quantity')::int, 1)) >= 1
-  LIMIT 1;
-  IF NOT FOUND THEN RETURN; END IF;
+  IF p_scroll_doc_id IS NOT NULL THEN
+    SELECT id, data INTO v_id, v_data
+    FROM user_items
+    WHERE id = p_scroll_doc_id AND student_id = p_uid
+      AND (COALESCE((data->>'quantity')::int, 1)) >= 1;
+  END IF;
+
+  IF v_id IS NULL THEN
+    SELECT id, data INTO v_id, v_data
+    FROM user_items
+    WHERE student_id = p_uid AND data->>'gameEffect' = 'blacksmith_scroll'
+      AND (COALESCE((data->>'quantity')::int, 1)) >= 1
+    LIMIT 1;
+  END IF;
+
+  IF NOT FOUND OR v_id IS NULL THEN RETURN; END IF;
   v_qty := COALESCE((v_data->>'quantity')::int, 1);
   IF v_qty > 1 THEN
     UPDATE user_items SET data = jsonb_set(data, '{quantity}', to_jsonb(v_qty - 1)) WHERE id = v_id;
@@ -99,7 +109,11 @@ $$;
 -- ============================================================
 -- FORJA: valida tudo no servidor e rola a chance.
 -- ============================================================
-CREATE OR REPLACE FUNCTION public.forge_item(p_item_id uuid, p_use_scroll boolean)
+CREATE OR REPLACE FUNCTION public.forge_item(
+  p_item_id uuid,
+  p_use_scroll boolean,
+  p_scroll_doc_id uuid DEFAULT NULL
+)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public
@@ -120,6 +134,8 @@ DECLARE
   v_mats uuid[];
   v_i int;
   v_defaults int[] := ARRAY[90,80,70,60,50,40,30,20,10];
+  v_scroll_bonus numeric := 0;
+  v_scroll_id uuid := NULL;
 BEGIN
   IF v_uid IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'error', 'não autenticado');
@@ -168,13 +184,49 @@ BEGIN
     v_cost := public.forge_cost_for_level(v_next, v_buy);
   END IF;
 
-  -- Chance (pergaminho = 100%; senão override do painel ou padrão)
-  IF p_use_scroll THEN
-    v_chance := 100;
-  ELSIF v_cfg->'successChancePerLevel' ? v_next::text THEN
+  -- Chance base (override do painel ou padrão decrescente)
+  IF v_cfg->'successChancePerLevel' ? v_next::text THEN
     v_chance := (v_cfg->'successChancePerLevel'->>v_next::text)::numeric;
   ELSE
     v_chance := v_defaults[v_next];
+  END IF;
+
+  -- Bônus do Pergaminho do Ferreiro (se ativado pelo jogador)
+  IF p_use_scroll THEN
+    -- 1. Tenta achar o scroll especificado
+    IF p_scroll_doc_id IS NOT NULL THEN
+      SELECT COALESCE(
+        (ui.data->>'scrollChanceBonus')::numeric,
+        (si.data->>'scrollChanceBonus')::numeric,
+        30
+      ), ui.id INTO v_scroll_bonus, v_scroll_id
+      FROM user_items ui
+      LEFT JOIN store_items si ON si.id = ui.item_id
+      WHERE ui.id = p_scroll_doc_id AND ui.student_id = v_uid
+        AND (COALESCE((ui.data->>'quantity')::int, 1)) >= 1;
+    END IF;
+
+    -- 2. Fallback para o primeiro scroll que encontrar no inventário
+    IF v_scroll_id IS NULL THEN
+      SELECT COALESCE(
+        (ui.data->>'scrollChanceBonus')::numeric,
+        (si.data->>'scrollChanceBonus')::numeric,
+        30
+      ), ui.id INTO v_scroll_bonus, v_scroll_id
+      FROM user_items ui
+      LEFT JOIN store_items si ON si.id = ui.item_id
+      WHERE ui.student_id = v_uid 
+        AND (ui.data->>'gameEffect' = 'blacksmith_scroll' OR si.data->>'gameEffect' = 'blacksmith_scroll')
+        AND (COALESCE((ui.data->>'quantity')::int, 1)) >= 1
+      LIMIT 1;
+    END IF;
+
+    IF v_scroll_id IS NULL THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'sem pergaminho do ferreiro');
+    END IF;
+
+    -- Soma o bônus (%) à chance base (limitado a 100%)
+    v_chance := LEAST(100::numeric, v_chance + v_scroll_bonus);
   END IF;
 
   -- Saldo de moedas (staff: saldo infinito, não valida nem deduz)
@@ -206,17 +258,6 @@ BEGIN
     END LOOP;
   END IF;
 
-  -- Pergaminho (se pediu proteção): valida existência ANTES de rolar
-  IF p_use_scroll THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM user_items
-      WHERE student_id = v_uid AND data->>'gameEffect' = 'blacksmith_scroll'
-        AND (COALESCE((data->>'quantity')::int, 1)) >= 1
-    ) THEN
-      RETURN jsonb_build_object('ok', false, 'error', 'sem pergaminho do ferreiro');
-    END IF;
-  END IF;
-
   -- Consome materiais (sucesso E falha consomem)
   IF array_length(v_mats, 1) > 0 THEN
     FOR v_i IN 1..array_length(v_mats, 1) LOOP
@@ -229,7 +270,7 @@ BEGIN
 
   IF v_success THEN
     IF p_use_scroll THEN
-      PERFORM public.consume_one_scroll(v_uid);
+      PERFORM public.consume_one_scroll(v_uid, v_scroll_id);
     END IF;
     UPDATE user_items
     SET data = jsonb_set(v_item.data, '{forgeLevel}', to_jsonb(v_next))
@@ -237,7 +278,7 @@ BEGIN
     RETURN jsonb_build_object('ok', true, 'success', true, 'level', v_next, 'coins', v_coins, 'message', 'sucesso');
   ELSE
     IF p_use_scroll THEN
-      PERFORM public.consume_one_scroll(v_uid);
+      PERFORM public.consume_one_scroll(v_uid, v_scroll_id);
       RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins, 'protected', true, 'message', 'falha protegida');
     ELSE
       DELETE FROM user_items WHERE id = p_item_id;
@@ -400,12 +441,12 @@ $$;
 -- Permissões: somente usuários autenticados executam
 REVOKE EXECUTE ON FUNCTION public.forge_cost_for_level(int, numeric) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.consume_one_user_item(uuid, uuid) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.consume_one_scroll(uuid) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.forge_item(uuid, boolean) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.consume_one_scroll(uuid, uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.forge_item(uuid, boolean, uuid) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.transmute_item(uuid) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION public.forge_cost_for_level(int, numeric) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.consume_one_user_item(uuid, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.consume_one_scroll(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.forge_item(uuid, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.consume_one_scroll(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.forge_item(uuid, boolean, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.transmute_item(uuid) TO authenticated;

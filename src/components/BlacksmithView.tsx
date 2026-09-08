@@ -30,6 +30,15 @@ interface BlacksmithModalProps {
   onGoToStore?: () => void;
 }
 
+interface AvailableScroll {
+  docId: string;
+  itemId: string;
+  title: string;
+  imageUrl?: string;
+  bonus: number;
+  quantity: number;
+}
+
 // @ts-ignore — onClose é parte do contrato da interface (mantido; pode ser usado por consumidores)
 export default function BlacksmithModal({ userData, currentRankIndex, onClose, onSuccess, onGoToStore }: BlacksmithModalProps) {
   const { showConfirm, showToast } = useDialog();
@@ -42,7 +51,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   // Forge State
   const [selectedForgeItem, setSelectedForgeItem] = useState<any | null>(null);
   const [useScroll, setUseScroll] = useState(false);
-  const [scrollCount, setScrollCount] = useState(0);
+  const [availableScrolls, setAvailableScrolls] = useState<AvailableScroll[]>([]);
+  const [selectedScrollDocId, setSelectedScrollDocId] = useState<string | null>(null);
   
   // Transmute State
   const [selectedTransmuteItem, setSelectedTransmuteItem] = useState<any | null>(null);
@@ -223,21 +233,40 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     } catch (e) { /* catálogo opcional */ }
 
     let parsedItems = [];
-    let scrollAmt = 0;
     let consumables: any[] = [];
+    const parsedScrolls: AvailableScroll[] = [];
     
     if (userItemsSnap) {
       const itemIds = userItemsSnap.map((r: any) => r.item_id).filter(Boolean);
       let priceMap: Record<string, number> = {};
+      let storeDataMap: Record<string, any> = {};
       if (itemIds.length > 0) {
-        const { data: storeSnap } = await supabase.from('store_items').select('id, price').in('id', itemIds);
-        (storeSnap || []).forEach((s: any) => { priceMap[s.id] = s.price || 0; });
+        const { data: storeSnap } = await supabase.from('store_items').select('id, price, data').in('id', itemIds);
+        (storeSnap || []).forEach((s: any) => { 
+          priceMap[s.id] = s.price || 0; 
+          storeDataMap[s.id] = s.data || {};
+        });
       }
       for (const row of userItemsSnap) {
-        const itemData = row.data as any;
-        if (itemData.gameEffect === 'blacksmith_scroll') {
-          scrollAmt += itemData.quantity || 1;
-        } else if (itemData.itemType === 'equippable' && !itemData.isDropped) {
+        const itemData = (row.data || {}) as any;
+        if (itemData.isDropped) continue;
+
+        const storeItemData = storeDataMap[row.item_id] || {};
+        const isScroll = itemData.gameEffect === 'blacksmith_scroll' || storeItemData.gameEffect === 'blacksmith_scroll';
+
+        if (isScroll) {
+          const rawBonus = itemData.scrollChanceBonus ?? storeItemData.scrollChanceBonus;
+          const bonus = rawBonus !== undefined && rawBonus !== null && rawBonus !== '' ? Number(rawBonus) : 30;
+          const qty = itemData.quantity || 1;
+          parsedScrolls.push({
+            docId: row.id,
+            itemId: row.item_id,
+            title: itemData.itemTitle || storeItemData.title || 'Pergaminho do Ferreiro',
+            imageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '',
+            bonus,
+            quantity: qty
+          });
+        } else if (itemData.itemType === 'equippable') {
           parsedItems.push({
             docId: row.id,
             itemId: row.item_id,
@@ -253,7 +282,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     }
     setItems(parsedItems);
     setConsumables(consumables);
-    setScrollCount(scrollAmt);
+    setAvailableScrolls(parsedScrolls);
+    if (parsedScrolls.length > 0) {
+      setSelectedScrollDocId(prev => (prev && parsedScrolls.some(s => s.docId === prev)) ? prev : parsedScrolls[0].docId);
+    } else {
+      setSelectedScrollDocId(null);
+    }
     
     // Refresh selections if needed
     if (selectedForgeItem) {
@@ -272,6 +306,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     fetchItems();
   }, []);
 
+  const activeScroll = availableScrolls.find(s => s.docId === selectedScrollDocId) || availableScrolls[0] || null;
+  const scrollChanceBonus = activeScroll?.bonus ?? 30;
+  const scrollCount = availableScrolls.reduce((acc, s) => acc + s.quantity, 0);
+
   const handleForge = async () => {
     if (!selectedForgeItem) return;
     const currentLevel = selectedForgeItem.forgeLevel || 0;
@@ -283,7 +321,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const nextLevel = currentLevel + 1;
     const buyPrice = selectedForgeItem.cost || selectedForgeItem.price || 100;
     const cost = nextForgeCostWithConfig(currentLevel, buyPrice, selectedForgeItem.forgeConfig);
-    const finalChance = useScroll ? 100 : forgeSuccessChance(nextLevel, selectedForgeItem.forgeConfig);
+    const baseChance = forgeSuccessChance(nextLevel, selectedForgeItem.forgeConfig);
+    const finalChance = useScroll ? Math.min(100, baseChance + scrollChanceBonus) : baseChance;
     
     if (!isStaff && userData.coins < cost) {
       showToast(`Você não tem moedas suficientes! Custo: ${cost}`, 'error');
@@ -303,20 +342,33 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const matsLabel = requiredMats.length > 0
       ? requiredMats.map(id => consumables.find(c => c.itemId === id)?.itemTitle || 'Material').join(', ')
       : 'Nenhum';
-    const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nMateriais: ${matsLabel}\nChance: ${Math.min(100, finalChance)}%\n${useScroll ? 'Pergaminho ativo: O item será protegido em caso de falha.' : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}\nOs materiais serão consumidos em caso de sucesso ou falha.`;
+    const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nMateriais: ${matsLabel}\nChance: ${Math.min(100, finalChance)}%${useScroll ? ` (${baseChance}% base + ${scrollChanceBonus}% bônus)` : ''}\n${useScroll ? `Pergaminho ativo (${activeScroll?.title || 'Pergaminho'}): O item será protegido em caso de falha.` : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}\nOs materiais serão consumidos em caso de sucesso ou falha.`;
     if (!await showConfirm(confirmMsg)) return;
 
     setIsForging(true);
     pauseTabMusic(600);
     startAnvilHits(forgeSounds.forgeAnvilSoundUrl);
     if (sketchfabApi) sketchfabApi.play();
-    const rpcPromise = supabase.rpc('forge_item', { p_item_id: selectedForgeItem.docId, p_use_scroll: useScroll });
+    
+    let rpcRes = await supabase.rpc('forge_item', { 
+      p_item_id: selectedForgeItem.docId, 
+      p_use_scroll: useScroll,
+      p_scroll_doc_id: useScroll && activeScroll ? activeScroll.docId : null
+    });
+    // Fallback automático caso a RPC no banco ainda use a assinatura anterior (2 parâmetros)
+    if (rpcRes.error && rpcRes.error.message?.includes('p_scroll_doc_id')) {
+      rpcRes = await supabase.rpc('forge_item', { 
+        p_item_id: selectedForgeItem.docId, 
+        p_use_scroll: useScroll 
+      });
+    }
+
     await new Promise(r => setTimeout(r, 7000));
     stopAnvilHits();
     if (sketchfabApi) sketchfabApi.pause();
     setIsForging(false);
 
-    const { data, error } = await rpcPromise;
+    const { data, error } = rpcRes;
     if (error || !data?.ok) {
       showToast(data?.error || 'Não foi possível forjar o item.', 'error');
       playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
@@ -517,7 +569,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       const maxAttr = forgeAttributeValueWithConfig(baseAttr, MAX_FORGE_LEVEL, selectedForgeItem.forgeConfig);
                       const nextAttr = forgeAttributeValueWithConfig(baseAttr, curLevel + 1, selectedForgeItem.forgeConfig);
                       const nextCost = nextForgeCostWithConfig(curLevel, buyPrice, selectedForgeItem.forgeConfig);
-                      const nextChance = useScroll ? 100 : forgeSuccessChance(curLevel + 1, selectedForgeItem.forgeConfig);
+                      const nextBaseChance = forgeSuccessChance(curLevel + 1, selectedForgeItem.forgeConfig);
+                      const nextChance = useScroll ? Math.min(100, nextBaseChance + scrollChanceBonus) : nextBaseChance;
                       const requiredMats = forgeMaterialsForLevel(curLevel + 1, selectedForgeItem.forgeConfig);
                       const matCount = (id: string) => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0);
                       const materialsMissing = requiredMats.some(id => matCount(id) <= 0);
@@ -555,14 +608,47 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       </div>
 
                       {scrollCount > 0 && (
-                        <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                          <h4 style={{ color: 'var(--accent-red)', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><ShieldAlert size={18} /> Proteção do Item</h4>
+                        <div style={{ background: 'rgba(251, 191, 36, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
+                          <h4 style={{ color: '#fbbf24', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            🔨 Pergaminho do Ferreiro
+                          </h4>
                           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={useScroll} onChange={e => setUseScroll(e.target.checked)} style={{ width: '20px', height: '20px' }} />
-                            Usar Pergaminho do Ferreiro (Você tem {scrollCount})
+                            <input type="checkbox" checked={useScroll} onChange={e => setUseScroll(e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
+                            <span>
+                              Usar {activeScroll?.title || 'Pergaminho'}
+                              <strong style={{ color: '#fbbf24', marginLeft: '6px' }}>
+                                (+{scrollChanceBonus}%)
+                              </strong>
+                              <span style={{ color: '#aaa', fontSize: '0.85rem', marginLeft: '6px' }}>
+                                (Você tem {activeScroll?.quantity || scrollCount})
+                              </span>
+                            </span>
                           </label>
+
+                          {availableScrolls.length > 1 && (
+                            <div style={{ marginTop: '0.75rem', paddingLeft: '28px' }}>
+                              <label style={{ fontSize: '0.8rem', color: '#ccc', display: 'block', marginBottom: '4px' }}>
+                                Escolha qual pergaminho utilizar:
+                              </label>
+                              <select
+                                value={activeScroll?.docId}
+                                onChange={e => setSelectedScrollDocId(e.target.value)}
+                                style={{ width: '100%', padding: '0.4rem 0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                              >
+                                {availableScrolls.map(s => (
+                                  <option key={s.docId} value={s.docId}>
+                                    {s.title} (+{s.bonus}%) — {s.quantity} disponível(is)
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
                           <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0.5rem 0 0 0', paddingLeft: '28px' }}>
-                            Garante sucesso de 100% e evita que o item seja destruído em caso de falha (consome 1 pergaminho).
+                            {scrollChanceBonus >= 100
+                              ? 'Garante 100% de sucesso na forja (consome 1 pergaminho).'
+                              : `Soma +${scrollChanceBonus}% à chance base de sucesso e protege o item da destruição em caso de falha (consome 1 pergaminho).`
+                            }
                           </p>
                         </div>
                       )}
@@ -572,10 +658,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white', fontSize: '1.2rem', fontWeight: 'bold' }}>
                             {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 26, height: 26, objectFit: 'contain' }} /> : <Coins size={24} color="var(--gold-primary)" />} {nextCost} Moedas
                           </div>
-                          <div style={{ color: 'white', fontSize: '1.2rem' }}>
-                            Chance: <strong style={{ color: useScroll ? '#10B981' : 'white' }}>
+                          <div style={{ color: 'white', fontSize: '1.2rem', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                            <span>Chance:</span>
+                            <strong style={{ color: useScroll ? '#10B981' : 'white' }}>
                               {nextChance}%
                             </strong>
+                            {useScroll && (
+                              <span style={{ fontSize: '0.85rem', color: '#10B981' }}>
+                                ({nextBaseChance}% + {scrollChanceBonus}%)
+                              </span>
+                            )}
                           </div>
                         </div>
 

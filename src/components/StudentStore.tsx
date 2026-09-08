@@ -449,7 +449,10 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             buffDurationDays: item.buffDurationDays || 7,
             backColor: item.backColor || '',
             damageEffect: (item as any).damageEffect || 'none',
-            forgeConfig: (item as any).forgeConfig || null
+            forgeConfig: (item as any).forgeConfig || null,
+            scrollChanceBonus: (item as any).gameEffect === 'blacksmith_scroll'
+              ? ((item as any).scrollChanceBonus ?? 30)
+              : ((item as any).scrollChanceBonus ?? null)
           }
         });
         remainingToBuy -= qty;

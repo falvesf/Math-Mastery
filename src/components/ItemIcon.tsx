@@ -42,6 +42,7 @@ interface ItemIconProps {
     unlockedSkinId?: string;
     gameEffect?: string;
     buffDurationDays?: number;
+    scrollChanceBonus?: number;
   };
   size?: number;
   style?: React.CSSProperties;
@@ -104,6 +105,38 @@ export default function ItemIcon({ item, size = 64, style }: ItemIconProps) {
           pointerEvents: 'none'
         }}>
           {licenseDays}d
+        </div>
+      </div>
+    );
+  }
+
+  // Selo de bônus para Pergaminho do Ferreiro (ex: +30%, +50%)
+  const isBlacksmithScroll = item.gameEffect === 'blacksmith_scroll';
+  const rawScrollBonus = item.scrollChanceBonus ?? (item as any).data?.scrollChanceBonus;
+  const scrollBonus = rawScrollBonus !== undefined && rawScrollBonus !== null && rawScrollBonus !== ''
+    ? Number(rawScrollBonus)
+    : (isBlacksmithScroll ? 30 : undefined);
+  if (isBlacksmithScroll && scrollBonus !== undefined && scrollBonus !== null && !isNaN(scrollBonus)) {
+    return (
+      <div style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
+        {content}
+        <div style={{
+          position: 'absolute',
+          bottom: '2px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0, 0, 0, 0.85)',
+          border: '1px solid rgba(251, 191, 36, 0.5)',
+          color: '#fbbf24',
+          fontSize: Math.max(9, size * 0.18),
+          padding: '1px 5px',
+          borderRadius: '10px',
+          fontWeight: 'bold',
+          whiteSpace: 'nowrap',
+          textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+          pointerEvents: 'none'
+        }}>
+          +{scrollBonus}%
         </div>
       </div>
     );

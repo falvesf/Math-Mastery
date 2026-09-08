@@ -52,6 +52,7 @@ export interface TooltipItemData {
   adds?: any[];
   unlockedSkinId?: string;
   forgeLevel?: number;
+  scrollChanceBonus?: number;
 }
 
 export function normalizeItemForTooltip(item: any): TooltipItemData {
@@ -70,7 +71,8 @@ export function normalizeItemForTooltip(item: any): TooltipItemData {
     damageEffect: item.damageEffect,
     fixedAttributes: item.fixedAttributes || (item.data ? item.data.fixedAttributes : []),
     adds: item.adds || (item.data ? item.data.adds : []),
-    unlockedSkinId: item.unlockedSkinId || (item.data ? item.data.unlockedSkinId : undefined)
+    unlockedSkinId: item.unlockedSkinId || (item.data ? item.data.unlockedSkinId : undefined),
+    scrollChanceBonus: item.scrollChanceBonus ?? (item.data ? item.data.scrollChanceBonus : undefined)
   };
 }
 
@@ -101,6 +103,9 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
     item.gameEffect === 'reroll_attributes' ? 'Sorteia novamente todos os atributos extras de um equipamento.' :
     item.gameEffect === 'unlock_skin' ? 'Desbloqueia uma skin para usar no personagem.' :
     item.gameEffect === 'bazar_sale_permit' ? 'Licença para vender itens no bazar.' :
+    item.gameEffect === 'blacksmith_scroll' ? (
+      `Pergaminho do Ferreiro: +${item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null ? item.scrollChanceBonus : 30}% de chance de sucesso na forja.`
+    ) :
     item.gameEffect === 'none' ? 'Um item comum sem efeitos mágicos.' :
     null;
 

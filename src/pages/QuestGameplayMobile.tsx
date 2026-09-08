@@ -1833,7 +1833,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   modelTransforms: item.modelTransforms || null,
                   adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired)) : [],
                   minSalePrice: item.minSalePrice || 0,
-                  forgeLevel: slot.forgeLevel || 0
+                  forgeLevel: slot.forgeLevel || 0,
+                  scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
                 };
                 await supabase.from('user_items').insert({
                   student_id: userData!.uid,
@@ -1882,7 +1883,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
               baseAttributeValue: item.baseAttributeValue || 0,
               modelTransforms: item.modelTransforms || null,
               adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired)) : [],
-              forgeLevel: drop.forgeLevel || 0
+              forgeLevel: drop.forgeLevel || 0,
+              scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
             };
             await supabase.from('user_items').insert({
               student_id: userData!.uid,

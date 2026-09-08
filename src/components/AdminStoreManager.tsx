@@ -31,7 +31,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 
   'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 
-  'bazar_sale_permit' | 'cure_bleed' | 'cure_poison' | 'cure_freeze' | 'cure_burn' | 'cure_electric';
+  'bazar_sale_permit' | 'cure_bleed' | 'cure_poison' | 'cure_freeze' | 'cure_burn' | 'cure_electric' | 'blacksmith_scroll';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mestre' | 'legendary';
 
 export interface StoreItem {
@@ -71,11 +71,12 @@ export interface StoreItem {
   extractMeshName?: string;
   damageEffect?: string; // Efeito especial de dano em batalha (burn, freeze, impact, electric, poison, none)
   battleSoundUrl?: string;
-isForgeable?: boolean;
+  isForgeable?: boolean;
   forgeConfig?: any;
   isTransmutable?: boolean;
   isTransmuted?: boolean; // Item obtido SOMENTE por transmutação (não aparece na loja)
   transmuteConfig?: any;
+  scrollChanceBonus?: number; // % de bônus de chance que o Pergaminho do Ferreiro concede (0–100)
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -613,6 +614,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       minSalePrice: item.minSalePrice || 0,
       gachaConfig: item.gachaConfig || null,
       useGlobalGacha: item.useGlobalGacha ?? true,
+      scrollChanceBonus: item.scrollChanceBonus,
     };
 
     if (copyMode === 'direct') {
@@ -704,6 +706,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           gameImage2dUrl: item.gameImage2dUrl || '',
           gachaConfig: item.gachaConfig || null,
           useGlobalGacha: item.useGlobalGacha ?? true,
+          scrollChanceBonus: item.scrollChanceBonus,
           minSalePrice: 0,
           importedFromId: item._rawId || null,
         };
@@ -769,6 +772,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       cost: Number(formData.cost),
       minRankRequired: String(formData.minRankRequired || ''),
       minSalePrice: formData.minSalePrice ? Number(formData.minSalePrice) : 0,
+      scrollChanceBonus: formData.gameEffect === 'blacksmith_scroll'
+        ? (formData.scrollChanceBonus !== undefined && formData.scrollChanceBonus !== null && !isNaN(Number(formData.scrollChanceBonus))
+            ? Number(formData.scrollChanceBonus)
+            : 30)
+        : undefined,
     };
 
     if (editingId) {
@@ -836,7 +844,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           isForgeable: true,
           forgeConfig: itemData.forgeConfig || null,
           isTransmutable: itemData.isTransmutable || false,
-          transmuteConfig: itemData.transmuteConfig || null
+          transmuteConfig: itemData.transmuteConfig || null,
+          scrollChanceBonus: itemData.scrollChanceBonus ?? null
         };
         updatePromises.push(supabase.from('user_items').update({ data: newData }).eq('id', row.id) as any);
       });
@@ -905,7 +914,13 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   const openEdit = (item: StoreItem) => {
     setHoveredItem(null);
-    setFormData({ ...item, minRankRequired: resolveMinRankName(item.minRankRequired) });
+    setFormData({
+      ...item,
+      minRankRequired: resolveMinRankName(item.minRankRequired),
+      scrollChanceBonus: item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null
+        ? Number(item.scrollChanceBonus)
+        : (item.gameEffect === 'blacksmith_scroll' ? 30 : undefined)
+    });
     setEditingId(item.id);
     setIsEditing(true);
   };
@@ -913,7 +928,15 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   // Superadmin edita um item GLOBAL do banco (abre o mesmo editor; salvar atualiza o global)
   const openEditGlobal = (item: any) => {
     setHoveredItem(null);
-    setFormData({ ...item, id: item._rawId, _isGlobal: true, minRankRequired: resolveMinRankName(item.minRankRequired) } as StoreItem);
+    setFormData({
+      ...item,
+      id: item._rawId,
+      _isGlobal: true,
+      minRankRequired: resolveMinRankName(item.minRankRequired),
+      scrollChanceBonus: item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null
+        ? Number(item.scrollChanceBonus)
+        : (item.gameEffect === 'blacksmith_scroll' ? 30 : undefined)
+    } as StoreItem);
     setEditingId(item._rawId);
     setIsEditing(true);
   };
@@ -1201,7 +1224,20 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Poder no Jogo (Gameplay)</label>
-                    <select value={formData.gameEffect || 'none'} onChange={e => setFormData({...formData, gameEffect: e.target.value as GameEffectType})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                    <select
+                      value={formData.gameEffect || 'none'}
+                      onChange={e => {
+                        const eff = e.target.value as GameEffectType;
+                        setFormData({
+                          ...formData,
+                          gameEffect: eff,
+                          scrollChanceBonus: eff === 'blacksmith_scroll'
+                            ? (formData.scrollChanceBonus !== undefined && formData.scrollChanceBonus !== null ? formData.scrollChanceBonus : 30)
+                            : formData.scrollChanceBonus
+                        });
+                      }}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                    >
                       <option value="none">Nenhum (Efeito Personalizado)</option>
                       <option value="remove_wrong">Amuleto (Elimina 1 alternativa errada)</option>
                       <option value="add_time">Ampulheta (Adiciona +30 segundos)</option>
@@ -1221,8 +1257,28 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="cure_freeze">Chá Quente (Descongela)</option>
                       <option value="cure_burn">Pomada Refrescante (Apaga o fogo)</option>
                       <option value="cure_electric">Isolante (Elimina o choque elétrico)</option>
+                      <option value="blacksmith_scroll">Pergaminho do Ferreiro (Bônus de chance na forja)</option>
                     </select>
                   </div>
+                  {formData.gameEffect === 'blacksmith_scroll' && (
+                    <div style={{ background: 'rgba(251, 191, 36, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#fbbf24', fontWeight: 'bold' }}>
+                        🔨 Bônus de Chance na Forja (%)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={formData.scrollChanceBonus ?? 30}
+                        onChange={e => setFormData({...formData, scrollChanceBonus: Math.max(1, Math.min(100, Number(e.target.value)))})}
+                        style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                      />
+                      <small style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', display: 'block', marginTop: '4px' }}>
+                        Este valor (%) é somado à chance base de forja. Ex.: base 70% + 30% = 100% (limitado a 100%).
+                        Se deixar em 100%, o pergaminho garante sucesso total como antes.
+                      </small>
+                    </div>
+                  )}
                   {formData.gameEffect === 'reduce_hp_cooldown' && (
                     <div className="responsive-grid-sm" style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
                       <div>
