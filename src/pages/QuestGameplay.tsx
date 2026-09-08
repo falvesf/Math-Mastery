@@ -2522,8 +2522,9 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                       // o canvas do viewer (não CSS scale, que cortava o topo).
                       const animCls = isFrog ? 'transform-hop' : '';
                       const viewerSize = isRat ? 265 : 240;
-                      // Porco: o modelo fica de costas para a câmera — gira 180° para olhar para ela.
-                      const rotY = isPig ? 180 : 0;
+                      // Porco: em repouso olha para a câmera (180°); ao ATACAR vira para o JOGADOR
+                      // (esquerda = 90°) e golpeia de frente, não de lado.
+                      const rotY = isPig ? (monsterAnim === 'attack' ? 90 : 180) : 0;
                       const tint = isPig && tr.enraged ? '#ff2222' : null;
                       return (
                         <div style={{ transformOrigin: 'bottom center' }}>
