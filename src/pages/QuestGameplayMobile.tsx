@@ -133,8 +133,29 @@ export default function QuestGameplay() {
   const [playerFrozenAt, setPlayerFrozenAt] = useState(0);
   const [monsterProjectile, setMonsterProjectile] = useState<{ id: number; effect: string; start: number } | null>(null);
   const [monsterSpecialActive, setMonsterSpecialActive] = useState(false);
+  // Golpes configurados do monstro (Entidades 3D > Monstros) — com fallback: se a
+  // missão não tiver `attacks` no monsterAvatarConfig, busca na galeria de monstros.
+  const [galleryMonsterAttacks, setGalleryMonsterAttacks] = useState<any>(null);
+
+  useEffect(() => {
+    if (!quest) return;
+    const cfg = (quest as any)?.monsterAvatarConfig;
+    if (cfg?.attacks) { setGalleryMonsterAttacks(null); return; }
+    const modelUrl = (quest as any)?.monsterModelUrl || cfg?.customModelUrl;
+    if (!modelUrl) { setGalleryMonsterAttacks(null); return; }
+    let active = true;
+    supabase.from('preset_skins').select('config').eq('type', 'monster').then(({ data }) => {
+      if (!active) return;
+      const found = (data || []).find(r => {
+        const c = r.config;
+        return c && (c.customModelUrl || '') === modelUrl && c.attacks;
+      });
+      if (found) setGalleryMonsterAttacks(found.config.attacks);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [quest?.id, (quest as any)?.monsterModelUrl]);
   // Golpes configurados do monstro (Entidades 3D > Monstros)
-  const monsterAttacks = normalizeMonsterAttacks((quest as any)?.monsterAvatarConfig?.attacks || (quest as any)?.monsterAttacks);
+  const monsterAttacks = normalizeMonsterAttacks((quest as any)?.monsterAvatarConfig?.attacks || galleryMonsterAttacks || (quest as any)?.monsterAttacks);
   // Coelho: aceleração do tempo persistente (+5%/golpe) e drop generoso (dobra por golpe)
   const [coelhoHits, setCoelhoHits] = useState(0);
   const [coelhoTransformHits, setCoelhoTransformHits] = useState(0);
@@ -2808,7 +2829,10 @@ const isPig = tr.animal === 'porco';
                     if (modelUrl) {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
                       const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;
-                      return <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><CustomModelViewer modelUrl={modelUrl} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={190} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} shatteredCount={fallenPartsRef.current.length} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} /></div>;
+                      const monsterZoom = quest?.monsterAvatarConfig?.customZoom || 1;
+                      const mSize = Math.round(190 * Math.max(1, monsterZoom * 0.7));
+                      const mCam = 10 * Math.max(1, monsterZoom * 0.7);
+                      return <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><CustomModelViewer modelUrl={modelUrl} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} shatteredCount={fallenPartsRef.current.length} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} /></div>;
                     } else if (quest?.monsterAvatarConfig) {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
                       const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;

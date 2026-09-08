@@ -23,6 +23,8 @@ interface CustomModelViewerProps {
   chestSwapSides?: boolean;
   /** Cor HEX aplicada nos materiais do modelo (efeitos de dano). null = sem tint */
   effectTint?: string | null;
+  /** Distância da câmera (default 10). Aumente p/ monstros com zoom alto não cortarem a cabeça. */
+  cameraDistance?: number;
   /** Desmonta o modelo (malhas espalhadas/caídas) — efeito estrondo em monstros GLB.
    *  Nº de "partes" que caíram (0 = intacto). As malhas inferiores caem primeiro. */
 shatteredCount?: number;
@@ -428,7 +430,7 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
   );
 }
 
-export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, zoom = 1, configRotY, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides, effectTint = null, shatteredCount = 0, preserveDrawingBuffer = false, onCanvasReady }: CustomModelViewerProps) {
+export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, zoom = 1, configRotY, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides, effectTint = null, shatteredCount = 0, preserveDrawingBuffer = false, onCanvasReady, cameraDistance = 10 }: CustomModelViewerProps) {
   const isChest = modelUrl.includes('chest');
   
   // Interação (girar/zoom) habilitada explicitamente pelo chamador (editores).
@@ -440,7 +442,7 @@ export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, ani
       <Canvas
         gl={{ preserveDrawingBuffer }}
         onCreated={({ gl }) => onCanvasReady?.(gl.domElement)}
-        camera={{ position: [0, 3, 10], fov: 45 }}
+        camera={{ position: [0, 3, cameraDistance], fov: 45 }}
         style={{ width: '100%', height: '100%' }}
       >
         <ambientLight intensity={1.5} />
