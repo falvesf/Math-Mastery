@@ -2670,16 +2670,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       const animalUrl = getTransformModelUrl(tr.animal);
                       const isRat = tr.animal === 'rato';
                       const isFrog = tr.animal === 'sapo';
-                      const isPig = tr.animal === 'porco';
+const isPig = tr.animal === 'porco';
                       // Rato: PARADO, olhando para o personagem (esperando para atacar) — só as
-                      // linhas de velocidade atrás indicam rapidez. Um pouco maior.
+                      // linhas de velocidade atrás indicam rapidez. Fica um pouco maior AUMENTANDO
+                      // o canvas do viewer (não CSS scale, que cortava o topo).
                       const animCls = isFrog ? 'transform-hop' : '';
-                      const ratScale = isRat ? 1.2 : 1;
+                      const viewerSize = isRat ? 210 : 190;
                       // Porco: o modelo fica de costas para a câmera — gira 180° para olhar para ela.
                       const rotY = isPig ? 180 : 0;
                       const tint = isPig && tr.enraged ? '#ff2222' : null;
                       return (
-                        <div style={{ transformOrigin: 'bottom center', transform: ratScale !== 1 ? `scale(${ratScale})` : undefined }}>
+                        <div style={{ transformOrigin: 'bottom center' }}>
                           <div className={animCls || undefined} style={{ position: 'relative' }}>
                             {isRat && (
                               <>
@@ -2688,8 +2689,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
                                 <span className="rat-speed-line" style={{ top: '74%', animationDelay: '0.3s' }} />
                               </>
                             )}
-                            <CustomModelViewer modelUrl={animalUrl} size={190} configRotY={rotY} animation="none" role="monster" effectTint={tint} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
-                            <div style={{ position: 'absolute', top: -16, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
+                            <CustomModelViewer modelUrl={animalUrl} size={viewerSize} configRotY={rotY} animation="none" role="monster" effectTint={tint} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
+                            {/* Badge da transformação — perto do topo do modelo */}
+                            <div style={{ position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
                               <span style={{ fontSize: '0.55rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', background: isPig && tr.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '1px 6px', borderRadius: '8px' }}>
                                 {TRANSFORM_LABELS[tr.animal]}{isPig && tr.enraged ? ' (ENFURECIDO!)' : ''} · {Math.max(1, tr.turnsLeft - 1)} turno{Math.max(1, tr.turnsLeft - 1) > 1 ? 's' : ''}
                               </span>
