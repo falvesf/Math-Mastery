@@ -85,58 +85,103 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const anvilTimerRef = useRef<any>(null);
   const bgFadeRafRef = useRef<number | null>(null);
 
-  const ensureBgAudio = (): HTMLAudioElement => {
-    if (!bgAudioRef.current) {
-      const a = new Audio();
-      a.loop = true;
-      a.volume = 0;
-      bgAudioRef.current = a;
+  /** Fade-out suave e encerramento de uma instância de áudio (usado ao trocar de guia e ao desmontar). */
+  const fadeOutAudio = (audio: HTMLAudioElement | null, durMs = 800) => {
+    if (!audio) return;
+    const fromVol = audio.volume;
+    if (fromVol <= 0.01) {
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch (_) {}
+      return;
     }
-    return bgAudioRef.current;
+    const start = performance.now();
+    const interval = 25;
+    const timer = setInterval(() => {
+      const elapsed = performance.now() - start;
+      const t = Math.min(1, elapsed / durMs);
+      audio.volume = Math.max(0, fromVol * (1 - t));
+      if (t >= 1) {
+        clearInterval(timer);
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+        } catch (_) {}
+      }
+    }, interval);
   };
 
-  const rampVolume = (target: number, durMs: number, onDone?: () => void) => {
-    const a = ensureBgAudio();
-    const from = a.volume;
+  const rampVolume = (audio: HTMLAudioElement, target: number, durMs: number, onDone?: () => void) => {
+    const from = audio.volume;
     const start = performance.now();
     if (bgFadeRafRef.current) cancelAnimationFrame(bgFadeRafRef.current);
     const step = (now: number) => {
       const t = Math.min(1, (now - start) / durMs);
-      a.volume = Math.max(0, Math.min(1, from + (target - from) * t));
-      if (t < 1) { bgFadeRafRef.current = requestAnimationFrame(step); }
-      else { bgFadeRafRef.current = null; if (onDone) onDone(); }
+      audio.volume = Math.max(0, Math.min(1, from + (target - from) * t));
+      if (t < 1) {
+        bgFadeRafRef.current = requestAnimationFrame(step);
+      } else {
+        bgFadeRafRef.current = null;
+        if (onDone) onDone();
+      }
     };
     bgFadeRafRef.current = requestAnimationFrame(step);
   };
 
-  /** Toca a música da guia atual em loop, com fade-in. Retoma do ponto onde parou. */
+  /** Toca a música da guia atual em loop com crossfade suave. */
   const playTabMusic = (url?: string, volume = 0.5) => {
-    const a = ensureBgAudio();
     bgVolumeRef.current = volume;
-    if (!url) return;
-    const resolved = resolveAudioUrl(url);
-    if (a.src !== resolved) {
-      a.src = resolved;
-      a.currentTime = 0;
+    if (!url) {
+      if (bgAudioRef.current) {
+        fadeOutAudio(bgAudioRef.current, 800);
+        bgAudioRef.current = null;
+      }
+      return;
     }
-    a.play().catch(() => {});
-    rampVolume(volume, 700);
+
+    const resolved = resolveAudioUrl(url);
+
+    // Se já estiver tocando exatamente esta música, apenas retoma e faz fade-in
+    if (bgAudioRef.current && bgAudioRef.current.src === resolved) {
+      bgAudioRef.current.play().catch(() => {});
+      rampVolume(bgAudioRef.current, volume, 800);
+      return;
+    }
+
+    // Se havia outra música tocando, faz fade-out suave da anterior (crossfade)
+    if (bgAudioRef.current) {
+      fadeOutAudio(bgAudioRef.current, 800);
+    }
+
+    // Inicia a nova música a partir do zero com fade-in suave
+    const nextAudio = new Audio(resolved);
+    nextAudio.loop = true;
+    nextAudio.volume = 0;
+    bgAudioRef.current = nextAudio;
+    nextAudio.play().catch(() => {});
+    rampVolume(nextAudio, volume, 800);
   };
 
   /** Fade-out e pausa a música (preserva currentTime p/ retomar do mesmo ponto). */
   const pauseTabMusic = (durMs = 600) => {
-    const a = ensureBgAudio();
-    rampVolume(0, durMs, () => { a.pause(); });
-  };
-
-  /** Para a música imediatamente e zera o ponto de reprodução (troca de guia/saída). */
-  const stopTabMusic = () => {
     const a = bgAudioRef.current;
     if (!a) return;
-    if (bgFadeRafRef.current) cancelAnimationFrame(bgFadeRafRef.current);
-    bgFadeRafRef.current = null;
-    a.pause();
-    a.currentTime = 0;
+    rampVolume(a, 0, durMs, () => {
+      try { a.pause(); } catch (_) {}
+    });
+  };
+
+  /** Para a música com fade-out suave (troca de guia ou saída). */
+  const stopTabMusic = (durMs = 800) => {
+    const a = bgAudioRef.current;
+    if (!a) return;
+    if (bgFadeRafRef.current) {
+      cancelAnimationFrame(bgFadeRafRef.current);
+      bgFadeRafRef.current = null;
+    }
+    fadeOutAudio(a, durMs);
+    bgAudioRef.current = null;
   };
 
   /** Toca o som do martelo na bigorna durante o trabalho do ferreiro. */
@@ -171,19 +216,17 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     return () => { isMounted = false; };
   }, [tenantId]);
 
-  // Música da guia ativa (a anterior para antes da nova começar, ao alternar guia)
+  // Música da guia ativa (faz crossfade suave ao alternar entre Forja e Transmutação)
   useEffect(() => {
     const url = activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl;
-    stopTabMusic();
-    if (!url) return;
-    playTabMusic(url);
+    playTabMusic(url, bgVolumeRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, forgeSounds.forgeMusicUrl, forgeSounds.transmuteMusicUrl]);
 
-  // Limpa áudio ao desmontar (sair da guia "A Forja" para a música)
+  // Limpa áudio ao desmontar (sair da guia "A Forja" com fade-out suave)
   useEffect(() => () => {
     stopAnvilHits();
-    stopTabMusic();
+    stopTabMusic(800);
   }, []);
 
   useEffect(() => {
