@@ -614,30 +614,20 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (isStackableItemType(item.itemType)) {
       await consumeItemQuantity(item.itemId, 1, item.id);
       if (!result.checked) {
-        const { id, count, docIds, ...itemDataToDrop } = item;
-        await supabase.from('user_items').insert({
-          student_id: 'dropped',
-          item_id: item.itemId,
-          equipped: false,
-          data: {
-            ...itemDataToDrop,
-            droppedBy: userData.uid,
-            quantity: 1
-          }
-        });
+        // Move para o bucket 'dropped' via RPC (SECURITY DEFINER — o UPDATE direto
+        // de student_id é bloqueado pelo WITH CHECK do RLS).
+        const { error: dropErr } = await supabase.rpc('drop_user_item', { p_uid: userData.uid, p_doc_id: item.id, p_destroy: false });
+        if (dropErr) {
+          showToast('Erro ao jogar fora o item.', 'error');
+          return;
+        }
       }
     } else {
       const docToUpdate = item.docIds ? item.docIds[0] : item.id;
-      if (result.checked) {
-        await supabase.from('user_items').delete().eq('id', docToUpdate);
-      } else {
-        const { data: currentData } = await supabase.from('user_items').select('data').eq('id', docToUpdate).single();
-        if (currentData) {
-          await supabase.from('user_items').update({
-            student_id: 'dropped',
-            data: { ...(currentData.data as any), droppedBy: userData.uid }
-          }).eq('id', docToUpdate);
-        }
+      const { error: dropErr } = await supabase.rpc('drop_user_item', { p_uid: userData.uid, p_doc_id: docToUpdate, p_destroy: result.checked });
+      if (dropErr) {
+        showToast('Erro ao descartar o item.', 'error');
+        return;
       }
     }
     
