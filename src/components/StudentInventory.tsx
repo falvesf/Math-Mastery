@@ -613,20 +613,17 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (!result || !result.confirmed) return;
     
     if (isStackableItemType(item.itemType)) {
-      await consumeItemQuantity(item.itemId, 1, item.id);
-      if (!result.checked) {
-        // Move para o bucket 'dropped' via RPC (SECURITY DEFINER — o UPDATE direto
-        // de student_id é bloqueado pelo WITH CHECK do RLS).
-        const { data: rpcData, error: dropErr } = await supabase.rpc('drop_user_item', { p_uid: userData.uid, p_doc_id: item.id, p_destroy: false });
-        if (dropErr) {
-          console.error('drop_user_item RPC error:', dropErr);
-          showToast(`Erro ao jogar fora o item: ${dropErr.message || 'desconhecido'}`, 'error');
-          return;
-        }
-        if (rpcData && rpcData.ok === false) {
-          showToast(rpcData.error || 'Não foi possível jogar fora o item.', 'error');
-          return;
-        }
+      // count === 1: o RPC move/deleta o registro DIRETO (sem consumir antes —
+      // senão o registro some e o RPC retorna "item não encontrado").
+      const { data: rpcData, error: dropErr } = await supabase.rpc('drop_user_item', { p_uid: userData.uid, p_doc_id: item.id, p_destroy: result.checked });
+      if (dropErr) {
+        console.error('drop_user_item RPC error:', dropErr);
+        showToast(`Erro ao jogar fora o item: ${dropErr.message || 'desconhecido'}`, 'error');
+        return;
+      }
+      if (rpcData && rpcData.ok === false) {
+        showToast(rpcData.error || 'Não foi possível jogar fora o item.', 'error');
+        return;
       }
     } else {
       const docToUpdate = item.docIds ? item.docIds[0] : item.id;
