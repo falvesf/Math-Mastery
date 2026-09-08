@@ -41,7 +41,7 @@ import {
   rollBleedWound,
   playTransformSound,
 } from '../lib/transformEffects';
-import { normalizeMonsterAttacks, applyMonsterAttackEffect } from '../lib/monsterAttacks';
+import { normalizeMonsterAttacks } from '../lib/monsterAttacks';
 
 interface UserItem {
   id: string;
@@ -98,8 +98,6 @@ export default function QuestGameplay() {
   const coinsMultiplier = 1 + (totalEquippedStats.coins / 100);
   const damageEffect = getEquippedDamageEffect(playerEquippedItems);
   const effectChance = getEquippedDamageEffectInfo(playerEquippedItems).chance;
-  // Golpes configurados do monstro (Entidades 3D > Monstros)
-  const monsterAttacks = normalizeMonsterAttacks((quest as any)?.monsterAvatarConfig?.attacks || galleryMonsterAttacks || (quest as any)?.monsterAttacks);
 
   const currentRankObj = getRankForXp(userData?.xp || 0, userData?.classId);
   const calculatedRankIndex = Math.max(0, RANKS.findIndex(r => r.name === currentRankObj.name));
@@ -135,11 +133,12 @@ export default function QuestGameplay() {
   const [playerElectricTurns, setPlayerElectricTurns] = useState(0);
   const [playerFrozenAt, setPlayerFrozenAt] = useState(0);
   const [monsterProjectile, setMonsterProjectile] = useState<{ id: number; effect: string; start: number } | null>(null);
-  const [monsterSpecialActive, setMonsterSpecialActive] = useState(false);
   const [monsterSpecialAnim, setMonsterSpecialAnim] = useState('');
   // Golpes configurados do monstro (Entidades 3D > Monstros) — com fallback: se a
   // missão não tiver `attacks` no monsterAvatarConfig, busca na galeria de monstros.
   const [galleryMonsterAttacks, setGalleryMonsterAttacks] = useState<any>(null);
+  // Golpes configurados do monstro (Entidades 3D > Monstros)
+  const monsterAttacks = normalizeMonsterAttacks((quest as any)?.monsterAvatarConfig?.attacks || galleryMonsterAttacks || (quest as any)?.monsterAttacks);
 
   useEffect(() => {
     if (!quest) return;
@@ -149,23 +148,23 @@ export default function QuestGameplay() {
     const qName = (quest as any)?.monsterName;
     if (!modelUrl && !qName) { setGalleryMonsterAttacks(null); return; }
     let active = true;
-    supabase.from('preset_skins').select('id, name, config').eq('type', 'monster').then(({ data }) => {
-      if (!active) return;
-      const found = (data || []).find(r => {
-        const c = r.config;
-        if (!c) return false;
-        const hasAttacks = !!c.attacks;
-        const urlMatch = modelUrl ? (c.customModelUrl || '') === modelUrl : false;
-        const nameMatch = qName ? r.name === qName : false;
-        return hasAttacks && (urlMatch || nameMatch);
-      });
-      if (found) setGalleryMonsterAttacks(found.config.attacks);
-    }).catch(() => {});
+    supabase.from('preset_skins').select('id, name, config').eq('type', 'monster')
+      .then(({ data }) => {
+        if (!active) return;
+        const found = (data || []).find(r => {
+          const c = r.config;
+          if (!c) return false;
+          const hasAttacks = !!c.attacks;
+          const urlMatch = modelUrl ? (c.customModelUrl || '') === modelUrl : false;
+          const nameMatch = qName ? r.name === qName : false;
+          return hasAttacks && (urlMatch || nameMatch);
+        });
+        if (found) setGalleryMonsterAttacks(found.config.attacks);
+      }, () => {});
     return () => { active = false; };
   }, [quest?.id, (quest as any)?.monsterModelUrl, (quest as any)?.monsterName]);
   // Coelho: aceleração do tempo persistente (+5%/golpe) e drop generoso (dobra por golpe)
   const [coelhoHits, setCoelhoHits] = useState(0);
-  const [coelhoTransformHits, setCoelhoTransformHits] = useState(0);
   const coelhoHitsRef = useRef(0);
   const coelhoDropRef = useRef(0);
   // Guarda de sequência de animação: impede hurt/efeitos obsoletos de cortar o ataque
@@ -899,7 +898,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setPlayerElectricTurns(0);
     setPlayerFrozenAt(0);
     setMonsterProjectile(null);
-    setMonsterSpecialActive(false);
+
     setSliceSnapshot(null);
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
@@ -1370,7 +1369,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             coelhoHitsRef.current += 1;
             coelhoDropRef.current += 1;
             setCoelhoHits(coelhoHitsRef.current);
-            setCoelhoTransformHits(coelhoDropRef.current);
+
           }
           const tr = transformRef.current;
           if (tr?.animal === 'porco' && !tr.enraged) {
@@ -1595,7 +1594,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
 if (tr.turnsLeft <= 1) {
         setTransformState(null);
         coelhoDropRef.current = 0;
-        setCoelhoTransformHits(0);
+
         triggerTransformPuff('revert');
         if (tr.animal !== 'rato') setBattleMessage(`${TRANSFORM_LABELS[tr.animal]} voltou ao normal!`);
       } else {
@@ -2011,11 +2010,9 @@ if (a.ranged?.enabled && roll < 0.4) {
       return;
     }
   if (a.special?.enabled && roll < 0.75) {
-    setMonsterSpecialActive(true);
     setMonsterSpecialAnim(a.special?.animation || '');
     setTimeout(() => {
       applyMonsterEffectToPlayer(a.special?.effect || 'none');
-      setMonsterSpecialActive(false);
       setMonsterSpecialAnim('');
     }, 1300);
     return;
