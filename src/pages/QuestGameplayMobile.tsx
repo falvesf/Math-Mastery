@@ -41,6 +41,7 @@ import {
   rollBleedWound,
   playTransformSound,
 } from '../lib/transformEffects';
+import { normalizeMonsterAttacks } from '../lib/monsterAttacks';
 
 interface UserItem {
   id: string;
@@ -126,6 +127,14 @@ export default function QuestGameplay() {
   const [playerBleeds, setPlayerBleeds] = useState<{ id: number; turns: number; x: number; y: number }[]>([]);
   // Envenenamento do SAPO: cada golpe do sapo aplica/renova veneno (3 turnos)
   const [playerPoisonTurns, setPlayerPoisonTurns] = useState(0);
+  // Status do jogador aplicados por golpes de MONSTRO (melee/ranged/special configurados)
+  const [playerBurnTurns, setPlayerBurnTurns] = useState(0);
+  const [playerElectricTurns, setPlayerElectricTurns] = useState(0);
+  const [playerFrozenAt, setPlayerFrozenAt] = useState(0);
+  const [monsterProjectile, setMonsterProjectile] = useState<{ id: number; effect: string; start: number } | null>(null);
+  const [monsterSpecialActive, setMonsterSpecialActive] = useState(false);
+  // Golpes configurados do monstro (Entidades 3D > Monstros)
+  const monsterAttacks = normalizeMonsterAttacks((quest as any)?.monsterAvatarConfig?.attacks || (quest as any)?.monsterAttacks);
   // Coelho: aceleração do tempo persistente (+5%/golpe) e drop generoso (dobra por golpe)
   const [coelhoHits, setCoelhoHits] = useState(0);
   const [coelhoTransformHits, setCoelhoTransformHits] = useState(0);
@@ -956,6 +965,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
     healActivationsRef.current = 0;
     setPlayerBleeds([]);
     setPlayerPoisonTurns(0);
+    setPlayerBurnTurns(0);
+    setPlayerElectricTurns(0);
+    setPlayerFrozenAt(0);
+    setMonsterProjectile(null);
+    setMonsterSpecialActive(false);
     setSliceSnapshot(null);
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
@@ -1581,6 +1595,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
           setPlayerPoisonTurns(3);
           setBattleMessage('O SAPO TE ENVENENOU! Você perderá coração por 3 turnos!');
         }
+        // Monstro NÃO transformado: aplica os golpes configurados (Entidades 3D > Monstros)
+        if (!curTr) {
+          rollMonsterAttack();
+        }
         setPlayerAnim('hurt');
         playPlayerDamageSound();
       }, monsterAttackDelay);
@@ -2038,24 +2056,81 @@ const dealTransformDamageToPlayer = (damage: number) => {
   const poisonRef = useRef(playerPoisonTurns);
   useEffect(() => { poisonRef.current = playerPoisonTurns; }, [playerPoisonTurns]);
 
-  // Consome 1 turno de sangramento/veneno a cada ação de ataque (não é ação de ataque)
+  // Consome 1 turno de sangramento/veneno/fogo/raio a cada ação de ataque (não é ação de ataque)
+  const burnRef = useRef(playerBurnTurns);
+  useEffect(() => { burnRef.current = playerBurnTurns; }, [playerBurnTurns]);
+  const electricRef = useRef(playerElectricTurns);
+  useEffect(() => { electricRef.current = playerElectricTurns; }, [playerElectricTurns]);
+
   const advanceStatusTurns = () => {
     setPlayerBleeds(prev => prev.map(b => ({ ...b, turns: b.turns - 1 })).filter(b => b.turns > 0));
     setPlayerPoisonTurns(t => Math.max(0, t - 1));
+    setPlayerBurnTurns(t => Math.max(0, t - 1));
+    setPlayerElectricTurns(t => Math.max(0, t - 1));
   };
 
-  // DANO CONTÍNUO (sangramento + veneno) — consequência dos ataques
+  // Aplica um efeito de MONSTRO no jogador (melee/ranged/special configurados).
+  const applyMonsterEffectToPlayer = (effect: string) => {
+    if (!effect || effect === 'none') return;
+    switch (effect) {
+      case 'bleed': {
+        const w = rollBleedWound('monstro');
+        setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns: 2, x: w.x, y: w.y }]);
+        break;
+      }
+      case 'poison': setPlayerPoisonTurns(3); break;
+      case 'burn': setPlayerBurnTurns(3); break;
+      case 'electric': setPlayerElectricTurns(3); break;
+      case 'freeze': setPlayerFrozenAt(Date.now() + 1600); break;
+      case 'heal':
+        setMonsterHeartFrac(1);
+        setMonsterBubble('🧪 O monstro se curou!');
+        break;
+    }
+  };
+
+  // Rola qual golpe o monstro vai usar no ataque (melee/ranged/special) e aplica.
+  const rollMonsterAttack = () => {
+    const a = monsterAttacks;
+    const roll = Math.random();
+    const remaining = quest?.questions.length ? (quest.questions.length - currentQIndex) / quest.questions.length : 1;
+    if (a.heal?.enabled && remaining <= a.heal.threshold && Math.random() < 0.4) {
+      applyMonsterEffectToPlayer('heal');
+      return;
+    }
+    if (a.ranged?.enabled && roll < 0.4) {
+      setMonsterProjectile({ id: Date.now(), effect: a.ranged.effect || 'none', start: Date.now() });
+      setTimeout(() => applyMonsterEffectToPlayer(a.ranged?.effect || 'none'), 900);
+      return;
+    }
+    if (a.special?.enabled && roll < 0.75) {
+      setMonsterSpecialActive(true);
+      setTimeout(() => {
+        applyMonsterEffectToPlayer(a.special?.effect || 'none');
+        setMonsterSpecialActive(false);
+      }, 900);
+      return;
+    }
+    applyMonsterEffectToPlayer(a.melee.effect);
+  };
+
+  // DANO CONTÍNUO (sangramento + veneno + fogo + raio) — consequência dos ataques
   useEffect(() => {
-    if (gameState !== 'playing' || (playerBleeds.length === 0 && playerPoisonTurns <= 0)) return;
+    const active = playerBleeds.length > 0 || playerPoisonTurns > 0 || playerBurnTurns > 0 || playerElectricTurns > 0;
+    if (gameState !== 'playing' || !active) return;
     const iv = setInterval(() => {
       const bleedCount = bleedsRef.current.length;
       const poisonOn = poisonRef.current > 0;
-      if (bleedCount === 0 && !poisonOn) return;
-      const total = bleedCount * 0.5 + (poisonOn ? 0.5 : 0);
+      const burnOn = burnRef.current > 0;
+      const electricOn = electricRef.current > 0;
+      if (bleedCount === 0 && !poisonOn && !burnOn && !electricOn) return;
+      const total = bleedCount * 0.5 + (poisonOn ? 0.5 : 0) + (burnOn ? 0.5 : 0) + (electricOn ? 0.5 : 0);
       const hp = heartsRef.current;
       if (hp <= total) {
         setPlayerBleeds([]);
         setPlayerPoisonTurns(0);
+        setPlayerBurnTurns(0);
+        setPlayerElectricTurns(0);
         triggerFatality(false, 0);
         return;
       }
@@ -2075,11 +2150,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
           updateUserHearts(newHearts);
         }
       });
-      setBattleMessage(bleedCount > 0 && poisonOn
-        ? `SANGRANDO (${bleedCount}x) E ENVENENADO! Perdendo ${total} coração por vez...`
-        : bleedCount > 0
-          ? `SANGRANDO (${bleedCount}x)! Perdendo ${bleedCount * 0.5} coração por vez...`
-          : 'ENVENENADO! O veneno do sapo drena sua vida...');
+      setBattleMessage(
+        bleedCount > 0 && poisonOn ? `SANGRANDO (${bleedCount}x) E ENVENENADO! Perdendo ${total} coração por vez...`
+        : bleedCount > 0 ? `SANGRANDO (${bleedCount}x)! Perdendo ${bleedCount * 0.5} coração por vez...`
+        : poisonOn ? 'ENVENENADO! O veneno drena sua vida...'
+        : burnOn ? 'QUEIMANDO! O fogo consome sua vida...'
+        : electricOn ? 'ELETROCUTADO! O choque drena sua vida...'
+        : '');
       // Perde moedas junto com o sangue (sempre, no sangramento do rato)
       if (userData?.uid && bleedCount > 0) {
         const lostCoins = bleedCount * (1 + Math.floor(Math.random() * 3));
@@ -2091,7 +2168,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     }, 3200);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState, playerBleeds.length > 0, playerPoisonTurns > 0]);
+  }, [gameState, playerBleeds.length > 0, playerPoisonTurns > 0, playerBurnTurns > 0, playerElectricTurns > 0]);
 
   // VENENO/SANGRAMENTO: drena o coração, pisca em vermelho e dropa moedas extras.
   useEffect(() => {
@@ -2524,7 +2601,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     <button 
                       key={i} 
                       onClick={() => !isEliminated && handleAnswer(i)}
-                      disabled={feedback !== null || isEliminated}
+                      disabled={feedback !== null || isEliminated || playerFrozenAt > Date.now()}
                       className={`quest-option-btn ${isEliminated ? 'eliminated' : ''} ${isCorrectAnswer ? 'correct' : ''} ${isWrongSelected ? 'wrong' : ''}`}
                     >
                       {isEliminated && <XCircle size={16} color="rgba(239, 68, 68, 0.5)" style={{ position: 'absolute' }} />}
@@ -2559,7 +2636,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
               <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', marginRight: '-20px', transform: `translate(${arenaDebug.playerOffsetX}px, ${arenaDebug.playerOffsetY}px) scale(${arenaDebug.playerScale})` }}>
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
-                  <div className={playerPoisonTurns > 0 ? 'poison-tint' : undefined} title={playerPoisonTurns > 0 ? `Envenenado por ${playerPoisonTurns} turno(s)` : undefined} style={{ position: 'relative' }}>
+                  <div
+                    className={(() => {
+                      if (playerFrozenAt > Date.now()) return 'freeze-tint';
+                      if (playerBurnTurns > 0) return 'burn-tint';
+                      if (playerPoisonTurns > 0) return 'poison-tint';
+                      if (playerElectricTurns > 0) return 'electric-tint';
+                      return undefined;
+                    })()}
+                    title={playerFrozenAt > Date.now() ? 'Congelado!' : playerPoisonTurns > 0 ? `Envenenado por ${playerPoisonTurns} turno(s)` : playerBurnTurns > 0 ? 'Queimando!' : playerElectricTurns > 0 ? 'Eletrocutado!' : undefined}
+                    style={{ position: 'relative' }}
+                  >
                     <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={170} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
                   </div>
                   {playerBleeds.map(b => (
@@ -2745,8 +2832,20 @@ const isPig = tr.animal === 'porco';
                           <span className="puff-sparkle" style={{ left: '40%', top: '80%', animationDelay: '0.18s' }} />
                         </>
                       )}
-                    </div>
-                  )}
+</div>
+            )}
+
+            {/* Projétil arremessado pelo monstro (golpe à distância) */}
+            {monsterProjectile && (
+              <div
+                key={monsterProjectile.id}
+                className="monster-projectile"
+                style={{ right: '14%', top: '44%' }}
+                onAnimationEnd={() => setMonsterProjectile(null)}
+              >
+                <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #a3a3a3, #6b6b6b)', border: '2px solid #444', borderRadius: '3px', boxShadow: '0 0 8px rgba(0,0,0,0.5)' }} />
+              </div>
+            )}
                 </div>
                 </div>
                 </div>

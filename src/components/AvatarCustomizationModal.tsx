@@ -10,6 +10,7 @@ import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransf
 import { fetchSavedPoses, saveSavedPoses, type SavedPose } from '../lib/savedPoses';
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
+import MonsterAttacksEditor from './MonsterAttacksEditor';
 import Admin3DModelsManager from './Admin3DModelsManager';
 import CustomModelViewer from './CustomModelViewer';
 import PoseStudioModal from './PoseStudioModal';
@@ -2069,6 +2070,14 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                   style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: editingSkinId ? 'var(--bg-card)' : 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', cursor: editingSkinId ? 'not-allowed' : 'text', opacity: editingSkinId ? 0.75 : 1 }}
                 />
               </div>
+            )}
+
+            {/* Golpes do Monstro (só no editor de monstros) */}
+            {customSaveMode && (
+              <MonsterAttacksEditor
+                value={(config as any).attacks}
+                onChange={attacks => setConfig({ ...config, attacks } as any)}
+              />
             )}
 
           </div>

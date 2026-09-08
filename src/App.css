@@ -452,6 +452,48 @@
   pointer-events: none;
 }
 
+/* Fogo (queimando): blocos alaranjados pulsando */
+@keyframes burn-tint-pulse {
+  0%, 100% { filter: sepia(1) hue-rotate(-35deg) saturate(1.6) brightness(1.1); }
+  50% { filter: sepia(1) hue-rotate(-35deg) saturate(1.8) brightness(1.45); }
+}
+.burn-tint {
+  animation: burn-tint-pulse 0.9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Raio (eletrocutado): blocos amarelados piscando rápido */
+@keyframes electric-tint-pulse {
+  0%, 100% { filter: sepia(1) hue-rotate(180deg) saturate(1.7) brightness(1.2); }
+  50% { filter: sepia(1) hue-rotate(180deg) saturate(1.7) brightness(0.6); }
+}
+.electric-tint {
+  animation: electric-tint-pulse 0.3s steps(2) infinite;
+  pointer-events: none;
+}
+
+/* Gelo (congelado): blocos azulados, estático (sem pulso) */
+.freeze-tint {
+  filter: sepia(1) hue-rotate(170deg) saturate(1.4) brightness(1.1);
+  pointer-events: none;
+}
+
+/* Projétil arremessado pelo monstro em direção ao jogador */
+@keyframes monster-projectile {
+  0% { transform: translateX(0) translateY(0) scale(0.6); opacity: 1; }
+  15% { transform: translateX(-18%) translateY(-16%) scale(1); opacity: 1; }
+  85% { transform: translateX(-82%) translateY(-8%) scale(1); opacity: 1; }
+  100% { transform: translateX(-95%) translateY(0) scale(0.7); opacity: 0; }
+}
+.monster-projectile {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  z-index: 46;
+  pointer-events: none;
+  animation: monster-projectile 0.9s ease-in forwards;
+}
+
 /* Ferimento de mordida no jogador (sangramento do rato) — estilo hematoma, com
    sangue escorrendo do local do ferimento. Posição definida por top/left (%). */
 .bleed-wound {
