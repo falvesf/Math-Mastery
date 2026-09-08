@@ -8,13 +8,13 @@ declare global {
 }
 import { supabase } from '../lib/supabase';
 // @ts-ignore
-import { X, Hammer, ShieldAlert, Sparkles, Coins, Lock, CheckCircle2, AlertTriangle, ArrowRight, ChevronUp, ChevronDown } from 'lucide-react';
+import { X, Hammer, ShieldAlert, Sparkles, Coins, Lock, CheckCircle2, AlertTriangle, ArrowRight, ChevronUp, ChevronDown, Layers } from 'lucide-react';
 import CachedImage from './CachedImage';
 import ItemTooltip from './ItemTooltip';
 // @ts-ignore
 import { useTenant } from '../contexts/TenantContext';
 // @ts-ignore
-import { calculateTotalStats } from '../lib/gacha';
+import { calculateTotalStats, isStackableItemType } from '../lib/gacha';
 // @ts-ignore
 import { fetchActiveCoin } from '../lib/model3d';
 // @ts-ignore
@@ -62,6 +62,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const [inventoryFilter, setInventoryFilter] = useState<'all' | 'equipment' | 'materials'>('all');
   const [breakQty, setBreakQty] = useState<number>(1);
   const [fuseBatches, setFuseBatches] = useState<number>(1);
+  const [isConsolidating, setIsConsolidating] = useState(false);
   
   // Transmute State
   const [selectedTransmuteItem, setSelectedTransmuteItem] = useState<any | null>(null);
@@ -263,13 +264,114 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const isTransmuteUnlocked = currentRankIndex >= 11; // 11 = Diamante I
   const isStaff = userData.role !== 'student' && !userData.studentViewActive;
   const coinUrl = activeCoin?.open_url || activeCoin?.url || '';
+  const consolidateUserStacks = async (rawRows: any[]) => {
+    const groups: Record<string, any[]> = {};
+    for (const row of rawRows) {
+      const d = (row.data || {}) as any;
+      if (row.equipped || d.forSale || d.isDropped) continue;
+      if (d.itemType === 'equippable') continue;
+      
+      const isStackable = isStackableItemType(d.itemType) || 
+        d.gameEffect === 'break_item' || 
+        d.gameEffect === 'fuse_item' || 
+        d.gameEffect === 'blacksmith_scroll';
+        
+      if (!isStackable) continue;
+      
+      if (!groups[row.item_id]) groups[row.item_id] = [];
+      groups[row.item_id].push(row);
+    }
+
+    let hasChanges = false;
+    for (const itemId in groups) {
+      const stackList = groups[itemId];
+      if (stackList.length <= 1) continue;
+
+      let totalQty = 0;
+      stackList.forEach(r => {
+        const q = (r.data?.quantity) || 1;
+        totalQty += q;
+      });
+
+      let remaining = totalQty;
+      for (let i = 0; i < stackList.length; i++) {
+        const row = stackList[i];
+        const curData = (row.data || {}) as any;
+        const targetQty = Math.min(99, remaining);
+        remaining -= targetQty;
+
+        if (targetQty > 0) {
+          if ((curData.quantity || 1) !== targetQty) {
+            hasChanges = true;
+            row.data = { ...curData, quantity: targetQty };
+            await supabase.from('user_items').update({
+              data: row.data
+            }).eq('id', row.id);
+          }
+        } else {
+          hasChanges = true;
+          await supabase.from('user_items').delete().eq('id', row.id);
+          stackList[i] = null;
+        }
+      }
+
+      while (remaining > 0) {
+        hasChanges = true;
+        const newStackQty = Math.min(99, remaining);
+        remaining -= newStackQty;
+        const baseRow = stackList.find(Boolean);
+        const baseData = (baseRow?.data || {}) as any;
+        await supabase.from('user_items').insert({
+          student_id: userData.uid,
+          item_id: itemId,
+          equipped: false,
+          tenant_id: tenantId || null,
+          data: {
+            ...baseData,
+            quantity: newStackQty
+          }
+        });
+      }
+    }
+
+    return hasChanges;
+  };
+
+  const handleManualConsolidateStacks = async () => {
+    if (isForging || isConsolidating) return;
+    setIsConsolidating(true);
+    try {
+      await fetchItems();
+      showToast("Montes e fragmentos organizados e juntados com sucesso!", 'success');
+    } catch (err) {
+      showToast("Erro ao juntar montes.", 'error');
+    } finally {
+      setIsConsolidating(false);
+    }
+  };
 
   const fetchItems = async () => {
     setLoading(true);
-    const { data: userItemsSnap } = await supabase
+    let { data: userItemsSnap } = await supabase
       .from('user_items')
       .select('id, item_id, equipped, data')
       .eq('student_id', userData.uid);
+
+    // Auto-consolidação inteligente de montes duplicados de fragmentos/materiais/consumíveis
+    try {
+      if (userItemsSnap && userItemsSnap.length > 1) {
+        const didConsolidate = await consolidateUserStacks(userItemsSnap);
+        if (didConsolidate) {
+          const { data: reloadedSnap } = await supabase
+            .from('user_items')
+            .select('id, item_id, equipped, data')
+            .eq('student_id', userData.uid);
+          if (reloadedSnap) userItemsSnap = reloadedSnap;
+        }
+      }
+    } catch (consErr) {
+      console.error('Erro na consolidação automática de itens:', consErr);
+    }
 
     // Catálogo de materiais/itens (nome/ícone/patente) — mesmo os que o jogador ainda não possui
     try {
@@ -389,7 +491,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     
     // Refresh selections if needed
     if (selectedForgeItem) {
-      const refreshed = parsedItems.find(i => i.docId === selectedForgeItem.docId);
+      const refreshed = parsedItems.find(i => i.docId === selectedForgeItem.docId)
+        || (selectedForgeItem.gameEffect === 'break_item' || selectedForgeItem.gameEffect === 'fuse_item'
+            ? parsedItems.find(i => i.itemId === selectedForgeItem.itemId && i.gameEffect === selectedForgeItem.gameEffect)
+            : null);
       setSelectedForgeItem(refreshed || null);
     }
     if (selectedTransmuteItem) {
@@ -440,7 +545,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const matsLabel = requiredMats.length > 0
       ? requiredMats.map(id => consumables.find(c => c.itemId === id)?.itemTitle || 'Material').join(', ')
       : 'Nenhum';
-    const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nMateriais: ${matsLabel}\nChance: ${Math.min(100, finalChance)}%${useScroll ? ` (${baseChance}% base + ${scrollChanceBonus}% bônus)` : ''}\n${useScroll ? `Pergaminho ativo (${activeScroll?.title || 'Pergaminho'}): O item será protegido em caso de falha.` : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}\nOs materiais serão consumidos em caso de sucesso ou falha.`;
+    const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nMateriais: ${matsLabel}\nChance: ${Math.min(100, finalChance)}%${useScroll ? ` (${baseChance}% base + ${scrollChanceBonus}% bônus)` : ''}\n${useScroll ? `Pergaminho ativo (${activeScroll?.title || 'Pergaminho'}): O item não será destruído em caso de falha${currentLevel > 0 ? ', mas regredirá 1 nível (-1)' : ' (mantém +0)'}.` : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}\nOs materiais serão consumidos em caso de sucesso ou falha.`;
     if (!await showConfirm(confirmMsg)) return;
 
     setIsForging(true);
@@ -478,13 +583,18 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     if (data.success) {
       playSound(forgeSounds.successSoundUrl, 0.9);
       showToast("🔥 SUCESSO! O item foi forjado!", 'success');
-    } else if (data.destroyed) {
+    } else if (!useScroll || data.destroyed) {
       playSound(forgeSounds.failSoundUrl, 0.9);
       showToast("💥 QUEBROU! A forja falhou e o item foi destruído nas chamas!", 'error');
       setSelectedForgeItem(null);
     } else {
       playSound(forgeSounds.failSoundUrl, 0.9);
-      showToast("❌ FALHA! A forja falhou, mas o Pergaminho do Ferreiro protegeu o item da destruição.", 'error');
+      const newLevel = typeof data.level === 'number' ? data.level : Math.max(0, currentLevel - 1);
+      if (currentLevel > 0) {
+        showToast(`❌ FALHA! A forja falhou! O Pergaminho do Ferreiro evitou a destruição, mas o item regrediu para +${newLevel}.`, 'error');
+      } else {
+        showToast("❌ FALHA! A forja falhou, mas o Pergaminho do Ferreiro protegeu o item da destruição.", 'error');
+      }
     }
     playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
     fetchItems();
@@ -553,7 +663,13 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
   const handleBreakMaterial = async () => {
     if (!selectedForgeItem || isForging) return;
-    const totalOwned = selectedForgeItem.quantity || 1;
+    const matchingStacks = items.filter(i => 
+      i.itemId === selectedForgeItem.itemId && 
+      i.gameEffect === selectedForgeItem.gameEffect
+    );
+    const totalOwned = matchingStacks.length > 0
+      ? matchingStacks.reduce((sum, s) => sum + (s.quantity || 1), 0)
+      : (selectedForgeItem.quantity || 1);
     const qtyToBreak = Math.max(1, Math.min(totalOwned, breakQty));
     const unitCost = selectedForgeItem.breakCost ?? 0;
     const totalCost = qtyToBreak * unitCost;
@@ -610,17 +726,28 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           userData.coins = newCoins;
         }
 
-        // 2. Consumir material bruto (quebra na bigorna)
-        if (totalOwned <= qtyToBreak) {
-          await supabase.from('user_items').delete().eq('id', selectedForgeItem.docId);
-          setSelectedForgeItem(null);
-        } else {
-          const remaining = totalOwned - qtyToBreak;
-          const { data: curRow } = await supabase.from('user_items').select('data').eq('id', selectedForgeItem.docId).maybeSingle();
-          const curData = (curRow?.data || {}) as any;
-          await supabase.from('user_items').update({
-            data: { ...curData, quantity: remaining }
-          }).eq('id', selectedForgeItem.docId);
+        // 2. Consumir material bruto através das pilhas existentes (priorizando a pilha selecionada)
+        let remainingToConsume = qtyToBreak;
+        const sortedStacks = [
+          ...matchingStacks.filter(s => s.docId === selectedForgeItem.docId),
+          ...matchingStacks.filter(s => s.docId !== selectedForgeItem.docId)
+        ];
+
+        for (const stack of sortedStacks) {
+          if (remainingToConsume <= 0) break;
+          const curStackQty = stack.quantity || 1;
+          if (curStackQty <= remainingToConsume) {
+            await supabase.from('user_items').delete().eq('id', stack.docId);
+            remainingToConsume -= curStackQty;
+          } else {
+            const newQty = curStackQty - remainingToConsume;
+            const { data: curRow } = await supabase.from('user_items').select('data').eq('id', stack.docId).maybeSingle();
+            const curData = (curRow?.data || {}) as any;
+            await supabase.from('user_items').update({
+              data: { ...curData, quantity: newQty }
+            }).eq('id', stack.docId);
+            remainingToConsume = 0;
+          }
         }
 
         // 3. Adicionar fragmentos apenas se houver unidades com sucesso
@@ -719,7 +846,13 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
   const handleFuseMaterial = async () => {
     if (!selectedForgeItem || isForging) return;
-    const totalOwned = selectedForgeItem.quantity || 1;
+    const matchingStacks = items.filter(i => 
+      i.itemId === selectedForgeItem.itemId && 
+      i.gameEffect === selectedForgeItem.gameEffect
+    );
+    const totalOwned = matchingStacks.length > 0
+      ? matchingStacks.reduce((sum, s) => sum + (s.quantity || 1), 0)
+      : (selectedForgeItem.quantity || 1);
     const reqQty = selectedForgeItem.fuseRequiredQty ?? 50;
     const resQty = selectedForgeItem.fuseResultQty ?? 1;
     const unitCost = selectedForgeItem.fuseCost ?? 0;
@@ -782,17 +915,28 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           userData.coins = newCoins;
         }
 
-        // 2. Consumir fragmentos (jogados no crisol da forja)
-        if (totalOwned <= totalFragmentsConsumed) {
-          await supabase.from('user_items').delete().eq('id', selectedForgeItem.docId);
-          setSelectedForgeItem(null);
-        } else {
-          const remaining = totalOwned - totalFragmentsConsumed;
-          const { data: curRow } = await supabase.from('user_items').select('data').eq('id', selectedForgeItem.docId).maybeSingle();
-          const curData = (curRow?.data || {}) as any;
-          await supabase.from('user_items').update({
-            data: { ...curData, quantity: remaining }
-          }).eq('id', selectedForgeItem.docId);
+        // 2. Consumir fragmentos através das pilhas existentes (priorizando a pilha selecionada)
+        let remainingToConsume = totalFragmentsConsumed;
+        const sortedStacks = [
+          ...matchingStacks.filter(s => s.docId === selectedForgeItem.docId),
+          ...matchingStacks.filter(s => s.docId !== selectedForgeItem.docId)
+        ];
+
+        for (const stack of sortedStacks) {
+          if (remainingToConsume <= 0) break;
+          const curStackQty = stack.quantity || 1;
+          if (curStackQty <= remainingToConsume) {
+            await supabase.from('user_items').delete().eq('id', stack.docId);
+            remainingToConsume -= curStackQty;
+          } else {
+            const newQty = curStackQty - remainingToConsume;
+            const { data: curRow } = await supabase.from('user_items').select('data').eq('id', stack.docId).maybeSingle();
+            const curData = (curRow?.data || {}) as any;
+            await supabase.from('user_items').update({
+              data: { ...curData, quantity: newQty }
+            }).eq('id', stack.docId);
+            remainingToConsume = 0;
+          }
         }
 
         // 3. Adicionar lingotes apenas para os lotes fundidos com sucesso
@@ -990,35 +1134,70 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                   {activeTab === 'forge' ? 'Inventário da Forja' : 'Seus Equipamentos'}
                 </h3>
                 {activeTab === 'forge' && (
-                  <button
-                    type="button"
-                    onClick={() => setShowBlacksmith(!showBlacksmith)}
-                    title={showBlacksmith ? 'Recolher ferreiro 3D para expandir o inventário' : 'Exibir ferreiro 3D'}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      color: '#bbb',
-                      borderRadius: '6px',
-                      padding: '3px 8px',
-                      fontSize: '0.75rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'background 0.2s, color 0.2s'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                      e.currentTarget.style.color = '#fff';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                      e.currentTarget.style.color = '#bbb';
-                    }}
-                  >
-                    {showBlacksmith ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                    {showBlacksmith ? 'Recolher 3D' : 'Exibir 3D'}
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={handleManualConsolidateStacks}
+                      disabled={isForging || isConsolidating}
+                      title="Juntar e organizar fragmentos e materiais duplicados em montes de até 99"
+                      style={{
+                        background: 'rgba(255, 215, 0, 0.08)',
+                        border: '1px solid rgba(255, 215, 0, 0.25)',
+                        color: 'var(--gold-primary)',
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.75rem',
+                        cursor: isForging || isConsolidating ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'background 0.2s, color 0.2s',
+                        opacity: isForging || isConsolidating ? 0.6 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isForging && !isConsolidating) {
+                          e.currentTarget.style.background = 'rgba(255, 215, 0, 0.18)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isForging && !isConsolidating) {
+                          e.currentTarget.style.background = 'rgba(255, 215, 0, 0.08)';
+                        }
+                      }}
+                    >
+                      <Layers size={13} className={isConsolidating ? "animate-spin" : ""} />
+                      {isConsolidating ? 'Juntando...' : 'Juntar Montes'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowBlacksmith(!showBlacksmith)}
+                      title={showBlacksmith ? 'Recolher ferreiro 3D para expandir o inventário' : 'Exibir ferreiro 3D'}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        color: '#bbb',
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'background 0.2s, color 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                        e.currentTarget.style.color = '#fff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.color = '#bbb';
+                      }}
+                    >
+                      {showBlacksmith ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      {showBlacksmith ? 'Recolher 3D' : 'Exibir 3D'}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1027,11 +1206,13 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                   <button
                     type="button"
                     onClick={() => setInventoryFilter('all')}
+                    disabled={isForging}
                     style={{
                       flex: 1, padding: '4px 6px', fontSize: '0.75rem', fontWeight: inventoryFilter === 'all' ? 'bold' : 'normal',
                       background: inventoryFilter === 'all' ? 'var(--gold-primary)' : 'transparent',
                       color: inventoryFilter === 'all' ? '#000' : '#aaa',
-                      border: 'none', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.15s'
+                      border: 'none', borderRadius: '4px', cursor: isForging ? 'not-allowed' : 'pointer', transition: 'all 0.15s',
+                      opacity: isForging ? 0.6 : 1
                     }}
                   >
                     Todos
@@ -1039,11 +1220,13 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                   <button
                     type="button"
                     onClick={() => setInventoryFilter('equipment')}
+                    disabled={isForging}
                     style={{
                       flex: 1, padding: '4px 6px', fontSize: '0.75rem', fontWeight: inventoryFilter === 'equipment' ? 'bold' : 'normal',
                       background: inventoryFilter === 'equipment' ? 'var(--gold-primary)' : 'transparent',
                       color: inventoryFilter === 'equipment' ? '#000' : '#aaa',
-                      border: 'none', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.15s'
+                      border: 'none', borderRadius: '4px', cursor: isForging ? 'not-allowed' : 'pointer', transition: 'all 0.15s',
+                      opacity: isForging ? 0.6 : 1
                     }}
                   >
                     Equipamentos
@@ -1051,11 +1234,13 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                   <button
                     type="button"
                     onClick={() => setInventoryFilter('materials')}
+                    disabled={isForging}
                     style={{
                       flex: 1, padding: '4px 6px', fontSize: '0.75rem', fontWeight: inventoryFilter === 'materials' ? 'bold' : 'normal',
                       background: inventoryFilter === 'materials' ? 'var(--gold-primary)' : 'transparent',
                       color: inventoryFilter === 'materials' ? '#000' : '#aaa',
-                      border: 'none', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.15s'
+                      border: 'none', borderRadius: '4px', cursor: isForging ? 'not-allowed' : 'pointer', transition: 'all 0.15s',
+                      opacity: isForging ? 0.6 : 1
                     }}
                   >
                     Materiais
@@ -1073,6 +1258,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       <div 
                         key={idx}
                         onClick={() => {
+                          if (isForging) return;
                           if (activeTab === 'forge') {
                             setSelectedForgeItem(item);
                             setBreakQty(1);
@@ -1158,7 +1344,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                 ) : selectedForgeItem.gameEffect === 'break_item' ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     {(() => {
-                      const totalOwned = selectedForgeItem.quantity || 1;
+                      const matchingStacks = items.filter(i => i.itemId === selectedForgeItem.itemId && i.gameEffect === selectedForgeItem.gameEffect);
+                      const totalOwned = matchingStacks.length > 0 
+                        ? matchingStacks.reduce((sum, s) => sum + (s.quantity || 1), 0)
+                        : (selectedForgeItem.quantity || 1);
                       const minQ = selectedForgeItem.breakMinQty ?? 1;
                       const maxQ = Math.max(minQ, selectedForgeItem.breakMaxQty ?? minQ);
                       const unitCost = selectedForgeItem.breakCost ?? 0;
@@ -1332,7 +1521,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                 ) : selectedForgeItem.gameEffect === 'fuse_item' ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     {(() => {
-                      const totalOwned = selectedForgeItem.quantity || 1;
+                      const matchingStacks = items.filter(i => i.itemId === selectedForgeItem.itemId && i.gameEffect === selectedForgeItem.gameEffect);
+                      const totalOwned = matchingStacks.length > 0 
+                        ? matchingStacks.reduce((sum, s) => sum + (s.quantity || 1), 0)
+                        : (selectedForgeItem.quantity || 1);
                       const reqQty = selectedForgeItem.fuseRequiredQty ?? 50;
                       const resQty = selectedForgeItem.fuseResultQty ?? 1;
                       const unitCost = selectedForgeItem.fuseCost ?? 0;
@@ -1612,7 +1804,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                           <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0.5rem 0 0 0', paddingLeft: '28px' }}>
                             {scrollChanceBonus >= 100
                               ? 'Garante 100% de sucesso na forja (consome 1 pergaminho).'
-                              : `Soma +${scrollChanceBonus}% à chance base de sucesso e protege o item da destruição em caso de falha (consome 1 pergaminho).`
+                              : `Soma +${scrollChanceBonus}% à chance base de sucesso e protege o item da destruição em caso de falha (se falhar, regride 1 nível até o mínimo +0; consome 1 pergaminho).`
                             }
                           </p>
                         </div>

@@ -109,6 +109,7 @@ $$;
 -- ============================================================
 -- FORJA: valida tudo no servidor e rola a chance.
 -- ============================================================
+DROP FUNCTION IF EXISTS public.forge_item(uuid, boolean);
 CREATE OR REPLACE FUNCTION public.forge_item(
   p_item_id uuid,
   p_use_scroll boolean,
@@ -279,7 +280,14 @@ BEGIN
   ELSE
     IF p_use_scroll THEN
       PERFORM public.consume_one_scroll(v_uid, v_scroll_id);
-      RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins, 'protected', true, 'message', 'falha protegida');
+      -- Regra Metin 2: se falhar com pergaminho, regride 1 nível (se maior que 0)
+      IF v_level > 0 THEN
+        v_level := v_level - 1;
+        UPDATE user_items
+        SET data = jsonb_set(v_item.data, '{forgeLevel}', to_jsonb(v_level))
+        WHERE id = p_item_id;
+      END IF;
+      RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins, 'protected', true, 'level', v_level, 'message', 'falha protegida');
     ELSE
       DELETE FROM user_items WHERE id = p_item_id;
       RETURN jsonb_build_object('ok', true, 'success', false, 'coins', v_coins, 'destroyed', true, 'message', 'item destruído');

@@ -1569,7 +1569,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       <option value="cure_freeze">Chá Quente (Descongela)</option>
                       <option value="cure_burn">Pomada Refrescante (Apaga o fogo)</option>
                       <option value="cure_electric">Isolante (Elimina o choque elétrico)</option>
-                      <option value="blacksmith_scroll">Pergaminho do Ferreiro (Bônus de chance na forja)</option>
+                      <option value="blacksmith_scroll">Pergaminho do Ferreiro (Bônus de chance + Proteção contra destruição)</option>
                       <option value="break_item">⛏️ Quebrar / Triturar no Ferreiro (Material Bruto ➔ Fragmentos)</option>
                       <option value="fuse_item">🔥 Fundir / Agrupar no Ferreiro (Fragmentos ➔ Lingote/Item)</option>
                     </select>

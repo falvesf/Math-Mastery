@@ -116,7 +116,7 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
     item.gameEffect === 'unlock_skin' ? 'Desbloqueia uma skin para usar no personagem.' :
     item.gameEffect === 'bazar_sale_permit' ? 'Licença para vender itens no bazar.' :
     item.gameEffect === 'blacksmith_scroll' ? (
-      `Pergaminho do Ferreiro: +${item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null ? item.scrollChanceBonus : 30}% de chance de sucesso na forja.`
+      `Pergaminho do Ferreiro: +${item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null ? item.scrollChanceBonus : 30}% de chance de sucesso na forja e protege o item contra destruição (se falhar, regride 1 nível até o mínimo +0).`
     ) :
     item.gameEffect === 'break_item' ? (
       `Material Bruto: Leve ao Ferreiro para quebrar em fragmentos (${item.breakMinQty ?? 1} a ${item.breakMaxQty ?? 5} un. • ${item.breakSuccessChance ?? 80}% de chance).`

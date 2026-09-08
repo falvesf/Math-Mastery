@@ -591,7 +591,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
     if (item.gameEffect === 'blacksmith_scroll') {
       const bonus = item.scrollChanceBonus ?? 30;
-      await showAlert(`"${item.itemTitle}" é um Pergaminho do Ferreiro (+${bonus}% de chance de sucesso na forja). Para utilizá-lo, acesse a aba "A Forja", selecione um equipamento e marque a opção do pergaminho.`);
+      await showAlert(`"${item.itemTitle}" é um Pergaminho do Ferreiro (+${bonus}% de chance de sucesso na forja e protege contra destruição; se falhar, o item regride 1 nível até o mínimo +0). Para utilizá-lo, acesse a aba "A Forja", selecione um equipamento e marque a opção do pergaminho.`);
       return;
     }
 
