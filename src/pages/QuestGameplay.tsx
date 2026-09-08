@@ -136,6 +136,7 @@ export default function QuestGameplay() {
   const [playerFrozenAt, setPlayerFrozenAt] = useState(0);
   const [monsterProjectile, setMonsterProjectile] = useState<{ id: number; effect: string; start: number } | null>(null);
   const [monsterSpecialActive, setMonsterSpecialActive] = useState(false);
+  const [monsterSpecialAnim, setMonsterSpecialAnim] = useState('');
   // Golpes configurados do monstro (Entidades 3D > Monstros) — com fallback: se a
   // missão não tiver `attacks` no monsterAvatarConfig, busca na galeria de monstros.
   const [galleryMonsterAttacks, setGalleryMonsterAttacks] = useState<any>(null);
@@ -145,18 +146,23 @@ export default function QuestGameplay() {
     const cfg = (quest as any)?.monsterAvatarConfig;
     if (cfg?.attacks) { setGalleryMonsterAttacks(null); return; }
     const modelUrl = (quest as any)?.monsterModelUrl || cfg?.customModelUrl;
-    if (!modelUrl) { setGalleryMonsterAttacks(null); return; }
+    const qName = (quest as any)?.monsterName;
+    if (!modelUrl && !qName) { setGalleryMonsterAttacks(null); return; }
     let active = true;
-    supabase.from('preset_skins').select('config').eq('type', 'monster').then(({ data }) => {
+    supabase.from('preset_skins').select('id, name, config').eq('type', 'monster').then(({ data }) => {
       if (!active) return;
       const found = (data || []).find(r => {
         const c = r.config;
-        return c && (c.customModelUrl || '') === modelUrl && c.attacks;
+        if (!c) return false;
+        const hasAttacks = !!c.attacks;
+        const urlMatch = modelUrl ? (c.customModelUrl || '') === modelUrl : false;
+        const nameMatch = qName ? r.name === qName : false;
+        return hasAttacks && (urlMatch || nameMatch);
       });
       if (found) setGalleryMonsterAttacks(found.config.attacks);
     }).catch(() => {});
     return () => { active = false; };
-  }, [quest?.id, (quest as any)?.monsterModelUrl]);
+  }, [quest?.id, (quest as any)?.monsterModelUrl, (quest as any)?.monsterName]);
   // Coelho: aceleração do tempo persistente (+5%/golpe) e drop generoso (dobra por golpe)
   const [coelhoHits, setCoelhoHits] = useState(0);
   const [coelhoTransformHits, setCoelhoTransformHits] = useState(0);
@@ -1999,17 +2005,19 @@ const rollMonsterAttack = () => {
     applyMonsterEffectToPlayer('heal');
     return;
   }
-  if (a.ranged?.enabled && roll < 0.4) {
-    setMonsterProjectile({ id: Date.now(), effect: a.ranged.effect || 'none', start: Date.now() });
-    setTimeout(() => applyMonsterEffectToPlayer(a.ranged?.effect || 'none'), 900);
-    return;
-  }
+if (a.ranged?.enabled && roll < 0.4) {
+      setMonsterProjectile({ id: Date.now(), effect: a.ranged.effect || 'none', start: Date.now() });
+      setTimeout(() => applyMonsterEffectToPlayer(a.ranged?.effect || 'none'), 1450);
+      return;
+    }
   if (a.special?.enabled && roll < 0.75) {
     setMonsterSpecialActive(true);
+    setMonsterSpecialAnim(a.special?.animation || '');
     setTimeout(() => {
       applyMonsterEffectToPlayer(a.special?.effect || 'none');
       setMonsterSpecialActive(false);
-    }, 900);
+      setMonsterSpecialAnim('');
+    }, 1300);
     return;
   }
   applyMonsterEffectToPlayer(a.melee.effect);
@@ -2467,7 +2475,7 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
               <div
                 key={monsterProjectile.id}
                 className="monster-projectile"
-                style={{ right: '12%', top: '46%' }}
+                style={{ right: '14%', top: '74%' }}
                 onAnimationEnd={() => setMonsterProjectile(null)}
               >
                 <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #a3a3a3, #6b6b6b)', border: '2px solid #444', borderRadius: '3px', boxShadow: '0 0 8px rgba(0,0,0,0.5)' }} />
@@ -2693,7 +2701,7 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                       const mCam = 10 * Math.max(1, monsterZoom * 0.7);
                       return (
                         <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}>
-                          <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : monsterAnim} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} shatteredCount={fallenPartsRef.current.length} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
+                          <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : (monsterSpecialAnim || monsterAnim)} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} shatteredCount={fallenPartsRef.current.length} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
                         </div>
                       );
                     }

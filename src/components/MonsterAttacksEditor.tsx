@@ -99,14 +99,30 @@ export default function MonsterAttacksEditor({ value, onChange }: MonsterAttacks
             <>
               {effectSelect('special', cfg.special?.effect || 'none')}
               <div>
-                <label style={labelStyle}>Animação do GLB (ex.: jump, dance, spin...)</label>
+                <label style={labelStyle}>Animação do GLB (nome exato no arquivo .glb)</label>
                 <input
                   type="text"
+                  list="monster-special-anims"
                   value={cfg.special?.animation || ''}
                   onChange={e => onChange({ ...cfg, special: { ...(cfg.special || { enabled: true, effect: 'none' }), animation: e.target.value } })}
-                  placeholder="Nome da animação no arquivo .glb (vazio = qualquer)"
+                  placeholder="Ex.: jump, attack, dance, spin, throw..."
                   style={inputStyle}
                 />
+                <datalist id="monster-special-anims">
+                  <option value="jump" />
+                  <option value="attack" />
+                  <option value="attack2" />
+                  <option value="dance" />
+                  <option value="spin" />
+                  <option value="throw" />
+                  <option value="wave" />
+                  <option value="roar" />
+                  <option value="walk" />
+                  <option value="idle" />
+                </datalist>
+                <span style={{ display: 'block', marginTop: '0.3rem', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                  Digite o nome da animação que existe no arquivo .glb (ex.: se o golem "pula", a animação costuma se chamar jump).
+                </span>
               </div>
             </>
           )}

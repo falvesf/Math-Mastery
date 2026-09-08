@@ -478,12 +478,14 @@
   pointer-events: none;
 }
 
-/* Projétil arremessado pelo monstro em direção ao jogador */
+/* Projétil arremessado pelo monstro: pega do chão, levanta os braços e arremessa */
 @keyframes monster-projectile {
-  0% { transform: translateX(0) translateY(0) scale(0.6); opacity: 1; }
-  15% { transform: translateX(-18%) translateY(-16%) scale(1); opacity: 1; }
-  85% { transform: translateX(-82%) translateY(-8%) scale(1); opacity: 1; }
-  100% { transform: translateX(-95%) translateY(0) scale(0.7); opacity: 0; }
+  0% { transform: translateX(0) translateY(0) scale(0.35); opacity: 0; }
+  12% { transform: translateX(0) translateY(0) scale(0.5); opacity: 1; }
+  35% { transform: translateX(2%) translateY(-42%) scale(1); opacity: 1; }
+  55% { transform: translateX(2%) translateY(-46%) scale(1); opacity: 1; }
+  88% { transform: translateX(-82%) translateY(-14%) scale(1); opacity: 1; }
+  100% { transform: translateX(-96%) translateY(0) scale(0.65); opacity: 0; }
 }
 .monster-projectile {
   position: absolute;
@@ -491,7 +493,7 @@
   height: 26px;
   z-index: 46;
   pointer-events: none;
-  animation: monster-projectile 0.9s ease-in forwards;
+  animation: monster-projectile 1.4s ease-in forwards;
 }
 
 /* Ferimento de mordida no jogador (sangramento do rato) — estilo hematoma, com
