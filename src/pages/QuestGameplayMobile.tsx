@@ -1481,7 +1481,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             coelhoHitsRef.current += 1;
             coelhoDropRef.current += 1;
             setCoelhoHits(coelhoHitsRef.current);
-
+          }
           // Porco: golpes certos seguidos sem errar → enfurece com 2 acertos
           const tr = transformRef.current;
           if (tr?.animal === 'porco' && !tr.enraged) {
