@@ -1484,21 +1484,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (tr?.animal === 'porco' && tr.consecutiveCorrect > 0 && !tr.enraged) {
         setTransformState({ ...tr, consecutiveCorrect: 0 });
       }
-      // O ataque do monstro é uma ação de ataque: avança turnos do sangramento/veneno
-      // ANTES de aplicar os novos efeitos (para a nova pilha durar os turnos cheios).
-      advanceStatusTurns();
-      // Rato: errar faz o rato atacar e infligir SANGRAMENTO — CUMULATIVO. Cada mordida
-      // soma uma pilha (0,5 coração por tick cada) e a ferida é em ponto aleatório.
-      if (tr?.animal === 'rato') {
-        const w = rollBleedWound('rato');
-        setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns: 2, x: w.x, y: w.y }]);
-        setBattleMessage(`O RATO TE MORDEU (${playerBleeds.length + 1}x)! Sangramento acumulado!`);
-      }
-      // Sapo: cada golpe do sapo aplica/renova VENENO no jogador (3 turnos)
-      if (tr?.animal === 'sapo') {
-        setPlayerPoisonTurns(3);
-        setBattleMessage('O SAPO TE ENVENENOU! Você perderá coração por 3 turnos!');
-      }
 
       const shouldLoseCoins = economySettings?.coinsLostInCombat || arenaDebug.forceCoinLoss;
       if (shouldLoseCoins && !isStudyMode && !hasShield) {
@@ -1558,7 +1543,23 @@ const dealTransformDamageToPlayer = (damage: number) => {
       playMonsterAttackSound();
       // Coelho: ataca o jogador mais cedo
       const monsterAttackDelay = transformRef.current?.animal === 'coelho' ? 250 : 500;
-      setTimeout(() => { setPlayerAnim('hurt'); playPlayerDamageSound(); }, monsterAttackDelay);
+      setTimeout(() => {
+        // NO ATO DO ATAQUE: o ataque é uma ação de turno e é o ataque que causa o
+        // sangramento/veneno — nunca antes do acerto.
+        advanceStatusTurns();
+        const curTr = transformRef.current;
+        if (curTr?.animal === 'rato') {
+          const w = rollBleedWound('rato');
+          setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns: 2, x: w.x, y: w.y }]);
+          setBattleMessage(`O RATO TE MORDEU (${playerBleeds.length + 1}x)! Sangramento acumulado!`);
+        }
+        if (curTr?.animal === 'sapo') {
+          setPlayerPoisonTurns(3);
+          setBattleMessage('O SAPO TE ENVENENOU! Você perderá coração por 3 turnos!');
+        }
+        setPlayerAnim('hurt');
+        playPlayerDamageSound();
+      }, monsterAttackDelay);
       setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, monsterAttackDelay + 1000);
       
       if (hasShield) {
@@ -2516,8 +2517,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
               <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', marginRight: '-20px', transform: `translate(${arenaDebug.playerOffsetX}px, ${arenaDebug.playerOffsetY}px) scale(${arenaDebug.playerScale})` }}>
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
-                  {playerPoisonTurns > 0 && <div className="poison-aura" title={`Envenenado por ${playerPoisonTurns} turno(s)`} />}
-                  <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={170} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
+                  <div className={playerPoisonTurns > 0 ? 'poison-tint' : undefined} title={playerPoisonTurns > 0 ? `Envenenado por ${playerPoisonTurns} turno(s)` : undefined} style={{ position: 'relative' }}>
+                    <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={170} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
+                  </div>
                   {playerBleeds.map(b => (
                     <div key={b.id} className="bleed-wound" style={{ top: `${b.y}%`, left: `${b.x}%` }} title="Sangrando!">
                       <span className="bleed-drip" />
