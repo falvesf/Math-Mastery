@@ -2164,6 +2164,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
   }, [monsterAnim, arenaDebug, currentQIndex]);
 
   const handleUsePowerup = async (item: UserItem) => {
+    // Admin/teacher: só pode usar itens (poções) quando "Admin recebe recompensas"
+    // estiver ATIVO no Arena Debug — senão simula staff e não consome recompensas.
+    const isStaff = userData?.role !== 'student' && !userData?.studentViewActive;
+    if (isStaff && !arenaDebug.forceRewards) {
+      await showAlert("Ative 'Admin recebe recompensas' no Arena Debug para poder usar itens na batalha.");
+      return;
+    }
     if (gameState !== 'playing') {
       await showAlert("Você só pode usar itens durante a batalha!");
       return;
