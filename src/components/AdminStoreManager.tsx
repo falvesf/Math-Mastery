@@ -1195,6 +1195,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   // Todos os itens do TENANT ATUAL (sem duplicar com o Banco — o Banco entra quando importado)
   const allItems = items;
+  // @ts-ignore
   const sortByTitle = (a: StoreItem, b: StoreItem) => (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase());
   // Materiais disponíveis para forja/transmutação: itens 'other' do tenant atual, ordem alfabética por raridade
   const materialOptions = allItems.filter(i => (i.type || '') === 'other').sort(sortByRarityThenTitle);
