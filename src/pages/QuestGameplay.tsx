@@ -134,6 +134,8 @@ export default function QuestGameplay() {
   const [playerElectricTurns, setPlayerElectricTurns] = useState(0);
   const [playerFrozenAt, setPlayerFrozenAt] = useState(0);
   const [monsterProjectile, setMonsterProjectile] = useState<{ id: number; effect: string; start: number } | null>(null);
+  // @ts-ignore (usado internamente p/ indicar golpe especial ativo)
+  const [monsterSpecialActive, setMonsterSpecialActive] = useState(false);
   const [monsterSpecialAnim, setMonsterSpecialAnim] = useState('');
   // Golpes configurados do monstro (Entidades 3D > Monstros) — com fallback: se a
   // missão não tiver `attacks` no monsterAvatarConfig, busca na galeria de monstros.
@@ -166,6 +168,8 @@ export default function QuestGameplay() {
   }, [quest?.id, (quest as any)?.monsterModelUrl, (quest as any)?.monsterName]);
   // Coelho: aceleração do tempo persistente (+5%/golpe) e drop generoso (dobra por golpe)
   const [coelhoHits, setCoelhoHits] = useState(0);
+  // @ts-ignore (contagem de golpes na transformação atual — usada junto do coelhoDropRef)
+  const [coelhoTransformHits, setCoelhoTransformHits] = useState(0);
   const coelhoHitsRef = useRef(0);
   const coelhoDropRef = useRef(0);
   // Guarda de sequência de animação: impede hurt/efeitos obsoletos de cortar o ataque
@@ -899,6 +903,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setPlayerElectricTurns(0);
     setPlayerFrozenAt(0);
     setMonsterProjectile(null);
+    setMonsterSpecialActive(false);
+    setMonsterSpecialAnim('');
 
     setSliceSnapshot(null);
     setCurrentHearts(initialHearts);
@@ -1370,6 +1376,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             coelhoHitsRef.current += 1;
             coelhoDropRef.current += 1;
             setCoelhoHits(coelhoHitsRef.current);
+            setCoelhoTransformHits(coelhoDropRef.current);
 
           }
           const tr = transformRef.current;
@@ -1595,6 +1602,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
 if (tr.turnsLeft <= 1) {
         setTransformState(null);
         coelhoDropRef.current = 0;
+        setCoelhoTransformHits(0);
 
         triggerTransformPuff('revert');
         if (tr.animal !== 'rato') setBattleMessage(`${TRANSFORM_LABELS[tr.animal]} voltou ao normal!`);
@@ -2011,9 +2019,11 @@ if (a.ranged?.enabled && roll < 0.4) {
       return;
     }
   if (a.special?.enabled && roll < 0.75) {
+    setMonsterSpecialActive(true);
     setMonsterSpecialAnim(a.special?.animation || '');
     setTimeout(() => {
       applyMonsterEffectToPlayer(a.special?.effect || 'none');
+      setMonsterSpecialActive(false);
       setMonsterSpecialAnim('');
     }, 1300);
     return;
