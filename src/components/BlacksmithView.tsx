@@ -18,6 +18,7 @@ import { calculateTotalStats } from '../lib/gacha';
 import { fetchActiveCoin } from '../lib/model3d';
 // @ts-ignore
 import { forgeStrengthFraction, forgeAttributeValue, forgeAttributeValueWithConfig, nextForgeCost, nextForgeCostWithConfig, forgeSuccessChance, forgeMaterialsForLevel, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
+import { getMinRankIndex, resolveMinRankName } from '../lib/ranks';
 import { useDialog } from '../contexts/DialogContext';
 import { playSound, resolveAudioUrl } from '../lib/audioBank';
 import { fetchForgeSounds, type ForgeSoundsConfig } from '../lib/forgeSounds';
@@ -57,8 +58,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   // Transmute State
   const [selectedTransmuteItem, setSelectedTransmuteItem] = useState<any | null>(null);
   const [consumables, setConsumables] = useState<any[]>([]);
-  // Catálogo (loja) dos materiais — para mostrar nome/ícone mesmo sem possuir
-  const [materialCatalog, setMaterialCatalog] = useState<Record<string, { title: string; imageUrl: string }>>({});
+  // Catálogo (loja) dos materiais/itens — para mostrar nome/ícone mesmo sem possuir
+  const [materialCatalog, setMaterialCatalog] = useState<Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string }>>({});
   
   // Sketchfab State
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -219,15 +220,21 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       .select('id, item_id, equipped, data')
       .eq('student_id', userData.uid);
 
-    // Catálogo de materiais (nome/ícone) — mesmo os que o jogador ainda não possui
+    // Catálogo de materiais/itens (nome/ícone/patente) — mesmo os que o jogador ainda não possui
     try {
       let catQ = supabase.from('store_items').select('id, data');
       if (tenantId) catQ = catQ.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
       const { data: catSnap } = await catQ;
-      const catMap: Record<string, { title: string; imageUrl: string }> = {};
+      const catMap: Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string }> = {};
       (catSnap || []).forEach((s: any) => {
         const d = (s.data || {}) as any;
-        catMap[s.id] = { title: d.title || 'Material', imageUrl: d.imageUrl || '' };
+        catMap[s.id] = {
+          id: s.id,
+          title: d.title || 'Item',
+          imageUrl: d.imageUrl || '',
+          minRankRequired: d.minRankRequired,
+          rarity: d.rarity
+        };
       });
       setMaterialCatalog(catMap);
     } catch (e) { /* catálogo opcional */ }
@@ -267,10 +274,24 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             quantity: qty
           });
         } else if (itemData.itemType === 'equippable') {
+          // Autoridade da loja para flags e configurações de transmutação/forja
+          const isTransmutable = storeItemData.isTransmutable !== undefined ? storeItemData.isTransmutable : itemData.isTransmutable;
+          const isTransmuted = storeItemData.isTransmuted !== undefined ? storeItemData.isTransmuted : itemData.isTransmuted;
+          const transmuteConfig = storeItemData.transmuteConfig || itemData.transmuteConfig;
+          const isForgeable = storeItemData.isForgeable !== undefined ? storeItemData.isForgeable : itemData.isForgeable;
+          const forgeConfig = storeItemData.forgeConfig || itemData.forgeConfig;
+
           parsedItems.push({
             docId: row.id,
             itemId: row.item_id,
             ...itemData,
+            itemTitle: itemData.itemTitle || storeItemData.title || 'Equipamento',
+            itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '',
+            isTransmutable: !!isTransmutable,
+            isTransmuted: !!isTransmuted,
+            transmuteConfig: transmuteConfig || null,
+            isForgeable: isForgeable !== undefined ? isForgeable : true,
+            forgeConfig: forgeConfig || null,
             cost: priceMap[row.item_id] || itemData.cost || itemData.price || 100,
             equipped: row.equipped,
             forgeLevel: itemData.forgeLevel || 0
@@ -295,7 +316,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       setSelectedForgeItem(refreshed || null);
     }
     if (selectedTransmuteItem) {
-      const refreshed = parsedItems.find(i => i.docId === selectedTransmuteItem.docId);
+      const refreshed = parsedItems.find(i => i.docId === selectedTransmuteItem.docId && i.isTransmutable && !i.isTransmuted && (i.forgeLevel || 0) === 9);
       setSelectedTransmuteItem(refreshed || null);
     }
     
@@ -399,6 +420,14 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       return;
     }
 
+    // Validação da patente do item resultado
+    const resultItemInfo = materialCatalog[config.resultItemId];
+    const resultMinRankIndex = resultItemInfo ? getMinRankIndex(resultItemInfo.minRankRequired) : 0;
+    if (!isStaff && currentRankIndex < resultMinRankIndex) {
+      showToast(`Sua patente é insuficiente para receber este item transmutado! Você precisa ser no mínimo ${resolveMinRankName(resultItemInfo?.minRankRequired) || 'Diamante'}.`, 'error');
+      return;
+    }
+
     // Materiais exigidos pelo ritual (2 consumíveis)
     const requiredMats: string[] = (config.materials || []).filter(Boolean);
     const haveMats: Record<string, number> = {};
@@ -409,12 +438,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       return;
     }
     if (!isStaff && userData.coins < (config.coinsCost || 0)) {
-      showToast(`Você não tem moedas suficientes! Custo: ${config.coinsCost}`, 'error');
+      showToast(`Você não tem moedas suficientes! Custo: ${config.coinsCost} moedas.`, 'error');
       return;
     }
 
-    const confirmMsg = `Deseja tentar transmutar este item?\nChance de Sucesso: ${config.successChance}%\nCusto: ${config.coinsCost} moedas\nConsome ${requiredMats.length} material(is).\nSe falhar, o item voltará para o +8!`;
-    if (!await showConfirm(confirmMsg)) return;
+    const confirmMsg = `Deseja tentar transmutar este item?\nItem Resultado: ${resultItemInfo?.title || 'Item Transmutado'}\nChance de Sucesso: ${config.successChance}%\nCusto: ${config.coinsCost} moedas\nConsome ${requiredMats.length} material(is).\nSe falhar, o item voltará para o +8!`;
+    if (!await showConfirm(confirmMsg, "Altar de Transmutação")) return;
 
     setIsForging(true);
     pauseTabMusic(600);
@@ -432,7 +461,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     }
     if (data.success) {
       playSound(forgeSounds.successSoundUrl, 0.9);
-      showToast("✨ SUCESSO ESPETACULAR! O item foi transmutado para uma nova forma!", 'success');
+      showToast(`✨ SUCESSO ESPETACULAR! O item foi transmutado para "${data.newTitle || resultItemInfo?.title || 'uma nova forma'}"!`, 'success');
       setSelectedTransmuteItem(null);
     } else {
       playSound(forgeSounds.failSoundUrl, 0.9);
@@ -449,10 +478,14 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     return isEquip && notMaxed;
   });
 
+  // Transmutação: apenas itens equipáveis que estão no +9 E possuem o checkbox "Item Transmutável"
+  // (itens marcados como "Item Transmutado" são o resultado final e não entram no slot +9)
   const transmutableItems = items.filter(item => {
     const isEquip = item.itemType === 'equippable';
     const isMaxed = (item.forgeLevel || 0) === 9;
-    return isEquip && isMaxed;
+    const isTransmutable = item.isTransmutable === true;
+    const isNotTransmuted = !item.isTransmuted;
+    return isEquip && isMaxed && isTransmutable && isNotTransmuted;
   });
 
   return (
@@ -529,6 +562,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                         }}
                       >
                         {item.itemImageUrl ? <CachedImage src={item.itemImageUrl} alt={item.itemTitle} style={{ width: '50px', height: '50px', objectFit: 'contain' }} /> : <Hammer size={30} color="gray" />}
+                        {item.forgeLevel > 0 && (
+                          <div style={{ position: 'absolute', top: '2px', right: '2px', fontSize: '0.65rem', color: 'white', background: 'var(--accent-red)', fontWeight: 'bold', padding: '1px 4px', borderRadius: '4px' }}>
+                            +{item.forgeLevel}
+                          </div>
+                        )}
+                        {activeTab === 'transmute' && (
+                          <div style={{ position: 'absolute', top: '2px', left: '2px', fontSize: '0.65rem' }}>
+                            ✨
+                          </div>
+                        )}
                         {item.equipped && (
                           <div style={{ position: 'absolute', bottom: '2px', fontSize: '0.6rem', color: 'var(--gold-primary)', fontWeight: 'bold', background: 'rgba(0,0,0,0.7)', padding: '2px 4px', borderRadius: '4px' }}>
                             Eqp
@@ -539,7 +582,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                   })}
                   
                   {(activeTab === 'forge' ? forgeableItems : transmutableItems).length === 0 && (
-                    <p style={{ gridColumn: '1 / -1', color: 'gray', textAlign: 'center', padding: '2rem 0' }}>Nenhum item elegível encontrado.</p>
+                    <p style={{ gridColumn: '1 / -1', color: 'gray', textAlign: 'center', padding: '2rem 0', fontSize: '0.85rem' }}>
+                      {activeTab === 'forge' ? 'Nenhum equipamento disponível para forjar.' : 'Nenhum equipamento +9 transmutável no inventário.'}
+                    </p>
                   )}
                 </div>
               )}
@@ -738,12 +783,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                         <>
                           <img src={selectedTransmuteItem.itemImageUrl} alt={selectedTransmuteItem.itemTitle} style={{ width: '70px', height: '70px', objectFit: 'contain' }} />
                           <div style={{ position: 'absolute', top: '-8px', right: '-8px', background: 'var(--accent-red)', color: 'white', fontSize: '0.75rem', fontWeight: 'bold', padding: '2px 5px', borderRadius: '4px' }}>+9</div>
+                          <div style={{ position: 'absolute', bottom: '-6px', background: 'rgba(139,92,246,0.9)', color: 'white', fontSize: '0.6rem', fontWeight: 'bold', padding: '1px 6px', borderRadius: '4px' }}>Transmutável</div>
                         </>
                       ) : (
-                        <span style={{ color: '#555', fontSize: '0.65rem', textAlign: 'center', padding: '0.3rem' }}>Item +9</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.3rem', color: '#666' }}>
+                          <Hammer size={24} style={{ opacity: 0.5, marginBottom: '2px' }} />
+                          <span style={{ fontSize: '0.65rem', textAlign: 'center', lineHeight: 1.1 }}>Item +9 Transmutável</span>
+                        </div>
                       )}
                     </div>
-                    <span style={{ color: '#aaa', fontSize: '0.7rem', fontWeight: 'bold' }}>ITEM</span>
+                    <span style={{ color: '#aaa', fontSize: '0.7rem', fontWeight: 'bold' }}>ITEM +9</span>
                   </div>
 
                   <span style={{ color: '#8b5cf6', fontSize: '1.5rem', fontWeight: 'bold' }}>+</span>
@@ -753,11 +802,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                     {[0, 1].map(matIdx => {
                       const matId = selectedTransmuteItem?.transmuteConfig?.materials?.[matIdx];
                       const haveMat = matId ? consumables.filter(c => c.itemId === matId).reduce((s, c) => s + (c.quantity || 1), 0) : 0;
-                      const matTitle = matId ? (consumables.find(c => c.itemId === matId)?.itemTitle || 'Material') : 'Material';
+                      const matTitle = matId ? (materialCatalog[matId]?.title || consumables.find(c => c.itemId === matId)?.itemTitle || 'Material') : 'Material';
+                      const matImg = matId ? (materialCatalog[matId]?.imageUrl || consumables.find(c => c.itemId === matId)?.itemImageUrl) : undefined;
                       return (
-                        <div key={matIdx} style={{ width: '70px', height: '70px', background: 'rgba(139,92,246,0.1)', border: haveMat > 0 ? '1px solid #10B981' : '1px dashed #8b5cf6', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-                          {consumables.find(c => c.itemId === matId)?.itemImageUrl ? (
-                            <img src={consumables.find(c => c.itemId === matId)!.itemImageUrl} alt={matTitle} style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                        <div key={matIdx} title={matTitle} style={{ width: '70px', height: '70px', background: 'rgba(139,92,246,0.1)', border: haveMat > 0 ? '1px solid #10B981' : '1px dashed #8b5cf6', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+                          {matImg ? (
+                            <img src={matImg} alt={matTitle} style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
                           ) : (
                             <span style={{ color: '#8b5cf6', fontSize: '0.6rem', textAlign: 'center', padding: '0.3rem' }}>{matId ? 'Material' : `Ingred. ${matIdx + 1}`}</span>
                           )}
@@ -772,56 +822,131 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
                   <span style={{ color: '#8b5cf6', fontSize: '2rem' }}>→</span>
 
-                  {/* Slot 4 – Resultado */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
-                    <div style={{ width: '90px', height: '90px', background: 'rgba(139,92,246,0.15)', border: '2px solid #8b5cf6', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', boxShadow: '0 0 16px rgba(139,92,246,0.3)' }}>
-                      {selectedTransmuteItem?.transmuteConfig?.resultItemId ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-                          <Sparkles size={32} color="#8b5cf6" style={{ opacity: 0.7 }} />
-                          <span style={{ color: '#8b5cf6', fontSize: '0.6rem', textAlign: 'center' }}>Configurado</span>
+                  {/* Slot 4 – Resultado (Item Transmutado) */}
+                  {(() => {
+                    const resultId = selectedTransmuteItem?.transmuteConfig?.resultItemId;
+                    const resultItemInfo = resultId ? materialCatalog[resultId] : null;
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                        <div style={{ width: '90px', height: '90px', background: 'rgba(139,92,246,0.15)', border: `2px solid ${resultItemInfo ? '#a855f7' : '#555'}`, borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', boxShadow: resultItemInfo ? '0 0 16px rgba(168,85,247,0.4)' : 'none' }}>
+                          {resultItemInfo ? (
+                            <>
+                              {resultItemInfo.imageUrl ? (
+                                <img src={resultItemInfo.imageUrl} alt={resultItemInfo.title} style={{ width: '70px', height: '70px', objectFit: 'contain' }} />
+                              ) : (
+                                <Sparkles size={36} color="#c084fc" />
+                              )}
+                              <div style={{ position: 'absolute', bottom: '-6px', background: 'rgba(168,85,247,0.95)', color: 'white', fontSize: '0.6rem', fontWeight: 'bold', padding: '1px 6px', borderRadius: '4px' }}>
+                                Transmutado
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem', color: '#555' }}>
+                              <Sparkles size={30} style={{ opacity: 0.5 }} />
+                              <span style={{ fontSize: '0.6rem', textAlign: 'center' }}>Resultado</span>
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-                          <Sparkles size={32} color="#555" />
-                          <span style={{ color: '#555', fontSize: '0.6rem', textAlign: 'center' }}>Não config.</span>
-                        </div>
-                      )}
-                    </div>
-                    <span style={{ color: '#aaa', fontSize: '0.7rem', fontWeight: 'bold' }}>RESULTADO</span>
-                  </div>
+                        <span style={{ color: resultItemInfo ? '#c084fc' : '#aaa', fontSize: '0.7rem', fontWeight: 'bold', maxWidth: '100px', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {resultItemInfo ? resultItemInfo.title : 'TRANSMUTADO'}
+                        </span>
+                      </div>
+                    );
+                  })()}
 
                 </div>
 
                 {!selectedTransmuteItem ? (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'var(--text-secondary)', gap: '0.5rem', marginTop: '1rem' }}>
                     <Sparkles size={48} style={{ opacity: 0.2 }} />
-                    <p style={{ textAlign: 'center' }}>Selecione um equipamento +9 no inventário à esquerda para iniciar o ritual.</p>
+                    <p style={{ textAlign: 'center' }}>Selecione um equipamento +9 transmutável no inventário à esquerda para iniciar o ritual.</p>
                   </div>
-                ) : (
-                  <div style={{ width: '100%', maxWidth: '440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem 1.5rem', borderRadius: '12px', border: '1px solid rgba(139,92,246,0.3)' }}>
-                      <h4 style={{ color: 'white', margin: '0 0 0.75rem 0', fontSize: '1rem', textAlign: 'center' }}>{selectedTransmuteItem.itemTitle}</h4>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-                        <span>Custo:</span>
-                        <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 18, height: 18, objectFit: 'contain' }} /> : null}
-                          {selectedTransmuteItem.transmuteConfig?.coinsCost || 0} Moedas
-                        </span>
+                ) : (() => {
+                  const resultId = selectedTransmuteItem.transmuteConfig?.resultItemId;
+                  const resultItemInfo = resultId ? materialCatalog[resultId] : null;
+                  const resultMinRankIndex = resultItemInfo ? getMinRankIndex(resultItemInfo.minRankRequired) : 0;
+                  const meetsRankForResult = isStaff || currentRankIndex >= resultMinRankIndex;
+                  const coinsCost = selectedTransmuteItem.transmuteConfig?.coinsCost || 0;
+                  const hasCoins = isStaff || (userData.coins || 0) >= coinsCost;
+                  const requiredMats = (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean);
+                  const hasAllMats = requiredMats.every((id: string) => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) > 0);
+
+                  let buttonLabel = 'INICIAR RITUAL DE TRANSMUTAÇÃO';
+                  if (!resultId) {
+                    buttonLabel = 'ITEM RESULTADO NÃO CONFIGURADO';
+                  } else if (!meetsRankForResult) {
+                    buttonLabel = `PATENTE INSUFICIENTE (REQUER ${resolveMinRankName(resultItemInfo?.minRankRequired)?.toUpperCase() || 'SUPERIOR'})`;
+                  } else if (!hasCoins) {
+                    buttonLabel = 'MOEDAS INSUFICIENTES';
+                  } else if (!hasAllMats) {
+                    buttonLabel = 'MATERIAIS INSUFICIENTES';
+                  } else if (isForging) {
+                    buttonLabel = 'TRANSMUTANDO...';
+                  }
+
+                  const canSubmit = !isForging && meetsRankForResult && hasCoins && hasAllMats && !!resultId;
+
+                  return (
+                    <div style={{ width: '100%', maxWidth: '440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem 1.5rem', borderRadius: '12px', border: '1px solid rgba(139,92,246,0.3)' }}>
+                        <h4 style={{ color: 'white', margin: '0 0 0.75rem 0', fontSize: '1rem', textAlign: 'center' }}>{selectedTransmuteItem.itemTitle}</h4>
+                        
+                        {resultItemInfo && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
+                            <span>Item Resultado:</span>
+                            <span style={{ color: '#c084fc', fontWeight: 'bold' }}>{resultItemInfo.title}</span>
+                          </div>
+                        )}
+
+                        {resultItemInfo?.minRankRequired && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
+                            <span>Patente do Resultado:</span>
+                            <span style={{ color: meetsRankForResult ? '#10B981' : '#ef4444', fontWeight: 'bold' }}>
+                              {resolveMinRankName(resultItemInfo.minRankRequired) || 'Sem Patente'} {meetsRankForResult ? '✓' : '(Bloqueado)'}
+                            </span>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
+                          <span>Custo:</span>
+                          <span style={{ color: hasCoins ? 'var(--gold-primary)' : '#ef4444', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 18, height: 18, objectFit: 'contain' }} /> : null}
+                            {coinsCost} Moedas {hasCoins ? '' : '(Insuficiente)'}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.9rem' }}>
+                          <span>Chance de Sucesso:</span>
+                          <span style={{ color: '#10B981', fontWeight: 'bold' }}>{selectedTransmuteItem.transmuteConfig?.successChance || 25}%</span>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.9rem' }}>
-                        <span>Chance de Sucesso:</span>
-                        <span style={{ color: '#10B981', fontWeight: 'bold' }}>{selectedTransmuteItem.transmuteConfig?.successChance || 25}%</span>
-                      </div>
+
+                      <button
+                        onClick={handleTransmute}
+                        disabled={!canSubmit}
+                        style={{
+                          width: '100%',
+                          padding: '1.2rem',
+                          background: canSubmit ? 'linear-gradient(to right, #8b5cf6, #c084fc)' : 'rgba(120,120,120,0.35)',
+                          color: canSubmit ? 'white' : '#999',
+                          border: 'none',
+                          borderRadius: '12px',
+                          fontSize: '1rem',
+                          fontWeight: 'bold',
+                          cursor: canSubmit ? 'pointer' : 'not-allowed',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          boxShadow: canSubmit ? '0 4px 15px rgba(139, 92, 246, 0.35)' : 'none',
+                          opacity: canSubmit ? 1 : 0.7
+                        }}
+                      >
+                        <Sparkles size={22} className={isForging ? "animate-pulse" : ""} /> {buttonLabel}
+                      </button>
                     </div>
-                    <button
-                      onClick={handleTransmute}
-                      disabled={isForging || (!isStaff && userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0)) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)}
-                      style={{ width: '100%', padding: '1.2rem', background: (isForging || (!isStaff && userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0)) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #8b5cf6, #c084fc)', color: 'white', border: 'none', borderRadius: '12px', fontSize: '1.1rem', fontWeight: 'bold', cursor: (isForging || (!isStaff && userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0)) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)) ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)', opacity: (isForging || (!isStaff && userData.coins < (selectedTransmuteItem.transmuteConfig?.coinsCost || 0)) || (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean).some(id => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) <= 0)) ? 0.5 : 1 }}
-                    >
-                      <Sparkles size={22} className={isForging ? "animate-pulse" : ""} /> {isForging ? 'TRANSMUTANDO...' : 'INICIAR RITUAL DE TRANSMUTAÇÃO'}
-                    </button>
-                  </div>
-                )}
+                  );
+                })()}
               </>
             )}
 
