@@ -342,10 +342,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             breakMinQty: itemData.breakMinQty ?? storeItemData.breakMinQty ?? 1,
             breakMaxQty: itemData.breakMaxQty ?? storeItemData.breakMaxQty ?? 1,
             breakCost: itemData.breakCost ?? storeItemData.breakCost ?? 0,
+            breakSuccessChance: itemData.breakSuccessChance ?? storeItemData.breakSuccessChance ?? 80,
             fuseTargetItemId: itemData.fuseTargetItemId || storeItemData.fuseTargetItemId,
             fuseRequiredQty: itemData.fuseRequiredQty ?? storeItemData.fuseRequiredQty ?? 50,
             fuseResultQty: itemData.fuseResultQty ?? storeItemData.fuseResultQty ?? 1,
             fuseCost: itemData.fuseCost ?? storeItemData.fuseCost ?? 0,
+            fuseSuccessChance: itemData.fuseSuccessChance ?? storeItemData.fuseSuccessChance ?? 75,
           });
           consumables.push({ docId: row.id, itemId: row.item_id, quantity: itemData.quantity || 1, itemTitle: itemData.itemTitle || storeItemData.title, itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '' });
         } else if (itemData.itemType === 'equippable') {
@@ -555,6 +557,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const qtyToBreak = Math.max(1, Math.min(totalOwned, breakQty));
     const unitCost = selectedForgeItem.breakCost ?? 0;
     const totalCost = qtyToBreak * unitCost;
+    const successChance = selectedForgeItem.breakSuccessChance ?? 80;
 
     if (!isStaff && (userData.coins || 0) < totalCost) {
       showToast(`Você precisa de ${totalCost} moedas para quebrar ${qtyToBreak}x este material.`, 'error');
@@ -571,7 +574,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const targetTitle = targetInfo?.title || 'Fragmentos';
 
     const confirmed = await showConfirm(
-      `Deseja pagar ${totalCost} moedas para quebrar ${qtyToBreak}x "${selectedForgeItem.itemTitle}" no Ferreiro?`
+      `Deseja pagar ${totalCost} moedas para tentar triturar ${qtyToBreak}x "${selectedForgeItem.itemTitle}" no Ferreiro?\n\nTaxa de Sucesso: ${successChance}%\n\n⚠️ Atenção: Se o ferreiro falhar, os materiais e as moedas serão perdidos!`
     );
     if (!confirmed) return;
 
@@ -585,13 +588,21 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       const minQ = selectedForgeItem.breakMinQty ?? 1;
       const maxQ = Math.max(minQ, selectedForgeItem.breakMaxQty ?? minQ);
       let totalYield = 0;
+      let successfulUnits = 0;
+      let failedUnits = 0;
       for (let i = 0; i < qtyToBreak; i++) {
-        const roll = Math.floor(Math.random() * (maxQ - minQ + 1)) + minQ;
-        totalYield += roll;
+        const rollSuccess = Math.random() * 100 < successChance;
+        if (rollSuccess) {
+          const roll = Math.floor(Math.random() * (maxQ - minQ + 1)) + minQ;
+          totalYield += roll;
+          successfulUnits++;
+        } else {
+          failedUnits++;
+        }
       }
 
       const dbPromise = (async () => {
-        // 1. Deduzir moedas
+        // 1. Deduzir moedas (o ferreiro sempre cobra pelo serviço)
         let newCoins = userData.coins || 0;
         if (!isStaff && totalCost > 0) {
           newCoins = Math.max(0, newCoins - totalCost);
@@ -599,7 +610,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           userData.coins = newCoins;
         }
 
-        // 2. Consumir material bruto
+        // 2. Consumir material bruto (quebra na bigorna)
         if (totalOwned <= qtyToBreak) {
           await supabase.from('user_items').delete().eq('id', selectedForgeItem.docId);
           setSelectedForgeItem(null);
@@ -612,58 +623,60 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           }).eq('id', selectedForgeItem.docId);
         }
 
-        // 3. Adicionar fragmentos
-        const { data: existingSnap } = await supabase
-          .from('user_items')
-          .select('id, data')
-          .eq('student_id', userData.uid)
-          .eq('item_id', targetItemId);
+        // 3. Adicionar fragmentos apenas se houver unidades com sucesso
+        if (totalYield > 0) {
+          const { data: existingSnap } = await supabase
+            .from('user_items')
+            .select('id, data')
+            .eq('student_id', userData.uid)
+            .eq('item_id', targetItemId);
 
-        const { data: targetStoreRow } = await supabase
-          .from('store_items')
-          .select('*')
-          .eq('id', targetItemId)
-          .maybeSingle();
+          const { data: targetStoreRow } = await supabase
+            .from('store_items')
+            .select('*')
+            .eq('id', targetItemId)
+            .maybeSingle();
 
-        const storeTargetData = (targetStoreRow?.data || {}) as any;
-        const baseItemPayload = {
-          ...storeTargetData,
-          itemTitle: storeTargetData.title || targetStoreRow?.name || targetTitle,
-          itemImageUrl: storeTargetData.imageUrl || targetStoreRow?.image_url || targetInfo?.imageUrl || '',
-          itemType: storeTargetData.type || targetStoreRow?.type || 'consumable',
-          gameEffect: storeTargetData.gameEffect || 'none',
-          rarity: storeTargetData.rarity || targetStoreRow?.rarity || targetInfo?.rarity || 'common',
-        };
+          const storeTargetData = (targetStoreRow?.data || {}) as any;
+          const baseItemPayload = {
+            ...storeTargetData,
+            itemTitle: storeTargetData.title || targetStoreRow?.name || targetTitle,
+            itemImageUrl: storeTargetData.imageUrl || targetStoreRow?.image_url || targetInfo?.imageUrl || '',
+            itemType: storeTargetData.type || targetStoreRow?.type || 'consumable',
+            gameEffect: storeTargetData.gameEffect || 'none',
+            rarity: storeTargetData.rarity || targetStoreRow?.rarity || targetInfo?.rarity || 'common',
+          };
 
-        let remainingToAdd = totalYield;
-        for (const row of (existingSnap || [])) {
-          if (remainingToAdd <= 0) break;
-          const d = (row.data || {}) as any;
-          if (d.forSale) continue;
-          const curQ = d.quantity || 1;
-          if (curQ < 99) {
-            const space = 99 - curQ;
-            const adding = Math.min(space, remainingToAdd);
-            await supabase.from('user_items').update({
-              data: { ...d, quantity: curQ + adding }
-            }).eq('id', row.id);
-            remainingToAdd -= adding;
-          }
-        }
-
-        while (remainingToAdd > 0) {
-          const stackQty = Math.min(99, remainingToAdd);
-          await supabase.from('user_items').insert({
-            student_id: userData.uid,
-            item_id: targetItemId,
-            equipped: false,
-            tenant_id: tenantId || null,
-            data: {
-              ...baseItemPayload,
-              quantity: stackQty
+          let remainingToAdd = totalYield;
+          for (const row of (existingSnap || [])) {
+            if (remainingToAdd <= 0) break;
+            const d = (row.data || {}) as any;
+            if (d.forSale) continue;
+            const curQ = d.quantity || 1;
+            if (curQ < 99) {
+              const space = 99 - curQ;
+              const adding = Math.min(space, remainingToAdd);
+              await supabase.from('user_items').update({
+                data: { ...d, quantity: curQ + adding }
+              }).eq('id', row.id);
+              remainingToAdd -= adding;
             }
-          });
-          remainingToAdd -= stackQty;
+          }
+
+          while (remainingToAdd > 0) {
+            const stackQty = Math.min(99, remainingToAdd);
+            await supabase.from('user_items').insert({
+              student_id: userData.uid,
+              item_id: targetItemId,
+              equipped: false,
+              tenant_id: tenantId || null,
+              data: {
+                ...baseItemPayload,
+                quantity: stackQty
+              }
+            });
+            remainingToAdd -= stackQty;
+          }
         }
 
         return { newCoins };
@@ -680,8 +693,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       setIsForging(false);
       isForgingRef.current = false;
 
-      playSound(forgeSounds.successSoundUrl, 0.9);
-      showToast(`⛏️ Sucesso! Você quebrou ${qtyToBreak}x ${selectedForgeItem.itemTitle} e obteve ${totalYield}x ${targetTitle}!`, 'success');
+      if (totalYield === 0) {
+        playSound(forgeSounds.failSoundUrl, 0.9);
+        showToast(`💥 QUEBROU TUDO! O ferreiro deu uma martelada desajeitada, o material virou pó e você não conseguiu nenhum fragmento!`, 'error');
+      } else if (failedUnits > 0) {
+        playSound(forgeSounds.successSoundUrl, 0.9);
+        showToast(`⛏️ Sucesso parcial! O ferreiro triturou ${successfulUnits}x com sucesso (${totalYield}x ${targetTitle}), mas atrapalhou-se e destruiu ${failedUnits}x material(is)!`, 'info');
+      } else {
+        playSound(forgeSounds.successSoundUrl, 0.9);
+        showToast(`⛏️ Sucesso total! Você triturou ${qtyToBreak}x ${selectedForgeItem.itemTitle} e obteve ${totalYield}x ${targetTitle}!`, 'success');
+      }
       playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
       onSuccess(dbResult.newCoins);
       await fetchItems();
@@ -702,6 +723,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const reqQty = selectedForgeItem.fuseRequiredQty ?? 50;
     const resQty = selectedForgeItem.fuseResultQty ?? 1;
     const unitCost = selectedForgeItem.fuseCost ?? 0;
+    const successChance = selectedForgeItem.fuseSuccessChance ?? 75;
 
     const maxBatches = Math.floor(totalOwned / reqQty);
     if (maxBatches < 1) {
@@ -711,7 +733,6 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
     const batchesToFuse = Math.max(1, Math.min(maxBatches, fuseBatches));
     const totalFragmentsConsumed = batchesToFuse * reqQty;
-    const totalYield = batchesToFuse * resQty;
     const totalCost = batchesToFuse * unitCost;
 
     if (!isStaff && (userData.coins || 0) < totalCost) {
@@ -729,7 +750,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const targetTitle = targetInfo?.title || 'Lingote';
 
     const confirmed = await showConfirm(
-      `Deseja pagar ${totalCost} moedas e consumir ${totalFragmentsConsumed}x "${selectedForgeItem.itemTitle}" para forjar ${totalYield}x "${targetTitle}"?`
+      `Deseja pagar ${totalCost} moedas e consumir ${totalFragmentsConsumed}x "${selectedForgeItem.itemTitle}" para tentar fundir ${batchesToFuse * resQty}x "${targetTitle}"?\n\nTaxa de Sucesso: ${successChance}%\n\n⚠️ Atenção: Se o ferreiro falhar, os fragmentos e as moedas serão consumidos no fogo!`
     );
     if (!confirmed) return;
 
@@ -740,8 +761,20 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     if (sketchfabApi) sketchfabApi.play();
 
     try {
+      let successfulBatches = 0;
+      let failedBatches = 0;
+      for (let b = 0; b < batchesToFuse; b++) {
+        const rollSuccess = Math.random() * 100 < successChance;
+        if (rollSuccess) {
+          successfulBatches++;
+        } else {
+          failedBatches++;
+        }
+      }
+      const totalYield = successfulBatches * resQty;
+
       const dbPromise = (async () => {
-        // 1. Deduzir moedas
+        // 1. Deduzir moedas (o ferreiro sempre cobra pelo serviço)
         let newCoins = userData.coins || 0;
         if (!isStaff && totalCost > 0) {
           newCoins = Math.max(0, newCoins - totalCost);
@@ -749,7 +782,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           userData.coins = newCoins;
         }
 
-        // 2. Consumir fragmentos
+        // 2. Consumir fragmentos (jogados no crisol da forja)
         if (totalOwned <= totalFragmentsConsumed) {
           await supabase.from('user_items').delete().eq('id', selectedForgeItem.docId);
           setSelectedForgeItem(null);
@@ -762,58 +795,60 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           }).eq('id', selectedForgeItem.docId);
         }
 
-        // 3. Adicionar lingotes
-        const { data: existingSnap } = await supabase
-          .from('user_items')
-          .select('id, data')
-          .eq('student_id', userData.uid)
-          .eq('item_id', targetItemId);
+        // 3. Adicionar lingotes apenas para os lotes fundidos com sucesso
+        if (totalYield > 0) {
+          const { data: existingSnap } = await supabase
+            .from('user_items')
+            .select('id, data')
+            .eq('student_id', userData.uid)
+            .eq('item_id', targetItemId);
 
-        const { data: targetStoreRow } = await supabase
-          .from('store_items')
-          .select('*')
-          .eq('id', targetItemId)
-          .maybeSingle();
+          const { data: targetStoreRow } = await supabase
+            .from('store_items')
+            .select('*')
+            .eq('id', targetItemId)
+            .maybeSingle();
 
-        const storeTargetData = (targetStoreRow?.data || {}) as any;
-        const baseItemPayload = {
-          ...storeTargetData,
-          itemTitle: storeTargetData.title || targetStoreRow?.name || targetTitle,
-          itemImageUrl: storeTargetData.imageUrl || targetStoreRow?.image_url || targetInfo?.imageUrl || '',
-          itemType: storeTargetData.type || targetStoreRow?.type || 'other',
-          gameEffect: storeTargetData.gameEffect || 'none',
-          rarity: storeTargetData.rarity || targetStoreRow?.rarity || targetInfo?.rarity || 'common',
-        };
+          const storeTargetData = (targetStoreRow?.data || {}) as any;
+          const baseItemPayload = {
+            ...storeTargetData,
+            itemTitle: storeTargetData.title || targetStoreRow?.name || targetTitle,
+            itemImageUrl: storeTargetData.imageUrl || targetStoreRow?.image_url || targetInfo?.imageUrl || '',
+            itemType: storeTargetData.type || targetStoreRow?.type || 'other',
+            gameEffect: storeTargetData.gameEffect || 'none',
+            rarity: storeTargetData.rarity || targetStoreRow?.rarity || targetInfo?.rarity || 'common',
+          };
 
-        let remainingToAdd = totalYield;
-        for (const row of (existingSnap || [])) {
-          if (remainingToAdd <= 0) break;
-          const d = (row.data || {}) as any;
-          if (d.forSale) continue;
-          const curQ = d.quantity || 1;
-          if (curQ < 99) {
-            const space = 99 - curQ;
-            const adding = Math.min(space, remainingToAdd);
-            await supabase.from('user_items').update({
-              data: { ...d, quantity: curQ + adding }
-            }).eq('id', row.id);
-            remainingToAdd -= adding;
-          }
-        }
-
-        while (remainingToAdd > 0) {
-          const stackQty = Math.min(99, remainingToAdd);
-          await supabase.from('user_items').insert({
-            student_id: userData.uid,
-            item_id: targetItemId,
-            equipped: false,
-            tenant_id: tenantId || null,
-            data: {
-              ...baseItemPayload,
-              quantity: stackQty
+          let remainingToAdd = totalYield;
+          for (const row of (existingSnap || [])) {
+            if (remainingToAdd <= 0) break;
+            const d = (row.data || {}) as any;
+            if (d.forSale) continue;
+            const curQ = d.quantity || 1;
+            if (curQ < 99) {
+              const space = 99 - curQ;
+              const adding = Math.min(space, remainingToAdd);
+              await supabase.from('user_items').update({
+                data: { ...d, quantity: curQ + adding }
+              }).eq('id', row.id);
+              remainingToAdd -= adding;
             }
-          });
-          remainingToAdd -= stackQty;
+          }
+
+          while (remainingToAdd > 0) {
+            const stackQty = Math.min(99, remainingToAdd);
+            await supabase.from('user_items').insert({
+              student_id: userData.uid,
+              item_id: targetItemId,
+              equipped: false,
+              tenant_id: tenantId || null,
+              data: {
+                ...baseItemPayload,
+                quantity: stackQty
+              }
+            });
+            remainingToAdd -= stackQty;
+          }
         }
 
         return { newCoins };
@@ -830,8 +865,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       setIsForging(false);
       isForgingRef.current = false;
 
-      playSound(forgeSounds.successSoundUrl, 0.9);
-      showToast(`🔥 Fundição concluída! Você forjou ${totalYield}x ${targetTitle}!`, 'success');
+      if (totalYield === 0) {
+        playSound(forgeSounds.failSoundUrl, 0.9);
+        showToast(`💥 FALHOU! O ferreiro se atrapalhou no fogo, o crisol entornou e os fragmentos viraram cinzas!`, 'error');
+      } else if (failedBatches > 0) {
+        playSound(forgeSounds.successSoundUrl, 0.9);
+        showToast(`🔥 Sucesso parcial! O ferreiro fundiu ${successfulBatches}x lote(s) (${totalYield}x ${targetTitle}), mas ${failedBatches}x lote(s) viraram cinzas!`, 'info');
+      } else {
+        playSound(forgeSounds.successSoundUrl, 0.9);
+        showToast(`🔥 Fundição concluída com maestria! Você forjou ${totalYield}x ${targetTitle}!`, 'success');
+      }
       playTabMusic(activeTab === 'forge' ? forgeSounds.forgeMusicUrl : forgeSounds.transmuteMusicUrl, bgVolumeRef.current);
       onSuccess(dbResult.newCoins);
       await fetchItems();
@@ -1119,6 +1162,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       const minQ = selectedForgeItem.breakMinQty ?? 1;
                       const maxQ = Math.max(minQ, selectedForgeItem.breakMaxQty ?? minQ);
                       const unitCost = selectedForgeItem.breakCost ?? 0;
+                      const successChance = selectedForgeItem.breakSuccessChance ?? 80;
                       const currentBreakQty = Math.max(1, Math.min(totalOwned, breakQty));
                       const totalCost = currentBreakQty * unitCost;
                       const targetItemId = selectedForgeItem.breakTargetItemId;
@@ -1238,6 +1282,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                                 </div>
                               </div>
                               <div>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Taxa de Sucesso:</div>
+                                <div style={{ color: successChance >= 80 ? '#10b981' : successChance >= 50 ? '#f59e0b' : '#ef4444', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                                  {successChance}%
+                                </div>
+                              </div>
+                              <div>
                                 <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Taxa do Ferreiro:</div>
                                 <div style={{ color: canAfford ? 'var(--gold-primary)' : '#ef4444', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                   {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 16, height: 16, objectFit: 'contain' }} /> : <Coins size={15} color="var(--gold-primary)" />}
@@ -1272,6 +1322,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                             <Hammer size={22} className={isForging ? "animate-bounce" : ""} />
                             {isForging ? 'TRITURANDO MATERIAL...' : (!targetItemId ? 'Destino não configurado' : !canAfford ? 'Moedas Insuficientes' : `TRITURAR (${totalCost} Moedas)`)}
                           </button>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textAlign: 'center', margin: '-0.75rem 0 0 0' }}>
+                            ⚠️ O ferreiro pode falhar ao triturar. Se falhar, o material e as moedas serão perdidos!
+                          </p>
                         </>
                       );
                     })()}
@@ -1283,6 +1336,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       const reqQty = selectedForgeItem.fuseRequiredQty ?? 50;
                       const resQty = selectedForgeItem.fuseResultQty ?? 1;
                       const unitCost = selectedForgeItem.fuseCost ?? 0;
+                      const successChance = selectedForgeItem.fuseSuccessChance ?? 75;
                       const maxBatches = Math.floor(totalOwned / reqQty);
                       const currentBatches = Math.max(1, Math.min(Math.max(1, maxBatches), fuseBatches));
                       const totalFragmentsConsumed = currentBatches * reqQty;
@@ -1418,6 +1472,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                                 </div>
                               </div>
                               <div>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Taxa de Sucesso:</div>
+                                <div style={{ color: successChance >= 80 ? '#10b981' : successChance >= 50 ? '#f59e0b' : '#ef4444', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                                  {successChance}%
+                                </div>
+                              </div>
+                              <div>
                                 <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Taxa do Ferreiro:</div>
                                 <div style={{ color: canAfford ? 'var(--gold-primary)' : '#ef4444', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                   {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 16, height: 16, objectFit: 'contain' }} /> : <Coins size={15} color="var(--gold-primary)" />}
@@ -1452,6 +1512,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                             <Hammer size={22} className={isForging ? "animate-bounce" : ""} />
                             {isForging ? 'FUNDINDO MATERIAL...' : (!targetItemId ? 'Destino não configurado' : !hasEnoughFragments ? `Faltam ${reqQty - totalOwned} Fragmentos` : !canAfford ? 'Moedas Insuficientes' : `FUNDIR NO FERREIRO (${totalCost} Moedas)`)}
                           </button>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textAlign: 'center', margin: '-0.75rem 0 0 0' }}>
+                            ⚠️ O ferreiro pode falhar ao fundir. Se falhar, os fragmentos e as moedas serão perdidos!
+                          </p>
                         </>
                       );
                     })()}

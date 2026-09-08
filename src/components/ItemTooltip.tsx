@@ -57,6 +57,8 @@ export interface TooltipItemData {
   breakMaxQty?: number;
   fuseRequiredQty?: number;
   fuseResultQty?: number;
+  breakSuccessChance?: number;
+  fuseSuccessChance?: number;
 }
 
 export function normalizeItemForTooltip(item: any): TooltipItemData {
@@ -81,6 +83,8 @@ export function normalizeItemForTooltip(item: any): TooltipItemData {
     breakMaxQty: item.breakMaxQty ?? (item.data ? item.data.breakMaxQty : undefined),
     fuseRequiredQty: item.fuseRequiredQty ?? (item.data ? item.data.fuseRequiredQty : undefined),
     fuseResultQty: item.fuseResultQty ?? (item.data ? item.data.fuseResultQty : undefined),
+    breakSuccessChance: item.breakSuccessChance ?? (item.data ? item.data.breakSuccessChance : undefined),
+    fuseSuccessChance: item.fuseSuccessChance ?? (item.data ? item.data.fuseSuccessChance : undefined),
   };
 }
 
@@ -115,10 +119,10 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
       `Pergaminho do Ferreiro: +${item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null ? item.scrollChanceBonus : 30}% de chance de sucesso na forja.`
     ) :
     item.gameEffect === 'break_item' ? (
-      `Material Bruto: Leve ao Ferreiro para quebrar em fragmentos (${item.breakMinQty ?? 1} a ${item.breakMaxQty ?? 5} un. por quebra).`
+      `Material Bruto: Leve ao Ferreiro para quebrar em fragmentos (${item.breakMinQty ?? 1} a ${item.breakMaxQty ?? 5} un. • ${item.breakSuccessChance ?? 80}% de chance).`
     ) :
     item.gameEffect === 'fuse_item' ? (
-      `Fragmento de Material: Reúna ${item.fuseRequiredQty ?? 50} unidades e leve ao Ferreiro para fundir em ${item.fuseResultQty ?? 1} lingote.`
+      `Fragmento de Material: Reúna ${item.fuseRequiredQty ?? 50} unidades e leve ao Ferreiro para fundir em ${item.fuseResultQty ?? 1} lingote (${item.fuseSuccessChance ?? 75}% de chance).`
     ) :
     item.gameEffect === 'none' ? 'Um item comum sem efeitos mágicos.' :
     null;

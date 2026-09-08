@@ -82,10 +82,12 @@ export interface StoreItem {
   breakMinQty?: number; // Quantidade mínima de fragmentos ao quebrar
   breakMaxQty?: number; // Quantidade máxima de fragmentos ao quebrar
   breakCost?: number; // Custo em moedas para quebrar cada unidade no ferreiro
+  breakSuccessChance?: number; // % de chance de sucesso na quebra (1–100, padrão 80)
   fuseTargetItemId?: string; // ID do item lingote resultante ao fundir no ferreiro
   fuseRequiredQty?: number; // Quantidade de fragmentos necessária para fundir (ex: 50)
   fuseResultQty?: number; // Quantidade gerada do item resultante (ex: 1)
   fuseCost?: number; // Custo em moedas para realizar a fundição no ferreiro
+  fuseSuccessChance?: number; // % de chance de sucesso na fundição (1–100, padrão 75)
 }
 
 const getRarityLabel = (rarity?: string) => {
@@ -633,7 +635,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     { key: 'title', label: 'Nome do item', hint: 'title', keys: ['title'] },
     { key: 'description', label: 'Descrição', hint: 'description', keys: ['description'] },
     { key: 'price', label: 'Preço', hint: 'cost', keys: ['cost'] },
-    { key: 'effect', label: 'Efeito do item (uso em missão, buffs, cooldown, refino)', hint: 'gameEffect, usableInQuest, buffs, quebra e fundição', keys: ['gameEffect', 'usableInQuest', 'hpCooldownReductionMinutes', 'buffDurationHours', 'buffDurationDays', 'unlockedSkinId', 'breakTargetItemId', 'breakMinQty', 'breakMaxQty', 'breakCost', 'fuseTargetItemId', 'fuseRequiredQty', 'fuseResultQty', 'fuseCost'] },
+    { key: 'effect', label: 'Efeito do item (uso em missão, buffs, cooldown, refino)', hint: 'gameEffect, usableInQuest, buffs, quebra e fundição', keys: ['gameEffect', 'usableInQuest', 'hpCooldownReductionMinutes', 'buffDurationHours', 'buffDurationDays', 'unlockedSkinId', 'breakTargetItemId', 'breakMinQty', 'breakMaxQty', 'breakCost', 'breakSuccessChance', 'fuseTargetItemId', 'fuseRequiredQty', 'fuseResultQty', 'fuseCost', 'fuseSuccessChance'] },
     { key: 'stats', label: 'Atributos / Poder (ataque, defesa, dano)', hint: 'fixedAttributes, baseAttribute, damageEffect', keys: ['baseAttributeType', 'baseAttributeValue', 'fixedAttributes', 'itemCategory', 'damageEffect'] },
     { key: 'rank', label: 'Patente mínima exigida', hint: 'minRankRequired', keys: ['minRankRequired'] },
     { key: 'model', label: 'Modelo 2D/3D', hint: 'gameModelUrl, textura, cabeça Minecraft, paper doll 2D', keys: ['gameModelUrl', 'modelTextureUrl', 'minecraftHeadValue', 'gameImage2dUrl', 'backColor'] },
@@ -878,10 +880,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       breakMinQty: item.breakMinQty,
       breakMaxQty: item.breakMaxQty,
       breakCost: item.breakCost,
+      breakSuccessChance: item.breakSuccessChance,
       fuseTargetItemId: item.fuseTargetItemId,
       fuseRequiredQty: item.fuseRequiredQty,
       fuseResultQty: item.fuseResultQty,
       fuseCost: item.fuseCost,
+      fuseSuccessChance: item.fuseSuccessChance,
     };
 
     if (copyMode === 'direct') {
@@ -978,10 +982,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           breakMinQty: item.breakMinQty,
           breakMaxQty: item.breakMaxQty,
           breakCost: item.breakCost,
+          breakSuccessChance: item.breakSuccessChance,
           fuseTargetItemId: item.fuseTargetItemId,
           fuseRequiredQty: item.fuseRequiredQty,
           fuseResultQty: item.fuseResultQty,
           fuseCost: item.fuseCost,
+          fuseSuccessChance: item.fuseSuccessChance,
           minSalePrice: 0,
           importedFromId: item._rawId || null,
         };
@@ -1056,10 +1062,12 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       breakMinQty: formData.gameEffect === 'break_item' ? (Number(formData.breakMinQty) || 1) : undefined,
       breakMaxQty: formData.gameEffect === 'break_item' ? (Number(formData.breakMaxQty) || 1) : undefined,
       breakCost: formData.gameEffect === 'break_item' ? (Number(formData.breakCost) || 0) : undefined,
+      breakSuccessChance: formData.gameEffect === 'break_item' ? (formData.breakSuccessChance !== undefined && formData.breakSuccessChance !== null && !isNaN(Number(formData.breakSuccessChance)) ? Number(formData.breakSuccessChance) : 80) : undefined,
       fuseTargetItemId: formData.gameEffect === 'fuse_item' ? (formData.fuseTargetItemId || undefined) : undefined,
       fuseRequiredQty: formData.gameEffect === 'fuse_item' ? (Number(formData.fuseRequiredQty) || 50) : undefined,
       fuseResultQty: formData.gameEffect === 'fuse_item' ? (Number(formData.fuseResultQty) || 1) : undefined,
       fuseCost: formData.gameEffect === 'fuse_item' ? (Number(formData.fuseCost) || 0) : undefined,
+      fuseSuccessChance: formData.gameEffect === 'fuse_item' ? (formData.fuseSuccessChance !== undefined && formData.fuseSuccessChance !== null && !isNaN(Number(formData.fuseSuccessChance)) ? Number(formData.fuseSuccessChance) : 75) : undefined,
     };
 
     if (editingId) {
@@ -1533,9 +1541,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                           breakMinQty: eff === 'break_item' ? (formData.breakMinQty ?? 1) : formData.breakMinQty,
                           breakMaxQty: eff === 'break_item' ? (formData.breakMaxQty ?? 5) : formData.breakMaxQty,
                           breakCost: eff === 'break_item' ? (formData.breakCost ?? 10) : formData.breakCost,
+                          breakSuccessChance: eff === 'break_item' ? (formData.breakSuccessChance ?? 80) : formData.breakSuccessChance,
                           fuseRequiredQty: eff === 'fuse_item' ? (formData.fuseRequiredQty ?? 50) : formData.fuseRequiredQty,
                           fuseResultQty: eff === 'fuse_item' ? (formData.fuseResultQty ?? 1) : formData.fuseResultQty,
-                          fuseCost: eff === 'fuse_item' ? (formData.fuseCost ?? 50) : formData.fuseCost
+                          fuseCost: eff === 'fuse_item' ? (formData.fuseCost ?? 50) : formData.fuseCost,
+                          fuseSuccessChance: eff === 'fuse_item' ? (formData.fuseSuccessChance ?? 75) : formData.fuseSuccessChance
                         });
                       }}
                       style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
@@ -1657,6 +1667,19 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                             style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
                           />
                         </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: '#f59e0b', fontWeight: 'bold' }}>
+                            Taxa de Sucesso (%)
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={formData.breakSuccessChance ?? 80}
+                            onChange={e => setFormData({ ...formData, breakSuccessChance: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1721,6 +1744,19 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                             min={0}
                             value={formData.fuseCost ?? 50}
                             onChange={e => setFormData({ ...formData, fuseCost: Math.max(0, Number(e.target.value) || 0) })}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: '#f59e0b', fontWeight: 'bold' }}>
+                            Taxa de Sucesso (%)
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={formData.fuseSuccessChance ?? 75}
+                            onChange={e => setFormData({ ...formData, fuseSuccessChance: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
                             style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
                           />
                         </div>
