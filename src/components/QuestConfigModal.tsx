@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy, Menu, Volume2, XCircle } from 'lucide-react';
-import AvatarCharacter, { type AvatarConfig } from './AvatarCharacter';
+import AvatarCharacter, { type AvatarConfig, safeParseAvatarConfig } from './AvatarCharacter';
 import DirectUploadButton from './DirectUploadButton';
 import AudioBankPicker from './AudioBankPicker';
 import { getSafeUrl } from '../lib/utils';
@@ -377,6 +377,70 @@ export default function QuestConfigModal(props: QuestConfigModalProps) {
 }
 
 function MonsterTab(p: QuestConfigModalProps) {
+  // Identifica com precisão qual monstro está selecionado
+  const selectedMonsterId = (() => {
+    const pId = (p.questMonsterConfig as any)?.presetSkinId;
+    if (pId) {
+      const byPreset = p.availableMonsters.find(m => m.id === pId);
+      if (byPreset) return byPreset.id;
+    }
+    const currentModel = p.questMonsterModelUrl || p.questMonsterConfig?.customModelUrl || '';
+    const currentSkin = p.questMonsterConfig?.customSkinUrl || '';
+    if (p.questMonsterName) {
+      const byExact = p.availableMonsters.find(m => 
+        m.name === p.questMonsterName && 
+        ((m.config?.customModelUrl || '') === currentModel || (m.url && m.url === currentSkin))
+      );
+      if (byExact) return byExact.id;
+      const byName = p.availableMonsters.find(m => m.name === p.questMonsterName);
+      if (byName) return byName.id;
+    }
+    return '';
+  })();
+
+  const currentZoom = p.questMonsterConfig?.customZoom || 1;
+  const currentAttacks = p.questMonsterConfig?.attacks;
+  const hasConfiguredAttacks = !!currentAttacks && (
+    !!currentAttacks.melee || !!currentAttacks.ranged?.enabled || !!currentAttacks.special?.enabled || !!currentAttacks.support?.enabled || !!currentAttacks.heal?.enabled
+  );
+
+  // Sincroniza automaticamente a configuração da missão com a galeria de monstros
+  // caso o monstro tenha sido alterado em Entidades 3D > Monstros
+  useEffect(() => {
+    if (!selectedMonsterId) return;
+    const found = p.availableMonsters.find(m => m.id === selectedMonsterId);
+    if (!found?.config) return;
+
+    const currentCfg = p.questMonsterConfig || {};
+    const galleryAttacks = found.config.attacks;
+    const galleryZoom = found.config.customZoom;
+    const galleryRotY = found.config.customRotY;
+
+    let needsUpdate = false;
+    const nextCfg: any = { ...currentCfg };
+
+    if (galleryAttacks && JSON.stringify(currentCfg.attacks) !== JSON.stringify(galleryAttacks)) {
+      nextCfg.attacks = galleryAttacks;
+      needsUpdate = true;
+    }
+    if (galleryZoom !== undefined && currentCfg.customZoom !== galleryZoom) {
+      nextCfg.customZoom = galleryZoom;
+      needsUpdate = true;
+    }
+    if (galleryRotY !== undefined && currentCfg.customRotY !== galleryRotY) {
+      nextCfg.customRotY = galleryRotY;
+      needsUpdate = true;
+    }
+    if (nextCfg.presetSkinId !== found.id) {
+      nextCfg.presetSkinId = found.id;
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      p.setQuestMonsterConfig(nextCfg);
+    }
+  }, [selectedMonsterId, p.availableMonsters]);
+
   return (
     <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
       <h4 style={{ color: 'var(--accent-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Swords size={20} /> Configurar Monstro / Oponente</h4>
@@ -389,26 +453,34 @@ function MonsterTab(p: QuestConfigModalProps) {
           <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Selecionar Monstro da Galeria</label>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
             <select
-              value={p.availableMonsters.find(m => m.name === p.questMonsterName)?.id || ''}
+              value={selectedMonsterId}
               onChange={e => {
                 const selected = p.availableMonsters.find(m => m.id === e.target.value);
                 if (selected) {
                   p.setQuestMonsterName(selected.name);
+                  const baseCfg = safeParseAvatarConfig(selected.config) || {};
+                  
                   // Resolve o modelo 3D (customModelUrl do config ou o molde base)
                   let modelUrl = '';
-                  if (selected.config?.customModelUrl) {
-                    modelUrl = selected.config.customModelUrl;
+                  if (baseCfg.customModelUrl) {
+                    modelUrl = baseCfg.customModelUrl;
                   } else if (selected.baseModelId) {
                     const rawModel = p.available3DModels.find(m => m.id === selected.baseModelId);
                     modelUrl = rawModel ? rawModel.url : '';
                   }
                   p.setQuestMonsterModelUrl(modelUrl);
-                  // Monta o config RENDERIZÁVEL: mescla o modelo + a skin do monstro,
-                  // senão o preview (e a missão) mostram o boneco padrão resetado.
-                  const baseCfg = selected.config && typeof selected.config === 'object' ? { ...selected.config } : {};
-                  const mergedCfg: any = { ...baseCfg };
-                  if (modelUrl && !mergedCfg.customModelUrl) mergedCfg.customModelUrl = modelUrl;
-                  if (selected.url && !mergedCfg.customSkinUrl) mergedCfg.customSkinUrl = selected.url;
+                  
+                  // Monta o config RENDERIZÁVEL preservando ataques, escala (zoom) e skins
+                  const mergedCfg: any = { 
+                    ...baseCfg,
+                    presetSkinId: selected.id,
+                  };
+                  if (modelUrl) mergedCfg.customModelUrl = modelUrl;
+                  if (selected.url) mergedCfg.customSkinUrl = selected.url;
+                  if (baseCfg.customZoom !== undefined) mergedCfg.customZoom = baseCfg.customZoom;
+                  if (baseCfg.customRotY !== undefined) mergedCfg.customRotY = baseCfg.customRotY;
+                  if (baseCfg.attacks) mergedCfg.attacks = baseCfg.attacks;
+                  
                   p.setQuestMonsterConfig(mergedCfg);
                 } else {
                   p.setQuestMonsterName('');
@@ -419,22 +491,44 @@ function MonsterTab(p: QuestConfigModalProps) {
               style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
             >
               <option value="">(Personalizar um novo Monstro...)</option>
-              {p.availableMonsters.map(monster => (
-                <option key={monster.id} value={monster.id}>{monster.name}</option>
-              ))}
+              {p.availableMonsters.map(monster => {
+                const cfg = safeParseAvatarConfig(monster.config);
+                const hasAttacks = !!cfg?.attacks;
+                const zoomStr = cfg?.customZoom && cfg.customZoom !== 1 ? ` · ${cfg.customZoom}x` : '';
+                const atkStr = hasAttacks ? ' · ⚔️ Golpes' : '';
+                return (
+                  <option key={monster.id} value={monster.id}>
+                    {monster.name}{atkStr}{zoomStr}
+                  </option>
+                );
+              })}
             </select>
 
-            <div style={{ width: '100px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              {(p.questMonsterConfig || p.questMonsterModelUrl) ? (
-                <AvatarCharacter
-                  config={p.questMonsterConfig || (p.questMonsterModelUrl ? { customModelUrl: p.questMonsterModelUrl } as AvatarConfig : null)}
-                  size={90}
-                  interactive={true}
-                  animation="idle"
-                  role="monster"
-                />
-              ) : (
-                <Swords size={32} color="var(--text-secondary)" opacity={0.5} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+              <div style={{ width: '100px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {(p.questMonsterConfig || p.questMonsterModelUrl) ? (
+                  <AvatarCharacter
+                    config={p.questMonsterConfig || (p.questMonsterModelUrl ? { customModelUrl: p.questMonsterModelUrl } as AvatarConfig : null)}
+                    size={90}
+                    interactive={true}
+                    animation="idle"
+                    role="monster"
+                  />
+                ) : (
+                  <Swords size={32} color="var(--text-secondary)" opacity={0.5} />
+                )}
+              </div>
+              {(p.questMonsterConfig || p.questMonsterModelUrl) && (
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ color: currentZoom !== 1 ? 'var(--accent-primary)' : 'inherit', fontWeight: currentZoom !== 1 ? 'bold' : 'normal' }}>
+                    📏 Escala: {currentZoom}x
+                  </span>
+                  {hasConfiguredAttacks ? (
+                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>⚔️ Golpes Ativos</span>
+                  ) : (
+                    <span style={{ color: 'var(--text-secondary)', opacity: 0.7 }}>⚔️ Golpe Básico</span>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -449,11 +543,18 @@ function MonsterTab(p: QuestConfigModalProps) {
               onChange={e => {
                 const selected = p.available3DModels.find(m => m.id === e.target.value);
                 if (selected) {
-                  // Usa o GLB DIRETO (as cores já vêm embutidas no arquivo), sem skin.
+                  // Atualiza o modelo .glb preservando os golpes e o zoom configurados
                   p.setQuestMonsterModelUrl(selected.url);
-                  p.setQuestMonsterConfig(null);
+                  const nextCfg = p.questMonsterConfig ? { ...p.questMonsterConfig } : ({} as any);
+                  nextCfg.customModelUrl = selected.url;
+                  p.setQuestMonsterConfig(nextCfg);
                 } else {
                   p.setQuestMonsterModelUrl('');
+                  if (p.questMonsterConfig) {
+                    const nextCfg = { ...p.questMonsterConfig };
+                    delete nextCfg.customModelUrl;
+                    p.setQuestMonsterConfig(nextCfg);
+                  }
                 }
               }}
               style={{ flex: 1, padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}

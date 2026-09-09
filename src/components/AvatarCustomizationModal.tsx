@@ -6,11 +6,16 @@ import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usePermissions } from '../lib/permissions';
-import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose, resolveModelTransform, getModelTransformKey } from './AvatarCharacter';
+import AvatarCharacter, { type AvatarConfig, type EquippedItem, type ModelTransform, type CharacterPose, resolveModelTransform, getModelTransformKey, safeParseAvatarConfig } from './AvatarCharacter';
 import { fetchSavedPoses, saveSavedPoses, type SavedPose } from '../lib/savedPoses';
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import MonsterAttacksEditor from './MonsterAttacksEditor';
+import {
+  // @ts-ignore
+  DEFAULT_MONSTER_ATTACKS,
+  normalizeMonsterAttacks,
+} from '../lib/monsterAttacks';
 import Admin3DModelsManager from './Admin3DModelsManager';
 import CustomModelViewer from './CustomModelViewer';
 import PoseStudioModal from './PoseStudioModal';
@@ -422,7 +427,11 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
       const fetched: PresetSkin[] = [];
       if (data) {
         data.forEach(d => {
-          fetched.push({ id: d.id, ...d } as PresetSkin);
+          const parsedConfig = safeParseAvatarConfig(d.config) || null;
+          if (parsedConfig && !parsedConfig.presetSkinId) {
+            parsedConfig.presetSkinId = d.id;
+          }
+          fetched.push({ id: d.id, ...d, config: parsedConfig } as PresetSkin);
         });
       }
       sessionCache.set(cacheKey, fetched, CACHE_TTL.PRESET_SKINS);
@@ -527,6 +536,9 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
     if (!configToSave.firstEditAt) {
       configToSave.firstEditAt = Date.now();
     }
+    if (customSaveMode) {
+      (configToSave as any).attacks = normalizeMonsterAttacks((configToSave as any).attacks);
+    }
     setConfig(configToSave);
 
     // Remove undefined values to prevent Firestore errors
@@ -544,35 +556,57 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
           onSave(config, monsterName);
         }
         
-        if ((userData?.role === 'admin' || isAdmin || canSkins || canModels) && inline && monsterName.trim()) {
+        if ((userData?.role === 'admin' || isAdmin || canSkins || canModels) && monsterName.trim()) {
+          const trimmedName = monsterName.trim();
           // Previne o conflito de NOMES IGUAIS: se o nome do monstro/skin bate com
           // o nome de um molde 3D, avisa antes de salvar (senão o sorteio automático
           // pode "travar" nesse modelo, como aconteceu com Wither/Enderman).
-          const nameCollision = models3d.some(m => (m.name || '').trim().toLowerCase() === monsterName.trim().toLowerCase());
+          const nameCollision = models3d.some(m => (m.name || '').trim().toLowerCase() === trimmedName.toLowerCase());
           if (nameCollision) {
             const proceed = await showConfirm(
-              `⚠️ O nome "${monsterName.trim()}" também é usado por um MOLDE 3D cadastrado.\n\nIsso pode causar conflito no sorteio aleatório (a skin pode ficar presa nesse modelo).\n\nRecomendo usar um nome diferente. Deseja salvar mesmo assim?`
+              `⚠️ O nome "${trimmedName}" também é usado por um MOLDE 3D cadastrado.\n\nIsso pode causar conflito no sorteio aleatório (a skin pode ficar presa nesse modelo).\n\nRecomendo usar um nome diferente. Deseja salvar mesmo assim?`
             );
             if (!proceed) {
               setSaving(false);
               return;
             }
           }
+
+          // Checagem de duplicação: se já existe um monstro com esse mesmo nome na lista
+          let targetSkinId = editingSkinId;
+          if (!targetSkinId) {
+            const existingSameName = presetSkins.find(s => 
+              s.name?.trim().toLowerCase() === trimmedName.toLowerCase() && 
+              (customSaveMode ? s.type === 'monster' : s.type !== 'monster')
+            );
+            if (existingSameName) {
+              const overwrite = await showConfirm(
+                `Já existe um ${customSaveMode ? 'monstro' : 'personagem'} cadastrado com o nome "${trimmedName}".\n\nDeseja ATUALIZAR as configurações do registro existente?\n\n(Clique em Cancelar para escolher outro nome)`
+              );
+              if (!overwrite) {
+                setSaving(false);
+                return;
+              }
+              targetSkinId = existingSameName.id;
+            }
+          }
+
           try {
-            // Editando um monstro já salvo → UPDATE no MESMO registro (nome preservado, sem duplicar).
-            const { error: saveError } = editingSkinId
+            // Editando um monstro já salvo (ou atualizando existente) → UPDATE no MESMO registro (sem duplicar).
+            const { error: saveError } = targetSkinId
               ? await supabase.from('preset_skins').update({
-                  config: cleanConfig,
+                  name: trimmedName,
+                  config: JSON.stringify(cleanConfig),
                   baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null
-                }).eq('id', editingSkinId)
+                }).eq('id', targetSkinId)
               : await supabase.from('preset_skins').insert({
                   id: uuidv4(),
-                  name: monsterName.trim(),
+                  name: trimmedName,
                   url: '',
                   type: customSaveMode ? 'monster' : 'human',
                   baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null,
                   genderTarget: 'unisex',
-                  config: cleanConfig,
+                  config: JSON.stringify(cleanConfig),
                   tenant_id: userData?.tenantId || null,
                   is_global: false
                 });
@@ -587,12 +621,13 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
               ].filter(Boolean).join(' · ');
               await showAlert(`Erro ao salvar no banco de dados: ${errText || JSON.stringify(saveError)}`);
             } else {
-              await showAlert(editingSkinId
+              await showAlert(targetSkinId
                 ? `${customSaveMode ? 'Monstro' : 'Personagem'} atualizado com sucesso!`
                 : `${customSaveMode ? 'Monstro' : 'Personagem'} salvo na galeria com sucesso!`);
               // Lista imediatamente o novo monstro/personagem em "Skins ... Pré-definidas"
               // sem precisar recarregar a página.
               setEditingSkinId(null);
+              sessionCache.invalidate(CACHE_KEYS.presetSkins(userData?.tenantId));
               await fetchPresetSkins(true);
             }
           } catch (e) {
@@ -607,6 +642,7 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
         onClose();
       } else {
         setMonsterName(''); // Limpar o nome para o próximo
+        setEditingSkinId(null);
       }
     } catch (e) {
       console.error(e);
@@ -1522,18 +1558,45 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
             
             {customSaveMode && (
               <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-primary)', borderRadius: '8px' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Skins de Monstro Pré-definidas</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                    {editingSkinId ? (
+                      <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>
+                        ✏️ Editando: "{monsterName}"
+                      </span>
+                    ) : (
+                      'Monstros Cadastrados'
+                    )}
+                  </label>
+                  {editingSkinId && (
+                    <button
+                      onClick={() => {
+                        setEditingSkinId(null);
+                        setMonsterName('');
+                        handleUnequipSkin();
+                      }}
+                      style={{ background: 'transparent', border: '1px dashed var(--border-glass)', borderRadius: '4px', color: 'var(--text-secondary)', fontSize: '0.75rem', padding: '2px 8px', cursor: 'pointer' }}
+                    >
+                      + Criar Novo Monstro
+                    </button>
+                  )}
+                </div>
                 <HorizontalScrollList>
                   <button
-                    onClick={handleUnequipSkin}
+                    onClick={() => {
+                      setEditingSkinId(null);
+                      setMonsterName('');
+                      handleUnequipSkin();
+                    }}
                     style={{
-                       padding: '0.5rem', background: !config.customSkinUrl ? 'var(--accent-primary)' : 'var(--btn-bg)', border: !config.customSkinUrl ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: !config.customSkinUrl ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
+                       padding: '0.5rem', background: (!config.customSkinUrl && !editingSkinId) ? 'var(--accent-primary)' : 'var(--btn-bg)', border: (!config.customSkinUrl && !editingSkinId) ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: (!config.customSkinUrl && !editingSkinId) ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
                     }}
                   >
                     Nenhum
                   </button>
                   {presetSkins.filter(s => s.type === 'monster').map(skin => {
-                    const skinCfg = (() => { try { return typeof skin.config === 'string' ? JSON.parse(skin.config) : skin.config; } catch { return null; } })();
+                    const skinCfg = safeParseAvatarConfig(skin.config);
+                    const isSelected = editingSkinId === skin.id || (!editingSkinId && skin.url && config.customSkinUrl === skin.url);
                     return (
                     <button
                       key={skin.id}
@@ -1544,21 +1607,22 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                         setMonsterName(skin.name || '');
                         if (skinCfg && Object.keys(skinCfg).length > 0) {
                           // Abre o config salvo para edição. Skin/GLB → só zoom; bloco → tudo.
-                          setConfig(skinCfg);
+                          const hydrated = { ...skinCfg, attacks: normalizeMonsterAttacks(skinCfg.attacks) };
+                          setConfig(hydrated);
                           setZoomOnly(!!skinCfg.customModelUrl || !!skinCfg.customSkinUrl);
                         } else {
                           const modelUrl = skin.baseModelId && skin.baseModelId !== 'default' 
                             ? models3d.find(m => m.id === skin.baseModelId)?.url 
                             : undefined;
-                          handleEquipSkin(skin.url, modelUrl, { customZoom: skinCfg?.customZoom });
+                          handleEquipSkin(skin.url, modelUrl, { customZoom: skinCfg?.customZoom, attacks: normalizeMonsterAttacks(skinCfg?.attacks) });
                           setZoomOnly(!!skin.url || !!modelUrl);
                         }
                       }}
                       style={{
-                         padding: '0.5rem', background: config.customSkinUrl === skin.url ? 'var(--accent-primary)' : 'var(--btn-bg)', border: config.customSkinUrl === skin.url ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: config.customSkinUrl === skin.url ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
+                         padding: '0.5rem', background: isSelected ? 'var(--accent-primary)' : 'var(--btn-bg)', border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: isSelected ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
                       }}
                     >
-                      {skin.name}
+                      {skin.name}{skinCfg?.attacks ? ' ⚔️' : ''}
                     </button>
                   ); })}
                 </HorizontalScrollList>
@@ -2073,12 +2137,21 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
             )}
 
             {/* Golpes do Monstro (só no editor de monstros) */}
-            {customSaveMode && (
-              <MonsterAttacksEditor
-                value={(config as any).attacks}
-                onChange={attacks => setConfig({ ...config, attacks } as any)}
-              />
-            )}
+            {customSaveMode && (() => {
+              const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
+              const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default'
+                ? models3d.find(m => m.id === activePreset.baseModelId)
+                : (editingSkinId ? models3d.find(m => m.id === presetSkins.find(s => s.id === editingSkinId)?.baseModelId) : null);
+              const activeModelUrl = config.customModelUrl || activeModel?.url || undefined;
+              return (
+                <MonsterAttacksEditor
+                  value={(config as any).attacks}
+                  onChange={attacks => setConfig({ ...config, attacks } as any)}
+                  modelUrl={activeModelUrl}
+                  models3d={models3d}
+                />
+              );
+            })()}
 
           </div>
           </div>

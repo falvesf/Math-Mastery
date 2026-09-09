@@ -137,13 +137,28 @@ export default function AdminPresetSkinsManager() {
           }
         }
       }
-      if (editingId) {
-        const editingSkin = skins.find(s => s.id === editingId);
+      let targetId = editingId;
+      if (!targetId) {
+        const conflict = skins.find(s => 
+          s.name?.trim().toLowerCase() === name.trim().toLowerCase() && 
+          (s.type || 'human') === type
+        );
+        if (conflict) {
+          const proceed = await showConfirm(
+            `Já existe um registro com o nome "${name.trim()}" nesta categoria.\n\nDeseja ATUALIZAR a configuração deste registro existente?`
+          );
+          if (!proceed) return;
+          targetId = conflict.id;
+        }
+      }
+
+      if (targetId) {
+        const editingSkin = skins.find(s => s.id === targetId);
         if ((editingSkin as any)?._isGlobal && !isSuperAdmin) {
           showAlert('Skins globais só podem ser editadas pelo superadmin.');
           return;
         }
-        const { error } = await supabase.from('preset_skins').update(data).eq('id', editingId);
+        const { error } = await supabase.from('preset_skins').update(data).eq('id', targetId);
         saveError = error;
       } else {
         // Gera um ID único pois a coluna 'id' é text sem valor padrão

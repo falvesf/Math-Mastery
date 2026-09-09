@@ -1,17 +1,24 @@
 import { useState, useEffect } from 'react';
 // @ts-ignore
-import { User, Swords, Dog, Settings } from 'lucide-react';
+import { User, Swords, Dog, Settings, Trash2, Edit2, Plus, Shield, Zap } from 'lucide-react';
 import AvatarCustomizationModal from './AvatarCustomizationModal';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import Admin3DModelsManager from './Admin3DModelsManager';
 import { supabase } from '../lib/supabase';
 import { useTenant } from '../contexts/TenantContext';
+import { useDialog } from '../contexts/DialogContext';
+import { safeParseAvatarConfig } from './AvatarCharacter';
+import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 export default function AdminEntitiesManager() {
   const [activeTab, setActiveTab] = useState<'players' | 'monsters' | 'pets' | 'skins' | 'models'>('players');
   const { tenantId } = useTenant();
+  const { showAlert, showConfirm } = useDialog();
   const [skinModels, setSkinModels] = useState<any[]>([]);
   const [monsterModelUrl, setMonsterModelUrl] = useState('');
+  const [monstersList, setMonstersList] = useState<any[]>([]);
+  const [loadingMonsters, setLoadingMonsters] = useState(false);
+  const [selectedMonsterForEdit, setSelectedMonsterForEdit] = useState<any | null>(null);
 
   const fetchSkinModels = () => {
     let q = supabase.from('3d_models').select('*');
@@ -25,19 +32,58 @@ export default function AdminEntitiesManager() {
     }, () => {});
   };
 
+  const fetchMonsters = async () => {
+    setLoadingMonsters(true);
+    let q = supabase.from('preset_skins').select('*').eq('type', 'monster');
+    if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    const { data } = await q;
+    const mapped = (data || []).map(d => {
+      const cfg = safeParseAvatarConfig(d.config);
+      return {
+        ...d,
+        parsedConfig: cfg
+      };
+    });
+    setMonstersList(mapped);
+    setLoadingMonsters(false);
+  };
+
   // Busca na abertura e sempre que trocar de guia (novos moldes aparecem sem recarregar)
   useEffect(() => {
     fetchSkinModels();
+    if (activeTab === 'monsters') {
+      fetchMonsters();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, activeTab]);
 
   // Atualiza quando um molde é salvo/excluído no Moldes 3D
   useEffect(() => {
-    const onModelsChanged = () => fetchSkinModels();
+    const onModelsChanged = () => {
+      fetchSkinModels();
+      if (activeTab === 'monsters') fetchMonsters();
+    };
     window.addEventListener('models3d-changed', onModelsChanged);
     return () => window.removeEventListener('models3d-changed', onModelsChanged);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
+
+  const handleDeleteMonster = async (id: string, name: string) => {
+    const confirm = await showConfirm(`Tem certeza que deseja excluir o monstro "${name}"?`);
+    if (!confirm) return;
+    const { error } = await supabase.from('preset_skins').delete().eq('id', id);
+    if (error) {
+      showAlert(`Erro ao excluir: ${error.message}`);
+    } else {
+      showAlert(`Monstro "${name}" excluído com sucesso!`);
+      if (selectedMonsterForEdit?.id === id) {
+        setSelectedMonsterForEdit(null);
+        setMonsterModelUrl('');
+      }
+      fetchMonsters();
+      sessionCache.invalidate(CACHE_KEYS.presetSkins(tenantId));
+    }
+  };
 
   return (
     <div>
@@ -139,40 +185,176 @@ export default function AdminEntitiesManager() {
           </div>
         )}
 
-{activeTab === 'monsters' && (
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem' }}>Criação de Monstros</h3>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Crie novos monstros com peças customizadas ou a partir de um molde 3D importado.</span>
-            </div>
-            <div style={{ marginBottom: '1rem', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', padding: '0.75rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                Começar a partir de um Molde 3D importado (Skins de Monstros e Pets)
-              </label>
-              <select
-                value={monsterModelUrl}
-                onChange={e => setMonsterModelUrl(e.target.value)}
-                style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+        {activeTab === 'monsters' && (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1.5rem' }}>
+            {/* Cabeçalho */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Swords size={20} color="var(--accent-red)" /> Galeria de Monstros Criados ({monstersList.length})
+                </h3>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                  Monstros cadastrados com golpes personalizados e tamanho definido para uso nas missões.
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedMonsterForEdit(null);
+                  setMonsterModelUrl('');
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  padding: '0.6rem 1.2rem', borderRadius: '8px',
+                  background: !selectedMonsterForEdit ? 'var(--accent-primary)' : 'rgba(59, 130, 246, 0.15)',
+                  color: '#fff', border: '1px solid var(--accent-primary)',
+                  cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem'
+                }}
               >
-                <option value="">(Criar monstro do zero)</option>
-                {skinModels.map(m => <option key={m.id} value={m.url}>{m.name}</option>)}
-              </select>
-              <span style={{ display: 'block', marginTop: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>
-                Modelos .glb com cores próprias são usados direto, sem precisar de skin. (O valor zera sozinho se o molde for excluído.)
-              </span>
+                <Plus size={16} /> Criar Novo Monstro
+              </button>
             </div>
-            <AvatarCustomizationModal
-              key={`monster-modal-${monsterModelUrl}`}
-              isOpen={true}
-              onClose={() => {}}
-              isAdmin={true}
-              inline={true}
-              customSaveMode={true}
-              initialConfig={monsterModelUrl ? { customModelUrl: monsterModelUrl } as any : undefined}
-              onSave={() => {
-                // Salvo com sucesso!
-              }}
-            />
+
+            {/* Lista de Monstros Existentes */}
+            <div style={{ background: 'rgba(0,0,0,0.15)', borderRadius: '10px', padding: '1rem', border: '1px solid var(--border-glass)' }}>
+              {monstersList.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  Nenhum monstro cadastrado ainda. Use o formulário abaixo para criar seu primeiro monstro!
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+                  {monstersList.map(m => {
+                    const isEditing = selectedMonsterForEdit?.id === m.id;
+                    const cfg = m.parsedConfig;
+                    const attacks = cfg?.attacks;
+                    const hasCustomAttacks = !!attacks && (!!attacks.melee || !!attacks.ranged?.enabled || !!attacks.special?.enabled || !!attacks.support?.enabled || !!attacks.heal?.enabled);
+                    const modelObj = skinModels.find(sm => sm.url === cfg?.customModelUrl || sm.id === m.baseModelId);
+                    const modelName = modelObj ? modelObj.name : (cfg?.customModelUrl ? 'Molde 3D Customizado' : (m.url ? 'Skin 2D' : 'Avatar Base'));
+                    const zoomVal = cfg?.customZoom || 1;
+
+                    return (
+                      <div
+                        key={m.id}
+                        style={{
+                          background: isEditing ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-dark)',
+                          border: isEditing ? '2px solid var(--accent-primary)' : '1px solid var(--border-glass)',
+                          borderRadius: '10px',
+                          padding: '1rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.6rem',
+                          position: 'relative'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1rem', fontWeight: 'bold' }}>
+                              {m.name}
+                            </h4>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              {modelName}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button
+                              title="Editar este monstro"
+                              onClick={() => {
+                                setSelectedMonsterForEdit(m);
+                                setMonsterModelUrl(cfg?.customModelUrl || modelObj?.url || '');
+                              }}
+                              style={{ background: 'rgba(59, 130, 246, 0.2)', border: 'none', borderRadius: '6px', padding: '6px', color: 'var(--accent-primary)', cursor: 'pointer' }}
+                            >
+                              <Edit2 size={15} />
+                            </button>
+                            <button
+                              title="Excluir monstro"
+                              onClick={() => handleDeleteMonster(m.id, m.name)}
+                              style={{ background: 'rgba(239, 68, 68, 0.2)', border: 'none', borderRadius: '6px', padding: '6px', color: 'var(--accent-red)', cursor: 'pointer' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', fontSize: '0.75rem' }}>
+                          <span style={{ background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '4px', color: zoomVal !== 1 ? 'var(--accent-primary)' : 'var(--text-secondary)', fontWeight: zoomVal !== 1 ? 'bold' : 'normal' }}>
+                            📏 Escala: {zoomVal}x
+                          </span>
+                          {hasCustomAttacks ? (
+                            <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                              ⚔️ Golpes Ativos
+                            </span>
+                          ) : (
+                            <span style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '4px' }}>
+                              Golpe Básico
+                            </span>
+                          )}
+                        </div>
+
+                        {hasCustomAttacks && attacks && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                            {attacks.ranged?.enabled && <span style={{ background: 'rgba(59, 130, 246, 0.12)', padding: '1px 6px', borderRadius: '3px' }}>🏹 Distância ({attacks.ranged.effect || 'impacto'})</span>}
+                            {attacks.special?.enabled && <span style={{ background: 'rgba(168, 85, 247, 0.12)', padding: '1px 6px', borderRadius: '3px' }}>⚡ Especial ({attacks.special.proceduralType || 'redemoinho'})</span>}
+                            {attacks.support?.enabled && <span style={{ background: 'rgba(234, 179, 8, 0.12)', padding: '1px 6px', borderRadius: '3px' }}>🛡️ Suporte</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Formulário / Customizador */}
+            <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ marginBottom: '1rem', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', padding: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <label style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    {selectedMonsterForEdit ? (
+                      <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>
+                        ✏️ Editando Monstro: "{selectedMonsterForEdit.name}"
+                      </span>
+                    ) : (
+                      'Começar a partir de um Molde 3D importado (Skins de Monstros e Pets)'
+                    )}
+                  </label>
+                  {selectedMonsterForEdit && (
+                    <button
+                      onClick={() => {
+                        setSelectedMonsterForEdit(null);
+                        setMonsterModelUrl('');
+                      }}
+                      style={{ background: 'transparent', border: '1px dashed var(--border-glass)', borderRadius: '4px', color: 'var(--text-secondary)', fontSize: '0.75rem', padding: '2px 8px', cursor: 'pointer' }}
+                    >
+                      Cancelar Edição (Criar Novo)
+                    </button>
+                  )}
+                </div>
+                <select
+                  value={monsterModelUrl}
+                  onChange={e => setMonsterModelUrl(e.target.value)}
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                >
+                  <option value="">(Criar monstro do zero)</option>
+                  {skinModels.map(m => <option key={m.id} value={m.url}>{m.name}</option>)}
+                </select>
+                <span style={{ display: 'block', marginTop: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>
+                  Modelos .glb com cores próprias são usados direto, sem precisar de skin.
+                </span>
+              </div>
+
+              <AvatarCustomizationModal
+                key={`monster-modal-${selectedMonsterForEdit ? selectedMonsterForEdit.id : (monsterModelUrl || 'new')}`}
+                isOpen={true}
+                onClose={() => {}}
+                isAdmin={true}
+                inline={true}
+                customSaveMode={true}
+                initialConfig={selectedMonsterForEdit ? selectedMonsterForEdit.parsedConfig : (monsterModelUrl ? { customModelUrl: monsterModelUrl } as any : undefined)}
+                onSave={() => {
+                  fetchMonsters();
+                }}
+              />
+            </div>
           </div>
         )}
 

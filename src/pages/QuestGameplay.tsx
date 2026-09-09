@@ -8,10 +8,11 @@ import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircle, Package, Coins } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
-import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
+import AvatarCharacter, { type EquippedItem, safeParseAvatarConfig } from '../components/AvatarCharacter';
 import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
 import BattleTransition from '../components/BattleTransition';
+import MonsterProjectileView from '../components/MonsterProjectileView';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
@@ -41,8 +42,14 @@ import {
   rollBleedWound,
   playTransformSound,
 } from '../lib/transformEffects';
-// @ts-ignore
-import { normalizeMonsterAttacks, applyMonsterAttackEffect } from '../lib/monsterAttacks';
+import {
+  normalizeMonsterAttacks,
+  // @ts-ignore
+  applyMonsterAttackEffect,
+  decideMonsterAttackAction,
+  type MonsterProjectileType,
+  type MonsterEffectType,
+} from '../lib/monsterAttacks';
 
 interface UserItem {
   id: string;
@@ -133,39 +140,103 @@ export default function QuestGameplay() {
   const [playerBurnTurns, setPlayerBurnTurns] = useState(0);
   const [playerElectricTurns, setPlayerElectricTurns] = useState(0);
   const [playerFrozenAt, setPlayerFrozenAt] = useState(0);
-  const [monsterProjectile, setMonsterProjectile] = useState<{ id: number; effect: string; start: number } | null>(null);
+  const [monsterProjectile, setMonsterProjectile] = useState<{
+    id: number;
+    type?: MonsterProjectileType;
+    effect: MonsterEffectType | string;
+    customUrl?: string;
+    start?: number;
+  } | null>(null);
   // @ts-ignore (usado internamente p/ indicar golpe especial ativo)
   const [monsterSpecialActive, setMonsterSpecialActive] = useState(false);
   const [monsterSpecialAnim, setMonsterSpecialAnim] = useState('');
-  // Golpes configurados do monstro (Entidades 3D > Monstros) — com fallback: se a
-  // missão não tiver `attacks` no monsterAvatarConfig, busca na galeria de monstros.
+  const [monsterProceduralAnim, setMonsterProceduralAnim] = useState('');
+  const [monsterBodyThrow, setMonsterBodyThrow] = useState(false);
+  const [monsterRageActive, setMonsterRageActive] = useState(false);
+  const [monsterHealPulse, setMonsterHealPulse] = useState(false);
+  const [shatterDebris, setShatterDebris] = useState<{ id: number; tx: number; ty: number; rot: number }[]>([]);
+  const [arenaQuake, setArenaQuake] = useState(false);
+  const [shockwaveActive, setShockwaveActive] = useState(false);
+
+  const triggerShatterDebris = () => {
+    const pieces = Array.from({ length: 8 }).map((_, i) => ({
+      id: Date.now() + i,
+      tx: (Math.random() - 0.5) * 90,
+      ty: -10 - Math.random() * 80,
+      rot: Math.floor(Math.random() * 360),
+    }));
+    setShatterDebris(pieces);
+    setTimeout(() => setShatterDebris([]), 650);
+  };
+  // Golpes, escala e visual configurados do monstro (Entidades 3D > Monstros) — prioriza a galeria
   const [galleryMonsterAttacks, setGalleryMonsterAttacks] = useState<any>(null);
-  // Golpes configurados do monstro (Entidades 3D > Monstros)
-  const monsterAttacks = normalizeMonsterAttacks((quest as any)?.monsterAvatarConfig?.attacks || galleryMonsterAttacks || (quest as any)?.monsterAttacks);
+  const [galleryMonsterZoom, setGalleryMonsterZoom] = useState<number | null>(null);
+  const [galleryMonsterRotY, setGalleryMonsterRotY] = useState<number | null>(null);
+  const [galleryMonsterSkinUrl, setGalleryMonsterSkinUrl] = useState<string | null>(null);
+  const [galleryMonsterModelUrl, setGalleryMonsterModelUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!quest) return;
     const cfg = (quest as any)?.monsterAvatarConfig;
-    if (cfg?.attacks) { setGalleryMonsterAttacks(null); return; }
     const modelUrl = (quest as any)?.monsterModelUrl || cfg?.customModelUrl;
     const qName = (quest as any)?.monsterName;
-    if (!modelUrl && !qName) { setGalleryMonsterAttacks(null); return; }
+    const pId = cfg?.presetSkinId;
+    if (!modelUrl && !qName && !pId) {
+      setGalleryMonsterAttacks(null);
+      setGalleryMonsterZoom(null);
+      setGalleryMonsterRotY(null);
+      setGalleryMonsterSkinUrl(null);
+      setGalleryMonsterModelUrl(null);
+      return;
+    }
     let active = true;
-    supabase.from('preset_skins').select('id, name, config').eq('type', 'monster')
-      .then(({ data }) => {
-        if (!active) return;
-        const found = (data || []).find(r => {
-          const c = r.config;
-          if (!c) return false;
-          const hasAttacks = !!c.attacks;
-          const urlMatch = modelUrl ? (c.customModelUrl || '') === modelUrl : false;
-          const nameMatch = qName ? r.name === qName : false;
-          return hasAttacks && (urlMatch || nameMatch);
-        });
-        if (found) setGalleryMonsterAttacks(found.config.attacks);
-      }, () => {});
+    supabase.from('preset_skins').select('id, name, config, url').eq('type', 'monster').then(({ data }) => {
+      if (!active) return;
+      const list = (data || []).map(r => ({
+        id: r.id,
+        name: r.name,
+        url: r.url,
+        config: safeParseAvatarConfig(r.config)
+      })).filter(r => !!r.config);
+
+      let found = pId ? list.find(r => r.id === pId) : undefined;
+      if (!found && qName && modelUrl) {
+        found = list.find(r => r.name === qName && r.config?.customModelUrl === modelUrl);
+      }
+      if (!found && qName) {
+        found = list.find(r => r.name === qName);
+      }
+      if (!found && modelUrl) {
+        found = list.find(r => r.config?.customModelUrl === modelUrl);
+      }
+
+      if (found?.config) {
+        if (found.config.attacks) {
+          setGalleryMonsterAttacks(found.config.attacks);
+        }
+        if (found.config.customZoom) {
+          setGalleryMonsterZoom(found.config.customZoom);
+        }
+        if (found.config.customRotY !== undefined) {
+          setGalleryMonsterRotY(found.config.customRotY);
+        }
+        if (found.config.customSkinUrl || found.url) {
+          setGalleryMonsterSkinUrl(found.config.customSkinUrl || found.url);
+        }
+        if (found.config.customModelUrl) {
+          setGalleryMonsterModelUrl(found.config.customModelUrl);
+        }
+      }
+    }, () => {});
     return () => { active = false; };
-  }, [quest?.id, (quest as any)?.monsterModelUrl, (quest as any)?.monsterName]);
+  }, [quest?.id, (quest as any)?.monsterModelUrl, (quest as any)?.monsterName, (quest as any)?.monsterAvatarConfig?.presetSkinId]);
+
+  // Golpes configurados do monstro (Entidades 3D > Monstros tem prioridade sobre o snapshot antigo da quest)
+  const monsterAttacks = normalizeMonsterAttacks(galleryMonsterAttacks || (quest as any)?.monsterAvatarConfig?.attacks || (quest as any)?.monsterAttacks);
+  const effectiveMonsterZoom = galleryMonsterZoom || (quest as any)?.monsterAvatarConfig?.customZoom || 1;
+  const effectiveMonsterRotY = galleryMonsterRotY ?? (quest as any)?.monsterAvatarConfig?.customRotY;
+  const effectiveMonsterSkinUrl = galleryMonsterSkinUrl || (quest as any)?.monsterAvatarConfig?.customSkinUrl;
+  const effectiveMonsterModelUrl = galleryMonsterModelUrl || (quest as any)?.monsterModelUrl || (quest as any)?.monsterAvatarConfig?.customModelUrl;
   // Coelho: aceleração do tempo persistente (+5%/golpe) e drop generoso (dobra por golpe)
   const [coelhoHits, setCoelhoHits] = useState(0);
   // @ts-ignore (contagem de golpes na transformação atual — usada junto do coelhoDropRef)
@@ -180,6 +251,7 @@ export default function QuestGameplay() {
   // Fatality de corte: captura o modelo atual como "foto" (canvas) e corta a imagem.
   const monsterCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [sliceSnapshot, setSliceSnapshot] = useState<string | null>(null);
+  const fatalityActiveRef = useRef(false);
 
   useEffect(() => {
     heartsRef.current = currentHearts;
@@ -467,6 +539,7 @@ export default function QuestGameplay() {
   // Dano causado ao JOGADOR por efeitos de transformação (porco no momento da
 // transformação e sangramento do rato). Não aplica escudo/penalidade de XP.
 const dealTransformDamageToPlayer = (damage: number) => {
+  if (fatalityActiveRef.current) return;
   const newHearts = Math.max(0, currentHearts - damage);
   if (newHearts <= 0.001) {
     triggerFatality(false, 0);
@@ -894,6 +967,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       ? calculatedMaxHearts
       : Math.min(userData?.hp ?? calculatedMaxHearts, calculatedMaxHearts);
     // Reset dos efeitos de itens mágicos
+    fatalityActiveRef.current = false;
     setTransformState(null);
     setHealAuraTurns(0);
     healActivationsRef.current = 0;
@@ -1021,6 +1095,29 @@ const dealTransformDamageToPlayer = (damage: number) => {
 */
 
   const triggerFatality = (isPlayerWinning: boolean, defeatHearts?: number) => {
+    if (fatalityActiveRef.current) return;
+    fatalityActiveRef.current = true;
+
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    setMonsterProjectile(null);
+    setMonsterSpecialActive(false);
+    setMonsterSpecialAnim('');
+    setMonsterProceduralAnim('');
+    setMonsterBodyThrow(false);
+
+    if (isPlayerWinning) {
+      setPlayerBleeds([]);
+      setPlayerPoisonTurns(0);
+      setPlayerBurnTurns(0);
+      setPlayerElectricTurns(0);
+      setPlayerFrozenAt(0);
+      bleedsRef.current = [];
+      poisonRef.current = 0;
+      burnRef.current = 0;
+      electricRef.current = 0;
+    }
+
     // Se não tem arma, só animações simples (sem explosão, corte)
     const deaths = hasAttackWeapon 
       ? ['death-fall', 'death-evaporate', 'death-slice', 'death-explode']
@@ -1424,132 +1521,323 @@ const dealTransformDamageToPlayer = (damage: number) => {
       const tr = transformRef.current;
       const damage = computeMonsterDamageToPlayer(currentHearts, isHardcore, tr, isMonsterCrit);
       
-      let newHearts = Math.max(0, currentHearts - damage);
-      const isFatalForPlayer = !hasShield && isMonsterDamageFatal(damage, currentHearts);
-
       // Porco: errar quebra a sequência de golpes certos (enfurecer)
       if (tr?.animal === 'porco' && tr.consecutiveCorrect > 0 && !tr.enraged) {
         setTransformState({ ...tr, consecutiveCorrect: 0 });
       }
 
-      if (economySettings?.coinsLostInCombat && !isStudyMode && !hasShield) {
-        const rankObj = getRankForXp(userData?.xp || 0);
-        const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
-        const monsterHpPercentage = quest.questions.length > 0 ? ((quest.questions.length - currentQIndex) / quest.questions.length) * 100 : 100;
-        const hpMultiplier = Math.max(1, Math.ceil(monsterHpPercentage / 10));
-        const maxLost = rankIndex * hpMultiplier;
-        const lost = Math.floor(Math.random() * maxLost) + 1;
-        
-        setLostCoinsDisplay(lost);
+      const remainingQuestions = quest.questions.length - currentQIndex;
+      const monsterHpRatio = quest.questions.length ? remainingQuestions / quest.questions.length : 1;
+      const monsterHpPercentage = monsterHpRatio * 100;
 
-        // Som da perda: mesmo som definido na moeda ativa (Moldes 3D > Moedas)
-        playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
-
-        // Moedas saem do CORPO do jogador e caem ao chão (efeito de perda)
-        const newFalling = Array.from({ length: Math.min(lost, 6) }).map((_, i) => ({
-          id: Date.now() + i,
-          x: 8 + Math.random() * 20,
-          y: 42 + Math.random() * 15,
-          value: Math.ceil(lost / Math.min(lost, 6))
-        }));
-        setFallingCoins(prev => [...prev, ...newFalling]);
-        setTimeout(() => {
-          setFallingCoins(prev => prev.filter(c => !newFalling.find(nc => nc.id === c.id)));
-        }, 2500);
-
-        if (userData?.uid) {
-           const currentCoins = userData.coins || 0;
-           const newCoins = Math.max(0, currentCoins - lost);
-           supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
-        }
-      }
-
-      if (isFatalForPlayer) {
-        // NÃO drenar corações ainda - esperar a animação de queda
-        if (isMonsterCrit) {
-          setBattleMessage('DANO CRÍTICO LETAL! O monstro te aniquilou!');
-        }
-        // Inicia a animação de morte - corações serão drenados APÓS o personagem cair
-        triggerFatality(false, newHearts);
-        return;
-      }
-      
-      if (hasShield) {
-        setPlayerBubble("O escudo aguentou!");
-      } else {
-        const remainingQuestions = quest.questions.length - currentQIndex;
-        const monsterHpPercentage = (remainingQuestions / quest.questions.length) * 100;
+      // Fala do monstro
+      if (!hasShield) {
         const quote = getDynamicQuote(monsterHpPercentage, 'monster');
         if (quote) setMonsterBubble(quote);
       }
-      setMonsterAnim('attack');
-      playMonsterAttackSound();
-      // Coelho: ataca o jogador mais cedo
-      const monsterAttackDelay = tr?.animal === 'coelho' ? 250 : 500;
-      setTimeout(() => {
-        // NO ATO DO ATAQUE: o ataque é uma ação de turno e é o ataque que causa o
-        // sangramento/veneno — nunca antes do acerto.
+
+      // Moedas perdidas quando o jogador é atingido
+      const dropCoinsIfDamaged = () => {
+        if (economySettings?.coinsLostInCombat && !isStudyMode && !hasShield) {
+          const rankObj = getRankForXp(userData?.xp || 0);
+          const rankIndex = Math.max(1, RANKS.findIndex(r => r.name === rankObj.name));
+          const hpMultiplier = Math.max(1, Math.ceil(monsterHpPercentage / 10));
+          const maxLost = rankIndex * hpMultiplier;
+          const lost = Math.floor(Math.random() * maxLost) + 1;
+          
+          setLostCoinsDisplay(lost);
+          playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
+
+          const newFalling = Array.from({ length: Math.min(lost, 6) }).map((_, i) => ({
+            id: Date.now() + i,
+            x: 8 + Math.random() * 20,
+            y: 42 + Math.random() * 15,
+            value: Math.ceil(lost / Math.min(lost, 6))
+          }));
+          setFallingCoins(prev => [...prev, ...newFalling]);
+          setTimeout(() => {
+            setFallingCoins(prev => prev.filter(c => !newFalling.find(nc => nc.id === c.id)));
+          }, 2500);
+
+          if (userData?.uid) {
+             const currentCoins = userData.coins || 0;
+             const newCoins = Math.max(0, currentCoins - lost);
+             supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
+          }
+        }
+      };
+
+      // Executa o acerto físico no jogador (aplica dano, escudo, penalidades e morte)
+      const executePlayerHit = (appliedDamage: number, effect: string, customMsg?: string) => {
+        if (fatalityActiveRef.current) return;
         advanceStatusTurns();
-        const curTr = transformRef.current;
-        if (curTr?.animal === 'rato') {
-          const w = rollBleedWound('rato');
-          setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns: 2, x: w.x, y: w.y }]);
-          setBattleMessage(`O RATO TE MORDEU (${playerBleeds.length + 1}x)! Sangramento acumulado!`);
-        }
-        if (curTr?.animal === 'sapo') {
-          setPlayerPoisonTurns(3);
-          setBattleMessage('O SAPO TE ENVENENOU! Você perderá coração por 3 turnos!');
-        }
-        // Monstro NÃO transformado: aplica os golpes configurados (Entidades 3D > Monstros)
-        if (!curTr) {
-          rollMonsterAttack();
-        }
+        applyMonsterEffectToPlayer(effect);
         setPlayerAnim('hurt');
         playPlayerDamageSound();
-      }, monsterAttackDelay);
-      setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, monsterAttackDelay + 1000);
-      
-      if (hasShield) {
-        setHasShield(false);
-        setEliminatedOptions([...eliminatedOptions, optIndex]); // eliminate the one they just clicked
+
+        if (hasShield) {
+          setHasShield(false);
+          setEliminatedOptions(prev => [...prev, optIndex]);
+          setPlayerBubble("O escudo aguentou!");
+          setTimeout(() => {
+            setFeedback(null);
+            setLastSelectedOption(null);
+            setBattleMessage(isMonsterCrit ? 'DANO CRÍTICO DO INIMIGO! Sorte que seu escudo segurou o impacto!' : 'Seu escudo absorveu o dano do monstro! Tente novamente!');
+          }, 1800);
+          return;
+        }
+
+        const finalHearts = Math.max(0, currentHearts - appliedDamage);
+        const isFatalForPlayer = isMonsterDamageFatal(appliedDamage, currentHearts);
+
+        if (isFatalForPlayer) {
+          if (isMonsterCrit) {
+            setBattleMessage('DANO CRÍTICO LETAL! O monstro te aniquilou!');
+          }
+          triggerFatality(false, finalHearts);
+          return;
+        }
+
+        drainHeartsAnimated(finalHearts, () => {
+          if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
+            updateUserHearts(finalHearts);
+          }
+        });
+
+        const hpLostRatio = 1 - (finalHearts / maxHearts);
+        setStressFactors(prev => ({ ...prev, hpLost: hpLostRatio }));
+
+        const actualPenalty = calculatePenalty(quest.xpPenaltyPerRetry);
+        const newXp = Math.max(0, currentXp - actualPenalty);
+        setCurrentXp(newXp);
+
         setTimeout(() => {
           setFeedback(null);
           setLastSelectedOption(null);
-          if (isMonsterCrit) {
-            setBattleMessage('DANO CRÍTICO DO INIMIGO! Sorte que seu escudo segurou o impacto!');
+          if (customMsg) {
+            setBattleMessage(customMsg);
+          } else if (isMonsterCrit) {
+            setBattleMessage('DANO CRÍTICO DO INIMIGO! Você perdeu 2 corações!');
           } else {
-            setBattleMessage('Seu escudo absorveu o dano do monstro! Tente novamente!');
+            setBattleMessage(actualPenalty < quest.xpPenaltyPerRetry 
+              ? 'Seu escudo absorveu parte do dano! Respire fundo e tente novamente!' 
+              : 'Respire fundo e tente novamente!');
           }
-        }, 2000);
+        }, 1000);
+      };
+
+      // 1. Monstro TRANSFORMADO EM ANIMAL: executa comportamentos específicos dos animais
+      if (tr) {
+        setMonsterAnim('attack');
+        playMonsterAttackSound();
+        const monsterAttackDelay = tr.animal === 'coelho' ? 250 : 500;
+        setTimeout(() => {
+          const curTr = transformRef.current;
+          if (curTr?.animal === 'rato') {
+            const w = rollBleedWound('rato');
+            setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns: 2, x: w.x, y: w.y }]);
+            setBattleMessage(`O RATO TE MORDEU (${playerBleeds.length + 1}x)! Sangramento acumulado!`);
+          }
+          if (curTr?.animal === 'sapo') {
+            setPlayerPoisonTurns(3);
+            setBattleMessage('O SAPO TE ENVENENOU! Você perderá coração por 3 turnos!');
+          }
+          dropCoinsIfDamaged();
+          executePlayerHit(damage, 'none');
+        }, monsterAttackDelay);
+        setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, monsterAttackDelay + 1000);
         return;
       }
-      
-      drainHeartsAnimated(newHearts, () => {
-        if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
-          updateUserHearts(newHearts);
+
+      // 2. Monstro NORMAL: IA tática decide entre Suporte, Ranged, Especial e Melee
+      const decision = decideMonsterAttackAction(monsterAttacks, monsterHpRatio, monsterRageActive);
+
+      // CASO A: SUPORTE (Fúria, Poção de Cura, Magia, Vampírico)
+      if (decision.type === 'support') {
+        if (decision.supportType === 'buff_rage') {
+          setMonsterRageActive(true);
+          setMonsterProceduralAnim('roar_shockwave');
+          setShockwaveActive(true);
+          playMonsterAttackSound();
+          setMonsterBubble(`💢 ${(quest?.monsterName || 'O Monstro')} ENFURECEU! O próximo golpe causará o dobro de dano!`);
+          setBattleMessage(`FÚRIA MONSTRUOSA! ${(quest?.monsterName || 'O monstro')} está bufando e emanando fogo!`);
+          setTimeout(() => {
+            setMonsterProceduralAnim('');
+            setShockwaveActive(false);
+          }, 1200);
+          setTimeout(() => {
+            setFeedback(null);
+            setLastSelectedOption(null);
+          }, 1800);
+          return;
         }
-      });
-      
-      // Atualizar fator de estresse baseado na vida perdida
-      const hpLostRatio = 1 - (newHearts / maxHearts);
-      setStressFactors(prev => ({ ...prev, hpLost: hpLostRatio }));
-      
-      // Vidas Extras: Deduct penalty but don't move to next question
-      const actualPenalty = calculatePenalty(quest.xpPenaltyPerRetry);
-      const newXp = Math.max(0, currentXp - actualPenalty);
-      setCurrentXp(newXp);
+
+        if (decision.supportType === 'heal_potion' || decision.supportType === 'heal_magic') {
+          setMonsterHealPulse(true);
+          setMonsterHeartFrac(1);
+          setMonsterBubble(decision.supportType === 'heal_potion' ? '🧪 O monstro tomou uma poção de cura!' : '✨ O monstro canalizou magia curativa!');
+          setBattleMessage(`${(quest?.monsterName || 'O Monstro')} recuperou suas forças!`);
+          setTimeout(() => {
+            setMonsterHealPulse(false);
+          }, 1500);
+          setTimeout(() => {
+            setFeedback(null);
+            setLastSelectedOption(null);
+          }, 1800);
+          return;
+        }
+
+        if (decision.supportType === 'vampire') {
+          setMonsterHealPulse(true);
+          setMonsterHeartFrac(1);
+          setMonsterBubble('🧛 Dreno de Vida!');
+          dropCoinsIfDamaged();
+          executePlayerHit(1, 'bleed', 'DRENO VAMPÍRICO! O monstro sugou sua vitalidade e se curou!');
+          setTimeout(() => setMonsterHealPulse(false), 1500);
+          return;
+        }
+      }
+
+      // CASO B: À DISTÂNCIA / ARREMESSO (Rocha, TNT, Flecha, Bola de Fogo, etc.)
+      if (decision.type === 'ranged') {
+        // Monstro NÃO teleporta para frente do jogador. Ergue os braços e lança o projétil em arco!
+        setMonsterBodyThrow(true);
+        setMonsterProjectile({
+          id: Date.now(),
+          type: decision.projectileType || 'rock',
+          effect: decision.effect || 'none',
+          customUrl: decision.projectileUrl ? (getSafeUrl(decision.projectileUrl) || decision.projectileUrl) : undefined,
+        });
+        playMonsterAttackSound();
+
+        const wasRaged = monsterRageActive;
+        const finalDamage = wasRaged ? Math.min(currentHearts, Math.max(2, Math.round(damage * 1.5 + 1))) : damage;
+        if (wasRaged) setMonsterRageActive(false);
+
+        // O projétil brota do chão, sobe acima da cabeça e voa em arco (~1850ms de voo até o peito do jogador)
+        setTimeout(() => {
+          triggerShatterDebris();
+          dropCoinsIfDamaged();
+          executePlayerHit(finalDamage, decision.effect, wasRaged ? 'DISPARO ENFURECIDO! Você sofreu um impacto violento!' : undefined);
+          setTimeout(() => { if (!fatalityActiveRef.current) setPlayerAnim('idle'); }, 1000);
+        }, 1850);
+        setTimeout(() => {
+          setMonsterBodyThrow(false);
+        }, 2200);
+        return;
+      }
+
+      // CASO C: ESPECIAL (Procedural ou GLB nativo)
+      if (decision.type === 'special') {
+        const wasRaged = monsterRageActive;
+        const finalDamage = wasRaged ? Math.min(currentHearts, Math.max(2, Math.round(damage * 1.5 + 1))) : damage;
+        if (wasRaged) setMonsterRageActive(false);
+
+        if (decision.proceduralType) {
+          setMonsterProceduralAnim(decision.proceduralType);
+          playMonsterAttackSound();
+
+          if (decision.proceduralType === 'jump_slam') {
+            // Pulo alto com estrondo sísmico no impacto (~750ms)
+            setTimeout(() => {
+              setArenaQuake(true);
+              setShockwaveActive(true);
+              dropCoinsIfDamaged();
+              executePlayerHit(finalDamage, decision.effect || 'impact', wasRaged ? 'PULO ESMAGADOR ENFURECIDO! Dano brutal!' : '💥 PULO ESMAGADOR! Um tremor sísmico te atingiu!');
+            }, 750);
+            setTimeout(() => {
+              setMonsterProceduralAnim('');
+              setArenaQuake(false);
+              setShockwaveActive(false);
+              if (!fatalityActiveRef.current) setPlayerAnim('idle');
+            }, 1500);
+            return;
+          }
+
+          if (decision.proceduralType === 'spin_tornado') {
+            setTimeout(() => {
+              dropCoinsIfDamaged();
+              executePlayerHit(finalDamage, decision.effect, wasRaged ? 'GIRO FURACÃO ENFURECIDO! Dano duplo!' : '🌪️ GIRO FURACÃO! Um turbilhão de vento te acertou!');
+            }, 650);
+            setTimeout(() => {
+              setMonsterProceduralAnim('');
+              if (!fatalityActiveRef.current) setPlayerAnim('idle');
+            }, 1400);
+            return;
+          }
+
+          if (decision.proceduralType === 'rush_charge') {
+            setTimeout(() => {
+              setArenaQuake(true);
+              dropCoinsIfDamaged();
+              executePlayerHit(finalDamage, decision.effect, wasRaged ? 'INVESTIDA FURIOSA ENFURECIDA! Dano colossal!' : '⚡ INVESTIDA FURIOSA! O monstro te atropelou!');
+            }, 500);
+            setTimeout(() => {
+              setMonsterProceduralAnim('');
+              setArenaQuake(false);
+              if (!fatalityActiveRef.current) setPlayerAnim('idle');
+            }, 1200);
+            return;
+          }
+
+          if (decision.proceduralType === 'dance_transform') {
+            setTimeout(() => {
+              dropCoinsIfDamaged();
+              executePlayerHit(finalDamage, decision.effect || 'transform', '🕺 DANÇA MÁGICA! Um feitiço hipnótico te atingiu!');
+            }, 800);
+            setTimeout(() => {
+              setMonsterProceduralAnim('');
+              if (!fatalityActiveRef.current) setPlayerAnim('idle');
+            }, 1500);
+            return;
+          }
+
+          if (decision.proceduralType === 'roar_shockwave') {
+            setShockwaveActive(true);
+            setTimeout(() => {
+              dropCoinsIfDamaged();
+              executePlayerHit(finalDamage, decision.effect, '📢 RUGIDO ENSURDECEDOR! A onda de choque sônica te abalou!');
+            }, 400);
+            setTimeout(() => {
+              setMonsterProceduralAnim('');
+              setShockwaveActive(false);
+              if (!fatalityActiveRef.current) setPlayerAnim('idle');
+            }, 1200);
+            return;
+          }
+        }
+
+        // Animação nativa do GLB (ex: Wither shoot, Aranha attack)
+        setMonsterSpecialAnim(decision.animation || '');
+        playMonsterAttackSound();
+        setTimeout(() => {
+          dropCoinsIfDamaged();
+          executePlayerHit(finalDamage, decision.effect, wasRaged ? 'GOLPE ESPECIAL ENFURECIDO!' : undefined);
+        }, 700);
+        setTimeout(() => {
+          setMonsterSpecialAnim('');
+          if (!fatalityActiveRef.current) setPlayerAnim('idle');
+        }, 1500);
+        return;
+      }
+
+      // CASO D: CORPO A CORPO (Melee clássico com avanço / teleport-monster)
+      const wasRaged = monsterRageActive;
+      const finalDamage = wasRaged ? Math.min(currentHearts, Math.max(2, Math.round(damage * 1.5 + 1))) : damage;
+      if (wasRaged) setMonsterRageActive(false);
+
+      setMonsterAnim('attack');
+      playMonsterAttackSound();
       setTimeout(() => {
-        setFeedback(null);
-        setLastSelectedOption(null);
-        if (isMonsterCrit) {
-          setBattleMessage('DANO CRÍTICO DO INIMIGO! Você perdeu 2 corações!');
-        } else {
-          setBattleMessage(actualPenalty < quest.xpPenaltyPerRetry 
-            ? 'Seu escudo absorveu parte do dano! Respire fundo e tente novamente!' 
-            : 'Respire fundo e tente novamente!');
+        dropCoinsIfDamaged();
+        executePlayerHit(finalDamage, decision.effect, wasRaged ? 'GOLPE ENFURECIDO! O impacto foi devastador!' : undefined);
+      }, 500);
+      setTimeout(() => {
+        if (!fatalityActiveRef.current) {
+          setPlayerAnim('idle');
+          setMonsterAnim('idle');
         }
-        // O aluno tenta novamente a mesma pergunta
-      }, 1000);
+      }, 1200);
     }
   };
 
@@ -1626,6 +1914,7 @@ if (tr.turnsLeft <= 1) {
   };
 
   const finishGame = async (isWin: boolean, finalXp: number, customMessage?: string) => {
+    fatalityActiveRef.current = false;
     setWon(isWin);
     setGameState('result');
     if (customMessage) setErrorMessage(customMessage);
@@ -1995,16 +2284,25 @@ const applyMonsterEffectToPlayer = (effect: string) => {
       setPlayerElectricTurns(3);
       break;
     case 'freeze':
-      setPlayerFrozenAt(Date.now() + 1600);
+      setPlayerFrozenAt(Date.now() + 1800);
+      break;
+    case 'impact':
+      setArenaQuake(true);
+      setTimeout(() => setArenaQuake(false), 800);
+      break;
+    case 'transform':
       break;
     case 'heal':
       // Monstro se cura: restaura o coração atual
       setMonsterHeartFrac(1);
+      setMonsterHealPulse(true);
+      setTimeout(() => setMonsterHealPulse(false), 1500);
       setMonsterBubble('🧪 O monstro se curou!');
       break;
   }
 };
 
+// @ts-ignore
 // Rola qual golpe o monstro vai usar no ataque (melee/ranged/special) e aplica.
 const rollMonsterAttack = () => {
   const a = monsterAttacks;
@@ -2038,6 +2336,10 @@ useEffect(() => {
   const active = playerBleeds.length > 0 || playerPoisonTurns > 0 || playerBurnTurns > 0 || playerElectricTurns > 0;
   if (gameState !== 'playing' || !active) return;
   const iv = setInterval(() => {
+    if (fatalityActiveRef.current) {
+      clearInterval(iv);
+      return;
+    }
     const bleedCount = bleedsRef.current.length;
     const poisonOn = poisonRef.current > 0;
     const burnOn = burnRef.current > 0;
@@ -2046,6 +2348,7 @@ useEffect(() => {
     const total = bleedCount * 0.5 + (poisonOn ? 0.5 : 0) + (burnOn ? 0.5 : 0) + (electricOn ? 0.5 : 0);
     const hp = heartsRef.current;
     if (hp <= total) {
+      if (fatalityActiveRef.current) return;
       setPlayerBleeds([]);
       setPlayerPoisonTurns(0);
       setPlayerBurnTurns(0);
@@ -2053,6 +2356,7 @@ useEffect(() => {
       triggerFatality(false, 0);
       return;
     }
+    if (fatalityActiveRef.current) return;
     const newHearts = Math.max(0, hp - total);
     // O hurt do dano contínuo NÃO pode cortar o ataque: só aparece se o personagem
     // está idle (o dano em si sempre acontece).
@@ -2385,7 +2689,7 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
 
         {/* Battle Arena Fixed */}
         {gameState === 'playing' && (
-          <div ref={arenaRef} className="battle-arena-bg quest-arena" style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '130px', paddingBottom: '60px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, userSelect: 'none', WebkitUserSelect: 'none' } as any}>
+          <div ref={arenaRef} className={`battle-arena-bg quest-arena ${arenaQuake ? 'arena-quake' : ''}`} style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '130px', paddingBottom: '60px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, userSelect: 'none', WebkitUserSelect: 'none' } as any}>
             <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
               <div 
                 className="battle-arena-bg-image" 
@@ -2480,17 +2784,10 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
               </div>
             )}
 
-            {/* Projétil arremessado pelo monstro (golpe à distância) */}
-            {monsterProjectile && (
-              <div
-                key={monsterProjectile.id}
-                className="monster-projectile"
-                style={{ right: '14%', top: '74%' }}
-                onAnimationEnd={() => setMonsterProjectile(null)}
-              >
-                <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #a3a3a3, #6b6b6b)', border: '2px solid #444', borderRadius: '3px', boxShadow: '0 0 8px rgba(0,0,0,0.5)' }} />
-              </div>
-            )}
+
+
+            {/* Onda de choque sônica (Rugido) */}
+            {shockwaveActive && <div className="monster-shockwave-ring" />}
 
             {/* Question Overlay - Sobre a arena, abaixo dos balões de fala */}
             <div className="quest-question-overlay">
@@ -2581,6 +2878,23 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                   )}
                 </div>
               </div>
+
+              {/* Partículas de estilhaço / impacto no jogador */}
+              {shatterDebris.length > 0 && (
+                <div className="projectile-shatter-debris">
+                  {shatterDebris.map(p => (
+                    <div
+                      key={p.id}
+                      className="shatter-piece"
+                      style={{
+                        '--tx': `${p.tx}px`,
+                        '--ty': `${p.ty}px`,
+                        '--rot': `${p.rot}deg`,
+                      } as any}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Battle Message */}
@@ -2594,29 +2908,43 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
 
             {/* Monster Side */}
             <div 
-              className={`${monsterAnim === 'attack' ? 'teleport-monster' : (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (monsterAnim === 'idle-victory' || monsterAnim.startsWith('victory-')) ? 'teleport-monster-victory' : ''} ${(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 'is-3d' : ''}`}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? 35 : (monsterAnim.startsWith('attack') || monsterAnim.startsWith('death-')) ? 30 : 26, pointerEvents: 'none' }}
+              className={`${
+                monsterAnim === 'attack' ? 'teleport-monster' :
+                (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` :
+                (monsterAnim === 'idle-victory' || monsterAnim.startsWith('victory-')) ? 'teleport-monster-victory' :
+                monsterProceduralAnim === 'jump_slam' ? 'anim-jump-slam' :
+                monsterProceduralAnim === 'spin_tornado' ? 'anim-spin-tornado' :
+                monsterProceduralAnim === 'rush_charge' ? 'anim-rush-charge' :
+                monsterProceduralAnim === 'dance_transform' ? 'anim-dance-magic' :
+                monsterProceduralAnim === 'roar_shockwave' ? 'anim-roar-wave' :
+                monsterBodyThrow ? 'monster-body-throw' : ''
+              } ${effectiveMonsterModelUrl ? 'is-3d' : ''} ${monsterRageActive ? 'monster-enraged-wrap' : ''}`}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? 35 : (monsterAnim.startsWith('attack') || monsterAnim.startsWith('death-') || monsterProceduralAnim || monsterBodyThrow) ? 30 : 26, pointerEvents: 'none' }}
             >
+              {monsterRageActive && <div className="monster-rage-aura-back" />}
+              {monsterRageActive && <div className="monster-rage-aura-front" />}
+              {monsterRageActive && <div className="monster-rage-badge" title="Enfurecido!">💢</div>}
+              {monsterHealPulse && <div className="monster-heal-pulse" />}
               {monsterBubble && (
                 <div className="speech-bubble monster">
                   {monsterBubble}
                 </div>
               )}
               {monsterAnim === 'death-slice' ? (
-                <div className="quest-arena-avatars" style={{ position: 'relative', width: '160px', height: (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? '240px' : '228px' }}>
+                <div className="quest-arena-avatars" style={{ position: 'relative', width: '160px', height: effectiveMonsterModelUrl ? '240px' : '228px' }}>
                   {/* Nome do monstro - acompanha death-slice */}
-                  <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY - ((quest?.monsterAvatarConfig?.customZoom || 1) - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 140 : 216)}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                  <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY - (effectiveMonsterZoom - 1) * (effectiveMonsterModelUrl ? 140 : 216)}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', opacity: 0.3 }}>{quest?.monsterName || 'Inimigo'}</span>
                   </div>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) && sliceSnapshot
+                    {effectiveMonsterModelUrl && sliceSnapshot
                       ? <img src={sliceSnapshot} alt="" style={{ width: '240px', height: '240px', objectFit: 'contain', imageRendering: 'auto' }} />
-                      : (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} /> : <div style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
+                      : effectiveMonsterModelUrl ? <CustomModelViewer modelUrl={effectiveMonsterModelUrl} textureUrl={effectiveMonsterSkinUrl} size={240} animation="none" role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} /> : <div style={{ marginBottom: '-80px', transform: `scale(${effectiveMonsterZoom})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                   <div className="death-slice-right" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    {(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) && sliceSnapshot
+                    {effectiveMonsterModelUrl && sliceSnapshot
                       ? <img src={sliceSnapshot} alt="" style={{ width: '240px', height: '240px', objectFit: 'contain', imageRendering: 'auto' }} />
-                      : (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={240} animation="none" role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} /> : <div style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
+                      : effectiveMonsterModelUrl ? <CustomModelViewer modelUrl={effectiveMonsterModelUrl} textureUrl={effectiveMonsterSkinUrl} size={240} animation="none" role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} /> : <div style={{ marginBottom: '-80px', transform: `scale(${effectiveMonsterZoom})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={160} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                 </div>
               ) : (
@@ -2635,8 +2963,7 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
                   }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center' }}>
-                  {/* Nome do monstro - acompanha animações de morte */}
-                  <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY - ((quest?.monsterAvatarConfig?.customZoom || 1) - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 140 : 216)}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
+                  <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY - (effectiveMonsterZoom - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 140 : 216)}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
                       {(() => {
@@ -2704,20 +3031,20 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                     }
                     const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
                     const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;
-                    if (quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) {
-                      const monsterZoom = quest?.monsterAvatarConfig?.customZoom || 1;
+                    if (effectiveMonsterModelUrl) {
+                      const monsterZoom = effectiveMonsterZoom;
                       // Zoom alto corta a cabeça: aumenta o canvas E afasta a câmera p/ caber
                       const mSize = Math.round(240 * Math.max(1, monsterZoom * 0.7));
                       const mCam = 10 * Math.max(1, monsterZoom * 0.7);
                       return (
                         <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}>
-                          <CustomModelViewer modelUrl={(quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl)!} textureUrl={quest?.monsterAvatarConfig?.customSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : (monsterSpecialAnim || monsterAnim)} role="monster" zoom={quest?.monsterAvatarConfig?.customZoom} configRotY={quest?.monsterAvatarConfig?.customRotY} effectTint={effectTintColor} shatteredCount={fallenPartsRef.current.length} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
+                          <CustomModelViewer modelUrl={effectiveMonsterModelUrl} textureUrl={effectiveMonsterSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : (monsterSpecialAnim || monsterAnim)} role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} effectTint={effectTintColor} enraged={monsterRageActive} shatteredCount={fallenPartsRef.current.length} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
                         </div>
                       );
                     }
                     if (quest?.monsterAvatarConfig) {
                       return (
-                        <div ref={monsterCharWrapRef} style={{ marginBottom: '-80px', transform: `scale(${quest?.monsterAvatarConfig?.customZoom || 1}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={effectTintColor} fallenBodyParts={fallenPartsRef.current} fallenLayerPortal={fallenLayerEl} /></div>
+                        <div ref={monsterCharWrapRef} style={{ marginBottom: '-80px', transform: `scale(${effectiveMonsterZoom}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={monsterRageActive ? '#ff2222' : effectTintColor} fallenBodyParts={fallenPartsRef.current} fallenLayerPortal={fallenLayerEl} /></div>
                       );
                     }
                     return <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />;
@@ -2741,6 +3068,22 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                   )}
                 </div>
                 </div>
+                </div>
+              )}
+
+              {/* Projétil arremessado pelo monstro (surge no chão aos pés/mãos do monstro e voa na frente dele até o jogador) */}
+              {monsterProjectile && (
+                <div
+                  key={monsterProjectile.id}
+                  className="monster-projectile"
+                  style={{ '--proj-size': `${Math.round(58 * effectiveMonsterZoom)}px` } as any}
+                  onAnimationEnd={() => setMonsterProjectile(null)}
+                >
+                  <MonsterProjectileView
+                    type={monsterProjectile.type}
+                    customUrl={monsterProjectile.customUrl}
+                    size={Math.round(58 * effectiveMonsterZoom)}
+                  />
                 </div>
               )}
             </div>

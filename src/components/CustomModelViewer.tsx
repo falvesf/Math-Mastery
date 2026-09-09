@@ -2,6 +2,45 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useGLTF, useAnimations, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { getSafeUrl } from '../lib/utils';
+
+export function resolveModelUrl(url?: string | null): string {
+  if (!url) return '';
+  const safe = getSafeUrl(url);
+  return safe || url.replace(/\\/g, '/');
+}
+
+interface ModelErrorBoundaryProps {
+  fallback?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+interface ModelErrorBoundaryState {
+  hasError: boolean;
+  error?: any;
+}
+
+export class ModelErrorBoundary extends React.Component<ModelErrorBoundaryProps, ModelErrorBoundaryState> {
+  constructor(props: ModelErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: any): ModelErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.warn('CustomModelViewer: Error loading 3D model:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback !== undefined ? this.props.fallback : null;
+    }
+    return this.props.children;
+  }
+}
 
 interface CustomModelViewerProps {
   modelUrl: string;
@@ -23,6 +62,8 @@ interface CustomModelViewerProps {
   chestSwapSides?: boolean;
   /** Cor HEX aplicada nos materiais do modelo (efeitos de dano). null = sem tint */
   effectTint?: string | null;
+  /** Ativa o estado de fúria: pulso incandescente vermelho nos blocos 3D do modelo */
+  enraged?: boolean;
   /** Distância da câmera (default 10). Aumente p/ monstros com zoom alto não cortarem a cabeça. */
   cameraDistance?: number;
   /** Desmonta o modelo (malhas espalhadas/caídas) — efeito estrondo em monstros GLB.
@@ -135,10 +176,8 @@ export function computeEntityFit(scene: THREE.Object3D): { scale: number; posY: 
   return { scale: fitScale, posY };
 }
 
-function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, configRotY, effectTint = null, shatteredCount = 0 }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean, configRotY?: number, effectTint?: string | null, shatteredCount?: number }) {
-  const safeModelUrl = modelUrl.startsWith('/') && !modelUrl.startsWith('http') 
-    ? import.meta.env.BASE_URL + modelUrl.substring(1) 
-    : modelUrl;
+function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, configRotY, effectTint = null, enraged = false, shatteredCount = 0 }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean, configRotY?: number, effectTint?: string | null, enraged?: boolean, shatteredCount?: number }) {
+  const safeModelUrl = resolveModelUrl(modelUrl);
   const { scene: originalScene, animations } = useGLTF(safeModelUrl);
   
   // Clone para não mutar o GLTF cacheado (se houver múltiplos renders) e desliga o
@@ -155,6 +194,7 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
 
   // Efeito de dano direto nos materiais do modelo (veneno/fogo/sangramento)
   useEffect(() => {
+    if (enraged) return;
     scene.traverse((child: any) => {
       if (child.isMesh && child.material) {
         const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -170,7 +210,46 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
         });
       }
     });
-  }, [scene, effectTint]);
+  }, [scene, effectTint, enraged]);
+
+  // Efeito de fúria: pulso incandescente vermelho nos blocos 3D do modelo
+  useFrame((state) => {
+    if (!enraged) return;
+    const pulse = 0.5 + 0.45 * Math.sin(state.clock.elapsedTime * 6.5);
+    scene.traverse((child: any) => {
+      if (child.isMesh && child.material) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach((mat: any) => {
+          if (!mat.color) return;
+          if (!mat._originalColor) mat._originalColor = mat.color.clone();
+          mat.color.copy(mat._originalColor).lerp(new THREE.Color('#ff1111'), pulse);
+          if ('emissive' in mat && mat.emissive) {
+            if (!mat._originalEmissive) mat._originalEmissive = mat.emissive.clone();
+            mat.emissive.setRGB(pulse * 0.8, 0.02, 0.02);
+          }
+          mat.needsUpdate = true;
+        });
+      }
+    });
+  });
+
+  // Restaura materiais quando sai do estado de fúria
+  useEffect(() => {
+    if (!enraged) {
+      scene.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((mat: any) => {
+            if (mat._originalColor && mat.color) mat.color.copy(mat._originalColor);
+            if (mat._originalEmissive && mat.emissive) mat.emissive.copy(mat._originalEmissive);
+            else if (mat.emissive) mat.emissive.setRGB(0, 0, 0);
+            mat.needsUpdate = true;
+          });
+        }
+      });
+    }
+  }, [enraged, scene]);
+
   const { actions, mixer } = useAnimations(animations, scene);
 
   // Guarda a pose original de todos os ossos e meshes
@@ -380,14 +459,12 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
 // Decide como enquadrar o modelo na área:
 //  - Baús: enquadramento MANUAL (baseline + chestZoom + offsets + giro), WYSIWYG com o preview.
 //  - Jogadores/monstros: escala/posição fixas (comportamento atual).
-function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chestZoom = 1, chestOffsetX = 0, chestOffsetY = 0, chestRotY = 0, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides = false, configRotY = 0, effectTint = null, shatteredCount = 0 }: {
+function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chestZoom = 1, chestOffsetX = 0, chestOffsetY = 0, chestRotY = 0, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides = false, configRotY = 0, effectTint = null, enraged = false, shatteredCount = 0 }: {
   modelUrl: string; textureUrl?: string; animationName?: string; role?: 'player' | 'monster';
   zoom?: number; chestZoom?: number; chestOffsetX?: number; chestOffsetY?: number; chestRotY?: number;
-  chestOpenOffsetX?: number; chestOpenOffsetY?: number; chestSwapSides?: boolean; configRotY?: number; effectTint?: string | null; shatteredCount?: number;
+  chestOpenOffsetX?: number; chestOpenOffsetY?: number; chestSwapSides?: boolean; configRotY?: number; effectTint?: string | null; enraged?: boolean; shatteredCount?: number;
 }) {
-  const safeModelUrl = modelUrl.startsWith('/') && !modelUrl.startsWith('http')
-    ? import.meta.env.BASE_URL + modelUrl.substring(1)
-    : modelUrl;
+  const safeModelUrl = resolveModelUrl(modelUrl);
   const { scene, animations } = useGLTF(safeModelUrl);
   const isChest = modelUrl.includes('chest');
 
@@ -403,7 +480,7 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
   }, [scene, isChest, hasOpenAnim, chestSwapSides]);
 
   const content = (
-    <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animationName} role={role} chestSwapSides={chestSwapSides} configRotY={configRotY} effectTint={effectTint} shatteredCount={shatteredCount} />
+    <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animationName} role={role} chestSwapSides={chestSwapSides} configRotY={configRotY} effectTint={effectTint} enraged={enraged} shatteredCount={shatteredCount} />
   );
 
   if (!isChest) {
@@ -430,7 +507,7 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
   );
 }
 
-export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, zoom = 1, configRotY, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides, effectTint = null, shatteredCount = 0, preserveDrawingBuffer = false, onCanvasReady, cameraDistance = 10 }: CustomModelViewerProps) {
+export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, zoom = 1, configRotY, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides, effectTint = null, enraged = false, shatteredCount = 0, preserveDrawingBuffer = false, onCanvasReady, cameraDistance = 10 }: CustomModelViewerProps) {
   const isChest = modelUrl.includes('chest');
   
   // Interação (girar/zoom) habilitada explicitamente pelo chamador (editores).
@@ -439,19 +516,23 @@ export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, ani
 
   return (
     <div style={{ width: size, height: size, position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
-      <Canvas
-        gl={{ preserveDrawingBuffer }}
-        onCreated={({ gl }) => onCanvasReady?.(gl.domElement)}
-        camera={{ position: [0, 3, cameraDistance], fov: 45 }}
-        style={{ width: '100%', height: '100%' }}
-      >
-        <ambientLight intensity={1.5} />
-        <directionalLight position={[5, 10, 5]} intensity={0.5} />
-        <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.5, 0]} />
-        <React.Suspense fallback={null}>
-          <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} zoom={zoom} configRotY={configRotY} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} effectTint={effectTint} shatteredCount={shatteredCount} />
-        </React.Suspense>
-      </Canvas>
+      <ModelErrorBoundary key={modelUrl}>
+        <Canvas
+          gl={{ preserveDrawingBuffer }}
+          onCreated={({ gl }) => onCanvasReady?.(gl.domElement)}
+          camera={{ position: [0, 3, cameraDistance], fov: 45 }}
+          style={{ width: '100%', height: '100%' }}
+        >
+          <ambientLight intensity={1.5} />
+          <directionalLight position={[5, 10, 5]} intensity={0.5} />
+          <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.5, 0]} />
+          <React.Suspense fallback={null}>
+            <ModelErrorBoundary key={modelUrl}>
+              <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} zoom={zoom} configRotY={configRotY} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} effectTint={effectTint} enraged={enraged} shatteredCount={shatteredCount} />
+            </ModelErrorBoundary>
+          </React.Suspense>
+        </Canvas>
+      </ModelErrorBoundary>
     </div>
   );
 });

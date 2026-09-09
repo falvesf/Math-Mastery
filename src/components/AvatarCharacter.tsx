@@ -54,7 +54,51 @@ export interface AvatarConfig {
   hiddenSlots?: string[];
   /** Poses customizadas que substituem as ações base, por ação */
   actionPoses?: Partial<Record<'idle' | 'walk' | 'run' | 'attack', CharacterPose>>;
+  /** Configuração de ataques do monstro */
+  attacks?: any;
+  /** ID da skin ou monstro pré-definido original */
+  presetSkinId?: string;
 }
+
+export function safeParseAvatarConfig(raw: any): AvatarConfig | null {
+  if (!raw) return null;
+  let parsed = raw;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      // continua
+    }
+  }
+  if (parsed && typeof parsed === 'object') {
+    if (parsed['0'] !== undefined && typeof parsed['0'] === 'string') {
+      try {
+        const reconstructed = Object.keys(parsed)
+          .filter(k => /^\d+$/.test(k))
+          .sort((a, b) => Number(a) - Number(b))
+          .map(k => parsed[k])
+          .join('');
+        const inner = JSON.parse(reconstructed);
+        parsed = { ...parsed, ...inner };
+        for (const k of Object.keys(parsed)) {
+          if (/^\d+$/.test(k)) delete parsed[k];
+        }
+      } catch {
+        // ignora
+      }
+    }
+    return parsed as AvatarConfig;
+  }
+  return null;
+}
+
 
 export interface EquippedItem {
   docId?: string;

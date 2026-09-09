@@ -19,7 +19,7 @@ import AdminEconomySettings from '../components/AdminEconomySettings';
 import AiSettingsPanel from '../components/AiSettingsPanel';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import ArenaBgEditor from '../components/ArenaBgEditor';
-import AvatarCharacter, { type AvatarConfig } from '../components/AvatarCharacter';
+import AvatarCharacter, { type AvatarConfig, safeParseAvatarConfig } from '../components/AvatarCharacter';
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
 import QuestionBankModal from '../components/QuestionBankModal';
 import QuestQuestionsEditor from '../components/QuestQuestionsEditor';
@@ -955,14 +955,22 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
     }
     const { data: snap } = await query;
-    const loaded: any[] = snap ? snap.map((d: any) => ({
-      id: d.id,
-      name: d.name || 'Sem nome',
-      url: d.url || '',
-      type: d.type || 'monster',
-      config: d.config || null,
-      baseModelId: d.baseModelId || null,
-    })) : [];
+    const loaded: any[] = snap ? snap.map((d: any) => {
+      const parsedConfig = safeParseAvatarConfig(d.config) || null;
+      if (parsedConfig && !parsedConfig.presetSkinId) {
+        parsedConfig.presetSkinId = d.id;
+      }
+      return {
+        id: d.id,
+        name: d.name || 'Sem nome',
+        url: d.url || '',
+        type: d.type || 'monster',
+        config: parsedConfig,
+        baseModelId: d.baseModelId || null,
+        isGlobal: d.is_global,
+        tenantId: d.tenant_id,
+      };
+    }) : [];
     setAvailableMonsters(loaded);
   };
 
@@ -4105,8 +4113,11 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
           onClose={() => setIsCustomizingMonster(false)}
           initialConfig={questMonsterConfig || undefined}
           customSaveMode={true}
-          onSave={(newConfig) => {
+          onSave={(newConfig, name) => {
              setQuestMonsterConfig(newConfig);
+             if (name && name.trim()) setQuestMonsterName(name.trim());
+             if (newConfig?.customModelUrl) setQuestMonsterModelUrl(newConfig.customModelUrl);
+             fetchMonsters();
           }}
         />
       )}
