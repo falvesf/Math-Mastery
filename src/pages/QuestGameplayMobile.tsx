@@ -295,27 +295,33 @@ export default function QuestGameplay() {
 
   // Cálculo do nível de estresse (0-1)
   const calculateStress = (): number => {
-    if (!quest) return 0;
+    if (!quest || !quest.questions || quest.questions.length === 0) return 0;
     
     const totalQuestions = quest.questions.length;
     const progress = (currentQIndex + 1) / totalQuestions;
+    const currentQ = quest.questions[currentQIndex];
+    const currentTimeRatio = currentQ && currentQ.timeLimit ? timeLeft / currentQ.timeLimit : 1;
     
-    // Fator 1: Tempo baixo nas respostas (0-25%)
-    const timePressure = Math.min(1, stressFactors.lowTimeAnswers / Math.max(1, totalQuestions * 0.3)) * 0.25;
+    // Pressão do tempo em tempo real (0 a 35% quando o relógio da questão atual estiver nos últimos 30%)
+    const liveTimePressure = currentTimeRatio < 0.3 ? (1 - currentTimeRatio / 0.3) * 0.35 : 0;
     
-    // Fator 2: Vida perdida (0-30%)
-    const hpFactor = stressFactors.hpLost * 0.30;
+    // Fator 1: Histórico de respostas com pouco tempo (0-20%)
+    const historyTimePressure = Math.min(1, stressFactors.lowTimeAnswers / Math.max(1, totalQuestions * 0.3)) * 0.20;
     
-    // Factor 3: Respostas erradas (0-25%)
+    // Fator 2: Vida perdida (0-40%) - reflete perigo real e iminente de derrota
+    const currentHpLost = calculatedMaxHearts > 0 ? (calculatedMaxHearts - currentHearts) / calculatedMaxHearts : 0;
+    const effectiveHpLost = Math.max(stressFactors.hpLost, currentHpLost);
+    const hpFactor = effectiveHpLost * 0.40;
+    
+    // Fator 3: Respostas erradas acumuladas (0-25%)
     const wrongFactor = Math.min(1, stressFactors.wrongAnswers / Math.max(1, totalQuestions * 0.4)) * 0.25;
     
-    // Fator 4: Progresso sem sucesso (0-20%)
-    // Se passou da metade com menos de 50% de vida, aumenta estresse
-    const progressStress = (progress > 0.5 && stressFactors.hpLost > 0.5) 
+    // Fator 4: Progresso avançado com vida baixa (0-20%)
+    const progressStress = (progress > 0.5 && effectiveHpLost > 0.5) 
       ? Math.min(1, (progress - 0.5) * 2) * 0.20 
       : 0;
     
-    const totalStress = timePressure + hpFactor + wrongFactor + progressStress;
+    const totalStress = Math.max(liveTimePressure, historyTimePressure) + hpFactor + wrongFactor + progressStress;
     return Math.min(1, totalStress);
   };
 
@@ -1076,6 +1082,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setMonsterProjectile(null);
     setMonsterSpecialActive(false);
     setMonsterSpecialAnim('');
+    setStressFactors({ lowTimeAnswers: 0, wrongAnswers: 0, hpLost: 0 });
 
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
@@ -1425,13 +1432,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
     let quotesArray: string[] = [];
     
     if (source === 'player') {
-      // 40% de chance de usar fala baseada em estresse, 60% baseada em HP
-      if (stressLevel >= 0.5 && Math.random() < 0.4) {
+      // 50% de chance de usar fala baseada em estresse, 50% baseada em HP
+      if (stressLevel >= 0.35 && Math.random() < 0.6) {
         // Luta épica ou tensa
-        quotesArray = stressLevel >= 0.75 
+        quotesArray = stressLevel >= 0.65 
           ? playerQuotesByStress.epic 
           : playerQuotesByStress.tense;
-      } else if (stressLevel < 0.25 && Math.random() < 0.3) {
+      } else if (stressLevel < 0.25 && Math.random() < 0.35) {
         // Luta fácil
         quotesArray = playerQuotesByStress.easy;
       } else {
@@ -2672,10 +2679,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
   if (hpPercentage >= 75) {
     baseAnim = 'idle';
-    baseExp = 'normal';
+    baseExp = stressLevel >= 0.5 ? 'serious' : 'normal';
   } else if (hpPercentage >= 50) {
     baseAnim = 'idle';
-    baseExp = 'serious';
+    baseExp = stressLevel >= 0.6 ? 'sad' : 'serious';
   } else if (hpPercentage >= 25) {
     baseAnim = 'exhausted';
     baseExp = 'serious';
@@ -2989,21 +2996,19 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       <span className="bleed-drip" style={{ animationDelay: '0.9s', left: '32%' }} />
                     </div>
                   ))}
-                  {!quest?.allowRetries ? (
-                    (() => {
-                      // Suor baseado em estresse real (tempo, vida, erros)
-                      const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
-                      return (
-                        <div className="sweat-overlay" style={{ '--sweat-opacity': sweatLevel } as any}>
-                          {stressLevel >= 0.25 && <div className="sweat-drop" />}
-                          {stressLevel >= 0.5 && <div className="sweat-drop" />}
-                          {stressLevel >= 0.75 && <div className="sweat-drop" />}
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
-                  )}
+                  <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                  {(() => {
+                    // Suor baseado em estresse real (tempo, vida, erros)
+                    const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
+                    if (sweatLevel === 0) return null;
+                    return (
+                      <div className="sweat-overlay" style={{ '--sweat-opacity': sweatLevel } as any}>
+                        {stressLevel >= 0.25 && <div className="sweat-drop" />}
+                        {stressLevel >= 0.5 && <div className="sweat-drop" />}
+                        {stressLevel >= 0.75 && <div className="sweat-drop" />}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -3309,21 +3314,19 @@ const isPig = tr.animal === 'porco';
                         expression={hpPercentage === 100 ? 'normal' : baseExp}
                         interactive={false} 
                       />
-                      {!quest?.allowRetries ? (
-                        (() => {
-                          // Suor baseado em estresse real na tela de vitória
-                          const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
-                          return (
-                            <div className="sweat-overlay" style={{ '--sweat-opacity': sweatLevel } as any}>
-                              {stressLevel >= 0.25 && <div className="sweat-drop" />}
-                              {stressLevel >= 0.5 && <div className="sweat-drop" />}
-                              {stressLevel >= 0.75 && <div className="sweat-drop" />}
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
-                      )}
+                      <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                      {(() => {
+                        // Suor baseado em estresse real na tela de vitória
+                        const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
+                        if (sweatLevel === 0) return null;
+                        return (
+                          <div className="sweat-overlay" style={{ '--sweat-opacity': sweatLevel } as any}>
+                            {stressLevel >= 0.25 && <div className="sweat-drop" />}
+                            {stressLevel >= 0.5 && <div className="sweat-drop" />}
+                            {stressLevel >= 0.75 && <div className="sweat-drop" />}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                   <h1 className="title-glow quest-victory-title" style={{ marginBottom: '0.5rem', color: 'var(--gold-primary)' }}>VITÓRIA!</h1>
