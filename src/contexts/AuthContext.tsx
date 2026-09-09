@@ -127,24 +127,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // por startImpersonation/exitImpersonation (que vivem no corpo do provider).
   const fetchUserDataRef = useRef<((u: User) => Promise<void>) | null>(null);
 
-  const isAdminOrSuper = async (sessionUserId: string) => {
+  const canImpersonate = async (sessionUserId: string) => {
     const { data } = await supabase.from('users').select('role').eq('id', sessionUserId).single();
-    return !!data && (data.role === 'admin' || data.role === 'superadmin');
+    return !!data && (data.role === 'admin' || data.role === 'superadmin' || data.role === 'teacher' || data.role === 'coordinator');
   };
 
   const startImpersonation = async (userId: string) => {
     if (!currentUser) return;
-    const allowed = await isAdminOrSuper(currentUser.id);
+    const allowed = await canImpersonate(currentUser.id);
     if (!allowed) return;
+    disconnectPresence();
     localStorage.setItem('impersonatingUserId', userId);
     setImpersonatingId(userId);
     if (fetchUserDataRef.current) await fetchUserDataRef.current(currentUser);
   };
 
   const exitImpersonation = async () => {
+    disconnectPresence();
     localStorage.removeItem('impersonatingUserId');
+    if (currentUser && fetchUserDataRef.current) {
+      await fetchUserDataRef.current(currentUser);
+    }
     setImpersonatingId(null);
-    if (currentUser && fetchUserDataRef.current) await fetchUserDataRef.current(currentUser);
   };
 
   useEffect(() => {
@@ -343,9 +347,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Presença ONLINE via Realtime (presence channel) + heartbeat de reforço.
   // Usa userData.uid (mapeado de users.id) — currentUser.uid do supabase NÃO existe.
-  // Não roda durante impersonação para não "sujar" os dados do usuário alvo.
+  // Não roda durante impersonação/suporte para não alterar last_seen_at nem colocar o usuário online no chat.
   useEffect(() => {
-    if (!userData?.uid || impersonatingId) return;
+    const isSupportMode =
+      !!impersonatingId ||
+      !!getImpersonatingId() ||
+      (!!currentUser?.id && !!userData?.uid && currentUser.id !== userData.uid);
+
+    if (!userData?.uid || isSupportMode) {
+      disconnectPresence();
+      return;
+    }
     const uid = userData.uid;
 
     // Um usuário fica online enquanto o jogo está aberto e em uso. O status
@@ -356,7 +368,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let status = 'online';
     let isOnline = false;
 
+    const checkSupport = () =>
+      !!impersonatingId ||
+      !!getImpersonatingId() ||
+      (!!currentUser?.id && !!userData?.uid && currentUser.id !== userData.uid);
+
     const beat = () => {
+      if (checkSupport()) return;
       supabase
         .from('users')
         .update({ last_seen_at: new Date().toISOString() })
@@ -371,11 +389,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!isOnline) return;
       isOnline = false;
       disconnectPresence();
+      if (checkSupport()) return;
       // Envelhece last_seen_at para o chat não considerar online pelos próximos 5 min
       supabase.from('users').update({ last_seen_at: new Date(Date.now() - 6 * 60 * 1000).toISOString() }).eq('id', uid).then(() => {});
     };
 
     const goOnline = () => {
+      if (checkSupport()) return;
       if (isOnline) { beat(); return; }
       isOnline = true;
       try {
@@ -432,16 +452,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       ['mousemove', 'keydown', 'touchstart', 'scroll', 'pointerdown'].forEach(ev => window.removeEventListener(ev, onActivity));
       disconnectPresence();
     };
-  }, [userData?.uid, impersonatingId]);
+  }, [userData?.uid, impersonatingId, currentUser?.id]);
 
   // Motor de visitas do PROFESSOR: roda apenas para TEACHERS (são os que têm
-// contato direto com os alunos). Superadmin/administradores ficam de fora.
+  // contato direto com os alunos). Superadmin/administradores ficam de fora.
   // Sorteia um aluno online, grava no banco e repete a cada ~15s (o motor só
   // sorteia de novo quando a visita atual passou de 60s). Assim o professor
   // visita UMA tela por vez, sem parar.
   const isTeacherRole = userData?.role === 'teacher';
   useEffect(() => {
-    if (!userData?.uid || impersonatingId || !isTeacherRole || !userData?.tenantId) return;
+    const isSupportMode =
+      !!impersonatingId ||
+      !!getImpersonatingId() ||
+      (!!currentUser?.id && !!userData?.uid && currentUser.id !== userData.uid);
+    if (!userData?.uid || isSupportMode || !isTeacherRole || !userData?.tenantId) return;
     let cancelled = false;
     const engine = async () => {
       if (cancelled) return;
@@ -455,7 +479,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     engine();
     const int = setInterval(engine, 15 * 1000);
     return () => { cancelled = true; clearInterval(int); };
-  }, [userData?.uid, isTeacherRole, userData?.tenantId, impersonatingId]);
+  }, [userData?.uid, isTeacherRole, userData?.tenantId, impersonatingId, currentUser?.id]);
 
   // Usuários aguardando aprovação: mesmo que o Realtime da tabela users não
   // esteja ativo, verifica periodicamente se o admin aprovou e atualiza o

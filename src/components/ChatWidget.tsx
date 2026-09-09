@@ -98,7 +98,20 @@ function getRoleLabel(role?: string): string {
   }
 }
 
-export default function ChatWidget({ onOpenProfile, translucent = false }: ChatWidgetProps) {
+export default function ChatWidget(props: ChatWidgetProps) {
+  const { userData, impersonatingId, currentUser } = useAuth();
+  const isSupportMode =
+    !!impersonatingId ||
+    (typeof window !== 'undefined' && !!localStorage.getItem('impersonatingUserId')) ||
+    (!!currentUser?.id && !!userData?.uid && currentUser.id !== userData.uid);
+
+  // Durante sessão de suporte (impersonação), o chat fica 100% desativado e invisível
+  if (isSupportMode) return null;
+
+  return <ChatWidgetInner {...props} />;
+}
+
+function ChatWidgetInner({ onOpenProfile, translucent = false }: ChatWidgetProps) {
   const { userData } = useAuth();
   const { tenantId } = useTenant();
   const { showToast } = useDialog();

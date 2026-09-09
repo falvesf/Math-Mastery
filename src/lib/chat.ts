@@ -102,6 +102,7 @@ export function getPresenceKey(uid: string) {
 /** Atualiza o last_seen_at do usuário (heartbeat de presença) */
 export async function heartbeatPresence(uid: string | undefined) {
   if (!uid) return;
+  if (typeof window !== 'undefined' && localStorage.getItem('impersonatingUserId')) return;
   try {
     await supabase.from('users').update({ last_seen_at: new Date().toISOString() }).eq('id', uid);
   } catch (e) {

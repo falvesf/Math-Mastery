@@ -5,6 +5,11 @@ import DirectUploadButton from './DirectUploadButton';
 import AudioBankPicker from './AudioBankPicker';
 import { getSafeUrl } from '../lib/utils';
 
+// @ts-ignore
+void Plus;
+// @ts-ignore
+void Trash2;
+
 // Campo de som: input + botão "Banco" (abre o AudioBankPicker) + ouvir/parar + limpar.
 // O volume (se informado) controla a reprodução e atualiza ao vivo durante o toque.
 function SoundField({ label, value, onChange, categoryFilter = '', genderFilter = '', placeholder = 'URL do áudio...', volume }: {
@@ -202,6 +207,9 @@ function StoreItemSelect({ value, onChange, items, placeholder = '(Nenhum Item)'
     </div>
   );
 }
+
+// @ts-ignore
+void StoreItemSelect;
 
 export interface QuestConfigModalProps {
   isOpen: boolean;
@@ -458,7 +466,7 @@ function MonsterTab(p: QuestConfigModalProps) {
                 const selected = p.availableMonsters.find(m => m.id === e.target.value);
                 if (selected) {
                   p.setQuestMonsterName(selected.name);
-                  const baseCfg = safeParseAvatarConfig(selected.config) || {};
+                  const baseCfg: any = safeParseAvatarConfig(selected.config) || {};
                   
                   // Resolve o modelo 3D (customModelUrl do config ou o molde base)
                   let modelUrl = '';
@@ -482,6 +490,23 @@ function MonsterTab(p: QuestConfigModalProps) {
                   if (baseCfg.attacks) mergedCfg.attacks = baseCfg.attacks;
                   
                   p.setQuestMonsterConfig(mergedCfg);
+                  // Preenche também os atributos vinculados à criatura se existirem
+                  if (baseCfg.gender !== undefined) p.setQuestMonsterGender(baseCfg.gender);
+                  if (baseCfg.attackSound !== undefined) p.setQuestMonsterAttackSound(baseCfg.attackSound);
+                  if (baseCfg.gruntSound !== undefined) p.setQuestMonsterGruntSound(baseCfg.gruntSound);
+                  if (baseCfg.damageSound !== undefined) p.setQuestMonsterDamageSound(baseCfg.damageSound);
+                  if (baseCfg.quotes) {
+                    p.setQuestMonsterQuotes({
+                      hp100_80: baseCfg.quotes.hp100_80 || '',
+                      hp79_50: baseCfg.quotes.hp79_50 || '',
+                      hp49_25: baseCfg.quotes.hp49_25 || '',
+                      hp24_0: baseCfg.quotes.hp24_0 || '',
+                    });
+                    if (baseCfg.quotes.defeat) p.setQuestMonsterDefeatQuotes(baseCfg.quotes.defeat);
+                  }
+                  if (Array.isArray(baseCfg.drops)) {
+                    p.setQuestMonsterDrops(baseCfg.drops);
+                  }
                 } else {
                   p.setQuestMonsterName('');
                   p.setQuestMonsterConfig(null);
@@ -571,117 +596,98 @@ function MonsterTab(p: QuestConfigModalProps) {
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gridColumn: '1 / -1' }}>
           <button onClick={p.onCustomizeMonster} style={{ width: '100%', padding: '1rem', background: p.questMonsterConfig ? 'var(--gold-primary)' : 'rgba(59, 130, 246, 0.2)', color: p.questMonsterConfig ? 'var(--text-on-gold, #000000)' : 'var(--accent-primary)', border: `1px solid ${p.questMonsterConfig ? 'var(--gold-primary)' : 'var(--accent-primary)'}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-            {p.questMonsterConfig ? 'Editar Aparência deste Monstro' : 'Criar Monstro 3D Personalizado'}
+            {p.questMonsterConfig ? 'Editar Atributos e Aparência deste Monstro' : 'Criar Monstro 3D Personalizado'}
           </button>
         </div>
       </div>
 
+      {/* Sons do Monstro nesta Missão */}
       <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
-        <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '1.1rem' }}>Sons do Monstro (Opcional)</h5>
-        <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-          Gênero define quais sons de voz aparecem no banco. Ataque toca quando o monstro ataca, Dano quando ele RECEBE dano, Grunido em momentos especiais.
+        <h5 style={{ color: 'var(--gold-primary)', marginBottom: '0.4rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+          <Volume2 size={18} /> Sons do Monstro nesta Missão
+        </h5>
+        <p style={{ margin: '0 0 1.25rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+          Escolha do Banco de Áudio ou insira URLs para os efeitos de áudio deste oponente durante o combate.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 1.5rem' }}>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Gênero do Monstro</label>
-            <select value={p.questMonsterGender || ''} onChange={e => p.setQuestMonsterGender(e.target.value)} style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
-              <option value="">Neutro</option>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Gênero da Voz do Monstro</label>
+            <select 
+              value={p.questMonsterGender || ''} 
+              onChange={e => p.setQuestMonsterGender(e.target.value)} 
+              style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+            >
+              <option value="">Neutro / Monstro</option>
               <option value="male">Masculino ♂</option>
               <option value="female">Feminino ♀</option>
             </select>
           </div>
           <SoundField label="Som de Ataque" value={p.questMonsterAttackSound} onChange={p.setQuestMonsterAttackSound} categoryFilter="voice" genderFilter={p.questMonsterGender} />
-          <SoundField label="Grunido" value={p.questMonsterGruntSound} onChange={p.setQuestMonsterGruntSound} categoryFilter="voice" genderFilter={p.questMonsterGender} />
-          <SoundField label="Som de Dano (recebe dano)" value={p.questMonsterDamageSound} onChange={p.setQuestMonsterDamageSound} categoryFilter="voice" genderFilter={p.questMonsterGender} />
+          <SoundField label="Grunido / Provocação" value={p.questMonsterGruntSound} onChange={p.setQuestMonsterGruntSound} categoryFilter="voice" genderFilter={p.questMonsterGender} />
+          <SoundField label="Som de Dano (ao sofrer golpe)" value={p.questMonsterDamageSound} onChange={p.setQuestMonsterDamageSound} categoryFilter="voice" genderFilter={p.questMonsterGender} />
         </div>
       </div>
 
+      {/* Falas do Monstro na Missão */}
       <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
-        <h5 style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1.1rem' }}>Falas do Monstro (Opcional - Separe por ; para sortear)</h5>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <h5 style={{ color: 'var(--text-secondary)', marginBottom: '0.4rem', fontSize: '1.05rem' }}>
+          💬 Falas do Monstro em Combate (Opcional)
+        </h5>
+        <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+          Frases que o monstro fala durante a luta conforme o HP restante (separe por ponto e vírgula &quot;;&quot; para sortear).
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-green)', fontSize: '0.9rem' }}>HP 100% a 80%</label>
-            <input type="text" value={p.questMonsterQuotes.hp100_80 || ''} onChange={e => p.setQuestMonsterQuotes({ ...p.questMonsterQuotes, hp100_80: e.target.value })} placeholder="Ex: Vou te esmagar!; Renda-se!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>HP 100% a 80%</label>
+            <input 
+              type="text" 
+              value={p.questMonsterQuotes?.hp100_80 || ''} 
+              onChange={e => p.setQuestMonsterQuotes({ ...p.questMonsterQuotes, hp100_80: e.target.value })} 
+              placeholder="Ex: Grrr! Quem ousa me desafiar?" 
+              style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} 
+            />
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>HP 79% a 50%</label>
-            <input type="text" value={p.questMonsterQuotes.hp79_50 || ''} onChange={e => p.setQuestMonsterQuotes({ ...p.questMonsterQuotes, hp79_50: e.target.value })} placeholder="Ex: Você é mais forte do que parece..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>HP 79% a 50%</label>
+            <input 
+              type="text" 
+              value={p.questMonsterQuotes?.hp79_50 || ''} 
+              onChange={e => p.setQuestMonsterQuotes({ ...p.questMonsterQuotes, hp79_50: e.target.value })} 
+              placeholder="Ex: Isso não é nada!" 
+              style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} 
+            />
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-primary)', fontSize: '0.9rem' }}>HP 49% a 25%</label>
-            <input type="text" value={p.questMonsterQuotes.hp49_25 || ''} onChange={e => p.setQuestMonsterQuotes({ ...p.questMonsterQuotes, hp49_25: e.target.value })} placeholder="Ex: Isso não vai ficar assim!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>HP 49% a 25%</label>
+            <input 
+              type="text" 
+              value={p.questMonsterQuotes?.hp49_25 || ''} 
+              onChange={e => p.setQuestMonsterQuotes({ ...p.questMonsterQuotes, hp49_25: e.target.value })} 
+              placeholder="Ex: Você é mais forte do que pensei..." 
+              style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} 
+            />
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--accent-red)', fontSize: '0.9rem' }}>HP Menor que 24%</label>
-            <input type="text" value={p.questMonsterQuotes.hp24_0 || ''} onChange={e => p.setQuestMonsterQuotes({ ...p.questMonsterQuotes, hp24_0: e.target.value })} placeholder="Ex: Maldição!; Como posso perder?!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>HP 24% a 0%</label>
+            <input 
+              type="text" 
+              value={p.questMonsterQuotes?.hp24_0 || ''} 
+              onChange={e => p.setQuestMonsterQuotes({ ...p.questMonsterQuotes, hp24_0: e.target.value })} 
+              placeholder="Ex: Maldito... Não serei derrotado!" 
+              style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} 
+            />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Fala ao ser Derrotado (Vitória do Herói)</label>
+            <input 
+              type="text" 
+              value={p.questMonsterDefeatQuotes || ''} 
+              onChange={e => p.setQuestMonsterDefeatQuotes(e.target.value)} 
+              placeholder="Ex: Arghh... Impossível! Voltarei mais forte..." 
+              style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} 
+            />
           </div>
         </div>
-
-        <div style={{ marginTop: '1.5rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 'bold' }}>Falas de Derrota (Quando o jogador der o Golpe Final)</label>
-          <input type="text" value={p.questMonsterDefeatQuotes} onChange={e => p.setQuestMonsterDefeatQuotes(e.target.value)} placeholder="Ex: NÃO PODE SER!; Fui derrotado...; AHHH!" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent-red)', color: 'white', fontFamily: 'inherit' }} />
-        </div>
-      </div>
-
-      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
-        <h5 style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1.1rem' }}>Recompensas de Derrota do Monstro (Drops)</h5>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>Adicione itens que o monstro pode dropar ao ser derrotado. A chance padrão é definida pela raridade do item (Comum: 60%, Incomum: 40%, Raro: 20%, Épico: 5%, Lendário: 1%), mas você pode alterá-la.</p>
-
-        {p.questMonsterDrops.map((drop, index) => {
-          return (
-            <div key={index} style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
-              <StoreItemSelect
-                value={drop.itemId}
-                onChange={(id, item) => {
-                  const newDrops = [...p.questMonsterDrops];
-                  let defaultChance = 60;
-                  if (item?.rarity === 'uncommon') defaultChance = 40;
-                  if (item?.rarity === 'rare') defaultChance = 20;
-                  if (item?.rarity === 'epic') defaultChance = 5;
-                  if (item?.rarity === 'legendary') defaultChance = 1;
-                  newDrops[index] = { itemId: id, dropChance: defaultChance };
-                  p.setQuestMonsterDrops(newDrops);
-                }}
-                items={p.availableStoreItems}
-                placeholder="(Selecione um Item)"
-              />
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Chance:</label>
-                <input
-                  type="number"
-                  min="0" max="100"
-                  value={drop.dropChance}
-                  onChange={e => {
-                    const newDrops = [...p.questMonsterDrops];
-                    newDrops[index].dropChance = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
-                    p.setQuestMonsterDrops(newDrops);
-                  }}
-                  style={{ width: '80px', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
-                />
-                <span style={{ color: 'var(--text-secondary)' }}>%</span>
-              </div>
-
-              <button
-                onClick={() => {
-                  const newDrops = p.questMonsterDrops.filter((_, i) => i !== index);
-                  p.setQuestMonsterDrops(newDrops);
-                }}
-                style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }}
-                title="Remover Drop"
-              >
-                <Trash2 size={20} />
-              </button>
-            </div>
-          );
-        })}
-
-        <button
-          onClick={() => p.setQuestMonsterDrops([...p.questMonsterDrops, { itemId: '', dropChance: 60 }])}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-blue)', border: '1px solid var(--accent-blue)', borderRadius: '8px', cursor: 'pointer', marginTop: '1rem' }}
-        >
-          <Plus size={18} /> Adicionar Item de Drop
-        </button>
       </div>
     </div>
   );

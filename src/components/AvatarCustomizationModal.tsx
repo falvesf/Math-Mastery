@@ -11,6 +11,7 @@ import { fetchSavedPoses, saveSavedPoses, type SavedPose } from '../lib/savedPos
 import { useDialog } from '../contexts/DialogContext';
 import AdminPresetSkinsManager from './AdminPresetSkinsManager';
 import MonsterAttacksEditor from './MonsterAttacksEditor';
+import MonsterAttributesEditor from './MonsterAttributesEditor';
 import {
   // @ts-ignore
   DEFAULT_MONSTER_ATTACKS,
@@ -28,6 +29,8 @@ interface AvatarCustomizationModalProps {
   userData?: UserData;
   equippedItems?: EquippedItem[];
   initialConfig?: AvatarConfig;
+  initialMonsterName?: string;
+  initialSkinId?: string | null;
   customSaveMode?: boolean;
   onSave?: (config: AvatarConfig, name?: string) => void;
   onPositionsSaved?: () => void;
@@ -240,7 +243,19 @@ const HorizontalScrollList = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export default function AvatarCustomizationModal({ isOpen, onClose, initialConfig, customSaveMode = false, onSave, onPositionsSaved, isAdmin = false, inline = false, equippedItems = [] }: AvatarCustomizationModalProps) {
+export default function AvatarCustomizationModal({ 
+  isOpen, 
+  onClose, 
+  initialConfig, 
+  initialMonsterName,
+  initialSkinId,
+  customSaveMode = false, 
+  onSave, 
+  onPositionsSaved, 
+  isAdmin = false, 
+  inline = false, 
+  equippedItems = [] 
+}: AvatarCustomizationModalProps) {
   const { userData, updateUserDataLocally } = useAuth();
   const { tenantId } = useTenant();
   const { can: canView } = usePermissions();
@@ -272,6 +287,7 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
   const [editingSkinId, setEditingSkinId] = useState<string | null>(null);
   const [presetSkins, setPresetSkins] = useState<PresetSkin[]>([]);
   const [models3d, setModels3d] = useState<any[]>([]);
+  const [storeItems, setStoreItems] = useState<any[]>([]);
   const [showAdminManager, setShowAdminManager] = useState(false);
   const [showAdmin3dManager, setShowAdmin3dManager] = useState(false);
   const [showPoseStudio, setShowPoseStudio] = useState(false);
@@ -472,6 +488,13 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
     // aparecerem imediatamente após o admin cadastrar.
     fetchPresetSkins(true);
     fetchModels3d(true);
+    
+    // Busca itens da loja para drops do monstro
+    supabase.from('store_items').select('*').then(({ data }) => {
+      if (data) {
+        setStoreItems(data.map((d: any) => ({ id: d.id, ...(d.data || {}) })));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -480,18 +503,27 @@ export default function AvatarCustomizationModal({ isOpen, onClose, initialConfi
 
   useEffect(() => {
     if (isOpen) {
-      // Abrir o modal = novo monstro/personagem (a menos que um item salvo seja clicado depois).
-      setEditingSkinId(null);
-      setMonsterName('');
+      if (initialSkinId !== undefined) {
+        setEditingSkinId(initialSkinId);
+      } else {
+        setEditingSkinId(null);
+      }
+      if (initialMonsterName !== undefined) {
+        setMonsterName(initialMonsterName);
+      } else {
+        setMonsterName('');
+      }
+
       if (initialConfig) {
         setConfig(initialConfig);
         setZoomOnly(!!(initialConfig as any)?.customModelUrl);
+        hasRandomized.current = true;
       } else if (!inline) {
         if (userData?.avatarConfig && !customSaveMode) {
           let loadedConfig = { ...userData.avatarConfig };
           if (loadedConfig.customSkinUrl) {
-const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || isAdmin || canSkins;
-                const expiry = userData.unlockedSkins?.[loadedConfig.customSkinUrl];
+            const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || isAdmin || canSkins;
+            const expiry = userData.unlockedSkins?.[loadedConfig.customSkinUrl];
             if (!isStaff && (!expiry || expiry <= Date.now())) {
               loadedConfig.customSkinUrl = '';
             }
@@ -512,21 +544,23 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
         }
       }
     }
-  }, [isOpen, initialConfig, userData, customSaveMode, inline]);
+  }, [isOpen, initialConfig, initialSkinId, initialMonsterName, userData, customSaveMode, inline]);
 
   if (!isOpen) return null;
 
   const hasRandomized = useRef(false);
 
   useEffect(() => {
-    // Auto-randomização: sugere uma skin aleatória da categoria ao abrir as guias
-    // (o comportamento original). A skin de url vazia não é mais um problema —
-    // o preview ignora customSkinUrl vazio.
+    if (initialConfig || initialSkinId || initialMonsterName) {
+      hasRandomized.current = true;
+      return;
+    }
+    // Auto-randomização: apenas se nenhum config ou skin foi fornecido inicialmente
     if (inline && !hasRandomized.current && presetSkins.length >= 0) {
       handleRandomize();
       hasRandomized.current = true;
     }
-  }, [inline, presetSkins]);
+  }, [inline, presetSkins, initialConfig, initialSkinId, initialMonsterName]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -592,7 +626,8 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
           }
 
           try {
-            // Editando um monstro já salvo (ou atualizando existente) → UPDATE no MESMO registro (sem duplicar).
+            const newGenId = uuidv4();
+            const finalSavedId = targetSkinId || newGenId;
             const { error: saveError } = targetSkinId
               ? await supabase.from('preset_skins').update({
                   name: trimmedName,
@@ -600,14 +635,14 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
                   baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null
                 }).eq('id', targetSkinId)
               : await supabase.from('preset_skins').insert({
-                  id: uuidv4(),
+                  id: newGenId,
                   name: trimmedName,
                   url: '',
                   type: customSaveMode ? 'monster' : 'human',
                   baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null,
                   genderTarget: 'unisex',
                   config: JSON.stringify(cleanConfig),
-                  tenant_id: userData?.tenantId || null,
+                  tenant_id: tenantId || userData?.tenantId || null,
                   is_global: false
                 });
             
@@ -624,11 +659,37 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
               await showAlert(targetSkinId
                 ? `${customSaveMode ? 'Monstro' : 'Personagem'} atualizado com sucesso!`
                 : `${customSaveMode ? 'Monstro' : 'Personagem'} salvo na galeria com sucesso!`);
-              // Lista imediatamente o novo monstro/personagem em "Skins ... Pré-definidas"
-              // sem precisar recarregar a página.
-              setEditingSkinId(null);
-              sessionCache.invalidate(CACHE_KEYS.presetSkins(userData?.tenantId));
+              
+              // Mantém o ID e nome atuais para o usuário continuar vendo o monstro salvo sem resetar!
+              setEditingSkinId(finalSavedId);
+              setMonsterName(trimmedName);
+
+              // Invalida cache de forma abrangente com tenantId
+              sessionCache.invalidate(CACHE_KEYS.presetSkins(tenantId));
+              if (userData?.tenantId) sessionCache.invalidate(CACHE_KEYS.presetSkins(userData.tenantId));
+              sessionCache.invalidate('preset_skins_null');
+              
               await fetchPresetSkins(true);
+
+              // Se for monstro, sincroniza também de volta para quaisquer missões que usam esse monstro pelo nome
+              if (customSaveMode && trimmedName) {
+                const questSyncPatch: any = {};
+                if (cleanConfig.gender) questSyncPatch.monster_gender = cleanConfig.gender;
+                if (cleanConfig.attackSound !== undefined) questSyncPatch.monster_attack_sound = cleanConfig.attackSound;
+                if (cleanConfig.gruntSound !== undefined) questSyncPatch.monster_grunt_sound = cleanConfig.gruntSound;
+                if (cleanConfig.damageSound !== undefined) questSyncPatch.monster_damage_sound = cleanConfig.damageSound;
+                if (cleanConfig.quotes) questSyncPatch.monster_quotes = cleanConfig.quotes;
+                if (cleanConfig.drops) questSyncPatch.monster_drops = cleanConfig.drops;
+                if (Object.keys(questSyncPatch).length > 0) {
+                  let qUp = supabase.from('quests').update(questSyncPatch).eq('monsterName', trimmedName);
+                  if (tenantId) qUp = qUp.eq('tenant_id', tenantId);
+                  qUp.then(() => {});
+                }
+              }
+
+              if (onSave) {
+                onSave(cleanConfig, trimmedName);
+              }
             }
           } catch (e) {
             console.error("Erro inesperado ao salvar na galeria", e);
@@ -640,9 +701,6 @@ const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || 
       }
       if (!inline) {
         onClose();
-      } else {
-        setMonsterName(''); // Limpar o nome para o próximo
-        setEditingSkinId(null);
       }
     } catch (e) {
       console.error(e);
@@ -2144,12 +2202,35 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                 : (editingSkinId ? models3d.find(m => m.id === presetSkins.find(s => s.id === editingSkinId)?.baseModelId) : null);
               const activeModelUrl = config.customModelUrl || activeModel?.url || undefined;
               return (
-                <MonsterAttacksEditor
-                  value={(config as any).attacks}
-                  onChange={attacks => setConfig({ ...config, attacks } as any)}
-                  modelUrl={activeModelUrl}
-                  models3d={models3d}
-                />
+                <>
+                  <MonsterAttacksEditor
+                    value={(config as any).attacks}
+                    onChange={attacks => setConfig({ ...config, attacks } as any)}
+                    modelUrl={activeModelUrl}
+                    models3d={models3d}
+                  />
+
+                  <MonsterAttributesEditor
+                    value={{
+                      gender: (config as any).gender,
+                      attackSound: (config as any).attackSound,
+                      gruntSound: (config as any).gruntSound,
+                      damageSound: (config as any).damageSound,
+                      quotes: (config as any).quotes,
+                      drops: (config as any).drops,
+                    }}
+                    onChange={attrs => setConfig(prev => ({
+                      ...prev,
+                      gender: attrs.gender,
+                      attackSound: attrs.attackSound,
+                      gruntSound: attrs.gruntSound,
+                      damageSound: attrs.damageSound,
+                      quotes: attrs.quotes,
+                      drops: attrs.drops,
+                    } as any))}
+                    availableStoreItems={storeItems}
+                  />
+                </>
               );
             })()}
 

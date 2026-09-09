@@ -8,6 +8,7 @@ import { useDialog } from '../contexts/DialogContext';
 import DirectUploadButton from './DirectUploadButton';
 import AudioBankPicker from './AudioBankPicker';
 import { fetchAudioBank, AUDIO_CATEGORIES, type AudioBankEntry } from '../lib/audioBank';
+import { fetchForgeSounds, saveForgeSounds, type ForgeSoundsConfig } from '../lib/forgeSounds';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 
 export default function AudioBankManager() {
@@ -50,6 +51,10 @@ export default function AudioBankManager() {
   const [fatalExplodeSound, setFatalExplodeSound] = useState('');
   const [battlePickerFor, setBattlePickerFor] = useState<'victory' | 'deathMale' | 'deathFemale' | 'fail' | 'punch' | 'fatalFall' | 'fatalEvaporate' | 'fatalSlice' | 'fatalExplode' | null>(null);
 
+  // Sons da Forja & Transmutação
+  const [forgeConfig, setForgeConfig] = useState<ForgeSoundsConfig>({});
+  const [forgePickerFor, setForgePickerFor] = useState<keyof ForgeSoundsConfig | null>(null);
+
   const load = async () => {
     setLoading(true);
     const list = await fetchAudioBank(tenantId);
@@ -73,6 +78,11 @@ export default function AudioBankManager() {
     setFatalEvaporateSound(b.fatalEvaporate || '');
     setFatalSliceSound(b.fatalSlice || '');
     setFatalExplodeSound(b.fatalExplode || '');
+
+    // Sons da Forja
+    const fData = await fetchForgeSounds(tenantId);
+    setForgeConfig(fData || {});
+
     setLoading(false);
   };
 
@@ -306,6 +316,75 @@ const togglePlay = (u: string) => {
         <button onClick={saveBattleSounds} className="login-btn" style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem 1.25rem' }}><Save size={16} /> Salvar Sons de Batalha</button>
       </div>
 
+      {/* Sons da Forja & Transmutação */}
+      <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '1rem', marginTop: '1.5rem' }}>
+        <h4 style={{ margin: '0 0 0.25rem 0', color: '#f97316', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Volume2 size={18} color="#f97316" /> Sons da Forja & Transmutação
+        </h4>
+        <p style={{ margin: '0 0 0.75rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+          Músicas de fundo e efeitos sonoros para as funcionalidades de Forja e Transmutação de Itens. Configuração por escola.
+        </p>
+
+        {([
+          { key: 'forgeMusicUrl' as const, label: '🎵 Música da Guia Forja (Loop)' },
+          { key: 'transmuteMusicUrl' as const, label: '🎵 Música da Guia Transmutação (Loop)' },
+          { key: 'forgeAnvilSoundUrl' as const, label: '🔨 Som do Martelo na Bigorna' },
+          { key: 'transmuteEffectUrl' as const, label: '✨ Efeito Sonoro de Transmutação' },
+          { key: 'successSoundUrl' as const, label: '✅ Som de Sucesso (Forja / Transmutação)' },
+          { key: 'failSoundUrl' as const, label: '❌ Som de Falha (Forja / Transmutação)' },
+        ] as const).map(item => {
+          const val = forgeConfig[item.key] || '';
+          return (
+            <div key={item.key} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <label style={{ width: '230px', color: 'var(--text-secondary)', fontSize: '0.8rem', flexShrink: 0 }}>{item.label}</label>
+              <input
+                value={val}
+                onChange={e => setForgeConfig(prev => ({ ...prev, [item.key]: e.target.value }))}
+                placeholder="URL..."
+                style={{ flex: 1, padding: '0.45rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+              />
+              <button
+                onClick={() => togglePlay(val)}
+                disabled={!val}
+                style={{ padding: '0.35rem 0.55rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }}
+                title="Ouvir"
+              >
+                {playingUrl === val ? '⏹' : '▶'}
+              </button>
+              <DirectUploadButton
+                folder="audio"
+                accept="audio/*"
+                onUploadComplete={(uploadedUrl) => setForgeConfig(prev => ({ ...prev, [item.key]: uploadedUrl }))}
+                buttonStyle={{ padding: '0.3rem 0.55rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}
+              >
+                Upload
+              </DirectUploadButton>
+              <button
+                onClick={() => setForgePickerFor(item.key)}
+                style={{ padding: '0.35rem 0.65rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+              >
+                Banco
+              </button>
+            </div>
+          );
+        })}
+
+        <button
+          onClick={async () => {
+            const ok = await saveForgeSounds(tenantId, forgeConfig);
+            if (ok) {
+              showAlert('Sons da forja e transmutação salvos com sucesso!');
+            } else {
+              showAlert('Erro ao salvar os sons da forja.');
+            }
+          }}
+          className="login-btn"
+          style={{ background: 'rgba(234, 88, 12, 0.2)', border: '1px solid rgba(234, 88, 12, 0.4)', color: '#f97316', padding: '0.5rem 1.25rem', marginTop: '0.5rem' }}
+        >
+          <Save size={16} /> Salvar Sons da Forja
+        </button>
+      </div>
+
       <AudioBankPicker
         open={damagePickerFor !== null}
         onClose={() => setDamagePickerFor(null)}
@@ -337,6 +416,19 @@ const togglePlay = (u: string) => {
         categoryFilter={battlePickerFor === 'victory' || battlePickerFor === 'fail' ? '' : 'voice'}
         genderFilter={battlePickerFor === 'deathMale' ? 'male' : battlePickerFor === 'deathFemale' ? 'female' : ''}
         title="Banco de Áudio — Som de Batalha"
+      />
+
+      <AudioBankPicker
+        open={forgePickerFor !== null}
+        onClose={() => setForgePickerFor(null)}
+        onSelect={(url) => {
+          if (forgePickerFor) {
+            setForgeConfig(prev => ({ ...prev, [forgePickerFor]: url }));
+          }
+          setForgePickerFor(null);
+        }}
+        categoryFilter={forgePickerFor?.includes('Music') ? 'music' : 'effect'}
+        title="Banco de Áudio — Som da Forja"
       />
     </div>
   );

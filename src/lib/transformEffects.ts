@@ -4,7 +4,8 @@
 //  - Cura: aura que cura o jogador 0,5 coração por turno (3 turnos).
 // =====================================================================
 
-import { playSound } from './audioBank';
+import { playSound, playTransformPuffSound } from './audioBank';
+export { playTransformPuffSound };
 
 export type TransformAnimal = 'sapo' | 'coelho' | 'porco' | 'rato';
 

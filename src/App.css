@@ -858,60 +858,10 @@
    AURA DE FÚRIA E EFEITOS DE SUPORTE (Golpe 4)
    ===================================================================== */
 .monster-rage-aura,
-.monster-rage-aura-back {
-  position: absolute;
-  inset: -22px;
-  border-radius: 26px;
-  pointer-events: none;
-  z-index: 10;
-  background: radial-gradient(circle at center, rgba(239, 68, 68, 0.5) 0%, rgba(185, 28, 28, 0.25) 50%, transparent 80%);
-  box-shadow: 0 0 35px rgba(239, 68, 68, 0.9), 0 0 65px rgba(220, 38, 38, 0.65);
-  animation: rage-aura-pulse 0.7s ease-in-out infinite alternate;
-}
-@keyframes rage-aura-pulse {
-  0% { transform: scale(0.96); opacity: 0.75; filter: hue-rotate(0deg); }
-  100% { transform: scale(1.08); opacity: 1; filter: hue-rotate(-15deg); }
-}
-
-/* Camada FRONTAL de chamas translúcidas que envolve o monstro */
-.monster-rage-aura-front {
-  position: absolute;
-  inset: -12px;
-  border-radius: 22px;
-  pointer-events: none;
-  z-index: 42;
-  background: radial-gradient(ellipse at center bottom, rgba(239, 68, 68, 0.22) 0%, rgba(249, 115, 22, 0.12) 40%, transparent 75%);
-  border: 2px solid rgba(239, 68, 68, 0.7);
-  box-shadow: inset 0 0 25px rgba(239, 68, 68, 0.55), 0 0 22px rgba(239, 68, 68, 0.85);
-  animation: rage-front-pulse 0.7s ease-in-out infinite alternate;
-}
-@keyframes rage-front-pulse {
-  0% { transform: scale(0.97); opacity: 0.8; border-color: rgba(239, 68, 68, 0.6); }
-  100% { transform: scale(1.05); opacity: 1; border-color: rgba(251, 146, 60, 0.9); }
-}
-
-/* Brilho e vibração agressiva no próprio corpo do monstro quando furioso */
-.monster-enraged-wrap {
-  filter: drop-shadow(0 0 16px rgba(239, 68, 68, 0.95)) drop-shadow(0 0 30px rgba(220, 38, 38, 0.75));
-  animation: monster-rage-vibrate 0.2s infinite alternate !important;
-}
-@keyframes monster-rage-vibrate {
-  0% { transform: translateY(0px) rotate(0deg); }
-  100% { transform: translateY(-1.5px) rotate(0.6deg); }
-}
-
+.monster-rage-aura-back,
+.monster-rage-aura-front,
 .monster-rage-badge {
-  position: absolute;
-  top: -32px;
-  right: -10px;
-  font-size: 1.4rem;
-  animation: rage-badge-bounce 0.6s ease-in-out infinite alternate;
-  filter: drop-shadow(0 0 8px #ef4444);
-  z-index: 45;
-}
-@keyframes rage-badge-bounce {
-  from { transform: scale(0.9) rotate(-10deg); }
-  to { transform: scale(1.25) rotate(15deg); }
+  display: none !important;
 }
 
 /* Pulso de cura no monstro */
@@ -977,43 +927,130 @@
   100% { transform: translateY(38px) scaleY(1.1); opacity: 0; }
 }
 
-/* ==== PUFT! — fumaça de transformação (bexiga estourada) ====
+/* ==== PUFT! — fumaça de transformação (bexiga estourada / desenho animado) ====
    Aparece quando o monstro se transforma e quando volta ao normal. */
 .transform-puff {
   position: absolute;
-  inset: -12px;
-  z-index: 14;
+  inset: -20px;
+  z-index: 60;
   pointer-events: none;
+  overflow: visible;
 }
+
+/* Onda de choque rápida */
+.puff-shockwave-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 70px;
+  height: 70px;
+  margin-left: -35px;
+  margin-top: -35px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.85), inset 0 0 12px rgba(255, 255, 255, 0.5);
+  animation: puff-ring 0.65s cubic-bezier(0.1, 0.8, 0.3, 1) both;
+}
+.transform-puff.puff-revert .puff-shockwave-ring {
+  border-color: rgba(200, 210, 235, 0.85);
+  box-shadow: 0 0 14px rgba(160, 175, 210, 0.75);
+}
+@keyframes puff-ring {
+  0% { transform: scale(0.2); opacity: 1; }
+  100% { transform: scale(3.2); opacity: 0; }
+}
+
+/* Nuvens de fumaça volumosas e estilizadas */
 .puff-blob {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 66px;
-  height: 66px;
-  margin-left: -33px;
-  margin-top: -33px;
+  width: 90px;
+  height: 90px;
+  margin-left: -45px;
+  margin-top: -45px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(240, 240, 250, 0.95) 0%, rgba(205, 205, 225, 0.6) 55%, transparent 78%);
-  animation: puff-blob 0.7s ease-out forwards;
+  background: radial-gradient(circle, #ffffff 32%, rgba(240, 245, 255, 0.96) 58%, rgba(195, 210, 240, 0.65) 80%, transparent 100%);
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.85));
+  animation: puff-blob-expand 0.85s cubic-bezier(0.12, 0.8, 0.32, 1) both;
 }
 .transform-puff.puff-revert .puff-blob {
-  background: radial-gradient(circle, rgba(205, 205, 215, 0.9) 0%, rgba(165, 165, 180, 0.55) 55%, transparent 78%);
+  background: radial-gradient(circle, #f8f9ff 28%, rgba(205, 215, 235, 0.94) 58%, rgba(140, 155, 185, 0.6) 80%, transparent 100%);
+  filter: drop-shadow(0 0 8px rgba(160, 175, 205, 0.75));
 }
-@keyframes puff-blob {
-  0% { transform: scale(0.15); opacity: 0.95; }
-  100% { transform: scale(2.9); opacity: 0; }
+@keyframes puff-blob-expand {
+  0% { transform: scale(0.18); opacity: 1; }
+  45% { opacity: 0.95; }
+  100% { transform: scale(2.8); opacity: 0; }
 }
+
+/* Nuvem central mais densa */
+.puff-blob-center {
+  width: 110px;
+  height: 110px;
+  margin-left: -55px;
+  margin-top: -55px;
+  animation-duration: 0.8s;
+}
+
+/* Brilhos / estrelas mágicas saltando para fora */
 .puff-sparkle {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
-  animation: puff-sparkle 0.6s ease-out forwards;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 1), 0 0 18px rgba(250, 204, 21, 0.9);
+  animation: puff-sparkle-fly 0.75s ease-out both;
 }
-@keyframes puff-sparkle {
-  0% { transform: scale(0.2); opacity: 1; }
-  100% { transform: scale(1.6); opacity: 0; }
+.transform-puff.puff-revert .puff-sparkle {
+  box-shadow: 0 0 10px rgba(255, 255, 255, 1), 0 0 16px rgba(168, 85, 247, 0.8);
 }
+@keyframes puff-sparkle-fly {
+  0% { transform: scale(0.2) translate(0, 0); opacity: 1; }
+  50% { transform: scale(1.8) translate(var(--sparkle-x, 0), var(--sparkle-y, 0)); opacity: 1; }
+  100% { transform: scale(0.4) translate(calc(var(--sparkle-x, 0) * 1.6), calc(var(--sparkle-y, 0) * 1.6)); opacity: 0; }
+}
+
+/* Texto estilo quadrinhos: "PUFT!" */
+.puff-comic-badge {
+  position: absolute;
+  top: 24%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 65;
+  pointer-events: none;
+  animation: puff-text-pop 0.85s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+.puff-comic-text {
+  display: inline-block;
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  font-size: 1.65rem;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 2px;
+  color: #fef08a;
+  -webkit-text-stroke: 2px #1f2937;
+  text-shadow:
+    0 3px 0 #111827,
+    0 4px 6px rgba(0, 0, 0, 0.7),
+    0 0 14px rgba(250, 204, 21, 0.9);
+  transform: rotate(-6deg);
+}
+.transform-puff.puff-revert .puff-comic-text {
+  color: #e0e7ff;
+  -webkit-text-stroke: 2px #1e1b4b;
+  text-shadow:
+    0 3px 0 #0f172a,
+    0 4px 6px rgba(0, 0, 0, 0.7),
+    0 0 14px rgba(168, 85, 247, 0.9);
+  transform: rotate(5deg);
+}
+@keyframes puff-text-pop {
+  0% { transform: translate(-50%, -50%) scale(0.3) rotate(-15deg); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1.25) rotate(-6deg); opacity: 1; }
+  45% { transform: translate(-50%, -50%) scale(1.05) rotate(-5deg); opacity: 1; }
+  75% { transform: translate(-50%, -75%) scale(1.1) rotate(-4deg); opacity: 0.95; }
+  100% { transform: translate(-50%, -100%) scale(0.7) rotate(0deg); opacity: 0; }
+}
+

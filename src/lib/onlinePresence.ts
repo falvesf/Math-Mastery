@@ -61,6 +61,11 @@ function applyPresence() {
  * Idempotente: chamadas repetidas não criam canais duplicados.
  */
 export function connectPresence(uid: string, meta?: { name?: string; role?: string; classId?: string }) {
+  if (typeof window !== 'undefined' && localStorage.getItem('impersonatingUserId')) {
+    if (channel) disconnectPresence();
+    return;
+  }
+
   if (channel) {
     // Atualizar track se o uid mudou
     if (trackedUid !== uid) {

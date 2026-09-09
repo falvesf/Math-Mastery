@@ -515,7 +515,7 @@ export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, ani
   const allowInteraction = !isChest && interactive;
 
   return (
-    <div style={{ width: size, height: size, position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+    <div style={{ width: size, height: size, position: 'relative', overflow: 'hidden', flexShrink: 0, pointerEvents: allowInteraction ? 'auto' : 'none' }}>
       <ModelErrorBoundary key={modelUrl}>
         <Canvas
           gl={{ preserveDrawingBuffer }}

@@ -17,6 +17,7 @@ export default function AdminEntitiesManager() {
   const [skinModels, setSkinModels] = useState<any[]>([]);
   const [monsterModelUrl, setMonsterModelUrl] = useState('');
   const [monstersList, setMonstersList] = useState<any[]>([]);
+  // @ts-ignore
   const [loadingMonsters, setLoadingMonsters] = useState(false);
   const [selectedMonsterForEdit, setSelectedMonsterForEdit] = useState<any | null>(null);
 
@@ -29,21 +30,52 @@ export default function AdminEntitiesManager() {
       // Se o molde selecionado foi excluído, reseta o estado (senão a URL antiga
       // persiste e é aplicada como initialConfig, carregando o GLB excluído).
       setMonsterModelUrl(prev => (list.some(m => m.url === prev) ? prev : ''));
-    }, () => {});
+    }, () => { });
   };
 
   const fetchMonsters = async () => {
     setLoadingMonsters(true);
+    sessionCache.invalidate(CACHE_KEYS.presetSkins(tenantId));
     let q = supabase.from('preset_skins').select('*').eq('type', 'monster');
     if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
     const { data } = await q;
+
+    // Busca missões para auto-sincronizar quaisquer sons ou falas legadas
+    let questQuery = supabase.from('quests').select('id, monsterName, monsterModelUrl, monster_gender, monster_attack_sound, monster_grunt_sound, monster_damage_sound, monsterQuotes, monsterDefeatQuotes, monsterDrops, monsterAvatarConfig, tenant_id');
+    if (tenantId) questQuery = questQuery.eq('tenant_id', tenantId);
+    const { data: questData } = await questQuery;
+
     const mapped = (data || []).map(d => {
-      const cfg = safeParseAvatarConfig(d.config);
+      const cfg: any = safeParseAvatarConfig(d.config) || {};
+
+      // Se a criatura salva em preset_skins não tiver sons/falas/gênero preenchidos,
+      // busca nas missões que usam este monstro e preenche automaticamente
+      if (questData && questData.length > 0 && (!cfg.attackSound || !cfg.gruntSound || !cfg.damageSound || !cfg.gender)) {
+        const matchingQuest = questData.find(q =>
+          (q.monsterName && d.name && q.monsterName.trim().toLowerCase() === d.name.trim().toLowerCase()) ||
+          (q.monsterModelUrl && cfg.customModelUrl && q.monsterModelUrl === cfg.customModelUrl)
+        );
+        if (matchingQuest) {
+          let updated = false;
+          if (!cfg.gender && matchingQuest.monster_gender) { cfg.gender = matchingQuest.monster_gender; updated = true; }
+          if (!cfg.attackSound && matchingQuest.monster_attack_sound) { cfg.attackSound = matchingQuest.monster_attack_sound; updated = true; }
+          if (!cfg.gruntSound && matchingQuest.monster_grunt_sound) { cfg.gruntSound = matchingQuest.monster_grunt_sound; updated = true; }
+          if (!cfg.damageSound && matchingQuest.monster_damage_sound) { cfg.damageSound = matchingQuest.monster_damage_sound; updated = true; }
+          if (!cfg.quotes && matchingQuest.monsterQuotes) { cfg.quotes = matchingQuest.monsterQuotes; updated = true; }
+          if (!cfg.drops && matchingQuest.monsterDrops) { cfg.drops = matchingQuest.monsterDrops; updated = true; }
+
+          if (updated) {
+            supabase.from('preset_skins').update({ config: JSON.stringify(cfg) }).eq('id', d.id).then(() => { });
+          }
+        }
+      }
+
       return {
         ...d,
         parsedConfig: cfg
       };
     });
+
     setMonstersList(mapped);
     setLoadingMonsters(false);
   };
@@ -118,51 +150,51 @@ export default function AdminEntitiesManager() {
               display: 'flex', alignItems: 'center', gap: '0.5rem',
               transition: 'all 0.2s'
             }}
-        >
-          <Swords size={18} /> Monstros
-        </button>
-        <button
-          onClick={() => setActiveTab('pets')}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: '0.75rem 1.5rem', borderRadius: '8px',
-            color: activeTab === 'pets' ? 'var(--gold-primary)' : 'var(--text-secondary)',
-            backgroundColor: activeTab === 'pets' ? 'rgba(251, 191, 36, 0.1)' : 'transparent',
-            fontWeight: activeTab === 'pets' ? 'bold' : 'normal',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            transition: 'all 0.2s'
-          }}
-        >
-          <Dog size={18} /> Pets
-        </button>
-        <button
-          onClick={() => setActiveTab('skins')}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: '0.75rem 1.5rem', borderRadius: '8px',
-            color: activeTab === 'skins' ? '#60a5fa' : 'var(--text-secondary)',
-            backgroundColor: activeTab === 'skins' ? 'rgba(96, 165, 250, 0.1)' : 'transparent',
-            fontWeight: activeTab === 'skins' ? 'bold' : 'normal',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            transition: 'all 0.2s'
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg> Skins
-        </button>
-        <button
-          onClick={() => setActiveTab('models')}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: '0.75rem 1.5rem', borderRadius: '8px',
-            color: activeTab === 'models' ? '#10b981' : 'var(--text-secondary)',
-            backgroundColor: activeTab === 'models' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-            fontWeight: activeTab === 'models' ? 'bold' : 'normal',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            transition: 'all 0.2s'
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg> Moldes 3D
-        </button>
+          >
+            <Swords size={18} /> Monstros
+          </button>
+          <button
+            onClick={() => setActiveTab('pets')}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '0.75rem 1.5rem', borderRadius: '8px',
+              color: activeTab === 'pets' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+              backgroundColor: activeTab === 'pets' ? 'rgba(251, 191, 36, 0.1)' : 'transparent',
+              fontWeight: activeTab === 'pets' ? 'bold' : 'normal',
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            <Dog size={18} /> Pets
+          </button>
+          <button
+            onClick={() => setActiveTab('skins')}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '0.75rem 1.5rem', borderRadius: '8px',
+              color: activeTab === 'skins' ? '#60a5fa' : 'var(--text-secondary)',
+              backgroundColor: activeTab === 'skins' ? 'rgba(96, 165, 250, 0.1)' : 'transparent',
+              fontWeight: activeTab === 'skins' ? 'bold' : 'normal',
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg> Skins
+          </button>
+          <button
+            onClick={() => setActiveTab('models')}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '0.75rem 1.5rem', borderRadius: '8px',
+              color: activeTab === 'models' ? '#10b981' : 'var(--text-secondary)',
+              backgroundColor: activeTab === 'models' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+              fontWeight: activeTab === 'models' ? 'bold' : 'normal',
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg> Moldes 3D
+          </button>
         </div>
       </div>
 
@@ -174,13 +206,13 @@ export default function AdminEntitiesManager() {
               <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem' }}>Configuração de Jogadores</h3>
               <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Configure a aparência base do avatar.</span>
             </div>
-            <AvatarCustomizationModal 
+            <AvatarCustomizationModal
               key="player-modal"
-              isOpen={true} 
-              onClose={() => {}} 
-              isAdmin={true} 
-              inline={true} 
-              customSaveMode={false} 
+              isOpen={true}
+              onClose={() => { }}
+              isAdmin={true}
+              inline={true}
+              customSaveMode={false}
             />
           </div>
         )}
@@ -345,13 +377,22 @@ export default function AdminEntitiesManager() {
               <AvatarCustomizationModal
                 key={`monster-modal-${selectedMonsterForEdit ? selectedMonsterForEdit.id : (monsterModelUrl || 'new')}`}
                 isOpen={true}
-                onClose={() => {}}
+                onClose={() => { }}
                 isAdmin={true}
                 inline={true}
                 customSaveMode={true}
+                initialMonsterName={selectedMonsterForEdit ? selectedMonsterForEdit.name : ''}
+                initialSkinId={selectedMonsterForEdit ? selectedMonsterForEdit.id : null}
                 initialConfig={selectedMonsterForEdit ? selectedMonsterForEdit.parsedConfig : (monsterModelUrl ? { customModelUrl: monsterModelUrl } as any : undefined)}
-                onSave={() => {
+                onSave={(savedConfig, savedName) => {
                   fetchMonsters();
+                  if (selectedMonsterForEdit) {
+                    setSelectedMonsterForEdit(prev => prev ? {
+                      ...prev,
+                      name: savedName || prev.name,
+                      parsedConfig: savedConfig || prev.parsedConfig
+                    } : null);
+                  }
                 }}
               />
             </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, Copy, RefreshCcw, Volume2 } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, Copy, RefreshCcw, Volume2, Database } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -13,7 +13,8 @@ import AdminRankManager from '../components/AdminRankManager';
 import AdminEntitiesManager from '../components/AdminEntitiesManager';
 import AdminRolesManager from '../components/AdminRolesManager';
 import { usePermissions, fetchRoles, fetchUserRoles, assignRoleToUser, removeRoleFromUser, getPanelRoleName, panelLabel, baseRolePanelLabel, STANDARD_ROLE_NAMES_SET, type RoleDef } from '../lib/permissions';
-import AdminCompanionTipsManager from '../components/AdminCompanionTipsManager';
+import AdminSpeechesManager from '../components/AdminSpeechesManager';
+import AdminBanksHub from '../components/AdminBanksHub';
 import TenantSwitcher from '../components/TenantSwitcher';
 import AdminEconomySettings from '../components/AdminEconomySettings';
 import AiSettingsPanel from '../components/AiSettingsPanel';
@@ -21,6 +22,7 @@ import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
 import ArenaBgEditor from '../components/ArenaBgEditor';
 import AvatarCharacter, { type AvatarConfig, safeParseAvatarConfig } from '../components/AvatarCharacter';
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
+import ItemBankModal from '../components/ItemBankModal';
 import QuestionBankModal from '../components/QuestionBankModal';
 import QuestQuestionsEditor from '../components/QuestQuestionsEditor';
 import QuestConfigModal from '../components/QuestConfigModal';
@@ -490,12 +492,13 @@ export default function AdminDashboard() {
   // Guias internas do "Geral" e quem pode ver cada uma
   const generalTabOptions = [
     { key: 'config', label: 'Avaliação', icon: <Settings size={17} />, check: canView('config', 'view') },
+    { key: 'banks', label: 'Bancos', icon: <Database size={17} />, check: canView('banks', 'view') },
     { key: 'tenants', label: 'Escolas', icon: <GraduationCap size={17} />, check: isSuperAdmin && canView('tenants', 'view') },
     { key: 'users', label: 'Gerenciamento de Usuários', icon: <Users size={17} />, check: canView('users', 'view') },
     { key: 'roles', label: 'Hierarquias', icon: <ShieldCheck size={17} />, check: (userData?.role === 'admin' || userData?.role === 'superadmin') },
     { key: 'ranks', label: 'Patentes', icon: <Medal size={17} />, check: canView('ranks', 'view') },
     { key: 'classes', label: 'Turmas', icon: <BookOpen size={17} />, check: canView('classes', 'view') },
-    { key: 'companion', label: 'Tutorial', icon: <MessageCircle size={17} />, check: isSuperAdmin },
+    { key: 'speeches', label: 'Falas', icon: <MessageCircle size={17} />, check: isSuperAdmin || userData?.role === 'admin' },
   ];
   const canAccessGeneral = generalTabOptions.some(t => t.check);
   // Se o usuário tem acesso ao Gerenciamento de Usuários, ele é a primeira
@@ -512,8 +515,10 @@ export default function AdminDashboard() {
     : canView('entities', 'view') ? 'entities'
     : 'general';
   const [activeTab, setActiveTab] = useState('general');
-  const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'ranks' | 'roles' | 'tenants' | 'companion'>('users');
+  const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'banks' | 'ranks' | 'roles' | 'tenants' | 'speeches'>('users');
   const [showAudioBank, setShowAudioBank] = useState(false);
+  const [showAudioBankModal, setShowAudioBankModal] = useState(false);
+  const [showItemBank, setShowItemBank] = useState(false);
 
   // Ao abrir o painel, garante que a sub-aba do "Geral" é uma que o usuário
   // tem permissão de ver (evita cair no Gerenciamento de Usuários sem permissão).
@@ -2204,7 +2209,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
         {activeTab === 'general' && (
           <div className="general-tabs-wrap" style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--bg-card)', padding: '0.6rem 0', marginBottom: '0.9rem', borderBottom: '1px solid var(--border-glass)' }}>
             <div className="hide-scrollbar" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', whiteSpace: 'nowrap' }}>
-              {generalTabOptions.filter(t => t.check).sort((a, b) => a.label.localeCompare(b.label)).map(tab => (
+              {generalTabOptions.filter(t => t.check).map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => setGeneralTab(tab.key as any)}
@@ -2328,19 +2333,36 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
           </div>
         )}
 
-        {/* Aba de Dicas do Companheiro - Apenas Superadmin */}
-        {activeTab === 'general' && generalTab === 'companion' && isSuperAdmin && (
-          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <MessageCircle size={28} color="#fbbf24" />
-                Tutorial
-              </h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                Personalize as falas do personagem que aparece no cubo do jogador.
-              </p>
-            </div>
-            <AdminCompanionTipsManager />
+        {/* Sub-Aba: Bancos do Sistema */}
+        {activeTab === 'general' && generalTab === 'banks' && canView('banks', 'view') && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out', paddingTop: '0.5rem' }}>
+            <AdminBanksHub 
+              onNavigate={({ tab, generalSubTab, openModal }) => {
+                if (openModal === 'audio_bank') {
+                  setShowAudioBankModal(true);
+                  return;
+                }
+                if (openModal === 'item_bank') {
+                  setShowItemBank(true);
+                  return;
+                }
+                if (openModal === 'question_bank') {
+                  setShowQuestionBank(true);
+                  return;
+                }
+                setActiveTab(tab);
+                if (generalSubTab) {
+                  setGeneralTab(generalSubTab as any);
+                }
+              }} 
+            />
+          </div>
+        )}
+
+        {/* Sub-Aba: Falas (Tutorial e Missões) */}
+        {activeTab === 'general' && generalTab === 'speeches' && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out', paddingTop: '0.5rem' }}>
+            <AdminSpeechesManager />
           </div>
         )}
 
@@ -2844,7 +2866,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                                 <Star size={16} />
                               </button>
                             )}
-                            {(userData?.role === 'admin' || isSuperAdmin) && student.uid !== userData?.uid && (
+                            {((userData?.role === 'admin' || isSuperAdmin) || ((userData?.role === 'teacher' || userData?.role === 'coordinator') && (student.role === 'student' || student.role === 'pending_student'))) && student.uid !== userData?.uid && (
                               <button 
                                 className="login-btn" 
                                 onClick={async () => {
@@ -3849,6 +3871,34 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
           onClose={() => setShowQuestionBank(false)}
           onSelect={handleImportQuestionFromBank}
         />
+      )}
+
+      {showItemBank && (
+        <ItemBankModal
+          isOpen={showItemBank}
+          onClose={() => setShowItemBank(false)}
+          onImport={() => setShowItemBank(false)}
+        />
+      )}
+
+      {showAudioBankModal && (
+        <div className="modal-overlay" style={{ zIndex: 120 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: '1020px', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.75rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.4rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Volume2 size={24} color="#f97316" /> Banco Global de Áudio & Forja
+              </h3>
+              <button 
+                onClick={() => setShowAudioBankModal(false)} 
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.25rem' }}
+                title="Fechar"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <AudioBankManager />
+          </div>
+        </div>
       )}
 
       {showQuestQuestionsEditor && (

@@ -119,7 +119,7 @@ export default function Dashboard() {
   // Áreas que pertencem ao Painel Master (staff). Se o usuário (mesmo aluno)
   // tem função de hierarquia com permissão em alguma delas, mostra o botão.
   // 'themes' fica fora: aluno tem view-only (escolher tema), não administra.
-  const ADMIN_AREAS = ['users', 'quests_admin', 'items', 'economy', 'classes', 'approvals', 'config', 'ranks', 'entities', 'models', 'skins', 'debug3d', 'pre_authorized', 'tenants', 'companion', 'arena_debug'];
+  const ADMIN_AREAS = ['users', 'quests_admin', 'items', 'economy', 'classes', 'approvals', 'config', 'ranks', 'entities', 'models', 'skins', 'debug3d', 'pre_authorized', 'tenants', 'companion', 'arena_debug', 'banks'];
   const hasAdminAccess = ADMIN_AREAS.some(a => canView(a, 'view'));
   // Nome da função que dá título ao painel (função de hierarquia ou base)
   const [panelRoleName, setPanelRoleName] = useState(() => baseRolePanelLabel(userData?.role));

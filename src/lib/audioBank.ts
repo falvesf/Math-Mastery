@@ -131,3 +131,56 @@ export function playCoinCollect(coinSoundUrl?: string | null) {
     playCoinBlip();
   }
 }
+
+/** Som de explosão de fumaça / balão estourado ("PUFT!") gerado via Web Audio */
+export function playTransformPuffSound(kind: 'appear' | 'revert' = 'appear') {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+
+    // 1. Pop tonal (estouro de bexiga / desenho animado)
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = kind === 'appear' ? 'sine' : 'triangle';
+    const startFreq = kind === 'appear' ? 520 : 340;
+    const endFreq = kind === 'appear' ? 120 : 80;
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.12);
+    oscGain.gain.setValueAtTime(0.35, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.16);
+
+    // 2. Ruído de ar ("FSHHH / PUFT" - nuvem de fumaça expandindo)
+    const bufferSize = Math.floor(ctx.sampleRate * 0.22);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.28));
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(kind === 'appear' ? 1400 : 900, now);
+    filter.frequency.exponentialRampToValueAtTime(250, now + 0.2);
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.4, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+
+    setTimeout(() => ctx.close().catch(() => {}), 550);
+  } catch (e) {
+    /* ignore audio errors */
+  }
+}

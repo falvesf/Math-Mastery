@@ -21,6 +21,8 @@ import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../li
 import { getMaxAddsLimit } from '../lib/ranks';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { playSound, fadeOutAllSounds, playCoinCollect, resolveAudioUrl } from '../lib/audioBank';
+import type { PlayerBattleQuotes } from '../lib/playerQuotes';
+import { fetchPlayerBattleQuotes, pickPlayerBattleQuote, DEFAULT_PLAYER_BATTLE_QUOTES } from '../lib/playerQuotes';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 import DamageEffectOverlay from '../components/DamageEffectOverlay';
@@ -41,6 +43,7 @@ import {
   HEAL_MAX_ACTIVATIONS,
   rollBleedWound,
   playTransformSound,
+  playTransformPuffSound,
 } from '../lib/transformEffects';
 import {
   normalizeMonsterAttacks,
@@ -261,8 +264,9 @@ export default function QuestGameplay() {
   }, [transformState]);
 
   const triggerTransformPuff = (kind: 'appear' | 'revert') => {
+    playTransformPuffSound(kind);
     setTransformPuff({ id: Date.now() + Math.random(), kind });
-    setTimeout(() => setTransformPuff(null), 800);
+    setTimeout(() => setTransformPuff(null), 900);
   };
   // Camada estática das partes caídas (efeito estrondo): fica FORA do contêiner animado
   // do monstro, então as partes não seguem ataques/dano.
@@ -594,6 +598,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
   });
   
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [battleQuotes, setBattleQuotes] = useState<PlayerBattleQuotes>(DEFAULT_PLAYER_BATTLE_QUOTES);
+
+  useEffect(() => {
+    fetchPlayerBattleQuotes(tenantId).then(data => {
+      if (data) setBattleQuotes(data);
+    });
+  }, [tenantId]);
 
   // Resize handler
   useEffect(() => {
@@ -795,6 +806,53 @@ const dealTransformDamageToPlayer = (damage: number) => {
           monsterGruntSound: snap.monster_grunt_sound || snap.monsterGruntSound || '',
           monsterDamageSound: snap.monster_damage_sound || snap.monsterDamageSound || ''
         } as QuestDef;
+
+        // Se o monstro possui presetSkinId ou config direto em preset_skins, carrega sons/falas/drops dele
+        try {
+          const mCfg: any = qData.monsterAvatarConfig;
+          const presetId = mCfg?.presetSkinId;
+          if (presetId) {
+            const { data: pSkin } = await supabase.from('preset_skins').select('config').eq('id', presetId).maybeSingle();
+            if (pSkin?.config) {
+              const parsed = typeof pSkin.config === 'string' ? JSON.parse(pSkin.config) : pSkin.config;
+              if (parsed.gender) qData.monsterGender = parsed.gender;
+              if (parsed.attackSound) qData.monsterAttackSound = parsed.attackSound;
+              if (parsed.gruntSound) qData.monsterGruntSound = parsed.gruntSound;
+              if (parsed.damageSound) qData.monsterDamageSound = parsed.damageSound;
+              if (parsed.quotes) {
+                qData.monsterQuotes = {
+                  hp100_80: parsed.quotes.hp100_80 || '',
+                  hp79_50: parsed.quotes.hp79_50 || '',
+                  hp49_25: parsed.quotes.hp49_25 || '',
+                  hp24_0: parsed.quotes.hp24_0 || '',
+                };
+                if (parsed.quotes.defeat) qData.monsterDefeatQuotes = parsed.quotes.defeat;
+              }
+              if (Array.isArray(parsed.drops) && parsed.drops.length > 0) {
+                qData.monsterDrops = parsed.drops;
+              }
+            }
+          } else if (mCfg) {
+            if (mCfg.gender) qData.monsterGender = mCfg.gender;
+            if (mCfg.attackSound) qData.monsterAttackSound = mCfg.attackSound;
+            if (mCfg.gruntSound) qData.monsterGruntSound = mCfg.gruntSound;
+            if (mCfg.damageSound) qData.monsterDamageSound = mCfg.damageSound;
+            if (mCfg.quotes) {
+              qData.monsterQuotes = {
+                hp100_80: mCfg.quotes.hp100_80 || '',
+                hp79_50: mCfg.quotes.hp79_50 || '',
+                hp49_25: mCfg.quotes.hp49_25 || '',
+                hp24_0: mCfg.quotes.hp24_0 || '',
+              };
+              if (mCfg.quotes.defeat) qData.monsterDefeatQuotes = mCfg.quotes.defeat;
+            }
+            if (Array.isArray(mCfg.drops) && mCfg.drops.length > 0) {
+              qData.monsterDrops = mCfg.drops;
+            }
+          }
+        } catch (e) {
+          console.warn('Erro ao resolver atributos estendidos do monstro:', e);
+        }
         
         // Isolamento por escola: impedir que aluno de outra escola acesse a missão
         if (userData.role !== 'admin' && tenantId) {
@@ -1214,6 +1272,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setMonsterBodyThrow(false);
 
     if (isPlayerWinning) {
+      // O monstro foi derrotado: cessa imediatamente fúria, cura e qualquer buff benéfico!
+      setMonsterRageActive(false);
+      setMonsterHealPulse(false);
+      setMonsterBubble('');
+      if (transformRef.current) {
+        transformRef.current.enraged = false;
+        setTransformState(prev => prev ? { ...prev, enraged: false } : null);
+      }
       setPlayerBleeds([]);
       setPlayerPoisonTurns(0);
       setPlayerBurnTurns(0);
@@ -1271,7 +1337,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     
     if (isPlayerWinning) {
       setPlayerAnim('idle');
-      setPlayerBubble('Eu venci!');
+      const victoryQuote = getDynamicQuote((currentHearts / maxHearts) * 100, 'player', 'victory') || 'Eu venci!';
+      setPlayerBubble(victoryQuote);
       // A música de combate vai parando gradualmente antes do golpe final (a de vitória toca depois)
       fadeOutMusic(2400);
       
@@ -1290,13 +1357,19 @@ const dealTransformDamageToPlayer = (damage: number) => {
         
         // Espera para o monstro sentir o golpe
         const impactDelay = hasAttackWeapon ? 1125 : 600;
-        setTimeout(() => setMonsterAnim('hurt'), impactDelay);
+        setTimeout(() => {
+          setMonsterAnim('hurt');
+          setMonsterRageActive(false);
+          setMonsterHealPulse(false);
+        }, impactDelay);
         
         // Efeito do fatality entra ANTES do golpe visual (compensa o start do áudio)
         setTimeout(() => playFatalitySound(fatality), 1700);
 
         setTimeout(() => {
           setMonsterAnim(fatality);
+          setMonsterRageActive(false);
+          setMonsterHealPulse(false);
           // Fatality de corte: captura o modelo GLB atual como "foto" (evita renderizar
           // 2 viewers 3D — que travavam/faziam o monstro sumir) e corta a imagem.
           if (fatality === 'death-slice' && monsterCanvasRef.current) {
@@ -1371,84 +1444,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
     }
   };
 
-  const playerQuotesByHp = {
-    hp100_80: [
-      "Lá vou eu!",
-      "Segura essa!",
-      "Eu sou invencível!",
-      "Você não pode comigo!",
-      "Não vai chorar, heim!"
-    ],
-    hp79_50: [
-      "Você luta bem, mas eu vou vencer!",
-      "Eu estou em vantagem.",
-      "A vitória será minha!",
-      "Não vou perdoar esse ataque!"
-    ],
-    hp49_25: [
-      "Você é um adversário digno, mas eu sou melhor!",
-      "Ahhh!!!",
-      "Toma essa!",
-      "Você não vai me vencer!"
-    ],
-    hp24_0: [
-      "Eu ainda não desisti!",
-      "Arghhhhh!!",
-      "Eu vou conseguir!",
-      "Nada vai me desanimar.",
-      "Você é um adversário formidável!"
-    ]
-  };
-
-  // Falas baseadas no nível de estresse da luta
-  const playerQuotesByStress = {
-    easy: [
-      "Essa foi fácil!",
-      "Não deu nem para o começo!",
-      "Muito simples!",
-      "Próximo!",
-      "Sem esforço!"
-    ],
-    tense: [
-      "Deu para suar um pouco!",
-      "Foi uma boa luta!",
-      "Quase complicou!",
-      "Essa foi acirrada!",
-      "Boa tentativa!"
-    ],
-    epic: [
-      "Essa foi por pouco!",
-      "Não foi fácil, mas venci!",
-      "Ufa! Consegui!",
-      "Por um triz!",
-      "Que luta intensa!"
-    ]
-  };
-
-  const getDynamicQuote = (hpPercentage: number, source: 'player' | 'monster') => {
-    // 25% chance to speak
-    if (Math.random() > 0.25) return null;
-
-    let quotesArray: string[] = [];
-    
+  const getDynamicQuote = (hpPercentage: number, source: 'player' | 'monster', event?: 'critical' | 'hurt' | 'victory') => {
     if (source === 'player') {
-      // 50% de chance de usar fala baseada em estresse, 50% baseada em HP
-      if (stressLevel >= 0.35 && Math.random() < 0.6) {
-        // Luta épica ou tensa
-        quotesArray = stressLevel >= 0.65 
-          ? playerQuotesByStress.epic 
-          : playerQuotesByStress.tense;
-      } else if (stressLevel < 0.25 && Math.random() < 0.35) {
-        // Luta fácil
-        quotesArray = playerQuotesByStress.easy;
-      } else {
-        // Fallback para falas baseadas em HP
-        if (hpPercentage >= 80) quotesArray = playerQuotesByHp.hp100_80;
-        else if (hpPercentage >= 50) quotesArray = playerQuotesByHp.hp79_50;
-        else if (hpPercentage >= 25) quotesArray = playerQuotesByHp.hp49_25;
-        else quotesArray = playerQuotesByHp.hp24_0;
-      }
+      return pickPlayerBattleQuote(battleQuotes, hpPercentage, stressLevel, event);
     } else {
+      // 25% chance to speak
+      if (Math.random() > 0.25) return null;
+
+      let quotesArray: string[] = [];
       const custom = quest?.monsterQuotes;
       let rawQuotes = '';
       if (hpPercentage >= 80) rawQuotes = custom?.hp100_80 || '';
@@ -1461,10 +1464,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
       } else {
         quotesArray = ["Grrrr!", "Roar!!!"];
       }
-    }
 
-    if (quotesArray.length === 0) return null;
-    return quotesArray[Math.floor(Math.random() * quotesArray.length)];
+      if (quotesArray.length === 0) return null;
+      return quotesArray[Math.floor(Math.random() * quotesArray.length)];
+    }
   };
 
   const handleAnswer = async (optIndex: number) => {
@@ -1530,8 +1533,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
       }
 
       const playerHpPercentage = (currentHearts / maxHearts) * 100;
-      const quote = getDynamicQuote(playerHpPercentage, 'player');
-      if (quote && !isCritical) setPlayerBubble(quote);
+      const quote = isCritical
+        ? getDynamicQuote(playerHpPercentage, 'player', 'critical')
+        : getDynamicQuote(playerHpPercentage, 'player');
+      if (quote) setPlayerBubble(quote);
 
       const nextQExists = currentQIndex < quest.questions.length - 1;
 
@@ -1734,6 +1739,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
             updateUserHearts(finalHearts);
           }
         });
+
+        const hurtQuote = getDynamicQuote((finalHearts / maxHearts) * 100, 'player', 'hurt');
+        if (hurtQuote) setPlayerBubble(hurtQuote);
 
         const hpLostRatio = 1 - (finalHearts / maxHearts);
         setStressFactors(prev => ({ ...prev, hpLost: hpLostRatio }));
@@ -2019,6 +2027,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         setTransformState(null);
         coelhoDropRef.current = 0;
         setCoelhoTransformHits(0);
+        triggerTransformPuff('revert');
 
         if (tr.animal !== 'rato') setBattleMessage(`${TRANSFORM_LABELS[tr.animal]} voltou ao normal!`);
       } else {
@@ -3051,12 +3060,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 monsterProceduralAnim === 'dance_transform' ? 'anim-dance-magic' :
                 monsterProceduralAnim === 'roar_shockwave' ? 'anim-roar-wave' :
                 monsterBodyThrow ? 'monster-body-throw' : ''
-              } ${effectiveMonsterModelUrl ? 'is-3d' : ''} ${monsterRageActive ? 'monster-enraged-wrap' : ''}`}
+              } ${effectiveMonsterModelUrl ? 'is-3d' : ''}`}
               style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? 35 : (monsterAnim.startsWith('attack') || monsterAnim.startsWith('death-') || monsterProceduralAnim || monsterBodyThrow) ? 30 : 26, pointerEvents: 'none' }}
             >
-              {monsterRageActive && <div className="monster-rage-aura-back" />}
-              {monsterRageActive && <div className="monster-rage-aura-front" />}
-              {monsterRageActive && <div className="monster-rage-badge" title="Enfurecido!">💢</div>}
               {monsterHealPulse && <div className="monster-heal-pulse" />}
               {(monsterBubble || arenaDebug.monsterBubbleAlwaysOn) && (
                 <div className="speech-bubble monster debug-bubble" style={{ '--bubble-max-w': `${arenaDebug.monsterBubbleMaxWidth || 200}px`, '--bubble-font': `${arenaDebug.monsterBubbleFontSize || 14}px`, '--bubble-rotate': `${arenaDebug.monsterBubbleRotate || 0}deg`, position: 'absolute', left: `calc(50% + ${arenaDebug.monsterBubbleX}px)`, top: `${arenaDebug.monsterBubbleY}px`, bottom: 'auto', transform: 'translateX(-50%)', zIndex: 30 } as any}>
@@ -3192,17 +3198,27 @@ const isPig = tr.animal === 'porco';
                   <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} drainBlink={drainBlink} />
                   {transformPuff && (
                     <div key={transformPuff.id} className={`transform-puff${transformPuff.kind === 'revert' ? ' puff-revert' : ''}`}>
-                      <span className="puff-blob" />
-                      <span className="puff-blob" style={{ left: '32%', top: '28%', animationDelay: '0.08s' }} />
-                      <span className="puff-blob" style={{ left: '68%', top: '34%', animationDelay: '0.15s' }} />
-                      <span className="puff-blob" style={{ left: '45%', top: '70%', animationDelay: '0.22s' }} />
-                      {transformPuff.kind === 'appear' && (
-                        <>
-                          <span className="puff-sparkle" style={{ left: '25%', top: '20%' }} />
-                          <span className="puff-sparkle" style={{ left: '75%', top: '30%', animationDelay: '0.1s' }} />
-                          <span className="puff-sparkle" style={{ left: '40%', top: '80%', animationDelay: '0.18s' }} />
-                        </>
-                      )}
+                      <div className="puff-shockwave-ring" />
+                      <span className="puff-blob puff-blob-center" />
+                      <span className="puff-blob" style={{ left: '22%', top: '24%', animationDelay: '0.03s' }} />
+                      <span className="puff-blob" style={{ left: '76%', top: '26%', animationDelay: '0.06s' }} />
+                      <span className="puff-blob" style={{ left: '18%', top: '64%', animationDelay: '0.08s' }} />
+                      <span className="puff-blob" style={{ left: '78%', top: '66%', animationDelay: '0.10s' }} />
+                      <span className="puff-blob" style={{ left: '50%', top: '16%', animationDelay: '0.04s' }} />
+                      <span className="puff-blob" style={{ left: '50%', top: '80%', animationDelay: '0.09s' }} />
+                      <span className="puff-blob" style={{ left: '34%', top: '46%', animationDelay: '0.07s' }} />
+                      <span className="puff-blob" style={{ left: '66%', top: '50%', animationDelay: '0.11s' }} />
+
+                      <span className="puff-sparkle" style={{ left: '16%', top: '18%', animationDelay: '0.03s', '--sparkle-x': '-30px', '--sparkle-y': '-30px' } as any} />
+                      <span className="puff-sparkle" style={{ left: '84%', top: '20%', animationDelay: '0.07s', '--sparkle-x': '30px', '--sparkle-y': '-30px' } as any} />
+                      <span className="puff-sparkle" style={{ left: '20%', top: '78%', animationDelay: '0.10s', '--sparkle-x': '-30px', '--sparkle-y': '30px' } as any} />
+                      <span className="puff-sparkle" style={{ left: '82%', top: '76%', animationDelay: '0.13s', '--sparkle-x': '30px', '--sparkle-y': '30px' } as any} />
+                      <span className="puff-sparkle" style={{ left: '50%', top: '8%', animationDelay: '0.02s', '--sparkle-x': '0px', '--sparkle-y': '-35px' } as any} />
+                      <span className="puff-sparkle" style={{ left: '50%', top: '88%', animationDelay: '0.09s', '--sparkle-x': '0px', '--sparkle-y': '35px' } as any} />
+
+                      <div className="puff-comic-badge">
+                        <span className="puff-comic-text">PUFT!</span>
+                      </div>
                     </div>
                   )}
 

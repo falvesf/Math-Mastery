@@ -47,6 +47,7 @@ export const AREAS: AreaDef[] = [
   { key: 'companion', label: 'Companheiro' },
   { key: 'themes', label: 'Temas' },
   { key: 'arena_debug', label: 'Arena Debug' },
+  { key: 'banks', label: 'Bancos' },
 ];
 
 const FULL = (): PermAction => ({ view: true, create: true, update: true, delete: true });
@@ -60,28 +61,28 @@ const STANDARD_ROLE_PERMS: Record<string, Record<string, PermAction>> = {
     users: FULL(), quests_admin: FULL(), items: FULL(), economy: FULL(), classes: FULL(),
     approvals: FULL(), config: FULL(), ranks: FULL(), entities: FULL(), models: FULL(),
     skins: FULL(), debug3d: FULL(), pre_authorized: FULL(), tenants: FULL(), companion: FULL(),
-    themes: FULL(), arena_debug: FULL(),
+    themes: FULL(), arena_debug: FULL(), banks: FULL(),
   },
   coordinator: {
     quests: FULL(), profile: FULL(), ranking: FULL(), store: FULL(), inventory: FULL(),
     users: FULL(), quests_admin: FULL(), items: FULL(), economy: FULL(), classes: FULL(),
     approvals: FULL(), config: FULL(), ranks: FULL(), entities: FULL(), models: FULL(),
     skins: FULL(), debug3d: FULL(), pre_authorized: FULL(), tenants: NONE(), companion: NONE(),
-    themes: FULL(), arena_debug: VIEW_ONLY(),
+    themes: FULL(), arena_debug: VIEW_ONLY(), banks: FULL(),
   },
   teacher: {
     quests: FULL(), profile: FULL(), ranking: FULL(), store: FULL(), inventory: FULL(),
     users: VIEW_ONLY(), quests_admin: FULL(), items: FULL(), economy: NONE(), classes: VIEW_ONLY(),
     approvals: VIEW_ONLY(), config: NONE(), ranks: VIEW_ONLY(), entities: VIEW_ONLY(), models: VIEW_ONLY(),
     skins: VIEW_ONLY(), debug3d: NONE(), pre_authorized: VIEW_ONLY(), tenants: NONE(), companion: NONE(),
-    themes: FULL(), arena_debug: NONE(),
+    themes: FULL(), arena_debug: NONE(), banks: NONE(),
   },
   student: {
     quests: VIEW_ONLY(), profile: FULL(), ranking: VIEW_ONLY(), store: VIEW_ONLY(), inventory: VIEW_ONLY(),
     users: NONE(), quests_admin: NONE(), items: NONE(), economy: NONE(), classes: NONE(),
     approvals: NONE(), config: NONE(), ranks: NONE(), entities: NONE(), models: NONE(),
     skins: NONE(), debug3d: NONE(), pre_authorized: NONE(), tenants: NONE(), companion: NONE(),
-    themes: VIEW_ONLY(), arena_debug: NONE(),
+    themes: VIEW_ONLY(), arena_debug: NONE(), banks: NONE(),
   },
 };
 

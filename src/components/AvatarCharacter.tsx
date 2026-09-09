@@ -56,6 +56,13 @@ export interface AvatarConfig {
   actionPoses?: Partial<Record<'idle' | 'walk' | 'run' | 'attack', CharacterPose>>;
   /** Configuração de ataques do monstro */
   attacks?: any;
+  /** Sons do monstro */
+  attackSound?: string;
+  gruntSound?: string;
+  damageSound?: string;
+  /** Falas e Drops do monstro */
+  quotes?: any;
+  drops?: any[];
   /** ID da skin ou monstro pré-definido original */
   presetSkinId?: string;
 }
@@ -2776,7 +2783,7 @@ if (config?.customModelUrl) {
           transform: `translate(-50%, -50%) translateY(${Math.max(0, ((config?.customZoom || 1) - 1) * 40)}px)`,
           zIndex: 1,
           outline: 'none',
-          pointerEvents: 'auto',
+          pointerEvents: (interactive || !!onAvatarClick) ? 'auto' : 'none',
           cursor: onAvatarClick ? 'pointer' : 'default'
         }} 
       />

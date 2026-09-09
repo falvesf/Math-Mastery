@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Component, type ReactNode } from 'react';
 import { X, Shield, Swords, Trophy, Crosshair, Skull, UserPlus, UserMinus, History, Package, Star } from 'lucide-react';
 import AvatarCharacter, { type EquippedItem } from './AvatarCharacter';
 import { type UserData } from '../contexts/AuthContext';
@@ -10,6 +10,27 @@ import { fetchStudentAchievementHistory, type AchievementItem } from '../lib/ach
 import { getCustomRoleName } from '../lib/permissions';
 import { useTenant } from '../contexts/TenantContext';
 import NintendoHeart from './NintendoHeart';
+
+class ProfileContentErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; errorText: string }> {
+  state = { hasError: false, errorText: '' };
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, errorText: String(error?.message || error) };
+  }
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error('[PublicProfileModal Content Error]', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '1.5rem', background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', borderRadius: '12px', color: '#fca5a5', margin: '1rem 0' }}>
+          <h4 style={{ margin: '0 0 0.5rem 0', color: '#ef4444' }}>Ocorreu um erro ao exibir esta aba</h4>
+          <p style={{ margin: 0, fontSize: '0.85rem' }}>{this.state.errorText}</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface PublicProfileModalProps {
   isOpen: boolean;
@@ -28,6 +49,11 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
   const [loading, setLoading] = useState(true);
   const { tenantId } = useTenant();
   const [customRoleName, setCustomRoleName] = useState('');
+  const { userData: currentUser } = useAuth();
+  const [isContact, setIsContact] = useState(false);
+  const [liveHp, setLiveHp] = useState<number | null>(null);
+  const [recoveryStartMs, setRecoveryStartMs] = useState<number | null>(null);
+  const [, setHpTick] = useState(0);
 
   // Função de hierarquia (customizada) — badge discreto, ex: Designer
   useEffect(() => {
@@ -77,19 +103,6 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
     fetchStats();
   }, [isOpen, user.uid]);
 
-  if (!isOpen) return null;
-
-  // Se for privado, não exibe os detalhes
-  const isPrivate = user.isProfilePublic === false;
-
-  const totalDefense = equippedItems.reduce((acc, item) => item.baseAttributeType === 'defense' ? acc + (item.baseAttributeValue || 0) : acc, 0);
-  const totalAttack = equippedItems.reduce((acc, item) => item.baseAttributeType === 'attack' ? acc + (item.baseAttributeValue || 0) : acc, 0);
-
-  const petItem = equippedItems.find(i => (i.itemCategory as string) === 'pet');
-
-  const { userData: currentUser } = useAuth();
-  const [isContact, setIsContact] = useState(false);
-
   useEffect(() => {
     if (!isOpen || !user.uid || !currentUser?.uid) return;
     const check = async () => {
@@ -104,34 +117,24 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
     check();
   }, [isOpen, user.uid, currentUser?.uid]);
 
-  const handleAddContact = async () => {
-    if (!currentUser?.uid || !user.uid || currentUser.uid === user.uid) return;
-    if (isContact) {
-      const { error } = await supabase.from('user_friends').delete().eq('user_id', currentUser.uid).eq('friend_id', user.uid);
-      if (!error) setIsContact(false);
-    } else {
-      const { error } = await supabase
-        .from('user_friends')
-        .upsert({ user_id: currentUser.uid, friend_id: user.uid }, { onConflict: 'user_id,friend_id' });
-      if (!error) setIsContact(true);
-    }
-  };
-
-  const stats = calculateTotalStats(equippedItems, user.distributedStats);
-  const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === rankName) || 0) / 2) + Math.floor(stats.vitality / 30);
-
-  // Busca o HP REAL do usuário no banco quando o perfil abre (o objeto `user` é um
-  // snapshot antigo da listagem, que não reflete a recuperação/estado atual) e
-  // recalcula a recuperação de corações ao vivo, igual ao Dashboard.
-  const [liveHp, setLiveHp] = useState<number | null>(null);
-  const [recoveryStartMs, setRecoveryStartMs] = useState<number | null>(null);
-  const [, setHpTick] = useState(0);
-
   useEffect(() => {
     if (!isOpen) return;
     const id = setInterval(() => setHpTick(t => t + 1), 1000);
     return () => clearInterval(id);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Valores computados
+  const stats = calculateTotalStats(equippedItems, user.distributedStats);
+  const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === rankName) || 0) / 2) + Math.floor(stats.vitality / 30);
 
   useEffect(() => {
     if (!isOpen || !user.uid) return;
@@ -152,7 +155,30 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
     };
     fetchFreshHp();
     return () => { active = false; };
-  }, [isOpen, user.uid]);
+  }, [isOpen, user.uid, maxHearts]);
+
+  if (!isOpen) return null;
+
+  // Se for privado, não exibe os detalhes
+  const isPrivate = user.isProfilePublic === false;
+
+  const totalDefense = equippedItems.reduce((acc, item) => item.baseAttributeType === 'defense' ? acc + (item.baseAttributeValue || 0) : acc, 0);
+  const totalAttack = equippedItems.reduce((acc, item) => item.baseAttributeType === 'attack' ? acc + (item.baseAttributeValue || 0) : acc, 0);
+
+  const petItem = equippedItems.find(i => (i.itemCategory as string) === 'pet');
+
+  const handleAddContact = async () => {
+    if (!currentUser?.uid || !user.uid || currentUser.uid === user.uid) return;
+    if (isContact) {
+      const { error } = await supabase.from('user_friends').delete().eq('user_id', currentUser.uid).eq('friend_id', user.uid);
+      if (!error) setIsContact(false);
+    } else {
+      const { error } = await supabase
+        .from('user_friends')
+        .upsert({ user_id: currentUser.uid, friend_id: user.uid }, { onConflict: 'user_id,friend_id' });
+      if (!error) setIsContact(true);
+    }
+  };
 
   let visualHp = liveHp !== null ? liveHp : (user.hp !== undefined ? Number(user.hp) : maxHearts);
   if (recoveryStartMs && visualHp < maxHearts) {
@@ -181,32 +207,84 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
   else if (rankPos === 3) bgGradient = 'linear-gradient(180deg, rgba(180, 83, 9, 0.3) 0%, rgba(0,0,0,0.5) 100%)'; // Bronze
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(5px)', padding: '1rem' }}>
-      <div className="glass-panel" style={{ width: '100%', maxWidth: '950px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', padding: '0' }}>
-        
-        <button onClick={onClose} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'var(--btn-bg)', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-          <X size={24} />
+    <div 
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(5px)', padding: '1rem' }}
+    >
+      <div 
+        className="glass-panel" 
+        style={{ 
+          width: '100%', 
+          maxWidth: '950px', 
+          maxHeight: '90vh', 
+          position: 'relative', 
+          padding: '0',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}
+      >
+        <button 
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          aria-label="Fechar perfil"
+          style={{ 
+            position: 'absolute', 
+            top: '1rem', 
+            right: '1rem', 
+            background: 'rgba(25, 25, 35, 0.85)', 
+            border: '1px solid rgba(255, 255, 255, 0.25)', 
+            color: 'var(--text-primary, #ffffff)', 
+            cursor: 'pointer', 
+            borderRadius: '50%', 
+            width: '42px', 
+            height: '42px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            zIndex: 100,
+            pointerEvents: 'auto',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)';
+            e.currentTarget.style.transform = 'scale(1.08)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(25, 25, 35, 0.85)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <X size={22} />
         </button>
 
-        <div className="profile-modal-grid" style={{ padding: '2rem', background: bgGradient, minHeight: '100%' }}>
+        <div className="profile-modal-grid" style={{ padding: '2rem', background: bgGradient, flex: 1, overflowY: 'auto', maxHeight: '90vh' }}>
           
           {/* Lado Esquerdo: Avatar, Nome, HP */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ position: 'relative', width: 220, height: 220, borderRadius: '50%', background: 'var(--bg-dark)', border: `4px solid ${rankColor}`, boxShadow: `0 0 30px ${rankColor}60`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', marginBottom: '1.5rem' }}>
-              {user.avatarConfig ? (
-                <AvatarCharacter 
-                  config={user.avatarConfig} 
-                  equippedItems={equippedItems} 
-                  size={200} 
-                  interactive={false} 
-                  animation="idle" 
-                  showSlots={false} 
-                />
-              ) : (
-                <img src={user.photoURL} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-              )}
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                {user.avatarConfig ? (
+                  <AvatarCharacter 
+                    config={user.avatarConfig} 
+                    equippedItems={equippedItems} 
+                    size={200} 
+                    interactive={false} 
+                    animation="idle" 
+                    showSlots={false} 
+                  />
+                ) : (
+                  <img src={user.photoURL} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                )}
+              </div>
               
-              <div style={{ position: 'absolute', bottom: -15, background: 'var(--bg-dark)', padding: '0.4rem 1.5rem', borderRadius: '20px', border: `2px solid ${rankColor}`, color: rankColor, fontWeight: 'bold', fontSize: '1.1rem', whiteSpace: 'nowrap', zIndex: 10, textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
+              <div style={{ position: 'absolute', bottom: -15, background: 'var(--bg-dark)', padding: '0.4rem 1.5rem', borderRadius: '20px', border: `2px solid ${rankColor}`, color: rankColor, fontWeight: 'bold', fontSize: '1.1rem', whiteSpace: 'nowrap', zIndex: 10, textShadow: '1px 1px 2px rgba(0,0,0,0.8)', pointerEvents: 'none' }}>
                 {rankName}
               </div>
             </div>
@@ -236,13 +314,16 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
               ))}
             </div>
             <button
+              type="button"
               onClick={handleAddContact}
               style={{
                 marginTop: '1rem', padding: '0.5rem 1.2rem', borderRadius: '20px',
                 background: isContact ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.2)',
                 border: isContact ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(16,185,129,0.5)',
                 color: isContact ? '#f87171' : '#10b981', cursor: 'pointer',
-                fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem'
+                fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem',
+                position: 'relative',
+                zIndex: 20
               }}
             >
               {isContact ? <UserMinus size={16} /> : <UserPlus size={16} />}
@@ -261,8 +342,9 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
             ) : (
               <div>
                 {/* Abas */}
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.5rem', position: 'relative', zIndex: 20 }}>
                   <button 
+                    type="button"
                     onClick={() => setActiveTab('stats')}
                     style={{
                       padding: '0.5rem 1rem',
@@ -275,12 +357,15 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.4rem',
-                      fontSize: '0.95rem'
+                      fontSize: '0.95rem',
+                      position: 'relative',
+                      zIndex: 21
                     }}
                   >
                     <Trophy size={16} /> Status & Estatísticas
                   </button>
                   <button 
+                    type="button"
                     onClick={() => setActiveTab('history')}
                     style={{
                       padding: '0.5rem 1rem',
@@ -293,12 +378,16 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.4rem',
-                      fontSize: '0.95rem'
+                      fontSize: '0.95rem',
+                      position: 'relative',
+                      zIndex: 21
                     }}
                   >
                     <History size={16} /> Histórico de Conquistas
                   </button>
                 </div>
+
+                <ProfileContentErrorBoundary key={activeTab}>
 
                 {activeTab === 'stats' ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
@@ -392,6 +481,9 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                         }
 
                         const dateObj = new Date(item.timestamp);
+                        const isValidDate = !isNaN(dateObj.getTime());
+                        const formattedDate = isValidDate ? dateObj.toLocaleDateString('pt-BR') : (item.rawDate || '');
+                        const formattedTime = isValidDate ? dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
                         return (
                           <div key={item.id || index} style={{ padding: '0.9rem 1.1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', borderLeft: `4px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
@@ -413,7 +505,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                                   </p>
                                 )}
                                 <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
-                                  Data: {dateObj.toLocaleDateString('pt-BR')} | Hora: {dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                  Data: {formattedDate} {formattedTime ? `| Hora: ${formattedTime}` : ''}
                                 </span>
                               </div>
                             </div>
@@ -426,6 +518,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                     )}
                   </div>
                 )}
+                </ProfileContentErrorBoundary>
               </div>
             )}
           </div>

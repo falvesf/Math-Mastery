@@ -1295,7 +1295,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   <Package size={18} /> Banco de Itens
                 </button>
               )}
-              {canItems('items', 'create') && (
+              {(isSuperAdmin || canItems('banks', 'view')) && (
                 <button className="login-btn" onClick={async () => { setForgeSoundsConfig(await fetchForgeSounds(tenantId)); setShowForgeSounds(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(234, 88, 12, 0.15)', color: '#f97316', border: '1px solid rgba(234, 88, 12, 0.4)' }}>
                   <Volume2 size={18} /> Sons da Forja
                 </button>
@@ -2633,7 +2633,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       )}
 
       {/* Modal: Sons da Forja & Transmutação */}
-      {showForgeSounds && createPortal(
+      {showForgeSounds && (isSuperAdmin || canItems('banks', 'view')) && createPortal(
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000001, padding: '1rem' }}
           onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForgeSounds(false); }}
         >
