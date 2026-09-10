@@ -214,22 +214,22 @@ const togglePlay = (u: string) => {
 
       {isEditing && (
         <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-glass)', marginBottom: '1rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome (ex: Ataque Espada)" style={{ padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <select value={category} onChange={e => setCategory(e.target.value)} style={{ padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+              <select value={category} onChange={e => setCategory(e.target.value)} style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
                 {AUDIO_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
-              <select value={gender} onChange={e => setGender(e.target.value)} style={{ padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+              <select value={gender} onChange={e => setGender(e.target.value)} style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
                 <option value="">Gênero (neutro)</option>
                 <option value="male">Masculino ♂</option>
                 <option value="female">Feminino ♀</option>
               </select>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="URL do áudio..." style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
-            <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setUrl} buttonStyle={{ minHeight: '100%', padding: '0 0.75rem' }} />
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', width: '100%', minWidth: 0 }}>
+            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="URL do áudio..." style={{ flex: 1, minWidth: 0, padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+            <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setUrl} buttonStyle={{ flexShrink: 0, minHeight: '100%', padding: '0 0.75rem' }} />
           </div>
           {url && <audio controls src={url} style={{ width: '100%', height: '40px', marginBottom: '0.75rem' }} />}
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
@@ -267,18 +267,18 @@ const togglePlay = (u: string) => {
         <p style={{ margin: '0 0 0.75rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
           Toca quando o jogador RECEBE dano na batalha, conforme o gênero do avatar. Aplica a todas as escolas.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
           {(['male', 'female'] as const).map(g => {
             const val = g === 'male' ? playerDamageMale : playerDamageFemale;
             const setVal = g === 'male' ? setPlayerDamageMale : setPlayerDamageFemale;
             return (
-              <div key={g}>
-                <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.3rem' }}>{g === 'male' ? 'Masculino ♂' : 'Feminino ♀'}</label>
-                <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                  <input value={val} onChange={e => setVal(e.target.value)} placeholder="URL..." style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
-<button onClick={() => togglePlay(val)} disabled={!val} style={{ padding: '0.4rem 0.6rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }} title="Ouvir">{playingUrl === val ? '⏹' : '▶'}</button>
-                  <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setVal} buttonStyle={{ padding: '0.35rem 0.6rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}>Upload</DirectUploadButton>
-                  <button onClick={() => setDamagePickerFor(g)} style={{ padding: '0.4rem 0.7rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco</button>
+              <div key={g} style={{ minWidth: 0 }}>
+                <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.3rem', fontWeight: 500 }}>{g === 'male' ? 'Masculino ♂' : 'Feminino ♀'}</label>
+                <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', width: '100%', minWidth: 0 }}>
+                  <input value={val} onChange={e => setVal(e.target.value)} placeholder="URL..." style={{ flex: 1, minWidth: 0, padding: '0.5rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                  <button onClick={() => togglePlay(val)} disabled={!val} style={{ flexShrink: 0, padding: '0.4rem 0.6rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }} title="Ouvir">{playingUrl === val ? '⏹' : '▶'}</button>
+                  <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setVal} buttonStyle={{ flexShrink: 0, padding: '0.35rem 0.6rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}>Upload</DirectUploadButton>
+                  <button onClick={() => setDamagePickerFor(g)} style={{ flexShrink: 0, padding: '0.4rem 0.7rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco</button>
                 </div>
               </div>
             );
@@ -305,12 +305,14 @@ const togglePlay = (u: string) => {
           ['fatalExplode', '💀 Fatalidade — Explosão', fatalExplodeSound, setFatalExplodeSound, ''],
         // @ts-ignore
         ] as const).map(([key, label, val, setVal, gender]) => (
-          <div key={key} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <label style={{ width: '180px', color: 'var(--text-secondary)', fontSize: '0.8rem', flexShrink: 0 }}>{label}</label>
-            <input value={val} onChange={e => setVal(e.target.value)} placeholder="URL..." style={{ flex: 1, padding: '0.45rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
-<button onClick={() => togglePlay(val)} disabled={!val} style={{ padding: '0.35rem 0.55rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{playingUrl === val ? '⏹' : '▶'}</button>
-            <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setVal as (v: string) => void} buttonStyle={{ padding: '0.3rem 0.55rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}>Upload</DirectUploadButton>
-            <button onClick={() => setBattlePickerFor(key as any)} style={{ padding: '0.35rem 0.65rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco</button>
+          <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.65rem' }}>
+            <label style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>{label}</label>
+            <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', width: '100%', minWidth: 0 }}>
+              <input value={val} onChange={e => setVal(e.target.value)} placeholder="URL..." style={{ flex: 1, minWidth: 0, padding: '0.45rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+              <button onClick={() => togglePlay(val)} disabled={!val} style={{ flexShrink: 0, padding: '0.35rem 0.55rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{playingUrl === val ? '⏹' : '▶'}</button>
+              <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setVal as (v: string) => void} buttonStyle={{ flexShrink: 0, padding: '0.3rem 0.55rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}>Upload</DirectUploadButton>
+              <button onClick={() => setBattlePickerFor(key as any)} style={{ flexShrink: 0, padding: '0.35rem 0.65rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco</button>
+            </div>
           </div>
         ))}
         <button onClick={saveBattleSounds} className="login-btn" style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem 1.25rem' }}><Save size={16} /> Salvar Sons de Batalha</button>
@@ -335,36 +337,38 @@ const togglePlay = (u: string) => {
         ] as const).map(item => {
           const val = forgeConfig[item.key] || '';
           return (
-            <div key={item.key} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <label style={{ width: '230px', color: 'var(--text-secondary)', fontSize: '0.8rem', flexShrink: 0 }}>{item.label}</label>
-              <input
-                value={val}
-                onChange={e => setForgeConfig(prev => ({ ...prev, [item.key]: e.target.value }))}
-                placeholder="URL..."
-                style={{ flex: 1, padding: '0.45rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
-              />
-              <button
-                onClick={() => togglePlay(val)}
-                disabled={!val}
-                style={{ padding: '0.35rem 0.55rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }}
-                title="Ouvir"
-              >
-                {playingUrl === val ? '⏹' : '▶'}
-              </button>
-              <DirectUploadButton
-                folder="audio"
-                accept="audio/*"
-                onUploadComplete={(uploadedUrl) => setForgeConfig(prev => ({ ...prev, [item.key]: uploadedUrl }))}
-                buttonStyle={{ padding: '0.3rem 0.55rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}
-              >
-                Upload
-              </DirectUploadButton>
-              <button
-                onClick={() => setForgePickerFor(item.key)}
-                style={{ padding: '0.35rem 0.65rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-              >
-                Banco
-              </button>
+            <div key={item.key} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.65rem' }}>
+              <label style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>{item.label}</label>
+              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', width: '100%', minWidth: 0 }}>
+                <input
+                  value={val}
+                  onChange={e => setForgeConfig(prev => ({ ...prev, [item.key]: e.target.value }))}
+                  placeholder="URL..."
+                  style={{ flex: 1, minWidth: 0, padding: '0.45rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
+                />
+                <button
+                  onClick={() => togglePlay(val)}
+                  disabled={!val}
+                  style={{ flexShrink: 0, padding: '0.35rem 0.55rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }}
+                  title="Ouvir"
+                >
+                  {playingUrl === val ? '⏹' : '▶'}
+                </button>
+                <DirectUploadButton
+                  folder="audio"
+                  accept="audio/*"
+                  onUploadComplete={(uploadedUrl) => setForgeConfig(prev => ({ ...prev, [item.key]: uploadedUrl }))}
+                  buttonStyle={{ flexShrink: 0, padding: '0.3rem 0.55rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}
+                >
+                  Upload
+                </DirectUploadButton>
+                <button
+                  onClick={() => setForgePickerFor(item.key)}
+                  style={{ flexShrink: 0, padding: '0.35rem 0.65rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                >
+                  Banco
+                </button>
+              </div>
             </div>
           );
         })}

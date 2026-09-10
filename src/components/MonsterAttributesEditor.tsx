@@ -171,14 +171,26 @@ interface MonsterAttributesEditorProps {
   value?: MonsterAttributesConfig;
   onChange: (value: MonsterAttributesConfig) => void;
   availableStoreItems?: any[];
+  tabMode?: 'sounds_and_quotes' | 'drops' | 'all';
 }
 
 export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = ({
   value = {},
   onChange,
   availableStoreItems = [],
+  tabMode = 'all',
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'sounds' | 'quotes' | 'drops'>('sounds');
+  const [activeSubTab, setActiveSubTab] = useState<'sounds' | 'quotes' | 'drops'>(
+    tabMode === 'drops' ? 'drops' : 'sounds'
+  );
+
+  useEffect(() => {
+    if (tabMode === 'drops') {
+      setActiveSubTab('drops');
+    } else if (tabMode === 'sounds_and_quotes' && activeSubTab === 'drops') {
+      setActiveSubTab('sounds');
+    }
+  }, [tabMode]);
 
   const updateField = (patch: Partial<MonsterAttributesConfig>) => {
     onChange({
@@ -200,62 +212,113 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
   const drops = value.drops || [];
 
   return (
-    <div style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '1rem', marginTop: '1rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.6rem' }}>
-        <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <Sparkles size={16} /> Identidade, Falas & Recompensas da Criatura
-        </h4>
-        <div style={{ display: 'flex', gap: '0.3rem' }}>
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('sounds')}
-            style={{
-              padding: '0.3rem 0.6rem',
-              borderRadius: '6px',
-              fontSize: '0.75rem',
-              fontWeight: activeSubTab === 'sounds' ? 'bold' : 'normal',
-              background: activeSubTab === 'sounds' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
-              color: activeSubTab === 'sounds' ? 'var(--gold-primary)' : 'var(--text-secondary)',
-              border: activeSubTab === 'sounds' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
-              cursor: 'pointer'
-            }}
-          >
-            🔊 Sons
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('quotes')}
-            style={{
-              padding: '0.3rem 0.6rem',
-              borderRadius: '6px',
-              fontSize: '0.75rem',
-              fontWeight: activeSubTab === 'quotes' ? 'bold' : 'normal',
-              background: activeSubTab === 'quotes' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
-              color: activeSubTab === 'quotes' ? 'var(--gold-primary)' : 'var(--text-secondary)',
-              border: activeSubTab === 'quotes' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
-              cursor: 'pointer'
-            }}
-          >
-            💬 Falas
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('drops')}
-            style={{
-              padding: '0.3rem 0.6rem',
-              borderRadius: '6px',
-              fontSize: '0.75rem',
-              fontWeight: activeSubTab === 'drops' ? 'bold' : 'normal',
-              background: activeSubTab === 'drops' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
-              color: activeSubTab === 'drops' ? 'var(--gold-primary)' : 'var(--text-secondary)',
-              border: activeSubTab === 'drops' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
-              cursor: 'pointer'
-            }}
-          >
-            🎁 Drops ({drops.length})
-          </button>
+    <div style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '1rem', marginTop: tabMode === 'all' ? '1rem' : '0.5rem' }}>
+      {tabMode === 'drops' ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.6rem' }}>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Gift size={16} /> Recompensas de Derrota (Drops)
+          </h4>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+            {drops.length} {drops.length === 1 ? 'item' : 'itens'}
+          </span>
         </div>
-      </div>
+      ) : tabMode === 'sounds_and_quotes' ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.6rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Volume2 size={16} /> Sons & Falas da Criatura
+          </h4>
+          <div style={{ display: 'flex', gap: '0.3rem' }}>
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('sounds')}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: activeSubTab === 'sounds' ? 'bold' : 'normal',
+                background: activeSubTab === 'sounds' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                color: activeSubTab === 'sounds' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                border: activeSubTab === 'sounds' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
+                cursor: 'pointer'
+              }}
+            >
+              🔊 Sons
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('quotes')}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: activeSubTab === 'quotes' ? 'bold' : 'normal',
+                background: activeSubTab === 'quotes' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                color: activeSubTab === 'quotes' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                border: activeSubTab === 'quotes' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
+                cursor: 'pointer'
+              }}
+            >
+              💬 Falas
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.6rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Sparkles size={16} /> Identidade, Falas & Recompensas
+          </h4>
+          <div style={{ display: 'flex', gap: '0.3rem' }}>
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('sounds')}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: activeSubTab === 'sounds' ? 'bold' : 'normal',
+                background: activeSubTab === 'sounds' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                color: activeSubTab === 'sounds' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                border: activeSubTab === 'sounds' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
+                cursor: 'pointer'
+              }}
+            >
+              🔊 Sons
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('quotes')}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: activeSubTab === 'quotes' ? 'bold' : 'normal',
+                background: activeSubTab === 'quotes' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                color: activeSubTab === 'quotes' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                border: activeSubTab === 'quotes' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
+                cursor: 'pointer'
+              }}
+            >
+              💬 Falas
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('drops')}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: activeSubTab === 'drops' ? 'bold' : 'normal',
+                background: activeSubTab === 'drops' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                color: activeSubTab === 'drops' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                border: activeSubTab === 'drops' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
+                cursor: 'pointer'
+              }}
+            >
+              🎁 Drops ({drops.length})
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ABA DE SONS */}
       {activeSubTab === 'sounds' && (
@@ -376,7 +439,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
             </div>
           ) : (
             drops.map((drop, idx) => (
-              <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
+              <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 0.6rem', borderRadius: '6px', flexWrap: 'wrap' }}>
                 <select
                   value={drop.itemId}
                   onChange={e => {

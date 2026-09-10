@@ -8,7 +8,7 @@ declare global {
 }
 import { supabase } from '../lib/supabase';
 // @ts-ignore
-import { X, Hammer, ShieldAlert, Sparkles, Coins, Lock, CheckCircle2, AlertTriangle, ArrowRight, ChevronUp, ChevronDown, Layers } from 'lucide-react';
+import { X, Hammer, ShieldAlert, Sparkles, Coins, Lock, CheckCircle2, AlertTriangle, ArrowRight, ChevronUp, ChevronDown, Layers, Package } from 'lucide-react';
 import CachedImage from './CachedImage';
 import ItemTooltip from './ItemTooltip';
 // @ts-ignore
@@ -73,7 +73,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   // Sketchfab State
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [sketchfabApi, setSketchfabApi] = useState<any>(null);
-  const [showBlacksmith, setShowBlacksmith] = useState(true);
+  const [showBlacksmith, setShowBlacksmith] = useState(() => typeof window !== 'undefined' ? window.innerWidth > 768 : true);
+  const [isMobileInventoryOpen, setIsMobileInventoryOpen] = useState(false);
   const [isForging, setIsForging] = useState(false);
   const isForgingRef = useRef(false);
   const [forgeSounds, setForgeSounds] = useState<ForgeSoundsConfig>({});
@@ -1102,25 +1103,49 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           <button 
             onClick={() => setActiveTab('forge')}
             disabled={isForging}
-            style={{ flex: 1, padding: '1rem', background: activeTab === 'forge' ? 'var(--gold-primary)' : 'transparent', color: activeTab === 'forge' ? 'black' : 'white', border: 'none', cursor: isForging ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', opacity: isForging ? 0.5 : 1 }}
+            style={{ flex: 1, padding: '0.85rem 1rem', background: activeTab === 'forge' ? 'var(--gold-primary)' : 'transparent', color: activeTab === 'forge' ? 'black' : 'white', border: 'none', cursor: isForging ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.05rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', opacity: isForging ? 0.5 : 1 }}
+            title="Forja (+1 a +9)"
           >
-            <Hammer size={20} /> Forja (+1 a +9)
+            <Hammer size={20} /> <span className="hide-on-mobile">Forja (+1 a +9)</span>
           </button>
           <button 
             onClick={() => isTransmuteUnlocked && setActiveTab('transmute')}
             disabled={isForging}
-            style={{ flex: 1, padding: '1rem', background: activeTab === 'transmute' ? 'var(--gold-primary)' : 'transparent', color: activeTab === 'transmute' ? 'black' : isTransmuteUnlocked ? 'white' : '#666', border: 'none', cursor: (isForging || !isTransmuteUnlocked) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', opacity: isForging ? 0.5 : 1 }}
+            style={{ flex: 1, padding: '0.85rem 1rem', background: activeTab === 'transmute' ? 'var(--gold-primary)' : 'transparent', color: activeTab === 'transmute' ? 'black' : isTransmuteUnlocked ? 'white' : '#666', border: 'none', cursor: (isForging || !isTransmuteUnlocked) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.05rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', opacity: isForging ? 0.5 : 1 }}
+            title="Transmutação (Requer Diamante I)"
           >
             {isTransmuteUnlocked ? <Sparkles size={20} /> : <Lock size={20} />} 
-            Transmutação (Requer Diamante I)
+            <span className="hide-on-mobile">Transmutação (Requer Diamante I)</span>
           </button>
         </div>
 
-        {/* Saldo de moedas (visível nas duas guias; label + valor à direita) */}
-        <div style={{ background: 'rgba(0,0,0,0.4)', borderBottom: '1px solid var(--border-glass)', padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', color: 'white', fontWeight: 'bold', flexShrink: 0 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {/* Saldo de moedas + Botão de Inventário Mobile */}
+        <div style={{ background: 'rgba(0,0,0,0.4)', borderBottom: '1px solid var(--border-glass)', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', fontWeight: 'bold', flexShrink: 0, flexWrap: 'wrap', gap: '0.5rem' }}>
+          {/* Botão de abrir inventário (visível em mobile para não precisar espremer a tela) */}
+          <button
+            className="blacksmith-mobile-toggle-btn show-on-mobile"
+            onClick={() => setIsMobileInventoryOpen(prev => !prev)}
+            style={{
+              padding: '0.35rem 0.75rem',
+              background: isMobileInventoryOpen ? 'var(--gold-primary)' : 'rgba(255,215,0,0.15)',
+              color: isMobileInventoryOpen ? '#000' : 'var(--gold-primary)',
+              border: '1px solid rgba(255,215,0,0.4)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              fontSize: '0.8rem',
+              fontWeight: 'bold'
+            }}
+          >
+            <Package size={15} />
+            {isMobileInventoryOpen ? 'Fechar Mochila' : '🎒 Abrir Mochila / Itens'}
+          </button>
+
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
             {coinUrl ? <CachedImage src={coinUrl} alt="Moeda" style={{ width: 20, height: 20, objectFit: 'contain' }} /> : <Coins size={18} color="var(--gold-primary)" />}
-            Moedas disponíveis:
+            <span className="hide-on-mobile">Moedas disponíveis:</span>
             <span style={{ color: 'var(--gold-primary)', fontSize: '1.1rem' }}>
               {isStaff ? '∞' : (userData.coins || 0)}
             </span>
@@ -1128,10 +1153,18 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         </div>
 
         {/* Content */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        <div className="blacksmith-main-content" style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
           
+          {/* Backdrop mobile quando a gaveta de inventário estiver aberta */}
+          {isMobileInventoryOpen && (
+            <div 
+              className="blacksmith-sidebar-backdrop show-on-mobile"
+              onClick={() => setIsMobileInventoryOpen(false)}
+            />
+          )}
+
           {/* Left Side: Sketchfab & Inventory */}
-          <div style={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-glass)', background: 'var(--bg-dark)', minHeight: 0 }}>
+          <div className={`blacksmith-inventory-sidebar ${isMobileInventoryOpen ? 'mobile-open' : ''}`} style={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-glass)', background: 'var(--bg-dark)', minHeight: 0 }}>
             
             {/* Sketchfab Embed (visível só na Forja; oculto via CSS na Transmutação para não recarregar) */}
             <div style={{ 
@@ -1309,6 +1342,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                           } else {
                             setSelectedTransmuteItem(item);
                           }
+                          if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+                            setIsMobileInventoryOpen(false);
+                          }
                         }}
                         onMouseEnter={() => setHoveredTooltipItem(item)}
                         onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
@@ -1367,7 +1403,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           </div>
 
           {/* Right Side: Action Panel */}
-          <div style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', overflowY: 'auto', minHeight: 0 }}>
+          <div className="blacksmith-action-panel" style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', overflowY: 'auto', minHeight: 0 }}>
             
             {activeTab === 'forge' && (
               <>

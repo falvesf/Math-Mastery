@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer, Volume2 } from 'lucide-react';
+// @ts-ignore
+import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer, Volume2, UploadCloud, DownloadCloud } from 'lucide-react';
 // @ts-ignore — força/custo de forja (mantido no import por segurança; usado em cálculo quando necessário)
 import { forgeStrengthFraction, forgeAttributeValue, nextForgeCost, DEFAULT_FORGE_SUCCESS } from '../lib/forge';
 import ImageGalleryModal from './ImageGalleryModal';
@@ -1279,30 +1280,30 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             <h2 style={{ fontSize: '1.5rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Star color="var(--gold-primary)" /> Catálogo de Itens
             </h2>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               {isSuperAdmin && (
-                <button className="login-btn" onClick={syncCatalogToBank} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)' }} title="Compara o catálogo desta escola com o Banco de Itens e aplica no banco apenas os itens que sofreram modificações (ícone, nome, atributos, transformação 3D do Debug 3D etc.)">
-                  <RefreshCcw size={18} /> Sincronizar com o Banco
+                <button className="login-btn" onClick={syncCatalogToBank} style={{ padding: '0.45rem 0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)' }} title="Sincronizar com o Banco: envia itens modificados desta escola para o Banco Global">
+                  <UploadCloud size={18} /> <span className="hide-on-mobile">Sincronizar com o Banco</span>
                 </button>
               )}
               {isSuperAdmin && (
-                <button className="login-btn" onClick={syncCatalogFromBank} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)' }} title="Aplica as configurações ATUAIS do Banco de Itens no catálogo desta escola (atualiza tenants que ainda estão com as configurações antigas)">
-                  <RefreshCcw size={18} /> Sincronizar do Banco
+                <button className="login-btn" onClick={syncCatalogFromBank} style={{ padding: '0.45rem 0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)' }} title="Sincronizar do Banco: baixa as configurações do Banco Global para esta escola">
+                  <DownloadCloud size={18} /> <span className="hide-on-mobile">Sincronizar do Banco</span>
                 </button>
               )}
               {canItems('items', 'create') && (
-                <button className="login-btn" onClick={() => setShowItemBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-                  <Package size={18} /> Banco de Itens
+                <button className="login-btn" onClick={() => setShowItemBank(true)} style={{ padding: '0.45rem 0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }} title="Banco de Itens">
+                  <Package size={18} /> <span className="hide-on-mobile">Banco de Itens</span>
                 </button>
               )}
               {(isSuperAdmin || canItems('banks', 'view')) && (
-                <button className="login-btn" onClick={async () => { setForgeSoundsConfig(await fetchForgeSounds(tenantId)); setShowForgeSounds(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(234, 88, 12, 0.15)', color: '#f97316', border: '1px solid rgba(234, 88, 12, 0.4)' }}>
-                  <Volume2 size={18} /> Sons da Forja
+                <button className="login-btn" onClick={async () => { setForgeSoundsConfig(await fetchForgeSounds(tenantId)); setShowForgeSounds(true); }} style={{ padding: '0.45rem 0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(234, 88, 12, 0.15)', color: '#f97316', border: '1px solid rgba(234, 88, 12, 0.4)' }} title="Sons da Forja & Transmutação">
+                  <Volume2 size={18} /> <span className="hide-on-mobile">Sons da Forja</span>
                 </button>
               )}
               {canItems('items', 'create') && (
-                <button className="login-btn" onClick={() => { setHoveredItem(null); setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
-                  <Plus size={18} /> Novo Item
+                <button className="login-btn" onClick={() => { setHoveredItem(null); setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.45rem 0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }} title="Novo Item">
+                  <Plus size={18} /> <span className="hide-on-mobile">Novo Item</span>
                 </button>
               )}
             </div>

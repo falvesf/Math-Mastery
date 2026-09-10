@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 // @ts-ignore
-import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight, BookMarked, Trash2, Accessibility as PoseIcon } from 'lucide-react';
+import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight, BookMarked, Trash2, Accessibility as PoseIcon, Palette, Swords, Volume2, Gift } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
@@ -285,6 +285,8 @@ export default function AvatarCustomizationModal({
   // Quando editando um monstro já salvo na galeria: guarda o id do registro
   // para fazer UPDATE (nunca duplicar) e o nome fica travado.
   const [editingSkinId, setEditingSkinId] = useState<string | null>(null);
+  // Sub-guia ativa quando editando monstro (Visual | Golpes | Sons & Falas | Drops)
+  const [monsterSection, setMonsterSection] = useState<'visual' | 'attacks' | 'sounds' | 'drops'>('visual');
   const [presetSkins, setPresetSkins] = useState<PresetSkin[]>([]);
   const [models3d, setModels3d] = useState<any[]>([]);
   const [storeItems, setStoreItems] = useState<any[]>([]);
@@ -1614,77 +1616,215 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
               </button>
             )}
             
+            {/* SELETOR DE SUB-GUIAS DO MONSTRO (Visual | Golpes | Sons & Falas | Drops) */}
             {customSaveMode && (
-              <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-primary)', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                    {editingSkinId ? (
-                      <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>
-                        ✏️ Editando: "{monsterName}"
-                      </span>
-                    ) : (
-                      'Monstros Cadastrados'
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: '0.35rem',
+                marginBottom: '1rem',
+                background: 'rgba(0,0,0,0.35)',
+                padding: '0.4rem',
+                borderRadius: '10px',
+                border: '1px solid var(--border-glass)'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setMonsterSection('visual')}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.25rem',
+                    padding: '0.5rem 0.2rem',
+                    borderRadius: '8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 'bold',
+                    background: monsterSection === 'visual' ? 'var(--gold-primary)' : 'transparent',
+                    color: monsterSection === 'visual' ? 'var(--text-on-gold, #000)' : 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    minWidth: 0
+                  }}
+                  title="Aparência, Molde e Nome"
+                >
+                  <Palette size={16} />
+                  <span>Visual</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMonsterSection('attacks')}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.25rem',
+                    padding: '0.5rem 0.2rem',
+                    borderRadius: '8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 'bold',
+                    background: monsterSection === 'attacks' ? 'var(--gold-primary)' : 'transparent',
+                    color: monsterSection === 'attacks' ? 'var(--text-on-gold, #000)' : 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    minWidth: 0
+                  }}
+                  title="Golpes, Magias e Projéteis"
+                >
+                  <Swords size={16} />
+                  <span>Golpes</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMonsterSection('sounds')}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.25rem',
+                    padding: '0.5rem 0.2rem',
+                    borderRadius: '8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 'bold',
+                    background: monsterSection === 'sounds' ? 'var(--gold-primary)' : 'transparent',
+                    color: monsterSection === 'sounds' ? 'var(--text-on-gold, #000)' : 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    minWidth: 0
+                  }}
+                  title="Vozes, Sons de Ataque e Falas"
+                >
+                  <Volume2 size={16} />
+                  <span>Sons</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMonsterSection('drops')}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.25rem',
+                    padding: '0.5rem 0.2rem',
+                    borderRadius: '8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 'bold',
+                    background: monsterSection === 'drops' ? 'var(--gold-primary)' : 'transparent',
+                    color: monsterSection === 'drops' ? 'var(--text-on-gold, #000)' : 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    minWidth: 0
+                  }}
+                  title="Recompensas de Derrota (Drops)"
+                >
+                  <Gift size={16} />
+                  <span>Drops{((config as any)?.drops?.length ?? 0) > 0 ? ` (${(config as any).drops.length})` : ''}</span>
+                </button>
+              </div>
+            )}
+
+            {/* SEÇÃO VISUAL: Monstros Cadastrados e Nome do Monstro */}
+            {customSaveMode && monsterSection === 'visual' && (
+              <>
+                <div style={{ marginBottom: '1.25rem', padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-primary)', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                      {editingSkinId ? (
+                        <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>
+                          ✏️ Editando: "{monsterName}"
+                        </span>
+                      ) : (
+                        'Monstros Cadastrados'
+                      )}
+                    </label>
+                    {editingSkinId && (
+                      <button
+                        onClick={() => {
+                          setEditingSkinId(null);
+                          setMonsterName('');
+                          handleUnequipSkin();
+                        }}
+                        style={{ background: 'transparent', border: '1px dashed var(--border-glass)', borderRadius: '4px', color: 'var(--text-secondary)', fontSize: '0.75rem', padding: '2px 8px', cursor: 'pointer' }}
+                      >
+                        + Criar Novo Monstro
+                      </button>
                     )}
-                  </label>
-                  {editingSkinId && (
+                  </div>
+                  <HorizontalScrollList>
                     <button
                       onClick={() => {
                         setEditingSkinId(null);
                         setMonsterName('');
                         handleUnequipSkin();
                       }}
-                      style={{ background: 'transparent', border: '1px dashed var(--border-glass)', borderRadius: '4px', color: 'var(--text-secondary)', fontSize: '0.75rem', padding: '2px 8px', cursor: 'pointer' }}
-                    >
-                      + Criar Novo Monstro
-                    </button>
-                  )}
-                </div>
-                <HorizontalScrollList>
-                  <button
-                    onClick={() => {
-                      setEditingSkinId(null);
-                      setMonsterName('');
-                      handleUnequipSkin();
-                    }}
-                    style={{
-                       padding: '0.5rem', background: (!config.customSkinUrl && !editingSkinId) ? 'var(--accent-primary)' : 'var(--btn-bg)', border: (!config.customSkinUrl && !editingSkinId) ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: (!config.customSkinUrl && !editingSkinId) ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
-                    }}
-                  >
-                    Nenhum
-                  </button>
-                  {presetSkins.filter(s => s.type === 'monster').map(skin => {
-                    const skinCfg = safeParseAvatarConfig(skin.config);
-                    const isSelected = editingSkinId === skin.id || (!editingSkinId && skin.url && config.customSkinUrl === skin.url);
-                    return (
-                    <button
-                      key={skin.id}
-                      title="Abrir para edição"
-                      onClick={() => {
-                        // Abre para edição o MESMO registro (nome travado, sem duplicar).
-                        setEditingSkinId(skin.id);
-                        setMonsterName(skin.name || '');
-                        if (skinCfg && Object.keys(skinCfg).length > 0) {
-                          // Abre o config salvo para edição. Skin/GLB → só zoom; bloco → tudo.
-                          const hydrated = { ...skinCfg, attacks: normalizeMonsterAttacks(skinCfg.attacks) };
-                          setConfig(hydrated);
-                          setZoomOnly(!!skinCfg.customModelUrl || !!skinCfg.customSkinUrl);
-                        } else {
-                          const modelUrl = skin.baseModelId && skin.baseModelId !== 'default' 
-                            ? models3d.find(m => m.id === skin.baseModelId)?.url 
-                            : undefined;
-                          handleEquipSkin(skin.url, modelUrl, { customZoom: skinCfg?.customZoom, attacks: normalizeMonsterAttacks(skinCfg?.attacks) });
-                          setZoomOnly(!!skin.url || !!modelUrl);
-                        }
-                      }}
                       style={{
-                         padding: '0.5rem', background: isSelected ? 'var(--accent-primary)' : 'var(--btn-bg)', border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: isSelected ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
+                         padding: '0.5rem', background: (!config.customSkinUrl && !editingSkinId) ? 'var(--accent-primary)' : 'var(--btn-bg)', border: (!config.customSkinUrl && !editingSkinId) ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: (!config.customSkinUrl && !editingSkinId) ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
                       }}
                     >
-                      {skin.name}{skinCfg?.attacks ? ' ⚔️' : ''}
+                      Nenhum
                     </button>
-                  ); })}
-                </HorizontalScrollList>
-              </div>
+                    {presetSkins.filter(s => s.type === 'monster').map(skin => {
+                      const skinCfg = safeParseAvatarConfig(skin.config);
+                      const isSelected = editingSkinId === skin.id || (!editingSkinId && skin.url && config.customSkinUrl === skin.url);
+                      return (
+                      <button
+                        key={skin.id}
+                        title="Abrir para edição"
+                        onClick={() => {
+                          // Abre para edição o MESMO registro (nome travado, sem duplicar).
+                          setEditingSkinId(skin.id);
+                          setMonsterName(skin.name || '');
+                          if (skinCfg && Object.keys(skinCfg).length > 0) {
+                            // Abre o config salvo para edição. Skin/GLB → só zoom; bloco → tudo.
+                            const hydrated = { ...skinCfg, attacks: normalizeMonsterAttacks(skinCfg.attacks) };
+                            setConfig(hydrated);
+                            setZoomOnly(!!skinCfg.customModelUrl || !!skinCfg.customSkinUrl);
+                          } else {
+                            const modelUrl = skin.baseModelId && skin.baseModelId !== 'default' 
+                              ? models3d.find(m => m.id === skin.baseModelId)?.url 
+                              : undefined;
+                            handleEquipSkin(skin.url, modelUrl, { customZoom: skinCfg?.customZoom, attacks: normalizeMonsterAttacks(skinCfg?.attacks) });
+                            setZoomOnly(!!skin.url || !!modelUrl);
+                          }
+                        }}
+                        style={{
+                           padding: '0.5rem', background: isSelected ? 'var(--accent-primary)' : 'var(--btn-bg)', border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: isSelected ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
+                        }}
+                      >
+                        {skin.name}{skinCfg?.attacks ? ' ⚔️' : ''}
+                      </button>
+                    ); })}
+                  </HorizontalScrollList>
+                </div>
+
+                {(userData?.role === 'admin' || isAdmin || canSkins || canModels) && inline && (
+                  <div style={{ marginBottom: '1.25rem', background: 'rgba(59, 130, 246, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--accent-primary)' }}>
+                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                      Salvar Monstro na Galeria Global
+                    </label>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                      Ao dar um nome abaixo, este monstro será salvo para ser reutilizado ou sugerido aleatoriamente.
+                    </p>
+                    <input 
+                      type="text" 
+                      value={monsterName}
+                      onChange={e => setMonsterName(e.target.value)}
+                      readOnly={!!editingSkinId}
+                      disabled={!!editingSkinId}
+                      placeholder="Nome do Monstro (Ex: Golem de Gelo)"
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: editingSkinId ? 'var(--bg-card)' : 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', cursor: editingSkinId ? 'not-allowed' : 'text', opacity: editingSkinId ? 0.75 : 1 }}
+                    />
+                  </div>
+                )}
+              </>
             )}
             
             {!customSaveMode && (() => {
@@ -1737,12 +1877,14 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
               );
             })()}
             
-            {/* ABAS — ocultas quando o monstro é skin/GLB (só zoom disponível) */}
-            {zoomOnly ? (
-              <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '8px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                Este monstro é um modelo de <b>skin/GLB</b> — apenas o <b>⚔️ Tamanho em batalha</b> (zoom) pode ser ajustado. Para personalizar o visual, crie um monstro em bloco.
-              </div>
-            ) : (
+            {/* ABAS — exibidas para personagem comum ou no modo monstro na sub-guia Visual */}
+            {(!customSaveMode || monsterSection === 'visual') && (
+              <>
+                {zoomOnly ? (
+                  <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '8px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    Este monstro é um modelo de <b>skin/GLB</b> — apenas o <b>⚔️ Tamanho em batalha</b> (zoom) pode ser ajustado. Para personalizar o visual, crie um monstro em bloco.
+                  </div>
+                ) : (
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
               <button 
                 onClick={() => setActiveTab('features')}
@@ -2173,66 +2315,95 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                 </>
               )}
             </div>
+            </>
+          )}
 
-            {(userData?.role === 'admin' || isAdmin || canSkins || canModels) && inline && (
-              <div style={{ marginBottom: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--accent-primary)' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
-                  {customSaveMode ? 'Salvar Monstro na Galeria Global' : 'Salvar Personagem na Galeria Global'}
-                </label>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-                  Ao dar um nome abaixo, este {customSaveMode ? 'monstro' : 'personagem'} será salvo para ser reutilizado ou sugerido aleatoriamente.
-                </p>
-                <input 
-                  type="text" 
-                  value={monsterName}
-                  onChange={e => setMonsterName(e.target.value)}
-                  readOnly={!!editingSkinId}
-                  disabled={!!editingSkinId}
-                  placeholder={`Nome do ${customSaveMode ? 'Monstro' : 'Personagem'} (Ex: ${customSaveMode ? 'Golem de Gelo' : 'Herói Padrão'})`}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: editingSkinId ? 'var(--bg-card)' : 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', cursor: editingSkinId ? 'not-allowed' : 'text', opacity: editingSkinId ? 0.75 : 1 }}
-                />
-              </div>
-            )}
+          {!customSaveMode && (userData?.role === 'admin' || isAdmin || canSkins || canModels) && inline && (
+            <div style={{ marginBottom: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--accent-primary)' }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                Salvar Personagem na Galeria Global
+              </label>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                Ao dar um nome abaixo, este personagem será salvo para ser reutilizado ou sugerido aleatoriamente.
+              </p>
+              <input 
+                type="text" 
+                value={monsterName}
+                onChange={e => setMonsterName(e.target.value)}
+                readOnly={!!editingSkinId}
+                disabled={!!editingSkinId}
+                placeholder="Nome do Personagem (Ex: Herói Padrão)"
+                style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: editingSkinId ? 'var(--bg-card)' : 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', cursor: editingSkinId ? 'not-allowed' : 'text', opacity: editingSkinId ? 0.75 : 1 }}
+              />
+            </div>
+          )}
 
-            {/* Golpes do Monstro (só no editor de monstros) */}
-            {customSaveMode && (() => {
-              const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
-              const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default'
-                ? models3d.find(m => m.id === activePreset.baseModelId)
-                : (editingSkinId ? models3d.find(m => m.id === presetSkins.find(s => s.id === editingSkinId)?.baseModelId) : null);
-              const activeModelUrl = config.customModelUrl || activeModel?.url || undefined;
-              return (
-                <>
-                  <MonsterAttacksEditor
-                    value={(config as any).attacks}
-                    onChange={attacks => setConfig({ ...config, attacks } as any)}
-                    modelUrl={activeModelUrl}
-                    models3d={models3d}
-                  />
+          {/* Golpes do Monstro (Sub-guia Golpes) */}
+          {customSaveMode && monsterSection === 'attacks' && (() => {
+            const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
+            const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default'
+              ? models3d.find(m => m.id === activePreset.baseModelId)
+              : (editingSkinId ? models3d.find(m => m.id === presetSkins.find(s => s.id === editingSkinId)?.baseModelId) : null);
+            const activeModelUrl = config.customModelUrl || activeModel?.url || undefined;
+            return (
+              <MonsterAttacksEditor
+                value={(config as any).attacks}
+                onChange={attacks => setConfig({ ...config, attacks } as any)}
+                modelUrl={activeModelUrl}
+                models3d={models3d}
+              />
+            );
+          })()}
 
-                  <MonsterAttributesEditor
-                    value={{
-                      gender: (config as any).gender,
-                      attackSound: (config as any).attackSound,
-                      gruntSound: (config as any).gruntSound,
-                      damageSound: (config as any).damageSound,
-                      quotes: (config as any).quotes,
-                      drops: (config as any).drops,
-                    }}
-                    onChange={attrs => setConfig(prev => ({
-                      ...prev,
-                      gender: attrs.gender,
-                      attackSound: attrs.attackSound,
-                      gruntSound: attrs.gruntSound,
-                      damageSound: attrs.damageSound,
-                      quotes: attrs.quotes,
-                      drops: attrs.drops,
-                    } as any))}
-                    availableStoreItems={storeItems}
-                  />
-                </>
-              );
-            })()}
+          {/* Sons e Falas do Monstro (Sub-guia Sons & Falas) */}
+          {customSaveMode && monsterSection === 'sounds' && (
+            <MonsterAttributesEditor
+              tabMode="sounds_and_quotes"
+              value={{
+                gender: (config as any).gender,
+                attackSound: (config as any).attackSound,
+                gruntSound: (config as any).gruntSound,
+                damageSound: (config as any).damageSound,
+                quotes: (config as any).quotes,
+                drops: (config as any).drops,
+              }}
+              onChange={attrs => setConfig(prev => ({
+                ...prev,
+                gender: attrs.gender,
+                attackSound: attrs.attackSound,
+                gruntSound: attrs.gruntSound,
+                damageSound: attrs.damageSound,
+                quotes: attrs.quotes,
+                drops: attrs.drops,
+              } as any))}
+              availableStoreItems={storeItems}
+            />
+          )}
+
+          {/* Recompensas de Derrota (Sub-guia Drops) */}
+          {customSaveMode && monsterSection === 'drops' && (
+            <MonsterAttributesEditor
+              tabMode="drops"
+              value={{
+                gender: (config as any).gender,
+                attackSound: (config as any).attackSound,
+                gruntSound: (config as any).gruntSound,
+                damageSound: (config as any).damageSound,
+                quotes: (config as any).quotes,
+                drops: (config as any).drops,
+              }}
+              onChange={attrs => setConfig(prev => ({
+                ...prev,
+                gender: attrs.gender,
+                attackSound: attrs.attackSound,
+                gruntSound: attrs.gruntSound,
+                damageSound: attrs.damageSound,
+                quotes: attrs.quotes,
+                drops: attrs.drops,
+              } as any))}
+              availableStoreItems={storeItems}
+            />
+          )}
 
           </div>
           </div>

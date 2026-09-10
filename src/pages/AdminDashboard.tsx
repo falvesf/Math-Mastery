@@ -2748,8 +2748,8 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                       const lastSeenRecent = lastSeenTs > 0 && (Date.now() - lastSeenTs) < 7 * 24 * 60 * 60 * 1000;
 
                       return (
-                        <div key={student.uid} className="glass-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', background: isSelected ? 'rgba(251, 191, 36, 0.05)' : 'rgba(255,255,255,0.02)', border: isSelected ? '1px solid var(--gold-primary)' : '1px solid transparent' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', minWidth: 0, flex: 1 }}>
+                        <div key={student.uid} className={`glass-panel admin-student-card ${isSelected ? 'selected' : ''}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', background: isSelected ? 'rgba(251, 191, 36, 0.05)' : 'rgba(255,255,255,0.02)', border: isSelected ? '1px solid var(--gold-primary)' : '1px solid transparent' }}>
+                          <div className="admin-student-card-info" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', minWidth: 0, flex: 1 }}>
                             <input 
                               type="checkbox" 
                               checked={isSelected}
