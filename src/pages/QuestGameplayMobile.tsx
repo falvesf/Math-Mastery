@@ -27,6 +27,16 @@ import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 import DamageEffectOverlay from '../components/DamageEffectOverlay';
 import LootBeamDrop, { type DroppedBattleItem } from '../components/LootBeamDrop';
+import FloatingDamageNumber from '../components/FloatingDamageNumber';
+import QuestDamageRankingModal from '../components/QuestDamageRankingModal';
+import {
+  calculatePlayerHitDamage,
+  calculateMonsterHitDamage,
+  evolveMonsterOnPlayerDefeat,
+  saveQuestDamageRecord,
+  DEFAULT_MONSTER_STATS,
+  type MonsterStatsConfig,
+} from '../lib/combatDamage';
 import { getEquippedDamageEffect, getEquippedDamageEffectInfo, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
 import {
   type TransformState,
@@ -178,6 +188,44 @@ export default function QuestGameplay() {
   const [galleryMonsterSkinUrl, setGalleryMonsterSkinUrl] = useState<string | null>(null);
   const [galleryMonsterModelUrl, setGalleryMonsterModelUrl] = useState<string | null>(null);
 
+  // RPG Combat Stats & Dano Flutuante
+  const [monsterCombatStats, setMonsterCombatStats] = useState<MonsterStatsConfig>(DEFAULT_MONSTER_STATS);
+  const monsterPresetIdRef = useRef<string | null>(null);
+  const maxHitDamageDealtRef = useRef<number>(0);
+  const totalDamageDealtRef = useRef<number>(0);
+  const [showDamageRankingModal, setShowDamageRankingModal] = useState(false);
+  const [activeFloatingDamages, setActiveFloatingDamages] = useState<Array<{
+    id: number;
+    damage: number;
+    isCritical?: boolean;
+    isEvasion?: boolean;
+    target: 'monster' | 'player';
+    x?: number;
+    y?: number;
+  }>>([]);
+
+  const spawnFloatingDamage = (
+    damage: number,
+    isCritical = false,
+    target: 'monster' | 'player' = 'monster',
+    isEvasion = false
+  ) => {
+    const id = Date.now() + Math.random();
+    const jitterX = (Math.random() - 0.5) * 8;
+    const jitterY = (Math.random() - 0.5) * 6;
+    const x = target === 'monster' ? 70 + jitterX : 28 + jitterX;
+    const y = target === 'monster' ? 45 + jitterY : 48 + jitterY;
+
+    setActiveFloatingDamages(prev => [
+      ...prev,
+      { id, damage, isCritical, isEvasion, target, x, y }
+    ]);
+  };
+
+  const handleFloatingDamageComplete = (id: number | string) => {
+    setActiveFloatingDamages(prev => prev.filter(d => d.id !== id));
+  };
+
   useEffect(() => {
     if (!quest) return;
     const cfg = (quest as any)?.monsterAvatarConfig;
@@ -213,7 +261,21 @@ export default function QuestGameplay() {
         found = list.find(r => r.config?.customModelUrl === modelUrl);
       }
 
+      if (found?.id) {
+        monsterPresetIdRef.current = found.id;
+      }
+
       if (found?.config) {
+        if (found.config.stats) {
+          setMonsterCombatStats({
+            level: found.config.stats.level ?? DEFAULT_MONSTER_STATS.level,
+            attack: found.config.stats.attack ?? DEFAULT_MONSTER_STATS.attack,
+            defense: found.config.stats.defense ?? DEFAULT_MONSTER_STATS.defense,
+            evasion: found.config.stats.evasion ?? DEFAULT_MONSTER_STATS.evasion,
+            critChance: found.config.stats.critChance ?? DEFAULT_MONSTER_STATS.critChance,
+            xp: found.config.stats.xp ?? DEFAULT_MONSTER_STATS.xp,
+          });
+        }
         if (found.config.attacks) {
           setGalleryMonsterAttacks(found.config.attacks);
         }
@@ -517,13 +579,16 @@ export default function QuestGameplay() {
     requestAnimationFrame(step);
   };
 
-  const playPlayerAttackSound = () => {
+  const playPlayerAttackSound = (isCrit = false) => {
     const weapon = playerEquippedItems.find(i =>
       (i.itemCategory === 'attack' || (i.baseAttributeType === 'attack' && (i.baseAttributeValue || 0) > 0)) &&
-      (i as any).battleSoundUrl
+      ((i as any).criticalSoundUrl || (i as any).battleSoundUrl)
     );
-    // Se tiver arma com som, toca o da arma; senão, toca o som de soco (sem arma)
-    playSound((weapon as any)?.battleSoundUrl || battleSoundsRef.current.punch, 0.8);
+    if (isCrit && (weapon as any)?.criticalSoundUrl) {
+      playSound((weapon as any).criticalSoundUrl, 0.85);
+    } else {
+      playSound((weapon as any)?.battleSoundUrl || battleSoundsRef.current.punch, 0.8);
+    }
   };
 
   // Escudos e Defesa
@@ -1017,6 +1082,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   rarity: data.rarity,
                   customAnimation: data.customAnimation,
                   battleSoundUrl: data.battleSoundUrl,
+                  criticalSoundUrl: data.criticalSoundUrl || '',
                   damageEffect: data.damageEffect || 'none',
                 };
                 eLoaded.push(eqItem);
@@ -1034,13 +1100,22 @@ const dealTransformDamageToPlayer = (damage: number) => {
               if (storeSnap) {
                 const storeMap = new Map<string, any>();
                 storeSnap.forEach((s: any) => {
-                  if (s.data?.modelTransforms) {
-                    storeMap.set(s.id, s.data.modelTransforms);
+                  if (s.data) {
+                    storeMap.set(s.id, s.data);
                   }
                 });
                 eLoaded.forEach(eq => {
-                  if (!eq.modelTransforms && eq.itemId && storeMap.has(eq.itemId)) {
-                    eq.modelTransforms = storeMap.get(eq.itemId);
+                  if (eq.itemId && storeMap.has(eq.itemId)) {
+                    const sData = storeMap.get(eq.itemId);
+                    if (!eq.modelTransforms && sData.modelTransforms) {
+                      eq.modelTransforms = sData.modelTransforms;
+                    }
+                    if (!eq.battleSoundUrl && sData.battleSoundUrl) {
+                      eq.battleSoundUrl = sData.battleSoundUrl;
+                    }
+                    if (!eq.criticalSoundUrl && sData.criticalSoundUrl) {
+                      eq.criticalSoundUrl = sData.criticalSoundUrl;
+                    }
                   }
                 });
               }
@@ -1383,6 +1458,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
           setMonsterAnim('hurt');
           setMonsterRageActive(false);
           setMonsterHealPulse(false);
+
+          const fatalHit = calculatePlayerHitDamage(
+            totalEquippedStats.attack,
+            monsterCombatStats.defense,
+            0,
+            true
+          );
+          spawnFloatingDamage(fatalHit.damage, true, 'monster');
+          maxHitDamageDealtRef.current = Math.max(maxHitDamageDealtRef.current, fatalHit.damage);
+          totalDamageDealtRef.current += fatalHit.damage;
+
           dropCoins(hasAttackWeapon);
           checkAndDropMonsterItem();
         }, impactDelay);
@@ -1580,9 +1666,24 @@ const dealTransformDamageToPlayer = (damage: number) => {
         // Porco enfurecido: danos do jogador são SEMPRE críticos
         const effectiveCrit = isCritical || (transformRef.current?.animal === 'porco' && transformRef.current.enraged);
         setPlayerAnim('attack');
-        playPlayerAttackSound();
+        playPlayerAttackSound(effectiveCrit);
         setTimeout(() => {
           setMonsterAnim('hurt');
+
+          // Dano numérico flutuante (RPG stats)
+          const hitRoll = calculatePlayerHitDamage(
+            totalEquippedStats.attack,
+            monsterCombatStats.defense,
+            monsterCombatStats.evasion,
+            effectiveCrit
+          );
+          if (hitRoll.isEvasion) {
+            spawnFloatingDamage(0, false, 'monster', true);
+          } else {
+            spawnFloatingDamage(hitRoll.damage, hitRoll.isCritical, 'monster');
+            maxHitDamageDealtRef.current = Math.max(maxHitDamageDealtRef.current, hitRoll.damage);
+            totalDamageDealtRef.current += hitRoll.damage;
+          }
           // Efeito especial aplicado ANTES do som de dano para que o golpe que
           // TRANSFORMA use o som do animal.
           if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
@@ -1737,6 +1838,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         playPlayerDamageSound();
 
         if (hasShield) {
+          spawnFloatingDamage(0, false, 'player', true);
           setHasShield(false);
           setEliminatedOptions(prev => [...prev, optIndex]);
           setPlayerBubble("O escudo aguentou!");
@@ -1747,6 +1849,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
           }, 1800);
           return;
         }
+
+        const monsterHit = calculateMonsterHitDamage(
+          monsterCombatStats.attack,
+          totalEquippedStats.defense,
+          isMonsterCrit
+        );
+        spawnFloatingDamage(monsterHit.damage, monsterHit.isCritical, 'player');
 
         const finalHearts = Math.max(0, currentHearts - appliedDamage);
         const isFatalForPlayer = (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin) ? false : (((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.noInstantKill) ? finalHearts === 0 : (isMonsterDamageFatal(appliedDamage, currentHearts) || (isHardcore && tr?.animal !== 'sapo'))));
@@ -2255,6 +2364,40 @@ const dealTransformDamageToPlayer = (damage: number) => {
         const finalHp = isWin ? currentHearts : 0;
         await updateUserHearts(finalHp);
       }
+    }
+
+    // Evolução do monstro quando o jogador é derrotado em uma missão normal
+    if (!isWin && !isStudyMode && !isAbandon && monsterPresetIdRef.current) {
+      const questBaseXp = (quest as any)?.rewardXp || (quest as any)?.xpReward || 50;
+      evolveMonsterOnPlayerDefeat(monsterPresetIdRef.current, questBaseXp, monsterCombatStats).then(newStats => {
+        if (newStats) setMonsterCombatStats(newStats);
+      });
+    }
+
+    // Registro no Ranking de Dano do Ciclo Mensal
+    if (maxHitDamageDealtRef.current > 0 && quest?.id && userData?.uid) {
+      const bestWeapon = playerEquippedItems.find((i: any) =>
+        i.itemCategory === 'attack' ||
+        (i.baseAttributeType === 'attack' && (i.baseAttributeValue || 0) > 0) ||
+        i.avatarPart === 'rightHand' ||
+        i.avatarPart === 'hand'
+      );
+      saveQuestDamageRecord({
+        questId: quest.id,
+        tenantId: tenantId || userData.tenantId,
+        studentId: userData.uid,
+        studentName: userData.name || 'Guerreiro',
+        characterName: userData.characterName || userData.name || 'Guerreiro',
+        studentAvatar: userData.photoURL || '',
+        avatarConfig: userData.avatarConfig,
+        equippedItems: playerEquippedItems,
+        studentXp: userData.xp || 0,
+        studentClassId: userData.classId,
+        maxDamageHit: maxHitDamageDealtRef.current,
+        totalDamageDealt: totalDamageDealtRef.current,
+        weaponTitle: bestWeapon?.itemTitle,
+        criticalHitsCount: criticalHits,
+      });
     }
 
     // Save Attempt only for students (admins shouldn't pollute the logs)
@@ -2875,6 +3018,29 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   )}
                   <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)', fontSize: '0.75rem' }}>{userData?.coins ?? 0}</span>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDamageRankingModal(true)}
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(245,158,11,0.25) 0%, rgba(220,38,38,0.25) 100%)',
+                    border: '1px solid rgba(245,158,11,0.6)',
+                    borderRadius: '12px',
+                    color: '#fbbf24',
+                    cursor: 'pointer',
+                    padding: '0.2rem 0.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.2rem',
+                    fontSize: '0.65rem',
+                    fontWeight: 'bold',
+                    flexShrink: 0
+                  }}
+                  title="Top 10 Maiores Danos"
+                >
+                  <Swords size={12} />
+                  <span>Danos</span>
+                </button>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.2rem 0.5rem', borderRadius: '12px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-primary)', flexShrink: 0 }}>
                   <Clock size={12} />
@@ -2914,6 +3080,25 @@ const dealTransformDamageToPlayer = (damage: number) => {
               />
             </div>
             
+            {/* Números de Dano Flutuante */}
+            {activeFloatingDamages.length > 0 && (
+              <div style={{ position: 'absolute', inset: 0, zIndex: 65, pointerEvents: 'none', overflow: 'visible' }}>
+                {activeFloatingDamages.map(dmg => (
+                  <FloatingDamageNumber
+                    key={dmg.id}
+                    id={dmg.id}
+                    damage={dmg.damage}
+                    isCritical={dmg.isCritical}
+                    isEvasion={dmg.isEvasion}
+                    target={dmg.target}
+                    x={dmg.x}
+                    y={dmg.y}
+                    onComplete={handleFloatingDamageComplete}
+                  />
+                ))}
+              </div>
+            )}
+
             {/* Coin Drop Area Debug Rectangle (Monster) */}
             {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showCoinArea && (
               <div style={{ position: 'absolute', left: `${arenaDebug.coinAreaX}%`, top: `${arenaDebug.coinAreaY}%`, width: `${arenaDebug.coinAreaW}%`, height: `${arenaDebug.coinAreaH}%`, border: '2px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', zIndex: 39, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -3468,9 +3653,30 @@ const isPig = tr.animal === 'porco';
                 </>
               )}
 
-              <div>
-                <button className="login-btn" onClick={() => exitToCamp()} disabled={saving} style={{ background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)', padding: '1rem 3rem', fontSize: '1.2rem' }}>
+              <div style={{ display: 'flex', gap: '0.8rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button className="login-btn" onClick={() => exitToCamp()} disabled={saving} style={{ background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)', padding: '0.8rem 2rem', fontSize: '1.1rem' }}>
                   {saving ? 'Salvando progresso...' : 'Retornar ao Acampamento'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDamageRankingModal(true)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    background: 'linear-gradient(135deg, rgba(245,158,11,0.25) 0%, rgba(220,38,38,0.25) 100%)',
+                    color: '#fbbf24',
+                    border: '1px solid #f59e0b',
+                    borderRadius: '12px',
+                    padding: '0.8rem 1.4rem',
+                    fontSize: '1rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 15px rgba(245,158,11,0.2)',
+                  }}
+                >
+                  <Swords size={18} />
+                  Ver Ranking Danos
                 </button>
               </div>
             </div>
@@ -3556,6 +3762,18 @@ chestRotY={selectedChestModel?.chestRotY}
           setTransition('none');
         }}
       />
+      {/* Modal de Ranking de Dano */}
+      {showDamageRankingModal && quest?.id && (
+        <QuestDamageRankingModal
+          questId={quest.id}
+          questTitle={quest.title}
+          monsterName={quest.monsterName || 'Monstro'}
+          currentUserId={userData?.uid}
+          currentEquippedItems={playerEquippedItems}
+          tenantId={tenantId}
+          onClose={() => setShowDamageRankingModal(false)}
+        />
+      )}
     </div>
   );
 }

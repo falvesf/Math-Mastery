@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Volume2, 
   MessageSquare, 
@@ -8,9 +8,14 @@ import {
   XCircle,
   ChevronDown,
   Sparkles,
-  Swords
+  Swords,
+  Shield,
+  Zap,
+  Flame,
+  RotateCcw
 } from 'lucide-react';
 import AudioBankPicker from './AudioBankPicker';
+import ItemSelectDropdown, { type ItemSelectOption } from './ItemSelectDropdown';
 
 // @ts-ignore
 void Volume2;
@@ -22,6 +27,10 @@ void Gift;
 void ChevronDown;
 // @ts-ignore
 void Swords;
+// @ts-ignore
+void Zap;
+// @ts-ignore
+void Flame;
 
 // Campo individual de som integrado com o banco de áudio
 function SoundInput({ label, value, onChange, categoryFilter = 'voice', genderFilter = '' }: {
@@ -152,6 +161,15 @@ function SoundInput({ label, value, onChange, categoryFilter = 'voice', genderFi
   );
 }
 
+export interface MonsterStatsConfig {
+  level: number;
+  attack: number;
+  defense: number;
+  evasion: number;
+  critChance: number;
+  xp?: number;
+}
+
 export interface MonsterAttributesConfig {
   gender?: string;
   attackSound?: string;
@@ -165,13 +183,28 @@ export interface MonsterAttributesConfig {
     defeat?: string;
   };
   drops?: Array<{ itemId: string; dropChance: number }>;
+  stats?: MonsterStatsConfig;
 }
 
 interface MonsterAttributesEditorProps {
   value?: MonsterAttributesConfig;
   onChange: (value: MonsterAttributesConfig) => void;
   availableStoreItems?: any[];
-  tabMode?: 'sounds_and_quotes' | 'drops' | 'all';
+  tabMode?: 'sounds_and_quotes' | 'drops' | 'stats' | 'all';
+}
+
+function getItemTypeLabel(item: any): string {
+  if (item.avatarPart === 'hand' || item.avatarPart === 'two_handed') return 'Arma';
+  if (item.avatarPart === 'head' || item.avatarPart === 'face') return 'Elmo';
+  if (item.avatarPart === 'body') return 'Armadura';
+  if (item.avatarPart === 'legs') return 'Calças';
+  if (item.avatarPart === 'feet') return 'Botas';
+  if (item.avatarPart === 'accessory') return 'Acessório';
+  if (item.avatarPart === 'pet') return 'Mascote';
+  if (item.avatarPart === 'background') return 'Cenário';
+  if (item.type === 'consumable') return 'Consumível';
+  if (item.type === 'equippable') return 'Equipável';
+  return 'Item';
 }
 
 export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = ({
@@ -180,14 +213,16 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
   availableStoreItems = [],
   tabMode = 'all',
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'sounds' | 'quotes' | 'drops'>(
-    tabMode === 'drops' ? 'drops' : 'sounds'
+  const [activeSubTab, setActiveSubTab] = useState<'sounds' | 'quotes' | 'drops' | 'stats'>(
+    tabMode === 'drops' ? 'drops' : tabMode === 'stats' ? 'stats' : 'sounds'
   );
 
   useEffect(() => {
     if (tabMode === 'drops') {
       setActiveSubTab('drops');
-    } else if (tabMode === 'sounds_and_quotes' && activeSubTab === 'drops') {
+    } else if (tabMode === 'stats') {
+      setActiveSubTab('stats');
+    } else if (tabMode === 'sounds_and_quotes' && (activeSubTab === 'drops' || activeSubTab === 'stats')) {
       setActiveSubTab('sounds');
     }
   }, [tabMode]);
@@ -209,7 +244,37 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     });
   };
 
+  const currentStats: MonsterStatsConfig = {
+    level: value.stats?.level ?? 1,
+    attack: value.stats?.attack ?? 1,
+    defense: value.stats?.defense ?? 1,
+    evasion: value.stats?.evasion ?? 1,
+    critChance: value.stats?.critChance ?? 1,
+    xp: value.stats?.xp ?? 0,
+  };
+
+  const updateStats = (statsPatch: Partial<MonsterStatsConfig>) => {
+    onChange({
+      ...value,
+      stats: {
+        ...currentStats,
+        ...statsPatch,
+      },
+    });
+  };
+
   const drops = value.drops || [];
+
+  // Itens mapeados para o ItemSelectDropdown (com título, imagem, raridade e tag de tipo)
+  const storeItemOptions: ItemSelectOption[] = useMemo(() => {
+    return availableStoreItems.map(it => ({
+      id: it.id,
+      title: it.title || it.name || it.id,
+      imageUrl: it.imageUrl || it.image_url || it.gameImage2dUrl,
+      rarity: it.rarity || 'common',
+      typeLabel: getItemTypeLabel(it),
+    }));
+  }, [availableStoreItems]);
 
   return (
     <div style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '1rem', marginTop: tabMode === 'all' ? '1rem' : '0.5rem' }}>
@@ -220,6 +285,15 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
           </h4>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
             {drops.length} {drops.length === 1 ? 'item' : 'itens'}
+          </span>
+        </div>
+      ) : tabMode === 'stats' ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.6rem' }}>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Shield size={16} /> Atributos de Combate & Nível
+          </h4>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '4px' }}>
+            Nível {currentStats.level}
           </span>
         </div>
       ) : tabMode === 'sounds_and_quotes' ? (
@@ -265,9 +339,25 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.6rem', flexWrap: 'wrap', gap: '0.4rem' }}>
           <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Sparkles size={16} /> Identidade, Falas & Recompensas
+            <Sparkles size={16} /> Identidade, Atributos & Drops
           </h4>
-          <div style={{ display: 'flex', gap: '0.3rem' }}>
+          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('stats')}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: activeSubTab === 'stats' ? 'bold' : 'normal',
+                background: activeSubTab === 'stats' ? 'rgba(59, 130, 246, 0.25)' : 'transparent',
+                color: activeSubTab === 'stats' ? '#60a5fa' : 'var(--text-secondary)',
+                border: activeSubTab === 'stats' ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid transparent',
+                cursor: 'pointer'
+              }}
+            >
+              🛡️ Atributos
+            </button>
             <button
               type="button"
               onClick={() => setActiveSubTab('sounds')}
@@ -308,9 +398,9 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
                 borderRadius: '6px',
                 fontSize: '0.75rem',
                 fontWeight: activeSubTab === 'drops' ? 'bold' : 'normal',
-                background: activeSubTab === 'drops' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
-                color: activeSubTab === 'drops' ? 'var(--gold-primary)' : 'var(--text-secondary)',
-                border: activeSubTab === 'drops' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
+                background: activeSubTab === 'drops' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+                color: activeSubTab === 'drops' ? '#34d399' : 'var(--text-secondary)',
+                border: activeSubTab === 'drops' ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid transparent',
                 cursor: 'pointer'
               }}
             >
@@ -320,79 +410,196 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
         </div>
       )}
 
+      {/* ABA DE ATRIBUTOS E NÍVEL */}
+      {activeSubTab === 'stats' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+          <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            Estatísticas base da criatura. Monstros começam por padrão com nível 1 e 1 em cada atributo. Se um monstro vencer a batalha (jogador derrotado), ele absorve <strong>5% do XP da missão</strong>, sobe de nível baseado nos pontos das patentes e ganha <strong>6 pontos aleatórios</strong> de atributos.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.6rem' }}>
+            {/* Nível */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gold-primary)', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                ⭐ Nível
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={currentStats.level}
+                onChange={e => updateStats({ level: Math.max(1, parseInt(e.target.value) || 1) })}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Ataque */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#f87171', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                ⚔️ Poder de Ataque
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={currentStats.attack}
+                onChange={e => updateStats({ attack: Math.max(1, parseInt(e.target.value) || 1) })}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Defesa */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                🛡️ Poder de Defesa
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={currentStats.defense}
+                onChange={e => updateStats({ defense: Math.max(1, parseInt(e.target.value) || 1) })}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Evasão */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#34d399', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                💨 Evasão (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={currentStats.evasion}
+                onChange={e => updateStats({ evasion: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) })}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Chance de Crítico */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#fbbf24', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                💥 Chance de Crítico (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={currentStats.critChance}
+                onChange={e => updateStats({ critChance: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) })}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* XP Acumulado */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(168, 85, 247, 0.25)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#c084fc', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                ✨ XP Acumulado
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={currentStats.xp || 0}
+                onChange={e => updateStats({ xp: Math.max(0, parseInt(e.target.value) || 0) })}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.2rem' }}>
+            <button
+              type="button"
+              onClick={() => updateStats({ level: 1, attack: 1, defense: 1, evasion: 1, critChance: 1, xp: 0 })}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.4rem 0.75rem',
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '6px',
+                color: 'var(--text-secondary)',
+                fontSize: '0.74rem',
+                cursor: 'pointer'
+              }}
+            >
+              <RotateCcw size={13} /> Restaurar Padrões (Nv. 1, Atributos 1)
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ABA DE SONS */}
       {activeSubTab === 'sounds' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%', boxSizing: 'border-box' }}>
-          <div style={{ marginBottom: '0.5rem', width: '100%' }}>
-            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>
-              Gênero da Voz do Monstro
-            </label>
+        <div>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Gênero da Criatura (Voz Padrão)</label>
             <select
-              value={value.gender || ''}
+              value={value.gender || 'male'}
               onChange={e => updateField({ gender: e.target.value })}
-              style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+              style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
             >
-              <option value="">Neutro / Criatura</option>
-              <option value="male">Masculino ♂</option>
-              <option value="female">Feminino ♀</option>
+              <option value="male">Masculino / Monstro Padrão</option>
+              <option value="female">Feminino / Criatura Fêmea</option>
             </select>
           </div>
 
           <SoundInput
-            label="Som de Ataque (ao golpear)"
+            label="Som de Ataque Físico"
             value={value.attackSound || ''}
-            onChange={url => updateField({ attackSound: url })}
+            onChange={v => updateField({ attackSound: v })}
             categoryFilter="voice"
-            genderFilter={value.gender || ''}
+            genderFilter={value.gender || 'male'}
           />
+
           <SoundInput
-            label="Grunido / Rugido Especial"
+            label="Som de Grunhido / Rugido"
             value={value.gruntSound || ''}
-            onChange={url => updateField({ gruntSound: url })}
+            onChange={v => updateField({ gruntSound: v })}
             categoryFilter="voice"
-            genderFilter={value.gender || ''}
+            genderFilter={value.gender || 'male'}
           />
+
           <SoundInput
-            label="Som de Dano (ao ser atingido pelo jogador)"
+            label="Som ao Levar Dano (Hurt)"
             value={value.damageSound || ''}
-            onChange={url => updateField({ damageSound: url })}
+            onChange={v => updateField({ damageSound: v })}
             categoryFilter="voice"
-            genderFilter={value.gender || ''}
+            genderFilter={value.gender || 'male'}
           />
         </div>
       )}
 
       {/* ABA DE FALAS */}
       {activeSubTab === 'quotes' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-            Separe frases por ponto e vírgula (;) para sortear aleatoriamente em combate.
+            Separe várias falas com ponto e vírgula (;) para que sejam sorteadas aleatoriamente.
           </p>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--accent-green)', marginBottom: '0.2rem' }}>HP Pleno (100% a 80%)</label>
+            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--accent-green)', marginBottom: '0.2rem' }}>HP Cheio (80% - 100%)</label>
             <input
               type="text"
               value={value.quotes?.hp100_80 || ''}
               onChange={e => updateQuotes({ hp100_80: e.target.value })}
-              placeholder="Ex: Vou te esmagar!; Renda-se mortal!"
+              placeholder="Ex: Você não é páreo para mim!; Desista enquanto pode!"
               style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--gold-primary)', marginBottom: '0.2rem' }}>HP Firme (79% a 50%)</label>
+            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--gold-primary)', marginBottom: '0.2rem' }}>HP Médio (50% - 79%)</label>
             <input
               type="text"
               value={value.quotes?.hp79_50 || ''}
               onChange={e => updateQuotes({ hp79_50: e.target.value })}
-              placeholder="Ex: Você é mais forte do que parece..."
+              placeholder="Ex: Nada mal, mas isso termina agora!; Foi apenas um arranhão!"
               style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.78rem', color: '#f97316', marginBottom: '0.2rem' }}>HP Médio / Ferido (49% a 25%)</label>
+            <label style={{ display: 'block', fontSize: '0.78rem', color: '#f97316', marginBottom: '0.2rem' }}>HP Baixo (25% - 49%)</label>
             <input
               type="text"
               value={value.quotes?.hp49_25 || ''}
@@ -430,7 +637,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
       {activeSubTab === 'drops' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
           <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-            Itens que este monstro deixará cair quando qualquer jogador derrotá-lo em uma missão vinculada.
+            Itens que este monstro deixará cair durante a luta na arena quando qualquer jogador acertar e derrotar o monstro. Lista filtrada exclusivamente pelos itens cadastrados nesta escola.
           </p>
 
           {drops.length === 0 ? (
@@ -440,28 +647,25 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
           ) : (
             drops.map((drop, idx) => (
               <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 0.6rem', borderRadius: '6px', flexWrap: 'wrap' }}>
-                <select
-                  value={drop.itemId}
-                  onChange={e => {
-                    const newDrops = [...drops];
-                    const selectedItem = availableStoreItems.find(it => it.id === e.target.value);
-                    let defChance = 50;
-                    if (selectedItem?.rarity === 'uncommon') defChance = 35;
-                    if (selectedItem?.rarity === 'rare') defChance = 20;
-                    if (selectedItem?.rarity === 'epic') defChance = 5;
-                    if (selectedItem?.rarity === 'legendary') defChance = 1;
-                    newDrops[idx] = { itemId: e.target.value, dropChance: defChance };
-                    updateField({ drops: newDrops });
-                  }}
-                  style={{ flex: 1, padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
-                >
-                  <option value="">(Selecione o Item)</option>
-                  {availableStoreItems.map(it => (
-                    <option key={it.id} value={it.id}>
-                      {it.title || it.name || it.id} ({it.rarity || 'comum'})
-                    </option>
-                  ))}
-                </select>
+                <div style={{ flex: 1, minWidth: '220px' }}>
+                  <ItemSelectDropdown
+                    items={storeItemOptions}
+                    value={drop.itemId}
+                    onChange={(newId) => {
+                      const newDrops = [...drops];
+                      const selectedItem = availableStoreItems.find(it => it.id === newId);
+                      let defChance = 50;
+                      if (selectedItem?.rarity === 'uncommon') defChance = 35;
+                      if (selectedItem?.rarity === 'rare') defChance = 20;
+                      if (selectedItem?.rarity === 'epic') defChance = 5;
+                      if (selectedItem?.rarity === 'mestre') defChance = 2;
+                      if (selectedItem?.rarity === 'legendary') defChance = 1;
+                      newDrops[idx] = { itemId: newId, dropChance: defChance };
+                      updateField({ drops: newDrops });
+                    }}
+                    placeholder="(Selecione o Item de Drop)"
+                  />
+                </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                   <input

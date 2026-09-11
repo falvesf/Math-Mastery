@@ -12,9 +12,12 @@ export interface UserData {
   uid: string;
   email: string;
   name: string;
+  displayName?: string;
   role: UserRole;
   photoURL: string;
+  avatarUrl?: string;
   tenantId?: string;
+  tenant_id?: string;
   classId?: string;
   pendingClassName?: string;
   selectedTenantId?: string;

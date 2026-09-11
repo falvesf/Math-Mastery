@@ -43,6 +43,7 @@ import NintendoHeart from '../components/NintendoHeart';
 import { fetchStudentAchievementHistory } from '../lib/achievementHistory';
 import { fetchEquippedItems, invalidateEquippedItems } from '../lib/equippedItems';
 import { orderEffectFirst } from '../lib/damageEffects';
+import { checkAndClaimMonthlyDamageRewards } from '../lib/combatDamage';
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
   classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
@@ -193,6 +194,22 @@ export default function Dashboard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Resgate automático de premiações de ciclos mensais de dano encerrados
+  useEffect(() => {
+    if (!userData?.uid || !isPlayerView) return;
+    checkAndClaimMonthlyDamageRewards(userData.uid, tenantId).then(res => {
+      if (res.claimed && res.totalCoins > 0) {
+        updateUserDataLocally({ coins: (userData.coins || 0) + res.totalCoins });
+        showAlert(
+          `Parabéns, Guerreiro(a)!\n\nVocê se consagrou entre os maiores causadores de dano no ciclo mensal anterior!\n\nSua premiação de +${res.totalCoins} Moedas de Ouro foi creditada com sucesso na sua conta!`,
+          '🏆 Premiação de Ciclo de Dano!'
+        );
+      }
+    }).catch(err => {
+      console.error('Erro ao verificar prêmios de ciclo de dano:', err);
+    });
+  }, [userData?.uid, isPlayerView, tenantId]);
 
   // Marcar dica como vista quando a área é acessada pela primeira vez
   useEffect(() => {

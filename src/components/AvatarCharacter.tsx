@@ -58,6 +58,8 @@ export interface AvatarConfig {
   actionPoses?: Partial<Record<'idle' | 'walk' | 'run' | 'attack', CharacterPose>>;
   /** Configuração de ataques do monstro */
   attacks?: any;
+  /** Atributos e estatísticas de combate RPG do monstro */
+  stats?: any;
   /** Sons do monstro */
   attackSound?: string;
   gruntSound?: string;
@@ -137,6 +139,7 @@ export interface EquippedItem {
   gameEffect?: string;
   damageEffect?: string;
   battleSoundUrl?: string;
+  criticalSoundUrl?: string;
   hpCooldownReductionMinutes?: number;
 }
 

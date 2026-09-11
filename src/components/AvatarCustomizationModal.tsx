@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 // @ts-ignore
-import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight, BookMarked, Trash2, Accessibility as PoseIcon, Palette, Swords, Volume2, Gift } from 'lucide-react';
+import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight, BookMarked, Trash2, Accessibility as PoseIcon, Palette, Swords, Volume2, Gift, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
@@ -285,8 +285,8 @@ export default function AvatarCustomizationModal({
   // Quando editando um monstro já salvo na galeria: guarda o id do registro
   // para fazer UPDATE (nunca duplicar) e o nome fica travado.
   const [editingSkinId, setEditingSkinId] = useState<string | null>(null);
-  // Sub-guia ativa quando editando monstro (Visual | Golpes | Sons & Falas | Drops)
-  const [monsterSection, setMonsterSection] = useState<'visual' | 'attacks' | 'sounds' | 'drops'>('visual');
+  // Sub-guia ativa quando editando monstro (Visual | Atributos | Golpes | Sons & Falas | Drops)
+  const [monsterSection, setMonsterSection] = useState<'visual' | 'stats' | 'attacks' | 'sounds' | 'drops'>('visual');
   const [presetSkins, setPresetSkins] = useState<PresetSkin[]>([]);
   const [models3d, setModels3d] = useState<any[]>([]);
   const [storeItems, setStoreItems] = useState<any[]>([]);
@@ -491,13 +491,19 @@ export default function AvatarCustomizationModal({
     fetchPresetSkins(true);
     fetchModels3d(true);
     
-    // Busca itens da loja para drops do monstro
-    supabase.from('store_items').select('*').then(({ data }) => {
+    // Busca SOMENTE os itens cadastrados no tenant atual para drops do monstro
+    let itemsQ = supabase.from('store_items').select('*');
+    if (tenantId) {
+      itemsQ = itemsQ.eq('tenant_id', tenantId);
+    } else {
+      itemsQ = itemsQ.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
+    }
+    itemsQ.then(({ data }) => {
       if (data) {
         setStoreItems(data.map((d: any) => ({ id: d.id, ...(d.data || {}) })));
       }
     });
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     localStorage.setItem('avatarCustomizer_showEquippedItems', JSON.stringify(showEquippedItems));
@@ -574,6 +580,14 @@ export default function AvatarCustomizationModal({
     }
     if (customSaveMode) {
       (configToSave as any).attacks = normalizeMonsterAttacks((configToSave as any).attacks);
+      (configToSave as any).stats = {
+        level: (configToSave as any).stats?.level ?? 1,
+        attack: (configToSave as any).stats?.attack ?? 1,
+        defense: (configToSave as any).stats?.defense ?? 1,
+        evasion: (configToSave as any).stats?.evasion ?? 1,
+        critChance: (configToSave as any).stats?.critChance ?? 1,
+        xp: (configToSave as any).stats?.xp ?? 0,
+      };
     }
     setConfig(configToSave);
 
@@ -1620,7 +1634,7 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
             {customSaveMode && (
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
+                gridTemplateColumns: 'repeat(5, 1fr)',
                 gap: '0.35rem',
                 marginBottom: '1rem',
                 background: 'rgba(0,0,0,0.35)',
@@ -1652,6 +1666,31 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                 >
                   <Palette size={16} />
                   <span>Visual</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMonsterSection('stats')}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.25rem',
+                    padding: '0.5rem 0.2rem',
+                    borderRadius: '8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 'bold',
+                    background: monsterSection === 'stats' ? 'var(--gold-primary)' : 'transparent',
+                    color: monsterSection === 'stats' ? 'var(--text-on-gold, #000)' : 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    minWidth: 0
+                  }}
+                  title="Atributos de Combate & Nível"
+                >
+                  <Shield size={16} />
+                  <span>Atributos</span>
                 </button>
                 <button
                   type="button"
@@ -2355,6 +2394,33 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
             );
           })()}
 
+          {/* Atributos e Estatísticas do Monstro (Sub-guia Atributos) */}
+          {customSaveMode && monsterSection === 'stats' && (
+            <MonsterAttributesEditor
+              tabMode="stats"
+              value={{
+                gender: (config as any).gender,
+                attackSound: (config as any).attackSound,
+                gruntSound: (config as any).gruntSound,
+                damageSound: (config as any).damageSound,
+                quotes: (config as any).quotes,
+                drops: (config as any).drops,
+                stats: (config as any).stats,
+              }}
+              onChange={attrs => setConfig(prev => ({
+                ...prev,
+                gender: attrs.gender,
+                attackSound: attrs.attackSound,
+                gruntSound: attrs.gruntSound,
+                damageSound: attrs.damageSound,
+                quotes: attrs.quotes,
+                drops: attrs.drops,
+                stats: attrs.stats,
+              } as any))}
+              availableStoreItems={storeItems}
+            />
+          )}
+
           {/* Sons e Falas do Monstro (Sub-guia Sons & Falas) */}
           {customSaveMode && monsterSection === 'sounds' && (
             <MonsterAttributesEditor
@@ -2366,6 +2432,7 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                 damageSound: (config as any).damageSound,
                 quotes: (config as any).quotes,
                 drops: (config as any).drops,
+                stats: (config as any).stats,
               }}
               onChange={attrs => setConfig(prev => ({
                 ...prev,
@@ -2375,6 +2442,7 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                 damageSound: attrs.damageSound,
                 quotes: attrs.quotes,
                 drops: attrs.drops,
+                stats: attrs.stats,
               } as any))}
               availableStoreItems={storeItems}
             />
@@ -2391,6 +2459,7 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                 damageSound: (config as any).damageSound,
                 quotes: (config as any).quotes,
                 drops: (config as any).drops,
+                stats: (config as any).stats,
               }}
               onChange={attrs => setConfig(prev => ({
                 ...prev,
@@ -2400,6 +2469,7 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                 damageSound: attrs.damageSound,
                 quotes: attrs.quotes,
                 drops: attrs.drops,
+                stats: attrs.stats,
               } as any))}
               availableStoreItems={storeItems}
             />
