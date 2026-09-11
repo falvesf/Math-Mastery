@@ -1051,6 +1051,175 @@ h3 {
   100% { opacity: 0; transform: translate(50px, -10px) scale(0.8) rotate(180deg); }
 }
 
+/* --- Battle Arena Loot Beam & Monster Drops --- */
+@keyframes loot-drop-bounce {
+  0% { transform: translate(-50%, -240%) scale(0.4); opacity: 0; }
+  60% { transform: translate(-50%, -90%) scale(1.15); opacity: 1; }
+  80% { transform: translate(-50%, -105%) scale(0.95); }
+  100% { transform: translate(-50%, -100%) scale(1); opacity: 1; }
+}
+
+@keyframes loot-beam-pulse {
+  0% { opacity: 0.7; transform: scaleX(0.85); }
+  50% { opacity: 1; transform: scaleX(1.15); }
+  100% { opacity: 0.7; transform: scaleX(0.85); }
+}
+
+@keyframes loot-halo-shimmer {
+  0% { opacity: 0.55; transform: translateX(-50%) scaleX(0.9); }
+  50% { opacity: 0.9; transform: translateX(-50%) scaleX(1.2); }
+  100% { opacity: 0.55; transform: translateX(-50%) scaleX(0.9); }
+}
+
+@keyframes loot-ground-pulse {
+  0% { transform: translateX(-50%) scale(0.9); opacity: 0.6; }
+  50% { transform: translateX(-50%) scale(1.15); opacity: 0.95; }
+  100% { transform: translateX(-50%) scale(0.9); opacity: 0.6; }
+}
+
+@keyframes loot-particles-rise {
+  0% { transform: translateY(0) scale(0.4); opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 0.85; }
+  100% { transform: translateY(-200px) scale(1.1); opacity: 0; }
+}
+
+@keyframes loot-item-bob {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0px); }
+}
+
+@keyframes loot-pickup-fly {
+  0% { transform: translate(-50%, -100%) scale(1); opacity: 1; }
+  40% { transform: translate(-50%, -150%) scale(1.25); opacity: 1; filter: brightness(1.6); }
+  100% { transform: translate(-50%, -220%) scale(0.3); opacity: 0; }
+}
+
+.loot-drop-container {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 45;
+  transition: filter 0.2s ease;
+  animation: loot-drop-bounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.loot-drop-container:hover {
+  filter: brightness(1.25) drop-shadow(0 0 10px rgba(255,255,255,0.4));
+}
+
+.loot-drop-container.picking-up {
+  pointer-events: none;
+  animation: loot-pickup-fly 0.55s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+}
+
+.loot-beam-wrapper {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 220px;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  overflow: visible;
+  z-index: 1;
+}
+
+.loot-beam-core {
+  position: absolute;
+  bottom: 0;
+  width: 4px;
+  height: 100%;
+  border-radius: 2px;
+  animation: loot-beam-pulse 1.8s ease-in-out infinite alternate;
+}
+
+.loot-beam-halo {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 100%;
+  filter: blur(6px);
+  animation: loot-halo-shimmer 2.4s ease-in-out infinite alternate;
+}
+
+.loot-beam-ground {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 58px;
+  height: 18px;
+  border-radius: 50%;
+  filter: blur(3px);
+  animation: loot-ground-pulse 2s ease-in-out infinite alternate;
+  z-index: 0;
+}
+
+.loot-particle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: loot-particles-rise linear infinite;
+}
+
+.loot-item-box {
+  position: relative;
+  z-index: 2;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(6px);
+  animation: loot-item-bob 2.2s ease-in-out infinite;
+  transition: transform 0.2s ease;
+}
+
+.loot-drop-container:hover .loot-item-box {
+  transform: scale(1.1);
+}
+
+.loot-item-name-badge {
+  position: relative;
+  z-index: 3;
+  margin-top: 5px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(10, 15, 30, 0.94);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  transition: transform 0.2s ease;
+}
+
+.loot-drop-container:hover .loot-item-name-badge {
+  transform: scale(1.05);
+}
+
 /* ========================================================================= */
 /* Responsive Quest Gameplay Styles                                          */
 /* ========================================================================= */

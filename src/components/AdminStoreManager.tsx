@@ -29,6 +29,7 @@ import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd }
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
 import { DAMAGE_EFFECTS } from '../lib/damageEffects';
 import { v4 as uuidv4 } from 'uuid';
+import { computeItemTransformKey, invalidateGlobalItemTransforms } from '../lib/itemTransforms';
 
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 
   'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 
@@ -626,7 +627,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
   // ---- Sincronização inteligente (diff) entre catálogo da escola e Banco de Itens ----
   // Chaves voláteis/identidade que não devem ser copiadas entre itens.
-  const SYNC_EXCLUDE = new Set(['id', 'importedFromId', '_isGlobal', '_tenantId', '_rawId', 'extractMeshName']);
+  const SYNC_EXCLUDE = new Set(['id', 'importedFromId', '_isGlobal', '_tenantId', '_rawId']);
 
   // Opções sincronizáveis ao puxar do Banco para o tenant. Cada grupo cobre um
   // conjunto de chaves do `data` do item. Desmarcar um grupo preserva o valor
@@ -635,14 +636,16 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     { key: 'image', label: 'Ícone / Imagem', hint: 'imageUrl', keys: ['imageUrl'] },
     { key: 'title', label: 'Nome do item', hint: 'title', keys: ['title'] },
     { key: 'description', label: 'Descrição', hint: 'description', keys: ['description'] },
+    { key: 'type', label: 'Tipo de item (consumível, equipável, outro)', hint: 'type', keys: ['type'] },
     { key: 'price', label: 'Preço', hint: 'cost', keys: ['cost'] },
-    { key: 'effect', label: 'Efeito do item (uso em missão, buffs, cooldown, refino)', hint: 'gameEffect, usableInQuest, buffs, quebra e fundição', keys: ['gameEffect', 'usableInQuest', 'hpCooldownReductionMinutes', 'buffDurationHours', 'buffDurationDays', 'unlockedSkinId', 'breakTargetItemId', 'breakMinQty', 'breakMaxQty', 'breakCost', 'breakSuccessChance', 'fuseTargetItemId', 'fuseRequiredQty', 'fuseResultQty', 'fuseCost', 'fuseSuccessChance'] },
-    { key: 'stats', label: 'Atributos / Poder (ataque, defesa, dano)', hint: 'fixedAttributes, baseAttribute, damageEffect', keys: ['baseAttributeType', 'baseAttributeValue', 'fixedAttributes', 'itemCategory', 'damageEffect'] },
+    { key: 'effect', label: 'Efeito do item (uso em missão, buffs, cooldown, refino, pergaminho)', hint: 'gameEffect, usableInQuest, buffs, quebra e fundição, pergaminho', keys: ['gameEffect', 'usableInQuest', 'hpCooldownReductionMinutes', 'buffDurationHours', 'buffDurationDays', 'unlockedSkinId', 'scrollChanceBonus', 'breakTargetItemId', 'breakMinQty', 'breakMaxQty', 'breakCost', 'breakSuccessChance', 'fuseTargetItemId', 'fuseRequiredQty', 'fuseResultQty', 'fuseCost', 'fuseSuccessChance'] },
+    { key: 'stats', label: 'Atributos / Poder (ataque, defesa, dano, adds)', hint: 'fixedAttributes, adds, baseAttribute, damageEffect', keys: ['baseAttributeType', 'baseAttributeValue', 'fixedAttributes', 'adds', 'itemCategory', 'damageEffect'] },
     { key: 'rank', label: 'Patente mínima exigida', hint: 'minRankRequired', keys: ['minRankRequired'] },
-    { key: 'model', label: 'Modelo 2D/3D', hint: 'gameModelUrl, textura, cabeça Minecraft, paper doll 2D', keys: ['gameModelUrl', 'modelTextureUrl', 'minecraftHeadValue', 'gameImage2dUrl', 'backColor'] },
-    { key: 'transforms', label: 'Transformação 3D (Debug 3D)', hint: 'modelTransforms', keys: ['modelTransforms'] },
+    { key: 'sound', label: 'Som de Batalha (SFX ao atacar)', hint: 'battleSoundUrl', keys: ['battleSoundUrl'] },
+    { key: 'model', label: 'Modelo 2D/3D e Malha (Mesh)', hint: 'gameModelUrl, textura, cabeça Minecraft, paper doll 2D, extractMeshName', keys: ['gameModelUrl', 'modelTextureUrl', 'minecraftHeadValue', 'gameImage2dUrl', 'backColor', 'extractMeshName'] },
+    { key: 'transforms', label: 'Transformação 3D (Debug 3D)', hint: 'modelTransforms (posição, rotação, escala por gênero/parte)', keys: ['modelTransforms'] },
     { key: 'rarity', label: 'Raridade', hint: 'rarity', keys: ['rarity'] },
-    { key: 'gacha', label: 'Configuração de Gacha', hint: 'gachaConfig', keys: ['gachaConfig', 'useGlobalGacha'] },
+    { key: 'gacha', label: 'Configuração de Gacha', hint: 'gachaConfig, useGlobalGacha', keys: ['gachaConfig', 'useGlobalGacha'] },
     { key: 'slot', label: 'Parte do corpo (slot)', hint: 'avatarPart', keys: ['avatarPart'] },
     { key: 'active', label: 'Disponível na loja', hint: 'active', keys: ['active'] },
     { key: 'sale', label: 'Bazar (preço mínimo de revenda)', hint: 'minSalePrice', keys: ['minSalePrice'] },
@@ -717,32 +720,84 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     avatar_part: data.avatarPart || null
   });
 
-  // Encontra o item local que corresponde a um item do Banco:
-  // 1) vínculo EXATO por importedFromId (mesmo que o nome/efeito tenha sido alterado no tenant);
-  // 2) fallback por nome + tipo + efeito.
-  const findLocalMatch = (localRows: any[], bankData: any, bankId: string) => {
+  // Encontra a correspondência entre itens locais e do Banco de forma robusta e inteligente:
+  // 1) Link direto por importedFromId ou ID correspondente;
+  // 2) Correspondência por Modelo 3D + Slot + Malha (se configurado 3D);
+  // 3) Correspondência por Título normalizado + Slot/Tipo;
+  // 4) Correspondência por Título normalizado apenas.
+  const findMatch = (rows: any[], targetData: any, targetId?: string) => {
     const norm = (s?: string) => (s || '').trim().toLowerCase();
-    const byLink = (localRows || []).find(l => {
-      const ld = l.data || {};
-      return ld.importedFromId && ld.importedFromId === bankId;
-    });
-    if (byLink) return byLink;
-    return (localRows || []).find(l => {
-      const ld = l.data || {};
-      return norm(ld.title) === norm(bankData.title)
-        && (ld.type || '') === (bankData.type || '')
-        && (ld.gameEffect || 'none') === (bankData.gameEffect || 'none');
-    });
+    const tTitle = norm(targetData?.title || targetData?.name);
+    const tModel = (targetData?.gameModelUrl || '').trim();
+    const tPart = (targetData?.avatarPart || '').trim();
+    const tMesh = (targetData?.extractMeshName || '').trim();
+    const tType = (targetData?.type || '').trim();
+
+    // 1) Link direto por importedFromId ou ID
+    if (targetId) {
+      const byDirectId = (rows || []).find(r => r.id === targetId || (r.data && r.data.importedFromId === targetId));
+      if (byDirectId) return byDirectId;
+    }
+    if (targetData?.importedFromId) {
+      const byImportId = (rows || []).find(r => r.id === targetData.importedFromId || (r.data && r.data.importedFromId === targetData.importedFromId));
+      if (byImportId) return byImportId;
+    }
+
+    // 2) Correspondência por Modelo 3D + Slot (+ Malha se especificada)
+    if (tModel && tPart) {
+      const byModel = (rows || []).find(r => {
+        const rd = r.data || {};
+        const rModel = (rd.gameModelUrl || '').trim();
+        const rPart = (rd.avatarPart || '').trim();
+        const rMesh = (rd.extractMeshName || '').trim();
+        if (rModel === tModel && rPart === tPart) {
+          if (tMesh || rMesh) return tMesh === rMesh;
+          return true;
+        }
+        return false;
+      });
+      if (byModel) return byModel;
+    }
+
+    // 3) Correspondência por Nome Exato normalizado + Slot/Tipo
+    if (tTitle) {
+      const byTitleAndSlot = (rows || []).find(r => {
+        const rd = r.data || {};
+        const rTitle = norm(rd.title || r.name);
+        const rPart = (rd.avatarPart || '').trim();
+        const rType = (rd.type || r.type || '').trim();
+        return rTitle === tTitle && (
+          (tPart && rPart && tPart === rPart) ||
+          (tType && rType && tType === rType)
+        );
+      });
+      if (byTitleAndSlot) return byTitleAndSlot;
+
+      // 4) Fallback por Nome Exato normalizado
+      const byTitleOnly = (rows || []).find(r => {
+        const rd = r.data || {};
+        const rTitle = norm(rd.title || r.name);
+        return rTitle === tTitle;
+      });
+      if (byTitleOnly) return byTitleOnly;
+    }
+
+    return null;
   };
 
   // Superadmin: sincroniza o catálogo DESTA escola com o Banco de Itens (global).
-  // Compara item por item (nome/tipo/efeito) e aplica APENAS os ajustes que
-  // realmente diferem: ícone, nome, atributos, custo, transformação 3D (Debug 3D)
-  // etc. Não cria cópia e não sobrescreve itens iguais.
+  // Compara item por item e aplica TODAS as configurações modificadas para o Banco de Itens:
+  // - Atualiza itens existentes no banco com as novas configurações (modelTransforms do Debug 3D, malhas, efeitos, atributos, sons etc.)
+  // - Se um item foi criado nesta escola e ainda não existe no Banco, cadastra como novo item global
+  // - Vincula o importedFromId no item local para manter sincronia perfeita
+  // - Atualiza a tabela global de transforms (item_transforms)
   const syncCatalogToBank = async () => {
     if (!isSuperAdmin) return;
     const confirmed = await showConfirm(
-      'Sincronizar o catálogo DESTA escola com o Banco de Itens?\n\nTodos os ajustes feitos nesta escola (ícone, nome, atributos, custo, transformação 3D do Debug 3D etc.) serão comparados e aplicados ao Banco de Itens — apenas nos itens que realmente mudaram. Nenhum item é criado.'
+      'Sincronizar o catálogo DESTA escola com o Banco de Itens Global?\n\n' +
+      '• Todas as configurações modificadas nesta escola (incluindo Debug 3D, malhas, efeitos, atributos, imagens e sons) serão refletidas no Banco Global.\n' +
+      '• Itens locais novos que ainda não existem no Banco de Itens serão cadastrados no Banco Global.\n\n' +
+      'Deseja continuar?'
     );
     if (!confirmed) return;
     if (!tenantId) { showAlert('Selecione uma escola para sincronizar.'); return; }
@@ -751,23 +806,99 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       const { data: localRows } = await supabase.from('store_items').select('*').eq('tenant_id', tenantId);
       const { data: bankRows } = await supabase.from('store_items').select('*').eq('is_global', true);
 
-      // @ts-ignore
-      const norm = (s?: string) => (s || '').trim().toLowerCase();
-      let matched = 0, updated = 0, unchanged = 0;
+      let matched = 0, updated = 0, unchanged = 0, created = 0;
+      const bankItemsList = [...(bankRows || [])];
 
-      for (const bank of (bankRows || [])) {
-        const bankData = bank.data || {};
-        const local = findLocalMatch(localRows, bankData, bank.id);
-        if (!local) continue;
-        matched++;
+      for (const local of (localRows || [])) {
         const localData = local.data || {};
-        const { result, changed } = mergeDeepChanged(bankData, localData);
-        if (!changed) { unchanged++; continue; }
-        const columns = deriveStoreColumns(result);
-        const { error } = await supabase.from('store_items').update({ data: result, ...columns }).eq('id', bank.id);
-        if (!error) updated++; else console.error('Erro ao sincronizar item do banco:', error);
+        const bankMatch = findMatch(bankItemsList, localData, local.id);
+
+        if (bankMatch) {
+          matched++;
+          const bankData = bankMatch.data || {};
+          const { result, changed } = mergeDeepChanged(bankData, localData);
+
+          // Se houve alteração nos dados do banco
+          if (changed) {
+            const columns = deriveStoreColumns(result);
+            const { error } = await supabase.from('store_items').update({ data: result, ...columns }).eq('id', bankMatch.id);
+            if (!error) {
+              updated++;
+              bankMatch.data = result;
+            } else {
+              console.error('Erro ao sincronizar item do banco:', error);
+            }
+          } else {
+            unchanged++;
+          }
+
+          // Garante que o item local aponte para o bankMatch.id
+          if (localData.importedFromId !== bankMatch.id) {
+            localData.importedFromId = bankMatch.id;
+            await supabase.from('store_items').update({ data: localData }).eq('id', local.id);
+          }
+
+          // Se houver modelTransforms, garante sincronização na tabela global item_transforms
+          if (localData.modelTransforms && Object.keys(localData.modelTransforms).length > 0) {
+            try {
+              const itemKey = computeItemTransformKey(localData);
+              if (itemKey && itemKey !== '||') {
+                const { data: exSnap } = await supabase.from('item_transforms').select('model_transforms').eq('item_key', itemKey).maybeSingle();
+                const prev = (exSnap?.model_transforms as any) || {};
+                await supabase.from('item_transforms').upsert({
+                  item_key: itemKey,
+                  model_transforms: { ...prev, ...localData.modelTransforms }
+                }, { onConflict: 'item_key' });
+              }
+            } catch (e) {
+              console.error('Erro ao upsert em item_transforms:', e);
+            }
+          }
+        } else {
+          // Item local não existe no Banco Global -> criar no Banco Global!
+          const newBankId = uuidv4();
+          const newBankData = { ...localData };
+          delete newBankData.importedFromId;
+          const columns = deriveStoreColumns(newBankData);
+
+          const { error: insErr } = await supabase.from('store_items').insert({
+            id: newBankId,
+            ...columns,
+            data: newBankData,
+            tenant_id: null,
+            is_global: true
+          });
+
+          if (!insErr) {
+            created++;
+            bankItemsList.push({ id: newBankId, is_global: true, data: newBankData, ...columns });
+            // Vincula no item local
+            localData.importedFromId = newBankId;
+            await supabase.from('store_items').update({ data: localData }).eq('id', local.id);
+
+            // Upsert em item_transforms
+            if (localData.modelTransforms && Object.keys(localData.modelTransforms).length > 0) {
+              try {
+                const itemKey = computeItemTransformKey(localData);
+                if (itemKey && itemKey !== '||') {
+                  await supabase.from('item_transforms').upsert({
+                    item_key: itemKey,
+                    model_transforms: localData.modelTransforms
+                  }, { onConflict: 'item_key' });
+                }
+              } catch (e) {
+                console.error('Erro ao upsert em item_transforms:', e);
+              }
+            }
+          } else {
+            console.error('Erro ao criar novo item no Banco:', insErr);
+          }
+        }
       }
-      showAlert(`Sincronização com o Banco concluída: ${updated} item(ns) atualizado(s), ${unchanged} já estavam iguais (de ${matched} correspondências por nome/tipo/efeito).`);
+
+      invalidateGlobalItemTransforms();
+      await fetchData(false);
+      showAlert(`Sincronização com o Banco concluída!\n\n• ${updated} item(ns) atualizado(s) no Banco Global\n• ${created} novo(s) item(ns) cadastrado(s) no Banco\n• ${unchanged} item(ns) já estavam idênticos.`);
     } catch (e) {
       console.error(e);
       showAlert('Erro ao sincronizar: ' + ((e as any)?.message || 'erro desconhecido'));
@@ -782,7 +913,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const syncCatalogFromBank = async () => {
     if (!isSuperAdmin) return;
     if (!tenantId) { showAlert('Selecione a escola que será atualizada.'); return; }
-    const init: Record<string, boolean> = {};
+    const init: Record<string, boolean> = {
+      importNew: true
+    };
     SYNC_GROUPS.forEach(g => { init[g.key] = true; });
     setSyncSelection(init);
     setShowSyncOptions(true);
@@ -794,7 +927,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     SYNC_GROUPS.forEach(g => {
       if (selection[g.key]) g.keys.forEach(k => allowedKeys.add(k));
     });
-    if (allowedKeys.size === 0) {
+    const shouldImportNew = !!selection['importNew'];
+
+    if (allowedKeys.size === 0 && !shouldImportNew) {
       showAlert('Nenhuma opção selecionada — nada será sincronizado.');
       return;
     }
@@ -804,18 +939,72 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       const { data: localRows } = await supabase.from('store_items').select('*').eq('tenant_id', tenantId);
       const { data: bankRows } = await supabase.from('store_items').select('*').eq('is_global', true);
 
-      // @ts-ignore
-      const norm = (s?: string) => (s || '').trim().toLowerCase();
-      let matched = 0, updated = 0, unchanged = 0;
+      let matched = 0, updated = 0, unchanged = 0, imported = 0;
+      const currentLocalRows = [...(localRows || [])];
 
       for (const bank of (bankRows || [])) {
         const bankData = bank.data || {};
-        const local = findLocalMatch(localRows, bankData, bank.id);
-        if (!local) continue;
+        const local = findMatch(currentLocalRows, bankData, bank.id);
+
+        if (!local) {
+          // Item do banco não existe nesta escola. Se marcado "Importar itens novos", importa!
+          if (shouldImportNew) {
+            const newItemData = {
+              ...bankData,
+              importedFromId: bank.id,
+              active: bankData.active ?? true
+            };
+            const columns = deriveStoreColumns(newItemData);
+            const { data: inserted, error: insErr } = await supabase.from('store_items').insert({
+              ...columns,
+              data: newItemData,
+              tenant_id: tenantId,
+              is_global: false
+            }).select('*').single();
+
+            if (!insErr && inserted) {
+              imported++;
+              currentLocalRows.push(inserted);
+
+              // Se o item importado tem modelTransforms, reflete no registro global
+              if (newItemData.modelTransforms && Object.keys(newItemData.modelTransforms).length > 0) {
+                try {
+                  const itemKey = computeItemTransformKey(newItemData);
+                  if (itemKey && itemKey !== '||') {
+                    const { data: exSnap } = await supabase.from('item_transforms').select('model_transforms').eq('item_key', itemKey).maybeSingle();
+                    const prev = (exSnap?.model_transforms as any) || {};
+                    await supabase.from('item_transforms').upsert({
+                      item_key: itemKey,
+                      model_transforms: { ...prev, ...newItemData.modelTransforms }
+                    }, { onConflict: 'item_key' });
+                  }
+                } catch (e) {
+                  console.error('Erro ao registrar item_transforms no import:', e);
+                }
+              }
+            } else {
+              console.error('Erro ao importar novo item do banco:', insErr);
+            }
+          }
+          continue;
+        }
+
         matched++;
         const localData = local.data || {};
         const { result, changed } = mergeDeepChanged(localData, bankData, allowedKeys);
-        if (!changed) { unchanged++; continue; }
+
+        // Garante que o item local tenha o importedFromId do banco configurado
+        let needLinkUpdate = false;
+        if (result.importedFromId !== bank.id) {
+          result.importedFromId = bank.id;
+          needLinkUpdate = true;
+        }
+
+        if (!changed && !needLinkUpdate) {
+          unchanged++;
+          continue;
+        }
+
         const columns = deriveStoreColumns(result);
         const { error } = await supabase.from('store_items').update({ data: result, ...columns }).eq('id', local.id);
         if (error) { console.error('Erro ao atualizar item local:', error); continue; }
@@ -824,7 +1013,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         // Cascateia a nova configuração (principalmente modelTransforms do Debug 3D)
         // para os inventários dos jogadores desta escola que já possuem o item.
         const { data: userItems } = await supabase.from('user_items').select('id, data').eq('item_id', local.id);
-        if (userItems) {
+        if (userItems && userItems.length > 0) {
           for (const ui of userItems) {
             const uiData = ui.data || {};
             const { result: uiResult, changed: uiChanged } = mergeDeepChanged(uiData, result, allowedKeys);
@@ -833,8 +1022,28 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             }
           }
         }
+
+        // Se modelTransforms foi sincronizado, garante em item_transforms
+        if (result.modelTransforms && Object.keys(result.modelTransforms).length > 0) {
+          try {
+            const itemKey = computeItemTransformKey(result);
+            if (itemKey && itemKey !== '||') {
+              const { data: exSnap } = await supabase.from('item_transforms').select('model_transforms').eq('item_key', itemKey).maybeSingle();
+              const prev = (exSnap?.model_transforms as any) || {};
+              await supabase.from('item_transforms').upsert({
+                item_key: itemKey,
+                model_transforms: { ...prev, ...result.modelTransforms }
+              }, { onConflict: 'item_key' });
+            }
+          } catch (e) {
+            console.error('Erro ao sincronizar item_transforms:', e);
+          }
+        }
       }
-      showAlert(`Atualização a partir do Banco concluída: ${updated} item(ns) desta escola atualizado(s), ${unchanged} já estavam iguais (de ${matched} correspondências por nome/tipo/efeito).`);
+
+      invalidateGlobalItemTransforms();
+      await fetchData(false);
+      showAlert(`Atualização a partir do Banco concluída!\n\n• ${updated} item(ns) desta escola atualizado(s)\n• ${imported} novo(s) item(ns) importado(s) do Banco\n• ${unchanged} item(ns) já estavam idênticos.`);
     } catch (e) {
       console.error(e);
       showAlert('Erro ao sincronizar: ' + ((e as any)?.message || 'erro desconhecido'));
@@ -933,73 +1142,42 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   };
 
   // Importar vários itens do banco de itens de uma vez (cópia direta)
-  const handleImportMultipleFromBank = async (items: any[]) => {
-    if (items.length === 0) return;
+  const handleImportMultipleFromBank = async (itemsToImport: any[]) => {
+    if (!itemsToImport || itemsToImport.length === 0) return;
     let imported = 0;
     let errors = 0;
     let skipped = 0;
-    for (const item of items) {
+    for (const item of itemsToImport) {
       try {
-        // DEDUP: pular itens já importados por esta escola
+        // DEDUP: pular itens já importados por esta escola (compara com o estado local 'items')
         const already = (items || []).find((i: any) =>
-          (i as any).importedFromId && (i as any).importedFromId === item._rawId
+          ((i as any).importedFromId && (i as any).importedFromId === (item._rawId || item.id)) ||
+          ((i as any).title === item.title && (i as any).avatarPart === item.avatarPart && (i as any).gameModelUrl === item.gameModelUrl)
         );
         if (already) {
           skipped++;
           continue;
         }
-        const itemData = {
+        const itemData: any = {
+          ...item,
           title: item.title || 'Sem nome',
           description: item.description || '',
           cost: Number(item.cost) || 100,
           type: item.type || 'consumable',
           imageUrl: item.imageUrl || '',
-          gameModelUrl: item.gameModelUrl || '',
-          modelTextureUrl: item.modelTextureUrl || '',
-          minecraftHeadValue: item.minecraftHeadValue || '',
           rarity: item.rarity || 'common',
-          active: true,
-          minRankRequired: item.minRankRequired || '',
-          usableInQuest: !!item.usableInQuest,
-          gameEffect: item.gameEffect || 'none',
-          unlockedSkinId: item.unlockedSkinId || '',
-          buffDurationDays: item.buffDurationDays,
-          avatarPart: item.avatarPart,
-          itemCategory: item.itemCategory,
-          damageEffect: item.damageEffect || 'none',
-          baseAttributeType: item.baseAttributeType,
-          baseAttributeValue: item.baseAttributeValue,
-          fixedAttributes: item.fixedAttributes,
-          backColor: item.backColor,
-          extractMeshName: item.extractMeshName,
-          modelTransforms: item.modelTransforms || null,
-          hpCooldownReductionMinutes: item.hpCooldownReductionMinutes,
-          buffDurationHours: item.buffDurationHours,
-          gameImage2dUrl: item.gameImage2dUrl || '',
-          gachaConfig: item.gachaConfig || null,
-          useGlobalGacha: item.useGlobalGacha ?? true,
-          scrollChanceBonus: item.scrollChanceBonus,
-          breakTargetItemId: item.breakTargetItemId,
-          breakMinQty: item.breakMinQty,
-          breakMaxQty: item.breakMaxQty,
-          breakCost: item.breakCost,
-          breakSuccessChance: item.breakSuccessChance,
-          fuseTargetItemId: item.fuseTargetItemId,
-          fuseRequiredQty: item.fuseRequiredQty,
-          fuseResultQty: item.fuseResultQty,
-          fuseCost: item.fuseCost,
-          fuseSuccessChance: item.fuseSuccessChance,
-          minSalePrice: 0,
-          importedFromId: item._rawId || null,
+          active: item.active ?? true,
+          minRankRequired: item.minRankRequired || 0,
+          minSalePrice: item.minSalePrice || 0,
+          importedFromId: item._rawId || item.id || null,
         };
+        delete itemData._rawId;
+        delete itemData._isGlobal;
+        delete itemData._tenantId;
+
+        const columns = deriveStoreColumns(itemData);
         const { error } = await supabase.from('store_items').insert({
-          name: itemData.title,
-          description: itemData.description,
-          type: itemData.type,
-          price: itemData.cost,
-          image_url: itemData.imageUrl,
-          active: itemData.active,
-          rarity: itemData.rarity,
+          ...columns,
           data: itemData,
           tenant_id: tenantId || null,
           is_global: false
@@ -1009,12 +1187,29 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           errors++;
         } else {
           imported++;
+          // Se tiver transform 3D, reflete no registro global
+          if (itemData.modelTransforms && Object.keys(itemData.modelTransforms).length > 0) {
+            try {
+              const itemKey = computeItemTransformKey(itemData);
+              if (itemKey && itemKey !== '||') {
+                const { data: exSnap } = await supabase.from('item_transforms').select('model_transforms').eq('item_key', itemKey).maybeSingle();
+                const prev = (exSnap?.model_transforms as any) || {};
+                await supabase.from('item_transforms').upsert({
+                  item_key: itemKey,
+                  model_transforms: { ...prev, ...itemData.modelTransforms }
+                }, { onConflict: 'item_key' });
+              }
+            } catch (e) {
+              console.error('Erro ao registrar item_transforms no lote:', e);
+            }
+          }
         }
       } catch (e) {
         console.error('Erro ao importar item:', item.title, e);
         errors++;
       }
     }
+    invalidateGlobalItemTransforms();
     await showAlert('Importação concluída', `${imported} item(ns) importado(s) com sucesso.${skipped > 0 ? ` ${skipped} já estavam importados e foram ignorados.` : ''}${errors > 0 ? ` ${errors} falharam.` : ''}`);
     fetchData(false);
   };
@@ -1155,6 +1350,24 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       const affectedStudents = new Set<string>();
       (snapUserItems || []).forEach((row: any) => { if (row.student_id) affectedStudents.add(row.student_id); });
       affectedStudents.forEach(uid => invalidateEquippedItems(uid));
+
+      // Se houver transforms 3D (Debug 3D), atualiza o registro global
+      if (itemData.modelTransforms && Object.keys(itemData.modelTransforms).length > 0) {
+        try {
+          const itemKey = computeItemTransformKey(itemData);
+          if (itemKey && itemKey !== '||') {
+            const { data: exSnap } = await supabase.from('item_transforms').select('model_transforms').eq('item_key', itemKey).maybeSingle();
+            const prev = (exSnap?.model_transforms as any) || {};
+            await supabase.from('item_transforms').upsert({
+              item_key: itemKey,
+              model_transforms: { ...prev, ...itemData.modelTransforms }
+            }, { onConflict: 'item_key' });
+            invalidateGlobalItemTransforms();
+          }
+        } catch (e) {
+          console.error('Erro ao atualizar item_transforms no handleSaveItem:', e);
+        }
+      }
       
     } else {
       // Cópia local (da escola) — editável pelo admin local
@@ -1169,6 +1382,23 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         showToast(`Erro ao criar o item: ${saveErr.message}`, 'error');
         return;
       }
+
+      // Se houver transforms 3D (Debug 3D), atualiza o registro global
+      if (itemData.modelTransforms && Object.keys(itemData.modelTransforms).length > 0) {
+        try {
+          const itemKey = computeItemTransformKey(itemData);
+          if (itemKey && itemKey !== '||') {
+            await supabase.from('item_transforms').upsert({
+              item_key: itemKey,
+              model_transforms: itemData.modelTransforms
+            }, { onConflict: 'item_key' });
+            invalidateGlobalItemTransforms();
+          }
+        } catch (e) {
+          console.error('Erro ao registrar item_transforms na criação:', e);
+        }
+      }
+
       // Só a CRIAÇÃO MANUAL cria também a cópia-base GLOBAL (banco de itens).
       // Importações (importadoFromId presente) NÃO geram global.
       if (!itemData.importedFromId && !isImportCustomize) {
@@ -2468,16 +2698,28 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
               <button onClick={() => setShowSyncOptions(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}><X size={20} /></button>
             </div>
             <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Marque apenas o que você deseja que o Banco de Itens sobreponha no catálogo desta escola. <b>Desmarcar uma opção preserva o valor já definido aqui.</b> Somente itens correspondentes (mesmo nome, tipo e efeito) e que realmente diferem são atualizados.
+              Marque o que você deseja que o Banco de Itens atualize no catálogo desta escola. O sistema localiza o item correspondente de forma inteligente (por vínculo, modelo 3D ou nome) e atualiza apenas os campos marcados. <b>Desmarcar uma opção preserva a configuração já existente nesta escola.</b>
             </p>
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <button onClick={() => { const all: Record<string, boolean> = {}; SYNC_GROUPS.forEach(g => { all[g.key] = true; }); setSyncSelection(all); }} style={{ padding: '0.3rem 0.8rem', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Marcar tudo</button>
-              <button onClick={() => { const none: Record<string, boolean> = {}; SYNC_GROUPS.forEach(g => { none[g.key] = false; }); setSyncSelection(none); }} style={{ padding: '0.3rem 0.8rem', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Desmarcar tudo</button>
+              <button onClick={() => { const all: Record<string, boolean> = { importNew: true }; SYNC_GROUPS.forEach(g => { all[g.key] = true; }); setSyncSelection(all); }} style={{ padding: '0.3rem 0.8rem', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Marcar tudo</button>
+              <button onClick={() => { const none: Record<string, boolean> = { importNew: false }; SYNC_GROUPS.forEach(g => { none[g.key] = false; }); setSyncSelection(none); }} style={{ padding: '0.3rem 0.8rem', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Desmarcar tudo</button>
               <span style={{ marginLeft: 'auto', alignSelf: 'center', fontSize: '0.8rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
-                {SYNC_GROUPS.filter(g => syncSelection[g.key]).length} de {SYNC_GROUPS.length} opções
+                {(SYNC_GROUPS.filter(g => syncSelection[g.key]).length + (syncSelection['importNew'] ? 1 : 0))} de {SYNC_GROUPS.length + 1} opções
               </span>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.65rem 0.75rem', background: 'rgba(59, 130, 246, 0.12)', borderRadius: '8px', border: syncSelection['importNew'] ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid var(--border-glass)', cursor: 'pointer', marginBottom: '0.2rem' }}>
+                <input
+                  type="checkbox"
+                  checked={!!syncSelection['importNew']}
+                  onChange={e => setSyncSelection(prev => ({ ...prev, importNew: e.target.checked }))}
+                  style={{ marginTop: '0.15rem', accentColor: '#3b82f6', width: '16px', height: '16px', flexShrink: 0 }}
+                />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                  <span style={{ color: '#60a5fa', fontSize: '0.9rem', fontWeight: 600 }}>📥 Importar itens novos do Banco</span>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Cadastra automaticamente nesta escola qualquer item do Banco Global que ainda não exista no catálogo desta escola</span>
+                </span>
+              </label>
               {SYNC_GROUPS.map(g => (
                 <label key={g.key} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.6rem 0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: syncSelection[g.key] ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid var(--border-glass)', cursor: 'pointer' }}>
                   <input

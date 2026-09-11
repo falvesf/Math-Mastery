@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation, FunctionAnimation } from 'skinview3d';
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/DRACOLoader.js';
+// @ts-ignore
+import { clone as skeletonClone } from 'skinview3d/node_modules/three/examples/jsm/utils/SkeletonUtils.js';
 // Importando THREE diretamente de dentro da dependência do skinview3d para evitar mismatch
 import * as THREE from 'skinview3d/node_modules/three';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
@@ -963,6 +965,10 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                      xOffset = 0;
                      yOffset += 12;
                   }
+                } else if (isGltf && (splitDir === 'left' || splitDir === 'right')) {
+                  // Para GLTF acoplado nas pernas (via wrapper que já possui offset x: ±2, y: 4),
+                  // o yOffset ideal para cobrir a perna inteira / bota até o chão é -16.
+                  yOffset = -16;
                 }
 
                 model.position.set(xOffset, yOffset, 0);
@@ -1149,34 +1155,103 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 }
                 
                 const normalizedPart = item.avatarPart ? String(item.avatarPart).toLowerCase().trim() : '';
-                if (normalizedPart === 'legs' || normalizedPart === 'feet') {
-                   const cloneLeft = model.clone();
-                   const cloneRight = model.clone();
-                   const cloneBody = model.clone();
 
-                   const isLeft = (n: any) => {
-                      let name = n.name.toLowerCase();
-                      let p = n.parent;
-                      while(p && p.type !== 'Scene') { name += ' ' + p.name.toLowerCase(); p = p.parent; }
-                      return name.includes('left') && (name.includes('leg') || name.includes('boot') || name.includes('foot') || name.includes('greva') || name.includes('calca'));
-                   };
-                   const isRight = (n: any) => {
-                      let name = n.name.toLowerCase();
-                      let p = n.parent;
-                      while(p && p.type !== 'Scene') { name += ' ' + p.name.toLowerCase(); p = p.parent; }
-                      return name.includes('right') && (name.includes('leg') || name.includes('boot') || name.includes('foot') || name.includes('greva') || name.includes('calca'));
-                   };
+                 // Função robusta para identificar se uma malha/nó pertence ao lado esquerdo ou direito
+                 const detectSide = (n: THREE.Object3D): 'left' | 'right' | 'none' => {
+                    let name = n.name.toLowerCase();
+                    let p = n.parent;
+                    while (p && p.type !== 'Scene') {
+                       name += ' ' + p.name.toLowerCase();
+                       p = p.parent;
+                    }
+                    const isL = /\b(left|esq|esquerda)\b/.test(name) || /(_l|\.l|-l|l_|shoe_l|boot_l|leg_l)/.test(name) || name.includes('left');
+                    const isR = /\b(right|dir|direita)\b/.test(name) || /(_r|\.r|-r|r_|shoe_r|boot_r|leg_r)/.test(name) || name.includes('right');
+                    if (isL && !isR) return 'left';
+                    if (isR && !isL) return 'right';
+                    if (isL && isR) {
+                       const selfName = n.name.toLowerCase();
+                       const selfL = selfName.includes('left') || selfName.includes('_l') || selfName.includes('esq');
+                       const selfR = selfName.includes('right') || selfName.includes('_r') || selfName.includes('dir');
+                       if (selfL && !selfR) return 'left';
+                       if (selfR && !selfL) return 'right';
+                    }
+                    return 'none';
+                 };
 
-                   cloneLeft.traverse((node) => { if ((node as any).isMesh && !isLeft(node)) node.visible = false; });
-                   cloneRight.traverse((node) => { if ((node as any).isMesh && !isRight(node)) node.visible = false; });
-                   cloneBody.traverse((node) => { if ((node as any).isMesh && (isLeft(node) || isRight(node))) node.visible = false; });
+                 if ((normalizedPart === 'legs' || normalizedPart === 'feet') && !item.extractMeshName) {
+                    // Clona com SkeletonUtils para preservar esqueleto/ossos de SkinnedMesh
+                    const safeClone = (src: THREE.Object3D) => {
+                       try {
+                          return skeletonClone(src);
+                       } catch (e) {
+                          return src.clone();
+                       }
+                    };
 
-                   // Como o modelo GLB é invertido e rotacionado em 180 graus (Math.PI) no processLoadedModel,
-                   // cloneLeft (boot_left) vai para o lado esquerdo da tela (-X), que é o leftLeg do skinview3d.
-                   processLoadedModel(cloneLeft, 'left', true); 
-                   processLoadedModel(cloneRight, 'right', true);
-                   processLoadedModel(cloneBody, 'body_part', true);
-} else {
+                    let hasLeftMesh = false;
+                    let hasRightMesh = false;
+                    model.traverse((node) => {
+                       if ((node as any).isMesh) {
+                          const side = detectSide(node);
+                          if (side === 'left') hasLeftMesh = true;
+                          if (side === 'right') hasRightMesh = true;
+                       }
+                    });
+
+                    // Se o modelo tem malhas identificadas para cada lado
+                    if (hasLeftMesh || hasRightMesh) {
+                       const cloneLeft = safeClone(model);
+                       const cloneRight = safeClone(model);
+                       const cloneBody = safeClone(model);
+
+                       let visibleLeftCount = 0;
+                       let visibleRightCount = 0;
+                       let visibleBodyCount = 0;
+
+                       cloneLeft.traverse((node) => {
+                          if ((node as any).isMesh) {
+                             const isL = detectSide(node) === 'left';
+                             node.visible = isL;
+                             if (isL) visibleLeftCount++;
+                          }
+                       });
+                       cloneRight.traverse((node) => {
+                          if ((node as any).isMesh) {
+                             const isR = detectSide(node) === 'right';
+                             node.visible = isR;
+                             if (isR) visibleRightCount++;
+                          }
+                       });
+                       cloneBody.traverse((node) => {
+                          if ((node as any).isMesh) {
+                             const isNone = detectSide(node) === 'none';
+                             node.visible = isNone;
+                             if (isNone) visibleBodyCount++;
+                          }
+                       });
+
+                       if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
+                       if (visibleRightCount > 0) processLoadedModel(cloneRight, 'right', true);
+                       if (visibleBodyCount > 0) processLoadedModel(cloneBody, 'body_part', true);
+                    } else {
+                       // Modelo unificado (ex: ambas as botas em uma malha única): não esconde nada
+                       processLoadedModel(model, 'body_part', true);
+                    }
+                 } else if (item.extractMeshName && (normalizedPart === 'legs' || normalizedPart === 'feet')) {
+                    // Peça específica extraída manualmente via Extrator de Malhas
+                    let targetNode: THREE.Object3D | null = null;
+                    model.traverse((node) => {
+                       if (node.name === item.extractMeshName) targetNode = node;
+                    });
+                    const side = targetNode ? detectSide(targetNode) : 'none';
+                    if (side === 'right') {
+                       processLoadedModel(model, 'right', true);
+                    } else if (side === 'left') {
+                       processLoadedModel(model, 'left', true);
+                    } else {
+                       processLoadedModel(model, 'body_part', true);
+                    }
+                 } else {
                     processLoadedModel(model, undefined, true);
                  }
               }, (error) => {

@@ -23,6 +23,7 @@ import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/mode
 import { playSound, playCoinCollect, resolveAudioUrl, fadeOutAllSounds } from '../lib/audioBank';
 import { usePermissions } from '../lib/permissions';
 import ArenaDebugPanel, { type ArenaDebugConfig, DEFAULT_ARENA_DEBUG } from '../components/ArenaDebugPanel';
+import LootBeamDrop, { type DroppedBattleItem } from '../components/LootBeamDrop';
 import DamageEffectOverlay from '../components/DamageEffectOverlay';
 import { getEquippedDamageEffect, getEquippedDamageEffectInfo, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
 import {
@@ -346,6 +347,13 @@ export default function QuestGameplay() {
   const [, setLostCoinsDisplay] = useState<number | null>(null);
   const alreadyCompletedRef = useRef(false);
   const combatCoinConfigRef = useRef<{ minCoins?: number; maxCoins?: number; minValue?: number; maxValue?: number }>({});
+
+  // Monster Drops em Batalha
+  const [droppedBattleItems, setDroppedBattleItems] = useState<DroppedBattleItem[]>([]);
+  const [itemPops, setItemPops] = useState<{ id: number; x: number; y: number; title: string; rarity?: string }[]>([]);
+  const droppedBattleItemIdsRef = useRef<Set<string>>(new Set());
+  const monsterStoreItemsMapRef = useRef<Map<string, any>>(new Map());
+  const collectedBattleDropsRef = useRef<any[]>([]);
 
   // --- Áudio da batalha (sons globais: dano do personagem + batalha/fatalidades) ---
   const playerDamageSoundsRef = useRef<{ male: string; female: string }>({ male: '', female: '' });
@@ -764,6 +772,20 @@ const dealTransformDamageToPlayer = (damage: number) => {
           }
         } catch (e) {
           console.warn('Erro ao resolver atributos estendidos do monstro:', e);
+        }
+
+        // Pré-carrega itens de store_items para os drops do monstro (drop imediato na arena)
+        if (Array.isArray(qData.monsterDrops) && qData.monsterDrops.length > 0) {
+          const dropIds = qData.monsterDrops.map((d: any) => d.itemId).filter(Boolean);
+          if (dropIds.length > 0) {
+            supabase.from('store_items').select('*').in('id', dropIds).then(({ data: sSnap }) => {
+              if (sSnap) {
+                sSnap.forEach(d => {
+                  monsterStoreItemsMapRef.current.set(d.id, { id: d.id, ...d.data, ...d });
+                });
+              }
+            });
+          }
         }
         
         // Isolamento por escola: impedir que aluno de outra escola acesse a missão
@@ -1267,6 +1289,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           setMonsterAnim('hurt');
           setMonsterRageActive(false);
           setMonsterHealPulse(false);
+          dropCoins(hasAttackWeapon);
+          checkAndDropMonsterItem();
         }, impactDelay);
         
         // Efeito do fatality entra ANTES do golpe visual (compensa o start do áudio)
@@ -1486,6 +1510,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           }
           playMonsterDamageSound();
           dropCoins(effectiveCrit);
+          checkAndDropMonsterItem();
           advanceStatusTurns(); // o golpe do jogador é uma ação de ataque
           // Coelho: cada golpe que ele recebe acelera o tempo (+5%) e dobra o drop
           if (transformRef.current?.animal === 'coelho') {
@@ -2030,52 +2055,10 @@ if (tr.turnsLeft <= 1) {
           }
         }
       
-    // Monster Drops (só na 1ª conclusão)
-    if (isWin && !alreadyCompletedRef.current && quest?.monsterDrops && quest.monsterDrops.length > 0) {
-      const dropItemIds = quest.monsterDrops.map(d => d.itemId);
-      if (dropItemIds.length > 0) {
-        const { data: snap } = await supabase.from('store_items').select('*').in('id', dropItemIds);
-        const storeItemsMap = new Map();
-        if (snap) snap.forEach(d => storeItemsMap.set(d.id, { id: d.id, ...d.data }));
-
-        for (const drop of quest.monsterDrops) {
-          if (Math.random() * 100 <= drop.dropChance) {
-            const item = storeItemsMap.get(drop.itemId);
-            if (!item) continue;
-            
-            const itemData = {
-              studentId: userData!.uid,
-              itemId: item.id,
-              itemTitle: item.title,
-              itemType: item.type,
-              itemImageUrl: item.imageUrl || '',
-              gameEffect: item.gameEffect || 'none',
-              usableInQuest: item.usableInQuest || false,
-              gameModelUrl: item.gameModelUrl || '',
-              modelTextureUrl: item.modelTextureUrl || '',
-              minecraftHeadValue: item.minecraftHeadValue || '',
-              quantity: 1,
-              equipped: false,
-              purchasedAt: Date.now(),
-              giftedBy: `Drop de Monstro (${quest.monsterName || 'Desconhecido'})`,
-              avatarPart: item.avatarPart || null,
-              itemCategory: item.itemCategory || 'none',
-              baseAttributeType: item.baseAttributeType || 'none',
-              baseAttributeValue: item.baseAttributeValue || 0,
-              modelTransforms: item.modelTransforms || null,
-              adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired)) : [],
-              forgeLevel: drop.forgeLevel || 0,
-              scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
-            };
-            await supabase.from('user_items').insert({
-              student_id: userData!.uid,
-              item_id: item.id,
-              equipped: false,
-              data: itemData
-            });
-            finalRewards.items.push({ ...item, quantity: 1, isMonsterDrop: true });
-          }
-        }
+    // Drops coletados manualmente pelo jogador durante o combate na arena
+    if (isWin && collectedBattleDropsRef.current.length > 0) {
+      for (const collectedDrop of collectedBattleDropsRef.current) {
+        finalRewards.items.push(collectedDrop);
       }
     }
 
@@ -2264,6 +2247,103 @@ if (tr.turnsLeft <= 1) {
     setDroppedCoins(prev => [...prev, ...newCoins]);
     setCoinsToRescue(dropped);
     setTimeout(() => setCoinsToRescue(null), 2500);
+  };
+
+  const checkAndDropMonsterItem = () => {
+    if (!quest?.monsterDrops || quest.monsterDrops.length === 0) return;
+    const candidates = quest.monsterDrops.filter((d: any) => d.itemId && !droppedBattleItemIdsRef.current.has(d.itemId));
+    if (candidates.length === 0) return;
+
+    // Embaralha para que qualquer item configurado tenha chance justa
+    const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+
+    for (const drop of shuffled) {
+      const roll = Math.random() * 100;
+      if (roll <= drop.dropChance) {
+        const itemData = monsterStoreItemsMapRef.current.get(drop.itemId);
+        if (!itemData) continue;
+
+        // Marca como dropado nesta batalha (garante que caia apenas 1 por vez e não duplique)
+        droppedBattleItemIdsRef.current.add(drop.itemId);
+
+        const arenaW = arenaRef.current?.offsetWidth || arenaWidth || 900;
+        const arenaH = arenaRef.current?.offsetHeight || 380;
+        const groundY = ((arenaH - 50) / arenaH) * 100;
+
+        const dropX = arenaDebug?.coinAreaX != null
+          ? (arenaDebug.coinAreaX + Math.random() * (arenaDebug.coinAreaW || 30))
+          : (((arenaW - 205 + Math.random() * 155) / arenaW) * 100);
+        const dropY = arenaDebug?.coinAreaY != null
+          ? (arenaDebug.coinAreaY + Math.random() * (arenaDebug.coinAreaH || 15))
+          : Math.min(90, groundY - 7 + Math.random() * 12);
+
+        const newDrop: DroppedBattleItem = {
+          id: `drop-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          itemId: drop.itemId,
+          title: itemData.title || itemData.name || 'Item Misterioso',
+          imageUrl: itemData.imageUrl || itemData.image_url || '',
+          rarity: itemData.rarity || 'common',
+          x: dropX,
+          y: dropY,
+          dropData: itemData,
+          createdAt: Date.now()
+        };
+
+        setDroppedBattleItems(prev => [...prev, newDrop]);
+        playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
+        // Regra "apenas 1 por vez": interrompe assim que 1 item é sorteado
+        break;
+      }
+    }
+  };
+
+  const collectBattleItem = async (drop: DroppedBattleItem) => {
+    setDroppedBattleItems(prev => prev.filter(d => d.id !== drop.id));
+    setItemPops(prev => [
+      ...prev,
+      { id: Date.now() + Math.random(), x: drop.x, y: drop.y, title: drop.title, rarity: drop.rarity }
+    ]);
+    playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
+    collectedBattleDropsRef.current.push({ ...drop.dropData, quantity: 1, isMonsterDrop: true });
+
+    if (userData?.uid && !isStudyMode) {
+      try {
+        const globalGachaConfig = await fetchGlobalGachaConfig();
+        const item = drop.dropData;
+        const itemData = {
+          studentId: userData.uid,
+          itemId: item.id,
+          itemTitle: item.title || item.name || 'Item Dropado',
+          itemType: item.type || 'other',
+          itemImageUrl: item.imageUrl || item.image_url || '',
+          gameEffect: item.gameEffect || 'none',
+          usableInQuest: item.usableInQuest || false,
+          gameModelUrl: item.gameModelUrl || '',
+          modelTextureUrl: item.modelTextureUrl || '',
+          minecraftHeadValue: item.minecraftHeadValue || '',
+          quantity: 1,
+          equipped: false,
+          purchasedAt: Date.now(),
+          giftedBy: `Drop de Monstro (${quest?.monsterName || 'Desconhecido'})`,
+          avatarPart: item.avatarPart || null,
+          itemCategory: item.itemCategory || 'none',
+          baseAttributeType: item.baseAttributeType || 'none',
+          baseAttributeValue: item.baseAttributeValue || 0,
+          modelTransforms: item.modelTransforms || null,
+          adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired)) : [],
+          forgeLevel: drop.dropData?.forgeLevel || 0,
+          scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
+        };
+        await supabase.from('user_items').insert({
+          student_id: userData.uid,
+          item_id: item.id,
+          equipped: false,
+          data: itemData
+        });
+      } catch (err) {
+        console.error("Erro ao registrar drop de monstro:", err);
+      }
+    }
   };
 
   // SANGRAMENTO DO RATO (CUMULATIVO) e VENENO DO SAPO no JOGADOR.
@@ -2774,6 +2854,37 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                     onAnimationEnd={() => setCoinPops(prev => prev.filter(p => p.id !== pop.id))}
                   >
                     +{pop.value}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Monster Loot Drops na arena com Auras de Raridade */}
+            {droppedBattleItems.length > 0 && (
+              <div style={{ position: 'absolute', inset: 0, zIndex: 45, pointerEvents: 'none' }}>
+                {droppedBattleItems.map(itemDrop => (
+                  <LootBeamDrop key={itemDrop.id} drop={itemDrop} onCollect={collectBattleItem} />
+                ))}
+              </div>
+            )}
+            {itemPops.length > 0 && (
+              <div style={{ position: 'absolute', inset: 0, zIndex: 46, pointerEvents: 'none' }}>
+                {itemPops.map(pop => (
+                  <div
+                    key={pop.id}
+                    className="coin-value-pop"
+                    style={{
+                      left: `${pop.x}%`,
+                      top: `${pop.y}%`,
+                      color: pop.rarity && pop.rarity !== 'common' ? `var(--rarity-${pop.rarity})` : '#ffffff',
+                      fontSize: '0.82rem',
+                      fontWeight: 'bold',
+                      textShadow: '0 0 10px rgba(0,0,0,0.9), 0 2px 4px black',
+                      whiteSpace: 'nowrap'
+                    }}
+                    onAnimationEnd={() => setItemPops(prev => prev.filter(p => p.id !== pop.id))}
+                  >
+                    +1 {pop.title}
                   </div>
                 ))}
               </div>

@@ -16,9 +16,13 @@ import { Package, Coins } from 'lucide-react';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { normalizeCombatCoinDrop, getSafeUrl } from '../lib/utils';
 import DamageEffectOverlay from '../components/DamageEffectOverlay';
+// @ts-ignore
+import LootBeamDrop, { type DroppedBattleItem } from '../components/LootBeamDrop';
 import { getEquippedDamageEffect, getEquippedDamageEffectInfo, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
 import { useDialog } from '../contexts/DialogContext';
-import { calculateTotalStats } from '../lib/gacha';
+// @ts-ignore
+import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
+import { getMaxAddsLimit } from '../lib/ranks';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
@@ -69,6 +73,12 @@ export default function LiveQuestStudent() {
   const [droppedCoins, setDroppedCoins] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [coinPops, setCoinPops] = useState<{ id: number; x: number; y: number; value: number }[]>([]);
   const [lostCoinsDisplay, setLostCoinsDisplay] = useState<number>(0);
+
+  // Monster Drops em Batalha
+  const [droppedBattleItems, setDroppedBattleItems] = useState<DroppedBattleItem[]>([]);
+  const [itemPops, setItemPops] = useState<{ id: number; x: number; y: number; title: string; rarity?: string }[]>([]);
+  const droppedBattleItemIdsRef = useRef<Set<string>>(new Set());
+  const monsterStoreItemsMapRef = useRef<Map<string, any>>(new Map());
 
   const arenaRef = useRef<HTMLDivElement>(null);
   const [arenaWidth, setArenaWidth] = useState(0);
@@ -152,6 +162,20 @@ export default function LiveQuestStudent() {
           podiumBgUrl: qDoc.podium_bg_url || qDoc.podiumBgUrl || null,
         } as QuestDef;
         setQuest(qData);
+
+        // Pré-carrega itens de store_items para os drops do monstro
+        if (Array.isArray(qData.monsterDrops) && qData.monsterDrops.length > 0) {
+          const dropIds = qData.monsterDrops.map((d: any) => d.itemId).filter(Boolean);
+          if (dropIds.length > 0) {
+            supabase.from('store_items').select('*').in('id', dropIds).then(({ data: sSnap }) => {
+              if (sSnap) {
+                sSnap.forEach(d => {
+                  monsterStoreItemsMapRef.current.set(d.id, { id: d.id, ...d.data, ...d });
+                });
+              }
+            });
+          }
+        }
 
         // Load selected chest model & active coin for this live quest
         const chestModelId = (qDoc as any)?.chestConfig?.chestModelId;
@@ -561,6 +585,88 @@ export default function LiveQuestStudent() {
     setCoinPops(prev => [...prev, { id: Date.now() + Math.random(), x: coin.x, y: coin.y, value: coin.value }]);
   };
 
+  const checkAndDropMonsterItem = () => {
+    if (!quest?.monsterDrops || quest.monsterDrops.length === 0) return;
+    const candidates = quest.monsterDrops.filter((d: any) => d.itemId && !droppedBattleItemIdsRef.current.has(d.itemId));
+    if (candidates.length === 0) return;
+
+    const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+
+    for (const drop of shuffled) {
+      const roll = Math.random() * 100;
+      if (roll <= drop.dropChance) {
+        const itemData = monsterStoreItemsMapRef.current.get(drop.itemId);
+        if (!itemData) continue;
+
+        droppedBattleItemIdsRef.current.add(drop.itemId);
+
+        const dropX = 74 + Math.random() * 18;
+        const dropY = 70 + Math.random() * 15;
+
+        const newDrop: DroppedBattleItem = {
+          id: `drop-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          itemId: drop.itemId,
+          title: itemData.title || itemData.name || 'Item Raro',
+          imageUrl: itemData.imageUrl || itemData.image_url || '',
+          rarity: itemData.rarity || 'common',
+          x: dropX,
+          y: dropY,
+          dropData: itemData,
+          createdAt: Date.now()
+        };
+
+        setDroppedBattleItems(prev => [...prev, newDrop]);
+        break;
+      }
+    }
+  };
+
+  const collectBattleItem = async (drop: DroppedBattleItem) => {
+    setDroppedBattleItems(prev => prev.filter(d => d.id !== drop.id));
+    setItemPops(prev => [
+      ...prev,
+      { id: Date.now() + Math.random(), x: drop.x, y: drop.y, title: drop.title, rarity: drop.rarity }
+    ]);
+
+    if (userData?.uid) {
+      try {
+        const item = drop.dropData;
+        const itemData = {
+          studentId: userData.uid,
+          itemId: item.id,
+          itemTitle: item.title || item.name || 'Item Dropado',
+          itemType: item.type || 'other',
+          itemImageUrl: item.imageUrl || item.image_url || '',
+          gameEffect: item.gameEffect || 'none',
+          usableInQuest: item.usableInQuest || false,
+          gameModelUrl: item.gameModelUrl || '',
+          modelTextureUrl: item.modelTextureUrl || '',
+          minecraftHeadValue: item.minecraftHeadValue || '',
+          quantity: 1,
+          equipped: false,
+          purchasedAt: Date.now(),
+          giftedBy: `Drop de Monstro (${quest?.monsterName || 'Desconhecido'})`,
+          avatarPart: item.avatarPart || null,
+          itemCategory: item.itemCategory || 'none',
+          baseAttributeType: item.baseAttributeType || 'none',
+          baseAttributeValue: item.baseAttributeValue || 0,
+          modelTransforms: item.modelTransforms || null,
+          adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, undefined, getMaxAddsLimit(item.minRankRequired)) : [],
+          forgeLevel: drop.dropData?.forgeLevel || 0,
+          scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
+        };
+        await supabase.from('user_items').insert({
+          student_id: userData.uid,
+          item_id: item.id,
+          equipped: false,
+          data: itemData
+        });
+      } catch (err) {
+        console.error("Erro ao registrar drop de monstro no live quest:", err);
+      }
+    }
+  };
+
   const handleAnswerSubmit = async (answerIndex: number) => {
     if (!sessionId || !userData || !session || !quest) return;
     if (me?.currentAnswer !== null && me?.currentAnswer !== undefined) return;
@@ -632,6 +738,7 @@ export default function LiveQuestStudent() {
           }));
           setDroppedCoins(prev => [...prev, ...newCoins]);
         }
+        checkAndDropMonsterItem();
       } else {
         let hasEquippedShield = false;
         me.equippedItems?.forEach((item: any) => {
@@ -1059,6 +1166,37 @@ export default function LiveQuestStudent() {
                         onAnimationEnd={() => setCoinPops(prev => prev.filter(p => p.id !== pop.id))}
                       >
                         +{pop.value}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Monster Loot Drops na arena Live com Auras de Raridade */}
+                {droppedBattleItems.length > 0 && (
+                  <div style={{ position: 'absolute', inset: 0, zIndex: 105, pointerEvents: 'none' }}>
+                    {droppedBattleItems.map(itemDrop => (
+                      <LootBeamDrop key={itemDrop.id} drop={itemDrop} onCollect={collectBattleItem} />
+                    ))}
+                  </div>
+                )}
+                {itemPops.length > 0 && (
+                  <div style={{ position: 'absolute', inset: 0, zIndex: 106, pointerEvents: 'none' }}>
+                    {itemPops.map(pop => (
+                      <div
+                        key={pop.id}
+                        className="coin-value-pop"
+                        style={{
+                          left: `${pop.x}%`,
+                          top: `${pop.y}%`,
+                          color: pop.rarity && pop.rarity !== 'common' ? `var(--rarity-${pop.rarity})` : '#ffffff',
+                          fontSize: '0.8rem',
+                          fontWeight: 'bold',
+                          textShadow: '0 0 10px rgba(0,0,0,0.9), 0 2px 4px black',
+                          whiteSpace: 'nowrap'
+                        }}
+                        onAnimationEnd={() => setItemPops(prev => prev.filter(p => p.id !== pop.id))}
+                      >
+                        +1 {pop.title}
                       </div>
                     ))}
                   </div>

@@ -8,7 +8,8 @@ import { supabase } from './supabase';
 let cache: Record<string, any> | null = null;
 
 export function computeItemTransformKey(item: any): string {
-  return [item?.itemTitle, item?.avatarPart, item?.gameModelUrl]
+  const title = item?.itemTitle || item?.title || item?.name || '';
+  return [title, item?.avatarPart, item?.gameModelUrl]
     .map(v => (v || ''))
     .join('|');
 }
