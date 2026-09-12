@@ -799,6 +799,8 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
   const [questCreatedBy, setQuestCreatedBy] = useState<string | null>(null);
   const [questCreatorRole, setQuestCreatorRole] = useState<string | null>(null);
   const [questTargetClasses, setQuestTargetClasses] = useState<string[]>([]);
+  const [selectedQuestClassTab, setSelectedQuestClassTab] = useState<string>('all');
+  const [questGlobalFilter, setQuestGlobalFilter] = useState<'all' | 'general_only'>('all');
   
   const [galleryTarget, setGalleryTarget] = useState<string | null>(null);
   const [pixabayKey, setPixabayKey] = useState('');
@@ -1645,6 +1647,14 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     setQuestShuffleQuestions(false); setQuestShuffleAnswers(false);
     setQuestRandomSelection(false); setQuestRandomCount(10);
     setQuestQuestions([{ title: '', imageUrl: '', timeLimit: 30, options: [{text: ''}, {text: ''}, {text: ''}, {text: ''}], correctIndex: 0 }]);
+  };
+
+  const handleStartCreateQuest = () => {
+    resetQuestForm();
+    if (selectedQuestClassTab !== 'all') {
+      setQuestTargetClasses([selectedQuestClassTab]);
+    }
+    setIsCreatingQuest(true);
   };
 
   const handleSaveQuest = async () => {
@@ -2915,7 +2925,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                       <button className="login-btn" onClick={() => setShowAudioBank(v => !v)} style={{ background: showAudioBank ? 'rgba(139,92,246,0.25)' : 'var(--btn-bg)', color: showAudioBank ? '#c084fc' : 'var(--text-primary)', border: `1px solid ${showAudioBank ? 'rgba(139,92,246,0.5)' : 'var(--border-glass)'}` }}>
                         <Volume2 size={18} style={{ marginRight: '0.4rem' }} /> Banco de Áudio
                       </button>
-                      <button className="login-btn" onClick={() => { resetQuestForm(); setIsCreatingQuest(true); }} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
+                      <button className="login-btn" onClick={handleStartCreateQuest} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
                         <Plus size={18} style={{ marginRight: '0.5rem' }} /> Nova Missão
                       </button>
                     </div>
@@ -2927,71 +2937,308 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                     </div>
                   )}
 
-                  <div style={{ display: 'grid', gap: '1rem' }}>
-                    {quests.filter(q => {
+                  {(() => {
+                    const allowedQuests = quests.filter(q => {
                       if (userData?.role === 'admin') return true;
                       if (userData?.role === 'teacher') return q.createdBy === userData?.uid || q.creatorRole === 'admin';
                       return true;
-                    }).length === 0 ? (
-                      <p style={{ color: 'var(--text-secondary)' }}>Nenhuma missão criada ainda.</p>
-                    ) : quests.filter(q => {
-                      if (userData?.role === 'admin') return true;
-                      if (userData?.role === 'teacher') return q.createdBy === userData?.uid || q.creatorRole === 'admin';
-                      return true;
-                    }).map(quest => {
-                      const isOwnerOrAdmin = userData?.role === 'admin' || quest.createdBy === userData?.uid;
-                      return (
-                      <div key={quest.id} className="glass-panel quest-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderLeft: `4px solid ${quest.active ? 'var(--accent-green)' : 'var(--text-secondary)'}` }}>
-                        <div className="quest-card-info" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', minWidth: 0 }}>
-                          {quest.coverImageUrl ? (
-                            <img src={quest.coverImageUrl} alt="Capa" className="quest-card-img" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }} />
-                          ) : (
-                            <div className="quest-card-img" style={{ width: '80px', height: '80px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.1)' }}>
-                              <Swords size={32} color="var(--text-secondary)" />
-                            </div>
-                          )}
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-                              <h3 style={{ fontSize: '1.3rem', margin: 0, wordBreak: 'break-word', minWidth: 0 }}>{quest.title}</h3>
-                              <span className="quest-card-mode-badge" style={{ padding: '0.2rem 0.6rem', background: quest.mode === 'live' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: quest.mode === 'live' ? 'var(--gold-primary)' : 'var(--accent-blue)', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                {quest.mode === 'live' ? 'Tempo Real' : 'Atividade'}
-                              </span>
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                              <span>Recompensa: <strong style={{ color: 'var(--gold-primary)' }}>{quest.baseXp} XP</strong></span>
-                              <span>Modo: {quest.allowRetries ? `Vidas Extras` : 'Hardcore'}</span>
-                              <span>{quest.randomQuestionSelection && quest.randomQuestionCount ? `${quest.randomQuestionCount} de ${quest.questions.length}` : quest.questions.length} Perguntas</span>
-                              {quest.targetClasses && quest.targetClasses.length > 0 && <span style={{ color: 'var(--accent-blue)' }}>Turmas: {quest.targetClasses.join(', ')}</span>}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="quest-card-actions" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                          {quest.mode === 'live' && (
-                            <button onClick={() => navigate(`/live-admin/${quest.id}`, { state: { reset: true } })} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }} title="Iniciar Sessão Ao Vivo">
-                              <Play size={18} fill="black" /> Iniciar Ao Vivo
-                            </button>
-                          )}
-                          <button onClick={() => openQuestHistory(quest)} style={{ background: 'transparent', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }} title="Ver Histórico">
-                            <History size={18} /> Histórico
+                    });
+
+                    const isQuestForAllClasses = (q: QuestDef) => {
+                      return !q.targetClasses || q.targetClasses.length === 0;
+                    };
+
+                    const filteredQuests = allowedQuests.filter(q => {
+                      if (selectedQuestClassTab === 'all') {
+                        if (questGlobalFilter === 'general_only') {
+                          return isQuestForAllClasses(q);
+                        }
+                        return true;
+                      }
+                      return isQuestForAllClasses(q) || (q.targetClasses && q.targetClasses.includes(selectedQuestClassTab));
+                    });
+
+                    return (
+                      <>
+                        {/* Barra de Guias Coloridas das Turmas */}
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
+                          <button 
+                            className="class-tabs-arrow class-tabs-arrow-left" 
+                            onClick={(e) => { const el = e.currentTarget.parentElement?.querySelector('.quest-class-tabs-scroll'); if (el) el.scrollBy({ left: -140, behavior: 'smooth' }); }} 
+                            style={{ position: 'absolute', left: 0, zIndex: 5, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'none', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)', padding: 0, flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
+                            title="Rolar turmas para esquerda"
+                          >
+                            <ChevronDown size={14} style={{ transform: 'rotate(90deg)' }} />
                           </button>
-                          {isOwnerOrAdmin && (
-                            <>
-                              <button onClick={() => handleEditQuest(quest)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Missão">
-                                <Edit2 size={20} />
-                              </button>
-                              <button onClick={() => handleToggleQuestActive(quest.id, quest.active)} style={{ background: quest.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.1)', color: quest.active  ? 'var(--accent-green)'  : 'var(--text-primary)', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                                {quest.active ? 'Ativa (Visível)' : 'Rascunho (Oculta)'}
-                              </button>
-                              <button onClick={() => handleDeleteQuest(quest.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Missão">
-                                <Trash2 size={20} />
-                              </button>
-                            </>
+                          
+                          <div 
+                            className="compact-tab-row class-tabs-scroll quest-class-tabs-scroll" 
+                            style={{ display: 'flex', gap: '0.6rem', overflowX: 'auto', padding: '0.25rem 0.5rem 0.5rem 0.5rem', width: '100%', scrollbarWidth: 'thin' }}
+                          >
+                            {/* Guia Todas */}
+                            <button 
+                              onClick={() => setSelectedQuestClassTab('all')}
+                              style={{ 
+                                padding: '0.35rem 1.1rem', 
+                                borderRadius: '20px', 
+                                border: `1px solid ${selectedQuestClassTab === 'all' ? 'var(--gold-primary)' : 'var(--border-glass)'}`, 
+                                background: selectedQuestClassTab === 'all' ? 'var(--gold-primary)' : 'var(--btn-bg)', 
+                                color: selectedQuestClassTab === 'all' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', 
+                                cursor: 'pointer', 
+                                whiteSpace: 'nowrap', 
+                                fontWeight: 'bold', 
+                                fontSize: '0.88rem', 
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.45rem',
+                                boxShadow: selectedQuestClassTab === 'all' ? '0 0 14px rgba(245, 158, 11, 0.4)' : 'none',
+                                transition: 'all 0.2s ease',
+                              }}
+                            >
+                              <Star size={14} fill={selectedQuestClassTab === 'all' ? 'currentColor' : 'none'} color={selectedQuestClassTab === 'all' ? 'currentColor' : 'var(--gold-primary)'} />
+                              <span>Todas</span>
+                              <span style={{ 
+                                background: selectedQuestClassTab === 'all' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.1)', 
+                                padding: '0.1rem 0.45rem', 
+                                borderRadius: '10px', 
+                                fontSize: '0.75rem',
+                                fontWeight: 'normal'
+                              }}>
+                                {allowedQuests.length}
+                              </span>
+                            </button>
+
+                            {/* Guias Coloridas de cada Turma */}
+                            {schoolClasses.map(cls => {
+                              const isSelected = selectedQuestClassTab === cls.name;
+                              const countForClass = allowedQuests.filter(q => isQuestForAllClasses(q) || (q.targetClasses && q.targetClasses.includes(cls.name))).length;
+                              return (
+                                <button 
+                                  key={cls.id}
+                                  onClick={() => setSelectedQuestClassTab(cls.name)}
+                                  style={{ 
+                                    padding: '0.35rem 1.1rem', 
+                                    borderRadius: '20px', 
+                                    border: `1px solid ${cls.color}`, 
+                                    background: isSelected ? cls.color : 'var(--btn-bg)', 
+                                    color: isSelected ? '#ffffff' : 'var(--text-primary)', 
+                                    cursor: 'pointer', 
+                                    whiteSpace: 'nowrap', 
+                                    fontWeight: 'bold', 
+                                    fontSize: '0.88rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.45rem',
+                                    boxShadow: isSelected ? `0 0 14px ${cls.color}66` : 'none',
+                                    textShadow: isSelected ? '0 1px 2px rgba(0,0,0,0.5)' : 'none',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                >
+                                  <span style={{
+                                    display: 'inline-block',
+                                    width: '8px',
+                                    height: '8px',
+                                    borderRadius: '50%',
+                                    backgroundColor: isSelected ? '#ffffff' : cls.color,
+                                    boxShadow: `0 0 6px ${cls.color}`,
+                                  }} />
+                                  <span>{cls.name}</span>
+                                  <span style={{ 
+                                    background: isSelected ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.08)', 
+                                    padding: '0.1rem 0.45rem', 
+                                    borderRadius: '10px', 
+                                    fontSize: '0.75rem',
+                                    fontWeight: 'normal',
+                                    color: isSelected ? '#ffffff' : 'var(--text-secondary)'
+                                  }}>
+                                    {countForClass}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <button 
+                            className="class-tabs-arrow class-tabs-arrow-right" 
+                            onClick={(e) => { const el = e.currentTarget.parentElement?.querySelector('.quest-class-tabs-scroll'); if (el) el.scrollBy({ left: 140, behavior: 'smooth' }); }} 
+                            style={{ position: 'absolute', right: 0, zIndex: 5, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'none', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)', padding: 0, flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
+                            title="Rolar turmas para direita"
+                          >
+                            <ChevronDown size={14} style={{ transform: 'rotate(-90deg)' }} />
+                          </button>
+                        </div>
+
+                        {/* Sub-filtro auxiliar na guia Todas */}
+                        {selectedQuestClassTab === 'all' && allowedQuests.length > 0 && (
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Exibir na guia Todas:</span>
+                            <button
+                              onClick={() => setQuestGlobalFilter('all')}
+                              style={{
+                                padding: '0.2rem 0.65rem',
+                                borderRadius: '12px',
+                                border: `1px solid ${questGlobalFilter === 'all' ? 'var(--gold-primary)' : 'var(--border-glass)'}`,
+                                background: questGlobalFilter === 'all' ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
+                                color: questGlobalFilter === 'all' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                                fontSize: '0.78rem',
+                                cursor: 'pointer',
+                                fontWeight: questGlobalFilter === 'all' ? 'bold' : 'normal',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              Todas as Missões ({allowedQuests.length})
+                            </button>
+                            <button
+                              onClick={() => setQuestGlobalFilter('general_only')}
+                              style={{
+                                padding: '0.2rem 0.65rem',
+                                borderRadius: '12px',
+                                border: `1px solid ${questGlobalFilter === 'general_only' ? 'var(--gold-primary)' : 'var(--border-glass)'}`,
+                                background: questGlobalFilter === 'general_only' ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
+                                color: questGlobalFilter === 'general_only' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                                fontSize: '0.78rem',
+                                cursor: 'pointer',
+                                fontWeight: questGlobalFilter === 'general_only' ? 'bold' : 'normal',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              Apenas para Todas as Turmas ({allowedQuests.filter(isQuestForAllClasses).length})
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Listagem de Missões Filtradas */}
+                        <div style={{ display: 'grid', gap: '1rem' }}>
+                          {filteredQuests.length === 0 ? (
+                            <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', borderRadius: '12px' }}>
+                              <Swords size={40} style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem', opacity: 0.6 }} />
+                              <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '1rem' }}>
+                                {selectedQuestClassTab === 'all' 
+                                  ? (questGlobalFilter === 'general_only' ? 'Nenhuma missão encontrada configurada para todas as turmas.' : 'Nenhuma missão criada ainda.') 
+                                  : `Nenhuma missão encontrada para a turma "${selectedQuestClassTab}".`}
+                              </p>
+                              {selectedQuestClassTab !== 'all' && (
+                                <button 
+                                  onClick={handleStartCreateQuest} 
+                                  style={{ 
+                                    marginTop: '1rem', 
+                                    background: 'var(--btn-bg)', 
+                                    border: '1px solid var(--border-glass)', 
+                                    color: 'var(--text-primary)', 
+                                    padding: '0.5rem 1.2rem', 
+                                    borderRadius: '8px', 
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem'
+                                  }}
+                                >
+                                  <Plus size={16} /> Criar missão para {selectedQuestClassTab}
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            filteredQuests.map(quest => {
+                              const isOwnerOrAdmin = userData?.role === 'admin' || quest.createdBy === userData?.uid;
+                              const isForAll = isQuestForAllClasses(quest);
+                              return (
+                                <div key={quest.id} className="glass-panel quest-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderLeft: `4px solid ${quest.active ? 'var(--accent-green)' : 'var(--text-secondary)'}` }}>
+                                  <div className="quest-card-info" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', minWidth: 0 }}>
+                                    {quest.coverImageUrl ? (
+                                      <img src={quest.coverImageUrl} alt="Capa" className="quest-card-img" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }} />
+                                    ) : (
+                                      <div className="quest-card-img" style={{ width: '80px', height: '80px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                                        <Swords size={32} color="var(--text-secondary)" />
+                                      </div>
+                                    )}
+                                    <div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                                        <h3 style={{ fontSize: '1.3rem', margin: 0, wordBreak: 'break-word', minWidth: 0 }}>{quest.title}</h3>
+                                        <span className="quest-card-mode-badge" style={{ padding: '0.2rem 0.6rem', background: quest.mode === 'live' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: quest.mode === 'live' ? 'var(--gold-primary)' : 'var(--accent-blue)', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                          {quest.mode === 'live' ? 'Tempo Real' : 'Atividade'}
+                                        </span>
+                                      </div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                        <span>Recompensa: <strong style={{ color: 'var(--gold-primary)' }}>{quest.baseXp} XP</strong></span>
+                                        <span>Modo: {quest.allowRetries ? `Vidas Extras` : 'Hardcore'}</span>
+                                        <span>{quest.randomQuestionSelection && quest.randomQuestionCount ? `${quest.randomQuestionCount} de ${quest.questions.length}` : quest.questions.length} Perguntas</span>
+
+                                        {/* Selos / Badges de Turmas */}
+                                        {isForAll ? (
+                                          <span style={{ 
+                                            display: 'inline-flex', 
+                                            alignItems: 'center', 
+                                            gap: '0.3rem', 
+                                            padding: '0.15rem 0.6rem', 
+                                            borderRadius: '12px', 
+                                            background: 'rgba(234, 179, 8, 0.15)', 
+                                            color: 'var(--gold-primary)', 
+                                            fontSize: '0.78rem', 
+                                            fontWeight: 'bold', 
+                                            border: '1px solid rgba(234, 179, 8, 0.35)' 
+                                          }}>
+                                            <Star size={12} fill="currentColor" /> Todas as Turmas
+                                          </span>
+                                        ) : (
+                                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Turmas:</span>
+                                            {quest.targetClasses?.map(tName => {
+                                              const clsObj = schoolClasses.find(c => c.name === tName);
+                                              const badgeColor = clsObj ? clsObj.color : 'var(--accent-blue)';
+                                              return (
+                                                <span 
+                                                  key={tName} 
+                                                  style={{ 
+                                                    padding: '0.15rem 0.55rem', 
+                                                    borderRadius: '12px', 
+                                                    background: `${badgeColor}22`, 
+                                                    color: badgeColor, 
+                                                    fontSize: '0.78rem', 
+                                                    fontWeight: 'bold', 
+                                                    border: `1px solid ${badgeColor}55` 
+                                                  }}
+                                                >
+                                                  {tName}
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="quest-card-actions" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                    {quest.mode === 'live' && (
+                                      <button onClick={() => navigate(`/live-admin/${quest.id}`, { state: { reset: true } })} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }} title="Iniciar Sessão Ao Vivo">
+                                        <Play size={18} fill="black" /> Iniciar Ao Vivo
+                                      </button>
+                                    )}
+                                    <button onClick={() => openQuestHistory(quest)} style={{ background: 'transparent', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }} title="Ver Histórico">
+                                      <History size={18} /> Histórico
+                                    </button>
+                                    {isOwnerOrAdmin && (
+                                      <>
+                                        <button onClick={() => handleEditQuest(quest)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Missão">
+                                          <Edit2 size={20} />
+                                        </button>
+                                        <button onClick={() => handleToggleQuestActive(quest.id, quest.active)} style={{ background: quest.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.1)', color: quest.active  ? 'var(--accent-green)'  : 'var(--text-primary)', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                          {quest.active ? 'Ativa (Visível)' : 'Rascunho (Oculta)'}
+                                        </button>
+                                        <button onClick={() => handleDeleteQuest(quest.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Missão">
+                                          <Trash2 size={20} />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
-                      </div>
-                      );
-                    })}
-                  </div>
+                      </>
+                    );
+                  })()}
                 </>
               ) : (
                 <div style={{ animation: 'slideUp 0.3s ease-out', display: 'flex', flexDirection: 'column', height: '100%' }}>
