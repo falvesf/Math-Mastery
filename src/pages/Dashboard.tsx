@@ -172,17 +172,27 @@ export default function Dashboard() {
     if (!bubble) return;
     const tip = companionTips.find(t => t.id === bubble.tipId);
     if (!tip) return;
-    if (tip.id === 'intro') {
-      const nextTip = pendingTips.find(t => t.id !== 'intro');
-      if (nextTip) {
-        setBubble({ tipId: nextTip.id, step: 0 });
-      } else {
-        setBubble({ tipId: tip.id, step: (bubble.step + 1) % tip.lines.length });
-      }
+    markTipSeen(tip.id);
+    const nextPending = pendingTips.filter(t => t.id !== tip.id);
+    if (nextPending.length > 0) {
+      setBubble({ tipId: nextPending[0].id, step: 0 });
     } else {
-      markTipSeen(tip.id);
+      setBubble(null);
     }
   };
+
+  // Se o aluno já tem personagem configurado ou já interagiu, não deve ficar preso no tutorial de intro
+  useEffect(() => {
+    if (!isPlayerView || !userData) return;
+    const hasExistingAvatar = userData.avatarConfig && (
+      (userData.avatarConfig.equippedItems && userData.avatarConfig.equippedItems.length > 0) ||
+      userData.avatarConfig.gender ||
+      userData.avatarConfig.skinTexture
+    );
+    if (hasExistingAvatar && !onboarding['intro']) {
+      markTipSeen('intro');
+    }
+  }, [isPlayerView, userData]);
 
   // Primeiro acesso: levar direto para a guia Personagem (só na primeira vez)
   useEffect(() => {
@@ -241,10 +251,12 @@ export default function Dashboard() {
     const timer = setTimeout(() => {
       const next = bubble.step + 1;
       if (next >= tip.lines.length) {
-        if (tip.id === 'intro') {
-          setBubble({ tipId: tip.id, step: 0 });
+        markTipSeen(tip.id);
+        const nextPending = pendingTips.filter(t => t.id !== tip.id);
+        if (nextPending.length > 0) {
+          setBubble({ tipId: nextPending[0].id, step: 0 });
         } else {
-          markTipSeen(tip.id);
+          setBubble(null);
         }
       } else {
         setBubble({ ...bubble, step: next });
@@ -252,7 +264,7 @@ export default function Dashboard() {
     }, 3200);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bubble]);
+  }, [bubble, companionTips, pendingTips]);
 
   useEffect(() => {
     const handleOpenInventory = () => {
@@ -1228,7 +1240,8 @@ export default function Dashboard() {
         setShowLevelUp(true);
       } else {
         const newPrefs = { ...(userData.inventoryPreferences || {}), lastSeenRank: currentRank.name };
-        supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
+        supabase.from('users').update({ inventory_preferences: newPrefs, rank: currentRank.name }).eq('id', userData.uid);
+        updateUserDataLocally({ inventoryPreferences: newPrefs, lastSeenRank: currentRank.name, rank: currentRank.name });
       }
       return;
     }
@@ -1250,7 +1263,7 @@ export default function Dashboard() {
         const confirmedStats = userData.distributedStats || {};
         const totalConfirmedPoints = Object.values(confirmedStats).reduce((sum: any, val: any) => sum + (val || 0), 0) as number;
 
-        let updateData: any = { inventory_preferences: newPrefs };
+        let updateData: any = { inventory_preferences: newPrefs, rank: currentRank.name };
 
         if (totalConfirmedPoints > totalEarnedPoints) {
           const pointsToRemove = totalConfirmedPoints - totalEarnedPoints;
@@ -1271,6 +1284,7 @@ export default function Dashboard() {
         }
 
         supabase.from('users').update(updateData).eq('id', userData.uid).then();
+        updateUserDataLocally({ inventoryPreferences: newPrefs, lastSeenRank: currentRank.name, rank: currentRank.name, ...(updateData.distributed_stats ? { distributedStats: updateData.distributed_stats } : {}) });
       }
     }
   }, [userData?.xp, userData?.lastSeenRank, currentRank.name, ranksLoaded]);
@@ -1303,6 +1317,10 @@ export default function Dashboard() {
 
         // Atualiza o estado local para forçar recarregamento se voltar na aba
         setXpHistory([]);
+
+        // Salvar imediatamente no banco e no estado para nunca perder lastSeenRank
+        await supabase.from('users').update({ inventory_preferences: newPrefs, rank: currentRank.name }).eq('id', userData.uid);
+        updateUserDataLocally({ inventoryPreferences: newPrefs, lastSeenRank: currentRank.name, rank: currentRank.name });
 
         // Verificar se deve mostrar baú de patente
         try {
@@ -1363,7 +1381,8 @@ export default function Dashboard() {
         }
       }
 
-      await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
+      await supabase.from('users').update({ inventory_preferences: newPrefs, rank: currentRank.name }).eq('id', userData.uid);
+      updateUserDataLocally({ inventoryPreferences: newPrefs, lastSeenRank: currentRank.name, rank: currentRank.name });
       // Após equipar a patente, foca no perfil/status do cubo
       focusProfileStatus();
     }
@@ -1401,7 +1420,8 @@ export default function Dashboard() {
       if (levelUpData?.newRank && newRankIndex > highest) {
         newPrefs.highestRankIndex = newRankIndex;
       }
-      await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
+      await supabase.from('users').update({ inventory_preferences: newPrefs, rank: currentRank.name }).eq('id', userData.uid);
+      updateUserDataLocally({ inventoryPreferences: newPrefs, lastSeenRank: currentRank.name, rank: currentRank.name });
     }
 
     // Após abrir o baú da patente, foca no perfil/status do cubo

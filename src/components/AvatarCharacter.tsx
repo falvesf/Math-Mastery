@@ -258,14 +258,14 @@ export function getModelTransformKey(
 }
 
 export function resolveModelTransform(
-  item: { modelTransforms?: ModelTransformsConfig; itemTitle?: string; avatarPart?: string; gameModelUrl?: string },
+  item: { modelTransforms?: ModelTransformsConfig; itemTitle?: string; avatarPart?: string; gameModelUrl?: string; itemId?: string; docId?: string },
   gender: 'male' | 'female' | undefined,
   handedness: string | undefined,
   isBattle: boolean
 ): ModelTransform | undefined {
-  // Transform do próprio item prevalece; senão (ou em itens iguais de outro tenant),
-  // usa o registro GLOBAL do Debug 3D — itens idênticos compartilham a configuração.
-  const ownMt = item.modelTransforms;
+  // Transform do próprio item prevalece se tiver configurações válidas; senão
+  // usa o registro GLOBAL do Debug 3D / catálogo — itens idênticos compartilham a configuração.
+  const ownMt = item?.modelTransforms && Object.keys(item.modelTransforms).length > 0 ? item.modelTransforms : undefined;
   const globalMt = getGlobalModelTransforms(item);
   const mt = ownMt && globalMt ? { ...globalMt, ...ownMt } : (ownMt || globalMt);
   if (!mt) return undefined;
@@ -406,6 +406,15 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     const handleClickOutside = () => setActiveMenuSlot(null);
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Re-aplica transforms quando o catálogo de transforms for atualizado ou carregado
+  useEffect(() => {
+    const handleUpdate = () => {
+      setModelsLoadedCount(prev => prev + 1);
+    };
+    window.addEventListener('avatar-transforms-updated', handleUpdate);
+    return () => window.removeEventListener('avatar-transforms-updated', handleUpdate);
   }, []);
 
   const customHairRef = useRef<THREE.Group | null>(null);
@@ -847,11 +856,10 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                   model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY * inv, debugItemTransform.rotZ * inv);
                   model.translateY(debugItemTransform.slide);
                   appliedTransform = true;
-                } else if (item.modelTransforms) {
+                } else {
                   const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
                   const transform = resolveModelTransform(item, config.gender, config.handedness, isBattle)
-                    || item.modelTransforms.common
-                    || (Object.values(item.modelTransforms)[0] as any);
+                    || (item.modelTransforms && (item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any)));
                   if (transform) {
                     applyItemScale(model, transform.scale ?? 10, transform.thickness ?? 1);
                     model.position.set(transform.posX * inv, transform.posY, transform.posZ);
@@ -896,13 +904,16 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
-              } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
-                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-                applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
-                model.position.set(t.posX, t.posY, t.posZ);
-                model.rotation.set(t.rotX, t.rotY, t.rotZ);
-                model.translateY(t.slide);
-                appliedTransform = true;
+              } else {
+                const t = resolveModelTransform(item, config.gender, config.handedness, false)
+                  || (item.modelTransforms && (item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any)));
+                if (t) {
+                  applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
+                  model.position.set(t.posX, t.posY, t.posZ);
+                  model.rotation.set(t.rotX, t.rotY, t.rotZ);
+                  model.translateY(t.slide);
+                  appliedTransform = true;
+                }
               }
               
               if (!appliedTransform) {
@@ -945,13 +956,16 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
-              } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
-                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-                applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
-                model.position.set(t.posX, t.posY, t.posZ);
-                model.rotation.set(t.rotX, t.rotY, t.rotZ);
-                model.translateY(t.slide);
-                appliedTransform = true;
+              } else {
+                const t = resolveModelTransform(item, config.gender, config.handedness, false)
+                  || (item.modelTransforms && (item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any)));
+                if (t) {
+                  applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
+                  model.position.set(t.posX, t.posY, t.posZ);
+                  model.rotation.set(t.rotX, t.rotY, t.rotZ);
+                  model.translateY(t.slide);
+                  appliedTransform = true;
+                }
               }
               
               if (!appliedTransform) {
@@ -998,13 +1012,16 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 model.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
                 model.translateY(debugItemTransform.slide);
                 appliedTransform = true;
-              } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
-                const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-                applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
-                model.position.set(t.posX, t.posY, t.posZ);
-                model.rotation.set(t.rotX, t.rotY, t.rotZ);
-                model.translateY(t.slide);
-                appliedTransform = true;
+              } else {
+                const t = resolveModelTransform(item, config.gender, config.handedness, false)
+                  || (item.modelTransforms && (item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any)));
+                if (t) {
+                  applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
+                  model.position.set(t.posX, t.posY, t.posZ);
+                  model.rotation.set(t.rotX, t.rotY, t.rotZ);
+                  model.translateY(t.slide);
+                  appliedTransform = true;
+                }
               }
               if (!appliedTransform) {
                 model.position.set(0, item.avatarPart === 'face' ? 4 : 0, 0);
@@ -1038,11 +1055,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
              curveX = debugItemTransform.curveX || 0;
              curveY = debugItemTransform.curveY || 0;
              genThickness = 0.12 * (debugItemTransform.thickness ?? 1);
-           } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
-             const curveT = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-             curveX = curveT.curveX || 0;
-             curveY = curveT.curveY || 0;
-             genThickness = 0.12 * (curveT.thickness ?? 1);
+           } else {
+             const curveT = resolveModelTransform(item, config.gender, config.handedness, false)
+               || (item.modelTransforms && (item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any)));
+             if (curveT) {
+               curveX = curveT.curveX || 0;
+               curveY = curveT.curveY || 0;
+               genThickness = 0.12 * (curveT.thickness ?? 1);
+             }
            }
 
             const normalizedAvatarPart = item.avatarPart ? String(item.avatarPart).toLowerCase().trim() : '';
@@ -1161,24 +1181,43 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
                  // Função robusta para identificar se uma malha/nó pertence ao lado esquerdo ou direito
                  const detectSide = (n: THREE.Object3D): 'left' | 'right' | 'none' => {
-                    let name = n.name.toLowerCase();
+                    const classify = (str: string): 'left' | 'right' | 'none' => {
+                       const s = str.toLowerCase();
+                       // 1. Termos explícitos (palavras completas ou tokens compostos comuns)
+                       const isL = /\b(left|esq|esquerda)\b/i.test(s) || /(left_leg|boot_left|shoe_left|leg_left|leggings_left|left_shoe|left_pants|left_boot)/i.test(s);
+                       const isR = /\b(right|dir|direita)\b/i.test(s) || /(right_leg|boot_right|shoe_right|leg_right|leggings_right|right_shoe|right_pants|right_boot)/i.test(s);
+                       if (isL && !isR) return 'left';
+                       if (isR && !isL) return 'right';
+
+                       // 2. Abreviações isoladas como _l, .l, -l, l_ (garantindo que 'l' NÃO seja seguido por letras como 'leg', 'leather', etc.)
+                       const abbrL = /([_\.\-]l)($|[^a-zA-Z])/i.test(s) || /\bl[_\.\-]/i.test(s);
+                       const abbrR = /([_\.\-]r)($|[^a-zA-Z])/i.test(s) || /\br[_\.\-]/i.test(s);
+                       if (abbrL && !abbrR) return 'left';
+                       if (abbrR && !abbrL) return 'right';
+
+                       return 'none';
+                    };
+
+                    // 1. Testa primeiro o nome do próprio nó
+                    const selfSide = classify(n.name);
+                    if (selfSide !== 'none') return selfSide;
+
+                    // 2. Testa os nós ancestrais subindo a hierarquia
                     let p = n.parent;
                     while (p && p.type !== 'Scene') {
-                       name += ' ' + p.name.toLowerCase();
+                       const parentSide = classify(p.name);
+                       if (parentSide !== 'none') return parentSide;
                        p = p.parent;
                     }
-                    const isL = /\b(left|esq|esquerda)\b/.test(name) || /(_l|\.l|-l|l_|shoe_l|boot_l|leg_l)/.test(name) || name.includes('left');
-                    const isR = /\b(right|dir|direita)\b/.test(name) || /(_r|\.r|-r|r_|shoe_r|boot_r|leg_r)/.test(name) || name.includes('right');
-                    if (isL && !isR) return 'left';
-                    if (isR && !isL) return 'right';
-                    if (isL && isR) {
-                       const selfName = n.name.toLowerCase();
-                       const selfL = selfName.includes('left') || selfName.includes('_l') || selfName.includes('esq');
-                       const selfR = selfName.includes('right') || selfName.includes('_r') || selfName.includes('dir');
-                       if (selfL && !selfR) return 'left';
-                       if (selfR && !selfL) return 'right';
+
+                    // 3. Fallback: testa o caminho concatenado completo
+                    let fullName = n.name.toLowerCase();
+                    p = n.parent;
+                    while (p && p.type !== 'Scene') {
+                       fullName += ' ' + p.name.toLowerCase();
+                       p = p.parent;
                     }
-                    return 'none';
+                    return classify(fullName);
                  };
 
                  if ((normalizedPart === 'legs' || normalizedPart === 'feet') && !item.extractMeshName) {
@@ -1362,12 +1401,14 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             mesh.rotation.set(debugItemTransform.rotX, debugItemTransform.rotY, debugItemTransform.rotZ);
             mesh.translateY(debugItemTransform.slide);
             appliedTransform = true;
-          } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
-            const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-            mesh.position.set(t.posX, t.posY, t.posZ);
-            mesh.rotation.set(t.rotX, t.rotY, t.rotZ);
-            mesh.translateY(t.slide);
-            appliedTransform = true;
+          } else {
+            const t = resolveModelTransform(item, config.gender, config.handedness, false);
+            if (t) {
+              mesh.position.set(t.posX, t.posY, t.posZ);
+              mesh.rotation.set(t.rotX, t.rotY, t.rotZ);
+              mesh.translateY(t.slide);
+              appliedTransform = true;
+            }
           }
           
           if (!appliedTransform) {
@@ -1514,12 +1555,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
           }
           appliedTransform = true;
-        } else if (item.modelTransforms) {
+        } else {
           const isBattle = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
-
-          const transform = resolveModelTransform(item, config.gender, config.handedness, isBattle)
-            || item.modelTransforms.common
-            || (Object.values(item.modelTransforms)[0] as any);
+          const transform = resolveModelTransform(item, config.gender, config.handedness, isBattle);
 
           if (transform) {
             applyItemScale(model, transform.scale ?? 10, transform.thickness ?? 1);
@@ -1563,17 +1601,19 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
           }
           appliedTransform = true;
-        } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
-          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-          applyItemScale(model, t.scale ?? defaultHeadScale, t.thickness ?? 1);
-          model.position.set(t.posX, t.posY, t.posZ);
-          model.rotation.set(t.rotX, t.rotY, t.rotZ);
-          model.position.y = t.posY;
-          model.translateY(t.slide);
-          if (model.userData.is25D) {
-            updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+        } else {
+          const t = resolveModelTransform(item, config.gender, config.handedness, false);
+          if (t) {
+            applyItemScale(model, t.scale ?? defaultHeadScale, t.thickness ?? 1);
+            model.position.set(t.posX, t.posY, t.posZ);
+            model.rotation.set(t.rotX, t.rotY, t.rotZ);
+            model.position.y = t.posY;
+            model.translateY(t.slide);
+            if (model.userData.is25D) {
+              updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+            }
+            appliedTransform = true;
           }
-          appliedTransform = true;
         }
         
         if (!appliedTransform) {
@@ -1597,16 +1637,19 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
           }
           appliedTransform = true;
-        } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
-          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-          model.position.set(t.posX, t.posY, t.posZ);
-          model.rotation.set(t.rotX, t.rotY, t.rotZ);
-          model.position.y = t.posY;
-          model.translateY(t.slide);
-          if (model.userData.is25D) {
-            updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+        } else {
+          const t = resolveModelTransform(item, config.gender, config.handedness, false);
+          if (t) {
+            applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
+            model.position.set(t.posX, t.posY, t.posZ);
+            model.rotation.set(t.rotX, t.rotY, t.rotZ);
+            model.position.y = t.posY;
+            model.translateY(t.slide);
+            if (model.userData.is25D) {
+              updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+            }
+            appliedTransform = true;
           }
-          appliedTransform = true;
         }
         
         if (!appliedTransform) {
@@ -1625,16 +1668,18 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           if (model.userData.is25D) {
             updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
           }
-        } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
-          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-          applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
-          model.position.set(t.posX, t.posY, t.posZ);
-          
-          let baseRotY = 0; // O modelo GLB exportado pelo Blockbench já está virado para a frente (0 graus)
-          model.rotation.set(t.rotX, t.rotY + baseRotY, t.rotZ);
-          model.translateY(t.slide);
-          if (model.userData.is25D) {
-            updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+        } else {
+          const t = resolveModelTransform(item, config.gender, config.handedness, false);
+          if (t) {
+            applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
+            model.position.set(t.posX, t.posY, t.posZ);
+            
+            let baseRotY = 0; // O modelo GLB exportado pelo Blockbench já está virado para a frente (0 graus)
+            model.rotation.set(t.rotX, t.rotY + baseRotY, t.rotZ);
+            model.translateY(t.slide);
+            if (model.userData.is25D) {
+              updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+            }
           }
         }
       } else if (avatarPart === 'accessory' || avatarPart === 'face' || avatarPart === 'pet') {
@@ -1647,18 +1692,20 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           if (model.userData.is25D) {
             updateVoxelCurve(model as THREE.Group, debugItemTransform.curveX || 0, debugItemTransform.curveY || 0);
           }
-        } else if (item.modelTransforms && Object.keys(item.modelTransforms).length > 0) {
-          const t = resolveModelTransform(item, config.gender, config.handedness, false) || item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any);
-          applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
-          model.position.set(t.posX, t.posY, t.posZ);
-          model.rotation.set(t.rotX, t.rotY, t.rotZ);
-          model.translateY(t.slide);
-          if (model.userData.is25D) {
-            updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
-          }
         } else {
-          model.position.set(0, avatarPart === 'face' ? 4 : 0, 0);
-          model.rotation.set(0, Math.PI, 0);
+          const t = resolveModelTransform(item, config.gender, config.handedness, false);
+          if (t) {
+            applyItemScale(model, t.scale ?? 16, t.thickness ?? 1);
+            model.position.set(t.posX, t.posY, t.posZ);
+            model.rotation.set(t.rotX, t.rotY, t.rotZ);
+            model.translateY(t.slide);
+            if (model.userData.is25D) {
+              updateVoxelCurve(model as THREE.Group, t.curveX || 0, t.curveY || 0);
+            }
+          } else {
+            model.position.set(0, avatarPart === 'face' ? 4 : 0, 0);
+            model.rotation.set(0, Math.PI, 0);
+          }
         }
       }
     });

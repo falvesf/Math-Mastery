@@ -158,7 +158,10 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (!userData.uid) return;
     const savePreferences = async () => {
       try {
-        await supabase.from('users').update({ inventory_preferences: { viewMode, activeCategory, filterRarity, slotMap } }).eq('id', userData.uid);
+        const prev = userData.inventoryPreferences || {};
+        const newPrefs = { ...prev, viewMode, activeCategory, filterRarity, slotMap };
+        await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
+        updateUserDataLocally({ inventoryPreferences: newPrefs });
       } catch (err) {}
     };
     const t = setTimeout(savePreferences, 1000);

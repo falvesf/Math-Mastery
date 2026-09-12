@@ -1220,38 +1220,78 @@ onClick={() => setConfig(prev => {
                           const isLeftHanded = config.handedness === 'left';
                           const transformKey = getModelTransformKey(config.gender, config.handedness, isBattle);
                           
-                          // 1. Save to store_items. Salva SOMENTE a chave da combinação
-                          // atual (mão + estado + gênero): `common`/`battle` (destra),
-                          // `common_left`/`battle_left` (canhota) e variantes `_female`.
-                          // NÃO sobrescreve mais a chave universal `common`, para que a
-                          // configuração de uma mão não influencie a outra.
-                          const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
-                          if (storeItemSnap) {
-                            const prevTransforms = (storeItemSnap.data as any).modelTransforms || {};
+                          const targetTitle = (targetItem.itemTitle || (targetItem as any).title || (targetItem as any).name || '').trim().toLowerCase();
+                          const targetPart = (targetItem.avatarPart || '').trim().toLowerCase();
+
+                          // 1. Atualizar TODOS os store_items correspondentes
+                          // (tanto o item do tenant quanto a cópia global no Banco de Itens ou importações)
+                          const { data: storeRows } = await supabase.from('store_items').select('id, data');
+                          const matchingItemIds = new Set<string>();
+                          matchingItemIds.add(targetItem.itemId);
+                          if ((targetItem as any).importedFromId) matchingItemIds.add((targetItem as any).importedFromId);
+
+                          const matchingStoreItems = (storeRows || []).filter(s => {
+                            if (s.id === targetItem.itemId) return true;
+                            const sTitle = (s.data?.title || s.data?.name || '').trim().toLowerCase();
+                            const sPart = (s.data?.avatarPart || '').trim().toLowerCase();
+                            const sImportedId = s.data?.importedFromId;
+                            if (sImportedId && (sImportedId === targetItem.itemId || sImportedId === (targetItem as any).importedFromId)) return true;
+                            if (targetTitle && sTitle === targetTitle && (!targetPart || !sPart || sPart === targetPart)) return true;
+                            return false;
+                          });
+
+                          let updatedTransforms: any = { [transformKey]: debugTransform };
+
+                          for (const s of matchingStoreItems) {
+                            matchingItemIds.add(s.id);
+                            const prevTransforms = (s.data as any)?.modelTransforms || {};
+                            updatedTransforms = { ...prevTransforms, [transformKey]: debugTransform };
                             const newStoreData = { 
-                              ...(storeItemSnap.data as any), 
-                              modelTransforms: { ...prevTransforms, [transformKey]: debugTransform }
+                              ...(s.data as any), 
+                              modelTransforms: updatedTransforms
                             };
-                            await supabase.from('store_items').update({ data: newStoreData }).eq('id', targetItem.itemId);
-                          }
-                          
-                          // 2. Cascade to user_items
-                          const { data: snapUserItems } = await supabase.from('user_items').select('id, data').eq('item_id', targetItem.itemId);
-                          if (snapUserItems) {
-                            for (const d of snapUserItems) {
-                              const prevTransforms = (d.data as any).modelTransforms || {};
-                              const newUserData = { 
-                                ...(d.data as any), 
-                                modelTransforms: { ...prevTransforms, [transformKey]: debugTransform }
-                              };
-                              await supabase.from('user_items').update({ data: newUserData }).eq('id', d.id);
-                            }
+                            await supabase.from('store_items').update({ data: newStoreData }).eq('id', s.id);
                           }
 
-                          // 3. Registro GLOBAL (Debug 3D compartilhado entre TODOS os tenants):
-                          // itens iguais de outras escolas usam a MESMA configuração.
+                          // Se não encontrou na listagem por algum motivo, garante update no targetItem.itemId
+                          if (matchingStoreItems.length === 0) {
+                            const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
+                            if (storeItemSnap) {
+                              const prevTransforms = (storeItemSnap.data as any).modelTransforms || {};
+                              updatedTransforms = { ...prevTransforms, [transformKey]: debugTransform };
+                              const newStoreData = { 
+                                ...(storeItemSnap.data as any), 
+                                modelTransforms: updatedTransforms
+                              };
+                              await supabase.from('store_items').update({ data: newStoreData }).eq('id', targetItem.itemId);
+                            }
+                          }
+                          
+                          // 2. Cascade para TODOS os user_items (alunos e professores)
+                          // que possuem o item vinculado aos IDs encontrados OU pelo mesmo título e avatarPart
+                          const { data: userItemRows } = await supabase.from('user_items').select('id, item_id, data');
+                          const matchingUserItems = (userItemRows || []).filter(u => {
+                            if (matchingItemIds.has(u.item_id)) return true;
+                            const uTitle = (u.data?.itemTitle || u.data?.title || '').trim().toLowerCase();
+                            const uPart = (u.data?.avatarPart || '').trim().toLowerCase();
+                            if (targetTitle && uTitle === targetTitle && (!targetPart || !uPart || uPart === targetPart)) return true;
+                            return false;
+                          });
+
+                          for (const d of matchingUserItems) {
+                            const prevTransforms = (d.data as any)?.modelTransforms || {};
+                            const newUserData = { 
+                              ...(d.data as any), 
+                              modelTransforms: { ...prevTransforms, [transformKey]: debugTransform }
+                            };
+                            await supabase.from('user_items').update({ data: newUserData }).eq('id', d.id);
+                          }
+
+                          // 3. Atualiza cache em memória e sincronização global
                           try {
-                            const { computeItemTransformKey, invalidateGlobalItemTransforms } = await import('../lib/itemTransforms');
+                            const { computeItemTransformKey, setGlobalItemTransform, invalidateGlobalItemTransforms } = await import('../lib/itemTransforms');
+                            setGlobalItemTransform(targetItem, updatedTransforms);
+                            
                             const itemKey = computeItemTransformKey(targetItem);
                             const { data: globalSnap } = await supabase.from('item_transforms').select('model_transforms').eq('item_key', itemKey).maybeSingle();
                             const prevGlobal = (globalSnap?.model_transforms as any) || {};
@@ -1261,11 +1301,18 @@ onClick={() => setConfig(prev => {
                             }, { onConflict: 'item_key' });
                             invalidateGlobalItemTransforms();
                           } catch (e) {
-                            console.error('Erro ao salvar transform global:', e);
+                            console.warn('Sincronização global item_transforms ignorada:', e);
                           }
+
+                          // Atualiza item localmente no targetItem para refletir na UI imediatamente
+                          targetItem.modelTransforms = updatedTransforms;
+
                           if (onPositionsSaved) onPositionsSaved();
+                          if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('avatar-transforms-updated'));
+                          }
                           
-                          showAlert(`Configuração de transformação (${transformKey}) salva com sucesso em todos os inventários!`);
+                          showAlert(`Configuração de transformação (${transformKey}) salva com sucesso em todos os inventários! (${matchingUserItems.length} itens de usuários atualizados)`);
                         } catch (e) {
                           console.error(e);
                           showAlert('Erro ao salvar no banco de dados.');
