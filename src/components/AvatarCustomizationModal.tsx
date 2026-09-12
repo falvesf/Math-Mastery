@@ -1123,28 +1123,50 @@ onClick={() => setConfig(prev => {
                     </select>
                   </div>
                   {[
-                    { label: 'Pos X', key: 'posX' as const, min: -30, max: 30, step: 0.5 },
-                    { label: 'Pos Y', key: 'posY' as const, min: -30, max: 10, step: 0.5 },
-                    { label: 'Pos Z', key: 'posZ' as const, min: -30, max: 30, step: 0.5 },
-                    { label: 'Rot X', key: 'rotX' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
-                    { label: 'Rot Y', key: 'rotY' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
-                    { label: 'Rot Z', key: 'rotZ' as const, min: -Math.PI, max: Math.PI, step: 0.05 },
-                    { label: 'Slide', key: 'slide' as const, min: -40, max: 20, step: 1 },
-                    { label: 'Scale', key: 'scale' as const, min: 0.1, max: 100, step: 0.1 },
-                    { label: 'Thick', key: 'thickness' as const, min: 0.1, max: 10, step: 0.1 },
-                    { label: 'Curve X', key: 'curveX' as const, min: -10, max: 10, step: 0.01 },
-                    { label: 'Curve Y', key: 'curveY' as const, min: -10, max: 10, step: 0.01 },
+                    { label: 'Pos X', key: 'posX' as const, min: -30, max: 30, step: 0.05 },
+                    { label: 'Pos Y', key: 'posY' as const, min: -30, max: 15, step: 0.05 },
+                    { label: 'Pos Z', key: 'posZ' as const, min: -30, max: 30, step: 0.05 },
+                    { label: 'Rot X', key: 'rotX' as const, min: -Math.PI, max: Math.PI, step: 0.01 },
+                    { label: 'Rot Y', key: 'rotY' as const, min: -Math.PI, max: Math.PI, step: 0.01 },
+                    { label: 'Rot Z', key: 'rotZ' as const, min: -Math.PI, max: Math.PI, step: 0.01 },
+                    { label: 'Slide', key: 'slide' as const, min: -40, max: 20, step: 0.05 },
+                    { label: 'Scale', key: 'scale' as const, min: 0.1, max: 60, step: 0.05 },
+                    { label: 'Thick', key: 'thickness' as const, min: 0.1, max: 5, step: 0.01 },
+                    { label: 'Curve X', key: 'curveX' as const, min: -10, max: 10, step: 0.005 },
+                    { label: 'Curve Y', key: 'curveY' as const, min: -10, max: 10, step: 0.005 },
                   ].map(({ label, key, min, max, step }) => (
-                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                      <span style={{ width: '42px', color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold' }}>{label}</span>
+                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.25rem' }}>
+                      <span style={{ width: '42px', color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '0.75rem', flexShrink: 0 }}>{label}</span>
                       <input 
                         type="range" 
                         min={min} max={max} step={step}
-                        value={debugTransform[key] ?? (key.startsWith('curve') ? 0 : 16)} 
+                        value={debugTransform[key] ?? (key.startsWith('curve') ? 0 : (key === 'thickness' ? 1 : 16))} 
                         onChange={(e) => setDebugTransform(prev => ({ ...prev, [key]: parseFloat(e.target.value) }))}
-                        style={{ flex: 1, accentColor: '#f59e0b' }}
+                        style={{ flex: 1, minWidth: '70px', accentColor: '#f59e0b' }}
                       />
-                      <span style={{ width: '55px', textAlign: 'right', color: '#fbbf24', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}>{(debugTransform[key] ?? (key === 'scale' ? 16 : 0)).toFixed(2)}</span>
+                      <input
+                        type="number"
+                        step={step}
+                        value={Number((debugTransform[key] ?? (key === 'scale' ? 16 : (key === 'thickness' ? 1 : 0))).toFixed(key.startsWith('rot') ? 3 : 2))}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) setDebugTransform(prev => ({ ...prev, [key]: val }));
+                        }}
+                        style={{
+                          width: '60px',
+                          textAlign: 'right',
+                          color: '#fbbf24',
+                          background: 'rgba(0,0,0,0.5)',
+                          border: '1px solid rgba(245, 158, 11, 0.4)',
+                          borderRadius: '4px',
+                          fontFamily: 'monospace',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          padding: '2px 4px',
+                          flexShrink: 0
+                        }}
+                        title="Digite um valor exato ou use as setas do teclado para ajuste fino"
+                      />
                     </div>
                   ))}
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -1347,11 +1369,11 @@ onClick={() => setConfig(prev => {
                     { label: 'Rot Y', key: 'ry' as const },
                     { label: 'Rot Z', key: 'rz' as const },
                   ].map(({ label, key }) => (
-                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                      <span style={{ width: '42px', color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold' }}>{label}</span>
+                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.25rem' }}>
+                      <span style={{ width: '42px', color: '#f59e0b', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '0.75rem', flexShrink: 0 }}>{label}</span>
                       <input 
                         type="range" 
-                        min={-Math.PI} max={Math.PI} step={0.05}
+                        min={-Math.PI} max={Math.PI} step={0.01}
                         value={debugPose[debugBodyPart]?.[key] ?? 0} 
                         onChange={(e) => {
                           const val = parseFloat(e.target.value);
@@ -1364,9 +1386,40 @@ onClick={() => setConfig(prev => {
                           }));
                           setDebugPreviewAnim(false);
                         }}
-                        style={{ flex: 1, accentColor: '#f59e0b' }}
+                        style={{ flex: 1, minWidth: '70px', accentColor: '#f59e0b' }}
                       />
-                      <span style={{ width: '55px', textAlign: 'right', color: '#fbbf24', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}>{(debugPose[debugBodyPart]?.[key] ?? 0).toFixed(2)}</span>
+                      <input
+                        type="number"
+                        step={0.01}
+                        value={Number((debugPose[debugBodyPart]?.[key] ?? 0).toFixed(3))}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) {
+                            setDebugPose(prev => ({
+                              ...prev,
+                              [debugBodyPart]: {
+                                ...((prev as any)[debugBodyPart] || { rx: 0, ry: 0, rz: 0 }),
+                                [key]: val
+                              }
+                            }));
+                            setDebugPreviewAnim(false);
+                          }
+                        }}
+                        style={{
+                          width: '60px',
+                          textAlign: 'right',
+                          color: '#fbbf24',
+                          background: 'rgba(0,0,0,0.5)',
+                          border: '1px solid rgba(245, 158, 11, 0.4)',
+                          borderRadius: '4px',
+                          fontFamily: 'monospace',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          padding: '2px 4px',
+                          flexShrink: 0
+                        }}
+                        title="Digite um valor exato ou use as setas do teclado para ajuste fino"
+                      />
                     </div>
                   ))}
                   

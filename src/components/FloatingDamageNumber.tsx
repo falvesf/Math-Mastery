@@ -3,11 +3,12 @@ import React from 'react';
 export interface FloatingDamageData {
   id: string | number;
   damage: number;
-  isCrit: boolean;
+  isCrit?: boolean;
   isCritical?: boolean;
   target: 'monster' | 'player';
   isMiss?: boolean;
   isEvasion?: boolean;
+  isHeal?: boolean;
   x?: number; // % horizontal na arena
   y?: number; // % vertical na arena
 }
@@ -20,6 +21,7 @@ export interface FloatingDamageNumberProps {
   target?: 'monster' | 'player';
   isMiss?: boolean;
   isEvasion?: boolean;
+  isHeal?: boolean;
   x?: number; // % horizontal na arena
   y?: number; // % vertical na arena
   onComplete?: (id: string | number) => void;
@@ -32,6 +34,7 @@ export const FloatingDamageNumber: React.FC<FloatingDamageNumberProps> = (props)
   const isCrit = d.isCritical ?? d.isCrit ?? false;
   const target = d.target || 'monster';
   const isMiss = d.isEvasion ?? d.isMiss ?? false;
+  const isHeal = d.isHeal ?? false;
   const x = d.x;
   const y = d.y;
 
@@ -40,7 +43,7 @@ export const FloatingDamageNumber: React.FC<FloatingDamageNumberProps> = (props)
     if (props.onComplete && itemKey !== undefined) {
       const timer = setTimeout(() => {
         props.onComplete!(itemKey);
-      }, 1100);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [props.id, props.data?.id, props.onComplete]);
@@ -63,6 +66,30 @@ export const FloatingDamageNumber: React.FC<FloatingDamageNumberProps> = (props)
         }}
       >
         <span>💨 ESQUIVOU!</span>
+      </div>
+    );
+  }
+
+  // Cura: número positivo em verde/verde-água
+  if (isHeal) {
+    return (
+      <div
+        className="floating-damage-pop is-heal"
+        style={{
+          left: `${posX}%`,
+          top: `${posY}%`,
+          color: '#2dd4bf', // Verde água / Aqua vibrante
+          fontSize: isCrit ? '2.8rem' : '2.2rem',
+          filter: 'drop-shadow(0 0 16px rgba(45, 212, 191, 0.95)) drop-shadow(0 0 4px #065f46)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          lineHeight: 1
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', lineHeight: 1 }}>
+          +{damage}
+        </span>
       </div>
     );
   }

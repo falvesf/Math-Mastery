@@ -92,6 +92,25 @@ export function calculateMonsterHitDamage(
 }
 
 /**
+ * Calcula a quantidade e a porcentagem de cura do monstro quando ele possui atributo de cura/dreno.
+ * A recuperação é uma porcentagem do dano causado ao jogador e escala progressivamente com o nível do monstro.
+ */
+export function calculateMonsterHealFromDamage(
+  damageInflicted: number,
+  monsterLevel: number = 1
+): { healAmount: number; healPercent: number } {
+  const dmg = Math.max(1, Number(damageInflicted) || 1);
+  const lvl = Math.max(1, Number(monsterLevel) || 1);
+
+  // Nível 1: 25%, subindo 5% a cada nível (ex: Nível 5: 45%, Nível 10: 70%, Nível 16+: 100%)
+  const healPercent = Math.min(100, Math.round(20 + lvl * 5));
+  const rawHeal = (dmg * healPercent) / 100;
+  const healAmount = Math.max(1, Math.round(rawHeal));
+
+  return { healAmount, healPercent };
+}
+
+/**
  * Evolui o monstro quando o jogador é totalmente derrotado em missões normais.
  * - Monstro ganha 5% do XP base da missão.
  * - Compara com os limites de patentes para subir de nível.
@@ -140,7 +159,7 @@ export async function evolveMonsterOnPlayerDefeat(
 
     // Monstro ganha 5% da experiência definida na missão
     const gainedXp = Math.max(1, Math.round(questBaseXp * 0.05));
-    const newTotalXp = currentStats.xp + gainedXp;
+    const newTotalXp = (currentStats.xp ?? 0) + gainedXp;
 
     // Patentes de referência
     const rankList = (RANKS.length > 0 ? RANKS : DEFAULT_RANKS)

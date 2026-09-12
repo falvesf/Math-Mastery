@@ -184,10 +184,14 @@ export default function Dashboard() {
   // Se o aluno já tem personagem configurado ou já interagiu, não deve ficar preso no tutorial de intro
   useEffect(() => {
     if (!isPlayerView || !userData) return;
-    const hasExistingAvatar = userData.avatarConfig && (
-      (userData.avatarConfig.equippedItems && userData.avatarConfig.equippedItems.length > 0) ||
-      userData.avatarConfig.gender ||
-      userData.avatarConfig.skinTexture
+    const cfg = userData.avatarConfig as any;
+    const hasExistingAvatar = cfg && (
+      (cfg.equippedItems && cfg.equippedItems.length > 0) ||
+      cfg.gender ||
+      cfg.skinTexture ||
+      cfg.customSkinUrl ||
+      cfg.customModelUrl ||
+      cfg.hairStyle
     );
     if (hasExistingAvatar && !onboarding['intro']) {
       markTipSeen('intro');
@@ -799,7 +803,7 @@ export default function Dashboard() {
           setLoadingHistory(false);
           return;
         }
-        const items = await fetchStudentAchievementHistory(userData.uid, tenantId);
+        const items = await fetchStudentAchievementHistory(userData.uid, tenantId || undefined);
         sessionCache.set(cacheKey, items, CACHE_TTL.XP_HISTORY);
         setXpHistory(items);
         setLoadingHistory(false);
@@ -1437,7 +1441,7 @@ export default function Dashboard() {
     if (!baseConfig) return;
     const currentHidden = baseConfig.hiddenSlots || [];
     const newHidden = currentHidden.includes(slotId)
-      ? currentHidden.filter(id => id !== slotId)
+      ? currentHidden.filter((id: string) => id !== slotId)
       : [...currentHidden, slotId];
 
     const newConfig = { ...baseConfig, hiddenSlots: newHidden };

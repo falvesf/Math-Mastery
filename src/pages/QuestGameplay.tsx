@@ -27,9 +27,11 @@ import LootBeamDrop, { type DroppedBattleItem } from '../components/LootBeamDrop
 import DamageEffectOverlay from '../components/DamageEffectOverlay';
 import FloatingDamageNumber from '../components/FloatingDamageNumber';
 import QuestDamageRankingModal from '../components/QuestDamageRankingModal';
+import MonsterHealAura from '../components/MonsterHealAura';
 import {
   calculatePlayerHitDamage,
   calculateMonsterHitDamage,
+  calculateMonsterHealFromDamage,
   evolveMonsterOnPlayerDefeat,
   saveQuestDamageRecord,
   DEFAULT_MONSTER_STATS,
@@ -204,6 +206,7 @@ export default function QuestGameplay() {
     damage: number;
     isCritical?: boolean;
     isEvasion?: boolean;
+    isHeal?: boolean;
     target: 'monster' | 'player';
     x?: number;
     y?: number;
@@ -213,7 +216,8 @@ export default function QuestGameplay() {
     damage: number,
     isCritical = false,
     target: 'monster' | 'player' = 'monster',
-    isEvasion = false
+    isEvasion = false,
+    isHeal = false
   ) => {
     const id = Date.now() + Math.random();
     const jitterX = (Math.random() - 0.5) * 8;
@@ -223,7 +227,7 @@ export default function QuestGameplay() {
 
     setActiveFloatingDamages(prev => [
       ...prev,
-      { id, damage, isCritical, isEvasion, target, x, y }
+      { id, damage, isCritical, isEvasion, target, x, y, isHeal }
     ]);
   };
 
@@ -1718,7 +1722,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       const executePlayerHit = (appliedDamage: number, effect: string, customMsg?: string) => {
         if (fatalityActiveRef.current) return;
         advanceStatusTurns();
-        applyMonsterEffectToPlayer(effect);
+        applyMonsterEffectToPlayer(effect, appliedDamage);
         setPlayerAnim('hurt');
         playPlayerDamageSound();
 
@@ -1833,25 +1837,26 @@ const dealTransformDamageToPlayer = (damage: number) => {
         if (decision.supportType === 'heal_potion' || decision.supportType === 'heal_magic') {
           setMonsterHealPulse(true);
           setMonsterHeartFrac(1);
-          setMonsterBubble(decision.supportType === 'heal_potion' ? '🧪 O monstro tomou uma poção de cura!' : '✨ O monstro canalizou magia curativa!');
+          const monsterLvl = Math.max(1, monsterCombatStats?.level || 1);
+          const healAmount = Math.max(1, Math.round(1 + monsterLvl * 0.4));
+          spawnFloatingDamage(healAmount, false, 'monster', false, true);
           setBattleMessage(`${(quest?.monsterName || 'O Monstro')} recuperou suas forças!`);
           setTimeout(() => {
             setMonsterHealPulse(false);
-          }, 1500);
+          }, 2000);
           setTimeout(() => {
             setFeedback(null);
             setLastSelectedOption(null);
-          }, 1800);
+          }, 2000);
           return;
         }
 
         if (decision.supportType === 'vampire') {
           setMonsterHealPulse(true);
           setMonsterHeartFrac(1);
-          setMonsterBubble('🧛 Dreno de Vida!');
           dropCoinsIfDamaged();
-          executePlayerHit(1, 'bleed', 'DRENO VAMPÍRICO! O monstro sugou sua vitalidade e se curou!');
-          setTimeout(() => setMonsterHealPulse(false), 1500);
+          executePlayerHit(1, 'heal', 'DRENO VAMPÍRICO! O monstro sugou sua vitalidade e se curou!');
+          setTimeout(() => setMonsterHealPulse(false), 2000);
           return;
         }
       }
@@ -2513,7 +2518,7 @@ const advanceStatusTurns = () => {
 };
 
 // Aplica um efeito de MONSTRO no jogador (melee/ranged/special configurados).
-const applyMonsterEffectToPlayer = (effect: string) => {
+const applyMonsterEffectToPlayer = (effect: string, damageInflicted: number = 1) => {
   if (!effect || effect === 'none') return;
   switch (effect) {
     case 'bleed': {
@@ -2539,13 +2544,17 @@ const applyMonsterEffectToPlayer = (effect: string) => {
       break;
     case 'transform':
       break;
-    case 'heal':
-      // Monstro se cura: restaura o coração atual
+    case 'heal': {
+      // Monstro se cura: restaura vida com base na porcentagem do dano infligido e no nível do monstro
+      const monsterLvl = Math.max(1, monsterCombatStats?.level || 1);
+      const { healAmount } = calculateMonsterHealFromDamage(damageInflicted, monsterLvl);
       setMonsterHeartFrac(1);
       setMonsterHealPulse(true);
-      setTimeout(() => setMonsterHealPulse(false), 1500);
-      setMonsterBubble('🧪 O monstro se curou!');
+      setTimeout(() => setMonsterHealPulse(false), 2000);
+      // Exibe a recuperação como número flutuante positivo em verde água sobre o monstro
+      spawnFloatingDamage(healAmount, false, 'monster', false, true);
       break;
+    }
   }
 };
 
@@ -2557,7 +2566,7 @@ const rollMonsterAttack = () => {
   // Cura: se o monstro estiver "morrendo" (últimas questões) e configurado → chance de curar
   const remaining = quest?.questions.length ? (quest.questions.length - currentQIndex) / quest.questions.length : 1;
   if (a.heal?.enabled && remaining <= a.heal.threshold && Math.random() < 0.4) {
-    applyMonsterEffectToPlayer('heal');
+    applyMonsterEffectToPlayer('heal', 1);
     return;
   }
 if (a.ranged?.enabled && roll < 0.4) {
@@ -2987,6 +2996,7 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                     damage={dmg.damage}
                     isCritical={dmg.isCritical}
                     isEvasion={dmg.isEvasion}
+                    isHeal={dmg.isHeal}
                     target={dmg.target}
                     x={dmg.x}
                     y={dmg.y}
@@ -3240,7 +3250,6 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
               } ${effectiveMonsterModelUrl ? 'is-3d' : ''}`}
               style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? 35 : (monsterAnim.startsWith('attack') || monsterAnim.startsWith('death-') || monsterProceduralAnim || monsterBodyThrow) ? 30 : 26, pointerEvents: 'none' }}
             >
-              {monsterHealPulse && <div className="monster-heal-pulse" />}
               {monsterBubble && (
                 <div className="speech-bubble monster">
                   {monsterBubble}
@@ -3306,8 +3315,10 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                       })()}
                     </div>
                   </div>
-                <div style={{ position: 'relative', display: 'inline-block' }}>
+                <div className={`quest-arena-monster-inner ${monsterHealPulse ? 'monster-healing-active' : ''}`} style={{ position: 'relative', display: 'inline-block' }}>
+                  {monsterHealPulse && <MonsterHealAura />}
                   {(() => {
+                    const healTint = monsterHealPulse ? '#2dd4bf' : null;
                     const tr = transformState;
                     // MONSTRO TRANSFORMADO (GLB do animal)
                     if (tr) {
@@ -3323,7 +3334,7 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                       // Porco: em repouso olha para a câmera (180°); ao ATACAR vira para o JOGADOR
                       // (esquerda = 90°) e golpeia de frente, não de lado.
                       const rotY = isPig ? (monsterAnim === 'attack' ? 90 : 180) : 0;
-                      const tint = isPig && tr.enraged ? '#ff2222' : null;
+                      const tint = healTint || (isPig && tr.enraged ? '#ff2222' : null);
                       return (
                         <div style={{ transformOrigin: 'bottom center' }}>
                           <div className={animCls || undefined} style={{ position: 'relative' }}>
@@ -3346,7 +3357,7 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                       );
                     }
                     const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
-                    const effectTintColor = effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null;
+                    const effectTintColor = healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null);
                     if (effectiveMonsterModelUrl) {
                       const monsterZoom = effectiveMonsterZoom;
                       // Zoom alto corta a cabeça: aumenta o canvas E afasta a câmera p/ caber
@@ -3360,10 +3371,10 @@ if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyM
                     }
                     if (quest?.monsterAvatarConfig) {
                       return (
-                        <div ref={monsterCharWrapRef} style={{ marginBottom: '-80px', transform: `scale(${effectiveMonsterZoom}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={monsterRageActive ? '#ff2222' : effectTintColor} fallenBodyParts={fallenPartsRef.current} fallenLayerPortal={fallenLayerEl} /></div>
+                        <div ref={monsterCharWrapRef} style={{ marginBottom: '-80px', transform: `scale(${effectiveMonsterZoom}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={160} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={healTint || (monsterRageActive ? '#ff2222' : effectTintColor)} fallenBodyParts={fallenPartsRef.current} fallenLayerPortal={fallenLayerEl} /></div>
                       );
                     }
-                    return <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />;
+                    return <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: healTint ? 'drop-shadow(0 0 15px #2dd4bf) hue-rotate(65deg)' : 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />;
                   })()}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (currentQIndex / Math.max(1, quest?.questions.length || 1)) * (damageEffect === 'impact' ? 2 : 1))) } as any} />
                   <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} drainBlink={drainBlink} />

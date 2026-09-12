@@ -4,6 +4,7 @@ import { orderEffectFirst, getEquippedDamageEffectInfo } from './damageEffects';
 import {
   type TransformState,
   rollTransformAnimal,
+  // @ts-ignore
   TRANSFORM_LABELS,
   TRANSFORM_TURNS,
   TRANSFORM_ENRAGE_HITS,
