@@ -652,7 +652,7 @@ export default function LiveQuestStudent() {
           baseAttributeType: item.baseAttributeType || 'none',
           baseAttributeValue: item.baseAttributeValue || 0,
           modelTransforms: item.modelTransforms || null,
-          adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, undefined, getMaxAddsLimit(item.minRankRequired)) : [],
+          adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, undefined, getMaxAddsLimit(item.minRankRequired), { rollDamage: true }) : [],
           forgeLevel: drop.dropData?.forgeLevel || 0,
           scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
         };

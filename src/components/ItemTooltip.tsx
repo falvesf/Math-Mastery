@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { ATTRIBUTE_LABELS, type AttributeType, getAddEffectiveValue } from '../lib/gacha';
 import { DAMAGE_EFFECTS, EFFECT_ADD_LABELS, isEffectAddType, orderEffectFirst } from '../lib/damageEffects';
-import { forgeAttributeValue, forgeItemName } from '../lib/forge';
+import { forgeAttributeValue, forgeAttributeValueWithConfig, forgeItemName } from '../lib/forge';
 
 export const RARITY_COLORS: Record<string, string> = {
   common: '#9ca3af',
@@ -178,7 +178,7 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
 
       {item.type === 'equippable' && baseAttr && (
         <div style={{ marginBottom: '0.35rem', fontSize: '0.9rem' }}>
-          {baseAttr.icon} <strong>{baseAttr.label}:</strong> <span style={{ color: rColor }}>+{forgeAttributeValue(item.baseAttributeValue || 0, item.forgeLevel || 0)}{mainStatPct ? '%' : ''}</span>
+          {baseAttr.icon} <strong>{baseAttr.label}:</strong> <span style={{ color: rColor }}>+{forgeAttributeValueWithConfig(item.baseAttributeValue || 0, item.forgeLevel || 0, item.forgeConfig)}{mainStatPct ? '%' : ''}</span>
         </div>
       )}
 
@@ -203,9 +203,22 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
                   const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
                   if (!lbl) return null;
                   const effV = isEffectAddType(add.type) ? null : getAddEffectiveValue(add, item.forgeLevel || 0);
+                  
+                  let valueStr = '';
+                  if (isEffectAddType(add.type)) {
+                    valueStr = `${add.value}% de chance`;
+                  } else if (add.type === 'damage') {
+                    const dmgVal = effV !== null ? Math.round(effV) : Math.round(add.value || 0);
+                    const sign = dmgVal >= 0 ? '+' : '';
+                    const forgeHint = add.damageMode === 'forge' ? ' (por nível da forja)' : '';
+                    valueStr = `${sign}${dmgVal}%${forgeHint}`;
+                  } else {
+                    valueStr = `+${add.maxAtForge9 ? effV!.toFixed(1) : add.value}%${add.maxAtForge9 ? ` (máx +${add.value}% em +9)` : ''}`;
+                  }
+
                   return (
                     <li key={i} style={{ color: lbl.color }}>
-                      {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.maxAtForge9 ? effV!.toFixed(1) : add.value}%${add.maxAtForge9 ? ` (máx +${add.value}% em +9)` : ''}`}
+                      {lbl.icon} {lbl.label}: {valueStr}
                     </li>
                   );
                 })}
@@ -223,9 +236,22 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
               const lbl = isEffectAddType(add.type) ? EFFECT_ADD_LABELS[add.type] : ATTRIBUTE_LABELS[add.type as AttributeType];
               if (!lbl) return null;
               const effV = isEffectAddType(add.type) ? null : getAddEffectiveValue(add, item.forgeLevel || 0);
+              
+              let valueStr = '';
+              if (isEffectAddType(add.type)) {
+                valueStr = `${add.value}% de chance`;
+              } else if (add.type === 'damage') {
+                const dmgVal = effV !== null ? Math.round(effV) : Math.round(add.value || 0);
+                const sign = dmgVal >= 0 ? '+' : '';
+                const forgeHint = add.damageMode === 'forge' ? ' (por nível da forja)' : '';
+                valueStr = `${sign}${dmgVal}%${forgeHint}`;
+              } else {
+                valueStr = `+${add.maxAtForge9 ? effV!.toFixed(1) : add.value}%${add.maxAtForge9 ? ` (máx +${add.value}% em +9)` : ''}`;
+              }
+
               return (
                 <li key={i} style={{ color: lbl.color }}>
-                  {lbl.icon} {lbl.label}: {isEffectAddType(add.type) ? `${add.value}% de chance` : `+${add.maxAtForge9 ? effV!.toFixed(1) : add.value}%${add.maxAtForge9 ? ` (máx +${add.value}% em +9)` : ''}`}
+                  {lbl.icon} {lbl.label}: {valueStr}
                 </li>
               );
             })}

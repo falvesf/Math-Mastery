@@ -604,7 +604,7 @@ export default function LiveQuestAdmin() {
                     baseAttributeType: item.baseAttributeType || 'none',
                     baseAttributeValue: item.baseAttributeValue || 0,
                     modelTransforms: item.modelTransforms || null,
-                    adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired)) : []
+                    adds: item.type === 'equippable' ? rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired), { rollDamage: true }) : []
                  };
                  promises.push(supabase.from('user_items').insert({ student_id: playerUid, item_id: item.id, equipped: false, data: itemData }));
                }

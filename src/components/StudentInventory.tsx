@@ -761,11 +761,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const globalGachaConfig = await fetchGlobalGachaConfig();
 
       const existingTypes = freshAdds.map((a: any) => a.type as AttributeType);
+      const fixedWithoutDamage = (storeItemData?.fixedAttributes as ItemAdd[] | undefined)?.filter(f => f.type !== 'damage' && !existingTypes.includes(f.type as AttributeType));
       const newAdds = rollExactAttributes(
         amountToGenerate, 
         existingTypes, 
         storeItemData?.gachaConfig, 
-        storeItemData?.fixedAttributes, 
+        fixedWithoutDamage && fixedWithoutDamage.length > 0 ? fixedWithoutDamage : undefined, 
         (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined,
         getMaxAddsLimit(storeItemData?.minRankRequired)
       );
@@ -805,11 +806,45 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return addsA.every((a, i) => a.type === addsB[i].type && a.value === addsB[i].value);
       };
 
-      // O add de EFEITO nunca é rerolado: preserva ele e AUMENTA sua chance (Pergaminho do Aprimoramento)
+      // 1. O add de EFEITO nunca é rerolado: preserva ele e AUMENTA sua chance (Pergaminho do Aprimoramento)
       const effectAdds = targetAdds
         .filter((a: any) => isEffectAddType(a.type))
         .map((a: any) => ({ ...a, value: Math.min(50, (Number(a.value) || 0) + 8 + Math.floor(Math.random() * 5)) }));
-      const normalCount = currentAddsCount - effectAdds.length;
+
+      // 2. Atributo DANO:
+      // Se for modo 'forge', o pergaminho NÃO altera nada (preserva intacto).
+      // Se for modo 'roll', sorteia um novo número inteiro entre -25% e +45%!
+      let rolledDamageValue: number | null = null;
+      const damageAdds = targetAdds
+        .filter((a: any) => a.type === 'damage')
+        .map((a: any) => {
+          const storeFixed = storeItemData?.fixedAttributes?.find((f: any) => f.type === 'damage');
+          const isForge = a.damageMode === 'forge' || storeFixed?.damageMode === 'forge';
+          if (isForge) {
+            return {
+              ...a,
+              damageMode: 'forge' as const,
+              damagePerLevel: a.damagePerLevel || storeFixed?.damagePerLevel
+            };
+          }
+          const minDmg = -25;
+          const maxDmg = 45;
+          const rolled = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
+          rolledDamageValue = rolled;
+          return {
+            ...a,
+            value: rolled,
+            damageMode: 'roll' as const
+          };
+        });
+
+      // 3. Atributos normais (não efeito, não dano)
+      const normalOldAdds = targetAdds.filter((a: any) => !isEffectAddType(a.type) && a.type !== 'damage');
+      const normalCount = normalOldAdds.length;
+
+      const storeFixedNoDamage = storeItemData?.fixedAttributes
+        ? (storeItemData.fixedAttributes as ItemAdd[]).filter(f => f.type !== 'damage' && !isEffectAddType(f.type))
+        : undefined;
 
       let newNormal: ItemAdd[] = [];
       let attempts = 0;
@@ -818,21 +853,24 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
           normalCount,
           [],
           storeItemData?.gachaConfig,
-          storeItemData?.fixedAttributes,
+          storeFixedNoDamage && storeFixedNoDamage.length > 0 ? storeFixedNoDamage : undefined,
           (storeItemData?.useGlobalGacha ?? true) ? globalGachaConfig : undefined,
           getMaxAddsLimit(storeItemData?.minRankRequired)
         ) : [];
         attempts++;
-      } while (areAddsEqual(newNormal, targetAdds.filter((a: any) => !isEffectAddType(a.type))) && attempts < 10);
+      } while (areAddsEqual(newNormal, normalOldAdds) && attempts < 10);
 
-      const newAdds: ItemAdd[] = [...effectAdds, ...newNormal];
+      const newAdds: ItemAdd[] = [...effectAdds, ...damageAdds, ...newNormal];
 
       if (currentData) {
         await supabase.from('user_items').update({ data: { ...(currentData.data as any), adds: newAdds } }).eq('id', targetDocId);
       }
       
       invalidateEquippedItems(userData.uid);
-      if (effectAdds.length > 0) {
+      if (rolledDamageValue !== null) {
+        const sign = (rolledDamageValue as number) >= 0 ? '+' : '';
+        showToast(`💥 SUCESSO! O Pergaminho do Aprimoramento definiu o Dano em ${sign}${rolledDamageValue}%!`, 'success');
+      } else if (effectAdds.length > 0) {
         const ef = effectAdds[0];
         showToast(`SUCESSO! Atributos renovados. ✨ Efeito "${EFFECT_ADD_LABELS[ef.type as EffectAddType].label}" agora tem ${ef.value}% de chance!`, 'success');
       } else {

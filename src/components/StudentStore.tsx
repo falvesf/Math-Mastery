@@ -61,6 +61,7 @@ const getAttributeName = (type: string) => {
     case 'vitality': return 'Vitalidade';
     case 'fortitude': return 'Fortitude';
     case 'persuasion': return 'Persuasão';
+    case 'damage': return 'Dano';
     default: return type;
   }
 };
@@ -1419,7 +1420,11 @@ export default function StudentStore({ userData }: { userData: UserData }) {
                         {item.adds && item.adds.length > 0 && item.adds.map((add, idx) => (
                           <div key={idx} style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                             <span style={{ color: 'var(--border-glass)' }}>|</span>
-                            <span><strong style={{ color: '#60A5FA' }}>+{add.value}</strong> {getAttributeName(add.type)}</span>
+                            <span>
+                              <strong style={{ color: add.type === 'damage' ? '#F97316' : '#60A5FA' }}>
+                                {add.type === 'damage' ? `${(add.value || 0) >= 0 ? '+' : ''}${add.value}%` : `+${add.value}`}
+                              </strong> {getAttributeName(add.type)}
+                            </span>
                           </div>
                         ))}
                       </div>

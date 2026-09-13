@@ -3,7 +3,7 @@ import type { EffectAddType } from './damageEffects';
 import { forgeAttributeValueWithConfig } from './forge';
 
 export type ItemCategory = 'attack' | 'defense' | 'support' | 'none';
-export type AttributeType = 'attack' | 'defense' | 'xp' | 'coins' | 'vitality' | 'fortitude' | 'persuasion' | 'none';
+export type AttributeType = 'attack' | 'defense' | 'xp' | 'coins' | 'vitality' | 'fortitude' | 'persuasion' | 'damage' | 'none';
 
 /** Tipos de item que empilham na mochila (quantidade > 1 na mesma pilha). */
 export function isStackableItemType(t?: string): boolean {
@@ -16,10 +16,22 @@ export interface ItemAdd {
   /** Quando true, `value` é a força MÁXIMA do add (alcançada só em +9). Nos níveis
    *  abaixo vale value/(10 - forgeLevel): +0 → 1/10, +1 → 1/9, ... +9 → 1/1 (máximo). */
   maxAtForge9?: boolean;
+  /** Modo do atributo dano: 'roll' (sorteado pelo pergaminho e baús entre -25% e +45%) ou 'forge' (escala por nível de forja) */
+  damageMode?: 'roll' | 'forge';
+  /** Valores inteiros de porcentagem de dano para cada nível de forja de +0 a +9 (índices 0 a 9) */
+  damagePerLevel?: number[];
 }
 
 /** Força efetiva de um add conforme o nível de forja da arma. */
 export function getAddEffectiveValue(add: ItemAdd, forgeLevel = 0): number {
+  if (add.type === 'damage') {
+    if (add.damageMode === 'forge' && Array.isArray(add.damagePerLevel) && add.damagePerLevel.length > 0) {
+      const lvl = Math.max(0, Math.min(9, Math.round(forgeLevel || 0)));
+      const val = add.damagePerLevel[lvl];
+      return Math.round(typeof val === 'number' ? val : (add.value || 0));
+    }
+    return Math.round(add.value || 0);
+  }
   if (add.maxAtForge9) {
     const divisor = Math.max(1, 10 - (forgeLevel || 0));
     return add.value / divisor;
@@ -113,9 +125,35 @@ export async function fetchGlobalGachaConfig(): Promise<GachaConfig> {
   return DEFAULT_GACHA_CONFIG;
 }
 
-export function rollItemAdds(config?: GachaConfig, fixedAttributes?: ItemAdd[], globalConfig?: GachaConfig, maxAddsLimit?: number): ItemAdd[] {
+export function rollItemAdds(
+  config?: GachaConfig,
+  fixedAttributes?: ItemAdd[],
+  globalConfig?: GachaConfig,
+  maxAddsLimit?: number,
+  options?: { rollDamage?: boolean }
+): ItemAdd[] {
   if (fixedAttributes && fixedAttributes.length > 0) {
-    return [...fixedAttributes].slice(0, 4);
+    return fixedAttributes.slice(0, 4).map(attr => {
+      if (attr.type === 'damage') {
+        if (attr.damageMode === 'forge') {
+          const val = (attr.damagePerLevel && attr.damagePerLevel[0] !== undefined)
+            ? Math.round(attr.damagePerLevel[0])
+            : Math.round(attr.value || 0);
+          return {
+            ...attr,
+            value: val,
+            damagePerLevel: attr.damagePerLevel ? [...attr.damagePerLevel] : undefined
+          };
+        }
+        // Modo roll: se for recompensa de baú/drop de monstro (options?.rollDamage), sorteia entre -25% e +45%
+        if (options?.rollDamage) {
+          const rolled = Math.floor(Math.random() * (45 - (-25) + 1)) + (-25);
+          return { ...attr, value: rolled, damageMode: 'roll' };
+        }
+        return { ...attr, value: Math.round(attr.value || 0), damageMode: 'roll' };
+      }
+      return { ...attr };
+    });
   }
 
   const cfg = config || globalConfig || DEFAULT_GACHA_CONFIG;
@@ -133,7 +171,10 @@ export function rollItemAdds(config?: GachaConfig, fixedAttributes?: ItemAdd[], 
 
 export function rollExactAttributes(count: number, existingTypes: AttributeType[] = [], config?: GachaConfig, fixedAttributes?: ItemAdd[], globalConfig?: GachaConfig, maxAddsLimit?: number): ItemAdd[] {
   if (fixedAttributes && fixedAttributes.length > 0) {
-    return [...fixedAttributes].slice(0, 4);
+    return fixedAttributes.slice(0, 4).map(a => ({
+      ...a,
+      damagePerLevel: a.damagePerLevel ? [...a.damagePerLevel] : undefined
+    }));
   }
 
   let adds: ItemAdd[] = [];
@@ -161,6 +202,7 @@ export const ATTRIBUTE_LABELS: Record<AttributeType, { label: string, icon: stri
   vitality: { label: 'Vitalidade', icon: '❤️', color: '#F43F5E' },
   fortitude: { label: 'Fortitude', icon: '🎒', color: '#EC4899' }, // Rose/Red
   persuasion: { label: 'Persuasão', icon: '🗣️', color: '#8B5CF6' }, // Purple
+  damage: { label: 'Dano', icon: '💥', color: '#F97316' }, // Flame Orange
   none: { label: 'Nenhum', icon: '', color: '#9CA3AF' }
 };
 
@@ -179,24 +221,40 @@ export function calculateTotalStats(equippedItems: any[], distributedStats?: Rec
     // Força forjada: o item comprado (+0) tem 90% menos do atributo base; forjado +9 atinge 100%.
     // Respeita override manual do painel (statsPerLevel) se existir.
     const effBase = forgeAttributeValueWithConfig(item.baseAttributeValue || 0, item.forgeLevel || 0, item.forgeConfig);
-    // Base Attributes
-    if (item.baseAttributeType === 'attack') stats.attack += effBase;
-    if (item.baseAttributeType === 'defense') stats.defense += effBase;
+    
+    let itemAttack = 0;
+    if (item.baseAttributeType === 'attack') itemAttack += effBase;
 
-    // Extra Adds
-    if (item.adds && Array.isArray(item.adds)) {
-      item.adds.forEach((add: ItemAdd) => {
-        // Add fixo com "força máxima em +9": escala conforme o nível de forja da arma
-        const v = getAddEffectiveValue(add, item.forgeLevel || 0);
-        if (add.type === 'attack') stats.attack += v;
-        if (add.type === 'defense') stats.defense += v;
-        if (add.type === 'xp') stats.xp += v;
-        if (add.type === 'coins') stats.coins += v;
-        if (add.type === 'vitality') stats.vitality += v;
-        if (add.type === 'fortitude') stats.fortitude += v;
-        if (add.type === 'persuasion') stats.persuasion += v;
-      });
+    let itemDefense = 0;
+    if (item.baseAttributeType === 'defense') itemDefense += effBase;
+
+    let itemDamagePct = 0;
+
+    // Extra Adds (ou fixedAttributes caso adds ainda não existam no doc)
+    const rawAdds: ItemAdd[] = (item.adds && Array.isArray(item.adds) && item.adds.length > 0)
+      ? item.adds
+      : (item.fixedAttributes && Array.isArray(item.fixedAttributes) ? item.fixedAttributes : []);
+
+    rawAdds.forEach((add: ItemAdd) => {
+      const v = getAddEffectiveValue(add, item.forgeLevel || 0);
+      if (add.type === 'attack') itemAttack += v;
+      else if (add.type === 'defense') itemDefense += v;
+      else if (add.type === 'damage') itemDamagePct += v;
+      else if (add.type === 'xp') stats.xp += v;
+      else if (add.type === 'coins') stats.coins += v;
+      else if (add.type === 'vitality') stats.vitality += v;
+      else if (add.type === 'fortitude') stats.fortitude += v;
+      else if (add.type === 'persuasion') stats.persuasion += v;
+    });
+
+    // Se a arma tiver o atributo Dano (porcentagem), aplica diretamente sobre o poder de ataque da arma
+    // Exemplo: 5 de ataque com +20% de dano = 6. Com -15% de dano = 4.25 -> 4 (arredondado para baixo como inteiro).
+    if (itemDamagePct !== 0 && itemAttack > 0) {
+      itemAttack = Math.max(0, Math.floor(itemAttack * (1 + itemDamagePct / 100)));
     }
+
+    stats.attack += itemAttack;
+    stats.defense += itemDefense;
   });
 
   if (distributedStats) {

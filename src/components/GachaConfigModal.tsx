@@ -43,7 +43,15 @@ export default function GachaConfigModal({ itemData, initialConfig, initialFixed
 
   const handleUpdateFixedAttribute = (index: number, field: keyof ItemAdd, value: any) => {
     const updated = [...fixedAttributes];
-    updated[index] = { ...updated[index], [field]: value };
+    const current = { ...updated[index], [field]: value };
+    if (field === 'type' && value === 'damage') {
+      current.damageMode = current.damageMode || 'roll';
+      current.value = typeof current.value === 'number' ? current.value : 0;
+      if (!current.damagePerLevel || current.damagePerLevel.length !== 10) {
+        current.damagePerLevel = [2, 7, 12, 17, 21, 26, 31, 36, 40, 45];
+      }
+    }
+    updated[index] = current;
     setFixedAttributes(updated);
   };
 
@@ -169,36 +177,163 @@ export default function GachaConfigModal({ itemData, initialConfig, initialFixed
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {fixedAttributes.map((attr, index) => (
-                  <div key={index} style={{ display: 'flex', gap: '1rem', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ flex: 2 }}>
-                      <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Atributo</label>
-                      <select value={attr.type} onChange={e => handleUpdateFixedAttribute(index, 'type', e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)' }}>
-                        {Object.entries(ATTRIBUTE_LABELS).filter(([k]) => k !== 'none').map(([key, val]) => (
-                          <option key={key} value={key}>{val.icon} {val.label}</option>
-                        ))}
-                      </select>
+                {fixedAttributes.map((attr, index) => {
+                  const isDamage = attr.type === 'damage';
+                  return (
+                    <div key={index} style={{ background: isDamage ? 'rgba(249, 115, 22, 0.06)' : 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: isDamage ? '1px solid rgba(249, 115, 22, 0.3)' : '1px solid rgba(255,255,255,0.05)' }}>
+                      {/* Top Bar / Selects */}
+                      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                        <div style={{ flex: isDamage ? 1.5 : 2 }}>
+                          <label style={{ display: 'block', fontSize: '0.8rem', color: isDamage ? '#F97316' : 'var(--text-secondary)', marginBottom: '0.25rem', fontWeight: isDamage ? 'bold' : 'normal' }}>Atributo</label>
+                          <select value={attr.type} onChange={e => handleUpdateFixedAttribute(index, 'type', e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)' }}>
+                            {Object.entries(ATTRIBUTE_LABELS).filter(([k]) => k !== 'none').map(([key, val]) => (
+                              <option key={key} value={key}>{val.icon} {val.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {isDamage ? (
+                          <div style={{ flex: 2 }}>
+                            <label style={{ display: 'block', fontSize: '0.8rem', color: '#F97316', marginBottom: '0.25rem', fontWeight: 'bold' }}>Modo de Dano</label>
+                            <select
+                              value={attr.damageMode || 'roll'}
+                              onChange={e => handleUpdateFixedAttribute(index, 'damageMode', e.target.value)}
+                              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid #F97316' }}
+                            >
+                              <option value="roll">🎲 Sorteio pelo Pergaminho / Drops (-25% a +45%)</option>
+                              <option value="forge">🔨 Por Nível de Forja da Arma (+0 a +9)</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Valor (+X)</label>
+                              <input type="number" min="1" value={attr.value} onChange={e => handleUpdateFixedAttribute(index, 'value', parseInt(e.target.value) || 1)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)' }} />
+                            </div>
+                            <div style={{ flex: 2 }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={!!attr.maxAtForge9} onChange={e => handleUpdateFixedAttribute(index, 'maxAtForge9', e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                                <strong style={{ color: attr.maxAtForge9 ? 'var(--gold-primary)' : 'inherit' }}>Força máxima em +9</strong>
+                              </label>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>
+                                {attr.maxAtForge9
+                                  ? `O valor (+${attr.value}) é o MÁXIMO, alcançado em +9. Em +0 vale ${(attr.value / 10).toFixed(1)}, +1 ${(attr.value / 9).toFixed(1)}, +2 ${(attr.value / 8).toFixed(1)} ... +9 ${attr.value}.`
+                                  : 'Desmarcado: o valor vale igual em qualquer nível de forja.'}
+                              </span>
+                            </div>
+                          </>
+                        )}
+
+                        <button onClick={() => handleRemoveFixedAttribute(index)} title="Remover Atributo" style={{ marginTop: isDamage ? '1.5rem' : '1.2rem', padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '4px', cursor: 'pointer' }}>
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+
+                      {/* Configuração específica de DANO */}
+                      {isDamage && (
+                        <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(249, 115, 22, 0.2)', paddingTop: '0.75rem' }}>
+                          {attr.damageMode !== 'forge' ? (
+                            /* Modo Sorteio (Roll) */
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+                                <div style={{ width: '160px' }}>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Valor Inicial na Loja (%)</label>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                    <input
+                                      type="number"
+                                      min="-25"
+                                      max="45"
+                                      step="1"
+                                      value={attr.value || 0}
+                                      onChange={e => handleUpdateFixedAttribute(index, 'value', parseInt(e.target.value) || 0)}
+                                      style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', color: '#F97316', border: '1px solid var(--border-glass)', fontWeight: 'bold' }}
+                                    />
+                                    <span style={{ color: 'var(--text-secondary)' }}>%</span>
+                                  </div>
+                                </div>
+                                <div style={{ flex: 1, fontSize: '0.8rem', color: '#cbd5e1', background: 'rgba(0,0,0,0.3)', padding: '0.6rem 0.8rem', borderRadius: '6px', borderLeft: '3px solid #F97316' }}>
+                                  🎲 <strong>Modo Sorteio:</strong> Ao comprar na loja, inicia com o valor acima. Ao usar o <strong>Pergaminho do Aprimoramento</strong> ou quando obtido em <strong>Baú ou Drop de Monstro</strong>, a força do dano será sorteada entre <strong>-25% e +45%</strong> (número inteiro). Modifica diretamente o ataque da arma.
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Modo Nível de Forja (Forge) */
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem', background: 'rgba(249, 115, 22, 0.1)', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid rgba(249, 115, 22, 0.2)' }}>
+                                <span style={{ fontSize: '0.8rem', color: '#F97316', fontWeight: 'bold' }}>⚡ Preenchimento Rápido:</span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>+0:</span>
+                                <input
+                                  type="number"
+                                  id={`forge-start-${index}`}
+                                  defaultValue={attr.damagePerLevel?.[0] ?? 2}
+                                  style={{ width: '50px', padding: '0.2rem', textAlign: 'center', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', color: 'white', borderRadius: '4px', fontSize: '0.8rem' }}
+                                />
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>% até +9:</span>
+                                <input
+                                  type="number"
+                                  id={`forge-end-${index}`}
+                                  defaultValue={attr.damagePerLevel?.[9] ?? 45}
+                                  style={{ width: '50px', padding: '0.2rem', textAlign: 'center', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', color: 'white', borderRadius: '4px', fontSize: '0.8rem' }}
+                                />
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>%</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const startEl = document.getElementById(`forge-start-${index}`) as HTMLInputElement;
+                                    const endEl = document.getElementById(`forge-end-${index}`) as HTMLInputElement;
+                                    const start = parseInt(startEl?.value) || 0;
+                                    const end = parseInt(endEl?.value) || 0;
+                                    const newLevels = Array.from({ length: 10 }, (_, lvl) => Math.round(start + (end - start) * (lvl / 9)));
+                                    const updated = [...fixedAttributes];
+                                    updated[index] = { ...updated[index], damagePerLevel: newLevels, value: newLevels[0] };
+                                    setFixedAttributes(updated);
+                                  }}
+                                  style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', background: '#F97316', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                >
+                                  Preencher Escala (+0 a +9)
+                                </button>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(60px, 1fr))', gap: '0.35rem' }}>
+                                {Array.from({ length: 10 }, (_, lvl) => {
+                                  const curArr = (Array.isArray(attr.damagePerLevel) && attr.damagePerLevel.length === 10)
+                                    ? attr.damagePerLevel
+                                    : [2, 7, 12, 17, 21, 26, 31, 36, 40, 45];
+                                  const lvlVal = curArr[lvl] ?? (lvl === 0 ? 2 : 45);
+                                  return (
+                                    <div key={lvl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(0,0,0,0.4)', padding: '0.35rem 0.2rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--gold-primary)', marginBottom: '0.2rem' }}>+{lvl}</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                                        <input
+                                          type="number"
+                                          step="1"
+                                          value={lvlVal}
+                                          onChange={e => {
+                                            const updatedArr = [...curArr];
+                                            updatedArr[lvl] = parseInt(e.target.value) || 0;
+                                            const updated = [...fixedAttributes];
+                                            updated[index] = { ...updated[index], damagePerLevel: updatedArr, value: updatedArr[0] };
+                                            setFixedAttributes(updated);
+                                          }}
+                                          style={{ width: '42px', padding: '0.2rem', textAlign: 'center', borderRadius: '4px', background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', color: '#F97316', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                        />
+                                        <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginLeft: '2px' }}>%</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.6rem' }}>
+                                🔨 <strong>Modo Nível de Forja:</strong> O dano sobe conforme a arma é forjada (+0 a +9). O Pergaminho do Aprimoramento <strong>NÃO</strong> afeta este atributo (apenas a forja).
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Valor (+X)</label>
-                      <input type="number" min="1" value={attr.value} onChange={e => handleUpdateFixedAttribute(index, 'value', parseInt(e.target.value) || 1)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid var(--border-glass)' }} />
-                    </div>
-                    <div style={{ flex: 2 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={!!attr.maxAtForge9} onChange={e => handleUpdateFixedAttribute(index, 'maxAtForge9', e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-                        <strong style={{ color: attr.maxAtForge9 ? 'var(--gold-primary)' : 'inherit' }}>Força máxima em +9</strong>
-                      </label>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>
-                        {attr.maxAtForge9
-                          ? `O valor (+${attr.value}) é o MÁXIMO, alcançado em +9. Em +0 vale ${(attr.value / 10).toFixed(1)}, +1 ${(attr.value / 9).toFixed(1)}, +2 ${(attr.value / 8).toFixed(1)} ... +9 ${attr.value}.`
-                          : 'Desmarcado: o valor vale igual em qualquer nível de forja.'}
-                      </span>
-                    </div>
-                    <button onClick={() => handleRemoveFixedAttribute(index)} style={{ marginTop: '1.2rem', padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '4px', cursor: 'pointer' }}>
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {fixedAttributes.length < 4 && (
