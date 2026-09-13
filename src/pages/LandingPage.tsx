@@ -19,10 +19,11 @@ export default function LandingPage() {
   const handleLogin = async () => {
     setError('');
     try {
+      const currentOrigin = window.location.origin.replace(/^http:\/\/(math-mastery\.com\.br)/i, 'https://$1');
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + import.meta.env.BASE_URL
+          redirectTo: currentOrigin + (import.meta.env.BASE_URL || '/')
         }
       });
       if (error) throw error;
