@@ -77,6 +77,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const [isMobileInventoryOpen, setIsMobileInventoryOpen] = useState(false);
   const [isForging, setIsForging] = useState(false);
   const isForgingRef = useRef(false);
+  const [forgeDuration, setForgeDuration] = useState(7000);
   const [forgeSounds, setForgeSounds] = useState<ForgeSoundsConfig>({});
 
   // ---- Música de fundo (loop) com fade ----
@@ -592,6 +593,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nMateriais: ${matsLabel}\nChance: ${Math.min(100, finalChance)}%${useScroll ? ` (${baseChance}% base + ${scrollChanceBonus}% bônus)` : ''}\n${useScroll ? `Pergaminho ativo (${activeScroll?.title || 'Pergaminho'}): O item não será destruído em caso de falha${currentLevel > 0 ? ', mas regredirá 1 nível (-1)' : ' (mantém +0)'}.` : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}\nOs materiais serão consumidos em caso de sucesso ou falha.`;
     if (!await showConfirm(confirmMsg)) return;
 
+    setForgeDuration(7000);
     setIsForging(true);
     isForgingRef.current = true;
     pauseTabMusic(600);
@@ -678,11 +680,12 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     const confirmMsg = `Deseja tentar transmutar este item?\nItem Resultado: ${resultItemInfo?.title || 'Item Transmutado'}\nChance de Sucesso: ${config.successChance}%\nCusto: ${config.coinsCost} moedas\nConsome ${requiredMats.length} material(is).\nSe falhar, o item voltará para o +8!`;
     if (!await showConfirm(confirmMsg, "Altar de Transmutação")) return;
 
+    setForgeDuration(4000);
     setIsForging(true);
     pauseTabMusic(600);
     if (forgeSounds.transmuteEffectUrl) playSound(forgeSounds.transmuteEffectUrl, 0.9);
     const rpcPromise = supabase.rpc('transmute_item', { p_item_id: selectedTransmuteItem.docId });
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 4000));
     setIsForging(false);
 
     const { data, error } = await rpcPromise;
@@ -738,6 +741,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     );
     if (!confirmed) return;
 
+    setForgeDuration(7000);
     setIsForging(true);
     isForgingRef.current = true;
     pauseTabMusic(600);
@@ -931,6 +935,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     );
     if (!confirmed) return;
 
+    setForgeDuration(7000);
     setIsForging(true);
     isForgingRef.current = true;
     pauseTabMusic(600);
@@ -1097,6 +1102,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: '#1a1a1a', overflow: 'hidden', height: '100%' }}>
+      <style>{`
+        @keyframes forgeProgressBarFill {
+          0% {
+            width: 0%;
+          }
+          100% {
+            width: 100%;
+          }
+        }
+      `}</style>
 
         {/* Tabs */}
         <div style={{ display: 'flex', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
@@ -1763,11 +1778,15 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                             onClick={handleFuseMaterial}
                             disabled={!hasEnoughFragments || !canAfford || isForging || !targetItemId}
                             style={{
+                              position: 'relative',
+                              overflow: 'hidden',
                               width: '100%',
                               padding: '1.2rem',
-                              background: (!hasEnoughFragments || !canAfford || isForging || !targetItemId) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #2563eb, #1d4ed8)',
+                              background: isForging
+                                ? 'rgba(15, 23, 42, 0.85)'
+                                : ((!hasEnoughFragments || !canAfford || !targetItemId) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #2563eb, #1d4ed8)'),
                               color: 'white',
-                              border: 'none',
+                              border: isForging ? '1px solid rgba(59, 130, 246, 0.6)' : 'none',
                               borderRadius: '12px',
                               fontSize: '1.15rem',
                               fontWeight: 'bold',
@@ -1776,12 +1795,31 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                               justifyContent: 'center',
                               alignItems: 'center',
                               gap: '0.5rem',
-                              boxShadow: '0 4px 15px rgba(37,99,235,0.35)',
-                              opacity: (!hasEnoughFragments || !canAfford || isForging || !targetItemId) ? 0.5 : 1
+                              boxShadow: isForging ? '0 0 20px rgba(59, 130, 246, 0.35)' : '0 4px 15px rgba(37,99,235,0.35)',
+                              opacity: ((!hasEnoughFragments || !canAfford || !targetItemId) && !isForging) ? 0.5 : 1
                             }}
                           >
-                            <Hammer size={22} className={isForging ? "animate-bounce" : ""} />
-                            {isForging ? 'FUNDINDO MATERIAL...' : (!targetItemId ? 'Destino não configurado' : !hasEnoughFragments ? `Faltam ${reqQty - totalOwned} Fragmentos` : !canAfford ? 'Moedas Insuficientes' : `FUNDIR NO FERREIRO (${totalCost} Moedas)`)}
+                            {isForging && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  bottom: 0,
+                                  height: '100%',
+                                  background: 'linear-gradient(90deg, rgba(37, 99, 235, 0.3) 0%, rgba(96, 165, 250, 0.65) 100%)',
+                                  borderRight: '3px solid rgba(255, 255, 255, 0.9)',
+                                  boxShadow: '0 0 16px rgba(96, 165, 250, 0.8), 0 0 30px rgba(37, 99, 235, 0.5)',
+                                  animation: `forgeProgressBarFill ${forgeDuration}ms linear forwards`,
+                                  pointerEvents: 'none',
+                                  zIndex: 1,
+                                }}
+                              />
+                            )}
+                            <span style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', gap: '0.5rem', textShadow: isForging ? '0 2px 6px rgba(0,0,0,0.8)' : 'none' }}>
+                              <Hammer size={22} className={isForging ? "animate-bounce" : ""} />
+                              {isForging ? 'FUNDINDO MATERIAL...' : (!targetItemId ? 'Destino não configurado' : !hasEnoughFragments ? `Faltam ${reqQty - totalOwned} Fragmentos` : !canAfford ? 'Moedas Insuficientes' : `FUNDIR NO FERREIRO (${totalCost} Moedas)`)}
+                            </span>
                           </button>
                           <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textAlign: 'center', margin: '-0.75rem 0 0 0' }}>
                             ⚠️ O ferreiro pode falhar ao fundir. Se falhar, os fragmentos e as moedas serão perdidos!
@@ -1956,9 +1994,51 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                         <button 
                           onClick={handleForge}
                           disabled={((!isStaff && userData.coins < nextCost) || materialsMissing) || isForging}
-                          style={{ width: '100%', padding: '1.2rem', background: (((!isStaff && userData.coins < nextCost) || materialsMissing) || isForging) ? 'rgba(120,120,120,0.4)' : 'linear-gradient(to right, #ea580c, #dc2626)', color: 'white', border: 'none', borderRadius: '12px', fontSize: '1.2rem', fontWeight: 'bold', cursor: (((!isStaff && userData.coins < nextCost) || materialsMissing) || isForging) ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 15px rgba(220, 38, 38, 0.3)', opacity: (((!isStaff && userData.coins < nextCost) || materialsMissing) || isForging) ? 0.5 : 1 }}
+                          style={{
+                            position: 'relative',
+                            overflow: 'hidden',
+                            width: '100%',
+                            padding: '1.2rem',
+                            background: isForging
+                              ? 'rgba(15, 23, 42, 0.85)'
+                              : (((!isStaff && userData.coins < nextCost) || materialsMissing)
+                                  ? 'rgba(120,120,120,0.4)'
+                                  : 'linear-gradient(to right, #ea580c, #dc2626)'),
+                            color: 'white',
+                            border: isForging ? '1px solid rgba(245, 158, 11, 0.6)' : 'none',
+                            borderRadius: '12px',
+                            fontSize: '1.2rem',
+                            fontWeight: 'bold',
+                            cursor: (((!isStaff && userData.coins < nextCost) || materialsMissing) || isForging) ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            boxShadow: isForging ? '0 0 20px rgba(245, 158, 11, 0.35)' : '0 4px 15px rgba(220, 38, 38, 0.3)',
+                            opacity: (((!isStaff && userData.coins < nextCost) || materialsMissing) && !isForging) ? 0.5 : 1
+                          }}
                         >
-                          <Hammer size={24} className={isForging ? "animate-bounce" : ""} /> {isForging ? 'FORJANDO...' : 'BATER O MARTELO'}
+                          {/* Barra de progresso translúcida da esquerda para a direita */}
+                          {isForging && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                bottom: 0,
+                                height: '100%',
+                                background: 'linear-gradient(90deg, rgba(234, 88, 12, 0.3) 0%, rgba(245, 158, 11, 0.65) 100%)',
+                                borderRight: '3px solid rgba(255, 255, 255, 0.9)',
+                                boxShadow: '0 0 16px rgba(245, 158, 11, 0.8), 0 0 30px rgba(234, 88, 12, 0.5)',
+                                animation: `forgeProgressBarFill ${forgeDuration}ms linear forwards`,
+                                pointerEvents: 'none',
+                                zIndex: 1,
+                              }}
+                            />
+                          )}
+                          <span style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', gap: '0.5rem', textShadow: isForging ? '0 2px 6px rgba(0,0,0,0.8)' : 'none' }}>
+                            <Hammer size={24} className={isForging ? "animate-bounce" : ""} /> {isForging ? 'FORJANDO...' : 'BATER O MARTELO'}
+                          </span>
                         </button>
                       </div>
                       </>
@@ -2145,11 +2225,15 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                         onClick={handleTransmute}
                         disabled={!canSubmit}
                         style={{
+                          position: 'relative',
+                          overflow: 'hidden',
                           width: '100%',
                           padding: '1.2rem',
-                          background: canSubmit ? 'linear-gradient(to right, #8b5cf6, #c084fc)' : 'rgba(120,120,120,0.35)',
-                          color: canSubmit ? 'white' : '#999',
-                          border: 'none',
+                          background: isForging
+                            ? 'rgba(15, 23, 42, 0.85)'
+                            : (canSubmit ? 'linear-gradient(to right, #8b5cf6, #c084fc)' : 'rgba(120,120,120,0.35)'),
+                          color: canSubmit || isForging ? 'white' : '#999',
+                          border: isForging ? '1px solid rgba(168, 85, 247, 0.6)' : 'none',
                           borderRadius: '12px',
                           fontSize: '1rem',
                           fontWeight: 'bold',
@@ -2158,11 +2242,31 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                           justifyContent: 'center',
                           alignItems: 'center',
                           gap: '0.5rem',
-                          boxShadow: canSubmit ? '0 4px 15px rgba(139, 92, 246, 0.35)' : 'none',
-                          opacity: canSubmit ? 1 : 0.7
+                          boxShadow: isForging ? '0 0 20px rgba(168, 85, 247, 0.35)' : (canSubmit ? '0 4px 15px rgba(139, 92, 246, 0.35)' : 'none'),
+                          opacity: (!canSubmit && !isForging) ? 0.7 : 1
                         }}
                       >
-                        <Sparkles size={22} className={isForging ? "animate-pulse" : ""} /> {buttonLabel}
+                        {/* Barra de progresso translúcida da esquerda para a direita */}
+                        {isForging && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              bottom: 0,
+                              height: '100%',
+                              background: 'linear-gradient(90deg, rgba(147, 51, 234, 0.3) 0%, rgba(192, 132, 252, 0.65) 100%)',
+                              borderRight: '3px solid rgba(255, 255, 255, 0.9)',
+                              boxShadow: '0 0 16px rgba(192, 132, 252, 0.8), 0 0 30px rgba(147, 51, 234, 0.5)',
+                              animation: `forgeProgressBarFill ${forgeDuration}ms linear forwards`,
+                              pointerEvents: 'none',
+                              zIndex: 1,
+                            }}
+                          />
+                        )}
+                        <span style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', gap: '0.5rem', textShadow: isForging ? '0 2px 6px rgba(0,0,0,0.8)' : 'none' }}>
+                          <Sparkles size={22} className={isForging ? "animate-pulse" : ""} /> {buttonLabel}
+                        </span>
                       </button>
                     </div>
                   );
