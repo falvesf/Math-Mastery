@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { ATTRIBUTE_LABELS, type AttributeType, getAddEffectiveValue } from '../lib/gacha';
 import { DAMAGE_EFFECTS, EFFECT_ADD_LABELS, isEffectAddType, orderEffectFirst } from '../lib/damageEffects';
+// @ts-ignore
 import { forgeAttributeValue, forgeAttributeValueWithConfig, forgeItemName } from '../lib/forge';
 
 export const RARITY_COLORS: Record<string, string> = {
@@ -52,6 +53,7 @@ export interface TooltipItemData {
   adds?: any[];
   unlockedSkinId?: string;
   forgeLevel?: number;
+  forgeConfig?: any;
   scrollChanceBonus?: number;
   breakMinQty?: number;
   breakMaxQty?: number;
@@ -67,6 +69,7 @@ export function normalizeItemForTooltip(item: any): TooltipItemData {
     title: (item.title || item.itemTitle || item.name || 'Item Desconhecido').trim(),
     type: item.type || item.itemType,
     forgeLevel: item.forgeLevel,
+    forgeConfig: item.forgeConfig || (item.data ? item.data.forgeConfig : undefined),
     rarity: item.rarity,
     itemCategory: item.itemCategory,
     description: item.description || item.desc,

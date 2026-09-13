@@ -113,8 +113,6 @@ export function safeParseAvatarConfig(raw: any): AvatarConfig | null {
 
 export interface EquippedItem {
   docId?: string;
-  forgeLevel?: number;
-  forgeConfig?: any;
   itemId?: string;
   imageUrl: string;
   modelUrl?: string;
