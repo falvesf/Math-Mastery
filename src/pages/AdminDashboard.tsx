@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, Copy, RefreshCcw, Volume2, Database } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, Copy, RefreshCcw, Volume2, Database, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -35,6 +35,7 @@ import { useDialog } from '../contexts/DialogContext';
 import { validateCharacterName, normalizeForComparison, formatFirstAndLastName } from '../lib/nameValidation';
 import { normalizeCombatCoinDrop } from '../lib/utils';
 import { createLocalAccount, generatePassword, resetLocalPassword, listLocalAccounts, deleteLocalAccount, type LocalAccountRow } from '../lib/localAuth';
+import GradebookManager from '../components/GradebookManager';
 
 export interface ClassDef {
   id: string;
@@ -492,6 +493,7 @@ export default function AdminDashboard() {
   // Guias internas do "Geral" e quem pode ver cada uma
   const generalTabOptions = [
     { key: 'config', label: 'Avaliação', icon: <Settings size={17} />, check: canView('config', 'view') },
+    { key: 'gradebook', label: 'Planilha de Notas', icon: <FileSpreadsheet size={17} />, check: canView('gradebook', 'view') },
     { key: 'banks', label: 'Bancos', icon: <Database size={17} />, check: canView('banks', 'view') },
     { key: 'tenants', label: 'Escolas', icon: <GraduationCap size={17} />, check: isSuperAdmin && canView('tenants', 'view') },
     { key: 'users', label: 'Gerenciamento de Usuários', icon: <Users size={17} />, check: canView('users', 'view') },
@@ -515,7 +517,7 @@ export default function AdminDashboard() {
     : canView('entities', 'view') ? 'entities'
     : 'general';
   const [activeTab, setActiveTab] = useState('general');
-  const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'banks' | 'ranks' | 'roles' | 'tenants' | 'speeches'>('users');
+  const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'banks' | 'ranks' | 'roles' | 'tenants' | 'speeches' | 'gradebook'>('users');
   const [showAudioBank, setShowAudioBank] = useState(false);
   const [showAudioBankModal, setShowAudioBankModal] = useState(false);
   const [showItemBank, setShowItemBank] = useState(false);
@@ -2213,11 +2215,25 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
         </div>
 
         {/* Content */}
-        <div className="glass-panel" id="admin-content-scroll" style={{ flex: 1, padding: '1.5rem', overflowY: 'auto', position: 'relative' }}>
+        <div 
+          className="glass-panel" 
+          id="admin-content-scroll" 
+          style={{ 
+            flex: 1, 
+            minHeight: 0,
+            height: '100%',
+            padding: activeTab === 'general' && generalTab === 'gradebook' ? '0.5rem 0.85rem' : '1.5rem', 
+            overflow: activeTab === 'general' && generalTab === 'gradebook' ? 'hidden' : undefined,
+            overflowY: activeTab === 'general' && generalTab === 'gradebook' ? 'hidden' : 'auto', 
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
 
         {/* Aba Geral — barra de sub-guias */}
         {activeTab === 'general' && (
-          <div className="general-tabs-wrap" style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--bg-card)', padding: '0.6rem 0', marginBottom: '0.9rem', borderBottom: '1px solid var(--border-glass)' }}>
+          <div className="general-tabs-wrap" style={{ flexShrink: 0, position: 'sticky', top: 0, zIndex: 40, background: 'var(--bg-card)', padding: '0.4rem 0', marginBottom: generalTab === 'gradebook' ? '0.4rem' : '0.9rem', borderBottom: '1px solid var(--border-glass)' }}>
             <div className="hide-scrollbar" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', whiteSpace: 'nowrap' }}>
               {generalTabOptions.filter(t => t.check).map(tab => (
                 <button
@@ -2585,6 +2601,17 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                 {canView('users', 'create') && (
                   <button className="login-btn" onClick={openLocalAccountsList} style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.35)' }}>
                     <KeyRound size={15} /> Contas Locais
+                  </button>
+                )}
+                
+                {canView('gradebook', 'view') && (
+                  <button 
+                    className="login-btn" 
+                    onClick={() => setGeneralTab('gradebook')} 
+                    style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.4)' }}
+                    title="Abrir Planilha de Notas bimestrais para lançamento de notas e controle de XP"
+                  >
+                    <FileSpreadsheet size={15} /> Planilha de Notas
                   </button>
                 )}
                 
@@ -3532,13 +3559,25 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                   <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Avaliação</h2>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Ajuste pesos das notas e integrações externas.</p>
                 </div>
-                <button 
-                  className="login-btn" 
-                  onClick={() => { setEditingEvalId(null); setNewEvalName(''); setNewEvalWeight(''); setIsEvalModalOpen(true); }}
-                  style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0.5rem 1rem' }}
-                >
-                  <Plus size={18} style={{ marginRight: '0.5rem' }} /> Adicionar
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {canView('gradebook', 'view') && (
+                    <button 
+                      className="login-btn" 
+                      onClick={() => setGeneralTab('gradebook')}
+                      style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.4)', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      title="Ir para a Planilha de Notas bimestrais dos alunos"
+                    >
+                      <FileSpreadsheet size={16} /> Abrir Planilha de Notas
+                    </button>
+                  )}
+                  <button 
+                    className="login-btn" 
+                    onClick={() => { setEditingEvalId(null); setNewEvalName(''); setNewEvalWeight(''); setIsEvalModalOpen(true); }}
+                    style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0.5rem 1rem' }}
+                  >
+                    <Plus size={18} style={{ marginRight: '0.5rem' }} /> Adicionar
+                  </button>
+                </div>
                 </div>
               </div>
 
@@ -3560,6 +3599,17 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Sub-Aba: Planilha de Notas & Controle de XP */}
+          {activeTab === 'general' && generalTab === 'gradebook' && canView('gradebook', 'view') && (
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', animation: 'fadeIn 0.2s ease-out' }}>
+              <GradebookManager 
+                students={students}
+                schoolClasses={schoolClasses}
+                onRefreshStudents={fetchStudents}
+              />
             </div>
           )}
 
