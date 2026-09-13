@@ -25,18 +25,22 @@ interface AdminBanksHubProps {
 export const AdminBanksHub: React.FC<AdminBanksHubProps> = ({ onNavigate }) => {
   const { tenantId } = useTenant();
   const [counts, setCounts] = useState<{
-    items: number;
+    itemsGlobal: number;
+    itemsLocal: number;
     audio: number;
     questions: number;
-    ranks: number;
+    ranksGlobal: number;
+    ranksLocal: number;
     entities: number;
     speeches: number;
     loading: boolean;
   }>({
-    items: 0,
+    itemsGlobal: 0,
+    itemsLocal: 0,
     audio: 0,
     questions: 0,
-    ranks: 0,
+    ranksGlobal: 0,
+    ranksLocal: 0,
     entities: 0,
     speeches: 0,
     loading: true,
@@ -50,8 +54,20 @@ export const AdminBanksHub: React.FC<AdminBanksHubProps> = ({ onNavigate }) => {
 
   const loadCounts = async () => {
     try {
-      // Itens do Banco Global de Itens
-      const { count: itemsCount } = await supabase.from('item_bank').select('*', { count: 'exact', head: true });
+      // Itens do Banco de Itens (store_items)
+      const { count: itemsGlobalCount } = await supabase
+        .from('store_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_global', true);
+
+      let itemsLocalCount = 0;
+      if (tenantId) {
+        const { count: localC } = await supabase
+          .from('store_items')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId);
+        itemsLocalCount = localC ?? 0;
+      }
 
       // Áudios
       let audioQ = supabase.from('audio_bank').select('*', { count: 'exact', head: true });
@@ -66,16 +82,29 @@ export const AdminBanksHub: React.FC<AdminBanksHubProps> = ({ onNavigate }) => {
       if (tenantId) entitiesQ = entitiesQ.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
       const { count: entitiesCount } = await entitiesQ;
 
-      // Patentes (ranks)
-      let ranksQ = supabase.from('ranks').select('*', { count: 'exact', head: true });
-      if (tenantId) ranksQ = ranksQ.eq('tenant_id', tenantId);
-      const { count: ranksCount } = await ranksQ;
+      // Patentes (custom_ranks)
+      const { count: ranksGlobalCount } = await supabase
+        .from('custom_ranks')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_global', true);
+
+      let ranksLocalCount = 0;
+      if (tenantId) {
+        const { count: localR } = await supabase
+          .from('custom_ranks')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .eq('is_global', false);
+        ranksLocalCount = localR ?? 0;
+      }
 
       setCounts({
-        items: itemsCount ?? 0,
+        itemsGlobal: itemsGlobalCount ?? 0,
+        itemsLocal: itemsLocalCount,
         audio: audioCount ?? 0,
         questions: questionsCount ?? 0,
-        ranks: ranksCount ?? 0,
+        ranksGlobal: ranksGlobalCount ?? 0,
+        ranksLocal: ranksLocalCount,
         entities: entitiesCount ?? 0,
         speeches: 34, // base de falas catalogadas
         loading: false,
@@ -94,7 +123,9 @@ export const AdminBanksHub: React.FC<AdminBanksHubProps> = ({ onNavigate }) => {
       description: 'Acervo global de espadas, escudos, armaduras, poções, pergaminhos e cosméticos centralizados.',
       icon: <Package size={24} color="#fbbf24" />,
       accentColor: '#fbbf24',
-      badge: `${counts.items} itens globais`,
+      badge: tenantId && counts.itemsLocal > 0
+        ? `${counts.itemsGlobal} globais • ${counts.itemsLocal} locais`
+        : `${counts.itemsGlobal} itens globais`,
       actionText: 'Abrir Banco de Itens',
       onClick: () => onNavigate({ tab: 'general', openModal: 'item_bank' }),
     },
@@ -149,7 +180,9 @@ export const AdminBanksHub: React.FC<AdminBanksHubProps> = ({ onNavigate }) => {
       description: 'Configuração dos níveis de patente, limites de atributos por patente e requisitos de XP para progressão.',
       icon: <Medal size={24} color="#3b82f6" />,
       accentColor: '#3b82f6',
-      badge: `${counts.ranks} patentes`,
+      badge: tenantId && counts.ranksLocal > 0
+        ? `${counts.ranksLocal} ativas • ${counts.ranksGlobal} globais`
+        : `${counts.ranksGlobal} patentes globais`,
       actionText: 'Configurar Patentes',
       onClick: () => onNavigate({ tab: 'general', generalSubTab: 'ranks' }),
     },

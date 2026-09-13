@@ -136,6 +136,12 @@ function AppRoutes() {
           </PrivateRoute>
         }
       />
+      {/* Compatibilidade com links antigos do repositório /Math-Mastery */}
+      <Route path="/Math-Mastery/admin" element={<Navigate to="/admin" replace />} />
+      <Route path="/Math-Mastery/dashboard" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/Math-Mastery/*" element={<Navigate to="/" replace />} />
+      {/* Rota coringa para redirecionar URLs desconhecidas */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
