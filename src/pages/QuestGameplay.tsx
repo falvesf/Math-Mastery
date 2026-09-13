@@ -72,6 +72,9 @@ import {
   DEFAULT_PLAYER_BATTLE_QUOTES,
   pickPlayerBattleQuote,
 } from '../lib/playerQuotes';
+import ConsumableAnimationOverlay, { type ConsumableActiveAnim } from '../components/ConsumableAnimationOverlay';
+import { resolveConsumableEffect } from '../lib/consumableEffects';
+import { playConsumableSound } from '../lib/audioBank';
 
 interface UserItem {
   id: string;
@@ -89,6 +92,9 @@ interface UserItem {
   hpCooldownReductionMinutes?: number;
   buffDurationHours?: number;
   forgeLevel?: number;
+  consumableAnimPreset?: string;
+  consumableEffectColor?: string;
+  useSoundUrl?: string;
 }
 
 export default function QuestGameplay() {
@@ -106,6 +112,9 @@ export default function QuestGameplay() {
   
   const searchParams = new URLSearchParams(window.location.search);
   const isStudyMode = searchParams.get('study') === 'true';
+
+  // Animação audiovisual de item consumível ativo
+  const [activeConsumableAnim, setActiveConsumableAnim] = useState<ConsumableActiveAnim | null>(null);
   
   // Game State
   const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -1215,7 +1224,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   gameEffect: resolvedEffect,
                   usableInQuest: true,
                   quantity: Number(data.quantity) || 1,
-                  equipped: d.equipped
+                  equipped: d.equipped,
+                  consumableAnimPreset: data.consumableAnimPreset || sData.consumableAnimPreset,
+                  consumableEffectColor: data.consumableEffectColor || sData.consumableEffectColor,
+                  useSoundUrl: data.useSoundUrl || sData.useSoundUrl
                 });
               }
 
@@ -2972,6 +2984,17 @@ useEffect(() => {
       await showAlert("Você só pode usar itens durante a batalha!");
       return;
     }
+
+    // Resolve configuração audiovisual modular do item
+    const effectConfig = resolveConsumableEffect({
+      itemTitle: item.itemTitle,
+      gameEffect: item.gameEffect,
+      consumableAnimPreset: item.consumableAnimPreset,
+      consumableEffectColor: item.consumableEffectColor,
+      useSoundUrl: item.useSoundUrl
+    });
+
+    let targetOptionIndex: number | undefined = undefined;
     
     if (item.gameEffect === 'remove_wrong') {
       const q = quest!.questions[currentQIndex];
@@ -2985,8 +3008,13 @@ useEffect(() => {
         return;
       }
       const randomWrong = wrongIndices[Math.floor(Math.random() * wrongIndices.length)];
-      setEliminatedOptions([...eliminatedOptions, randomWrong]);
-      setBattleMessage('✨ Amuleto usado! Uma opção errada foi eliminada!');
+      targetOptionIndex = randomWrong;
+
+      // Se não for efeito de raio/projétil, elimina de imediato
+      if (effectConfig.category !== 'projectile_strike') {
+        setEliminatedOptions(prev => prev.includes(randomWrong) ? prev : [...prev, randomWrong]);
+        setBattleMessage('✨ Amuleto usado! Uma opção errada foi eliminada!');
+      }
       
     } else if (item.gameEffect === 'add_time') {
       setTimeLeft(prev => prev + 30);
@@ -3020,7 +3048,8 @@ useEffect(() => {
       
       const newHearts = Math.min(maxHearts, currentHearts + 1);
       setCurrentHearts(newHearts);
-      setBattleMessage('🧪 Poção de Vida usada! +1 coração recuperado!');
+      const isFood = (item.itemTitle || '').toLowerCase().includes('carne') || (item.itemTitle || '').toLowerCase().includes('comida') || effectConfig.presetId === 'eat_food';
+      setBattleMessage(isFood ? '🍖 Alimento consumido! +1 coração recuperado!' : '🧪 Poção de Vida usada! +1 coração recuperado!');
       
       if (!isStudyMode) {
         updateUserHearts(newHearts);
@@ -3046,6 +3075,29 @@ useEffect(() => {
     } else if (item.gameEffect === 'cure_electric') {
       setBattleMessage('🛡️ Isolante! O choque elétrico foi eliminado!');
     }
+
+    // Toca som do consumível (sintetizado nativo ou customizado do Audio Bank)
+    playConsumableSound(effectConfig.soundType, effectConfig.customSoundUrl);
+
+    // Dispara animação visual do item consumível
+    setActiveConsumableAnim({
+      id: 'anim_' + Date.now(),
+      presetId: effectConfig.presetId,
+      category: effectConfig.category,
+      primaryColor: effectConfig.primaryColor,
+      secondaryColor: effectConfig.secondaryColor,
+      glowColor: effectConfig.glowColor,
+      scale: effectConfig.scale,
+      itemTitle: item.itemTitle,
+      itemImageUrl: item.itemImageUrl,
+      targetOptionIndex,
+      onImpact: () => {
+        if (targetOptionIndex !== undefined) {
+          setEliminatedOptions(prev => prev.includes(targetOptionIndex!) ? prev : [...prev, targetOptionIndex!]);
+          setBattleMessage('✨ Uma opção errada foi estilhaçada!');
+        }
+      }
+    });
     
     // Consumir 1 unidade do item no banco (se não estiver em modo de estudo)
     if (!isStudyMode && userData?.uid) {
@@ -3480,6 +3532,7 @@ useEffect(() => {
                   return (
                     <button 
                       key={i} 
+                      id={`quest-opt-${i}`}
                       onClick={() => !isEliminated && handleAnswer(i)}
                       disabled={feedback !== null || isEliminated || playerFrozenAt > Date.now()}
                       className={`quest-option-btn ${isEliminated ? 'eliminated' : ''} ${isCorrectAnswer ? 'correct' : ''} ${isWrongSelected ? 'wrong' : ''}`}
@@ -3511,6 +3564,7 @@ useEffect(() => {
               <div className="quest-arena-avatars" style={{ position: 'relative', width: playerAnim.startsWith('attack-fatal') ? '220px' : '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', transform: `translate(${arenaRenderMode === '3d' ? (arenaDebug.playerOffsetX3D ?? 0) : arenaDebug.playerOffsetX}px, ${arenaRenderMode === '3d' ? 0 : arenaDebug.playerOffsetY}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.playerScale3D ?? 1) : arenaDebug.playerScale})` }}>
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-80px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
+                  <ConsumableAnimationOverlay anim={activeConsumableAnim} onComplete={() => setActiveConsumableAnim(null)} />
                   <div
                     className={(() => {
                       if (playerFrozenAt > Date.now()) return 'freeze-tint';

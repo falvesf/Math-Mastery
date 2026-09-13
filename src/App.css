@@ -1256,3 +1256,538 @@
   100% { transform: translate(-50%, -100%) scale(0.7) rotate(0deg); opacity: 0; }
 }
 
+/* ==========================================================================
+   Efeitos Visuais de Itens Consumíveis (Poções, Elixires, Comida e Chá)
+   ========================================================================== */
+
+.consumable-fx-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* --- 1. AURA PARAMÉTRICA (Poção Rosada, Elixir Dourado, etc.) --- */
+.consumable-aura-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: -15px;
+  transform: translateX(-50%) scale(var(--aura-scale, 1));
+  width: 260px;
+  height: 250px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.consumable-ground-glow {
+  position: absolute;
+  bottom: -15px;
+  left: 50%;
+  width: 250px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center,
+    var(--aura-primary) 0%,
+    var(--aura-secondary) 35%,
+    var(--aura-glow) 60%,
+    transparent 80%
+  );
+  filter: blur(12px);
+  transform: translateX(-50%) rotateX(65deg);
+  animation: c-ground-pulse 2s ease-out forwards;
+}
+
+@keyframes c-ground-pulse {
+  0% { transform: translateX(-50%) rotateX(65deg) scale(0.3); opacity: 0; }
+  25% { transform: translateX(-50%) rotateX(65deg) scale(1.15); opacity: 1; }
+  75% { transform: translateX(-50%) rotateX(65deg) scale(1); opacity: 0.9; }
+  100% { transform: translateX(-50%) rotateX(65deg) scale(1.3); opacity: 0; }
+}
+
+.consumable-ring {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.consumable-ring.ring-primary {
+  width: 220px;
+  height: 100px;
+  transform: translateX(-50%) rotateX(65deg);
+  border: 3px solid var(--aura-glow);
+  box-shadow:
+    0 0 20px var(--aura-primary),
+    0 0 45px var(--aura-secondary),
+    inset 0 0 20px var(--aura-primary);
+  animation: c-ring-primary-anim 2s ease-out forwards;
+}
+
+.consumable-ring.ring-secondary {
+  width: 270px;
+  height: 120px;
+  transform: translateX(-50%) rotateX(65deg);
+  border: 2px dashed var(--aura-secondary);
+  box-shadow:
+    0 0 16px var(--aura-primary),
+    inset 0 0 16px var(--aura-glow);
+  animation: c-ring-sec-anim 2s ease-out forwards;
+}
+
+.consumable-ring.ring-pulse {
+  width: 160px;
+  height: 75px;
+  transform: translateX(-50%) rotateX(65deg);
+  border: 3.5px solid #ffffff;
+  box-shadow:
+    0 0 25px var(--aura-primary),
+    0 0 50px var(--aura-secondary);
+  animation: c-ring-pulse-anim 2s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
+}
+
+@keyframes c-ring-primary-anim {
+  0% { transform: translateX(-50%) rotateX(65deg) scale(0.4); opacity: 0; }
+  25% { transform: translateX(-50%) rotateX(65deg) scale(1.05); opacity: 1; }
+  75% { transform: translateX(-50%) rotateX(65deg) scale(1); opacity: 0.85; }
+  100% { transform: translateX(-50%) rotateX(65deg) scale(1.3); opacity: 0; }
+}
+
+@keyframes c-ring-sec-anim {
+  0% { transform: translateX(-50%) rotateX(65deg) scale(0.3); opacity: 0; }
+  30% { transform: translateX(-50%) rotateX(65deg) scale(1.1); opacity: 0.95; }
+  75% { transform: translateX(-50%) rotateX(65deg) scale(1.05); opacity: 0.75; }
+  100% { transform: translateX(-50%) rotateX(65deg) scale(1.4); opacity: 0; }
+}
+
+@keyframes c-ring-pulse-anim {
+  0% { transform: translateX(-50%) rotateX(65deg) scale(0.2); opacity: 0; }
+  35% { transform: translateX(-50%) rotateX(65deg) scale(1.35); opacity: 1; }
+  100% { transform: translateX(-50%) rotateX(65deg) scale(2.1); opacity: 0; }
+}
+
+.consumable-light-pillar {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 250px;
+  background: linear-gradient(to top,
+    var(--aura-primary) 0%,
+    var(--aura-secondary) 40%,
+    var(--aura-glow) 70%,
+    transparent 100%
+  );
+  border-radius: 50% 50% 0 0;
+  filter: blur(14px);
+  opacity: 0.55;
+  animation: c-pillar-anim 2s ease-out forwards;
+}
+
+@keyframes c-pillar-anim {
+  0% { transform: translateX(-50%) scaleY(0.2); opacity: 0; }
+  25% { transform: translateX(-50%) scaleY(1.15); opacity: 0.65; }
+  70% { transform: translateX(-50%) scaleY(1); opacity: 0.5; }
+  100% { transform: translateX(-50%) scaleY(1.3); opacity: 0; }
+}
+
+.consumable-particles {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.c-particle {
+  position: absolute;
+  bottom: 25px;
+  font-size: 1.25rem;
+  color: #ffffff;
+  text-shadow:
+    0 0 10px var(--aura-primary),
+    0 0 20px var(--aura-secondary),
+    0 0 30px var(--aura-glow);
+  animation: c-particle-rise 1.9s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
+}
+
+@keyframes c-particle-rise {
+  0% { transform: translateY(0) scale(0.3) rotate(0deg); opacity: 0; }
+  20% { opacity: 1; transform: translateY(-45px) scale(1.3) rotate(35deg); }
+  60% { opacity: 0.95; transform: translateY(-140px) scale(1.1) rotate(85deg); }
+  100% { transform: translateY(-240px) scale(0.5) rotate(180deg); opacity: 0; }
+}
+
+.consumable-float-badge {
+  position: absolute;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid var(--aura-primary);
+  border-radius: 20px;
+  padding: 0.4rem 0.9rem;
+  font-size: 1rem;
+  font-weight: 900;
+  color: #ffffff;
+  white-space: nowrap;
+  box-shadow: 0 0 20px var(--aura-primary);
+  animation: c-badge-pop 1.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes c-badge-pop {
+  0% { transform: translate(-50%, 20px) scale(0.5); opacity: 0; }
+  25% { transform: translate(-50%, -10px) scale(1.2); opacity: 1; }
+  50% { transform: translate(-50%, -20px) scale(1); opacity: 1; }
+  85% { transform: translate(-50%, -40px) scale(1); opacity: 0.95; }
+  100% { transform: translate(-50%, -60px) scale(0.8); opacity: 0; }
+}
+
+/* --- 2. COMER ALIMENTO (Carne / Comida) --- */
+.consumable-eat-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: 110px;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 140px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+}
+
+.eating-food-actor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: food-eating-motion 1.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.eating-food-emoji {
+  font-size: 3.5rem;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5));
+}
+
+.eating-food-img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5));
+}
+
+@keyframes food-eating-motion {
+  0% {
+    transform: translate(-30px, 35px) scale(0.4) rotate(-25deg);
+    opacity: 0;
+  }
+  20% {
+    transform: translate(0, 0) scale(1.1) rotate(5deg);
+    opacity: 1;
+  }
+  /* Mordida 1 */
+  35% {
+    transform: translate(5px, -6px) scale(0.9) rotate(-15deg);
+  }
+  45% {
+    transform: translate(0, 0) scale(1.05) rotate(0deg);
+  }
+  /* Mordida 2 */
+  60% {
+    transform: translate(-5px, -6px) scale(0.85) rotate(15deg);
+  }
+  70% {
+    transform: translate(0, 0) scale(0.95) rotate(-5deg);
+  }
+  /* Mordida 3 (engole) */
+  85% {
+    transform: translate(0, -8px) scale(0.5) rotate(0deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(0, -15px) scale(0) rotate(20deg);
+    opacity: 0;
+  }
+}
+
+/* Migalhas voando */
+.crumb {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: #f59e0b;
+  border-radius: 50%;
+  box-shadow: 0 0 6px #d97706;
+  opacity: 0;
+}
+
+.crumb.c-1 { top: 20%; left: -10px; animation: crumb-fly-1 0.7s 0.35s ease-out forwards; }
+.crumb.c-2 { top: 30%; right: -12px; animation: crumb-fly-2 0.7s 0.4s ease-out forwards; }
+.crumb.c-3 { bottom: 15%; left: -8px; animation: crumb-fly-3 0.7s 0.6s ease-out forwards; }
+.crumb.c-4 { top: 10%; right: -5px; animation: crumb-fly-1 0.7s 0.65s ease-out forwards; }
+.crumb.c-5 { bottom: 10%; right: -10px; animation: crumb-fly-2 0.7s 0.7s ease-out forwards; }
+
+@keyframes crumb-fly-1 {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-30px, -25px) scale(0.3); opacity: 0; }
+}
+
+@keyframes crumb-fly-2 {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(35px, -20px) scale(0.3); opacity: 0; }
+}
+
+@keyframes crumb-fly-3 {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-20px, 30px) scale(0.3); opacity: 0; }
+}
+
+.eating-chew-glow {
+  position: absolute;
+  inset: -15px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.4) 0%, transparent 70%);
+  filter: blur(8px);
+  animation: chew-glow 1.5s ease-out forwards;
+}
+
+@keyframes chew-glow {
+  0% { transform: scale(0.5); opacity: 0; }
+  35% { transform: scale(1.1); opacity: 0.8; }
+  75% { transform: scale(1.3); opacity: 0.5; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+.eat-badge {
+  position: absolute;
+  top: -25px;
+  left: 50%;
+  border-color: #22c55e !important;
+  box-shadow: 0 0 20px #22c55e !important;
+}
+
+/* --- 3. CHÁ CALMANTE + RAIO ELIMINADOR DE QUESTÃO --- */
+.consumable-tea-strike-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.tea-drinking-actor {
+  position: absolute;
+  left: 50%;
+  bottom: 105px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: tea-actor-fade 1.8s ease-out forwards;
+}
+
+@keyframes tea-actor-fade {
+  0% { transform: translateX(-50%) scale(0.5); opacity: 0; }
+  25% { transform: translateX(-50%) scale(1.1); opacity: 1; }
+  75% { transform: translateX(-50%) scale(1); opacity: 0.95; }
+  100% { transform: translateX(-50%) scale(0.8); opacity: 0; }
+}
+
+.tea-cup-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.5) 0%, rgba(45, 212, 191, 0.2) 50%, transparent 80%);
+  filter: blur(10px);
+  animation: tea-pulse 1.5s infinite alternate;
+}
+
+@keyframes tea-pulse {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  100% { transform: scale(1.2); opacity: 1; }
+}
+
+.tea-cup-item {
+  position: relative;
+  font-size: 3.2rem;
+  filter: drop-shadow(0 4px 12px rgba(56, 189, 248, 0.6));
+}
+
+.tea-steam {
+  position: absolute;
+  color: #bae6fd;
+  font-size: 1.4rem;
+  opacity: 0;
+  text-shadow: 0 0 8px #38bdf8;
+}
+
+.tea-steam.s-1 { top: -25px; left: 15%; animation: steam-rise 1.4s 0.1s infinite; }
+.tea-steam.s-2 { top: -30px; left: 45%; animation: steam-rise 1.4s 0.35s infinite; }
+.tea-steam.s-3 { top: -25px; left: 75%; animation: steam-rise 1.4s 0.6s infinite; }
+
+@keyframes steam-rise {
+  0% { transform: translateY(0) scale(0.6) rotate(0deg); opacity: 0; }
+  30% { opacity: 0.85; transform: translateY(-15px) scale(1) rotate(-8deg); }
+  70% { opacity: 0.6; transform: translateY(-35px) scale(1.2) rotate(10deg); }
+  100% { transform: translateY(-55px) scale(1.4) rotate(-5deg); opacity: 0; }
+}
+
+.tea-calm-badge {
+  background: rgba(15, 23, 42, 0.85);
+  border: 2px solid #38bdf8;
+  border-radius: 16px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #7dd3fc;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.6);
+  margin-top: 5px;
+  white-space: nowrap;
+}
+
+/* Projétil que voa até a opção */
+.magic-strike-projectile {
+  position: absolute;
+  left: 50%;
+  bottom: 110px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: projectile-fly 0.55s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
+  z-index: 100;
+}
+
+@keyframes projectile-fly {
+  0% {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1.4);
+  }
+  100% {
+    transform: translate(var(--target-x, -300px), var(--target-y, 100px)) scale(1);
+    opacity: 1;
+  }
+}
+
+.projectile-core {
+  font-size: 2.2rem;
+  color: #facc15;
+  filter: drop-shadow(0 0 12px #38bdf8) drop-shadow(0 0 24px #eab308);
+  animation: projectile-spin 0.3s linear infinite;
+}
+
+@keyframes projectile-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.projectile-trail {
+  position: absolute;
+  width: 80px;
+  height: 6px;
+  background: linear-gradient(90deg, transparent, #38bdf8, #facc15);
+  border-radius: 3px;
+  filter: blur(2px);
+  transform-origin: right center;
+}
+
+/* Impacto na opção errada */
+.option-impact-burst {
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.impact-flash {
+  position: absolute;
+  inset: -40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(239, 68, 68, 0.9) 0%, rgba(245, 158, 11, 0.6) 40%, transparent 80%);
+  filter: blur(12px);
+  animation: impact-flash-anim 0.6s ease-out forwards;
+}
+
+@keyframes impact-flash-anim {
+  0% { transform: scale(0.2); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.9; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.impact-shards {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shard {
+  position: absolute;
+  font-size: 2rem;
+  animation: shard-scatter 0.7s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+}
+
+.shard.sh-1 { animation-name: shard-scatter-1; }
+.shard.sh-2 { animation-name: shard-scatter-2; }
+.shard.sh-3 { animation-name: shard-scatter-3; }
+.shard.sh-4 { animation-name: shard-scatter-4; }
+
+@keyframes shard-scatter-1 {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-50px, -45px) scale(0.4) rotate(-45deg); opacity: 0; }
+}
+
+@keyframes shard-scatter-2 {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(45px, -50px) scale(0.4) rotate(45deg); opacity: 0; }
+}
+
+@keyframes shard-scatter-3 {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-40px, 40px) scale(0.4) rotate(-90deg); opacity: 0; }
+}
+
+@keyframes shard-scatter-4 {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(50px, 35px) scale(0.4) rotate(90deg); opacity: 0; }
+}
+
+/* --- 4. AMPULHETA (Tempo) --- */
+.consumable-hourglass-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.hourglass-actor {
+  position: relative;
+  font-size: 3.5rem;
+  filter: drop-shadow(0 0 16px #f59e0b);
+  animation: hourglass-flip 1.8s ease-in-out forwards;
+}
+
+@keyframes hourglass-flip {
+  0% { transform: scale(0.3) rotate(0deg); opacity: 0; }
+  25% { transform: scale(1.15) rotate(0deg); opacity: 1; }
+  50% { transform: scale(1.1) rotate(180deg); }
+  75% { transform: scale(1) rotate(180deg); opacity: 0.9; }
+  100% { transform: scale(0.6) rotate(360deg); opacity: 0; }
+}
+
+.time-badge {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 20px #f59e0b !important;
+  color: #fde68a !important;
+}
+
+

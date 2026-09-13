@@ -18,7 +18,8 @@ import AvatarCharacter from './AvatarCharacter';
 import MinecraftPartPreview from './MinecraftPartPreview';
 import AudioBankPicker from './AudioBankPicker';
 import { fetchForgeSounds, saveForgeSounds, type ForgeSoundsConfig } from '../lib/forgeSounds';
-import { playSound } from '../lib/audioBank';
+import { playSound, playConsumableSound } from '../lib/audioBank';
+import { CONSUMABLE_EFFECT_PRESETS, type ConsumableAnimPreset, resolveConsumableEffect } from '../lib/consumableEffects';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usePermissions } from '../lib/permissions';
@@ -89,6 +90,9 @@ export interface StoreItem {
   damageEffect?: string; // Efeito especial de dano em batalha (burn, freeze, impact, electric, poison, none)
   battleSoundUrl?: string;
   criticalSoundUrl?: string; // Som tocado em acertos críticos de armas
+  consumableAnimPreset?: string; // Preset visual do consumível (aura_rosy, aura_gold, eat_food, tea_strike, etc.)
+  consumableEffectColor?: string; // Cor personalizada da aura/efeito (#hex)
+  useSoundUrl?: string; // Som customizado ao consumir o item (URL do Audio Bank)
   isForgeable?: boolean;
   forgeConfig?: any;
   isTransmutable?: boolean;
@@ -128,8 +132,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [isImportCustomize, setIsImportCustomize] = useState(false);
   const [battleSoundPickerOpen, setBattleSoundPickerOpen] = useState(false);
   const [criticalSoundPickerOpen, setCriticalSoundPickerOpen] = useState(false);
+  const [useSoundPickerOpen, setUseSoundPickerOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<StoreItem>>({
-    title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common'
+    title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', consumableAnimPreset: '', consumableEffectColor: '', useSoundUrl: ''
   });
   
   const [showGallery, setShowGallery] = useState<'image' | 'model' | null>(null);
@@ -1003,6 +1008,9 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
           isTransmutable: itemData.isTransmutable || false,
           transmuteConfig: itemData.transmuteConfig || null,
           scrollChanceBonus: itemData.scrollChanceBonus ?? null,
+          consumableAnimPreset: itemData.consumableAnimPreset || null,
+          consumableEffectColor: itemData.consumableEffectColor || null,
+          useSoundUrl: itemData.useSoundUrl || null,
           breakTargetItemId: itemData.breakTargetItemId ?? null,
           breakMinQty: itemData.breakMinQty ?? null,
           breakMaxQty: itemData.breakMaxQty ?? null,
@@ -1752,6 +1760,111 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                     <input type="checkbox" checked={formData.usableInQuest || false} onChange={e => setFormData({...formData, usableInQuest: e.target.checked})} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
                     <label style={{ color: 'white', cursor: 'pointer', margin: 0 }}>Pode usar DENTRO dos desafios?</label>
                   </div>
+
+                  {/* Seção de Animação e Som do Consumível (Estilo RPG Maker) */}
+                  <div style={{ background: 'rgba(236, 72, 153, 0.08)', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(236, 72, 153, 0.25)', marginTop: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <span style={{ fontSize: '1.2rem' }}>✨</span>
+                      <strong style={{ color: '#f472b6', fontSize: '0.95rem' }}>Animação e Efeitos Visuais/Sonoros (RPG Maker)</strong>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                      {/* Seletor de Preset */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          Preset de Animação Visual
+                        </label>
+                        <select
+                          value={formData.consumableAnimPreset || ''}
+                          onChange={e => setFormData({ ...formData, consumableAnimPreset: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                        >
+                          <option value="">⚡ Automático (Detectar pelo nome/efeito)</option>
+                          {Object.entries(CONSUMABLE_EFFECT_PRESETS).map(([key, preset]) => (
+                            <option key={key} value={key}>{preset.name}</option>
+                          ))}
+                        </select>
+                        <small style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', display: 'block', marginTop: '4px' }}>
+                          {formData.consumableAnimPreset && CONSUMABLE_EFFECT_PRESETS[formData.consumableAnimPreset as ConsumableAnimPreset]
+                            ? CONSUMABLE_EFFECT_PRESETS[formData.consumableAnimPreset as ConsumableAnimPreset].description
+                            : 'Define como o efeito visual se comporta na arena: aura rosada de poção, elixir dourado radiante, mastigação de alimento com migalhas, etc.'}
+                        </small>
+                      </div>
+
+                      {/* Seletor de Cor Customizada */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          Cor da Aura / Partículas (opcional)
+                        </label>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <input
+                            type="color"
+                            value={formData.consumableEffectColor || (formData.consumableAnimPreset && CONSUMABLE_EFFECT_PRESETS[formData.consumableAnimPreset as ConsumableAnimPreset]?.defaultColor) || '#f43f5e'}
+                            onChange={e => setFormData({ ...formData, consumableEffectColor: e.target.value })}
+                            style={{ width: '42px', height: '38px', padding: 0, border: 'none', borderRadius: '6px', cursor: 'pointer', background: 'transparent' }}
+                            title="Escolher cor da aura"
+                          />
+                          <input
+                            type="text"
+                            value={formData.consumableEffectColor || ''}
+                            onChange={e => setFormData({ ...formData, consumableEffectColor: e.target.value })}
+                            placeholder="Padrão (#hex)"
+                            style={{ flex: 1, padding: '0.65rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'monospace' }}
+                          />
+                          {formData.consumableEffectColor && (
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, consumableEffectColor: '' })}
+                              style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' }}
+                              title="Resetar para cor padrão do preset"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Seletor de Som Customizado */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Som ao Consumir o Item (opcional)
+                      </label>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        <input
+                          type="text"
+                          value={formData.useSoundUrl || ''}
+                          onChange={e => setFormData({ ...formData, useSoundUrl: e.target.value })}
+                          placeholder="Som nativo sintetizado (ou selecione URL personalizada)..."
+                          style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const eff = resolveConsumableEffect({
+                              itemTitle: formData.title,
+                              gameEffect: formData.gameEffect,
+                              consumableAnimPreset: formData.consumableAnimPreset,
+                              consumableEffectColor: formData.consumableEffectColor,
+                              useSoundUrl: formData.useSoundUrl
+                            });
+                            playConsumableSound(eff.soundType, eff.customSoundUrl);
+                          }}
+                          style={{ padding: '0.5rem 0.7rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: 'pointer' }}
+                          title="Ouvir prévia do som (nativo ou customizado)"
+                        >
+                          ▶
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUseSoundPickerOpen(true)}
+                          style={{ padding: '0.5rem 0.8rem', background: 'rgba(236,72,153,0.2)', color: '#f472b6', border: '1px solid rgba(236,72,153,0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                        >
+                          Banco de Áudio
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -2354,6 +2467,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         onSelect={(url) => { setFormData({ ...formData, criticalSoundUrl: url }); setCriticalSoundPickerOpen(false); }}
         categoryFilter="effect"
         title="Banco de Áudio — Som de Dano Crítico do Item"
+      />
+
+      <AudioBankPicker
+        open={useSoundPickerOpen}
+        onClose={() => setUseSoundPickerOpen(false)}
+        onSelect={(url) => { setFormData({ ...formData, useSoundUrl: url }); setUseSoundPickerOpen(false); }}
+        categoryFilter="effect"
+        title="Banco de Áudio — Som de Uso do Consumível"
       />
 
       {showItemBank && (

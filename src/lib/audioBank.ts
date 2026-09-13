@@ -184,3 +184,287 @@ export function playTransformPuffSound(kind: 'appear' | 'revert' = 'appear') {
     /* ignore audio errors */
   }
 }
+
+/** Som de beber poção (gole + tilintar mágico) gerado via Web Audio */
+export function playPotionDrinkSound() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+
+    // 1. Gole / bolha líquida (2 tons borbulhantes)
+    [0, 0.12].forEach((offset, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      const startF = idx === 0 ? 320 : 380;
+      const endF = idx === 0 ? 180 : 220;
+      osc.frequency.setValueAtTime(startF, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(endF, now + offset + 0.09);
+      gain.gain.setValueAtTime(0.001, now + offset);
+      gain.gain.linearRampToValueAtTime(0.25, now + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.09);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.1);
+    });
+
+    // 2. Tilintar mágico ascendente (arpeggio de cura)
+    const sparkleNotes = [1046.5, 1318.5, 1567.98, 2093.0]; // C6, E6, G6, C7
+    sparkleNotes.forEach((freq, idx) => {
+      const start = 0.22 + idx * 0.07;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + start);
+      gain.gain.setValueAtTime(0.001, now + start);
+      gain.gain.linearRampToValueAtTime(0.18, now + start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + start + 0.28);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + start);
+      osc.stop(now + start + 0.3);
+    });
+
+    setTimeout(() => ctx.close().catch(() => {}), 900);
+  } catch (e) {}
+}
+
+/** Som majestoso de Elixir (acorde celestial brilhante) gerado via Web Audio */
+export function playElixirChimeSound() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+
+    // Acorde ressonante divino: D5, F#5, A5, D6, F#6
+    const chord = [587.33, 739.99, 880.0, 1174.66, 1479.98, 1760.0];
+    chord.forEach((freq, idx) => {
+      const delay = idx * 0.04;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + delay);
+      gain.gain.setValueAtTime(0.001, now + delay);
+      gain.gain.linearRampToValueAtTime(0.16, now + delay + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + 1.2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + delay);
+      osc.stop(now + delay + 1.25);
+    });
+
+    setTimeout(() => ctx.close().catch(() => {}), 1600);
+  } catch (e) {}
+}
+
+/** Som de mastigar alimento (mordidas crocantes e engolir) gerado via Web Audio */
+export function playEatFoodSound() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+
+    // 2 mordidas ("CHOMP, CHOMP")
+    [0, 0.22].forEach((offset) => {
+      // Ruído de mordida (crocância)
+      const bufferSize = Math.floor(ctx.sampleRate * 0.08);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1200, now + offset);
+      filter.Q.setValueAtTime(3, now + offset);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.35, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.08);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      noise.start(now + offset);
+
+      // Pop tonal de mastigação
+      const osc = ctx.createOscillator();
+      const oscGain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(420, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(140, now + offset + 0.07);
+      oscGain.gain.setValueAtTime(0.3, now + offset);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.07);
+      osc.connect(oscGain);
+      oscGain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.08);
+    });
+
+    // Engolir suave no final
+    setTimeout(() => {
+      try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        const t = ctx.currentTime;
+        osc.frequency.setValueAtTime(220, t);
+        osc.frequency.exponentialRampToValueAtTime(110, t + 0.12);
+        gain.gain.setValueAtTime(0.25, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.13);
+      } catch(e){}
+    }, 450);
+
+    setTimeout(() => ctx.close().catch(() => {}), 900);
+  } catch (e) {}
+}
+
+/** Som de bebericar chá quente gerado via Web Audio */
+export function playTeaDrinkSound() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+
+    // Sorvo / slurp suave
+    const bufferSize = Math.floor(ctx.sampleRate * 0.28);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(900, now);
+    filter.frequency.linearRampToValueAtTime(2200, now + 0.22);
+    filter.Q.setValueAtTime(4, now);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.28, now + 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    noise.start(now);
+
+    setTimeout(() => ctx.close().catch(() => {}), 600);
+  } catch (e) {}
+}
+
+/** Som de raio / disparo mágico telecinético gerado via Web Audio */
+export function playMagicZapSound() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(2400, now);
+    osc.frequency.exponentialRampToValueAtTime(180, now + 0.25);
+
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.26);
+
+    setTimeout(() => ctx.close().catch(() => {}), 500);
+  } catch (e) {}
+}
+
+/** Som de impacto estilhaçador (eliminar opção errada) gerado via Web Audio */
+export function playImpactShatterSound() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+
+    // Impacto grave
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(50, now + 0.18);
+    oscGain.gain.setValueAtTime(0.4, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.19);
+
+    // Estilhaço agudo
+    const bufferSize = Math.floor(ctx.sampleRate * 0.2);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25));
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(2800, now);
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.35, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+
+    setTimeout(() => ctx.close().catch(() => {}), 600);
+  } catch (e) {}
+}
+
+/** Toca o efeito sonoro de um consumível com fallback nativo instantâneo */
+export function playConsumableSound(soundType: string, customUrl?: string) {
+  if (customUrl) {
+    playSound(customUrl, 0.85);
+    return;
+  }
+
+  switch (soundType) {
+    case 'potion':
+      playPotionDrinkSound();
+      break;
+    case 'elixir':
+      playElixirChimeSound();
+      break;
+    case 'eat':
+      playEatFoodSound();
+      break;
+    case 'tea_strike':
+      playTeaDrinkSound();
+      break;
+    case 'shield':
+    case 'hourglass':
+    case 'cleanse':
+    default:
+      playPotionDrinkSound();
+      break;
+  }
+}
