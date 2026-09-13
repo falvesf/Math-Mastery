@@ -729,7 +729,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       rarity: item.rarity || 'common',
       active: true,
       minRankRequired: item.minRankRequired || '',
-      usableInQuest: !!item.usableInQuest,
+      usableInQuest: ['heal_1_hp', 'restore_hp', 'remove_wrong', 'add_time', 'extra_life', 'cure_bleed', 'cure_poison', 'cure_freeze', 'cure_burn', 'cure_electric'].includes(item.gameEffect || '') ? true : !!item.usableInQuest,
       gameEffect: item.gameEffect || 'none',
       unlockedSkinId: item.unlockedSkinId || '',
       buffDurationDays: item.buffDurationDays,
@@ -908,8 +908,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       }
     }
 
+    const isBattleEffect = [
+      'heal_1_hp', 'restore_hp', 'remove_wrong', 'add_time', 'extra_life',
+      'cure_bleed', 'cure_poison', 'cure_freeze', 'cure_burn', 'cure_electric'
+    ].includes(formData.gameEffect || '');
+
     const itemData = {
       ...formData,
+      usableInQuest: isBattleEffect ? true : (formData.usableInQuest || false),
       cost: Number(formData.cost),
       minRankRequired: String(formData.minRankRequired || ''),
       minSalePrice: formData.minSalePrice ? Number(formData.minSalePrice) : 0,
@@ -1427,9 +1433,14 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                       value={formData.gameEffect || 'none'}
                       onChange={e => {
                         const eff = e.target.value as GameEffectType;
+                        const isBattleEff = [
+                          'heal_1_hp', 'restore_hp', 'remove_wrong', 'add_time', 'extra_life',
+                          'cure_bleed', 'cure_poison', 'cure_freeze', 'cure_burn', 'cure_electric'
+                        ].includes(eff);
                         setFormData({
                           ...formData,
                           gameEffect: eff,
+                          usableInQuest: isBattleEff ? true : formData.usableInQuest,
                           scrollChanceBonus: eff === 'blacksmith_scroll'
                             ? (formData.scrollChanceBonus !== undefined && formData.scrollChanceBonus !== null ? formData.scrollChanceBonus : 30)
                             : formData.scrollChanceBonus,

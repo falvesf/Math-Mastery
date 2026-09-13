@@ -672,13 +672,14 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
                     type="number"
                     min="0"
                     max="100"
+                    step="any"
                     value={drop.dropChance}
                     onChange={e => {
                       const newDrops = [...drops];
                       newDrops[idx].dropChance = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
                       updateField({ drops: newDrops });
                     }}
-                    style={{ width: '60px', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
+                    style={{ width: '75px', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
                   />
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>%</span>
                 </div>

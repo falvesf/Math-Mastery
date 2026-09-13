@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 // @ts-ignore
 import { User, Swords, Dog, Settings, Trash2, Edit2, Plus, Shield, Zap } from 'lucide-react';
 import AvatarCustomizationModal from './AvatarCustomizationModal';
@@ -20,6 +20,12 @@ export default function AdminEntitiesManager() {
   // @ts-ignore
   const [loadingMonsters, setLoadingMonsters] = useState(false);
   const [selectedMonsterForEdit, setSelectedMonsterForEdit] = useState<any | null>(null);
+
+  const initialMonsterConfig = useMemo(() => {
+    if (selectedMonsterForEdit) return selectedMonsterForEdit.parsedConfig;
+    if (monsterModelUrl) return { customModelUrl: monsterModelUrl } as any;
+    return undefined;
+  }, [selectedMonsterForEdit?.parsedConfig, monsterModelUrl]);
 
   const fetchSkinModels = () => {
     let q = supabase.from('3d_models').select('*');
@@ -70,6 +76,17 @@ export default function AdminEntitiesManager() {
         }
       }
 
+      // Garante que a URL 2D e o molde 3D fiquem acessíveis no parsedConfig
+      if (d.url && !cfg.customSkinUrl) {
+        cfg.customSkinUrl = d.url;
+      }
+      if (d.baseModelId && d.baseModelId !== 'default' && !cfg.customModelUrl) {
+        const linkedModel = skinModels.find(sm => sm.id === d.baseModelId);
+        if (linkedModel) {
+          cfg.customModelUrl = linkedModel.url;
+        }
+      }
+
       return {
         ...d,
         parsedConfig: cfg
@@ -77,6 +94,11 @@ export default function AdminEntitiesManager() {
     });
 
     setMonstersList(mapped);
+    setSelectedMonsterForEdit(prev => {
+      if (!prev?.id) return prev;
+      const found = mapped.find(m => m.id === prev.id);
+      return found ? { ...found, parsedConfig: found.parsedConfig || prev.parsedConfig } : prev;
+    });
     setLoadingMonsters(false);
   };
 
@@ -375,7 +397,7 @@ export default function AdminEntitiesManager() {
               </div>
 
               <AvatarCustomizationModal
-                key={`monster-modal-${selectedMonsterForEdit ? selectedMonsterForEdit.id : (monsterModelUrl || 'new')}`}
+                key="admin-monster-modal"
                 isOpen={true}
                 onClose={() => { }}
                 isAdmin={true}
@@ -383,16 +405,38 @@ export default function AdminEntitiesManager() {
                 customSaveMode={true}
                 initialMonsterName={selectedMonsterForEdit ? selectedMonsterForEdit.name : ''}
                 initialSkinId={selectedMonsterForEdit ? selectedMonsterForEdit.id : null}
-                initialConfig={selectedMonsterForEdit ? selectedMonsterForEdit.parsedConfig : (monsterModelUrl ? { customModelUrl: monsterModelUrl } as any : undefined)}
-                onSave={(savedConfig, savedName) => {
-                  fetchMonsters();
-                  if (selectedMonsterForEdit) {
+                initialConfig={initialMonsterConfig}
+                onEditingEntityChange={(entity) => {
+                  if (entity) {
+                    setSelectedMonsterForEdit({
+                      id: entity.id,
+                      name: entity.name,
+                      parsedConfig: entity.parsedConfig
+                    });
+                    setMonsterModelUrl(entity.parsedConfig?.customModelUrl || '');
+                  } else {
+                    setSelectedMonsterForEdit(null);
+                    setMonsterModelUrl('');
+                  }
+                }}
+                onSave={(savedConfig, savedName, savedId) => {
+                  if (savedId) {
+                    setSelectedMonsterForEdit({
+                      id: savedId,
+                      name: savedName || (selectedMonsterForEdit ? selectedMonsterForEdit.name : ''),
+                      parsedConfig: savedConfig
+                    });
+                    if (savedConfig?.customModelUrl) {
+                      setMonsterModelUrl(savedConfig.customModelUrl);
+                    }
+                  } else if (selectedMonsterForEdit) {
                     setSelectedMonsterForEdit(prev => prev ? {
                       ...prev,
                       name: savedName || prev.name,
                       parsedConfig: savedConfig || prev.parsedConfig
                     } : null);
                   }
+                  fetchMonsters();
                 }}
               />
             </div>

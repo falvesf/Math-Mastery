@@ -532,59 +532,42 @@
   }
   66% {
     /* Saída veloz do arremesso */
-    transform: translate(calc(var(--attack-dist, 380px) * -0.15), -215px) scale(1.12) rotate(-90deg);
+    transform: translate(calc(var(--effective-proj-dist, var(--attack-dist, 380px)) * -0.15), -215px) scale(1.12) rotate(-90deg);
     opacity: 1;
   }
   78% {
     /* Ápice da trajetória parabólica pelo céu */
-    transform: translate(calc(var(--attack-dist, 380px) * -0.52), -245px) scale(1.18) rotate(-220deg);
+    transform: translate(calc(var(--effective-proj-dist, var(--attack-dist, 380px)) * -0.52), calc(var(--proj-arc, 245px) * -1)) scale(1.18) rotate(-220deg);
     opacity: 1;
   }
   88% {
     /* Chegando com força no peito do jogador */
-    transform: translate(calc(var(--attack-dist, 380px) * -0.92), -95px) scale(1.22) rotate(-330deg);
+    transform: translate(calc(var(--effective-proj-dist, var(--attack-dist, 380px)) * -0.92), calc(var(--proj-target-y, 80px) * -1.1)) scale(1.22) rotate(-330deg);
     opacity: 1;
   }
   92% {
     /* Colisão violenta no peito do jogador */
-    transform: translate(calc(var(--attack-dist, 380px) * -1), -85px) scale(1.28) rotate(-355deg);
+    transform: translate(calc(var(--effective-proj-dist, var(--attack-dist, 380px)) * -1), calc(var(--proj-target-y, 80px) * -1)) scale(1.28) rotate(-355deg);
     opacity: 1;
     filter: brightness(1.2);
   }
   95% {
     /* Ponto de impacto e clarão */
-    transform: translate(calc(var(--attack-dist, 380px) * -1), -80px) scale(1.35) rotate(-360deg);
+    transform: translate(calc(var(--effective-proj-dist, var(--attack-dist, 380px)) * -1), calc(var(--proj-target-y, 80px) * -1)) scale(1.35) rotate(-360deg);
     opacity: 1;
     filter: brightness(2.6);
   }
   100% {
     /* Desintegração */
-    transform: translate(calc(var(--attack-dist, 380px) * -1), -75px) scale(0.1) rotate(-380deg);
+    transform: translate(calc(var(--effective-proj-dist, var(--attack-dist, 380px)) * -1), calc(var(--proj-target-y, 80px) * -0.95)) scale(0.1) rotate(-380deg);
     opacity: 0;
-  }
-}
-
-/* No mobile, ajusta a elevação vertical do arco proporcionalmente */
-@media (max-width: 768px) {
-  @keyframes monster-projectile-flight {
-    0% { transform: translate(0, 10px) scale(0.25) rotate(0deg); opacity: 0; }
-    15% { transform: translate(0, 0px) scale(1) rotate(-8deg); opacity: 1; }
-    32% { transform: translate(0, -65px) scale(1.03) rotate(-16deg); opacity: 1; }
-    48% { transform: translate(0, -135px) scale(1.08) rotate(-22deg); opacity: 1; }
-    58% { transform: translate(12px, -145px) scale(1.12) rotate(-30deg); opacity: 1; }
-    66% { transform: translate(calc(var(--attack-dist, 240px) * -0.15), -160px) scale(1.08) rotate(-90deg); opacity: 1; }
-    78% { transform: translate(calc(var(--attack-dist, 240px) * -0.52), -185px) scale(1.12) rotate(-220deg); opacity: 1; }
-    88% { transform: translate(calc(var(--attack-dist, 240px) * -0.92), -75px) scale(1.18) rotate(-330deg); opacity: 1; }
-    92% { transform: translate(calc(var(--attack-dist, 240px) * -1), -65px) scale(1.22) rotate(-355deg); opacity: 1; filter: brightness(1.2); }
-    95% { transform: translate(calc(var(--attack-dist, 240px) * -1), -60px) scale(1.3) rotate(-360deg); opacity: 1; filter: brightness(2.6); }
-    100% { transform: translate(calc(var(--attack-dist, 240px) * -1), -55px) scale(0.1) rotate(-380deg); opacity: 0; }
   }
 }
 
 .monster-projectile {
   position: absolute;
-  bottom: 40px;
-  left: 50%;
+  bottom: var(--proj-start-y, 40px);
+  left: calc(50% + var(--proj-start-x, 0px));
   width: var(--proj-size, 58px);
   height: var(--proj-size, 58px);
   margin-left: calc(var(--proj-size, 58px) * -0.5);
@@ -1062,6 +1045,41 @@
 /* Legado / Fallback caso referenciado */
 .monster-heal-pulse {
   display: none !important;
+}
+
+/* Cenário 3D Voxel (Minecraft) */
+/* Cenário 3D Voxel (Minecraft) - Personagens renderizados diretamente no mundo 3D */
+.is-3d-arena {
+  background: transparent !important;
+}
+
+/* Os avatares exibem todos os equipamentos, armaduras, armas, escudos e skins originais */
+.is-3d-arena .quest-arena-avatars {
+  display: flex !important;
+}
+
+/* Eleva os personagens para ficarem em pé em cima da plataforma de tijolos de pedra e sobre as sombras */
+.is-3d-arena .quest-arena-side-player {
+  bottom: calc(var(--shadow-player-lift, 60px) + var(--player-lift-3d, 0px)) !important;
+  transition: bottom 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.is-3d-arena .quest-arena-side-monster {
+  bottom: calc(var(--shadow-monster-lift, 60px) + var(--monster-lift-3d, 0px)) !important;
+  transition: bottom 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.arena-quake-3d {
+  animation: arena-quake-3d-anim 0.7s ease-in-out infinite;
+}
+
+@keyframes arena-quake-3d-anim {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-3px, 2px); }
+  40% { transform: translate(3px, -2px); }
+  60% { transform: translate(-2px, -1px); }
+  80% { transform: translate(2px, 1px); }
+  100% { transform: translate(0, 0); }
 }
 
 /* Ferimento de mordida no jogador (sangramento do rato) — estilo hematoma, com

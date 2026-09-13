@@ -259,8 +259,9 @@ export default function LiveQuestStudent() {
                 }
               }
               const item = { ...data, id: d.id } as UserItem;
-              if (item.itemType === 'consumable' && item.usableInQuest && item.gameEffect !== 'add_time') {
-                pLoaded.push({ ...item, id: d.id });
+              const isBattleEff = ['heal_1_hp', 'restore_hp', 'remove_wrong', 'extra_life', 'cure_bleed', 'cure_poison', 'cure_freeze', 'cure_burn', 'cure_electric'].includes(item.gameEffect || '');
+              if ((item.itemType === 'consumable' || isBattleEff) && (item.usableInQuest || isBattleEff) && item.gameEffect !== 'add_time') {
+                pLoaded.push({ ...item, id: d.id, usableInQuest: true });
               }
             });
 

@@ -6,7 +6,7 @@ import { RANKS, getRankForXp } from '../lib/ranks';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usePermissions } from '../lib/permissions';
-import ArenaDebugPanel, { type ArenaDebugConfig, DEFAULT_ARENA_DEBUG } from '../components/ArenaDebugPanel';
+import ArenaDebugPanel, { type ArenaDebugConfig, type ArenaModeKey, DEFAULT_ARENA_DEBUG } from '../components/ArenaDebugPanel';
 import { fetchEconomySettings } from '../lib/economy';
 import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircle, Package, Coins } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
@@ -30,6 +30,7 @@ import LootBeamDrop, { type DroppedBattleItem } from '../components/LootBeamDrop
 import FloatingDamageNumber from '../components/FloatingDamageNumber';
 import QuestDamageRankingModal from '../components/QuestDamageRankingModal';
 import MonsterHealAura from '../components/MonsterHealAura';
+import VoxelArena3D from '../components/VoxelArena3D';
 import {
   calculatePlayerHitDamage,
   calculateMonsterHitDamage,
@@ -63,6 +64,7 @@ import {
   // @ts-ignore
   applyMonsterAttackEffect,
   decideMonsterAttackAction,
+  getMonsterEffectLabel,
   type MonsterProjectileType,
   type MonsterEffectType,
 } from '../lib/monsterAttacks';
@@ -77,6 +79,7 @@ interface UserItem {
   itemType: 'consumable' | 'equippable';
   equipped: boolean;
   giftedBy?: string;
+  quantity?: number;
   count?: number;
   docIds?: string[];
   hpCooldownReductionMinutes?: number;
@@ -652,29 +655,112 @@ const dealTransformDamageToPlayer = (damage: number) => {
   setStressFactors(prev => ({ ...prev, hpLost: Math.max(prev.hpLost, 1 - (newHearts / maxHearts)) }));
 };
 
-  const [deviceKey, setDeviceKey] = useState(window.innerWidth < 768 ? 'mobile' : 'desktop');
+  const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
+  const [manualModeOverride, setManualModeOverride] = useState<ArenaModeKey | null>(null);
 
   const arenaRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const gameStateRef = useRef(gameState);
   const timerPausedRef = useRef(false);
   const [timerPaused, setTimerPaused] = useState(false);
-  
-  const [arenaDebug, setArenaDebug] = useState<ArenaDebugConfig>(() => {
-    const saved = localStorage.getItem(`arenaDebugConfig_${window.innerWidth < 768 ? 'mobile' : 'desktop'}`);
+
+  // Modo de renderização da arena: '2d' (clássico com imagem) ou '3d' (Voxel Minecraft em tempo real)
+  const [arenaRenderMode, setArenaRenderMode] = useState<'2d' | '3d'>(() => {
+    const saved = localStorage.getItem('mm_arena_render_mode');
+    if (saved === '3d' || saved === '2d') return saved;
+    return '3d';
+  });
+
+  const toggleArenaRenderMode = () => {
+    setArenaRenderMode(prev => {
+      const next = prev === '2d' ? '3d' : '2d';
+      localStorage.setItem('mm_arena_render_mode', next);
+      if (manualModeOverride) {
+        const dev = manualModeOverride.endsWith('mobile') ? 'mobile' : 'desktop';
+        setManualModeOverride(`${next}_${dev}` as ArenaModeKey);
+      }
+      return next;
+    });
+  };
+
+  // Resolução detectada: < 768px = mobile, >= 768px = desktop
+  const isNarrowScreen = windowWidth < 768;
+  const autoDevice: 'desktop' | 'mobile' = isNarrowScreen ? 'mobile' : 'desktop';
+  const autoModeKey: ArenaModeKey = `${arenaRenderMode}_${autoDevice}` as ArenaModeKey;
+  const activeModeKey: ArenaModeKey = manualModeOverride || autoModeKey;
+  const effectiveDevice: 'desktop' | 'mobile' = activeModeKey.endsWith('mobile') ? 'mobile' : 'desktop';
+
+  // 4 Perfis completamente isolados na memória: nunca um sobrescreve o outro
+  const [configsByMode, setConfigsByMode] = useState<Record<ArenaModeKey, ArenaDebugConfig>>(() => {
     const sharedStr = localStorage.getItem('arenaDebugSharedToggles');
     const shared = sharedStr ? JSON.parse(sharedStr) : {};
-    
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return { ...DEFAULT_ARENA_DEBUG, ...parsed, ...shared };
-      } catch { return { ...DEFAULT_ARENA_DEBUG, ...shared }; }
-    }
-    return { ...DEFAULT_ARENA_DEBUG, ...shared };
+
+    const initConfig = (modeKey: ArenaModeKey): ArenaDebugConfig => {
+      // 1. Tenta carregar chave específica
+      const saved = localStorage.getItem(`arenaDebugConfig_${modeKey}`);
+      if (saved) {
+        try { return { ...DEFAULT_ARENA_DEBUG, ...JSON.parse(saved), ...shared }; } catch {}
+      }
+      // 2. Fallback legado
+      const legacyDevice = modeKey.endsWith('mobile') ? 'mobile' : 'desktop';
+      const legacySaved = localStorage.getItem(`arenaDebugConfig_${legacyDevice}`);
+      if (legacySaved) {
+        try { return { ...DEFAULT_ARENA_DEBUG, ...JSON.parse(legacySaved), ...shared }; } catch {}
+      }
+      return { ...DEFAULT_ARENA_DEBUG, ...shared };
+    };
+
+    return {
+      '3d_desktop': initConfig('3d_desktop'),
+      '3d_mobile': initConfig('3d_mobile'),
+      '2d_desktop': initConfig('2d_desktop'),
+      '2d_mobile': initConfig('2d_mobile'),
+    };
   });
-  
+
+  const arenaDebug = configsByMode[activeModeKey];
+
+  const handleArenaDebugChange = (newConfig: ArenaDebugConfig) => {
+    setConfigsByMode(prev => {
+      const updated = { ...prev, [activeModeKey]: newConfig };
+      try {
+        localStorage.setItem(`arenaDebugConfig_${activeModeKey}`, JSON.stringify(newConfig));
+      } catch (e) {
+        console.warn('Erro ao salvar no localStorage:', e);
+      }
+      return updated;
+    });
+
+    const SHARED_DEBUG_TOGGLES: (keyof ArenaDebugConfig)[] = [
+      'showBoxes', 'showCoinArea', 'showPlayerCoinArea', 'showBubbleOrigins', 
+      'playerBubbleAlwaysOn', 'monsterBubbleAlwaysOn', 
+      'noInstantKill', 'adminImmortal', 'monsterImmortal', 'forceCoinLoss',
+      'showProjRange', 'showDeathArea'
+    ];
+    const sharedToggles: Partial<ArenaDebugConfig> = {};
+    SHARED_DEBUG_TOGGLES.forEach(k => {
+      (sharedToggles as any)[k] = newConfig[k];
+    });
+    try {
+      localStorage.setItem('arenaDebugSharedToggles', JSON.stringify(sharedToggles));
+    } catch (e) {}
+  };
+
+  const handleSelectMode = (mode: ArenaModeKey | 'auto') => {
+    if (mode === 'auto') {
+      setManualModeOverride(null);
+    } else {
+      setManualModeOverride(mode);
+      const targetRender = mode.startsWith('3d') ? '3d' : '2d';
+      if (targetRender !== arenaRenderMode) {
+        setArenaRenderMode(targetRender);
+        localStorage.setItem('mm_arena_render_mode', targetRender);
+      }
+    }
+  };
+
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+
   const [battleQuotes, setBattleQuotes] = useState<PlayerBattleQuotes>(DEFAULT_PLAYER_BATTLE_QUOTES);
 
   useEffect(() => {
@@ -683,104 +769,130 @@ const dealTransformDamageToPlayer = (damage: number) => {
     });
   }, [tenantId]);
 
-  // Resize handler
+  // Listener para acompanhar o redimensionamento da janela do navegador
   useEffect(() => {
     const handleResize = () => {
-      const newKey = window.innerWidth < 768 ? 'mobile' : 'desktop';
-      if (newKey !== deviceKey) {
-        setDeviceKey(newKey);
-        const docId = `arena_${newKey}`;
-        const localKey = `arenaDebugConfig_${newKey}`;
-        
-        // Carregar do localStorage primeiro
-        const localSaved = localStorage.getItem(localKey);
-        const sharedStr = localStorage.getItem('arenaDebugSharedToggles');
-        const shared = sharedStr ? JSON.parse(sharedStr) : {};
-
-        if (localSaved) {
-          try { setArenaDebug({ ...DEFAULT_ARENA_DEBUG, ...JSON.parse(localSaved), ...shared }); } catch {}
-        }
-        
-        // Depois do Supabase
-        supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', docId).single().then(({ data }) => {
-          if (data?.data) {
-            const dbData = data.data as Record<string, any>;
-            const cleanData = Object.fromEntries(Object.entries(dbData).filter(([_, v]) => v !== undefined && v !== null));
-            setArenaDebug({ ...DEFAULT_ARENA_DEBUG, ...cleanData, ...shared });
-          }
-        });
-      }
+      setWindowWidth(window.innerWidth);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [deviceKey]);
+  }, []);
 
-  // Load arena debug config from Supabase on mount
+  // Carrega os 4 modos do Supabase ao montar, sem que nenhum sobrescreva os demais
   useEffect(() => {
-    const loadArenaDebug = async () => {
-      const { data } = await supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', `arena_${deviceKey}`).single();
-      const sharedStr = localStorage.getItem('arenaDebugSharedToggles');
-      const shared = sharedStr ? JSON.parse(sharedStr) : {};
+    let isMounted = true;
+    const loadAllConfigs = async () => {
+      try {
+        const sharedStr = localStorage.getItem('arenaDebugSharedToggles');
+        const shared = sharedStr ? JSON.parse(sharedStr) : {};
 
-      if (data?.data) {
-        // Merge with defaults, filtering out undefined/null values from DB
-        const dbData = data.data as Record<string, any>;
-        const cleanData = Object.fromEntries(Object.entries(dbData).filter(([_, v]) => v !== undefined && v !== null));
-        setArenaDebug(prev => ({ ...DEFAULT_ARENA_DEBUG, ...prev, ...cleanData, ...shared }));
+        const [res3dDesk, res3dMob, res2dDesk, res2dMob, resLegacyDesk, resLegacyMob] = await Promise.all([
+          supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', 'arena_3d_desktop').single(),
+          supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', 'arena_3d_mobile').single(),
+          supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', 'arena_2d_desktop').single(),
+          supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', 'arena_2d_mobile').single(),
+          supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', 'arena_desktop').single(),
+          supabase.from('system_collections').select('data').eq('collection_name', 'arena_debug').eq('doc_id', 'arena_mobile').single(),
+        ]);
+
+        if (!isMounted) return;
+
+        const parseDoc = (res: any, fallbackRes: any) => {
+          const raw = res.data?.data || fallbackRes.data?.data;
+          if (!raw) return null;
+          return Object.fromEntries(
+            Object.entries(raw as Record<string, any>).filter(([_, v]) => v !== undefined && v !== null)
+          );
+        };
+
+        const data3dDesk = parseDoc(res3dDesk, resLegacyDesk);
+        const data3dMob = parseDoc(res3dMob, resLegacyMob);
+        const data2dDesk = parseDoc(res2dDesk, resLegacyDesk);
+        const data2dMob = parseDoc(res2dMob, resLegacyMob);
+
+        setConfigsByMode(prev => {
+          const next = { ...prev };
+          if (data3dDesk) {
+            next['3d_desktop'] = { ...DEFAULT_ARENA_DEBUG, ...data3dDesk, ...shared };
+            try { localStorage.setItem('arenaDebugConfig_3d_desktop', JSON.stringify(next['3d_desktop'])); } catch {}
+          }
+          if (data3dMob) {
+            next['3d_mobile'] = { ...DEFAULT_ARENA_DEBUG, ...data3dMob, ...shared };
+            try { localStorage.setItem('arenaDebugConfig_3d_mobile', JSON.stringify(next['3d_mobile'])); } catch {}
+          }
+          if (data2dDesk) {
+            next['2d_desktop'] = { ...DEFAULT_ARENA_DEBUG, ...data2dDesk, ...shared };
+            try { localStorage.setItem('arenaDebugConfig_2d_desktop', JSON.stringify(next['2d_desktop'])); } catch {}
+          }
+          if (data2dMob) {
+            next['2d_mobile'] = { ...DEFAULT_ARENA_DEBUG, ...data2dMob, ...shared };
+            try { localStorage.setItem('arenaDebugConfig_2d_mobile', JSON.stringify(next['2d_mobile'])); } catch {}
+          }
+          return next;
+        });
+      } catch (err) {
+        console.error('Erro ao carregar configurações de arena debug:', err);
       }
     };
-    loadArenaDebug();
-  }, [deviceKey]);
 
-  // Save to localStorage on every change
-  useEffect(() => {
-    localStorage.setItem(`arenaDebugConfig_${deviceKey}`, JSON.stringify(arenaDebug));
-    
-    const SHARED_DEBUG_TOGGLES: (keyof ArenaDebugConfig)[] = [
-      'showBoxes', 'showCoinArea', 'showPlayerCoinArea', 'showBubbleOrigins', 
-      'playerBubbleAlwaysOn', 'monsterBubbleAlwaysOn', 
-      'noInstantKill', 'adminImmortal', 'monsterImmortal', 'forceCoinLoss'
-    ];
-    const sharedToggles: Partial<ArenaDebugConfig> = {};
-    SHARED_DEBUG_TOGGLES.forEach(k => {
-      (sharedToggles as any)[k] = arenaDebug[k];
-    });
-    localStorage.setItem('arenaDebugSharedToggles', JSON.stringify(sharedToggles));
-  }, [arenaDebug, deviceKey]);
+    loadAllConfigs();
+    return () => { isMounted = false; };
+  }, []);
 
   const handleSaveArenaDebug = async () => {
-    const dataToSave = { ...arenaDebug };
+    const currentConfig = configsByMode[activeModeKey];
+    const dataToSave = { ...currentConfig };
     const SHARED_DEBUG_TOGGLES: (keyof ArenaDebugConfig)[] = [
       'showBoxes', 'showCoinArea', 'showPlayerCoinArea', 'showBubbleOrigins', 
       'playerBubbleAlwaysOn', 'monsterBubbleAlwaysOn', 
-      'noInstantKill', 'adminImmortal', 'monsterImmortal', 'forceCoinLoss'
+      'noInstantKill', 'adminImmortal', 'monsterImmortal', 'forceCoinLoss',
+      'showProjRange', 'showDeathArea'
     ];
     SHARED_DEBUG_TOGGLES.forEach(k => {
       delete dataToSave[k];
     });
 
+    const docId = `arena_${activeModeKey}`;
     const payload: any = {
       collection_name: 'arena_debug',
-      doc_id: `arena_${deviceKey}`,
+      doc_id: docId,
       data: dataToSave,
     };
-    if (tenantId) payload.tenant_id = tenantId;
     
-    // Tenta update primeiro, se não existir faz insert
-    const { data: existing } = await supabase.from('system_collections').select('id').eq('collection_name', 'arena_debug').eq('doc_id', `arena_${deviceKey}`).limit(1);
+    // Salva na chave específica dos 4 modos
+    const { data: existing } = await supabase.from('system_collections').select('id').eq('collection_name', 'arena_debug').eq('doc_id', docId).limit(1);
     let error;
     if (existing && existing.length > 0) {
-      const res = await supabase.from('system_collections').update({ data: dataToSave }).eq('collection_name', 'arena_debug').eq('doc_id', `arena_${deviceKey}`);
+      const res = await supabase.from('system_collections').update({ data: dataToSave }).eq('collection_name', 'arena_debug').eq('doc_id', docId);
       error = res.error;
     } else {
       const res = await supabase.from('system_collections').insert(payload);
       error = res.error;
     }
+
+    // Grava também na chave legada (arena_mobile / arena_desktop) se for 3D para manter compatibilidade
+    if (activeModeKey.startsWith('3d')) {
+      const legacyDoc = activeModeKey.endsWith('mobile') ? 'arena_mobile' : 'arena_desktop';
+      supabase.from('system_collections').select('id').eq('collection_name', 'arena_debug').eq('doc_id', legacyDoc).limit(1).then(({ data: legExist }) => {
+        if (legExist && legExist.length > 0) {
+          supabase.from('system_collections').update({ data: dataToSave }).eq('collection_name', 'arena_debug').eq('doc_id', legacyDoc);
+        } else {
+          supabase.from('system_collections').insert({ collection_name: 'arena_debug', doc_id: legacyDoc, data: dataToSave });
+        }
+      });
+    }
+
     if (error) {
       console.error('Erro ao salvar arena debug:', error);
       alert('Erro ao salvar: ' + error.message);
     } else {
-      alert('Configurações da arena salvas globalmente!');
+      const modeLabels: Record<ArenaModeKey, string> = {
+        '3d_desktop': '🧱 3D Desktop',
+        '3d_mobile': '🧱 3D Mobile',
+        '2d_desktop': '🖼️ 2D Desktop',
+        '2d_mobile': '🖼️ 2D Mobile',
+      };
+      alert(`Configurações da arena (${modeLabels[activeModeKey]}) salvas globalmente para todos os tenants!`);
     }
   };
 
@@ -795,6 +907,24 @@ const dealTransformDamageToPlayer = (damage: number) => {
   const handleTestMonsterBubble = () => {
     setMonsterBubble(testMonsterQuotes[Math.floor(Math.random() * testMonsterQuotes.length)]);
     setTimeout(() => setMonsterBubble(''), 15000);
+  };
+
+  const triggerTestProjectile = () => {
+    setMonsterBodyThrow(true);
+    setMonsterProjectile({
+      id: Date.now(),
+      type: 'rock',
+      effect: 'none',
+    });
+    playMonsterAttackSound();
+    setTimeout(() => {
+      setPlayerAnim('hurt');
+      triggerShatterDebris();
+      setTimeout(() => {
+        setPlayerAnim('idle');
+        setMonsterBodyThrow(false);
+      }, 1000);
+    }, 1850);
   };
 
   useEffect(() => {
@@ -1050,16 +1180,60 @@ const dealTransformDamageToPlayer = (damage: number) => {
           const eLoaded: EquippedItem[] = [];
           
           if (pSnap) {
-            // Collect itemIds that need modelTransforms fallback from store_items
-            const missingTransformIds: string[] = [];
+            // Collect all unique item_ids from user_items to fetch fallback data from store_items
+            const allItemIds = new Set<string>();
+            pSnap.forEach((d: any) => {
+              if (d.item_id) allItemIds.add(d.item_id);
+              if (d.data?.itemId) allItemIds.add(d.data.itemId);
+            });
+
+            const storeMap = new Map<string, any>();
+            if (allItemIds.size > 0) {
+              const { data: storeSnap } = await supabase.from('store_items').select('id, data').in('id', Array.from(allItemIds));
+              if (storeSnap) {
+                storeSnap.forEach((s: any) => {
+                  if (s.data) storeMap.set(s.id, s.data);
+                });
+              }
+            }
+
+            const BATTLE_EFFECTS = new Set([
+              'heal_1_hp',
+              'restore_hp',
+              'remove_wrong',
+              'add_time',
+              'extra_life',
+              'cure_bleed',
+              'cure_poison',
+              'cure_freeze',
+              'cure_burn',
+              'cure_electric'
+            ]);
 
             pSnap.forEach((d: any) => {
-              const data = d.data;
-              if (!data) return;
+              const data = d.data || {};
+              const sData = storeMap.get(d.item_id) || storeMap.get(data.itemId) || {};
+              const resolvedEffect = (data.gameEffect && data.gameEffect !== 'none') ? data.gameEffect : (sData.gameEffect || 'none');
+              const isBattleEffect = BATTLE_EFFECTS.has(resolvedEffect);
+              const isUsable = data.usableInQuest === true || sData.usableInQuest === true || isBattleEffect;
+              const itemType = data.itemType || data.type || sData.itemType || sData.type || '';
+              const isConsumable = itemType === 'consumable' || isBattleEffect || !itemType;
 
-              if (data.itemType === 'consumable' && data.usableInQuest) {
-                pLoaded.push({ ...data, id: d.id, equipped: d.equipped });
+              // Battle consumable detection (includes potions, elixirs, bandages, charms, etc.)
+              if (isConsumable && isUsable && isBattleEffect) {
+                pLoaded.push({
+                  ...data,
+                  id: d.id,
+                  itemId: data.itemId || d.item_id || d.id,
+                  itemTitle: data.itemTitle || data.title || sData.title || 'Item',
+                  itemImageUrl: data.itemImageUrl || data.imageUrl || sData.imageUrl || '',
+                  gameEffect: resolvedEffect,
+                  usableInQuest: true,
+                  quantity: Number(data.quantity) || 1,
+                  equipped: d.equipped
+                });
               }
+
               if (d.equipped) {
                 let parsedAdds: any[] = [];
                 if (data.adds) {
@@ -1069,77 +1243,46 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 const eqItem: EquippedItem = { 
                   docId: d.id,
                   itemId: d.item_id,
-                  imageUrl: data.itemImageUrl || data.imageUrl || '', 
+                  imageUrl: data.itemImageUrl || data.imageUrl || sData.imageUrl || '', 
                   avatarPart: data.avatarPart as any,
-                  itemTitle: data.itemTitle,
-                  itemCategory: data.itemCategory,
-                  baseAttributeType: data.baseAttributeType,
-                  baseAttributeValue: data.baseAttributeValue,
+                  itemTitle: data.itemTitle || sData.title,
+                  itemCategory: data.itemCategory || sData.itemCategory,
+                  baseAttributeType: data.baseAttributeType || sData.baseAttributeType,
+                  baseAttributeValue: data.baseAttributeValue || sData.baseAttributeValue,
                   forgeLevel: data.forgeLevel || 0,
-                  forgeConfig: data.forgeConfig || null,
+                  forgeConfig: data.forgeConfig || sData.forgeConfig || null,
                   adds: parsedAdds,
-                  gameModelUrl: data.gameModelUrl,
-                  modelTextureUrl: data.modelTextureUrl,
-                  minecraftHeadValue: data.minecraftHeadValue,
-                  modelTransforms: data.modelTransforms,
-                  backColor: data.backColor || '',
-                  rarity: data.rarity,
-                  customAnimation: data.customAnimation,
-                  battleSoundUrl: data.battleSoundUrl,
-                  criticalSoundUrl: data.criticalSoundUrl || '',
-                  damageEffect: data.damageEffect || 'none',
+                  gameModelUrl: data.gameModelUrl || sData.gameModelUrl,
+                  modelTextureUrl: data.modelTextureUrl || sData.modelTextureUrl,
+                  minecraftHeadValue: data.minecraftHeadValue || sData.minecraftHeadValue,
+                  modelTransforms: data.modelTransforms || sData.modelTransforms || null,
+                  backColor: data.backColor || sData.backColor || '',
+                  rarity: data.rarity || sData.rarity,
+                  customAnimation: data.customAnimation || sData.customAnimation,
+                  battleSoundUrl: data.battleSoundUrl || sData.battleSoundUrl,
+                  criticalSoundUrl: data.criticalSoundUrl || sData.criticalSoundUrl || '',
+                  damageEffect: data.damageEffect || sData.damageEffect || 'none',
                 };
                 eLoaded.push(eqItem);
-
-                if (!data.modelTransforms && d.item_id) {
-                  missingTransformIds.push(d.item_id);
-                }
               }
             });
 
-            // Fallback: fetch modelTransforms from store_items for items missing them
-            if (missingTransformIds.length > 0) {
-              const uniqueIds = [...new Set(missingTransformIds)];
-              const { data: storeSnap } = await supabase.from('store_items').select('id, data').in('id', uniqueIds);
-              if (storeSnap) {
-                const storeMap = new Map<string, any>();
-                storeSnap.forEach((s: any) => {
-                  if (s.data) {
-                    storeMap.set(s.id, s.data);
-                  }
-                });
-                eLoaded.forEach(eq => {
-                  if (eq.itemId && storeMap.has(eq.itemId)) {
-                    const sData = storeMap.get(eq.itemId);
-                    if (!eq.modelTransforms && sData.modelTransforms) {
-                      eq.modelTransforms = sData.modelTransforms;
-                    }
-                    if (!eq.battleSoundUrl && sData.battleSoundUrl) {
-                      eq.battleSoundUrl = sData.battleSoundUrl;
-                    }
-                    if (!eq.criticalSoundUrl && sData.criticalSoundUrl) {
-                      eq.criticalSoundUrl = sData.criticalSoundUrl;
-                    }
-                  }
-                });
+            const groupedMap = new Map<string, UserItem>();
+            pLoaded.forEach(item => {
+              const key = `${item.itemId || item.id}`;
+              const qty = Number(item.quantity) || 1;
+              if (groupedMap.has(key)) {
+                const existing = groupedMap.get(key)!;
+                existing.count = (existing.count || 0) + qty;
+                existing.docIds = [...(existing.docIds || [existing.id]), item.id];
+              } else {
+                groupedMap.set(key, { ...item, count: qty, docIds: [item.id] });
               }
-            }
+            });
+            
+            setPowerups(Array.from(groupedMap.values()));
+            setPlayerEquippedItems(eLoaded);
           }
-
-          const groupedMap = new Map<string, UserItem>();
-          pLoaded.forEach(item => {
-            const key = `${item.itemId}`;
-            if (groupedMap.has(key)) {
-              const existing = groupedMap.get(key)!;
-              existing.count = (existing.count || 1) + 1;
-              existing.docIds = [...(existing.docIds || [existing.id]), item.id];
-            } else {
-              groupedMap.set(key, { ...item, count: 1, docIds: [item.id] });
-            }
-          });
-          
-          setPowerups(Array.from(groupedMap.values()));
-          setPlayerEquippedItems(eLoaded);
         }
       } catch (err: any) {
         console.error("Error fetching quest:", err);
@@ -1926,8 +2069,36 @@ const dealTransformDamageToPlayer = (damage: number) => {
         return;
       }
 
-      // 2. Monstro NORMAL: IA tática decide entre Suporte, Ranged, Especial e Melee
-      const decision = decideMonsterAttackAction(monsterAttacks, monsterHpRatio, monsterRageActive);
+      // 2. Monstro NORMAL: IA tática decide entre Suporte, Ranged, Especial e Melee com base no Nível
+      const currentMonsterLevel = Math.max(
+        1,
+        monsterCombatStats?.level ||
+        (quest as any)?.monsterCombatStats?.level ||
+        (quest as any)?.monsterAvatarConfig?.stats?.level ||
+        1
+      );
+      const decision = decideMonsterAttackAction(monsterAttacks, monsterHpRatio, monsterRageActive, currentMonsterLevel);
+
+      const getAppliedEffect = (dec: typeof decision) => dec.appliedEffect ?? (dec.effectProc ? dec.effect : 'none');
+      const resolveHitMsg = (defaultMsg?: string): string | undefined => {
+        if (decision.effect && decision.effect !== 'none') {
+          // Se o efeito está bloqueado pelo nível do monstro ou desativado, o monstro nem sequer tentou aplicar efeito
+          if (decision.isEffectUnlocked === false) {
+            return defaultMsg;
+          }
+          const effLabel = getMonsterEffectLabel(decision.effect);
+          if (!decision.effectProc) {
+            return defaultMsg
+              ? `${defaultMsg} (Você resistiu ao efeito ${effLabel}!)`
+              : `O golpe acertou, mas você resistiu a ${effLabel}!`;
+          } else {
+            return defaultMsg
+              ? `${defaultMsg} Efeito ${effLabel} aplicado!`
+              : `O golpe acertou e infligiu ${effLabel}!`;
+          }
+        }
+        return defaultMsg;
+      };
 
       // CASO A: SUPORTE (Fúria, Poção de Cura, Magia, Vampírico)
       if (decision.type === 'support') {
@@ -1952,8 +2123,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         if (decision.supportType === 'heal_potion' || decision.supportType === 'heal_magic') {
           setMonsterHealPulse(true);
           setMonsterHeartFrac(1);
-          const monsterLvl = Math.max(1, monsterCombatStats?.level || 1);
-          const healAmount = Math.max(1, Math.round(1 + monsterLvl * 0.4));
+          const healAmount = Math.max(1, Math.round(1 + currentMonsterLevel * 0.4));
           spawnFloatingDamage(healAmount, false, 'monster', false, true);
           setBattleMessage(`${(quest?.monsterName || 'O Monstro')} recuperou suas forças!`);
           setTimeout(() => {
@@ -1995,7 +2165,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         setTimeout(() => {
           triggerShatterDebris();
           dropCoinsIfDamaged();
-          executePlayerHit(finalDamage, decision.effect, wasRaged ? 'DISPARO ENFURECIDO! Você sofreu um impacto violento!' : undefined);
+          executePlayerHit(finalDamage, getAppliedEffect(decision), resolveHitMsg(wasRaged ? 'DISPARO ENFURECIDO! Você sofreu um impacto violento!' : undefined));
           setTimeout(() => { if (!fatalityActiveRef.current) setPlayerAnim('idle'); }, 1000);
         }, 1850);
         setTimeout(() => {
@@ -2019,7 +2189,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
               setArenaQuake(true);
               setShockwaveActive(true);
               dropCoinsIfDamaged();
-              executePlayerHit(finalDamage, decision.effect || 'impact', wasRaged ? 'PULO ESMAGADOR ENFURECIDO! Dano brutal!' : '💥 PULO ESMAGADOR! Um tremor sísmico te atingiu!');
+              const eff = getAppliedEffect(decision);
+              executePlayerHit(finalDamage, eff !== 'none' ? eff : 'impact', resolveHitMsg(wasRaged ? 'PULO ESMAGADOR ENFURECIDO! Dano brutal!' : '💥 PULO ESMAGADOR! Um tremor sísmico te atingiu!'));
             }, 750);
             setTimeout(() => {
               setMonsterProceduralAnim('');
@@ -2033,7 +2204,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           if (decision.proceduralType === 'spin_tornado') {
             setTimeout(() => {
               dropCoinsIfDamaged();
-              executePlayerHit(finalDamage, decision.effect, wasRaged ? 'GIRO FURACÃO ENFURECIDO! Dano duplo!' : '🌪️ GIRO FURACÃO! Um turbilhão de vento te acertou!');
+              executePlayerHit(finalDamage, getAppliedEffect(decision), resolveHitMsg(wasRaged ? 'GIRO FURACÃO ENFURECIDO! Dano duplo!' : '🌪️ GIRO FURACÃO! Um turbilhão de vento te acertou!'));
             }, 650);
             setTimeout(() => {
               setMonsterProceduralAnim('');
@@ -2046,7 +2217,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             setTimeout(() => {
               setArenaQuake(true);
               dropCoinsIfDamaged();
-              executePlayerHit(finalDamage, decision.effect, wasRaged ? 'INVESTIDA FURIOSA ENFURECIDA! Dano colossal!' : '⚡ INVESTIDA FURIOSA! O monstro te atropelou!');
+              executePlayerHit(finalDamage, getAppliedEffect(decision), resolveHitMsg(wasRaged ? 'INVESTIDA FURIOSA ENFURECIDA! Dano colossal!' : '⚡ INVESTIDA FURIOSA! O monstro te atropelou!'));
             }, 500);
             setTimeout(() => {
               setMonsterProceduralAnim('');
@@ -2059,7 +2230,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           if (decision.proceduralType === 'dance_transform') {
             setTimeout(() => {
               dropCoinsIfDamaged();
-              executePlayerHit(finalDamage, decision.effect || 'transform', '🕺 DANÇA MÁGICA! Um feitiço hipnótico te atingiu!');
+              const eff = getAppliedEffect(decision);
+              executePlayerHit(finalDamage, eff !== 'none' ? eff : 'transform', resolveHitMsg('🕺 DANÇA MÁGICA! Um feitiço hipnótico te atingiu!'));
             }, 800);
             setTimeout(() => {
               setMonsterProceduralAnim('');
@@ -2072,7 +2244,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             setShockwaveActive(true);
             setTimeout(() => {
               dropCoinsIfDamaged();
-              executePlayerHit(finalDamage, decision.effect, '📢 RUGIDO ENSURDECEDOR! A onda de choque sônica te abalou!');
+              executePlayerHit(finalDamage, getAppliedEffect(decision), resolveHitMsg('📢 RUGIDO ENSURDECEDOR! A onda de choque sônica te abalou!'));
             }, 400);
             setTimeout(() => {
               setMonsterProceduralAnim('');
@@ -2087,7 +2259,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         playMonsterAttackSound();
         setTimeout(() => {
           dropCoinsIfDamaged();
-          executePlayerHit(finalDamage, decision.effect, wasRaged ? 'GOLPE ESPECIAL ENFURECIDO!' : undefined);
+          executePlayerHit(finalDamage, getAppliedEffect(decision), resolveHitMsg(wasRaged ? 'GOLPE ESPECIAL ENFURECIDO!' : undefined));
         }, 700);
         setTimeout(() => {
           setMonsterSpecialAnim('');
@@ -2105,7 +2277,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       playMonsterAttackSound();
       setTimeout(() => {
         dropCoinsIfDamaged();
-        executePlayerHit(finalDamage, decision.effect, wasRaged ? 'GOLPE ENFURECIDO! O impacto foi devastador!' : undefined);
+        executePlayerHit(finalDamage, getAppliedEffect(decision), resolveHitMsg(wasRaged ? 'GOLPE ENFURECIDO! O impacto foi devastador!' : undefined));
       }, 500);
       setTimeout(() => {
         if (!fatalityActiveRef.current) {
@@ -2503,7 +2675,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
       id: Date.now() + i,
       x: arenaDebug.coinAreaX + Math.random() * arenaDebug.coinAreaW,
-      y: arenaDebug.coinAreaY + Math.random() * arenaDebug.coinAreaH,
+      y: arenaRenderMode === '3d' ? (48 + Math.random() * 8) : (arenaDebug.coinAreaY + Math.random() * arenaDebug.coinAreaH),
       value: Math.floor(((Math.random() * (maxV - minV + 1)) + minV) * coelhoMult)
     }));
     setDroppedCoins(prev => [...prev, ...newCoins]);
@@ -2532,8 +2704,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           ? (arenaDebug.coinAreaX + Math.random() * (arenaDebug.coinAreaW || 30))
           : (60 + Math.random() * 25);
         const dropY = (arenaDebug?.coinAreaY != null)
-          ? (arenaDebug.coinAreaY + Math.random() * (arenaDebug.coinAreaH || 15))
-          : (75 + Math.random() * 12);
+          ? (arenaRenderMode === '3d' ? (48 + Math.random() * 8) : (arenaDebug.coinAreaY + Math.random() * (arenaDebug.coinAreaH || 15)))
+          : (arenaRenderMode === '3d' ? (48 + Math.random() * 8) : (75 + Math.random() * 12));
 
         const newDrop: DroppedBattleItem = {
           id: `drop-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -2818,13 +2990,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
   }, [monsterAnim, arenaDebug, currentQIndex]);
 
   const handleUsePowerup = async (item: UserItem) => {
-    // Admin/teacher: só pode usar itens (poções) quando "Admin recebe recompensas"
-    // estiver ATIVO no Arena Debug — senão simula staff e não consome recompensas.
-    const isStaff = userData?.role !== 'student' && !userData?.studentViewActive;
-    if (isStaff && !arenaDebug.forceRewards) {
-      await showAlert("Ative 'Admin recebe recompensas' no Arena Debug para poder usar itens na batalha.");
-      return;
-    }
     if (gameState !== 'playing') {
       await showAlert("Você só pode usar itens durante a batalha!");
       return;
@@ -2843,12 +3008,15 @@ const dealTransformDamageToPlayer = (damage: number) => {
       }
       const randomWrong = wrongIndices[Math.floor(Math.random() * wrongIndices.length)];
       setEliminatedOptions([...eliminatedOptions, randomWrong]);
+      setBattleMessage('✨ Amuleto usado! Uma opção errada foi eliminada!');
       
     } else if (item.gameEffect === 'add_time') {
       setTimeLeft(prev => prev + 30);
+      setBattleMessage('⏳ Ampulheta usada! +30 segundos adicionados!');
       
     } else if (item.gameEffect === 'extra_life') {
       setHasShield(true);
+      setBattleMessage('🛡️ Escudo ativado! Você está protegido contra o próximo erro!');
       
     } else if (item.gameEffect === 'restore_hp') {
       const maxHearts = calculatedMaxHearts;
@@ -2859,8 +3027,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
       }
       
       setCurrentHearts(maxHearts);
+      setBattleMessage('💖 Elixir usado! Sua vida foi totalmente restaurada!');
       
-      if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
+      if (!isStudyMode) {
         updateUserHearts(maxHearts);
       }
     } else if (item.gameEffect === 'heal_1_hp') {
@@ -2873,8 +3042,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
       
       const newHearts = Math.min(maxHearts, currentHearts + 1);
       setCurrentHearts(newHearts);
+      setBattleMessage('🧪 Poção de Vida usada! +1 coração recuperado!');
       
-      if ((userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode) {
+      if (!isStudyMode) {
         updateUserHearts(newHearts);
       }
     } else if (item.gameEffect === 'cure_bleed') {
@@ -2899,8 +3069,53 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setBattleMessage('🛡️ Isolante! O choque elétrico foi eliminado!');
     }
     
-    await supabase.from('user_items').delete().eq('id', item.id);
-    setPowerups(powerups.filter(p => p.id !== item.id));
+    // Consumir 1 unidade do item no banco (se não estiver em modo de estudo)
+    if (!isStudyMode && userData?.uid) {
+      try {
+        const targetDocId = item.id;
+        const { data: rowSnap } = await supabase.from('user_items').select('data').eq('id', targetDocId).maybeSingle();
+        const rowData = (rowSnap?.data as any) || {};
+        const currentQty = Number(rowData.quantity) || 1;
+        
+        if (currentQty > 1) {
+          await supabase.from('user_items').update({
+            data: { ...rowData, quantity: currentQty - 1 }
+          }).eq('id', targetDocId);
+        } else {
+          await supabase.from('user_items').delete().eq('id', targetDocId);
+        }
+      } catch (err) {
+        console.error('Erro ao consumir item do inventário:', err);
+      }
+    }
+
+    // Atualiza estado local dos powerups decrementando a contagem
+    setPowerups(prev => {
+      return prev.map(p => {
+        if (p.id === item.id) {
+          const newCount = (p.count || 1) - 1;
+          if (newCount <= 0) return null;
+          
+          const nextDocIds = (p.docIds || []).slice();
+          let nextId = p.id;
+          const currentQty = (p.quantity || 1) - 1;
+          
+          if (currentQty <= 0 && nextDocIds.length > 1) {
+            nextDocIds.shift();
+            nextId = nextDocIds[0] || p.id;
+          }
+          
+          return {
+            ...p,
+            id: nextId,
+            count: newCount,
+            quantity: Math.max(1, currentQty),
+            docIds: nextDocIds
+          };
+        }
+        return p;
+      }).filter(Boolean) as UserItem[];
+    });
   };
 
 
@@ -3051,6 +3266,31 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   <Swords size={12} />
                   <span>Danos</span>
                 </button>
+
+                <button
+                  onClick={toggleArenaRenderMode}
+                  title={`Alternar Cenário (Atualmente: ${arenaRenderMode.toUpperCase()})`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.2rem',
+                    background: arenaRenderMode === '3d'
+                      ? 'linear-gradient(135deg, rgba(34,197,94,0.3) 0%, rgba(20,184,166,0.3) 100%)'
+                      : 'rgba(0,0,0,0.5)',
+                    border: arenaRenderMode === '3d'
+                      ? '1px solid #2dd4bf'
+                      : '1px solid var(--border-glass)',
+                    borderRadius: '12px',
+                    padding: '0.2rem 0.5rem',
+                    color: arenaRenderMode === '3d' ? '#2dd4bf' : 'var(--text-secondary)',
+                    fontSize: '0.65rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span>{arenaRenderMode === '3d' ? '🧱 3D' : '🖼️ 2D'}</span>
+                </button>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.2rem 0.5rem', borderRadius: '12px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-primary)', flexShrink: 0 }}>
                   <Clock size={12} />
@@ -3073,22 +3313,47 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
         {/* Battle Arena Fixed */}
         {gameState === 'playing' && (
-          <div ref={arenaRef} className={`battle-arena-bg quest-arena ${arenaQuake ? 'arena-quake' : ''}`} style={{ '--attack-dist': `${arenaDebug.attackDist}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: `${arenaDebug.arenaGap}px`, padding: `${arenaDebug.arenaPaddingTop}px 0.5rem 1rem`, flex: '1 1 auto', maxHeight: `${arenaDebug.arenaHeight}px`, zIndex: 20, overflow: 'hidden', userSelect: 'none', WebkitUserSelect: 'none' } as any}>
-            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
-              <div 
-                className="battle-arena-bg-image" 
-                style={quest?.battleBgUrl ? ({
-                  background: `url("${getSafeUrl(quest.battleBgUrl)}") ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
-                  ...(quest.battleBgMoveEnabled !== false
-                    ? {
-                        '--bg-move-x': `${quest.battleBgMoveDirection === 'horizontal' || quest.battleBgMoveDirection === 'diagonal' ? (quest.battleBgMoveSpeed ?? 10) : 0}%`,
-                        '--bg-move-y': `${quest.battleBgMoveDirection === 'vertical' ? (quest.battleBgMoveSpeed ?? 10) : quest.battleBgMoveDirection === 'diagonal' ? -(quest.battleBgMoveSpeed ?? 10) / 2 : 0}%`,
-                        '--bg-move-duration': `${quest.battleBgMoveDuration ?? 30}s`,
-                      }
-                    : { '--bg-move-play': 'paused' })
-                } as any) : undefined}
+          <div ref={arenaRef} className={`battle-arena-bg quest-arena ${arenaRenderMode === '3d' ? 'is-3d-arena' : ''} ${arenaQuake ? 'arena-quake' : ''}`} style={{ '--attack-dist': `${arenaDebug.attackDist}px`, '--arena-char-bottom-padding': '16px', '--player-lift-3d': `${arenaDebug.playerOffsetY3D || 0}px`, '--monster-lift-3d': `${arenaDebug.monsterOffsetY3D || 0}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: `${arenaRenderMode === '3d' ? (arenaDebug.arenaGap3D ?? arenaDebug.arenaGap) : arenaDebug.arenaGap}px`, padding: `${arenaDebug.arenaPaddingTop}px 0.5rem 1rem`, flex: '1 1 auto', maxHeight: `${arenaDebug.arenaHeight}px`, zIndex: 20, overflow: 'hidden', userSelect: 'none', WebkitUserSelect: 'none' } as any}>
+            {/* Cenário: 3D Voxel Minecraft ou Imagem 2D Clássica */}
+            {arenaRenderMode === '3d' ? (
+              <VoxelArena3D
+                deviceMode={effectiveDevice}
+                cameraPitch={arenaDebug.cameraPitch3D}
+                cameraDist={arenaDebug.cameraDist3D}
+                cameraTargetY={arenaDebug.cameraTargetY3D}
+                healActive={monsterHealPulse}
+                arenaQuake={arenaQuake}
+                playerConfig={userData?.avatarConfig || null}
+                playerEquippedItems={playerEquippedItems}
+                playerAnim={activePlayerAnim}
+                playerModelUrl={userData?.avatarConfig?.customModelUrl}
+                playerSkinUrl={userData?.avatarConfig?.customSkinUrl}
+                monsterModelUrl={effectiveMonsterModelUrl}
+                monsterSkinUrl={effectiveMonsterSkinUrl}
+                monsterConfig={quest?.monsterAvatarConfig}
+                monsterAnim={monsterAnim}
+                monsterZoom={effectiveMonsterZoom}
+                monsterRotY={effectiveMonsterRotY}
+                monsterEnraged={monsterRageActive}
+                monsterEffectTint={monsterHealPulse ? '#2dd4bf' : (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : undefined) : undefined)}
               />
-            </div>
+            ) : (
+              <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
+                <div 
+                  className="battle-arena-bg-image" 
+                  style={quest?.battleBgUrl ? ({
+                    background: `url("${getSafeUrl(quest.battleBgUrl)}") ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
+                    ...(quest.battleBgMoveEnabled !== false
+                      ? {
+                          '--bg-move-x': `${quest.battleBgMoveDirection === 'horizontal' || quest.battleBgMoveDirection === 'diagonal' ? (quest.battleBgMoveSpeed ?? 10) : 0}%`,
+                          '--bg-move-y': `${quest.battleBgMoveDirection === 'vertical' ? (quest.battleBgMoveSpeed ?? 10) : quest.battleBgMoveDirection === 'diagonal' ? -(quest.battleBgMoveSpeed ?? 10) / 2 : 0}%`,
+                          '--bg-move-duration': `${quest.battleBgMoveDuration ?? 30}s`,
+                        }
+                      : { '--bg-move-play': 'paused' })
+                  } as any) : undefined}
+                />
+              </div>
+            )}
             
             {/* Números de Dano Flutuante */}
             {activeFloatingDamages.length > 0 && (
@@ -3267,7 +3532,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             
             {/* Player Side */}
             <div 
-              className={`${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : ''} ${userData?.avatarConfig?.customModelUrl ? 'is-3d' : ''}`}
+              className={`quest-arena-side-player ${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : ''} ${userData?.avatarConfig?.customModelUrl ? 'is-3d' : ''}`}
               style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (playerAnim.startsWith('attack') || playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 30 : (monsterAnim.startsWith('death-') ? 20 : 26), pointerEvents: 'none' }}
             >
               {(playerBubble || arenaDebug.playerBubbleAlwaysOn) && (
@@ -3284,7 +3549,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               <div style={{ position: 'absolute', top: `${arenaDebug.playerNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arenaDebug.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap' }}>
                 <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
               </div>
-              <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', marginRight: '-20px', transform: `translate(${arenaDebug.playerOffsetX}px, ${arenaDebug.playerOffsetY}px) scale(${arenaDebug.playerScale})` }}>
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', marginRight: '-20px', transform: `translate(${arenaRenderMode === '3d' ? (arenaDebug.playerOffsetX3D ?? 0) : arenaDebug.playerOffsetX}px, ${arenaRenderMode === '3d' ? 0 : arenaDebug.playerOffsetY}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.playerScale3D ?? 1) : arenaDebug.playerScale})` }}>
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
                   <div
@@ -3352,7 +3617,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
             {/* Monster Side */}
             <div 
-              className={`${
+              className={`quest-arena-side-monster ${
                 monsterAnim === 'attack' ? 'teleport-monster' :
                 (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` :
                 (monsterAnim === 'idle-victory' || monsterAnim.startsWith('victory-')) ? 'teleport-monster-victory' :
@@ -3400,7 +3665,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               ) : (
                 <div 
                   className="quest-arena-avatars"
-                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${arenaDebug.monsterOffsetX + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0)}px, ${arenaDebug.monsterOffsetY + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0)}px) scale(${arenaDebug.monsterScale})`, transformOrigin: 'bottom center' }}
+                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', marginLeft: '-20px', transform: `translate(${(arenaRenderMode === '3d' ? (arenaDebug.monsterOffsetX3D ?? 0) : arenaDebug.monsterOffsetX) + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0)}px, ${(arenaRenderMode === '3d' ? 0 : arenaDebug.monsterOffsetY) + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0)}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.monsterScale3D ?? 1) : arenaDebug.monsterScale})`, transformOrigin: 'bottom center' }}
                 >
                   {/* A animação fica num FILHO para não sobrescrever a posição (transform) do pai */}
                   <div className={`${
@@ -3537,7 +3802,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 <div
                   key={monsterProjectile.id}
                   className="monster-projectile"
-                  style={{ '--proj-size': `${Math.round(50 * effectiveMonsterZoom)}px` } as any}
+                  style={{
+                    '--proj-size': `${Math.round(50 * effectiveMonsterZoom)}px`,
+                    '--proj-start-x': `${arenaDebug.projStartX ?? 0}px`,
+                    '--proj-start-y': `${arenaDebug.projStartY ?? 40}px`,
+                    '--effective-proj-dist': `${(arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) ? arenaDebug.projTargetDist : Math.max(50, (arenaDebug.attackDist || 240) + (arenaDebug.projStartX ?? 0))}px`,
+                    '--proj-target-y': `${arenaDebug.projTargetY ?? 80}px`,
+                    '--proj-arc': `${arenaDebug.projArcHeight ?? 245}px`,
+                  } as any}
                   onAnimationEnd={() => setMonsterProjectile(null)}
                 >
                   <MonsterProjectileView
@@ -3545,6 +3817,57 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     customUrl={monsterProjectile.customUrl}
                     size={Math.round(50 * effectiveMonsterZoom)}
                   />
+                </div>
+              )}
+
+              {/* Retângulo de Range / Campo de Ação da Magia (Apenas para o usuário no Debug) */}
+              {((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showProjRange) && (
+                <div
+                  className="proj-range-debug-box"
+                  style={{
+                    position: 'absolute',
+                    right: `calc(50% - ${(arenaDebug.projStartX ?? 0)}px)`,
+                    bottom: `${arenaDebug.projStartY ?? 40}px`,
+                    width: `${(arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) ? arenaDebug.projTargetDist : Math.max(50, (arenaDebug.attackDist || 240) + (arenaDebug.projStartX ?? 0))}px`,
+                    height: `${Math.max(arenaDebug.projArcHeight ?? 245, (arenaDebug.projTargetY ?? 80) + 30)}px`,
+                    border: '2px dashed #f59e0b',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(to top, rgba(245, 158, 11, 0.05), rgba(245, 158, 11, 0.16))',
+                    boxShadow: '0 0 15px rgba(245, 158, 11, 0.2), inset 0 0 15px rgba(245, 158, 11, 0.1)',
+                    zIndex: 58,
+                    pointerEvents: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {/* Trajetória Parabólica em SVG */}
+                  <svg
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}
+                    preserveAspectRatio="none"
+                    viewBox="0 0 100 100"
+                  >
+                    <path
+                      d={`M 100 100 Q 50 0 0 ${Math.max(0, Math.min(100, 100 - (((arenaDebug.projTargetY ?? 80)) / Math.max(arenaDebug.projArcHeight ?? 245, (arenaDebug.projTargetY ?? 80) + 30)) * 100))}`}
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth="2.5"
+                      strokeDasharray="5 3"
+                    />
+                  </svg>
+
+                  {/* Badge Origem (Monstro) */}
+                  <div style={{ position: 'absolute', bottom: -12, right: -6, transform: 'translateY(100%)', background: 'rgba(239, 68, 68, 0.95)', color: '#fff', fontSize: '0.58rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 2px 6px rgba(0,0,0,0.5)' }}>
+                    🔴 Origem ({arenaDebug.projStartX ?? 0}px, {arenaDebug.projStartY ?? 40}px)
+                  </div>
+
+                  {/* Badge Impacto (Jogador) */}
+                  <div style={{ position: 'absolute', top: `${Math.max(0, Math.min(100, 100 - (((arenaDebug.projTargetY ?? 80)) / Math.max(arenaDebug.projArcHeight ?? 245, (arenaDebug.projTargetY ?? 80) + 30)) * 100))}%`, left: -6, transform: 'translate(-100%, -50%)', background: 'rgba(59, 130, 246, 0.95)', color: '#fff', fontSize: '0.58rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 2px 6px rgba(0,0,0,0.5)' }}>
+                    🎯 Impacto ({arenaDebug.projTargetY ?? 80}px)
+                  </div>
+
+                  {/* Badge Topo do Arco & Alcance */}
+                  <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translate(-50%, -100%)', background: 'rgba(245, 158, 11, 0.95)', color: '#000', fontSize: '0.58rem', fontWeight: 'bold', padding: '2px 8px', borderRadius: '4px', whiteSpace: 'nowrap', border: '1px solid rgba(0,0,0,0.2)', boxShadow: '0 2px 6px rgba(0,0,0,0.5)' }}>
+                    ⚡ Range: { (arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) ? arenaDebug.projTargetDist : Math.max(50, (arenaDebug.attackDist || 240) + (arenaDebug.projStartX ?? 0)) }px · Arco: {arenaDebug.projArcHeight ?? 245}px
+                  </div>
                 </div>
               )}
             </div>
@@ -3756,12 +4079,16 @@ chestRotY={selectedChestModel?.chestRotY}
       {gameState === 'playing' && showDebugPanel && canArenaDebug('arena_debug', 'view') && (
         <ArenaDebugPanel
           config={arenaDebug}
-          onChange={setArenaDebug}
+          onChange={handleArenaDebugChange}
           onSave={handleSaveArenaDebug}
           onTestPlayerBubble={handleTestPlayerBubble}
           onTestMonsterBubble={handleTestMonsterBubble}
+          onTestProjectile={triggerTestProjectile}
           isAdmin={userData?.role === 'admin' || isSuperAdmin}
-          deviceKey={deviceKey}
+          activeModeKey={activeModeKey}
+          windowWidth={windowWidth}
+          manualModeOverride={manualModeOverride}
+          onSelectMode={handleSelectMode}
         />
       )}
 

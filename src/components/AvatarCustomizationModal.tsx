@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-// @ts-ignore
-import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight, BookMarked, Trash2, Accessibility as PoseIcon, Palette, Swords, Volume2, Gift, Shield } from 'lucide-react';
+import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight, BookMarked, Trash2, Accessibility as PoseIcon, Palette, Swords, Volume2, Gift, Shield, RotateCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
@@ -32,7 +31,8 @@ interface AvatarCustomizationModalProps {
   initialMonsterName?: string;
   initialSkinId?: string | null;
   customSaveMode?: boolean;
-  onSave?: (config: AvatarConfig, name?: string) => void;
+  onSave?: (config: AvatarConfig, name?: string, id?: string) => void;
+  onEditingEntityChange?: (entity: { id: string; name: string; parsedConfig: AvatarConfig } | null) => void;
   onPositionsSaved?: () => void;
   isAdmin?: boolean;
   inline?: boolean;
@@ -251,6 +251,7 @@ export default function AvatarCustomizationModal({
   initialSkinId,
   customSaveMode = false, 
   onSave, 
+  onEditingEntityChange,
   onPositionsSaved, 
   isAdmin = false, 
   inline = false, 
@@ -260,19 +261,41 @@ export default function AvatarCustomizationModal({
   const { tenantId } = useTenant();
   const { can: canView } = usePermissions();
   const { showAlert, showConfirm, showToast } = useDialog();
+
+  const lastLoadedSkinIdRef = useRef<string | null | undefined>(undefined);
+  const lastLoadedModelUrlRef = useRef<string | undefined>(undefined);
+  const isSelfSavingRef = useRef<boolean>(false);
   // Menus de administrador na edição do personagem (Skins, Moldes, Debug)
   const canSkins = userData?.role === 'admin' || isAdmin || canView('skins', 'view');
   const canModels = userData?.role === 'admin' || isAdmin || canView('models', 'view');
   const canDebug = userData?.role === 'admin' || isAdmin || canView('debug3d', 'view');
-  const [config, setConfig] = useState<AvatarConfig>({
-    gender: 'male',
-    skinColor: '#ffcc99',
-    hairColor: '#4a3000',
-    eyeColor: '#000000',
-    hairStyle: 'short',
-    mouthStyle: 'smile',
-    facialHair: 'none',
-    handedness: 'right',
+  const [config, setConfig] = useState<AvatarConfig>(() => {
+    if (customSaveMode) {
+      const randomItem = (arr: any[]) => arr[Math.floor(Math.random() * arr.length)];
+      return {
+        gender: 'male',
+        skinColor: randomItem(MONSTER_SKIN_COLORS),
+        hairColor: randomItem(MONSTER_HAIR_COLORS),
+        eyeColor: randomItem(MONSTER_EYE_COLORS),
+        shirtColor: randomItem(CLOTHES_COLORS),
+        pantsColor: randomItem(CLOTHES_COLORS),
+        clothingStyle: 't-shirt',
+        hairStyle: 'short',
+        mouthStyle: 'smile',
+        facialHair: 'none',
+        handedness: 'right',
+      };
+    }
+    return {
+      gender: 'male',
+      skinColor: '#ffcc99',
+      hairColor: '#4a3000',
+      eyeColor: '#000000',
+      hairStyle: 'short',
+      mouthStyle: 'smile',
+      facialHair: 'none',
+      handedness: 'right',
+    };
   });
   // Quando editando um monstro de skin/GLB: só o zoom fica disponível.
   const [zoomOnly, setZoomOnly] = useState(false);
@@ -445,8 +468,11 @@ export default function AvatarCustomizationModal({
       const fetched: PresetSkin[] = [];
       if (data) {
         data.forEach(d => {
-          const parsedConfig = safeParseAvatarConfig(d.config) || null;
-          if (parsedConfig && !parsedConfig.presetSkinId) {
+          const parsedConfig = safeParseAvatarConfig(d.config) || ({} as any);
+          if (d.url && !parsedConfig.customSkinUrl) {
+            parsedConfig.customSkinUrl = d.url;
+          }
+          if (!parsedConfig.presetSkinId) {
             parsedConfig.presetSkinId = d.id;
           }
           fetched.push({ id: d.id, ...d, config: parsedConfig } as PresetSkin);
@@ -510,7 +536,25 @@ export default function AvatarCustomizationModal({
   }, [showEquippedItems]);
 
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+
+    // Se o próprio modal acabou de salvar no banco e acionou sincronização, não reseta o estado local
+    if (isSelfSavingRef.current) {
+      isSelfSavingRef.current = false;
+      lastLoadedSkinIdRef.current = initialSkinId;
+      lastLoadedModelUrlRef.current = (initialConfig as any)?.customModelUrl;
+      return;
+    }
+
+    const skinIdChanged = initialSkinId !== undefined && initialSkinId !== lastLoadedSkinIdRef.current;
+    const customModelUrl = (initialConfig as any)?.customModelUrl;
+    const modelUrlChanged = !initialSkinId && customModelUrl !== lastLoadedModelUrlRef.current;
+
+    // Só inicializa se for a primeira abertura (mount) ou se a entidade/modelo externo realmente mudou
+    if (lastLoadedSkinIdRef.current === undefined || skinIdChanged || modelUrlChanged) {
+      lastLoadedSkinIdRef.current = initialSkinId;
+      lastLoadedModelUrlRef.current = customModelUrl;
+
       if (initialSkinId !== undefined) {
         setEditingSkinId(initialSkinId);
       } else {
@@ -524,7 +568,7 @@ export default function AvatarCustomizationModal({
 
       if (initialConfig) {
         setConfig(initialConfig);
-        setZoomOnly(!!(initialConfig as any)?.customModelUrl);
+        setZoomOnly(!!(initialConfig as any)?.customModelUrl || !!(initialConfig as any)?.customSkinUrl);
         hasRandomized.current = true;
       } else if (!inline) {
         if (userData?.avatarConfig && !customSaveMode) {
@@ -568,7 +612,7 @@ export default function AvatarCustomizationModal({
       handleRandomize();
       hasRandomized.current = true;
     }
-  }, [inline, presetSkins, initialConfig, initialSkinId, initialMonsterName]);
+  }, [inline, presetSkins, initialConfig, initialSkinId, initialMonsterName, customSaveMode]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -598,14 +642,10 @@ export default function AvatarCustomizationModal({
       if (!customSaveMode && userData && !inline) {
         await supabase.from('users').update({ avatar_config: cleanConfig }).eq('id', userData.uid);
         if (onSave) {
-          onSave(config, monsterName);
+          onSave(cleanConfig, monsterName);
         }
         showToast('Personagem salvo com sucesso!', 'success');
       } else {
-        if (onSave) {
-          onSave(config, monsterName);
-        }
-        
         if ((userData?.role === 'admin' || isAdmin || canSkins || canModels) && monsterName.trim()) {
           const trimmedName = monsterName.trim();
           // Previne o conflito de NOMES IGUAIS: se o nome do monstro/skin bate com
@@ -677,6 +717,8 @@ export default function AvatarCustomizationModal({
                 : `${customSaveMode ? 'Monstro' : 'Personagem'} salvo na galeria com sucesso!`);
               
               // Mantém o ID e nome atuais para o usuário continuar vendo o monstro salvo sem resetar!
+              isSelfSavingRef.current = true;
+              lastLoadedSkinIdRef.current = finalSavedId;
               setEditingSkinId(finalSavedId);
               setMonsterName(trimmedName);
 
@@ -696,6 +738,8 @@ export default function AvatarCustomizationModal({
                 if (cleanConfig.damageSound !== undefined) questSyncPatch.monster_damage_sound = cleanConfig.damageSound;
                 if (cleanConfig.quotes) questSyncPatch.monster_quotes = cleanConfig.quotes;
                 if (cleanConfig.drops) questSyncPatch.monster_drops = cleanConfig.drops;
+                questSyncPatch.monsterAvatarConfig = cleanConfig;
+                if (cleanConfig.customModelUrl) questSyncPatch.monsterModelUrl = cleanConfig.customModelUrl;
                 if (Object.keys(questSyncPatch).length > 0) {
                   let qUp = supabase.from('quests').update(questSyncPatch).eq('monsterName', trimmedName);
                   if (tenantId) qUp = qUp.eq('tenant_id', tenantId);
@@ -704,7 +748,7 @@ export default function AvatarCustomizationModal({
               }
 
               if (onSave) {
-                onSave(cleanConfig, trimmedName);
+                onSave(cleanConfig, trimmedName, finalSavedId);
               }
             }
           } catch (e) {
@@ -713,6 +757,9 @@ export default function AvatarCustomizationModal({
           }
         } else {
           await showAlert('Aparência salva na memória temporária.');
+          if (onSave) {
+            onSave(cleanConfig, monsterName.trim() || undefined);
+          }
         }
       }
       if (!inline) {
@@ -879,13 +926,33 @@ export default function AvatarCustomizationModal({
 
   const handleUnequipSkin = () => {
     // Reseta para um monstro/bloco LIMPO: remove skin E modelo 3D (GLB).
+    const randomItem = (arr: any[]) => arr[Math.floor(Math.random() * arr.length)];
     const cleaned = {
       ...config,
       customSkinUrl: '',
       customModelUrl: undefined as string | undefined,
+      customZoom: 1,
+      customRotY: 0,
       ...(config.savedPreSkinConfig || {}),
     };
     delete (cleaned as any).savedPreSkinConfig;
+    if (customSaveMode) {
+      if (!cleaned.skinColor || cleaned.skinColor === '#ffcc99' || !MONSTER_SKIN_COLORS.includes(cleaned.skinColor)) {
+        cleaned.skinColor = randomItem(MONSTER_SKIN_COLORS);
+      }
+      if (!cleaned.eyeColor || !MONSTER_EYE_COLORS.includes(cleaned.eyeColor)) {
+        cleaned.eyeColor = randomItem(MONSTER_EYE_COLORS);
+      }
+      if (!cleaned.hairColor || !MONSTER_HAIR_COLORS.includes(cleaned.hairColor)) {
+        cleaned.hairColor = randomItem(MONSTER_HAIR_COLORS);
+      }
+      if (!cleaned.hairStyle || cleaned.hairStyle === 'bald') {
+        cleaned.hairStyle = randomItem(HAIR_STYLES);
+      }
+      if (!cleaned.mouthStyle) {
+        cleaned.mouthStyle = randomItem(MOUTH_STYLES);
+      }
+    }
     setConfig(cleaned);
     setZoomOnly(false);
     setEditingSkinId(null);
@@ -910,16 +977,27 @@ export default function AvatarCustomizationModal({
     );
     if (availableSkins.length > 0 && Math.random() < 0.4) {
       const selected = randomItem(availableSkins);
-      const cfg = parseConfig(selected.config);
-      if (cfg) {
-        const modelUrl = cfg.customModelUrl;
-        // Imunidade a molde órfão: se aponta para um molde de galeria que não
-        // existe mais, não aplica (cai na randomização de cores).
+      const cfg = parseConfig(selected.config) || {};
+      const skinUrl = cfg.customSkinUrl || selected.url || '';
+      const modelUrl = cfg.customModelUrl || (selected.baseModelId && selected.baseModelId !== 'default' ? models3d.find(m => m.id === selected.baseModelId)?.url : undefined);
+
+      if (modelUrl || skinUrl) {
         const isExternalOrLocal = !modelUrl || modelUrl.startsWith('http') || modelUrl.startsWith('data:') || modelUrl.startsWith('/');
-        const modelExists = isExternalOrLocal || models3d.some(m => m.url === modelUrl);
+        const modelExists = !modelUrl || isExternalOrLocal || models3d.some(m => m.url === modelUrl);
         if (modelExists) {
-          setConfig(cfg);
-          setZoomOnly(!!cfg.customModelUrl || !!cfg.customSkinUrl);
+          const appliedConfig = {
+            ...config,
+            ...cfg,
+            customSkinUrl: skinUrl,
+            customModelUrl: modelUrl,
+          };
+          if (skinUrl) {
+            appliedConfig.hairStyle = 'bald';
+            appliedConfig.hairAccessories = [];
+            appliedConfig.hairAccessory = 'none';
+          }
+          setConfig(appliedConfig);
+          setZoomOnly(!!modelUrl || !!skinUrl);
           return;
         }
       }
@@ -938,7 +1016,8 @@ export default function AvatarCustomizationModal({
         hairStyle: randomItem(HAIR_STYLES),
         facialHair: randomItem(FACIAL_HAIR_STYLES),
         mouthStyle: randomItem(MOUTH_STYLES),
-        customSkinUrl: ''
+        customSkinUrl: '',
+        customModelUrl: undefined
       });
       setZoomOnly(false);
     } else {
@@ -1603,47 +1682,18 @@ onClick={() => setConfig(prev => {
               </button>
             </div>
 
-            {/* Rotação em batalha — só para monstros GLB (corrige GLBs que carregam de costas) */}
-            {isGlbMonster && (
-              <div style={{ marginBottom: '0.75rem', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🔄 Rotação em batalha</span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>{Math.round(config.customRotY ?? 0)}°</span>
-                </div>
-                <input
-                  type="range"
-                  min="-180"
-                  max="180"
-                  step="1"
-                  value={Math.max(-180, Math.min(180, config.customRotY ?? 0))}
-                  onChange={e => setConfig(prev => ({ ...prev, customRotY: parseInt(e.target.value) }))}
-                  style={{ width: '100%', accentColor: 'var(--gold-primary)' }}
-                />
-                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.3rem' }}>
-                  <button onClick={() => setConfig(prev => ({ ...prev, customRotY: Math.max(-180, (prev.customRotY ?? 0) - 90) }))} style={{ padding: '0.2rem 0.6rem', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem', borderRadius: '6px' }}>
-                    -90°
-                  </button>
-                  <button onClick={() => setConfig(prev => ({ ...prev, customRotY: 0 }))} style={{ padding: '0.2rem 0.6rem', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem', borderRadius: '6px' }}>
-                    Resetar (0°)
-                  </button>
-                  <button onClick={() => setConfig(prev => ({ ...prev, customRotY: Math.min(180, (prev.customRotY ?? 0) + 90) }))} style={{ padding: '0.2rem 0.6rem', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem', borderRadius: '6px' }}>
-                    +90°
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Avatar — o customZoom é aplicado DENTRO do AvatarCharacter (no viewer, só o boneco) */}
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
             <div>
             {(() => {
-const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
-              const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default' 
+              const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
+              const activeModel = (activePreset?.baseModelId && activePreset.baseModelId !== 'default' 
                 ? models3d.find(m => m.id === activePreset.baseModelId) 
-                : null;
+                : null) || (config.customModelUrl ? models3d.find(m => m.url === config.customModelUrl) : null);
+              const modelUrl = config.customModelUrl || activeModel?.url;
 
-              if (activeModel) {
-                return <CustomModelViewer modelUrl={activeModel.url} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 220} interactive zoom={config.customZoom} configRotY={config.customRotY} />;
+              if (modelUrl) {
+                return <CustomModelViewer modelUrl={modelUrl} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 220} interactive zoom={config.customZoom} configRotY={config.customRotY} />;
               }
               return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 220} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
             })()}
@@ -1889,7 +1939,9 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                         onClick={() => {
                           setEditingSkinId(null);
                           setMonsterName('');
+                          lastLoadedSkinIdRef.current = null;
                           handleUnequipSkin();
+                          onEditingEntityChange?.(null);
                         }}
                         style={{ background: 'transparent', border: '1px dashed var(--border-glass)', borderRadius: '4px', color: 'var(--text-secondary)', fontSize: '0.75rem', padding: '2px 8px', cursor: 'pointer' }}
                       >
@@ -1902,7 +1954,9 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                       onClick={() => {
                         setEditingSkinId(null);
                         setMonsterName('');
+                        lastLoadedSkinIdRef.current = null;
                         handleUnequipSkin();
+                        onEditingEntityChange?.(null);
                       }}
                       style={{
                          padding: '0.5rem', background: (!config.customSkinUrl && !editingSkinId) ? 'var(--accent-primary)' : 'var(--btn-bg)', border: (!config.customSkinUrl && !editingSkinId) ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: (!config.customSkinUrl && !editingSkinId) ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
@@ -1911,8 +1965,12 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                       Nenhum
                     </button>
                     {presetSkins.filter(s => s.type === 'monster').map(skin => {
-                      const skinCfg = safeParseAvatarConfig(skin.config);
-                      const isSelected = editingSkinId === skin.id || (!editingSkinId && skin.url && config.customSkinUrl === skin.url);
+                      const skinCfg = safeParseAvatarConfig(skin.config) || {};
+                      const effectiveSkinUrl = skinCfg.customSkinUrl || skin.url || '';
+                      const effectiveModelUrl = skinCfg.customModelUrl || (skin.baseModelId && skin.baseModelId !== 'default'
+                        ? models3d.find(m => m.id === skin.baseModelId)?.url
+                        : undefined);
+                      const isSelected = editingSkinId === skin.id || (!editingSkinId && effectiveSkinUrl && config.customSkinUrl === effectiveSkinUrl);
                       return (
                       <button
                         key={skin.id}
@@ -1921,18 +1979,25 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                           // Abre para edição o MESMO registro (nome travado, sem duplicar).
                           setEditingSkinId(skin.id);
                           setMonsterName(skin.name || '');
-                          if (skinCfg && Object.keys(skinCfg).length > 0) {
-                            // Abre o config salvo para edição. Skin/GLB → só zoom; bloco → tudo.
-                            const hydrated = { ...skinCfg, attacks: normalizeMonsterAttacks(skinCfg.attacks) };
-                            setConfig(hydrated);
-                            setZoomOnly(!!skinCfg.customModelUrl || !!skinCfg.customSkinUrl);
-                          } else {
-                            const modelUrl = skin.baseModelId && skin.baseModelId !== 'default' 
-                              ? models3d.find(m => m.id === skin.baseModelId)?.url 
-                              : undefined;
-                            handleEquipSkin(skin.url, modelUrl, { customZoom: skinCfg?.customZoom, attacks: normalizeMonsterAttacks(skinCfg?.attacks) });
-                            setZoomOnly(!!skin.url || !!modelUrl);
+                          lastLoadedSkinIdRef.current = skin.id;
+
+                          const hydrated: AvatarConfig = {
+                            ...config,
+                            ...skinCfg,
+                            customSkinUrl: effectiveSkinUrl,
+                            customModelUrl: effectiveModelUrl,
+                            customZoom: skinCfg.customZoom !== undefined ? skinCfg.customZoom : 1,
+                            customRotY: skinCfg.customRotY !== undefined ? skinCfg.customRotY : 0,
+                            attacks: normalizeMonsterAttacks(skinCfg.attacks),
+                          };
+                          if (effectiveSkinUrl) {
+                            hydrated.hairStyle = 'bald';
+                            hydrated.hairAccessories = [];
+                            hydrated.hairAccessory = 'none';
                           }
+                          setConfig(hydrated);
+                          setZoomOnly(!!effectiveModelUrl || !!effectiveSkinUrl);
+                          onEditingEntityChange?.({ id: skin.id, name: skin.name || '', parsedConfig: hydrated });
                         }}
                         style={{
                            padding: '0.5rem', background: isSelected ? 'var(--accent-primary)' : 'var(--btn-bg)', border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', color: isSelected ? '#fff' : 'white', fontSize: '0.85rem', flexShrink: 0
@@ -1963,6 +2028,64 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
                     />
                   </div>
                 )}
+
+                {/* Rotação em batalha — reposicionada para o painel Visual para não obstruir o modelo 3D */}
+                {(() => {
+                  const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
+                  const activeModel = (activePreset?.baseModelId && activePreset.baseModelId !== 'default'
+                    ? models3d.find(m => m.id === activePreset.baseModelId)
+                    : null) || (config.customModelUrl ? models3d.find(m => m.url === config.customModelUrl) : null);
+                  const isGlb = !!config.customModelUrl || !!activeModel;
+                  if (!isGlb) return null;
+
+                  return (
+                    <div style={{ marginBottom: '1.25rem', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', padding: '1rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                          <RotateCcw size={16} color="var(--gold-primary)" /> Rotação Inicial em Batalha
+                        </label>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--gold-primary)', fontWeight: 'bold', background: 'rgba(245, 158, 11, 0.15)', padding: '2px 8px', borderRadius: '6px' }}>
+                          {Math.round(config.customRotY ?? 0)}°
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                        Ajuste o ângulo inicial para corrigir modelos GLB que carregam de costas ou de lado na arena e no editor.
+                      </p>
+                      <input
+                        type="range"
+                        min="-180"
+                        max="180"
+                        step="1"
+                        value={Math.max(-180, Math.min(180, config.customRotY ?? 0))}
+                        onChange={e => setConfig(prev => ({ ...prev, customRotY: parseInt(e.target.value) }))}
+                        style={{ width: '100%', accentColor: 'var(--gold-primary)' }}
+                      />
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                        <button 
+                          type="button"
+                          onClick={() => setConfig(prev => ({ ...prev, customRotY: Math.max(-180, (prev.customRotY ?? 0) - 90) }))} 
+                          style={{ flex: 1, padding: '0.35rem 0.6rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem', borderRadius: '6px' }}
+                        >
+                          -90°
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => setConfig(prev => ({ ...prev, customRotY: 0 }))} 
+                          style={{ flex: 1, padding: '0.35rem 0.6rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem', borderRadius: '6px' }}
+                        >
+                          Resetar (0°)
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => setConfig(prev => ({ ...prev, customRotY: Math.min(180, (prev.customRotY ?? 0) + 90) }))} 
+                          style={{ flex: 1, padding: '0.35rem 0.6rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem', borderRadius: '6px' }}
+                        >
+                          +90°
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
             
@@ -2487,7 +2610,7 @@ const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === conf
             return (
               <MonsterAttacksEditor
                 value={(config as any).attacks}
-                onChange={attacks => setConfig({ ...config, attacks } as any)}
+                onChange={attacks => setConfig(prev => ({ ...prev, attacks } as any))}
                 modelUrl={activeModelUrl}
                 models3d={models3d}
               />

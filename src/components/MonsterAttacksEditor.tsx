@@ -9,6 +9,7 @@ import {
   MONSTER_AI_STYLES,
   normalizeMonsterAttacks,
   DEFAULT_MONSTER_ATTACKS,
+  getMonsterEffectLabel,
 } from '../lib/monsterAttacks';
 import { ChevronDown, ChevronRight, Trash2, Sparkles, Crosshair, Swords, ShieldAlert, Cpu } from 'lucide-react';
 import MonsterProjectileView from './MonsterProjectileView';
@@ -52,10 +53,10 @@ async function inspectGlbAnimations(url: string): Promise<string[]> {
 
 /**
  * Editor completo dos 4 Golpes do Monstro (Entidades 3D > Monstros).
- * 1. Corpo a Corpo (obrigatório + efeito opcional)
- * 2. À Distância (arremesso de rocha, dinamite, flecha, esfera de fogo/gelo/raio/veneno)
- * 3. Especial (animação nativa do GLB ou movimentos universais procedurais como Pulo Estrondo, Giro, Investida, Dança)
- * 4. Suporte / Fúria / Buffs (fúria com dano dobrado, poção de cura, magia)
+ * 1. Corpo a Corpo (ativação por nível + efeito com % de acerto configurável)
+ * 2. À Distância (ativação por nível + arremesso de projétil + efeito com % de acerto)
+ * 3. Especial (ativação por nível + animação GLB / universal + efeito com % de acerto)
+ * 4. Suporte / Fúria / Buffs (ativação por nível + fúria com dano extra ou cura)
  * 5. Estilo de Combate da IA (Híbrido, Ranger, Berserker, Mago, Aleatório)
  */
 export default function MonsterAttacksEditor({ value, onChange, modelUrl, models3d = [] }: MonsterAttacksEditorProps) {
@@ -63,6 +64,7 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
   const [open, setOpen] = useState<'melee' | 'ranged' | 'special' | 'support' | 'ai' | null>('melee');
   const [glbAnimations, setGlbAnimations] = useState<string[]>([]);
   const [loadingAnims, setLoadingAnims] = useState(false);
+  const [testLevel, setTestLevel] = useState<number>(1);
 
   // Inspeciona animações do GLB quando a URL do modelo mudar
   useEffect(() => {
@@ -80,6 +82,70 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
     return () => { active = false; };
   }, [modelUrl]);
 
+  const updateActivation = (
+    section: 'melee' | 'ranged' | 'special' | 'support',
+    enabled: boolean,
+    minLevel: number = 1,
+  ) => {
+    const next = { ...cfg };
+    if (section === 'melee') {
+      next.melee = { ...next.melee, enabled, minLevel };
+    } else if (section === 'ranged') {
+      next.ranged = { ...(next.ranged || { effect: 'none', projectileType: 'rock' }), enabled, minLevel };
+    } else if (section === 'special') {
+      next.special = { ...(next.special || { effect: 'none', proceduralType: 'jump_slam' }), enabled, minLevel };
+    } else {
+      const sup = { ...(next.heal || next.support || { type: 'buff_rage', amount: 1, threshold: 0.4 }), enabled, minLevel };
+      next.heal = sup;
+      next.support = sup;
+    }
+    onChange(next);
+  };
+
+  const updateEffectChance = (
+    section: 'melee' | 'ranged' | 'special',
+    effectChance: number,
+    effectChancePerLevel: number,
+  ) => {
+    const next = { ...cfg };
+    if (section === 'melee') {
+      next.melee = { ...next.melee, effectChance, effectChancePerLevel };
+    } else if (section === 'ranged') {
+      next.ranged = { ...(next.ranged || { enabled: true, effect: 'none' }), effectChance, effectChancePerLevel };
+    } else {
+      next.special = { ...(next.special || { enabled: true, effect: 'none' }), effectChance, effectChancePerLevel };
+    }
+    onChange(next);
+  };
+
+  const updateEffectActivation = (
+    section: 'melee' | 'ranged' | 'special',
+    effectEnabled: boolean,
+    effectMinLevel: number = 1,
+  ) => {
+    const next = { ...cfg };
+    if (section === 'melee') {
+      next.melee = {
+        ...next.melee,
+        effectEnabled,
+        effectMinLevel: Math.max(1, effectMinLevel),
+      };
+    } else if (section === 'ranged') {
+      next.ranged = {
+        ...(next.ranged || { enabled: true, effect: 'none' }),
+        effectEnabled,
+        effectMinLevel: Math.max(1, effectMinLevel),
+      };
+    } else {
+      next.special = {
+        ...(next.special || { enabled: true, effect: 'none' }),
+        effectEnabled,
+        effectMinLevel: Math.max(1, effectMinLevel),
+      };
+    }
+    onChange(next);
+  };
+
   const effectSelect = (
     section: 'melee' | 'ranged' | 'special',
     current: MonsterEffectType,
@@ -92,9 +158,34 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
         onChange={e => {
           const next = { ...cfg };
           const v = e.target.value as any;
-          if (section === 'melee') next.melee = { ...next.melee, effect: v };
-          else if (section === 'ranged') next.ranged = { ...(next.ranged || { enabled: true, effect: 'none', projectileType: 'rock' }), effect: v };
-          else next.special = { ...(next.special || { enabled: true, effect: 'none', proceduralType: 'jump_slam' }), effect: v };
+          if (section === 'melee') {
+            next.melee = {
+              ...next.melee,
+              effect: v,
+              effectEnabled: v !== 'none' ? (next.melee.effectEnabled !== false) : false,
+              effectMinLevel: next.melee.effectMinLevel || 1,
+              effectChance: (v !== 'none' && (next.melee.effectChance === undefined || next.melee.effectChance === 0)) ? 40 : (next.melee.effectChance ?? 40),
+              effectChancePerLevel: next.melee.effectChancePerLevel ?? 3,
+            };
+          } else if (section === 'ranged') {
+            next.ranged = {
+              ...(next.ranged || { enabled: true, projectileType: 'rock' }),
+              effect: v,
+              effectEnabled: v !== 'none' ? (next.ranged?.effectEnabled !== false) : false,
+              effectMinLevel: next.ranged?.effectMinLevel || 1,
+              effectChance: (v !== 'none' && (next.ranged?.effectChance === undefined || next.ranged?.effectChance === 0)) ? 40 : (next.ranged?.effectChance ?? 40),
+              effectChancePerLevel: next.ranged?.effectChancePerLevel ?? 3,
+            };
+          } else {
+            next.special = {
+              ...(next.special || { enabled: true, proceduralType: 'jump_slam' }),
+              effect: v,
+              effectEnabled: v !== 'none' ? (next.special?.effectEnabled !== false) : false,
+              effectMinLevel: next.special?.effectMinLevel || 1,
+              effectChance: (v !== 'none' && (next.special?.effectChance === undefined || next.special?.effectChance === 0)) ? 40 : (next.special?.effectChance ?? 40),
+              effectChancePerLevel: next.special?.effectChancePerLevel ?? 3,
+            };
+          }
           onChange(next);
         }}
         style={inputStyle}
@@ -108,6 +199,421 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
     </div>
   );
 
+  const renderActivationControl = (
+    section: 'melee' | 'ranged' | 'special' | 'support',
+    enabled: boolean,
+    minLevel: number = 1,
+  ) => {
+    const mode = !enabled ? 'disabled' : (minLevel > 1 ? 'level' : 'always');
+    return (
+      <div style={{ marginBottom: '0.85rem', padding: '0.65rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+          <label style={{ ...labelStyle, marginBottom: 0, fontWeight: 'bold', color: 'var(--text-primary)' }}>
+            Condição de Ativação do Golpe
+          </label>
+          <span style={{
+            fontSize: '0.7rem',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontWeight: 'bold',
+            background: !enabled ? 'rgba(239,68,68,0.2)' : (minLevel > 1 ? 'rgba(245,158,11,0.2)' : 'rgba(34,197,94,0.2)'),
+            color: !enabled ? '#fca5a5' : (minLevel > 1 ? '#fde047' : '#86efac'),
+            border: !enabled ? '1px solid rgba(239,68,68,0.4)' : (minLevel > 1 ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(34,197,94,0.4)'),
+          }}>
+            {!enabled ? '⛔ Desativado' : (minLevel > 1 ? `🔒 Desbloqueia no Nv. ${minLevel}+` : '🟢 Sempre Ativado')}
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem' }}>
+          <button
+            type="button"
+            onClick={() => updateActivation(section, true, 1)}
+            style={{
+              padding: '0.45rem',
+              borderRadius: '6px',
+              fontSize: '0.74rem',
+              fontWeight: mode === 'always' ? 'bold' : 'normal',
+              background: mode === 'always' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(0,0,0,0.3)',
+              border: mode === 'always' ? '1px solid #22c55e' : '1px solid var(--border-glass)',
+              color: mode === 'always' ? '#86efac' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.3rem',
+              transition: 'all 0.15s',
+            }}
+          >
+            🟢 Sempre Ativo
+          </button>
+          <button
+            type="button"
+            onClick={() => updateActivation(section, true, Math.max(2, minLevel || 3))}
+            style={{
+              padding: '0.45rem',
+              borderRadius: '6px',
+              fontSize: '0.74rem',
+              fontWeight: mode === 'level' ? 'bold' : 'normal',
+              background: mode === 'level' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(0,0,0,0.3)',
+              border: mode === 'level' ? '1px solid #f59e0b' : '1px solid var(--border-glass)',
+              color: mode === 'level' ? '#fde047' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.3rem',
+              transition: 'all 0.15s',
+            }}
+          >
+            🔒 No Nível X
+          </button>
+          <button
+            type="button"
+            onClick={() => updateActivation(section, false, minLevel || 1)}
+            style={{
+              padding: '0.45rem',
+              borderRadius: '6px',
+              fontSize: '0.74rem',
+              fontWeight: mode === 'disabled' ? 'bold' : 'normal',
+              background: mode === 'disabled' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(0,0,0,0.3)',
+              border: mode === 'disabled' ? '1px solid #ef4444' : '1px solid var(--border-glass)',
+              color: mode === 'disabled' ? '#fca5a5' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.3rem',
+              transition: 'all 0.15s',
+            }}
+          >
+            ⛔ Desativado
+          </button>
+        </div>
+
+        {mode === 'level' && (
+          <div style={{ marginTop: '0.65rem', padding: '0.55rem', background: 'rgba(0,0,0,0.3)', borderRadius: '6px', border: '1px dashed rgba(245, 158, 11, 0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.74rem', color: '#fde047', fontWeight: 'bold' }}>
+                Desbloquear quando o monstro alcançar:
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Nível</span>
+                <input
+                  type="number"
+                  min="2"
+                  max="100"
+                  value={minLevel}
+                  onChange={e => updateActivation(section, true, Math.max(2, Math.min(100, parseInt(e.target.value) || 2)))}
+                  style={{ width: '58px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'var(--bg-dark)', border: '1px solid #f59e0b', color: '#fde047', textAlign: 'center', fontSize: '0.82rem', fontWeight: 'bold' }}
+                />
+              </div>
+            </div>
+            <input
+              type="range"
+              min="2"
+              max="25"
+              step="1"
+              value={Math.min(25, Math.max(2, minLevel))}
+              onChange={e => updateActivation(section, true, parseInt(e.target.value) || 2)}
+              style={{ width: '100%', accentColor: '#f59e0b' }}
+            />
+            <span style={{ display: 'block', fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+              💡 O monstro só usará este golpe após alcançar o Nível {minLevel}. Se o monstro for mais fraco, o golpe ficará inativo.
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderEffectActivationControl = (
+    section: 'melee' | 'ranged' | 'special',
+    effect: MonsterEffectType,
+    effectEnabled: boolean = true,
+    effectMinLevel: number = 1,
+  ) => {
+    if (!effect || effect === 'none') return null;
+
+    const effectLabel = getMonsterEffectLabel(effect);
+    const mode = !effectEnabled ? 'disabled' : (effectMinLevel > 1 ? 'level' : 'always');
+
+    return (
+      <div style={{ marginTop: '0.65rem', marginBottom: '0.65rem', padding: '0.65rem 0.75rem', background: 'rgba(0,0,0,0.25)', borderRadius: '8px', border: '1px solid rgba(217, 119, 6, 0.35)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+          <label style={{ ...labelStyle, marginBottom: 0, fontWeight: 'bold', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            ⚡ Condição de Ativação do Efeito ({effectLabel})
+          </label>
+          <span style={{
+            fontSize: '0.68rem',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontWeight: 'bold',
+            background: !effectEnabled ? 'rgba(239,68,68,0.2)' : (effectMinLevel > 1 ? 'rgba(245,158,11,0.2)' : 'rgba(34,197,94,0.2)'),
+            color: !effectEnabled ? '#fca5a5' : (effectMinLevel > 1 ? '#fde047' : '#86efac'),
+            border: !effectEnabled ? '1px solid rgba(239,68,68,0.4)' : (effectMinLevel > 1 ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(34,197,94,0.4)'),
+          }}>
+            {!effectEnabled ? '⛔ Efeito Desativado' : (effectMinLevel > 1 ? `🔒 Aplica a partir do Nv. ${effectMinLevel}` : '🟢 Sempre Ativo')}
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem' }}>
+          <button
+            type="button"
+            onClick={() => updateEffectActivation(section, true, 1)}
+            style={{
+              padding: '0.45rem',
+              borderRadius: '6px',
+              fontSize: '0.74rem',
+              fontWeight: mode === 'always' ? 'bold' : 'normal',
+              background: mode === 'always' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(0,0,0,0.3)',
+              border: mode === 'always' ? '1px solid #22c55e' : '1px solid var(--border-glass)',
+              color: mode === 'always' ? '#86efac' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.3rem',
+              transition: 'all 0.15s',
+            }}
+          >
+            🟢 Sempre Ativo
+          </button>
+          <button
+            type="button"
+            onClick={() => updateEffectActivation(section, true, Math.max(2, effectMinLevel || 5))}
+            style={{
+              padding: '0.45rem',
+              borderRadius: '6px',
+              fontSize: '0.74rem',
+              fontWeight: mode === 'level' ? 'bold' : 'normal',
+              background: mode === 'level' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(0,0,0,0.3)',
+              border: mode === 'level' ? '1px solid #f59e0b' : '1px solid var(--border-glass)',
+              color: mode === 'level' ? '#fde047' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.3rem',
+              transition: 'all 0.15s',
+            }}
+          >
+            🔒 No Nível X
+          </button>
+          <button
+            type="button"
+            onClick={() => updateEffectActivation(section, false, effectMinLevel || 1)}
+            style={{
+              padding: '0.45rem',
+              borderRadius: '6px',
+              fontSize: '0.74rem',
+              fontWeight: mode === 'disabled' ? 'bold' : 'normal',
+              background: mode === 'disabled' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(0,0,0,0.3)',
+              border: mode === 'disabled' ? '1px solid #ef4444' : '1px solid var(--border-glass)',
+              color: mode === 'disabled' ? '#fca5a5' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.3rem',
+              transition: 'all 0.15s',
+            }}
+          >
+            ⛔ Desativado
+          </button>
+        </div>
+
+        {mode === 'level' && (
+          <div style={{ marginTop: '0.65rem', padding: '0.55rem', background: 'rgba(0,0,0,0.3)', borderRadius: '6px', border: '1px dashed rgba(245, 158, 11, 0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.74rem', color: '#fde047', fontWeight: 'bold' }}>
+                Começar a aplicar {effectLabel} no:
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Nível</span>
+                <input
+                  type="number"
+                  min="2"
+                  max="100"
+                  value={effectMinLevel}
+                  onChange={e => updateEffectActivation(section, true, Math.max(2, Math.min(100, parseInt(e.target.value) || 2)))}
+                  style={{ width: '58px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'var(--bg-dark)', border: '1px solid #f59e0b', color: '#fde047', textAlign: 'center', fontSize: '0.82rem', fontWeight: 'bold' }}
+                />
+              </div>
+            </div>
+            <input
+              type="range"
+              min="2"
+              max="25"
+              step="1"
+              value={Math.min(25, Math.max(2, effectMinLevel))}
+              onChange={e => updateEffectActivation(section, true, parseInt(e.target.value) || 2)}
+              style={{ width: '100%', accentColor: '#f59e0b' }}
+            />
+            <span style={{ display: 'block', fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+              💡 O golpe causará dano normal nos níveis anteriores, mas só passará a infligir <strong>{effectLabel}</strong> quando o monstro for Nível {effectMinLevel} ou superior.
+            </span>
+          </div>
+        )}
+
+        {mode === 'disabled' && (
+          <div style={{ marginTop: '0.5rem', padding: '0.45rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+            <span style={{ fontSize: '0.7rem', color: '#fca5a5' }}>
+              ⛔ O golpe funcionará normalmente, mas nunca aplicará {effectLabel} no adversário.
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderEffectChanceControls = (
+    section: 'melee' | 'ranged' | 'special',
+    effect: MonsterEffectType,
+    effectChance: number = 100,
+    effectChancePerLevel: number = 3,
+    effectEnabled: boolean = true,
+    effectMinLevel: number = 1,
+  ) => {
+    if (!effect || effect === 'none' || effectEnabled === false) return null;
+
+    const effectLabel = getMonsterEffectLabel(effect);
+    const isEffUnlockedAt = (lvl: number) => effectEnabled !== false && lvl >= (effectMinLevel || 1);
+    const calcAt = (lvl: number) => {
+      if (!isEffUnlockedAt(lvl)) return 0;
+      return Math.min(100, Math.max(0, Math.round((effectChance + (lvl - 1) * effectChancePerLevel) * 10) / 10));
+    };
+
+    const isCurrentTestUnlocked = isEffUnlockedAt(testLevel);
+    const currentChance = calcAt(testLevel);
+
+    return (
+      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', border: '1px solid rgba(217, 119, 6, 0.4)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            🎯 Porcentagem de Acerto do Efeito ({effectLabel})
+          </span>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+            Efeito não pega a todo momento
+          </span>
+        </div>
+
+        {/* 1. Chance Base (%) */}
+        <div style={{ marginBottom: '0.6rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+            <label style={{ ...labelStyle, marginBottom: 0 }}>Chance Base (no nível em que desbloqueia):</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={effectChance}
+                onChange={e => updateEffectChance(section, Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)), effectChancePerLevel)}
+                style={{ width: '56px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--gold-primary)', textAlign: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>%</span>
+            </div>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={effectChance}
+            onChange={e => updateEffectChance(section, parseFloat(e.target.value) || 0, effectChancePerLevel)}
+            style={{ width: '100%', accentColor: 'var(--gold-primary)' }}
+          />
+        </div>
+
+        {/* 2. Bônus por Nível (+% por Nv.) */}
+        <div style={{ marginBottom: '0.65rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+            <label style={{ ...labelStyle, marginBottom: 0 }}>Bônus por Nível do Monstro:</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <span style={{ fontSize: '0.75rem', color: '#60a5fa', fontWeight: 'bold' }}>+</span>
+              <input
+                type="number"
+                min="0"
+                max="25"
+                step="0.5"
+                value={effectChancePerLevel}
+                onChange={e => updateEffectChance(section, effectChance, Math.max(0, Math.min(25, parseFloat(e.target.value) || 0)))}
+                style={{ width: '56px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: '#60a5fa', textAlign: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>%/Nv.</span>
+            </div>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="15"
+            step="0.5"
+            value={effectChancePerLevel}
+            onChange={e => updateEffectChance(section, effectChance, parseFloat(e.target.value) || 0)}
+            style={{ width: '100%', accentColor: '#3b82f6' }}
+          />
+        </div>
+
+        {/* 3. Régua / Preview em Tempo Real de Progressão */}
+        <div style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid var(--border-glass)' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>📈 Progressão da Chance por Nível:</span>
+            <span>
+              {!isCurrentTestUnlocked ? (
+                <span style={{ color: '#fca5a5', fontWeight: 'bold' }}>
+                  🔒 No Nv. {testLevel}: Efeito Bloqueado (requer Nv. {effectMinLevel})
+                </span>
+              ) : (
+                <span style={{ color: testLevel === 1 ? 'var(--gold-primary)' : '#60a5fa' }}>
+                  Teste Nv. {testLevel}: <strong>{currentChance}%</strong>
+                </span>
+              )}
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.25rem', textAlign: 'center', fontSize: '0.68rem' }}>
+            {[1, 3, 5, 10, 20].map(lvl => {
+              const unlocked = isEffUnlockedAt(lvl);
+              const ch = calcAt(lvl);
+              return (
+                <div
+                  key={lvl}
+                  onClick={() => setTestLevel(lvl)}
+                  style={{
+                    padding: '3px 2px',
+                    borderRadius: '4px',
+                    background: testLevel === lvl ? 'rgba(217, 119, 6, 0.3)' : 'rgba(0,0,0,0.3)',
+                    border: testLevel === lvl ? '1px solid var(--gold-primary)' : '1px solid rgba(255,255,255,0.06)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.62rem' }}>Nv. {lvl}</div>
+                  <div style={{ fontWeight: 'bold', color: !unlocked ? '#fca5a5' : (ch >= 100 ? '#4ade80' : (ch >= 60 ? '#fde047' : '#93c5fd')), fontSize: !unlocked ? '0.6rem' : '0.68rem' }}>
+                    {!unlocked ? '🔒 Bloq.' : `${ch}%`}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Simular Nível:</span>
+            <input
+              type="range"
+              min="1"
+              max="30"
+              step="1"
+              value={testLevel}
+              onChange={e => setTestLevel(parseInt(e.target.value) || 1)}
+              style={{ flex: 1, accentColor: '#60a5fa' }}
+            />
+            <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#93c5fd', width: '36px', textAlign: 'right' }}>
+              Nv. {testLevel}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const sectionHeader = (
     key: 'melee' | 'ranged' | 'special' | 'support' | 'ai',
     icon: any,
@@ -117,6 +623,28 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
   ) => {
     const Icon = icon;
     const isExpanded = open === key;
+    const isBadgeDisabled = badge?.includes('⛔');
+    const isBadgeLocked = badge?.includes('🔒');
+    const isBadgeActive = badge?.includes('🟢');
+
+    let badgeBg = 'rgba(59, 130, 246, 0.2)';
+    let badgeBorder = 'rgba(59, 130, 246, 0.4)';
+    let badgeColor = '#93c5fd';
+
+    if (isBadgeDisabled) {
+      badgeBg = 'rgba(239, 68, 68, 0.2)';
+      badgeBorder = 'rgba(239, 68, 68, 0.4)';
+      badgeColor = '#fca5a5';
+    } else if (isBadgeLocked) {
+      badgeBg = 'rgba(245, 158, 11, 0.2)';
+      badgeBorder = 'rgba(245, 158, 11, 0.4)';
+      badgeColor = '#fde047';
+    } else if (isBadgeActive) {
+      badgeBg = 'rgba(34, 197, 94, 0.2)';
+      badgeBorder = 'rgba(34, 197, 94, 0.4)';
+      badgeColor = '#86efac';
+    }
+
     return (
       <button
         type="button"
@@ -151,9 +679,9 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
               fontSize: '0.68rem',
               padding: '2px 6px',
               borderRadius: '10px',
-              background: 'rgba(59, 130, 246, 0.2)',
-              color: '#93c5fd',
-              border: '1px solid rgba(59, 130, 246, 0.4)',
+              background: badgeBg,
+              color: badgeColor,
+              border: `1px solid ${badgeBorder}`,
             }}
           >
             {badge}
@@ -162,6 +690,52 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
       </button>
     );
   };
+
+  const meleeEffectActive = cfg.melee.effect !== 'none';
+  const meleeBadge = !cfg.melee.enabled
+    ? '⛔ Desativado'
+    : ((cfg.melee.minLevel || 1) > 1
+        ? `🔒 Nv. ${cfg.melee.minLevel}+`
+        : (meleeEffectActive
+            ? (cfg.melee.effectEnabled === false
+                ? '🟢 Ativo (Sem Efeito)'
+                : ((cfg.melee.effectMinLevel || 1) > 1
+                    ? `🟢 Ativo | 🔒 ${cfg.melee.effect} Nv. ${cfg.melee.effectMinLevel}+`
+                    : `🟢 ${cfg.melee.effect} (${cfg.melee.effectChance ?? 100}%)`))
+            : '🟢 Sempre Ativo'));
+
+  const rangedEffectActive = cfg.ranged?.effect && cfg.ranged.effect !== 'none';
+  const rangedBadge = !cfg.ranged?.enabled
+    ? '⛔ Desativado'
+    : ((cfg.ranged?.minLevel || 1) > 1
+        ? `🔒 Nv. ${cfg.ranged.minLevel}+`
+        : (rangedEffectActive
+            ? (cfg.ranged?.effectEnabled === false
+                ? `🟢 ${cfg.ranged?.projectileType || 'Arremesso'} (Sem Efeito)`
+                : ((cfg.ranged?.effectMinLevel || 1) > 1
+                    ? `🟢 ${cfg.ranged?.projectileType || 'Arremesso'} | 🔒 ${cfg.ranged.effect} Nv. ${cfg.ranged.effectMinLevel}+`
+                    : `🟢 ${cfg.ranged?.projectileType || 'Arremesso'} | ${cfg.ranged.effect}`))
+            : `🟢 ${cfg.ranged?.projectileType || 'Ativo'}`));
+
+  const specialEffectActive = cfg.special?.effect && cfg.special.effect !== 'none';
+  const specialBadge = !cfg.special?.enabled
+    ? '⛔ Desativado'
+    : ((cfg.special?.minLevel || 1) > 1
+        ? `🔒 Nv. ${cfg.special.minLevel}+`
+        : (specialEffectActive
+            ? (cfg.special?.effectEnabled === false
+                ? `🟢 Especial (Sem Efeito)`
+                : ((cfg.special?.effectMinLevel || 1) > 1
+                    ? `🟢 Especial | 🔒 ${cfg.special.effect} Nv. ${cfg.special.effectMinLevel}+`
+                    : `🟢 Especial | ${cfg.special.effect}`))
+            : `🟢 ${cfg.special?.animation ? 'GLB' : (cfg.special?.proceduralType || 'Ativo')}`));
+
+  const supCfg = cfg.heal || cfg.support;
+  const supportBadge = !supCfg?.enabled
+    ? '⛔ Desativado'
+    : ((supCfg?.minLevel || 1) > 1
+        ? `🔒 Nv. ${supCfg.minLevel}+`
+        : `🟢 ${supCfg?.type || 'Ativo'}`);
 
   return (
     <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', marginTop: '1.2rem' }}>
@@ -190,17 +764,24 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
       </div>
 
       <p style={{ margin: '0 0 0.85rem 0', color: 'var(--text-secondary)', fontSize: '0.76rem' }}>
-        O golpe corpo a corpo é obrigatório. Os demais (à distância, especial e suporte) são opcionais. A IA do monstro pode alternar entre eles em batalha.
+        Configure as condições de ativação (por nível do monstro) e a porcentagem de acerto dos efeitos para cada golpe.
       </p>
 
       {/* 1. CORPO A CORPO */}
-      {sectionHeader('melee', Swords, '1. Corpo a Corpo', 'Ataque padrão obrigatório', cfg.melee.effect !== 'none' ? cfg.melee.effect : 'Padrão')}
+      {sectionHeader('melee', Swords, '1. Corpo a Corpo', 'Golpe físico próximo', meleeBadge)}
       {open === 'melee' && (
         <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.8rem', borderRadius: '0 0 8px 8px', border: '1px solid var(--border-glass)', borderTop: 'none', marginBottom: '0.5rem' }}>
-          <p style={{ margin: '0 0 0.6rem 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-            O monstro avança em direção ao oponente para acertá-lo de perto.
-          </p>
-          {effectSelect('melee', cfg.melee.effect)}
+          {renderActivationControl('melee', cfg.melee.enabled !== false, cfg.melee.minLevel || 1)}
+          {cfg.melee.enabled !== false && (
+            <>
+              <p style={{ margin: '0 0 0.6rem 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                O monstro avança em direção ao oponente para acertá-lo de perto.
+              </p>
+              {effectSelect('melee', cfg.melee.effect)}
+              {renderEffectActivationControl('melee', cfg.melee.effect, cfg.melee.effectEnabled !== false, cfg.melee.effectMinLevel || 1)}
+              {renderEffectChanceControls('melee', cfg.melee.effect, cfg.melee.effectChance ?? 100, cfg.melee.effectChancePerLevel ?? 3, cfg.melee.effectEnabled !== false, cfg.melee.effectMinLevel || 1)}
+            </>
+          )}
         </div>
       )}
 
@@ -210,27 +791,11 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
         Crosshair,
         '2. À Distância (Arremesso)',
         'Ergue os braços e arremessa projétil',
-        cfg.ranged?.enabled ? (cfg.ranged.projectileType || 'Ativo') : 'Desativado',
+        rangedBadge,
       )}
       {open === 'ranged' && (
         <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.8rem', borderRadius: '0 0 8px 8px', border: '1px solid var(--border-glass)', borderTop: 'none', marginBottom: '0.5rem' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.75rem' }}>
-            <input
-              type="checkbox"
-              checked={!!cfg.ranged?.enabled}
-              onChange={e =>
-                onChange({
-                  ...cfg,
-                  ranged: {
-                    ...(cfg.ranged || { enabled: true, effect: 'none', projectileType: 'rock' }),
-                    enabled: e.target.checked,
-                  },
-                })
-              }
-              style={{ width: '16px', height: '16px', accentColor: 'var(--gold-primary)' }}
-            />
-            <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Habilitar Golpe À Distância</span>
-          </label>
+          {renderActivationControl('ranged', !!cfg.ranged?.enabled, cfg.ranged?.minLevel || 1)}
 
           {cfg.ranged?.enabled && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingLeft: '0.5rem', borderLeft: '2px solid var(--gold-primary)' }}>
@@ -247,8 +812,9 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
                         ...(cfg.ranged || { enabled: true }),
                         enabled: true,
                         projectileType: pType,
-                        // Sugere o efeito correspondente caso esteja em 'none'
                         effect: cfg.ranged?.effect === 'none' ? defaultEffect : (cfg.ranged?.effect || 'none'),
+                        effectChance: cfg.ranged?.effectChance ?? 40,
+                        effectChancePerLevel: cfg.ranged?.effectChancePerLevel ?? 3,
                       },
                     });
                   }}
@@ -368,6 +934,8 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
               )}
 
               {effectSelect('ranged', cfg.ranged?.effect || 'none', 'Efeito ao acertar o projétil')}
+              {renderEffectActivationControl('ranged', cfg.ranged?.effect || 'none', cfg.ranged?.effectEnabled !== false, cfg.ranged?.effectMinLevel || 1)}
+              {renderEffectChanceControls('ranged', cfg.ranged?.effect || 'none', cfg.ranged?.effectChance ?? 100, cfg.ranged?.effectChancePerLevel ?? 3, cfg.ranged?.effectEnabled !== false, cfg.ranged?.effectMinLevel || 1)}
             </div>
           )}
         </div>
@@ -379,27 +947,11 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
         Sparkles,
         '3. Golpe Especial',
         'Animação GLB ou Movimento Universal',
-        cfg.special?.enabled ? (cfg.special.animation || cfg.special.proceduralType || 'Ativo') : 'Desativado',
+        specialBadge,
       )}
       {open === 'special' && (
         <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.8rem', borderRadius: '0 0 8px 8px', border: '1px solid var(--border-glass)', borderTop: 'none', marginBottom: '0.5rem' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.75rem' }}>
-            <input
-              type="checkbox"
-              checked={!!cfg.special?.enabled}
-              onChange={e =>
-                onChange({
-                  ...cfg,
-                  special: {
-                    ...(cfg.special || { enabled: true, effect: 'none', proceduralType: 'jump_slam' }),
-                    enabled: e.target.checked,
-                  },
-                })
-              }
-              style={{ width: '16px', height: '16px', accentColor: 'var(--gold-primary)' }}
-            />
-            <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Habilitar Golpe Especial</span>
-          </label>
+          {renderActivationControl('special', !!cfg.special?.enabled, cfg.special?.minLevel || 1)}
 
           {cfg.special?.enabled && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingLeft: '0.5rem', borderLeft: '2px solid var(--gold-primary)' }}>
@@ -467,6 +1019,8 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
               </div>
 
               {effectSelect('special', cfg.special?.effect || 'none', 'Efeito de dano do golpe especial')}
+              {renderEffectActivationControl('special', cfg.special?.effect || 'none', cfg.special?.effectEnabled !== false, cfg.special?.effectMinLevel || 1)}
+              {renderEffectChanceControls('special', cfg.special?.effect || 'none', cfg.special?.effectChance ?? 100, cfg.special?.effectChancePerLevel ?? 3, cfg.special?.effectEnabled !== false, cfg.special?.effectMinLevel || 1)}
             </div>
           )}
         </div>
@@ -478,25 +1032,11 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
         ShieldAlert,
         '4. Suporte & Fúria',
         'Fúria (+dano massivo) ou Cura quando com vida baixa',
-        (cfg.heal?.enabled || cfg.support?.enabled) ? (cfg.heal?.type || cfg.support?.type || 'Ativo') : 'Desativado',
+        supportBadge,
       )}
       {open === 'support' && (
         <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.8rem', borderRadius: '0 0 8px 8px', border: '1px solid var(--border-glass)', borderTop: 'none', marginBottom: '0.5rem' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.75rem' }}>
-            <input
-              type="checkbox"
-              checked={!!(cfg.heal?.enabled || cfg.support?.enabled)}
-              onChange={e => {
-                const nextSupport = {
-                  ...(cfg.heal || cfg.support || { enabled: true, type: 'buff_rage', amount: 1, threshold: 0.4 }),
-                  enabled: e.target.checked,
-                };
-                onChange({ ...cfg, heal: nextSupport, support: nextSupport });
-              }}
-              style={{ width: '16px', height: '16px', accentColor: 'var(--gold-primary)' }}
-            />
-            <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Habilitar Golpe de Suporte / Fúria</span>
-          </label>
+          {renderActivationControl('support', !!(cfg.heal?.enabled || cfg.support?.enabled), cfg.heal?.minLevel || cfg.support?.minLevel || 1)}
 
           {(cfg.heal?.enabled || cfg.support?.enabled) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingLeft: '0.5rem', borderLeft: '2px solid var(--gold-primary)' }}>

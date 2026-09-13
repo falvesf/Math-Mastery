@@ -72,6 +72,28 @@ export interface ArenaDebugConfig {
   charZoom: number;
   /** Distância da câmera (fit) — base para o enquadramento do personagem */
   charFit: number;
+  /** Ativa o cenário 3D Voxel estilo Minecraft na arena */
+  enable3DArena?: boolean;
+  // Ajustes finos do Modo 3D Voxel
+  playerOffsetX3D?: number;
+  playerOffsetY3D?: number;
+  playerScale3D?: number;
+  monsterOffsetX3D?: number;
+  monsterOffsetY3D?: number;
+  monsterScale3D?: number;
+  arenaGap3D?: number;
+  // Calibração de Câmera e Profundidade 3D
+  cameraPitch3D?: number;
+  cameraDist3D?: number;
+  cameraTargetY3D?: number;
+  // Ajustes de Magias / Golpes de Longo Alcance
+  projStartX?: number;
+  projStartY?: number;
+  projTargetDist?: number;
+  projTargetY?: number;
+  projArcHeight?: number;
+  /** Exibe o retângulo do campo de ação / range da magia na arena (apenas para o usuário no debug) */
+  showProjRange?: boolean;
 }
 
 export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
@@ -132,9 +154,49 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   charCanvasH: 1,
   charZoom: 0.9,
   charFit: 60,
+  enable3DArena: false,
+  playerOffsetX3D: 0,
+  playerOffsetY3D: 0,
+  playerScale3D: 1,
+  monsterOffsetX3D: 0,
+  monsterOffsetY3D: 0,
+  monsterScale3D: 1,
+  arenaGap3D: 0,
+  cameraPitch3D: 0,
+  cameraDist3D: 0,
+  cameraTargetY3D: 0,
+  projStartX: 0,
+  projStartY: 40,
+  projTargetDist: 0,
+  projTargetY: 80,
+  projArcHeight: 245,
+  showProjRange: false,
 };
 
-const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; defaultPos: { x: number; y: number }; children: React.ReactNode; deviceKey?: string }) => {
+export type ArenaModeKey = '3d_desktop' | '3d_mobile' | '2d_desktop' | '2d_mobile';
+
+const DraggableWidget = ({ 
+  id, 
+  defaultPos, 
+  children, 
+  activeModeKey = '3d_desktop', 
+  windowWidth, 
+  manualModeOverride = null,
+  onSelectMode,
+  // compatibilidade com versões anteriores
+  deviceKey,
+  onSwitchDevice 
+}: { 
+  id: string; 
+  defaultPos: { x: number; y: number }; 
+  children: React.ReactNode; 
+  activeModeKey?: ArenaModeKey; 
+  windowWidth?: number; 
+  manualModeOverride?: ArenaModeKey | null;
+  onSelectMode?: (mode: ArenaModeKey | 'auto') => void;
+  deviceKey?: 'mobile' | 'desktop'; 
+  onSwitchDevice?: (device: 'mobile' | 'desktop') => void;
+}) => {
   const [pos, setPos] = useState(() => {
     // Always spawn at the center of the screen, ignoring old saved positions that may be off-screen
     const centerX = Math.max(0, Math.floor(window.innerWidth / 2) - 130);
@@ -149,7 +211,15 @@ const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; 
   });
   const [widgetWidth, setWidgetWidth] = useState(() => {
     const saved = localStorage.getItem(`arenaDebug_widgetW_${id}`);
-    return saved && !isNaN(parseInt(saved)) ? parseInt(saved) : 260;
+    return saved && !isNaN(parseInt(saved)) ? parseInt(saved) : 270;
+  });
+  const [widgetOpacity, setWidgetOpacity] = useState<number>(() => {
+    const saved = localStorage.getItem('arenaDebug_widgetOpacity');
+    if (saved) {
+      const num = parseFloat(saved);
+      if (!isNaN(num) && num >= 0.15 && num <= 1) return num;
+    }
+    return 0.95;
   });
   const dragStart = useRef({ x: 0, y: 0 });
 
@@ -165,6 +235,10 @@ const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; 
     localStorage.setItem(`arenaDebug_widgetW_${id}`, widgetWidth.toString());
   }, [widgetWidth, id]);
 
+  useEffect(() => {
+    localStorage.setItem('arenaDebug_widgetOpacity', widgetOpacity.toString());
+  }, [widgetOpacity]);
+
   // Prevent body scroll from fixed widget
   useEffect(() => {
     document.documentElement.style.overflowX = 'hidden';
@@ -178,13 +252,16 @@ const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; 
         left: typeof pos?.x === 'number' && !isNaN(pos.x) ? pos.x : defaultPos.x, 
         top: typeof pos?.y === 'number' && !isNaN(pos.y) ? pos.y : defaultPos.y, 
         zIndex: 99999,
-        background: 'rgba(30, 35, 45, 0.95)', backdropFilter: 'blur(10px)',
+        opacity: widgetOpacity,
+        background: `rgba(25, 30, 42, ${Math.max(0.4, widgetOpacity)})`,
+        backdropFilter: widgetOpacity < 0.6 ? 'blur(4px)' : 'blur(10px)',
         padding: isMinimized ? '0.4rem 0.8rem' : '0.5rem',
         borderRadius: '16px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        width: `${widgetWidth}px`, maxWidth: 'min(90vw, 500px)', minWidth: '200px',
+        border: `1px solid rgba(255,255,255,${Math.max(0.08, widgetOpacity * 0.15)})`,
+        width: `${widgetWidth}px`, maxWidth: 'min(90vw, 500px)', minWidth: '220px',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         maxHeight: isMinimized ? 'none' : `min(${widgetHeight}px, calc(100vh - 20px))`,
+        transition: isDragging ? 'none' : 'opacity 0.15s ease',
       }}
       onPointerDown={(e) => {
         if ((e.target as HTMLElement).tagName === 'BUTTON' || (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT' || (e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.resize-handle')) return;
@@ -195,11 +272,217 @@ const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; 
       onPointerMove={(e) => { if (isDragging) setPos({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y }); }}
       onPointerUp={() => setIsDragging(false)}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'move', flexShrink: 0, paddingBottom: '0.3rem' }}>
-        <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.7rem' }}>🏟️ Arena Debug {deviceKey && <span style={{ fontSize: '0.6rem', color: deviceKey === 'mobile' ? '#10b981' : '#3b82f6', background: deviceKey === 'mobile' ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px', marginLeft: '0.3rem' }}>{deviceKey === 'mobile' ? '📱 Mobile' : '🖥️ Desktop'}</span>}</span>
-        <button onClick={() => setIsMinimized(v => !v)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.7rem', padding: '0 0.2rem' }}>
-          {isMinimized ? '▼' : '▲'}
-        </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingBottom: '0.35rem', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '0.35rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'move' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
+            <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.72rem' }}>🏟️ Arena Debug</span>
+            {windowWidth !== undefined && (
+              <span style={{ fontSize: '0.55rem', color: '#94a3b8', background: 'rgba(0,0,0,0.4)', padding: '0.05rem 0.3rem', borderRadius: '4px', fontFamily: 'monospace' }} title="Largura atual da tela">
+                {windowWidth}px
+              </span>
+            )}
+            <span
+              style={{
+                fontSize: '0.58rem',
+                fontWeight: 'bold',
+                padding: '0.1rem 0.35rem',
+                borderRadius: '4px',
+                background: activeModeKey.startsWith('3d') ? 'rgba(6,182,212,0.2)' : 'rgba(139,92,246,0.2)',
+                color: activeModeKey.startsWith('3d') ? '#22d3ee' : '#c084fc',
+                border: `1px solid ${activeModeKey.startsWith('3d') ? 'rgba(6,182,212,0.4)' : 'rgba(139,92,246,0.4)'}`,
+              }}
+            >
+              {activeModeKey === '3d_desktop' && '🧱 3D Desk'}
+              {activeModeKey === '3d_mobile' && '🧱 3D Mob'}
+              {activeModeKey === '2d_desktop' && '🖼️ 2D Desk'}
+              {activeModeKey === '2d_mobile' && '🖼️ 2D Mob'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            {/* Controle de Transparência da Janela */}
+            <div 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '2px', 
+                background: 'rgba(0,0,0,0.45)', 
+                border: '1px solid rgba(255,255,255,0.1)', 
+                borderRadius: '5px', 
+                padding: '1px 4px' 
+              }}
+              title="Ajuste de Transparência da Janela (clique no ícone para alternar rápido: 95% -> 50% -> 25%)"
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setWidgetOpacity(prev => {
+                    if (prev > 0.8) return 0.5;
+                    if (prev > 0.4) return 0.25;
+                    return 0.95;
+                  });
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.62rem',
+                  padding: '0',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title="Alternar transparência rápida (100% -> 50% -> 25%)"
+              >
+                🪟
+              </button>
+              <input
+                type="range"
+                min="0.2"
+                max="1"
+                step="0.05"
+                value={widgetOpacity}
+                onChange={(e) => setWidgetOpacity(parseFloat(e.target.value))}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: '40px',
+                  height: '8px',
+                  accentColor: '#10b981',
+                  cursor: 'pointer',
+                }}
+                title={`Opacidade da janela: ${Math.round(widgetOpacity * 100)}%`}
+              />
+              <span style={{ fontSize: '0.52rem', color: '#10b981', fontFamily: 'monospace', minWidth: '22px', textAlign: 'right' }}>
+                {Math.round(widgetOpacity * 100)}%
+              </span>
+            </div>
+
+            <button onClick={() => setIsMinimized(v => !v)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.7rem', padding: '0 0.2rem' }}>
+              {isMinimized ? '▼' : '▲'}
+            </button>
+          </div>
+        </div>
+
+        {onSelectMode ? (
+          <div style={{ display: 'flex', gap: '2px', background: 'rgba(0,0,0,0.5)', padding: '2px', borderRadius: '6px' }}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSelectMode('auto'); }}
+              style={{
+                flex: 1,
+                fontSize: '0.55rem',
+                padding: '0.12rem 0.2rem',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: manualModeOverride === null ? '#475569' : 'transparent',
+                color: manualModeOverride === null ? '#ffffff' : '#64748b',
+                whiteSpace: 'nowrap',
+              }}
+              title="Automático: segue o redimensionamento do navegador e o botão 2D/3D da arena"
+            >
+              🔄 Auto
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSelectMode('3d_desktop'); }}
+              style={{
+                flex: 1,
+                fontSize: '0.55rem',
+                padding: '0.12rem 0.2rem',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: activeModeKey === '3d_desktop' ? '#0284c7' : 'transparent',
+                color: activeModeKey === '3d_desktop' ? '#ffffff' : '#64748b',
+                boxShadow: activeModeKey === '3d_desktop' ? '0 0 6px rgba(2,132,199,0.6)' : 'none',
+                whiteSpace: 'nowrap',
+              }}
+              title="Calibrar perfil 3D Desktop"
+            >
+              🧱 3D D
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSelectMode('3d_mobile'); }}
+              style={{
+                flex: 1,
+                fontSize: '0.55rem',
+                padding: '0.12rem 0.2rem',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: activeModeKey === '3d_mobile' ? '#059669' : 'transparent',
+                color: activeModeKey === '3d_mobile' ? '#ffffff' : '#64748b',
+                boxShadow: activeModeKey === '3d_mobile' ? '0 0 6px rgba(5,150,105,0.6)' : 'none',
+                whiteSpace: 'nowrap',
+              }}
+              title="Calibrar perfil 3D Mobile"
+            >
+              🧱 3D M
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSelectMode('2d_desktop'); }}
+              style={{
+                flex: 1,
+                fontSize: '0.55rem',
+                padding: '0.12rem 0.2rem',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: activeModeKey === '2d_desktop' ? '#7c3aed' : 'transparent',
+                color: activeModeKey === '2d_desktop' ? '#ffffff' : '#64748b',
+                boxShadow: activeModeKey === '2d_desktop' ? '0 0 6px rgba(124,58,237,0.6)' : 'none',
+                whiteSpace: 'nowrap',
+              }}
+              title="Calibrar perfil 2D Desktop"
+            >
+              🖼️ 2D D
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSelectMode('2d_mobile'); }}
+              style={{
+                flex: 1,
+                fontSize: '0.55rem',
+                padding: '0.12rem 0.2rem',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: activeModeKey === '2d_mobile' ? '#d97706' : 'transparent',
+                color: activeModeKey === '2d_mobile' ? '#ffffff' : '#64748b',
+                boxShadow: activeModeKey === '2d_mobile' ? '0 0 6px rgba(217,119,6,0.6)' : 'none',
+                whiteSpace: 'nowrap',
+              }}
+              title="Calibrar perfil 2D Mobile"
+            >
+              🖼️ 2D M
+            </button>
+          </div>
+        ) : onSwitchDevice ? (
+          <div style={{ display: 'flex', gap: '2px', background: 'rgba(0,0,0,0.5)', padding: '2px', borderRadius: '6px' }}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSwitchDevice('desktop'); }}
+              style={{ flex: 1, fontSize: '0.58rem', padding: '0.1rem 0.35rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: deviceKey === 'desktop' ? '#2563eb' : 'transparent', color: deviceKey === 'desktop' ? '#ffffff' : '#64748b' }}
+            >
+              🖥️ Desk
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSwitchDevice('mobile'); }}
+              style={{ flex: 1, fontSize: '0.58rem', padding: '0.1rem 0.35rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: deviceKey === 'mobile' ? '#059669' : 'transparent', color: deviceKey === 'mobile' ? '#ffffff' : '#64748b' }}
+            >
+              📱 Mob
+            </button>
+          </div>
+        ) : null}
       </div>
       {!isMinimized && (
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingRight: '0.5rem' }}>
@@ -233,13 +516,63 @@ const DraggableWidget = ({ id, defaultPos, children, deviceKey }: { id: string; 
   );
 };
 
-const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit?: string }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-    <span style={{ fontSize: '0.65rem', color: '#94a3b8', minWidth: '50px', whiteSpace: 'nowrap' }}>{label}</span>
-    <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))} style={{ flex: 1, height: '12px' }} />
-    <span style={{ fontSize: '0.65rem', color: '#fbbf24', fontFamily: 'monospace', minWidth: '35px', textAlign: 'right' }}>{value.toFixed(step < 1 ? 1 : 0)}{unit}</span>
-  </div>
-);
+const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit?: string }) => {
+  const [localVal, setLocalVal] = useState<string>(() => (isNaN(value) ? '0' : value.toFixed(step < 1 ? 1 : 0)));
+
+  useEffect(() => {
+    setLocalVal(isNaN(value) ? '0' : value.toFixed(step < 1 ? 1 : 0));
+  }, [value, step]);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.18rem' }}>
+      <span style={{ fontSize: '0.65rem', color: '#94a3b8', minWidth: '55px', whiteSpace: 'nowrap' }}>{label}</span>
+      <input 
+        type="range" 
+        min={min} 
+        max={max} 
+        step={step} 
+        value={isNaN(value) ? 0 : value} 
+        onChange={e => {
+          const v = parseFloat(e.target.value);
+          onChange(v);
+        }} 
+        style={{ flex: 1, height: '12px', accentColor: '#f59e0b', cursor: 'pointer' }} 
+      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
+        <input
+          type="number"
+          step={step}
+          value={localVal}
+          onChange={e => {
+            setLocalVal(e.target.value);
+            const num = parseFloat(e.target.value);
+            if (!isNaN(num)) onChange(num);
+          }}
+          onBlur={() => {
+            const num = parseFloat(localVal);
+            if (isNaN(num)) {
+              setLocalVal(value.toString());
+            } else {
+              setLocalVal(num.toFixed(step < 1 ? 1 : 0));
+            }
+          }}
+          style={{
+            width: '46px',
+            fontSize: '0.65rem',
+            color: '#fbbf24',
+            fontFamily: 'monospace',
+            textAlign: 'right',
+            background: 'rgba(0,0,0,0.45)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: '4px',
+            padding: '1px 2px',
+          }}
+        />
+        {unit && <span style={{ fontSize: '0.58rem', color: '#94a3b8', minWidth: '12px' }}>{unit}</span>}
+      </div>
+    </div>
+  );
+};
 
 interface ArenaDebugPanelProps {
   config: ArenaDebugConfig;
@@ -247,8 +580,14 @@ interface ArenaDebugPanelProps {
   onSave: () => void;
   onTestPlayerBubble: () => void;
   onTestMonsterBubble: () => void;
+  onTestProjectile?: () => void;
   isAdmin: boolean;
-  deviceKey?: string;
+  activeModeKey?: ArenaModeKey;
+  windowWidth?: number;
+  manualModeOverride?: ArenaModeKey | null;
+  onSelectMode?: (mode: ArenaModeKey | 'auto') => void;
+  deviceKey?: 'mobile' | 'desktop';
+  onSwitchDevice?: (device: 'mobile' | 'desktop') => void;
 }
 
 const Toggle = ({ label, value, onChange: onToggle }: { label: string; value: boolean; onChange: (v: boolean) => void }) => (
@@ -260,8 +599,22 @@ const Toggle = ({ label, value, onChange: onToggle }: { label: string; value: bo
   </div>
 );
 
-export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayerBubble, onTestMonsterBubble, isAdmin, deviceKey }: ArenaDebugPanelProps) {
-  const [tab, setTab] = useState<'player' | 'monster' | 'arena' | 'combat' | 'visual' | 'render'>('player');
+export default function ArenaDebugPanel({ 
+  config, 
+  onChange, 
+  onSave, 
+  onTestPlayerBubble, 
+  onTestMonsterBubble, 
+  onTestProjectile, 
+  isAdmin, 
+  activeModeKey = '3d_desktop', 
+  windowWidth, 
+  manualModeOverride = null,
+  onSelectMode,
+  deviceKey, 
+  onSwitchDevice 
+}: ArenaDebugPanelProps) {
+  const [tab, setTab] = useState<'player' | 'monster' | 'arena' | 'arena3d' | 'projectile' | 'combat' | 'visual' | 'render'>('player');
 
   // Garantir que campos novos existam (compatibilidade com cache antigo)
   const safeConfig: ArenaDebugConfig = {
@@ -278,6 +631,23 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
     forceCoinLoss: config.forceCoinLoss ?? false,
     forceRewards: config.forceRewards ?? false,
     guaranteedCrit: config.guaranteedCrit ?? false,
+    enable3DArena: config.enable3DArena ?? false,
+    playerOffsetX3D: config.playerOffsetX3D ?? 0,
+    playerOffsetY3D: config.playerOffsetY3D ?? 0,
+    playerScale3D: config.playerScale3D ?? 1,
+    monsterOffsetX3D: config.monsterOffsetX3D ?? 0,
+    monsterOffsetY3D: config.monsterOffsetY3D ?? 0,
+    monsterScale3D: config.monsterScale3D ?? 1,
+    arenaGap3D: config.arenaGap3D ?? 0,
+    cameraPitch3D: config.cameraPitch3D ?? 0,
+    cameraDist3D: config.cameraDist3D ?? 0,
+    cameraTargetY3D: config.cameraTargetY3D ?? 0,
+    projStartX: config.projStartX ?? 0,
+    projStartY: config.projStartY ?? 40,
+    projTargetDist: config.projTargetDist ?? 0,
+    projTargetY: config.projTargetY ?? 80,
+    projArcHeight: config.projArcHeight ?? 245,
+    showProjRange: config.showProjRange ?? false,
   };
 
   const update = (key: keyof ArenaDebugConfig, value: any) => {
@@ -292,20 +662,31 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
   if (!isAdmin) return null;
 
   const tabs = [
-    { id: 'player' as const, label: '👤', color: '#3b82f6' },
-    { id: 'monster' as const, label: '👹', color: '#ef4444' },
-    { id: 'arena' as const, label: '🏟️', color: '#8b5cf6' },
-    { id: 'combat' as const, label: '⚔️', color: '#f87171' },
-    { id: 'visual' as const, label: '🔲', color: '#94a3b8' },
-    { id: 'render' as const, label: '🧍', color: '#10b981' },
+    { id: 'player' as const, label: '👤', color: '#3b82f6', title: 'Jogador 2D' },
+    { id: 'monster' as const, label: '👹', color: '#ef4444', title: 'Monstro 2D' },
+    { id: 'arena' as const, label: '🏟️', color: '#8b5cf6', title: 'Arena 2D' },
+    { id: 'arena3d' as const, label: '🧱', color: '#06b6d4', title: 'Cenário 3D Voxel' },
+    { id: 'projectile' as const, label: '⚡', color: '#f59e0b', title: 'Magia / Ataque à Distância' },
+    { id: 'combat' as const, label: '⚔️', color: '#f87171', title: 'Combate' },
+    { id: 'visual' as const, label: '🔲', color: '#94a3b8', title: 'Visual' },
+    { id: 'render' as const, label: '🧍', color: '#10b981', title: 'Renderização do Avatar' },
   ];
 
   return (
-    <DraggableWidget id="arena_debug" defaultPos={{ x: 20, y: 80 }} deviceKey={deviceKey}>
+    <DraggableWidget 
+      id="arena_debug" 
+      defaultPos={{ x: 20, y: 80 }} 
+      activeModeKey={activeModeKey}
+      windowWidth={windowWidth} 
+      manualModeOverride={manualModeOverride}
+      onSelectMode={onSelectMode}
+      deviceKey={deviceKey}
+      onSwitchDevice={onSwitchDevice}
+    >
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: '0.2rem', marginBottom: '0.4rem', flexShrink: 0, alignItems: 'center', position: 'sticky', top: 0, zIndex: 5, background: 'rgba(30, 35, 45, 0.95)', paddingTop: '0.2rem', paddingBottom: '0.2rem' }}>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: '0.3rem 0.2rem', background: tab === t.id ? t.color : 'rgba(255,255,255,0.05)', border: `1px solid ${tab === t.id ? t.color : 'transparent'}`, borderRadius: '6px', color: tab === t.id ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'center' }}>
+          <button key={t.id} onClick={() => setTab(t.id)} title={t.title} style={{ flex: 1, padding: '0.3rem 0.15rem', background: tab === t.id ? t.color : 'rgba(255,255,255,0.05)', border: `1px solid ${tab === t.id ? t.color : 'transparent'}`, borderRadius: '6px', color: tab === t.id ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '0.75rem', textAlign: 'center' }}>
             {t.label}
           </button>
         ))}
@@ -393,6 +774,74 @@ export default function ArenaDebugPanel({ config, onChange, onSave, onTestPlayer
               <Slider label="Largura" value={safeConfig.playerCoinAreaW} onChange={v => update('playerCoinAreaW', v)} min={10} max={100} unit="%" />
               <Slider label="Altura" value={safeConfig.playerCoinAreaH} onChange={v => update('playerCoinAreaH', v)} min={10} max={100} unit="%" />
             </div>
+          </>
+        )}
+
+        {tab === 'arena3d' && (
+          <>
+            <div style={{ fontSize: '0.7rem', color: '#06b6d4', fontWeight: 'bold', marginBottom: '0.2rem' }}>🧱 Cenário 3D Voxel (Minecraft)</div>
+            <Toggle label="Ativar Modo 3D" value={!!safeConfig.enable3DArena} onChange={v => update('enable3DArena', v)} />
+
+            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
+              <div style={{ fontSize: '0.68rem', color: '#3b82f6', fontWeight: 'bold', marginBottom: '0.2rem' }}>👤 Jogador no 3D</div>
+              <Slider label="X" value={safeConfig.playerOffsetX3D ?? 0} onChange={v => update('playerOffsetX3D', v)} min={-600} max={600} unit="px" />
+              <Slider label="Elevação Y" value={safeConfig.playerOffsetY3D ?? 0} onChange={v => update('playerOffsetY3D', v)} min={-400} max={400} unit="px" />
+              <Slider label="Escala" value={safeConfig.playerScale3D ?? 1} onChange={v => update('playerScale3D', v)} min={0.3} max={2.5} step={0.05} unit="x" />
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
+              <div style={{ fontSize: '0.68rem', color: '#ef4444', fontWeight: 'bold', marginBottom: '0.2rem' }}>👹 Monstro no 3D</div>
+              <Slider label="X" value={safeConfig.monsterOffsetX3D ?? 0} onChange={v => update('monsterOffsetX3D', v)} min={-600} max={600} unit="px" />
+              <Slider label="Elevação Y" value={safeConfig.monsterOffsetY3D ?? 0} onChange={v => update('monsterOffsetY3D', v)} min={-400} max={400} unit="px" />
+              <Slider label="Escala" value={safeConfig.monsterScale3D ?? 1} onChange={v => update('monsterScale3D', v)} min={0.3} max={2.5} step={0.05} unit="x" />
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
+              <div style={{ fontSize: '0.68rem', color: '#8b5cf6', fontWeight: 'bold', marginBottom: '0.2rem' }}>🏟️ Arena & Distância 3D</div>
+              <Slider label="Gap 3D" value={safeConfig.arenaGap3D ?? 0} onChange={v => update('arenaGap3D', v)} min={-400} max={600} unit="px" />
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
+              <div style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 'bold', marginBottom: '0.2rem' }}>🎥 Câmera & Profundidade 3D</div>
+              <Slider label="Profundidade" value={safeConfig.cameraPitch3D ?? 0} onChange={v => update('cameraPitch3D', v)} min={-15} max={30} step={0.5} unit="°" />
+              <div style={{ fontSize: '0.58rem', color: '#94a3b8', marginBottom: '0.2rem' }}>
+                {safeConfig.cameraPitch3D === 0 ? '✨ 0 = Inclinação isométrica ideal (~15.6°)' : `📐 Ajuste de ângulo: ${safeConfig.cameraPitch3D > 0 ? '+' : ''}${safeConfig.cameraPitch3D}°`}
+              </div>
+              <Slider label="Distância" value={safeConfig.cameraDist3D ?? 0} onChange={v => update('cameraDist3D', v)} min={-8} max={12} step={0.5} />
+              <Slider label="Alvo Y" value={safeConfig.cameraTargetY3D ?? 0} onChange={v => update('cameraTargetY3D', v)} min={-3} max={4} step={0.1} />
+              <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                Ajuste a inclinação para exibir as camadas de blocos com profundidade 3D profunda no mobile e desktop. Clique no 💾 para salvar separadamente.
+              </div>
+            </div>
+          </>
+        )}
+
+        {tab === 'projectile' && (
+          <>
+            <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold', marginBottom: '0.2rem' }}>⚡ Golpes de Longo Alcance / Magias</div>
+            <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginBottom: '0.4rem' }}>
+              Calibre o ponto de origem no monstro, a altura da parábola no céu e onde o projétil atinge o peito do jogador. Você pode deslizar ou digitar o número exato.
+            </div>
+
+            <Toggle label="Ver campo de ação / range" value={!!safeConfig.showProjRange} onChange={v => update('showProjRange', v)} />
+
+            <Slider label="Origem X" value={safeConfig.projStartX ?? 0} onChange={v => update('projStartX', v)} min={-1500} max={1500} unit="px" />
+            <Slider label="Origem Y" value={safeConfig.projStartY ?? 40} onChange={v => update('projStartY', v)} min={-300} max={800} unit="px" />
+            <Slider label="Alcance" value={safeConfig.projTargetDist ?? 0} onChange={v => update('projTargetDist', v)} min={0} max={3000} unit="px" />
+            <div style={{ fontSize: '0.58rem', color: '#94a3b8', marginBottom: '0.2rem' }}>
+              {safeConfig.projTargetDist === 0 ? '✨ 0 = Automático pela distância da arena' : `🎯 Alcance fixo em ${safeConfig.projTargetDist}px`}
+            </div>
+            <Slider label="Impacto Y" value={safeConfig.projTargetY ?? 80} onChange={v => update('projTargetY', v)} min={-300} max={800} unit="px" />
+            <Slider label="Arco Céu" value={safeConfig.projArcHeight ?? 245} onChange={v => update('projArcHeight', v)} min={20} max={1200} unit="px" />
+
+            {onTestProjectile && (
+              <button
+                onClick={onTestProjectile}
+                style={{ width: '100%', padding: '0.45rem', background: 'rgba(245,158,11,0.25)', border: '1px solid rgba(245,158,11,0.6)', borderRadius: '6px', color: '#f59e0b', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '0.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}
+              >
+                ⚡ Testar Golpe à Distância
+              </button>
+            )}
           </>
         )}
 

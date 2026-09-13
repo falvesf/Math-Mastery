@@ -391,6 +391,7 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
       // Restaura a pose original do esqueleto antes de transicionar
       // Isso impede que ossos "presos" por animações anteriores deformem ou movam o modelo pra perto da câmera
       scene.traverse((child) => {
+        if (child === scene) return; // Não sobrescreve o transform da raiz da cena
         const initial = initialTransforms.get(child.uuid);
         if (initial) {
           child.position.copy(initial.position);
@@ -405,14 +406,19 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
     }
   }, [actions, animationName, mixer, scene, initialTransforms]);
 
-  const targetRotation = React.useMemo(() => {
-    // Rotação extra definida pelo usuário (graus → radianos), compensa GLBs autorados de costas.
+  const targetRotation: [number, number, number] = React.useMemo(() => {
+    // Rotação extra definida pelo usuário (graus → radianos), compensa GLBs autorados de costas/lado.
     const extra = (configRotY ?? 0) * (Math.PI / 180);
-    if (!role) return [0, Math.PI + extra, 0];
+    if (!role) {
+      // Editor / Visualizador: virado para a frente (para a câmera)
+      return [0, Math.PI + extra, 0];
+    }
     const isCombatAnim = animationName?.startsWith('attack') || animationName === 'hurt' || animationName?.startsWith('death');
     if (isCombatAnim) {
+      // Durante o combate ativo: jogador à esquerda vira para a direita; monstro à direita vira para a esquerda
       return role === 'player' ? [0, Math.PI / 2 + extra, 0] : [0, -Math.PI / 2 + extra, 0];
     }
+    // Em repouso (início das lutas / idle na arena): ambos olham de frente para a câmera
     return [0, Math.PI + extra, 0];
   }, [role, animationName, configRotY]);
 
@@ -450,8 +456,8 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
   });
 
   return (
-    <group ref={slideGroupRef}>
-      <primitive object={scene} rotation={targetRotation} />
+    <group ref={slideGroupRef} rotation={targetRotation}>
+      <primitive object={scene} />
     </group>
   );
 }
