@@ -132,8 +132,8 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Valores computados
-  const stats = calculateTotalStats(equippedItems, user.distributedStats);
+  // Valores computados (considerando nível de forja dos equipamentos e pontos distribuídos)
+  const stats = calculateTotalStats(equippedItems, user.distributedStats || (user as any).distributed_stats);
   const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === rankName) || 0) / 2) + Math.floor(stats.vitality / 30);
 
   useEffect(() => {
@@ -162,8 +162,8 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
   // Se for privado, não exibe os detalhes
   const isPrivate = user.isProfilePublic === false;
 
-  const totalDefense = equippedItems.reduce((acc, item) => item.baseAttributeType === 'defense' ? acc + (item.baseAttributeValue || 0) : acc, 0);
-  const totalAttack = equippedItems.reduce((acc, item) => item.baseAttributeType === 'attack' ? acc + (item.baseAttributeValue || 0) : acc, 0);
+  const totalDefense = stats.defense;
+  const totalAttack = stats.attack;
 
   const petItem = equippedItems.find(i => (i.itemCategory as string) === 'pet');
 

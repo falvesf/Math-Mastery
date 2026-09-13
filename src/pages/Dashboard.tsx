@@ -1131,6 +1131,8 @@ export default function Dashboard() {
                 itemCategory: data.itemCategory,
                 baseAttributeType: data.baseAttributeType,
                 baseAttributeValue: data.baseAttributeValue,
+                forgeLevel: data.forgeLevel || 0,
+                forgeConfig: data.forgeConfig || null,
                 adds: data.adds,
                 gameModelUrl: data.gameModelUrl,
                 modelTextureUrl: data.modelTextureUrl,
@@ -2811,7 +2813,7 @@ export default function Dashboard() {
           onClose={() => setPublicProfileUser(null)}
           user={publicProfileUser.user}
           rankPos={publicProfileUser.rankPos}
-          equippedItems={rankingEquippedItems[publicProfileUser.user.uid] || []}
+          equippedItems={(publicProfileUser.user.uid === userData?.uid && equippedItems.length > 0) ? equippedItems : (rankingEquippedItems[publicProfileUser.user.uid] || [])}
           rankName={getRankForXp(publicProfileUser.user.xp || 0, publicProfileUser.user.classId).name}
           rankColor={getRankForXp(publicProfileUser.user.xp || 0, publicProfileUser.user.classId).color}
         />

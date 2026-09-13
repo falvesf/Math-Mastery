@@ -2396,7 +2396,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
     if (isEligibleForChest) {
       if (isWin && quest?.chestConfig?.maxCoins && quest.chestConfig.maxCoins > 0) {
-        const totalAttack = playerEquippedItems.reduce((acc, item) => item.baseAttributeType === 'attack' ? acc + (item.baseAttributeValue || 0) : acc, 0);
+        const totalAttack = totalEquippedStats.attack;
         const chestBonus = Math.min(5, criticalHits) * totalAttack;
         const baseDropChance = quest.chestConfig.dropChance ?? 100;
         const finalDropChance = baseDropChance + chestBonus;

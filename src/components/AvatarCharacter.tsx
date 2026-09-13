@@ -125,6 +125,8 @@ export interface EquippedItem {
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
+  forgeLevel?: number;
+  forgeConfig?: any;
   adds?: ItemAdd[];
   extractMeshName?: string;
   gameModelUrl?: string;
