@@ -156,8 +156,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [forgeSoundsConfig, setForgeSoundsConfig] = useState<ForgeSoundsConfig>({});
   const [soundPickerTarget, setSoundPickerTarget] = useState<keyof ForgeSoundsConfig | null>(null);
   const [copyForgeFromId, setCopyForgeFromId] = useState('');
-  // Modal de seleção das opções para "Sincronizar do Banco"
   const [showSyncOptions, setShowSyncOptions] = useState(false);
+  const [syncSelection, setSyncSelection] = useState<Record<string, boolean>>({});
   const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
   const [customSalePct, setCustomSalePct] = useState<number>(() => {
     const saved = localStorage.getItem('admin_custom_sale_pct');
@@ -241,7 +241,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   };
 
   useEffect(() => {
-    loadTenantRanks(tenantId);
+    loadTenantRanks(tenantId || undefined);
     /* eslint-disable-next-line */
   }, [tenantId]);
 
@@ -2386,7 +2386,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   {formData.extractMeshName && (
                     <div style={{ padding: '0.5rem', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid #3b82f6', color: '#60a5fa', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '1rem' }}>
                       <strong>Malha extraída selecionada:</strong> {formData.extractMeshName}
-                      <button onClick={() => setFormData({...formData, extractMeshName: null})} style={{ marginLeft: '1rem', background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', textDecoration: 'underline' }}>Remover</button>
+                      <button onClick={() => setFormData({...formData, extractMeshName: undefined})} style={{ marginLeft: '1rem', background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', textDecoration: 'underline' }}>Remover</button>
                     </div>
                   )}
                 </div>
