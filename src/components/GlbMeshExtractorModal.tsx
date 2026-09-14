@@ -31,7 +31,11 @@ const ROOT_WRAPPERS = new Set([
 
 const getFriendlyName = (name: string): string => {
   const n = name.toLowerCase();
-  if (n.includes('diamond')) return 'Espada de Diamante';
+  if (n.includes('serrilhada') || n.includes('saw')) return 'Espada Serrilhada';
+  if (n.includes('katana')) return 'Katana Mestre';
+  if (n.includes('foice') || n.includes('scythe')) return 'Foice Curva';
+  if (n.includes('vermelha') || n.includes('dark') || n.includes('sombria')) return 'Espada Sombria Escarlate';
+  if (n.includes('diamond') || n.includes('diamante')) return 'Espada de Diamante';
   if (n.includes('netherite')) return 'Espada de Netherite';
   if (n.includes('gold') || n.includes('ouro')) return 'Espada de Ouro';
   if (n.includes('iron') || n.includes('ferro')) return 'Espada de Ferro';
@@ -95,6 +99,233 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
 
   // --- REPAIR TOOLS LOGIC ---
+
+  const buildMeshTree = (rootGltf: THREE.Object3D) => {
+    const countDescendants = (obj: THREE.Object3D): number => {
+      let count = 0;
+      obj.traverse((c) => {
+        if ((c as THREE.Mesh).isMesh) count++;
+      });
+      return count;
+    };
+
+    let branchRoot: THREE.Object3D = rootGltf;
+    while (
+      branchRoot.children.length === 1 &&
+      (branchRoot === rootGltf || ROOT_WRAPPERS.has(branchRoot.name.toLowerCase()))
+    ) {
+      branchRoot = branchRoot.children[0];
+    }
+
+    let topCandidates: THREE.Object3D[] = [];
+    if (ROOT_WRAPPERS.has(branchRoot.name.toLowerCase()) || branchRoot === rootGltf) {
+      topCandidates = branchRoot.children.filter(c => countDescendants(c) > 0);
+    } else {
+      topCandidates = branchRoot.children.length > 0
+        ? branchRoot.children.filter(c => countDescendants(c) > 0)
+        : [branchRoot];
+    }
+
+    const primarySet = new Set<string>();
+    topCandidates.forEach(c => {
+      if (c.name) primarySet.add(c.name);
+    });
+    primaryNamesRef.current = primarySet;
+
+    const foundNodes: MeshNodeInfo[] = [];
+    const seenNames = new Set<string>();
+
+    topCandidates.forEach((node) => {
+      if (!node.name) return;
+      const mc = countDescendants(node);
+      const isGrp = (node.children && node.children.length > 0 && !(node as THREE.Mesh).isMesh);
+      seenNames.add(node.name);
+      foundNodes.push({
+        name: node.name,
+        isGroup: isGrp,
+        isPrimary: true,
+        meshCount: (node as THREE.Mesh).isMesh ? 1 : mc,
+        friendlyName: getFriendlyName(node.name)
+      });
+    });
+
+    let unnamedMeshCount = 0;
+    let unnamedGroupCount = 0;
+
+    rootGltf.traverse((node) => {
+      if (node === rootGltf) return;
+      const lowerName = (node.name || '').toLowerCase();
+      if (ROOT_WRAPPERS.has(lowerName)) return;
+
+      const isMesh = (node as THREE.Mesh).isMesh === true;
+      const hasChildren = node.children && node.children.length > 0;
+
+      if (!node.name) {
+        if (isMesh) {
+          unnamedMeshCount++;
+          node.name = `Mesh_${unnamedMeshCount}`;
+        } else if (hasChildren) {
+          unnamedGroupCount++;
+          node.name = `Group_${unnamedGroupCount}`;
+        }
+      }
+
+      if (seenNames.has(node.name)) return;
+
+      const mc = isMesh ? 1 : countDescendants(node);
+      if (mc === 0) return;
+
+      seenNames.add(node.name);
+      foundNodes.push({
+        name: node.name,
+        isGroup: !isMesh && hasChildren,
+        isPrimary: false,
+        meshCount: mc,
+        friendlyName: getFriendlyName(node.name),
+        parentName: node.parent?.name && !ROOT_WRAPPERS.has(node.parent.name.toLowerCase()) ? node.parent.name : undefined
+      });
+    });
+
+    const totalMeshCount = Array.from(originalMaterialsRef.current.keys()).length;
+    const primaryCount = foundNodes.filter(n => n.isPrimary).length;
+    const box = new THREE.Box3().setFromObject(rootGltf);
+    const size = box.getSize(new THREE.Vector3());
+    setDebugInfo(`Raio-X: ${totalMeshCount} Malhas, ${primaryCount > 0 ? `${primaryCount} Objetos Principais` : `${foundNodes.length} Peças`}. Tamanho: ${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`);
+
+    setMeshes(foundNodes);
+    if (primaryCount > 0) {
+      setActiveTab('primary');
+    } else {
+      setActiveTab('all');
+    }
+  };
+
+  const handleSplitDisconnectedMeshes = () => {
+    if (!sceneRef.current) return;
+
+    let rootModel: THREE.Object3D | null = null;
+    sceneRef.current.traverse((node) => {
+      if (node.userData?.isRootGltf) rootModel = node;
+    });
+    if (!rootModel) return;
+
+    let totalSplits = 0;
+    const meshesToSplit: THREE.Mesh[] = [];
+
+    (rootModel as THREE.Object3D).traverse((node) => {
+      if ((node as THREE.Mesh).isMesh) {
+        meshesToSplit.push(node as THREE.Mesh);
+      }
+    });
+
+    meshesToSplit.forEach((mesh) => {
+      const geo = mesh.geometry;
+      if (!geo || !geo.attributes.position) return;
+
+      const posAttr = geo.attributes.position;
+      const normAttr = geo.attributes.normal;
+      const uvAttr = geo.attributes.uv;
+      const vertCount = posAttr.count;
+
+      let indices: Uint32Array | Uint16Array;
+      if (geo.index) {
+        indices = geo.index.array as any;
+      } else {
+        indices = new Uint32Array(vertCount);
+        for (let i = 0; i < vertCount; i++) indices[i] = i;
+      }
+
+      if (indices.length < 3) return;
+
+      const parent = new Int32Array(vertCount);
+      for (let i = 0; i < vertCount; i++) parent[i] = i;
+      function find(i: number) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; }
+      function union(i: number, j: number) { const ri = find(i), rj = find(j); if (ri !== rj) parent[ri] = rj; }
+
+      for (let i = 0; i < indices.length; i += 3) {
+        union(indices[i], indices[i + 1]);
+        union(indices[i + 1], indices[i + 2]);
+      }
+
+      const posMap = new Map<string, number>();
+      for (let i = 0; i < vertCount; i++) {
+        const key = `${posAttr.getX(i).toFixed(3)}_${posAttr.getY(i).toFixed(3)}_${posAttr.getZ(i).toFixed(3)}`;
+        if (posMap.has(key)) {
+          union(i, posMap.get(key)!);
+        } else {
+          posMap.set(key, i);
+        }
+      }
+
+      const islandsMap = new Map<number, number[]>();
+      for (let i = 0; i < indices.length; i += 3) {
+        const root = find(indices[i]);
+        if (!islandsMap.has(root)) islandsMap.set(root, []);
+        islandsMap.get(root)!.push(indices[i], indices[i + 1], indices[i + 2]);
+      }
+
+      if (islandsMap.size <= 1) return;
+
+      const islandClusters = Array.from(islandsMap.values());
+      islandClusters.sort((a, b) => {
+        let minA = Infinity, minB = Infinity;
+        for (const idx of a) minA = Math.min(minA, posAttr.getX(idx));
+        for (const idx of b) minB = Math.min(minB, posAttr.getX(idx));
+        return minA - minB;
+      });
+
+      const parentGroup = new THREE.Group();
+      parentGroup.name = mesh.name ? `${mesh.name}_Grupo` : 'Grupo_Separado';
+      parentGroup.position.copy(mesh.position);
+      parentGroup.rotation.copy(mesh.rotation);
+      parentGroup.scale.copy(mesh.scale);
+
+      islandClusters.forEach((clusterIndices, clusterIdx) => {
+        const newGeo = new THREE.BufferGeometry();
+        const oldToNew = new Map<number, number>();
+        const newPos: number[] = [];
+        const newNorm: number[] = [];
+        const newUv: number[] = [];
+        const newIdx: number[] = [];
+
+        for (let k = 0; k < clusterIndices.length; k++) {
+          const oldV = clusterIndices[k];
+          if (!oldToNew.has(oldV)) {
+            const nIdx = newPos.length / 3;
+            oldToNew.set(oldV, nIdx);
+            newPos.push(posAttr.getX(oldV), posAttr.getY(oldV), posAttr.getZ(oldV));
+            if (normAttr) newNorm.push(normAttr.getX(oldV), normAttr.getY(oldV), normAttr.getZ(oldV));
+            if (uvAttr) newUv.push(uvAttr.getX(oldV), uvAttr.getY(oldV));
+          }
+          newIdx.push(oldToNew.get(oldV)!);
+        }
+
+        newGeo.setAttribute('position', new THREE.Float32BufferAttribute(newPos, 3));
+        if (normAttr) newGeo.setAttribute('normal', new THREE.Float32BufferAttribute(newNorm, 3));
+        if (uvAttr) newGeo.setAttribute('uv', new THREE.Float32BufferAttribute(newUv, 2));
+        newGeo.setIndex(newIdx);
+
+        const pieceName = `Espada_${clusterIdx + 1}`;
+        const newMesh = new THREE.Mesh(newGeo, mesh.material);
+        newMesh.name = pieceName;
+        parentGroup.add(newMesh);
+        originalMaterialsRef.current.set(newMesh, mesh.material);
+      });
+
+      originalMaterialsRef.current.delete(mesh);
+      mesh.parent?.add(parentGroup);
+      mesh.removeFromParent();
+      totalSplits += islandClusters.length;
+    });
+
+    if (totalSplits === 0) {
+      alert('Esta malha já é uma geometria contínua única (não foram encontradas peças desconectadas no espaço 3D).');
+      return;
+    }
+
+    buildMeshTree(rootModel);
+    alert(`✂️ Sucesso! O modelo foi analisado e separado em ${totalSplits} peças independentes!\n\nAgora você pode clicar e selecionar cada uma individualmente.`);
+  };
   
   const handleDeleteMesh = () => {
     if (selectedNames.size === 0 || !sceneRef.current) return;
@@ -482,97 +713,8 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
             }
           });
 
-          // Descend through root wrapper nodes that don't represent distinct model choices
-          let branchRoot: THREE.Object3D = gltf.scene;
-          while (
-            branchRoot.children.length === 1 &&
-            (branchRoot === gltf.scene || ROOT_WRAPPERS.has(branchRoot.name.toLowerCase()))
-          ) {
-            branchRoot = branchRoot.children[0];
-          }
-
-          // Top candidates are direct children of the branching point (e.g. the 7 swords)
-          let topCandidates: THREE.Object3D[] = [];
-          if (ROOT_WRAPPERS.has(branchRoot.name.toLowerCase()) || branchRoot === gltf.scene) {
-            topCandidates = branchRoot.children.filter(c => countDescendants(c) > 0);
-          } else {
-            topCandidates = branchRoot.children.length > 0
-              ? branchRoot.children.filter(c => countDescendants(c) > 0)
-              : [branchRoot];
-          }
-
-          const primarySet = new Set<string>();
-          topCandidates.forEach(c => {
-            if (c.name) primarySet.add(c.name);
-          });
-          primaryNamesRef.current = primarySet;
-
-          const foundNodes: MeshNodeInfo[] = [];
-          const seenNames = new Set<string>();
-
-          // 1. Add primary nodes first (e.g. the 7 distinct swords)
-          topCandidates.forEach((node) => {
-            if (!node.name) return;
-            const mc = countDescendants(node);
-            const isGrp = (node.children && node.children.length > 0 && !(node as THREE.Mesh).isMesh);
-            seenNames.add(node.name);
-            foundNodes.push({
-              name: node.name,
-              isGroup: isGrp,
-              isPrimary: true,
-              meshCount: (node as THREE.Mesh).isMesh ? 1 : mc,
-              friendlyName: getFriendlyName(node.name)
-            });
-          });
-
-          // 2. Add all other nodes (subgroups and leaf meshes)
-          let unnamedMeshCount = 0;
-          let unnamedGroupCount = 0;
-
-          gltf.scene.traverse((node) => {
-            if (node === gltf.scene) return;
-            const lowerName = (node.name || '').toLowerCase();
-            if (ROOT_WRAPPERS.has(lowerName)) return;
-
-            const isMesh = (node as THREE.Mesh).isMesh === true;
-            const hasChildren = node.children && node.children.length > 0;
-
-            if (!node.name) {
-              if (isMesh) {
-                unnamedMeshCount++;
-                node.name = `Mesh_${unnamedMeshCount}`;
-              } else if (hasChildren) {
-                unnamedGroupCount++;
-                node.name = `Group_${unnamedGroupCount}`;
-              }
-            }
-
-            if (seenNames.has(node.name)) return;
-
-            const mc = isMesh ? 1 : countDescendants(node);
-            if (mc === 0) return; // ignore empty dummies without geometry
-
-            seenNames.add(node.name);
-            foundNodes.push({
-              name: node.name,
-              isGroup: !isMesh && hasChildren,
-              isPrimary: false,
-              meshCount: mc,
-              friendlyName: getFriendlyName(node.name),
-              parentName: node.parent?.name && !ROOT_WRAPPERS.has(node.parent.name.toLowerCase()) ? node.parent.name : undefined
-            });
-          });
-
-          const totalMeshCount = Array.from(originalMaterialsRef.current.keys()).length;
-          const primaryCount = foundNodes.filter(n => n.isPrimary).length;
-          setDebugInfo(`Raio-X: ${totalMeshCount} Malhas, ${primaryCount > 0 ? `${primaryCount} Objetos Principais` : `${foundNodes.length} Peças`}. Tamanho: ${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`);
-
-          setMeshes(foundNodes);
-          if (primaryCount > 0) {
-            setActiveTab('primary');
-          } else {
-            setActiveTab('all');
-          }
+          // Build mesh tree
+          buildMeshTree(gltf.scene);
           setLoading(false);
         } catch (err: any) {
           console.error("Erro interno ao processar GLB:", err);
@@ -934,6 +1076,15 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
               <div style={{ marginTop: '1rem', padding: '0.85rem', borderTop: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '0.5rem', borderRadius: '8px' }}>
                 <h5 style={{ margin: '0 0 0.25rem', color: '#93c5fd', fontSize: '0.75rem', textTransform: 'uppercase' }}>Reparo 3D (Opcional)</h5>
                 
+                <button 
+                  type="button"
+                  onClick={handleSplitDisconnectedMeshes}
+                  style={{ padding: '0.55rem', background: 'rgba(168, 85, 247, 0.2)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.5)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  title="Detecta e separa automaticamente modelos que têm vários objetos desconectados no espaço 3D fundidos em uma única malha (como pacotes de espadas do Sketchfab)"
+                >
+                  ✂️ Separar Peças Fundidas em Ilhas
+                </button>
+
                 <button 
                   type="button"
                   onClick={handleDeleteMesh}
