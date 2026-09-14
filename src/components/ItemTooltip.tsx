@@ -49,6 +49,8 @@ export interface TooltipItemData {
   gameEffect?: string;
   hpCooldownReductionMinutes?: number;
   damageEffect?: string;
+  damageEffectMin?: number;
+  damageEffectMax?: number;
   fixedAttributes?: any[];
   adds?: any[];
   unlockedSkinId?: string;
@@ -78,6 +80,8 @@ export function normalizeItemForTooltip(item: any): TooltipItemData {
     gameEffect: item.gameEffect,
     hpCooldownReductionMinutes: item.hpCooldownReductionMinutes,
     damageEffect: item.damageEffect,
+    damageEffectMin: item.damageEffectMin ?? (item.data ? item.data.damageEffectMin : undefined),
+    damageEffectMax: item.damageEffectMax ?? (item.data ? item.data.damageEffectMax : undefined),
     fixedAttributes: item.fixedAttributes || (item.data ? item.data.fixedAttributes : []),
     adds: item.adds || (item.data ? item.data.adds : []),
     unlockedSkinId: item.unlockedSkinId || (item.data ? item.data.unlockedSkinId : undefined),
@@ -190,11 +194,15 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
           {item.damageEffect && item.damageEffect !== 'none' && (() => {
             const eff = DAMAGE_EFFECTS.find(d => d.id === item.damageEffect);
             if (!eff) return null;
+            const minVal = item.damageEffectMin ?? 1;
+            const maxVal = item.damageEffectMax ?? 25;
             return (
               <div>
                 <strong style={{ color: '#fb7185' }}>{eff.label}</strong>
                 {eff.desc && <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{eff.desc}</div>}
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>(a força/chance é sorteada no momento da compra)</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                  (força inicial: {minVal}% • aprimorável até {maxVal}%)
+                </div>
               </div>
             );
           })()}
@@ -209,7 +217,8 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
                   
                   let valueStr = '';
                   if (isEffectAddType(add.type)) {
-                    valueStr = `${add.value}% de chance`;
+                    const maxSuffix = item.damageEffectMax ? ` (máx ${item.damageEffectMax}%)` : '';
+                    valueStr = `${add.value}% de chance${maxSuffix}`;
                   } else if (add.type === 'damage') {
                     const dmgVal = effV !== null ? Math.round(effV) : Math.round(add.value || 0);
                     const sign = dmgVal >= 0 ? '+' : '';
@@ -242,7 +251,8 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
               
               let valueStr = '';
               if (isEffectAddType(add.type)) {
-                valueStr = `${add.value}% de chance`;
+                const maxSuffix = item.damageEffectMax ? ` (máx ${item.damageEffectMax}%)` : '';
+                valueStr = `${add.value}% de chance${maxSuffix}`;
               } else if (add.type === 'damage') {
                 const dmgVal = effV !== null ? Math.round(effV) : Math.round(add.value || 0);
                 const sign = dmgVal >= 0 ? '+' : '';

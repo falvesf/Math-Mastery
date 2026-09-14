@@ -88,6 +88,8 @@ export interface StoreItem {
   importedFromId?: string;
   extractMeshName?: string;
   damageEffect?: string; // Efeito especial de dano em batalha (burn, freeze, impact, electric, poison, none)
+  damageEffectMin?: number; // Força mínima do efeito especial (%) (ex: 1%)
+  damageEffectMax?: number; // Força máxima do efeito especial (%) (ex: 25%)
   battleSoundUrl?: string;
   criticalSoundUrl?: string; // Som tocado em acertos críticos de armas
   consumableAnimPreset?: string; // Preset visual do consumível (aura_rosy, aura_gold, eat_food, tea_strike, etc.)
@@ -308,7 +310,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     { key: 'type', label: 'Tipo de item (consumível, equipável, outro)', hint: 'type', keys: ['type'] },
     { key: 'price', label: 'Preço', hint: 'cost', keys: ['cost'] },
     { key: 'effect', label: 'Efeito do item (uso em missão, buffs, cooldown, refino, pergaminho)', hint: 'gameEffect, usableInQuest, buffs, quebra e fundição, pergaminho', keys: ['gameEffect', 'usableInQuest', 'hpCooldownReductionMinutes', 'buffDurationHours', 'buffDurationDays', 'unlockedSkinId', 'scrollChanceBonus', 'breakTargetItemId', 'breakMinQty', 'breakMaxQty', 'breakCost', 'breakSuccessChance', 'fuseTargetItemId', 'fuseRequiredQty', 'fuseResultQty', 'fuseCost', 'fuseSuccessChance'] },
-    { key: 'stats', label: 'Atributos / Poder (ataque, defesa, dano, adds)', hint: 'fixedAttributes, adds, baseAttribute, damageEffect', keys: ['baseAttributeType', 'baseAttributeValue', 'fixedAttributes', 'adds', 'itemCategory', 'damageEffect'] },
+    { key: 'stats', label: 'Atributos / Poder (ataque, defesa, dano, adds)', hint: 'fixedAttributes, adds, baseAttribute, damageEffect', keys: ['baseAttributeType', 'baseAttributeValue', 'fixedAttributes', 'adds', 'itemCategory', 'damageEffect', 'damageEffectMin', 'damageEffectMax'] },
     { key: 'rank', label: 'Patente mínima exigida', hint: 'minRankRequired', keys: ['minRankRequired'] },
     { key: 'sound', label: 'Sons de Batalha (Ataque normal e Crítico)', hint: 'battleSoundUrl, criticalSoundUrl', keys: ['battleSoundUrl', 'criticalSoundUrl'] },
     { key: 'model', label: 'Modelo 2D/3D e Malha (Mesh)', hint: 'gameModelUrl, textura, cabeça Minecraft, paper doll 2D, extractMeshName', keys: ['gameModelUrl', 'modelTextureUrl', 'minecraftHeadValue', 'gameImage2dUrl', 'backColor', 'extractMeshName'] },
@@ -741,6 +743,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
       avatarPart: item.avatarPart,
       itemCategory: item.itemCategory,
       damageEffect: item.damageEffect || 'none',
+      damageEffectMin: item.damageEffectMin ?? null,
+      damageEffectMax: item.damageEffectMax ?? null,
       baseAttributeType: item.baseAttributeType,
       baseAttributeValue: item.baseAttributeValue,
       fixedAttributes: item.fixedAttributes,
@@ -920,6 +924,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
 
     const itemData = {
       ...formData,
+      damageEffectMin: formData.damageEffect && formData.damageEffect !== 'none' && formData.damageEffectMin !== undefined && formData.damageEffectMin !== null ? Number(formData.damageEffectMin) : undefined,
+      damageEffectMax: formData.damageEffect && formData.damageEffect !== 'none' && formData.damageEffectMax !== undefined && formData.damageEffectMax !== null ? Number(formData.damageEffectMax) : undefined,
       usableInQuest: isBattleEffect ? true : (formData.usableInQuest || false),
       cost: Number(formData.cost),
       minRankRequired: String(formData.minRankRequired || ''),
@@ -980,6 +986,8 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
         const newData = { ...currentData,
           itemCategory: itemData.itemCategory || 'none',
           damageEffect: itemData.damageEffect || 'none',
+          damageEffectMin: itemData.damageEffectMin ?? null,
+          damageEffectMax: itemData.damageEffectMax ?? null,
           baseAttributeType: itemData.baseAttributeType || 'none',
           baseAttributeValue: itemData.baseAttributeValue || 0,
           itemTitle: itemData.title,
@@ -1210,7 +1218,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                 </button>
               )}
               {canItems('items', 'create') && (
-                <button className="login-btn" onClick={() => { setHoveredItem(null); setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0 }); setIsEditing(true); }} style={{ padding: '0.45rem 0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }} title="Novo Item">
+                <button className="login-btn" onClick={() => { setHoveredItem(null); setEditingId(null); setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', minSalePrice: 0, damageEffect: 'none', damageEffectMin: 1, damageEffectMax: 25 }); setIsEditing(true); }} style={{ padding: '0.45rem 0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }} title="Novo Item">
                   <Plus size={18} /> <span className="hide-on-mobile">Novo Item</span>
                 </button>
               )}
@@ -1939,14 +1947,61 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   </div>
 
                   {(formData.itemCategory === 'attack' || ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(formData.avatarPart || '')) && (
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Efeito Especial de Dano (batalha)</label>
-                      <select value={formData.damageEffect || 'none'} onChange={e => setFormData({...formData, damageEffect: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
-                        {DAMAGE_EFFECTS.map(ef => <option key={ef.id} value={ef.id}>{ef.label}</option>)}
-                      </select>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>
-                        {DAMAGE_EFFECTS.find(ef => ef.id === (formData.damageEffect || 'none'))?.desc}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Efeito Especial de Dano (batalha)</label>
+                        <select value={formData.damageEffect || 'none'} onChange={e => {
+                          const val = e.target.value;
+                          setFormData({
+                            ...formData,
+                            damageEffect: val as any,
+                            damageEffectMin: val !== 'none' ? (formData.damageEffectMin ?? 1) : undefined,
+                            damageEffectMax: val !== 'none' ? (formData.damageEffectMax ?? 25) : undefined,
+                          });
+                        }} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                          {DAMAGE_EFFECTS.map(ef => <option key={ef.id} value={ef.id}>{ef.label}</option>)}
+                        </select>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>
+                          {DAMAGE_EFFECTS.find(ef => ef.id === (formData.damageEffect || 'none'))?.desc}
+                        </div>
                       </div>
+
+                      {formData.damageEffect && formData.damageEffect !== 'none' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', background: 'rgba(255, 255, 255, 0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.35rem', color: '#fbbf24', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                              Força Mínima do Efeito (%)
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={formData.damageEffectMax || 100}
+                              value={formData.damageEffectMin ?? 1}
+                              onChange={e => setFormData({ ...formData, damageEffectMin: Math.max(1, parseInt(e.target.value) || 1) })}
+                              className="login-input"
+                              style={{ width: '100%', padding: '0.5rem' }}
+                              placeholder="Ex: 1"
+                            />
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Valor inicial ao obter a arma</span>
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.35rem', color: '#fbbf24', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                              Força Máxima do Efeito (%)
+                            </label>
+                            <input
+                              type="number"
+                              min={formData.damageEffectMin || 1}
+                              max={100}
+                              value={formData.damageEffectMax ?? 25}
+                              onChange={e => setFormData({ ...formData, damageEffectMax: Math.max(formData.damageEffectMin || 1, parseInt(e.target.value) || 25) })}
+                              className="login-input"
+                              style={{ width: '100%', padding: '0.5rem' }}
+                              placeholder="Ex: 25"
+                            />
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Teto máximo no aprimoramento</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                   

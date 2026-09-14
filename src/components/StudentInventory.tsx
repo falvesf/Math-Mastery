@@ -17,7 +17,7 @@ import { RANKS, getRankForXp, getMaxAddsLimit } from '../lib/ranks';
 import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig, isStackableItemType } from '../lib/gacha';
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
 import { invalidateEquippedItems } from '../lib/equippedItems';
-import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType } from '../lib/damageEffects';
+import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, enhanceEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType, type EnhanceEffectResult } from '../lib/damageEffects';
 import { forgeItemName } from '../lib/forge';
 import { DROPPED_STUDENT_ID } from '../lib/utils';
 interface UserItem {
@@ -47,6 +47,8 @@ interface UserItem {
   itemDescription?: string;
   rarity?: string;
   damageEffect?: string;
+  damageEffectMin?: number;
+  damageEffectMax?: number;
   minecraftHeadValue?: string;
   unlockedSkinId?: string;
   buffDurationDays?: number;
@@ -255,7 +257,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       i.damageEffect && i.damageEffect !== 'none' && !(i.adds || []).some((a: any) => isEffectAddType(a.type))
     );
     toBackfill.forEach(i => {
-      const newAdds = applyEffectAdd(i.adds, i.damageEffect);
+      const newAdds = applyEffectAdd(i.adds, i.damageEffect, i.damageEffectMin, i.damageEffectMax);
       if (newAdds.length !== (i.adds || []).length) {
         const { id, docIds, count, ...rest } = i as any;
         supabase.from('user_items').update({ data: { ...rest, adds: newAdds } }).eq('id', i.id).then(() => {
@@ -726,15 +728,31 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const { data: currentData } = await supabase.from('user_items').select('data').eq('id', targetDocId).single();
       const freshAdds = toAddsArray(currentData?.data?.adds);
       const effectAdd = freshAdds.find((a: any) => isEffectAddType(a.type));
-      // Se o item tem um ADD de EFEITO, o pergaminho AUMENTA a chance dele (nunca remove).
+      // Se o item tem um ADD de EFEITO, o pergaminho AUMENTA a chance dele respeitando o range [min, max] da arma (90% sucesso, 10% falha)
       if (effectAdd) {
         await consumeItemQuantity(dragItem.itemId, 1, dragItem.id);
-        const newChance = Math.min(50, (Number(effectAdd.value) || 0) + 8 + Math.floor(Math.random() * 5));
+        const { data: storeItemSnap } = await supabase.from('store_items').select('data').eq('id', targetItem.itemId).single();
+        const storeItemData = storeItemSnap?.data as any;
+        const minChance = Number(storeItemData?.damageEffectMin ?? currentData?.data?.damageEffectMin ?? targetItem.damageEffectMin ?? 1);
+        const maxChance = Number(storeItemData?.damageEffectMax ?? currentData?.data?.damageEffectMax ?? targetItem.damageEffectMax ?? 25);
+
+        const res = enhanceEffectAdd(effectAdd.value, minChance, maxChance);
+        const newChance = res.newValue;
+
         if (currentData) {
           await supabase.from('user_items').update({ data: { ...(currentData.data as any), adds: freshAdds.map((a: any) => a.type === effectAdd.type ? { ...a, value: newChance } : a) } }).eq('id', targetDocId);
         }
         invalidateEquippedItems(userData.uid);
-        showToast(`✨ O pergaminho aprimorou o efeito "${EFFECT_ADD_LABELS[effectAdd.type as EffectAddType].label}" para ${newChance}% de chance!`, 'success');
+        const effectName = EFFECT_ADD_LABELS[effectAdd.type as EffectAddType]?.label || effectAdd.type;
+        if (res.isSuccess) {
+          if (res.delta > 0) {
+            showToast(`✨ SUCESSO! O efeito "${effectName}" foi aprimorado para ${newChance}% de chance (+${res.delta}%)! [Máx: ${res.max}%]`, 'success');
+          } else {
+            showToast(`✨ SUCESSO! O efeito "${effectName}" já está na força máxima permitida de ${res.max}%!`, 'success');
+          }
+        } else {
+          showToast(`💥 FALHA no aprimoramento (10% de chance)! O efeito "${effectName}" perdeu ${res.delta}% de força e caiu para ${newChance}%. [Mín: ${res.min}%]`, 'error');
+        }
         fetchInventory();
         return;
       }
@@ -806,10 +824,18 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return addsA.every((a, i) => a.type === addsB[i].type && a.value === addsB[i].value);
       };
 
-      // 1. O add de EFEITO nunca é rerolado: preserva ele e AUMENTA sua chance (Pergaminho do Aprimoramento)
+      // 1. O add de EFEITO: preserva ele e aprimora respeitando o range [min, max] da arma (90% sucesso, 10% falha)
+      const minChance = Number(storeItemData?.damageEffectMin ?? currentData?.data?.damageEffectMin ?? targetItem.damageEffectMin ?? 1);
+      const maxChance = Number(storeItemData?.damageEffectMax ?? currentData?.data?.damageEffectMax ?? targetItem.damageEffectMax ?? 25);
+
+      let effectEnhanceResult: EnhanceEffectResult | null = null;
       const effectAdds = targetAdds
         .filter((a: any) => isEffectAddType(a.type))
-        .map((a: any) => ({ ...a, value: Math.min(50, (Number(a.value) || 0) + 8 + Math.floor(Math.random() * 5)) }));
+        .map((a: any) => {
+          const res = enhanceEffectAdd(a.value, minChance, maxChance);
+          effectEnhanceResult = res;
+          return { ...a, value: res.newValue };
+        });
 
       // 2. Atributo DANO:
       // Se for modo 'forge', o pergaminho NÃO altera nada (preserva intacto).
@@ -870,9 +896,19 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       if (rolledDamageValue !== null) {
         const sign = (rolledDamageValue as number) >= 0 ? '+' : '';
         showToast(`💥 SUCESSO! O Pergaminho do Aprimoramento definiu o Dano em ${sign}${rolledDamageValue}%!`, 'success');
-      } else if (effectAdds.length > 0) {
+      } else if (effectEnhanceResult) {
         const ef = effectAdds[0];
-        showToast(`SUCESSO! Atributos renovados. ✨ Efeito "${EFFECT_ADD_LABELS[ef.type as EffectAddType].label}" agora tem ${ef.value}% de chance!`, 'success');
+        const res = effectEnhanceResult as EnhanceEffectResult;
+        const effectName = EFFECT_ADD_LABELS[ef.type as EffectAddType]?.label || ef.type;
+        if (res.isSuccess) {
+          if (res.delta > 0) {
+            showToast(`✨ SUCESSO! O efeito "${effectName}" foi aprimorado para ${res.newValue}% de chance (+${res.delta}%)! [Máx: ${res.max}%]`, 'success');
+          } else {
+            showToast(`✨ SUCESSO! O efeito "${effectName}" já está na força máxima permitida de ${res.max}%!`, 'success');
+          }
+        } else {
+          showToast(`💥 FALHA no aprimoramento (10% de chance)! O efeito "${effectName}" perdeu ${res.delta}% de força e caiu para ${res.newValue}%. [Mín: ${res.min}%]`, 'error');
+        }
       } else {
         showToast("SUCESSO! O equipamento brilhou e seus atributos foram completamente renovados!", 'success');
       }

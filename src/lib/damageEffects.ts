@@ -33,9 +33,11 @@ export function isEffectAddType(t?: string): t is EffectAddType {
   return !!t && t in EFFECT_ADD_LABELS;
 }
 
-/** Chance do efeito (2% a 50%), sorteada na compra. */
-export function rollEffectChance(): number {
-  return 2 + Math.floor(Math.random() * 49);
+/** Chance do efeito (mínimo a máximo), configurável por arma. */
+export function rollEffectChance(min = 1, max = 25): number {
+  const safeMin = Math.max(1, Number(min) || 1);
+  const safeMax = Math.max(safeMin, Number(max) || 25);
+  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
 }
 
 export function getDamageEffectLabel(id?: string): string {
@@ -46,15 +48,65 @@ export function getDamageEffectLabel(id?: string): string {
 // Nº de acertos para congelar com o efeito de gelo
 export const FREEZE_HITS_TO_FREEZE = 3;
 
+/**
+ * Resultado do aprimoramento de efeito via pergaminho.
+ */
+export interface EnhanceEffectResult {
+  newValue: number;
+  isSuccess: boolean;
+  delta: number;
+  oldValue: number;
+  min: number;
+  max: number;
+}
+
+/**
+ * Aprimora a força do atributo de efeito de dano especial.
+ * - Chance de sucesso: 90% (ganha força aleatoriamente até o máximo da arma).
+ * - Chance de falha: 10% (perde força aleatoriamente até o mínimo da arma).
+ * - Respeita rigorosamente o range [minChance, maxChance] configurado na arma.
+ */
+export function enhanceEffectAdd(
+  currentValue: number,
+  minChance: number = 1,
+  maxChance: number = 25
+): EnhanceEffectResult {
+  const min = Math.max(1, Number(minChance) || 1);
+  const max = Math.max(min, Number(maxChance) || 25);
+  const oldVal = Math.max(min, Math.min(max, Number(currentValue) || min));
+
+  // 90% de chance de sucesso, 10% de chance de falha
+  const isSuccess = Math.random() < 0.90;
+  const rangeSpan = Math.max(1, max - min);
+
+  if (isSuccess) {
+    const maxGain = rangeSpan <= 10 ? 1 : (rangeSpan <= 25 ? 3 : 5);
+    const gain = Math.max(1, Math.floor(Math.random() * maxGain) + 1);
+    const newValue = Math.min(max, oldVal + gain);
+    const delta = newValue - oldVal;
+    return { newValue, isSuccess: true, delta, oldValue: oldVal, min, max };
+  } else {
+    const maxLoss = rangeSpan <= 10 ? 1 : (rangeSpan <= 25 ? 2 : 4);
+    const loss = Math.max(1, Math.floor(Math.random() * maxLoss) + 1);
+    const newValue = Math.max(min, oldVal - loss);
+    const delta = oldVal - newValue;
+    return { newValue, isSuccess: false, delta, oldValue: oldVal, min, max };
+  }
+}
+
 /** Adiciona o add de efeito (se ainda não existir) aos adds de um item. Retorna os novos adds.
+ *  O valor inicial começa no mínimo configurado na arma (ex: 1%), ou rollEffectChance.
  *  O add de efeito fica SEMPRE no TOPO (é o mais importante da essência da arma). */
-export function applyEffectAdd(adds: any, damageEffect: string): any[] {
+export function applyEffectAdd(adds: any, damageEffect: string, min?: number, max?: number): any[] {
   if (!damageEffect || damageEffect === 'none') return toAddsArray(adds);
   if (!isEffectAddType(damageEffect)) return toAddsArray(adds);
   const arr = toAddsArray(adds);
   const existing = arr.find((a: any) => a.type === damageEffect);
   if (existing) return orderEffectFirst(arr);
-  return [{ type: damageEffect, value: rollEffectChance() }, ...arr];
+
+  const safeMin = min !== undefined && min !== null && !isNaN(Number(min)) ? Number(min) : 1;
+  const initialValue = Math.max(1, safeMin);
+  return [{ type: damageEffect, value: initialValue }, ...arr];
 }
 
 /** Garante que os adds de efeito fiquem no topo (ordena os existentes). */

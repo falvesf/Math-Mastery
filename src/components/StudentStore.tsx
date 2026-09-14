@@ -385,13 +385,15 @@ export default function StudentStore({ userData }: { userData: UserData }) {
               modelTextureUrl: item.modelTextureUrl || '',
               minecraftHeadValue: item.minecraftHeadValue || '',
               modelTransforms: item.modelTransforms || null,
-              adds: [],
+              adds: applyEffectAdd([], (item as any).damageEffect, (item as any).damageEffectMin, (item as any).damageEffectMax),
               minSalePrice: item.minSalePrice || 0,
               rarity: item.rarity || 'common',
               unlockedSkinId: item.unlockedSkinId || '',
               buffDurationDays: item.buffDurationDays || 7,
               backColor: item.backColor || '',
               damageEffect: (item as any).damageEffect || 'none',
+              damageEffectMin: (item as any).damageEffectMin ?? null,
+              damageEffectMax: (item as any).damageEffectMax ?? null,
               forgeConfig: (item as any).forgeConfig || null,
               scrollChanceBonus: (item as any).gameEffect === 'blacksmith_scroll'
                 ? ((item as any).scrollChanceBonus ?? 30)
@@ -561,13 +563,15 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             modelTextureUrl: item.modelTextureUrl || '',
             minecraftHeadValue: item.minecraftHeadValue || '',
             modelTransforms: item.modelTransforms || null,
-            adds: applyEffectAdd(finalAdds, (item as any).damageEffect),
+            adds: applyEffectAdd(finalAdds, (item as any).damageEffect, (item as any).damageEffectMin, (item as any).damageEffectMax),
             minSalePrice: item.minSalePrice || 0,
             rarity: item.rarity || 'common',
             unlockedSkinId: item.unlockedSkinId || '',
             buffDurationDays: item.buffDurationDays || 7,
             backColor: item.backColor || '',
             damageEffect: (item as any).damageEffect || 'none',
+            damageEffectMin: (item as any).damageEffectMin ?? null,
+            damageEffectMax: (item as any).damageEffectMax ?? null,
             forgeConfig: (item as any).forgeConfig || null,
             scrollChanceBonus: (item as any).gameEffect === 'blacksmith_scroll'
               ? ((item as any).scrollChanceBonus ?? 30)
