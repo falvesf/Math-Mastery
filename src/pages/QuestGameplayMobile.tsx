@@ -99,7 +99,7 @@ export default function QuestGameplay() {
   const { tenantId, isSuperAdmin } = useTenant();
   const { can: canArenaDebug } = usePermissions();
   const navigate = useNavigate();
-  const { showAlert, showConfirm, showToast } = useDialog();
+  const { showConfirm, showToast } = useDialog();
 
   const [quest, setQuest] = useState<QuestDef | null>(null);
   const [gameState, setGameState] = useState<'loading' | 'intro' | 'playing' | 'result'>('loading');
