@@ -594,6 +594,29 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
       } else {
         showToast(isGift ? "Presente enviado com sucesso!" : `Compra realizada: ${quantityToBuy}x ${item.title}!`, 'success');
       }
+
+      if (isGift) {
+        try {
+          const prevPrefs = (userData as any)?.inventory_preferences || {};
+          if (!prevPrefs.firstGiftSent) {
+            const recipientStudent = students.find(s => s.uid === recipientId);
+            const newPrefs = {
+              ...prevPrefs,
+              firstGiftSent: {
+                recipientName: recipientStudent?.name || 'Colega',
+                itemTitle: item.title,
+                itemImageUrl: item.imageUrl || '',
+                timestamp: Date.now(),
+                dateStr: new Date().toISOString()
+              }
+            };
+            await supabase.from('users').update({ inventory_preferences: newPrefs }).eq('id', userData.uid);
+            (userData as any).inventory_preferences = newPrefs;
+          }
+        } catch (prefErr) {
+          console.error('Erro ao registrar primeiro presente enviado:', prefErr);
+        }
+      }
       
       setGiftingItemId(null);
       setSelectedGiftRecipient('');
@@ -675,6 +698,26 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
         } else {
           const sellerCoins = (sellerSnap.coins || 0) + totalNetValue;
           await supabase.from('users').update({ coins: sellerCoins }).eq('id', marketBuyModalItem.studentId);
+        }
+
+        // Registra conquista de primeira venda no Bazar para o vendedor
+        try {
+          const sellerPrefs = (sellerSnap as any).inventory_preferences || {};
+          if (!sellerPrefs.firstBazarSale) {
+            const updatedSellerPrefs = {
+              ...sellerPrefs,
+              firstBazarSale: {
+                itemTitle: (marketBuyModalItem as any).itemTitle || (marketBuyModalItem as any).title || 'Item',
+                itemImageUrl: (marketBuyModalItem as any).itemImageUrl || (marketBuyModalItem as any).imageUrl || '',
+                buyerName: userData.name || 'Outro Jogador',
+                timestamp: Date.now(),
+                dateStr: new Date().toISOString()
+              }
+            };
+            await supabase.from('users').update({ inventory_preferences: updatedSellerPrefs }).eq('id', marketBuyModalItem.studentId);
+          }
+        } catch (bazarSaleErr) {
+          console.error('Erro ao registrar primeira venda no bazar:', bazarSaleErr);
         }
       }
 

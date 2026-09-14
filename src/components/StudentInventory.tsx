@@ -1023,6 +1023,26 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       }
     }
     
+    // Registra conquista de primeiro item anunciado no Bazar se ainda não tiver
+    try {
+      const userPrefs = (userData as any)?.inventory_preferences || {};
+      if (!userPrefs.firstBazarListing) {
+        const updatedPrefs = {
+          ...userPrefs,
+          firstBazarListing: {
+            itemTitle: sellModalItem.itemTitle || (sellModalItem as any).title || 'Item',
+            itemImageUrl: sellModalItem.itemImageUrl || (sellModalItem as any).imageUrl || '',
+            timestamp: Date.now(),
+            dateStr: new Date().toISOString()
+          }
+        };
+        await supabase.from('users').update({ inventory_preferences: updatedPrefs }).eq('id', userData.uid);
+        (userData as any).inventory_preferences = updatedPrefs;
+      }
+    } catch (bazarListingErr) {
+      console.error('Erro ao registrar primeiro anúncio no bazar:', bazarListingErr);
+    }
+
     setSellModalItem(null);
     setSellPrice('');
     setSellQuantity(1);

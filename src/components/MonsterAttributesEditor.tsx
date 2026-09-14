@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import AudioBankPicker from './AudioBankPicker';
 import ItemSelectDropdown, { type ItemSelectOption } from './ItemSelectDropdown';
+import { generateMonsterBiographyWithAI } from '../lib/monsterAiBiography';
 
 // @ts-ignore
 void Volume2;
@@ -184,13 +185,16 @@ export interface MonsterAttributesConfig {
   };
   drops?: Array<{ itemId: string; dropChance: number }>;
   stats?: MonsterStatsConfig;
+  biography?: string;
 }
 
 interface MonsterAttributesEditorProps {
   value?: MonsterAttributesConfig;
   onChange: (value: MonsterAttributesConfig) => void;
   availableStoreItems?: any[];
-  tabMode?: 'sounds_and_quotes' | 'drops' | 'stats' | 'all';
+  tabMode?: 'sounds_and_quotes' | 'drops' | 'stats' | 'lore' | 'all';
+  monsterName?: string;
+  monsterAttacks?: any;
 }
 
 function getItemTypeLabel(item: any): string {
@@ -212,17 +216,22 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
   onChange,
   availableStoreItems = [],
   tabMode = 'all',
+  monsterName = '',
+  monsterAttacks,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'sounds' | 'quotes' | 'drops' | 'stats'>(
-    tabMode === 'drops' ? 'drops' : tabMode === 'stats' ? 'stats' : 'sounds'
+  const [activeSubTab, setActiveSubTab] = useState<'sounds' | 'quotes' | 'drops' | 'stats' | 'lore'>(
+    tabMode === 'drops' ? 'drops' : tabMode === 'stats' ? 'stats' : tabMode === 'lore' ? 'lore' : 'sounds'
   );
+  const [isGeneratingBio, setIsGeneratingBio] = useState(false);
 
   useEffect(() => {
     if (tabMode === 'drops') {
       setActiveSubTab('drops');
     } else if (tabMode === 'stats') {
       setActiveSubTab('stats');
-    } else if (tabMode === 'sounds_and_quotes' && (activeSubTab === 'drops' || activeSubTab === 'stats')) {
+    } else if (tabMode === 'lore') {
+      setActiveSubTab('lore');
+    } else if (tabMode === 'sounds_and_quotes' && (activeSubTab === 'drops' || activeSubTab === 'stats' || activeSubTab === 'lore')) {
       setActiveSubTab('sounds');
     }
   }, [tabMode]);
@@ -405,6 +414,22 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
               }}
             >
               🎁 Drops ({drops.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('lore')}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: activeSubTab === 'lore' ? 'bold' : 'normal',
+                background: activeSubTab === 'lore' ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
+                color: activeSubTab === 'lore' ? '#c084fc' : 'var(--text-secondary)',
+                border: activeSubTab === 'lore' ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid transparent',
+                cursor: 'pointer'
+              }}
+            >
+              📜 Biografia IA
             </button>
           </div>
         </div>
@@ -723,6 +748,85 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
           >
             <Plus size={14} /> Adicionar Item de Drop
           </button>
+        </div>
+      )}
+
+      {/* SUB-GUIA: BIOGRAFIA IA */}
+      {activeSubTab === 'lore' && (
+        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <h4 style={{ margin: 0, color: '#c084fc', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Sparkles size={16} /> Biografia & Alma da Criatura (Bestiário)
+              </h4>
+              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                Esta é a biografia canônica completa. No Bestiário do aluno, ela se revela dinamicamente conforme os alunos enfrentam o monstro!
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={isGeneratingBio}
+              onClick={async () => {
+                setIsGeneratingBio(true);
+                try {
+                  const dropItemTitles = (value.drops || []).map(d => {
+                    const found = availableStoreItems.find(it => it.id === d.itemId);
+                    return { itemId: d.itemId, itemTitle: found?.title || found?.name || 'Item' };
+                  });
+                  const bio = await generateMonsterBiographyWithAI({
+                    monsterName: monsterName || 'Monstro',
+                    gender: value.gender || 'male',
+                    level: value.stats?.level || 1,
+                    attacks: monsterAttacks,
+                    drops: dropItemTitles,
+                    quotes: value.quotes
+                  });
+                  updateField({ biography: bio });
+                } catch (e) {
+                  console.error('Erro ao gerar biografia:', e);
+                } finally {
+                  setIsGeneratingBio(false);
+                }
+              }}
+              style={{
+                padding: '0.45rem 0.85rem',
+                borderRadius: '8px',
+                background: isGeneratingBio ? 'rgba(168, 85, 247, 0.2)' : 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                color: 'white',
+                border: 'none',
+                cursor: isGeneratingBio ? 'wait' : 'pointer',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                boxShadow: '0 2px 8px rgba(168, 85, 247, 0.3)'
+              }}
+            >
+              <Sparkles size={15} />
+              {isGeneratingBio ? 'Criando com IA...' : '✨ Gerar com IA'}
+            </button>
+          </div>
+
+          <textarea
+            rows={8}
+            value={value.biography || ''}
+            onChange={e => updateField({ biography: e.target.value })}
+            placeholder="Escreva a biografia oficial do monstro ou clique em 'Gerar com IA' para que a IA crie a lenda com base nos ataques, sons e drops..."
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              borderRadius: '8px',
+              background: 'var(--bg-dark)',
+              border: '1px solid var(--border-glass)',
+              color: 'var(--text-primary)',
+              fontSize: '0.85rem',
+              lineHeight: 1.5,
+              resize: 'vertical',
+              boxSizing: 'border-box',
+              fontFamily: 'inherit'
+            }}
+          />
         </div>
       )}
     </div>

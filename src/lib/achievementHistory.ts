@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { fetchBlacksmithMilestones, recordForgeMilestone, recordTransmuteMilestone } from './blacksmithAchievements';
+import type { BestiaryMonsterData } from '../components/MonsterBestiaryModal';
 
 export interface PvpHistoryEntry {
   id: string;
@@ -15,7 +16,7 @@ export interface PvpHistoryEntry {
 
 export interface AchievementItem {
   id: string;
-  type: 'rank_up' | 'quest' | 'item' | 'teacher_xp' | 'pvp' | 'forge';
+  type: 'rank_up' | 'quest' | 'item' | 'teacher_xp' | 'pvp' | 'forge' | 'bestiary';
   title: string;
   subtitle?: string;
   imageUrl?: string;
@@ -27,14 +28,24 @@ export interface AchievementItem {
   pvpDetails?: PvpHistoryEntry[];
   /** Indica se é uma conquista de marco histórico único (ex: Primeira Vitória em PvP, Primeira Forja, etc.) */
   isSpecialMilestone?: boolean;
+  /** Dados completos para exibição no modal do Bestiário */
+  bestiaryData?: BestiaryMonsterData;
+  /** Quantidade agrupada para o log de atividades */
+  count?: number;
 }
 
 /**
- * Busca e unifica todo o Histórico de Conquistas de um aluno:
- * 1. Subidas de Patente (Alcançou a patente X - sem XP na frente)
- * 2. Missões Concluídas (Solo e Ao Vivo com o XP ganho)
- * 3. Itens e Equipamentos adquiridos / comprados na loja
- * 4. XP Atribuído ou Retirado pelo Professor
+ * Busca o Histórico de CONQUISTAS REAIS do aluno.
+ * Regras Estritas:
+ * 1. Patentes: subidas de patente válidas.
+ * 2. Missões: apenas a 1ª conclusão com sucesso e ganho real de XP (earned_xp > 0). Repetições e +0 XP descartados.
+ * 3. Bestiário: 1ª vitória contra cada monstro único, desbloqueando a criatura no Bestiário.
+ * 4. Drops de Monstros: 1º drop de cada item por monstros ("Em batalha contra X, obteve pela primeira vez Y").
+ * 5. Loja Oficial: apenas o 1º item adquirido na loja.
+ * 6. Bazar: 1º anúncio colocado e 1ª venda realizada.
+ * 7. Presentes: 1º presente recebido e 1º presente enviado.
+ * 8. Ferreiro: 1ª Forja com Sucesso, 1º Item +9, 1ª Transmutação.
+ * 9. PvP: 1ª Vitória em PvP.
  */
 export async function fetchStudentAchievementHistory(studentUid: string, _tenantId?: string): Promise<AchievementItem[]> {
   const achievements: AchievementItem[] = [];
@@ -43,19 +54,19 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
     // 1. Busca dados do usuário (XP, patentes, etc.)
     const { data: user } = await supabase.from('users').select('*').eq('id', studentUid).single();
 
-    // 2. Busca tentativas de missões (quest_attempts)
+    // 2. Busca tentativas de missões (quest_attempts) ordenadas cronologicamente
     const { data: attempts } = await supabase
       .from('quest_attempts')
       .select('*')
       .eq('student_id', studentUid)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: true });
 
-    // 3. Busca itens do inventário (user_items)
+    // 3. Busca itens do inventário (user_items) ordenados cronologicamente
     const { data: userItems } = await supabase
       .from('user_items')
       .select('*')
       .eq('student_id', studentUid)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: true });
 
     // 4. Busca lançamentos manuais do professor (xp_logs)
     const { data: teacherLogs } = await supabase
@@ -64,41 +75,39 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
       .eq('student_id', studentUid)
       .order('created_at', { ascending: false });
 
-    // Mapeamento dos títulos das missões
+    // 5. Mapeamento dos metadados das missões
     const questIds = Array.from(new Set((attempts || []).map((a: any) => a.quest_id).filter(Boolean)));
-    const questMap = new Map<string, { title: string; coverImageUrl?: string }>();
+    const questMap = new Map<string, any>();
 
     if (questIds.length > 0) {
-      // select('*') evita erro quando alguma coluna (ex: cover_image_url) não existe no banco
       const { data: questsData } = await supabase.from('quests').select('*').in('id', questIds);
       if (questsData) {
         questsData.forEach((q: any) => {
-          questMap.set(q.id, {
-            title: q.title || 'Missão',
-            coverImageUrl: q.cover_image_url || q.coverImageUrl || ''
-          });
+          questMap.set(q.id, q);
         });
       }
     }
 
-    // --- PROCESSAR MISSÕES CONCLUÍDAS ---
+    // --- 1. PROCESSAR MISSÕES CONCLUÍDAS (Apenas 1ª Conclusão com XP > 0) ---
+    const completedQuestsSet = new Set<string>();
     (attempts || []).forEach((att: any) => {
-      const qInfo = questMap.get(att.quest_id);
-      // Título real da missão (catálogo > dados da tentativa > genérico)
-      const questTitle = qInfo?.title || att.data?.questTitle || att.data?.title || att.quest_title || 'Missão';
+      const q = questMap.get(att.quest_id);
+      const questTitle = q?.title || att.data?.questTitle || att.data?.title || att.quest_title || 'Missão';
       const isCompleted = att.status === 'completed';
       const earnedXp = att.data?.earned_xp ?? att.data?.earnedXp ?? att.xp_earned ?? 0;
       const isLive = att.data?.isLiveQuest || att.data?.is_live_quest;
       const dateStr = att.created_at || att.completed_at || new Date().toISOString();
       const timeMs = new Date(dateStr).getTime();
 
-      if (isCompleted) {
+      // REGRA: Só registra se terminou com sucesso, ganhou XP (> 0) e é a primeira vez desta missão!
+      if (isCompleted && earnedXp > 0 && att.quest_id && !completedQuestsSet.has(att.quest_id)) {
+        completedQuestsSet.add(att.quest_id);
         achievements.push({
           id: `quest-${att.id || timeMs}`,
           type: 'quest',
           title: `Completou a Missão: ${questTitle}`,
           subtitle: isLive ? 'Modo Arena Ao Vivo' : 'Missão Individual',
-          imageUrl: qInfo?.coverImageUrl || '',
+          imageUrl: q?.coverImageUrl || '',
           badgeText: `+${earnedXp} XP`,
           badgeType: 'xp_positive',
           timestamp: timeMs,
@@ -107,35 +116,267 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
       }
     });
 
-    // --- PROCESSAR ITENS E EQUIPAMENTOS ---
+    // --- 2. BESTIÁRIO: 1ª VITÓRIA CONTRA CADA MONSTRO ÚNICO ---
+    const defeatedMonstersMap = new Map<string, {
+      firstTimeMs: number;
+      firstDateStr: string;
+      questTitle: string;
+      questObj: any;
+      wins: number;
+      defeats: number;
+    }>();
+
+    (attempts || []).forEach((att: any) => {
+      const q = questMap.get(att.quest_id);
+      const rawMonsterName = q?.monsterName || q?.data?.monsterName || (att.data?.monsterName);
+      if (!rawMonsterName || rawMonsterName.trim() === '') return;
+      const monsterName = rawMonsterName.trim();
+
+      const existing = defeatedMonstersMap.get(monsterName) || {
+        firstTimeMs: 0,
+        firstDateStr: '',
+        questTitle: q?.title || 'Missão',
+        questObj: q,
+        wins: 0,
+        defeats: 0
+      };
+
+      if (att.status === 'completed') {
+        existing.wins++;
+        const timeMs = new Date(att.created_at || att.completed_at || Date.now()).getTime();
+        if (existing.firstTimeMs === 0 || timeMs < existing.firstTimeMs) {
+          existing.firstTimeMs = timeMs;
+          existing.firstDateStr = att.created_at || att.completed_at || new Date().toISOString();
+          existing.questTitle = q?.title || 'Missão';
+          existing.questObj = q;
+        }
+      } else if (att.status === 'failed') {
+        existing.defeats++;
+      }
+
+      defeatedMonstersMap.set(monsterName, existing);
+    });
+
+    // Busca presets de monstros para enriquecer biografia e drops no Bestiário
+    let monsterPresets: any[] = [];
+    try {
+      const { data: mData } = await supabase.from('preset_skins').select('*').eq('type', 'monster');
+      if (mData) monsterPresets = mData;
+    } catch (_) {}
+
+    // Drops obtidos pelo aluno para cruzar com o Bestiário
+    const studentDroppedItemIds = new Set<string>();
     (userItems || []).forEach((itemDoc: any) => {
+      const gifted = itemDoc.data?.giftedBy || itemDoc.gifted_by || '';
+      if (gifted.includes('Drop de Monstro') && itemDoc.item_id) {
+        studentDroppedItemIds.add(itemDoc.item_id);
+      }
+    });
+
+    defeatedMonstersMap.forEach((data, monsterName) => {
+      if (data.firstTimeMs > 0) {
+        const preset = monsterPresets.find(p => p.name?.trim().toLowerCase() === monsterName.toLowerCase());
+        const presetConfig = preset?.config ? (typeof preset.config === 'string' ? JSON.parse(preset.config) : preset.config) : null;
+        
+        // Drops possíveis: do preset ou da quest
+        const possibleDrops: any[] = presetConfig?.drops || data.questObj?.monsterDrops || [];
+        const bio = presetConfig?.biography || data.questObj?.monsterBiography || '';
+
+        achievements.push({
+          id: `bestiary-${monsterName}`,
+          type: 'bestiary',
+          isSpecialMilestone: true,
+          title: `Derrotou pela primeira vez: ${monsterName}`,
+          subtitle: `Desbloqueou no Bestiário na missão "${data.questTitle}"`,
+          imageUrl: preset?.url || data.questObj?.coverImageUrl || '',
+          badgeText: '👾 Bestiário',
+          badgeType: 'rank',
+          timestamp: data.firstTimeMs,
+          rawDate: data.firstDateStr,
+          bestiaryData: {
+            monsterName,
+            coverImageUrl: preset?.url || data.questObj?.coverImageUrl || '',
+            avatarConfig: data.questObj?.monsterAvatarConfig || presetConfig,
+            modelUrl: data.questObj?.monsterModelUrl || preset?.baseModelId,
+            possibleDrops,
+            biography: bio,
+            firstDefeatedAt: data.firstDateStr,
+            winsCount: data.wins,
+            defeatsCount: data.defeats,
+            discoveredDropItemIds: Array.from(studentDroppedItemIds)
+          }
+        });
+      }
+    });
+
+    // --- 3. DROPS DE MONSTROS (Apenas 1º drop de cada item em combate) ---
+    const discoveredDropsMap = new Map<string, any>();
+    (userItems || []).forEach((itemDoc: any) => {
+      const data = itemDoc.data || {};
+      const gifted = data.giftedBy || itemDoc.gifted_by || '';
+      if (gifted.includes('Drop de Monstro')) {
+        const itemKey = itemDoc.item_id || data.itemTitle || 'Item';
+        if (!discoveredDropsMap.has(itemKey)) {
+          discoveredDropsMap.set(itemKey, itemDoc);
+        }
+      }
+    });
+
+    discoveredDropsMap.forEach((itemDoc) => {
       const data = itemDoc.data || {};
       const itemTitle = data.itemTitle || itemDoc.item_title || 'Item';
       const itemImage = data.itemImageUrl || data.imageUrl || itemDoc.item_image_url || '';
-      const giftedBy = data.giftedBy || itemDoc.gifted_by;
-      const dateStr = data.purchasedAt || itemDoc.created_at || new Date().toISOString();
+      const gifted = data.giftedBy || itemDoc.gifted_by || '';
+      const match = gifted.match(/Drop de Monstro \((.+)\)/);
+      const monsterName = match ? match[1] : 'Monstro';
+      const dateStr = data.purchasedAt ? new Date(data.purchasedAt).toISOString() : (itemDoc.created_at || new Date().toISOString());
       const timeMs = new Date(dateStr).getTime();
 
       achievements.push({
-        id: `item-${itemDoc.id || timeMs}`,
+        id: `drop-${itemDoc.id || timeMs}`,
         type: 'item',
-        title: giftedBy ? `Recebeu de presente: ${itemTitle}` : `Adquiriu o item: ${itemTitle}`,
-        subtitle: giftedBy
-          ? `Presenteado por ${giftedBy}`
-          : (data.itemCategory && data.itemCategory !== 'none' && data.itemCategory !== 'null'
-              ? `Categoria: ${data.itemCategory}`
-              : 'Item do Inventário'),
+        isSpecialMilestone: true,
+        title: `Em batalha contra ${monsterName}, obteve pela primeira vez ${itemTitle}`,
+        subtitle: `Espólio de combate conquistado contra ${monsterName}`,
         imageUrl: itemImage,
-        badgeText: 'Item Adquirido',
+        badgeText: '⚔️ 1º Drop',
         badgeType: 'item_received',
         timestamp: timeMs,
         rawDate: dateStr
       });
     });
 
-    // --- PROCESSAR LANÇAMENTOS DO PROFESSOR (XP_LOGS) ---
+    // --- 4. PRIMEIRO ITEM ADQUIRIDO NA LOJA OFICIAL ---
+    const shopItems = (userItems || []).filter((itemDoc: any) => {
+      const data = itemDoc.data || {};
+      const gifted = data.giftedBy || itemDoc.gifted_by;
+      const forSale = data.forSale || itemDoc.for_sale;
+      return !gifted && !forSale;
+    });
+
+    if (shopItems.length > 0) {
+      const firstShopItem = shopItems[0];
+      const data = firstShopItem.data || {};
+      const itemTitle = data.itemTitle || firstShopItem.item_title || 'Item';
+      const itemImage = data.itemImageUrl || data.imageUrl || firstShopItem.item_image_url || '';
+      const dateStr = data.purchasedAt ? new Date(data.purchasedAt).toISOString() : (firstShopItem.created_at || new Date().toISOString());
+      const timeMs = new Date(dateStr).getTime();
+
+      achievements.push({
+        id: `first-shop-item-${firstShopItem.id || timeMs}`,
+        type: 'item',
+        isSpecialMilestone: true,
+        title: 'Primeiro Item Adquirido na Loja',
+        subtitle: `Comprou ${itemTitle} na Loja Oficial`,
+        imageUrl: itemImage,
+        badgeText: '🛒 1ª Compra',
+        badgeType: 'item_received',
+        timestamp: timeMs,
+        rawDate: dateStr
+      });
+    }
+
+    // --- 5. PRESENTES (1º Recebido e 1º Enviado) ---
+    const receivedGifts = (userItems || []).filter((itemDoc: any) => {
+      const data = itemDoc.data || {};
+      const gifted = data.giftedBy || itemDoc.gifted_by;
+      return gifted && !gifted.includes('Drop de Monstro') && !gifted.includes('Baú do Desafio') && !gifted.includes('Recompensa');
+    });
+
+    if (receivedGifts.length > 0) {
+      const firstGift = receivedGifts[0];
+      const data = firstGift.data || {};
+      const itemTitle = data.itemTitle || firstGift.item_title || 'Item';
+      const itemImage = data.itemImageUrl || data.imageUrl || firstGift.item_image_url || '';
+      const senderName = data.giftedBy || firstGift.gifted_by || 'Colega';
+      const dateStr = data.purchasedAt ? new Date(data.purchasedAt).toISOString() : (firstGift.created_at || new Date().toISOString());
+      const timeMs = new Date(dateStr).getTime();
+
+      achievements.push({
+        id: `first-gift-received-${firstGift.id || timeMs}`,
+        type: 'item',
+        isSpecialMilestone: true,
+        title: 'Primeiro Presente Recebido',
+        subtitle: `Recebeu ${itemTitle} de presente de ${senderName}`,
+        imageUrl: itemImage,
+        badgeText: '🎁 1º Presente',
+        badgeType: 'item_received',
+        timestamp: timeMs,
+        rawDate: dateStr
+      });
+    }
+
+    // Primeiro presente enviado (gravado em preferências ou no perfil)
+    const firstGiftSent = user?.inventory_preferences?.firstGiftSent;
+    if (firstGiftSent) {
+      achievements.push({
+        id: 'first-gift-sent',
+        type: 'item',
+        isSpecialMilestone: true,
+        title: 'Primeiro Presente Enviado',
+        subtitle: `Presenteou ${firstGiftSent.recipientName || 'um amigo'} com ${firstGiftSent.itemTitle || 'um item'}`,
+        imageUrl: firstGiftSent.itemImageUrl || '',
+        badgeText: '🎁 Presenteou',
+        badgeType: 'item_spent',
+        timestamp: firstGiftSent.timestamp || Date.now(),
+        rawDate: firstGiftSent.dateStr || new Date().toISOString()
+      });
+    }
+
+    // --- 6. BAZAR (1º Anúncio e 1ª Venda) ---
+    const firstBazarListing = user?.inventory_preferences?.firstBazarListing;
+    if (firstBazarListing) {
+      achievements.push({
+        id: 'first-bazar-listing',
+        type: 'item',
+        isSpecialMilestone: true,
+        title: 'Primeiro Item Anunciado no Bazar',
+        subtitle: `Colocou ${firstBazarListing.itemTitle || 'um item'} à venda no Bazar de Jogadores`,
+        imageUrl: firstBazarListing.itemImageUrl || '',
+        badgeText: '🏷️ 1º Anúncio',
+        badgeType: 'rank',
+        timestamp: firstBazarListing.timestamp || Date.now(),
+        rawDate: firstBazarListing.dateStr || new Date().toISOString()
+      });
+    } else {
+      // Retroativo: verifica se o aluno já colocou algum item à venda
+      const forSaleItem = (userItems || []).find((i: any) => i.data?.forSale);
+      if (forSaleItem) {
+        const data = forSaleItem.data || {};
+        const dateStr = forSaleItem.created_at || new Date().toISOString();
+        achievements.push({
+          id: 'first-bazar-listing',
+          type: 'item',
+          isSpecialMilestone: true,
+          title: 'Primeiro Item Anunciado no Bazar',
+          subtitle: `Colocou ${data.itemTitle || 'um item'} à venda no Bazar de Jogadores`,
+          imageUrl: data.itemImageUrl || '',
+          badgeText: '🏷️ 1º Anúncio',
+          badgeType: 'rank',
+          timestamp: new Date(dateStr).getTime(),
+          rawDate: dateStr
+        });
+      }
+    }
+
+    const firstBazarSale = user?.inventory_preferences?.firstBazarSale;
+    if (firstBazarSale) {
+      achievements.push({
+        id: 'first-bazar-sale',
+        type: 'item',
+        isSpecialMilestone: true,
+        title: 'Primeira Venda no Bazar',
+        subtitle: `Vendeu com sucesso ${firstBazarSale.itemTitle || 'um item'} para outro jogador`,
+        imageUrl: firstBazarSale.itemImageUrl || '',
+        badgeText: '💰 1ª Venda',
+        badgeType: 'xp_positive',
+        timestamp: firstBazarSale.timestamp || Date.now(),
+        rawDate: firstBazarSale.dateStr || new Date().toISOString()
+      });
+    }
+
+    // --- 7. LANÇAMENTOS DO PROFESSOR (XP_LOGS) ---
     (teacherLogs || []).forEach((log: any) => {
-      // Ignora registros legados automatizados se houver
       const evalName = log.eval_name || log.reason || 'Atribuição';
       if (evalName.startsWith('Missão:') || evalName.startsWith('Subiu de Patente:') || evalName.startsWith('Compra na Loja:')) {
         return;
@@ -159,11 +400,8 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
       });
     });
 
-    // --- PROCESSAR PATENTES ALCANÇADAS ---
+    // --- 8. SUBIDAS DE PATENTE ---
     if (user) {
-      // Busca as patentes da escola DO ALUNO direto do banco, para respeitar
-      // a configuração "omitir do histórico" de cada patente. NÃO depende do
-      // array global RANKS (que pode estar vazio ou refletir outra escola).
       let schoolRanks: any[] = [];
       if (user.tenant_id) {
         const { data: rankRows } = await supabase
@@ -172,15 +410,11 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
           .eq('tenant_id', user.tenant_id)
           .eq('is_global', false)
           .order('minXp', { ascending: true });
-        schoolRanks = (rankRows || []).map((d: any) => {
-          const { id, ...rest } = d;
-          return {
-            ...rest,
-            hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
-          };
-        });
+        schoolRanks = (rankRows || []).map((d: any) => ({
+          ...d,
+          hideFromHistory: d.hide_from_history ?? d.hideFromHistory ?? (d.minXp === 0),
+        }));
       }
-      // Fallback: sem patentes locais, usa o banco de patentes globais
       if (schoolRanks.length === 0) {
         const { data: gRows } = await supabase
           .from('custom_ranks')
@@ -194,7 +428,6 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
       }
 
       const userXp = user.xp || 0;
-      // Patente atual pelo XP (usando a lista da escola)
       let currentRankIdx = 0;
       for (let i = 0; i < schoolRanks.length; i++) {
         if (userXp >= (schoolRanks[i].minXp || 0)) currentRankIdx = i;
@@ -202,15 +435,13 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
       }
       const highestIdx = Math.max(currentRankIdx, user.inventoryPreferences?.highestRankIndex || 0);
 
-      // Adiciona as patentes alcançadas na linha do tempo (omitindo patentes marcadas como hideFromHistory ou patente inicial)
       for (let i = 0; i <= highestIdx; i++) {
         const rank = schoolRanks[i];
         if (!rank) continue;
         if (rank.hideFromHistory || (rank.minXp === 0 && rank.hideFromHistory !== false)) continue;
 
-        // Estima timestamp de patente ou usa data de criação da conta
         const userCreatedMs = user.created_at ? new Date(user.created_at).getTime() : Date.now() - 86400000;
-        const rankTimestamp = userCreatedMs + (i * 1000); // leve offset para ordenar corretamente
+        const rankTimestamp = userCreatedMs + (i * 1000);
 
         achievements.push({
           id: `rank-${rank.name}-${i}`,
@@ -226,156 +457,43 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
       }
     }
 
-    // --- PROCESSAR PVP (duelos finalizados) ---
+    // --- 9. PVP: PRIMEIRA VITÓRIA EM PVP ---
     try {
       const { data: pvpMatches } = await supabase
         .from('pvp_matches')
         .select('*')
         .or(`challenger_id.eq.${studentUid},opponent_id.eq.${studentUid}`)
         .eq('status', 'finished')
-        .order('finished_at', { ascending: false });
+        .order('finished_at', { ascending: true });
 
-      const pvpEntries: PvpHistoryEntry[] = (pvpMatches || []).map((m: any) => {
-        const role = m.challenger_id === studentUid ? 'challenger' : 'opponent';
-        const myBet = m.bet?.[role];
-        const oppBet = m.bet?.[role === 'challenger' ? 'opponent' : 'challenger'];
-        const won = !!m.winner_id && m.winner_id === studentUid;
-        const draw = !m.winner_id;
-        const oppName = role === 'challenger' ? m.opponent_name || 'Oponente' : m.challenger_name || 'Oponente';
-        const myScore = role === 'challenger' ? m.player1?.score : m.player2?.score;
-        const oppScore = role === 'challenger' ? m.player2?.score : m.player1?.score;
+      const firstWin = (pvpMatches || []).find((m: any) => m.winner_id === studentUid);
+      if (firstWin) {
+        const role = firstWin.challenger_id === studentUid ? 'challenger' : 'opponent';
+        const oppName = role === 'challenger' ? firstWin.opponent_name || 'Oponente' : firstWin.challenger_name || 'Oponente';
+        const myScore = role === 'challenger' ? firstWin.player1?.score : firstWin.player2?.score;
+        const oppScore = role === 'challenger' ? firstWin.player2?.score : firstWin.player1?.score;
+        const dateStr = firstWin.finished_at || firstWin.created_at || new Date().toISOString();
 
-        let prizeText: string | undefined;
-        let prizeType: PvpHistoryEntry['prizeType'] = 'none';
-        if (draw) {
-          prizeText = 'Empate — apostas devolvidas';
-          prizeType = 'refund';
-        } else if (won) {
-          const gains: string[] = [];
-          if (oppBet?.type === 'coins') { gains.push(`+${oppBet.coins} moedas`); prizeType = 'coins_win'; }
-          if (oppBet?.type === 'item') {
-            gains.push(`ganhou o item ${oppBet.item?.itemTitle || 'apostado'}`);
-            if (prizeType !== 'coins_win') prizeType = 'item_win';
-          }
-          if (gains.length > 0) prizeText = gains.join(' · ');
-        } else {
-          const losses: string[] = [];
-          if (myBet?.type === 'coins') { losses.push(`-${myBet.coins} moedas`); prizeType = 'coins_lose'; }
-          if (myBet?.type === 'item') {
-            losses.push(`perdeu o item ${myBet.item?.itemTitle || 'apostado'}`);
-            if (prizeType !== 'coins_lose') prizeType = 'item_lose';
-          }
-          if (losses.length > 0) prizeText = losses.join(' · ');
-        }
-
-        const dateStr = m.finished_at || m.created_at || new Date().toISOString();
-        return {
-          id: `pvp-${m.id || dateStr}`,
-          won,
-          draw,
-          opponentName: oppName,
-          dateStr,
-          timestamp: new Date(dateStr).getTime(),
-          score: `${myScore ?? 0} × ${oppScore ?? 0}`,
-          prizeText,
-          prizeType,
-        } as PvpHistoryEntry;
-      });
-
-      // Ordena cronologicamente (do mais antigo para o mais recente) para identificar a 1ª vitória
-      const chronological = [...pvpEntries].sort((a, b) => a.timestamp - b.timestamp);
-      const firstWinIndex = chronological.findIndex(e => e.won);
-
-      chronological.forEach((entry, idx) => {
-        if (idx === firstWinIndex) {
-          // MARCO ESPECIAL E ÚNICO: Primeira Vitória em PvP
-          achievements.push({
-            id: 'pvp-first-win',
-            type: 'pvp',
-            isSpecialMilestone: true,
-            title: 'Primeira Vitória em PvP',
-            subtitle: `Vitória histórica contra ${entry.opponentName} · Placar: ${entry.score}${entry.prizeText ? ` · ${entry.prizeText}` : ''}`,
-            badgeText: '🏆 1ª Vitória',
-            badgeType: 'xp_positive',
-            timestamp: entry.timestamp,
-            rawDate: entry.dateStr,
-          });
-        } else {
-          // Demais duelos (aparecem individualmente na timeline conforme acontecem)
-          let title = `Duelo PvP: vs ${entry.opponentName}`;
-          let badgeText = 'Duelo PvP';
-          let badgeType: AchievementItem['badgeType'] = 'rank';
-
-          if (entry.won) {
-            title = `Vitória em PvP: vs ${entry.opponentName}`;
-            badgeText = entry.prizeType === 'coins_win' && entry.prizeText ? entry.prizeText.split(' · ')[0] : 'Vitória PvP';
-            badgeType = 'xp_positive';
-          } else if (entry.draw) {
-            title = `Empate em PvP: vs ${entry.opponentName}`;
-            badgeText = 'Empate';
-            badgeType = 'rank';
-          } else {
-            title = `Duelo PvP: vs ${entry.opponentName}`;
-            badgeText = entry.prizeType === 'coins_lose' && entry.prizeText ? entry.prizeText.split(' · ')[0] : 'Duelo PvP';
-            badgeType = entry.prizeType === 'coins_lose' ? 'xp_negative' : 'item_spent';
-          }
-
-          const subtitle = `Placar: ${entry.score}${entry.prizeText ? ` · ${entry.prizeText}` : ''}`;
-
-          achievements.push({
-            id: entry.id,
-            type: 'pvp',
-            title,
-            subtitle,
-            badgeText,
-            badgeType,
-            timestamp: entry.timestamp,
-            rawDate: entry.dateStr,
-          });
-        }
-      });
-    } catch (e) {
-      console.error('Erro ao buscar histórico de PvP:', e);
-    }
-
-    // --- RECOMPENSAS DE ESPECTADOR PVP (primeira batalha assistida) ---
-    let spectateRewards: any[] = [];
-    const legacySpectate = (user as any)?.inventory_preferences?.spectateRewards;
-    if (Array.isArray(legacySpectate)) spectateRewards = legacySpectate;
-    try {
-      const { data: specDocs } = await supabase
-        .from('system_collections')
-        .select('data')
-        .eq('collection_name', 'spectate_rewards')
-        .eq('doc_id', studentUid)
-        .limit(1);
-      const d = specDocs?.[0]?.data;
-      if (d && Array.isArray(d.rewards)) spectateRewards = d.rewards;
-    } catch (e) { /* ignore */ }
-    if (spectateRewards.length > 0) {
-      spectateRewards.forEach((r: any, i: number) => {
-        const dateStr = r.date || new Date().toISOString();
-        // 'share' (0,25% da aposta) não é a primeira vez — título próprio.
-        // Fallback por texto para registros antigos.
-        const isShare = r.kind === 'share' || (typeof r.prize === 'string' && r.prize.includes('0,25%'));
         achievements.push({
-          id: `spectate-${r.matchId || i}`,
+          id: 'pvp-first-win',
           type: 'pvp',
-          title: isShare ? 'Recompensa de Torcida Vencedora' : 'Primeira Batalha Assistida (Espectador)',
-          subtitle: r.score ? `Placar: ${r.score}` : undefined,
-          badgeText: r.prize || '+100 moedas',
+          isSpecialMilestone: true,
+          title: 'Primeira Vitória em PvP',
+          subtitle: `Vitória histórica contra ${oppName} · Placar: ${myScore ?? 0} × ${oppScore ?? 0}`,
+          badgeText: '🏆 1ª Vitória',
           badgeType: 'xp_positive',
           timestamp: new Date(dateStr).getTime(),
           rawDate: dateStr,
         });
-      });
+      }
+    } catch (e) {
+      console.error('Erro ao buscar primeira vitória em PvP:', e);
     }
 
-    // --- CONQUISTAS DO FERREIRO (Primeira Forja, Primeiro +9, Primeira Transmutação) ---
+    // --- 10. FERREIRO: PRIMEIRA FORJA, +9 E TRANSMUTAÇÃO ---
     try {
       const milestones = await fetchBlacksmithMilestones(studentUid);
 
-      // 1. PRIMEIRA FORJA COM SUCESSO
       if (milestones?.firstForge) {
         achievements.push({
           id: 'forge-first-success',
@@ -390,14 +508,9 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
           rawDate: milestones.firstForge.dateStr,
         });
       } else {
-        // Retroativo: verifica se o aluno já possui itens com forja concluída
         const forgedItems = (userItems || []).filter((i: any) => (i.data?.forgeLevel || 0) > 0);
         if (forgedItems.length > 0) {
-          const oldest = [...forgedItems].sort((a: any, b: any) => {
-            const tA = new Date(a.data?.purchasedAt || a.created_at || 0).getTime();
-            const tB = new Date(b.data?.purchasedAt || b.created_at || 0).getTime();
-            return tA - tB;
-          })[0];
+          const oldest = forgedItems[0];
           const dateStr = oldest.data?.purchasedAt || oldest.created_at || new Date().toISOString();
           const timeMs = new Date(dateStr).getTime();
           const title = oldest.data?.itemTitle || oldest.item_title || 'Equipamento';
@@ -418,7 +531,6 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
         }
       }
 
-      // 2. PRIMEIRO ITEM +9 NA FORJA
       if (milestones?.firstPlusNine) {
         achievements.push({
           id: 'forge-first-plus-nine',
@@ -433,7 +545,6 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
           rawDate: milestones.firstPlusNine.dateStr,
         });
       } else {
-        // Retroativo: verifica se o aluno possui algum item no nível máximo (+9)
         const plusNineItems = (userItems || []).filter((i: any) => (i.data?.forgeLevel || 0) >= 9);
         if (plusNineItems.length > 0) {
           const item9 = plusNineItems[0];
@@ -456,7 +567,6 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
         }
       }
 
-      // 3. PRIMEIRA TRANSMUTAÇÃO COM SUCESSO (arma X em arma Y)
       if (milestones?.firstTransmute) {
         achievements.push({
           id: 'forge-first-transmute',
@@ -471,7 +581,6 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
           rawDate: milestones.firstTransmute.dateStr,
         });
       } else {
-        // Retroativo: verifica se possui item transmutado
         const transmutedItems = (userItems || []).filter((i: any) => i.data?.isTransmuted);
         if (transmutedItems.length > 0) {
           const oldestT = transmutedItems[0];
@@ -481,9 +590,7 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
           
           let srcTitle = 'Arma +9';
           try {
-            const { data: storeSources } = await supabase
-              .from('store_items')
-              .select('id, name, data');
+            const { data: storeSources } = await supabase.from('store_items').select('id, name, data');
             const matchSource = (storeSources || []).find((s: any) => s.data?.transmuteConfig?.resultItemId === oldestT.item_id);
             if (matchSource?.name || matchSource?.data?.title) {
               srcTitle = `${matchSource.name || matchSource.data.title} +9`;
@@ -522,4 +629,152 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
   }
 
   return achievements;
+}
+
+/**
+ * Busca o LOG COMPLETO DE ATIVIDADES E PROGRESSÃO do aluno.
+ * Aplica o AGRUPAMENTO INTELIGENTE solicitado:
+ * - Se comprou/adquiriu 10x Poção da Vida no mesmo minuto/lote, agrupa em um único card:
+ *   "Adquiriu 10x Poção da Vida"
+ */
+export async function fetchStudentActivityLog(studentUid: string): Promise<AchievementItem[]> {
+  const logItems: AchievementItem[] = [];
+
+  try {
+    const { data: userItems } = await supabase
+      .from('user_items')
+      .select('*')
+      .eq('student_id', studentUid)
+      .order('created_at', { ascending: false });
+
+    const { data: attempts } = await supabase
+      .from('quest_attempts')
+      .select('*')
+      .eq('student_id', studentUid)
+      .order('created_at', { ascending: false });
+
+    const { data: teacherLogs } = await supabase
+      .from('xp_logs')
+      .select('*')
+      .eq('student_id', studentUid)
+      .order('created_at', { ascending: false });
+
+    // --- 1. ITENS COM AGRUPAMENTO INTELIGENTE POR LOTE / MINUTO ---
+    // Chave de agrupamento: `${itemTitle}_${minuteStr}_${giftedBy}`
+    const groupedItemsMap = new Map<string, {
+      id: string;
+      itemTitle: string;
+      itemImage: string;
+      giftedBy?: string;
+      count: number;
+      timestamp: number;
+      dateStr: string;
+    }>();
+
+    (userItems || []).forEach((itemDoc: any) => {
+      const data = itemDoc.data || {};
+      const itemTitle = data.itemTitle || itemDoc.item_title || 'Item';
+      const itemImage = data.itemImageUrl || data.imageUrl || itemDoc.item_image_url || '';
+      const giftedBy = data.giftedBy || itemDoc.gifted_by;
+      const qty = data.quantity || 1;
+      const dateStr = data.purchasedAt ? new Date(data.purchasedAt).toISOString() : (itemDoc.created_at || new Date().toISOString());
+      const timeMs = new Date(dateStr).getTime();
+      
+      // Agrupa pelo mesmo minuto (arredonda timeMs para o minuto mais próximo)
+      const minuteBucket = Math.floor(timeMs / (60 * 1000));
+      const groupKey = `${itemTitle}_${minuteBucket}_${giftedBy || 'store'}`;
+
+      const existing = groupedItemsMap.get(groupKey);
+      if (existing) {
+        existing.count += qty;
+      } else {
+        groupedItemsMap.set(groupKey, {
+          id: itemDoc.id,
+          itemTitle,
+          itemImage,
+          giftedBy,
+          count: qty,
+          timestamp: timeMs,
+          dateStr
+        });
+      }
+    });
+
+    groupedItemsMap.forEach((entry) => {
+      const countLabel = entry.count > 1 ? `${entry.count}x ` : '';
+      const title = entry.giftedBy
+        ? `Recebeu de presente: ${countLabel}${entry.itemTitle}`
+        : `Adquiriu: ${countLabel}${entry.itemTitle}`;
+
+      logItems.push({
+        id: `activity-item-${entry.id}`,
+        type: 'item',
+        title,
+        subtitle: entry.giftedBy ? `Presenteado por ${entry.giftedBy}` : 'Item do Inventário',
+        imageUrl: entry.itemImage,
+        badgeText: entry.count > 1 ? `${entry.count}x Itens` : 'Item Adquirido',
+        badgeType: 'item_received',
+        timestamp: entry.timestamp,
+        rawDate: entry.dateStr,
+        count: entry.count
+      });
+    });
+
+    // --- 2. TODAS AS TENTATIVAS DE MISSÕES ---
+    const questIds = Array.from(new Set((attempts || []).map((a: any) => a.quest_id).filter(Boolean)));
+    const questMap = new Map<string, any>();
+    if (questIds.length > 0) {
+      const { data: qData } = await supabase.from('quests').select('id, title, coverImageUrl').in('id', questIds);
+      (qData || []).forEach((q: any) => questMap.set(q.id, q));
+    }
+
+    (attempts || []).forEach((att: any) => {
+      const q = questMap.get(att.quest_id);
+      const questTitle = q?.title || att.data?.questTitle || att.data?.title || 'Missão';
+      const isCompleted = att.status === 'completed';
+      const earnedXp = att.data?.earned_xp ?? att.data?.earnedXp ?? att.xp_earned ?? 0;
+      const dateStr = att.created_at || att.completed_at || new Date().toISOString();
+      const timeMs = new Date(dateStr).getTime();
+
+      logItems.push({
+        id: `activity-quest-${att.id}`,
+        type: 'quest',
+        title: isCompleted ? `Completou a Missão: ${questTitle}` : `Tentativa na Missão: ${questTitle}`,
+        subtitle: isCompleted ? (earnedXp > 0 ? `Ganhou +${earnedXp} XP` : 'Missão repetida (sem novo XP)') : 'Missão não completada',
+        imageUrl: q?.coverImageUrl || '',
+        badgeText: isCompleted ? `+${earnedXp} XP` : 'Derrota',
+        badgeType: isCompleted ? (earnedXp > 0 ? 'xp_positive' : 'rank') : 'xp_negative',
+        timestamp: timeMs,
+        rawDate: dateStr
+      });
+    });
+
+    // --- 3. LANÇAMENTOS DO PROFESSOR ---
+    (teacherLogs || []).forEach((log: any) => {
+      const evalName = log.eval_name || log.reason || 'Atribuição';
+      const xpGained = log.xp_gained !== undefined ? log.xp_gained : (log.amount || 0);
+      const justification = log.justification || '';
+      const dateStr = log.created_at || new Date().toISOString();
+      const timeMs = new Date(dateStr).getTime();
+
+      logItems.push({
+        id: `activity-teacher-${log.id}`,
+        type: 'teacher_xp',
+        title: `Lançamento do Professor: ${evalName}`,
+        subtitle: justification ? `Justificativa: ${justification}` : undefined,
+        imageUrl: log.image_url || log.imageUrl || '',
+        badgeText: xpGained >= 0 ? `+${xpGained} XP` : `${xpGained} XP`,
+        badgeType: xpGained >= 0 ? 'xp_positive' : 'xp_negative',
+        timestamp: timeMs,
+        rawDate: dateStr
+      });
+    });
+
+    logItems.sort((a, b) => b.timestamp - a.timestamp);
+
+  } catch (e) {
+    console.error('Erro ao buscar log de atividades:', e);
+  }
+
+  return logItems;
 }

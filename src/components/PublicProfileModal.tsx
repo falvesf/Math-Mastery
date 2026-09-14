@@ -1,15 +1,16 @@
 import { useEffect, useState, Component, type ReactNode } from 'react';
-import { X, Shield, Swords, Trophy, Crosshair, Skull, UserPlus, UserMinus, History, Package, Star, Hammer, Flame, Sparkles } from 'lucide-react';
+import { X, Shield, Swords, Trophy, Crosshair, Skull, UserPlus, UserMinus, History, Package, Star, Hammer, Flame, Sparkles, BookOpen, Scroll } from 'lucide-react';
 import AvatarCharacter, { type EquippedItem } from './AvatarCharacter';
 import { type UserData } from '../contexts/AuthContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { calculateTotalStats } from '../lib/gacha';
 import { RANKS } from '../lib/ranks';
-import { fetchStudentAchievementHistory, type AchievementItem } from '../lib/achievementHistory';
+import { fetchStudentAchievementHistory, fetchStudentActivityLog, type AchievementItem } from '../lib/achievementHistory';
 import { getCustomRoleName } from '../lib/permissions';
 import { useTenant } from '../contexts/TenantContext';
 import NintendoHeart from './NintendoHeart';
+import MonsterBestiaryModal, { type BestiaryMonsterData } from './MonsterBestiaryModal';
 
 class ProfileContentErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; errorText: string }> {
   state = { hasError: false, errorText: '' };
@@ -45,6 +46,10 @@ interface PublicProfileModalProps {
 export default function PublicProfileModal({ isOpen, onClose, user, equippedItems, rankName, rankColor, rankPos }: PublicProfileModalProps) {
   const [questStats, setQuestStats] = useState({ participations: 0, wins: 0, defeats: 0 });
   const [achievements, setAchievements] = useState<AchievementItem[]>([]);
+  const [activityLog, setActivityLog] = useState<AchievementItem[]>([]);
+  const [historySubTab, setHistorySubTab] = useState<'achievements' | 'activity'>('achievements');
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [selectedBestiaryMonster, setSelectedBestiaryMonster] = useState<BestiaryMonsterData | null>(null);
   const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
   const [loading, setLoading] = useState(true);
   const { tenantId } = useTenant();
@@ -447,183 +452,424 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
 
                   </div>
                 ) : (
-                  /* Feed do Histórico de Conquistas */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem' }}>
-                    {loading ? (
-                      <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>Carregando conquistas...</p>
-                    ) : achievements.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
-                        <Star size={36} style={{ opacity: 0.5, margin: '0 auto 0.5rem auto' }} />
-                        <p>Nenhuma conquista registrada ainda.</p>
+                  /* Feed do Histórico: Conquistas Reais vs Log de Atividades */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    {/* Sub-abas de Navegação */}
+                    <div style={{
+                      display: 'flex',
+                      gap: '0.5rem',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      padding: '4px',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(255, 255, 255, 0.08)'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => setHistorySubTab('achievements')}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: historySubTab === 'achievements' ? 'rgba(251, 191, 36, 0.2)' : 'transparent',
+                          color: historySubTab === 'achievements' ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                          fontWeight: 'bold',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.4rem',
+                          transition: 'all 0.2s',
+                          borderBottom: historySubTab === 'achievements' ? '2px solid var(--gold-primary)' : '2px solid transparent'
+                        }}
+                      >
+                        <Trophy size={15} /> Conquistas Reais ({achievements.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setHistorySubTab('activity');
+                          if (activityLog.length === 0 && !loadingActivity) {
+                            setLoadingActivity(true);
+                            try {
+                              const acts = await fetchStudentActivityLog(user.uid);
+                              setActivityLog(acts);
+                            } finally {
+                              setLoadingActivity(false);
+                            }
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: historySubTab === 'activity' ? 'rgba(96, 165, 250, 0.2)' : 'transparent',
+                          color: historySubTab === 'activity' ? '#60a5fa' : 'var(--text-secondary)',
+                          fontWeight: 'bold',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.4rem',
+                          transition: 'all 0.2s',
+                          borderBottom: historySubTab === 'activity' ? '2px solid #60a5fa' : '2px solid transparent'
+                        }}
+                      >
+                        <Scroll size={15} /> Log de Atividades {activityLog.length > 0 ? `(${activityLog.length})` : ''}
+                      </button>
+                    </div>
+
+                    {/* Feed correspondente à sub-aba selecionada */}
+                    {historySubTab === 'achievements' ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                        {loading ? (
+                          <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>Carregando conquistas...</p>
+                        ) : achievements.length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                            <Star size={36} style={{ opacity: 0.5, margin: '0 auto 0.5rem auto' }} />
+                            <p>Nenhuma conquista registrada ainda.</p>
+                          </div>
+                        ) : (
+                          achievements.map((item, index) => {
+                            const isRank = item.type === 'rank_up';
+                            const isItem = item.type === 'item';
+                            const isNegative = item.badgeType === 'xp_negative';
+                            const isPvp = item.type === 'pvp';
+                            const isForge = item.type === 'forge';
+                            const isBestiary = item.type === 'bestiary';
+                            const hasBestiaryData = !!item.bestiaryData;
+
+                            const isPvpFirstWin = item.id === 'pvp-first-win';
+                            const isForgeFirst = item.id === 'forge-first-success';
+                            const isForgePlusNine = item.id === 'forge-first-plus-nine';
+                            const isForgeTransmute = item.id === 'forge-first-transmute';
+                            const isSpecialMilestone = isPvpFirstWin || isForgeFirst || isForgePlusNine || isForgeTransmute || isBestiary || !!item.isSpecialMilestone;
+                            
+                            let borderColor = 'var(--gold-primary)';
+                            let badgeBg = 'rgba(251, 191, 36, 0.15)';
+                            let badgeColor = 'var(--gold-primary)';
+                            let cardBg = 'rgba(0,0,0,0.3)';
+                            let cardShadow = 'none';
+                            let titleColor = 'var(--text-primary)';
+                            
+                            if (isBestiary) {
+                              borderColor = '#a855f7';
+                              badgeBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.35) 0%, rgba(139, 92, 246, 0.25) 100%)';
+                              badgeColor = '#c084fc';
+                              cardBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(99, 102, 241, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                              cardShadow = '0 0 16px rgba(168, 85, 247, 0.2)';
+                              titleColor = '#c084fc';
+                            } else if (isRank) {
+                              borderColor = '#a855f7';
+                              badgeBg = 'rgba(168, 85, 247, 0.2)';
+                              badgeColor = '#c084fc';
+                            } else if (isItem) {
+                              if (hasBestiaryData) {
+                                borderColor = '#ec4899';
+                                badgeBg = 'linear-gradient(135deg, rgba(236, 72, 153, 0.3) 0%, rgba(168, 85, 247, 0.2) 100%)';
+                                badgeColor = '#f472b6';
+                                cardBg = 'linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(0, 0, 0, 0.35) 100%)';
+                                cardShadow = '0 0 14px rgba(236, 72, 153, 0.16)';
+                                titleColor = '#f472b6';
+                              } else {
+                                borderColor = '#3b82f6';
+                                badgeBg = 'rgba(59, 130, 246, 0.15)';
+                                badgeColor = '#60a5fa';
+                              }
+                            } else if (isForge) {
+                              if (isForgeFirst) {
+                                borderColor = '#f97316';
+                                badgeBg = 'rgba(249, 115, 22, 0.22)';
+                                badgeColor = '#f97316';
+                                cardBg = 'linear-gradient(135deg, rgba(249, 115, 22, 0.14) 0%, rgba(234, 88, 12, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                                cardShadow = '0 0 16px rgba(249, 115, 22, 0.18)';
+                                titleColor = '#f97316';
+                              } else if (isForgePlusNine) {
+                                borderColor = '#ea580c';
+                                badgeBg = 'linear-gradient(135deg, rgba(234, 88, 12, 0.35) 0%, rgba(239, 68, 68, 0.25) 100%)';
+                                badgeColor = '#fbbf24';
+                                cardBg = 'linear-gradient(135deg, rgba(239, 68, 68, 0.16) 0%, rgba(234, 88, 12, 0.12) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                                cardShadow = '0 0 20px rgba(234, 88, 12, 0.22)';
+                                titleColor = '#fbbf24';
+                              } else if (isForgeTransmute) {
+                                borderColor = '#a855f7';
+                                badgeBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.35) 0%, rgba(139, 92, 246, 0.25) 100%)';
+                                badgeColor = '#c084fc';
+                                cardBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(139, 92, 246, 0.09) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                                cardShadow = '0 0 18px rgba(168, 85, 247, 0.2)';
+                                titleColor = '#c084fc';
+                              } else {
+                                borderColor = '#f97316';
+                                badgeBg = 'rgba(249, 115, 22, 0.18)';
+                                badgeColor = '#f97316';
+                              }
+                            } else if (isPvp) {
+                              if (isPvpFirstWin) {
+                                borderColor = '#f59e0b';
+                                badgeBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.35) 0%, rgba(244, 63, 94, 0.25) 100%)';
+                                badgeColor = '#fbbf24';
+                                cardBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(244, 63, 94, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                                cardShadow = '0 0 16px rgba(245, 158, 11, 0.15)';
+                                titleColor = '#fbbf24';
+                              } else if (isNegative) {
+                                borderColor = 'var(--accent-red)';
+                                badgeBg = 'rgba(239, 68, 68, 0.15)';
+                                badgeColor = 'var(--accent-red)';
+                              } else if (item.badgeType === 'xp_positive') {
+                                borderColor = 'var(--accent-green, #10b981)';
+                                badgeBg = 'rgba(16, 185, 129, 0.18)';
+                                badgeColor = 'var(--accent-green, #10b981)';
+                              } else {
+                                borderColor = '#f43f5e';
+                                badgeBg = 'rgba(244, 63, 94, 0.18)';
+                                badgeColor = '#fb7185';
+                              }
+                            } else if (isNegative) {
+                              borderColor = 'var(--accent-red)';
+                              badgeBg = 'rgba(239, 68, 68, 0.15)';
+                              badgeColor = 'var(--accent-red)';
+                            }
+
+                            const dateObj = new Date(item.timestamp);
+                            const isValidDate = !isNaN(dateObj.getTime());
+                            const formattedDate = isValidDate ? dateObj.toLocaleDateString('pt-BR') : (item.rawDate || '');
+                            const formattedTime = isValidDate ? dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+                            return (
+                              <div
+                                key={item.id || index}
+                                onClick={() => {
+                                  if (item.bestiaryData) {
+                                    setSelectedBestiaryMonster(item.bestiaryData);
+                                  }
+                                }}
+                                style={{
+                                  padding: '0.9rem 1.1rem',
+                                  background: cardBg,
+                                  borderRadius: '10px',
+                                  borderLeft: `4px solid ${borderColor}`,
+                                  boxShadow: cardShadow,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  gap: '0.75rem',
+                                  cursor: hasBestiaryData ? 'pointer' : 'default',
+                                  transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (hasBestiaryData) {
+                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                    e.currentTarget.style.boxShadow = `0 4px 20px ${borderColor}50`;
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (hasBestiaryData) {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = cardShadow;
+                                  }
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
+                                  {item.imageUrl ? (
+                                    <img src={item.imageUrl} alt="" style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '6px', flexShrink: 0 }} />
+                                  ) : (
+                                    <div style={{
+                                      width: '36px',
+                                      height: '36px',
+                                      borderRadius: '6px',
+                                      background: isSpecialMilestone ? `${borderColor}25` : 'rgba(255,255,255,0.05)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0
+                                    }}>
+                                      {isBestiary ? (
+                                        <BookOpen size={18} color="#c084fc" />
+                                      ) : isRank ? (
+                                        <Trophy size={18} color="#c084fc" />
+                                      ) : isItem ? (
+                                        <Package size={18} color="#60a5fa" />
+                                      ) : isForgeFirst ? (
+                                        <Hammer size={18} color="#f97316" />
+                                      ) : isForgePlusNine ? (
+                                        <Flame size={18} color="#ea580c" />
+                                      ) : isForgeTransmute ? (
+                                        <Sparkles size={18} color="#c084fc" />
+                                      ) : isPvp ? (
+                                        isPvpFirstWin ? <Trophy size={18} color="#fbbf24" /> : <Swords size={18} color={isNegative ? 'var(--accent-red)' : item.badgeType === 'xp_positive' ? 'var(--accent-green, #10b981)' : '#fb7185'} />
+                                      ) : (
+                                        <Star size={18} color="var(--gold-primary)" />
+                                      )}
+                                    </div>
+                                  )}
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <h4 style={{
+                                      fontSize: '0.95rem',
+                                      margin: '0 0 0.15rem 0',
+                                      fontWeight: 'bold',
+                                      color: titleColor,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.4rem',
+                                      flexWrap: 'wrap'
+                                    }}>
+                                      {item.title}
+                                      {hasBestiaryData && (
+                                        <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(168, 85, 247, 0.25)', color: '#c084fc', fontWeight: 'normal' }}>
+                                          📖 Abrir Bestiário
+                                        </span>
+                                      )}
+                                    </h4>
+                                    {item.subtitle && (
+                                      <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: isSpecialMilestone ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)' }}>
+                                        {item.subtitle}
+                                      </p>
+                                    )}
+                                    <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
+                                      Data: {formattedDate} {formattedTime ? `| Hora: ${formattedTime}` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div style={{
+                                  fontSize: '0.85rem',
+                                  fontWeight: 'bold',
+                                  color: badgeColor,
+                                  background: badgeBg,
+                                  padding: '0.35rem 0.75rem',
+                                  borderRadius: '16px',
+                                  whiteSpace: 'nowrap',
+                                  border: isSpecialMilestone ? `1px solid ${borderColor}80` : `1px solid ${borderColor}40`
+                                }}>
+                                  {item.badgeText}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
                       </div>
                     ) : (
-                      achievements.map((item, index) => {
-                        const isRank = item.type === 'rank_up';
-                        const isItem = item.type === 'item';
-                        const isNegative = item.badgeType === 'xp_negative';
-                        const isPvp = item.type === 'pvp';
-                        const isForge = item.type === 'forge';
-
-                        const isPvpFirstWin = item.id === 'pvp-first-win';
-                        const isForgeFirst = item.id === 'forge-first-success';
-                        const isForgePlusNine = item.id === 'forge-first-plus-nine';
-                        const isForgeTransmute = item.id === 'forge-first-transmute';
-                        const isSpecialMilestone = isPvpFirstWin || isForgeFirst || isForgePlusNine || isForgeTransmute || !!item.isSpecialMilestone;
-                        
-                        let borderColor = 'var(--gold-primary)';
-                        let badgeBg = 'rgba(251, 191, 36, 0.15)';
-                        let badgeColor = 'var(--gold-primary)';
-                        let cardBg = 'rgba(0,0,0,0.3)';
-                        let cardShadow = 'none';
-                        let titleColor = 'var(--text-primary)';
-                        
-                        if (isRank) {
-                          borderColor = '#a855f7';
-                          badgeBg = 'rgba(168, 85, 247, 0.2)';
-                          badgeColor = '#c084fc';
-                        } else if (isItem) {
-                          borderColor = '#3b82f6';
-                          badgeBg = 'rgba(59, 130, 246, 0.15)';
-                          badgeColor = '#60a5fa';
-                        } else if (isForge) {
-                          if (isForgeFirst) {
-                            borderColor = '#f97316';
-                            badgeBg = 'rgba(249, 115, 22, 0.22)';
-                            badgeColor = '#f97316';
-                            cardBg = 'linear-gradient(135deg, rgba(249, 115, 22, 0.14) 0%, rgba(234, 88, 12, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
-                            cardShadow = '0 0 16px rgba(249, 115, 22, 0.18)';
-                            titleColor = '#f97316';
-                          } else if (isForgePlusNine) {
-                            borderColor = '#ea580c';
-                            badgeBg = 'linear-gradient(135deg, rgba(234, 88, 12, 0.35) 0%, rgba(239, 68, 68, 0.25) 100%)';
-                            badgeColor = '#fbbf24';
-                            cardBg = 'linear-gradient(135deg, rgba(239, 68, 68, 0.16) 0%, rgba(234, 88, 12, 0.12) 50%, rgba(0, 0, 0, 0.35) 100%)';
-                            cardShadow = '0 0 20px rgba(234, 88, 12, 0.22)';
-                            titleColor = '#fbbf24';
-                          } else if (isForgeTransmute) {
-                            borderColor = '#a855f7';
-                            badgeBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.35) 0%, rgba(139, 92, 246, 0.25) 100%)';
-                            badgeColor = '#c084fc';
-                            cardBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(139, 92, 246, 0.09) 50%, rgba(0, 0, 0, 0.35) 100%)';
-                            cardShadow = '0 0 18px rgba(168, 85, 247, 0.2)';
-                            titleColor = '#c084fc';
-                          } else {
-                            borderColor = '#f97316';
-                            badgeBg = 'rgba(249, 115, 22, 0.18)';
-                            badgeColor = '#f97316';
-                          }
-                        } else if (isPvp) {
-                          if (isPvpFirstWin) {
-                            borderColor = '#f59e0b';
-                            badgeBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.35) 0%, rgba(244, 63, 94, 0.25) 100%)';
-                            badgeColor = '#fbbf24';
-                            cardBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(244, 63, 94, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
-                            cardShadow = '0 0 16px rgba(245, 158, 11, 0.15)';
-                            titleColor = '#fbbf24';
-                          } else if (isNegative) {
-                            borderColor = 'var(--accent-red)';
-                            badgeBg = 'rgba(239, 68, 68, 0.15)';
-                            badgeColor = 'var(--accent-red)';
-                          } else if (item.badgeType === 'xp_positive') {
-                            borderColor = 'var(--accent-green, #10b981)';
-                            badgeBg = 'rgba(16, 185, 129, 0.18)';
-                            badgeColor = 'var(--accent-green, #10b981)';
-                          } else {
-                            borderColor = '#f43f5e';
-                            badgeBg = 'rgba(244, 63, 94, 0.18)';
-                            badgeColor = '#fb7185';
-                          }
-                        } else if (isNegative) {
-                          borderColor = 'var(--accent-red)';
-                          badgeBg = 'rgba(239, 68, 68, 0.15)';
-                          badgeColor = 'var(--accent-red)';
-                        }
-
-                        const dateObj = new Date(item.timestamp);
-                        const isValidDate = !isNaN(dateObj.getTime());
-                        const formattedDate = isValidDate ? dateObj.toLocaleDateString('pt-BR') : (item.rawDate || '');
-                        const formattedTime = isValidDate ? dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-
-                        return (
-                          <div
-                            key={item.id || index}
-                            style={{
-                              padding: '0.9rem 1.1rem',
-                              background: cardBg,
-                              borderRadius: '10px',
-                              borderLeft: `4px solid ${borderColor}`,
-                              boxShadow: cardShadow,
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              gap: '0.75rem'
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
-                              {item.imageUrl ? (
-                                <img src={item.imageUrl} alt="" style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '6px', flexShrink: 0 }} />
-                              ) : (
-                                <div style={{
-                                  width: '36px',
-                                  height: '36px',
-                                  borderRadius: '6px',
-                                  background: isSpecialMilestone ? `${borderColor}25` : 'rgba(255,255,255,0.05)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0
-                                }}>
-                                  {isRank ? (
-                                    <Trophy size={18} color="#c084fc" />
-                                  ) : isItem ? (
-                                    <Package size={18} color="#60a5fa" />
-                                  ) : isForgeFirst ? (
-                                    <Hammer size={18} color="#f97316" />
-                                  ) : isForgePlusNine ? (
-                                    <Flame size={18} color="#ea580c" />
-                                  ) : isForgeTransmute ? (
-                                    <Sparkles size={18} color="#c084fc" />
-                                  ) : isPvp ? (
-                                    isPvpFirstWin ? <Trophy size={18} color="#fbbf24" /> : <Swords size={18} color={isNegative ? 'var(--accent-red)' : item.badgeType === 'xp_positive' ? 'var(--accent-green, #10b981)' : '#fb7185'} />
-                                  ) : (
-                                    <Star size={18} color="var(--gold-primary)" />
-                                  )}
-                                </div>
-                              )}
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                                <h4 style={{
-                                  fontSize: '0.95rem',
-                                  margin: '0 0 0.15rem 0',
-                                  fontWeight: 'bold',
-                                  color: titleColor
-                                }}>
-                                  {item.title}
-                                </h4>
-                                {item.subtitle && (
-                                  <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: isSpecialMilestone ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)' }}>
-                                    {item.subtitle}
-                                  </p>
-                                )}
-                                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
-                                  Data: {formattedDate} {formattedTime ? `| Hora: ${formattedTime}` : ''}
-                                </span>
-                              </div>
-                            </div>
-                            <div style={{
-                              fontSize: '0.85rem',
-                              fontWeight: 'bold',
-                              color: badgeColor,
-                              background: badgeBg,
-                              padding: '0.35rem 0.75rem',
-                              borderRadius: '16px',
-                              whiteSpace: 'nowrap',
-                              border: isSpecialMilestone ? `1px solid ${borderColor}80` : `1px solid ${borderColor}40`
-                            }}>
-                              {item.badgeText}
-                            </div>
+                      /* Feed de Log de Atividades (com agrupamento inteligente de poções/compras) */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                        {loadingActivity ? (
+                          <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>Carregando log de atividades...</p>
+                        ) : activityLog.length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                            <Scroll size={36} style={{ opacity: 0.5, margin: '0 auto 0.5rem auto' }} />
+                            <p>Nenhuma atividade recente registrada.</p>
                           </div>
-                        );
-                      })
+                        ) : (
+                          activityLog.map((act, index) => {
+                            const isItem = act.type === 'item';
+                            const isQuest = act.type === 'quest';
+                            const isTeacher = act.type === 'teacher_xp';
+                            const isGrouped = act.count && act.count > 1;
+
+                            let borderColor = '#3b82f6';
+                            let badgeBg = 'rgba(59, 130, 246, 0.15)';
+                            let badgeColor = '#60a5fa';
+
+                            if (isItem) {
+                              borderColor = isGrouped ? '#38bdf8' : '#3b82f6';
+                              badgeBg = isGrouped ? 'rgba(56, 189, 248, 0.2)' : 'rgba(59, 130, 246, 0.15)';
+                              badgeColor = isGrouped ? '#38bdf8' : '#60a5fa';
+                            } else if (isQuest) {
+                              if (act.badgeType === 'xp_positive') {
+                                borderColor = '#10b981';
+                                badgeBg = 'rgba(16, 185, 129, 0.18)';
+                                badgeColor = '#34d399';
+                              } else if (act.badgeType === 'xp_negative') {
+                                borderColor = '#ef4444';
+                                badgeBg = 'rgba(239, 68, 68, 0.18)';
+                                badgeColor = '#f87171';
+                              } else {
+                                borderColor = '#f59e0b';
+                                badgeBg = 'rgba(245, 158, 11, 0.18)';
+                                badgeColor = '#fbbf24';
+                              }
+                            } else if (isTeacher) {
+                              borderColor = act.badgeType === 'xp_positive' ? '#10b981' : '#ef4444';
+                              badgeBg = act.badgeType === 'xp_positive' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(239, 68, 68, 0.18)';
+                              badgeColor = act.badgeType === 'xp_positive' ? '#34d399' : '#f87171';
+                            }
+
+                            const dateObj = new Date(act.timestamp);
+                            const isValidDate = !isNaN(dateObj.getTime());
+                            const formattedDate = isValidDate ? dateObj.toLocaleDateString('pt-BR') : (act.rawDate || '');
+                            const formattedTime = isValidDate ? dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+                            return (
+                              <div
+                                key={act.id || index}
+                                style={{
+                                  padding: '0.85rem 1rem',
+                                  background: 'rgba(0, 0, 0, 0.3)',
+                                  borderRadius: '10px',
+                                  borderLeft: `4px solid ${borderColor}`,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  gap: '0.75rem'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
+                                  {act.imageUrl ? (
+                                    <img src={act.imageUrl} alt="" style={{ width: '34px', height: '34px', objectFit: 'contain', borderRadius: '6px', flexShrink: 0 }} />
+                                  ) : (
+                                    <div style={{
+                                      width: '34px',
+                                      height: '34px',
+                                      borderRadius: '6px',
+                                      background: `${borderColor}20`,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0
+                                    }}>
+                                      {isItem ? <Package size={17} color={borderColor} /> : isQuest ? <Crosshair size={17} color={borderColor} /> : <Star size={17} color={borderColor} />}
+                                    </div>
+                                  )}
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <h4 style={{
+                                      fontSize: '0.9rem',
+                                      margin: '0 0 0.15rem 0',
+                                      fontWeight: 'bold',
+                                      color: '#fff',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.4rem'
+                                    }}>
+                                      {act.title}
+                                    </h4>
+                                    {act.subtitle && (
+                                      <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                        {act.subtitle}
+                                      </p>
+                                    )}
+                                    <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)' }}>
+                                      Data: {formattedDate} {formattedTime ? `| Hora: ${formattedTime}` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div style={{
+                                  fontSize: '0.8rem',
+                                  fontWeight: 'bold',
+                                  color: badgeColor,
+                                  background: badgeBg,
+                                  padding: '0.3rem 0.65rem',
+                                  borderRadius: '14px',
+                                  whiteSpace: 'nowrap',
+                                  border: `1px solid ${borderColor}40`
+                                }}>
+                                  {act.badgeText}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -633,6 +879,15 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
           </div>
         </div>
       </div>
+
+      {/* Modal Temático do Bestiário (aberto ao clicar no card de criatura ou drop) */}
+      {selectedBestiaryMonster && (
+        <MonsterBestiaryModal
+          isOpen={!!selectedBestiaryMonster}
+          onClose={() => setSelectedBestiaryMonster(null)}
+          monsterData={selectedBestiaryMonster}
+        />
+      )}
     </div>
   );
 }

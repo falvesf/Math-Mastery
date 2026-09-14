@@ -308,8 +308,8 @@ export default function AvatarCustomizationModal({
   // Quando editando um monstro já salvo na galeria: guarda o id do registro
   // para fazer UPDATE (nunca duplicar) e o nome fica travado.
   const [editingSkinId, setEditingSkinId] = useState<string | null>(null);
-  // Sub-guia ativa quando editando monstro (Visual | Atributos | Golpes | Sons & Falas | Drops)
-  const [monsterSection, setMonsterSection] = useState<'visual' | 'stats' | 'attacks' | 'sounds' | 'drops'>('visual');
+  // Sub-guia ativa quando editando monstro (Visual | Atributos | Golpes | Sons & Falas | Drops | Biografia IA)
+  const [monsterSection, setMonsterSection] = useState<'visual' | 'stats' | 'attacks' | 'sounds' | 'drops' | 'lore'>('visual');
   const [presetSkins, setPresetSkins] = useState<PresetSkin[]>([]);
   const [models3d, setModels3d] = useState<any[]>([]);
   const [storeItems, setStoreItems] = useState<any[]>([]);
@@ -1975,6 +1975,31 @@ onClick={() => setConfig(prev => {
                   <Gift size={16} />
                   <span>Drops{((config as any)?.drops?.length ?? 0) > 0 ? ` (${(config as any).drops.length})` : ''}</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setMonsterSection('lore')}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.25rem',
+                    padding: '0.5rem 0.2rem',
+                    borderRadius: '8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 'bold',
+                    background: monsterSection === 'lore' ? 'var(--gold-primary)' : 'transparent',
+                    color: monsterSection === 'lore' ? 'var(--text-on-gold, #000)' : 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    minWidth: 0
+                  }}
+                  title="Biografia & Alma da Criatura (IA)"
+                >
+                  <Sparkles size={16} />
+                  <span>Biografia</span>
+                </button>
               </div>
             )}
 
@@ -2742,6 +2767,7 @@ onClick={() => setConfig(prev => {
                 quotes: (config as any).quotes,
                 drops: (config as any).drops,
                 stats: (config as any).stats,
+                biography: (config as any).biography,
               }}
               onChange={attrs => setConfig(prev => ({
                 ...prev,
@@ -2752,8 +2778,42 @@ onClick={() => setConfig(prev => {
                 quotes: attrs.quotes,
                 drops: attrs.drops,
                 stats: attrs.stats,
+                biography: attrs.biography,
               } as any))}
               availableStoreItems={storeItems}
+              monsterName={monsterName}
+              monsterAttacks={(config as any).attacks}
+            />
+          )}
+
+          {/* Biografia e Alma do Monstro (Sub-guia Lore) */}
+          {customSaveMode && monsterSection === 'lore' && (
+            <MonsterAttributesEditor
+              tabMode="lore"
+              value={{
+                gender: (config as any).gender,
+                attackSound: (config as any).attackSound,
+                gruntSound: (config as any).gruntSound,
+                damageSound: (config as any).damageSound,
+                quotes: (config as any).quotes,
+                drops: (config as any).drops,
+                stats: (config as any).stats,
+                biography: (config as any).biography,
+              }}
+              onChange={attrs => setConfig(prev => ({
+                ...prev,
+                gender: attrs.gender,
+                attackSound: attrs.attackSound,
+                gruntSound: attrs.gruntSound,
+                damageSound: attrs.damageSound,
+                quotes: attrs.quotes,
+                drops: attrs.drops,
+                stats: attrs.stats,
+                biography: attrs.biography,
+              } as any))}
+              availableStoreItems={storeItems}
+              monsterName={monsterName}
+              monsterAttacks={(config as any).attacks}
             />
           )}
 
