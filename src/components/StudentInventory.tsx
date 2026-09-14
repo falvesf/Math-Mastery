@@ -307,7 +307,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       const { data: specificDocSnap } = await supabase.from('user_items').select('*').eq('id', specificDocId).single();
       if (specificDocSnap) {
         const data = specificDocSnap.data as any;
-        if (isStackableItemType(data.itemType) && !data.forSale && specificDocSnap.student_id === userData.uid) {
+        if (!data.forSale && specificDocSnap.student_id === userData.uid) {
           const qty = data.quantity || 1;
           if (qty <= remainingToRemove) {
             await supabase.from('user_items').delete().eq('id', specificDocId);
@@ -1360,7 +1360,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                     
                     {hoveredItem === item.id && viewMode !== 'list' && (
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(20, 20, 30, 0.85)', backdropFilter: 'blur(4px)', borderRadius: '8px', display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: viewMode === 'icons' ? '2px' : '6px', zIndex: 1000, padding: viewMode === 'icons' ? '2px' : '0.25rem' }}>
-                        {item.itemType === 'equippable' ? (
+                        {item.itemType === 'equippable' && (!item.gameEffect || item.gameEffect === 'none') ? (
                           <button 
                             title={item.equipped ? '✔ Equipado' : 'Equipar'}
                             onClick={(e) => { e.stopPropagation(); handleEquip(item); }} 
@@ -1448,7 +1448,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                           {item.itemType === 'consumable' ? 'Consumível' : item.itemType === 'other' ? 'Material' : 'Equipável'}
                         </span>
                         <div style={{ display: 'flex', gap: '2px', marginLeft: 'auto', alignItems: 'center' }}>
-                          {item.itemType === 'equippable' ? (
+                          {item.itemType === 'equippable' && (!item.gameEffect || item.gameEffect === 'none') ? (
                             <button 
                               title={item.equipped ? '✔ Equipado' : 'Equipar'}
                               onClick={() => handleEquip(item)} 

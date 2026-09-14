@@ -673,6 +673,17 @@ export default function AvatarCustomizationModal({
 
     try {
       if (!customSaveMode && userData && !inline) {
+        // Validação de segurança: se o usuário for aluno comum, não pode salvar customSkinUrl
+        // a menos que ele possua a skin desbloqueada e dentro do prazo de validade
+        const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || isAdmin || canSkins;
+        if (!isStaff && cleanConfig.customSkinUrl) {
+          const expiry = userData.unlockedSkins?.[cleanConfig.customSkinUrl];
+          if (!expiry || expiry <= Date.now()) {
+            cleanConfig.customSkinUrl = '';
+            cleanConfig.customModelUrl = undefined;
+          }
+        }
+
         await supabase.from('users').update({ avatar_config: cleanConfig }).eq('id', userData.uid);
         if (onSave) {
           onSave(cleanConfig, monsterName);
@@ -1002,12 +1013,19 @@ export default function AvatarCustomizationModal({
       return c || null;
     };
 
-    // Sugerir da galeria global — sorteia entre TODAS as skins da categoria
-    // (comportamento original). Só aplica se a skin sorteada tiver config válido.
-    const availableSkins = presetSkins.filter(s =>
-      (s.type || 'human') === (customSaveMode ? 'monster' : 'human') &&
-      (!s.genderTarget || s.genderTarget === 'both' || s.genderTarget === config.gender)
-    );
+    // Sugerir da galeria global: aluno comum só pode sortear entre as skins que ele DESBLOQUEOU.
+    // Staff/admin ou modo monstro podem sortear entre todas.
+    const canSeeAll = (userData?.role !== 'student' && !userData?.studentViewActive) || isAdmin || canSkins;
+    const availableSkins = presetSkins.filter(s => {
+      if ((s.type || 'human') !== (customSaveMode ? 'monster' : 'human')) return false;
+      const skinGender = s.genderTarget || (s as any).gender_target;
+      if (skinGender && skinGender !== 'both' && skinGender !== config.gender) return false;
+      if (!customSaveMode && !canSeeAll) {
+        const expiry = userData?.unlockedSkins?.[s.url];
+        if (!expiry || expiry <= Date.now()) return false;
+      }
+      return true;
+    });
     if (availableSkins.length > 0 && Math.random() < 0.4) {
       const selected = randomItem(availableSkins);
       const cfg = parseConfig(selected.config) || {};

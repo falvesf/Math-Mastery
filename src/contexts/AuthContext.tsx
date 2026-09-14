@@ -264,7 +264,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (!isImpersonating && mappedUserData.role === 'student' && mappedUserData.avatarConfig?.customSkinUrl) {
           const skinUrl = mappedUserData.avatarConfig.customSkinUrl;
           const expiry = mappedUserData.unlockedSkins?.[skinUrl];
-          if (expiry !== undefined && expiry <= Date.now()) {
+          if (!expiry || expiry <= Date.now()) {
             let updatedConfig = { ...mappedUserData.avatarConfig, customSkinUrl: '', customModelUrl: undefined };
             if (updatedConfig.savedPreSkinConfig) {
               updatedConfig = { ...updatedConfig, ...updatedConfig.savedPreSkinConfig };
