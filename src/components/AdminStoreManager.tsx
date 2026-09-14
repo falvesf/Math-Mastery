@@ -158,8 +158,11 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [copyForgeFromId, setCopyForgeFromId] = useState('');
   // Modal de seleção das opções para "Sincronizar do Banco"
   const [showSyncOptions, setShowSyncOptions] = useState(false);
-  const [syncSelection, setSyncSelection] = useState<Record<string, boolean>>({});
   const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
+  const [customSalePct, setCustomSalePct] = useState<number>(() => {
+    const saved = localStorage.getItem('admin_custom_sale_pct');
+    return saved ? Number(saved) : 20;
+  });
 
   // Item montado para PREVIEW 3D no personagem (config de posição e visualização da textura)
   const previewEquippedItems = useMemo(() => {
@@ -1411,9 +1414,106 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(251,191,36,0.4)', color: 'white' }}
                   placeholder="0 = sem restrição"
                 />
-                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  0 = Venda livre
-                </p>
+
+                {/* Atalhos Rápidos de Porcentagem (% do Custo) */}
+                <div style={{ marginTop: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#fbbf24', fontWeight: 600 }}>
+                      ⚡ Atalhos (% do Custo):
+                    </span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                      0 = Livre
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+                    {[3, 5, 7, 10, 12, 15].map((pct) => {
+                      const costVal = Number(formData.cost) || 0;
+                      const calculated = Math.round(costVal * (pct / 100));
+                      const isCurrent = costVal > 0 && formData.minSalePrice === calculated;
+                      return (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, minSalePrice: calculated })}
+                          title={`Definir para ${pct}% do custo (${calculated} ${economyType === 'coins' ? 'moedas' : 'XP'})`}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '6px',
+                            border: isCurrent ? '1px solid #fbbf24' : '1px solid rgba(255, 255, 255, 0.12)',
+                            background: isCurrent ? 'rgba(251, 191, 36, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                            color: isCurrent ? '#fbbf24' : '#d1d5db',
+                            fontSize: '0.72rem',
+                            fontWeight: isCurrent ? 700 : 500,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                          className="hover-brightness"
+                        >
+                          {pct}%
+                        </button>
+                      );
+                    })}
+
+                    {/* Porcentagem personalizada gravável */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      borderRadius: '6px',
+                      border: ((Number(formData.cost) || 0) > 0 && formData.minSalePrice === Math.round((Number(formData.cost) || 0) * (customSalePct / 100)))
+                        ? '1px solid #fbbf24'
+                        : '1px solid rgba(255, 255, 255, 0.15)',
+                      overflow: 'hidden'
+                    }}>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={customSalePct}
+                        onChange={(e) => {
+                          const val = Math.max(1, Math.min(100, Number(e.target.value) || 1));
+                          setCustomSalePct(val);
+                          localStorage.setItem('admin_custom_sale_pct', String(val));
+                        }}
+                        style={{
+                          width: '40px',
+                          padding: '0.25rem 0.2rem',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: '0.72rem',
+                          textAlign: 'center',
+                          outline: 'none'
+                        }}
+                        title="Digite uma porcentagem personalizada (fica gravada)"
+                      />
+                      <span style={{ fontSize: '0.7rem', color: '#9ca3af', paddingRight: '2px' }}>%</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const costVal = Number(formData.cost) || 0;
+                          const calculated = Math.round(costVal * (customSalePct / 100));
+                          setFormData({ ...formData, minSalePrice: calculated });
+                        }}
+                        title={`Aplicar ${customSalePct}% (${Math.round((Number(formData.cost) || 0) * (customSalePct / 100))} ${economyType === 'coins' ? 'moedas' : 'XP'})`}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          background: 'rgba(59, 130, 246, 0.25)',
+                          border: 'none',
+                          borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: '#93c5fd',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                        className="hover-brightness"
+                      >
+                        Aplicar
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div>
