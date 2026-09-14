@@ -22,8 +22,10 @@ export interface AchievementItem {
   badgeType: 'rank' | 'xp_positive' | 'xp_negative' | 'item_spent' | 'item_received';
   timestamp: number; // in milliseconds
   rawDate: string;
-  /** Histórico completo de PvP (anexado à conquista de primeira vitória) */
+  /** Histórico completo de PvP (se houver, para compatibilidade) */
   pvpDetails?: PvpHistoryEntry[];
+  /** Indica se é uma conquista de marco histórico único (ex: Primeira Vitória em PvP) */
+  isSpecialMilestone?: boolean;
 }
 
 /**
@@ -279,23 +281,58 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
         } as PvpHistoryEntry;
       });
 
-      // Conquista da PRIMEIRA vitória de PvP, com o histórico completo anexado
-      const wins = pvpEntries.filter(e => e.won);
-      if (wins.length > 0) {
-        const firstWin = [...wins].sort((a, b) => a.timestamp - b.timestamp)[0];
-        const losses = pvpEntries.length - wins.length;
-        achievements.push({
-          id: 'pvp-first-win',
-          type: 'pvp',
-          title: 'Primeira Vitória em PvP',
-          subtitle: `${pvpEntries.length} duelo${pvpEntries.length > 1 ? 's' : ''} · ${wins.length} vitória${wins.length > 1 ? 's' : ''}${losses > 0 ? ` · ${losses} derrota${losses > 1 ? 's' : ''}` : ''}`,
-          badgeText: 'PvP',
-          badgeType: 'xp_positive',
-          timestamp: firstWin.timestamp,
-          rawDate: firstWin.dateStr,
-          pvpDetails: pvpEntries,
-        });
-      }
+      // Ordena cronologicamente (do mais antigo para o mais recente) para identificar a 1ª vitória
+      const chronological = [...pvpEntries].sort((a, b) => a.timestamp - b.timestamp);
+      const firstWinIndex = chronological.findIndex(e => e.won);
+
+      chronological.forEach((entry, idx) => {
+        if (idx === firstWinIndex) {
+          // MARCO ESPECIAL E ÚNICO: Primeira Vitória em PvP
+          achievements.push({
+            id: 'pvp-first-win',
+            type: 'pvp',
+            isSpecialMilestone: true,
+            title: 'Primeira Vitória em PvP',
+            subtitle: `Vitória histórica contra ${entry.opponentName} · Placar: ${entry.score}${entry.prizeText ? ` · ${entry.prizeText}` : ''}`,
+            badgeText: '🏆 1ª Vitória',
+            badgeType: 'xp_positive',
+            timestamp: entry.timestamp,
+            rawDate: entry.dateStr,
+          });
+        } else {
+          // Demais duelos (aparecem individualmente na timeline conforme acontecem)
+          let title = `Duelo PvP: vs ${entry.opponentName}`;
+          let badgeText = 'Duelo PvP';
+          let badgeType: AchievementItem['badgeType'] = 'rank';
+
+          if (entry.won) {
+            title = `Vitória em PvP: vs ${entry.opponentName}`;
+            badgeText = entry.prizeType === 'coins_win' && entry.prizeText ? entry.prizeText.split(' · ')[0] : 'Vitória PvP';
+            badgeType = 'xp_positive';
+          } else if (entry.draw) {
+            title = `Empate em PvP: vs ${entry.opponentName}`;
+            badgeText = 'Empate';
+            badgeType = 'rank';
+          } else {
+            title = `Duelo PvP: vs ${entry.opponentName}`;
+            badgeText = entry.prizeType === 'coins_lose' && entry.prizeText ? entry.prizeText.split(' · ')[0] : 'Duelo PvP';
+            badgeType = entry.prizeType === 'coins_lose' ? 'xp_negative' : 'item_spent';
+          }
+
+          const subtitle = `Placar: ${entry.score}${entry.prizeText ? ` · ${entry.prizeText}` : ''}`;
+
+          achievements.push({
+            id: entry.id,
+            type: 'pvp',
+            title,
+            subtitle,
+            badgeText,
+            badgeType,
+            timestamp: entry.timestamp,
+            rawDate: entry.dateStr,
+          });
+        }
+      });
     } catch (e) {
       console.error('Erro ao buscar histórico de PvP:', e);
     }

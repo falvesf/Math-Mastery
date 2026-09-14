@@ -3546,6 +3546,7 @@ export default function Dashboard() {
                         const isItem = item.type === 'item';
                         const isNegative = item.badgeType === 'xp_negative';
                         const isPvp = item.type === 'pvp';
+                        const isFirstWin = item.id === 'pvp-first-win' || !!item.isSpecialMilestone;
                         const isPvpExpanded = expandedPvpId === item.id;
                         const hasPvpDetails = isPvp && (item.pvpDetails || []).length > 0;
 
@@ -3562,9 +3563,23 @@ export default function Dashboard() {
                           badgeBg = 'rgba(59, 130, 246, 0.15)';
                           badgeColor = '#60a5fa';
                         } else if (isPvp) {
-                          borderColor = '#f43f5e';
-                          badgeBg = 'rgba(244, 63, 94, 0.18)';
-                          badgeColor = '#fb7185';
+                          if (isFirstWin) {
+                            borderColor = '#f59e0b';
+                            badgeBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.35) 0%, rgba(244, 63, 94, 0.25) 100%)';
+                            badgeColor = '#fbbf24';
+                          } else if (isNegative) {
+                            borderColor = 'var(--accent-red)';
+                            badgeBg = 'rgba(239, 68, 68, 0.15)';
+                            badgeColor = 'var(--accent-red)';
+                          } else if (item.badgeType === 'xp_positive') {
+                            borderColor = 'var(--accent-green, #10b981)';
+                            badgeBg = 'rgba(16, 185, 129, 0.18)';
+                            badgeColor = 'var(--accent-green, #10b981)';
+                          } else {
+                            borderColor = '#f43f5e';
+                            badgeBg = 'rgba(244, 63, 94, 0.18)';
+                            badgeColor = '#fb7185';
+                          }
                         } else if (isNegative) {
                           borderColor = 'var(--accent-red)';
                           badgeBg = 'rgba(239, 68, 68, 0.15)';
@@ -3574,22 +3589,58 @@ export default function Dashboard() {
                         const dateObj = item.timestamp ? (typeof item.timestamp === 'number' ? new Date(item.timestamp) : (item.timestamp.seconds ? new Date(item.timestamp.seconds * 1000) : new Date(item.timestamp))) : new Date();
 
                         return (
-                          <div key={item.id || index} style={{ padding: '0.9rem 1.1rem', background: 'rgba(0,0,0,0.25)', borderRadius: '12px', borderLeft: `4px solid ${borderColor}`, cursor: hasPvpDetails ? 'pointer' : 'default' }} onClick={hasPvpDetails ? () => setExpandedPvpId(isPvpExpanded ? null : item.id) : undefined}>
+                          <div
+                            key={item.id || index}
+                            style={{
+                              padding: '0.9rem 1.1rem',
+                              background: isFirstWin
+                                ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(244, 63, 94, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)'
+                                : 'rgba(0,0,0,0.25)',
+                              borderRadius: '12px',
+                              borderLeft: `4px solid ${borderColor}`,
+                              boxShadow: isFirstWin ? '0 0 16px rgba(245, 158, 11, 0.15)' : 'none',
+                              cursor: hasPvpDetails ? 'pointer' : 'default'
+                            }}
+                            onClick={hasPvpDetails ? () => setExpandedPvpId(isPvpExpanded ? null : item.id) : undefined}
+                          >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
                                 {item.imageUrl ? (
                                   <img src={item.imageUrl} alt="" style={{ width: '38px', height: '38px', objectFit: 'contain', borderRadius: '8px', flexShrink: 0 }} />
                                 ) : (
-                                  <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    {isRank ? <Trophy size={20} color="#c084fc" /> : isItem ? <Package size={20} color="#60a5fa" /> : isPvp ? <Swords size={20} color="#fb7185" /> : <Star size={20} color="var(--gold-primary)" />}
+                                  <div style={{
+                                    width: '38px',
+                                    height: '38px',
+                                    borderRadius: '8px',
+                                    background: isFirstWin ? 'rgba(245, 158, 11, 0.18)' : 'rgba(255,255,255,0.05)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0
+                                  }}>
+                                    {isRank ? (
+                                      <Trophy size={20} color="#c084fc" />
+                                    ) : isItem ? (
+                                      <Package size={20} color="#60a5fa" />
+                                    ) : isPvp ? (
+                                      isFirstWin ? <Trophy size={20} color="#fbbf24" /> : <Swords size={20} color={isNegative ? 'var(--accent-red)' : item.badgeType === 'xp_positive' ? 'var(--accent-green, #10b981)' : '#fb7185'} />
+                                    ) : (
+                                      <Star size={20} color="var(--gold-primary)" />
+                                    )}
                                   </div>
                                 )}
                                 <div style={{ minWidth: 0, flex: 1 }}>
-                                  <h4 style={{ fontSize: '0.95rem', margin: '0 0 0.15rem 0', fontWeight: 'bold', color: 'var(--text-primary)', whiteSpace: 'normal' }}>
+                                  <h4 style={{
+                                    fontSize: '0.95rem',
+                                    margin: '0 0 0.15rem 0',
+                                    fontWeight: 'bold',
+                                    color: isFirstWin ? '#fbbf24' : 'var(--text-primary)',
+                                    whiteSpace: 'normal'
+                                  }}>
                                     {item.title || item.evalName}
                                   </h4>
                                   {item.subtitle && (
-                                    <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                    <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: isFirstWin ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)' }}>
                                       {item.subtitle}
                                     </p>
                                   )}
@@ -3599,7 +3650,16 @@ export default function Dashboard() {
                                 </div>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-                                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: badgeColor, background: badgeBg, padding: '0.35rem 0.75rem', borderRadius: '20px', whiteSpace: 'nowrap', border: `1px solid ${borderColor}40` }}>
+                                <div style={{
+                                  fontSize: '0.85rem',
+                                  fontWeight: 'bold',
+                                  color: badgeColor,
+                                  background: badgeBg,
+                                  padding: '0.35rem 0.75rem',
+                                  borderRadius: '20px',
+                                  whiteSpace: 'nowrap',
+                                  border: isFirstWin ? '1px solid rgba(251, 191, 36, 0.6)' : `1px solid ${borderColor}40`
+                                }}>
                                   {item.badgeText || (item.xpGained !== undefined ? `${item.xpGained > 0 ? '+' : ''}${item.xpGained} XP` : 'Conquista')}
                                 </div>
                                 {isPvp && hasPvpDetails && (isPvpExpanded ? <ChevronDown size={16} color="#fb7185" /> : <ChevronRight size={16} color="#fb7185" />)}

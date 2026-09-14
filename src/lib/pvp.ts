@@ -12,6 +12,7 @@ import {
   HEAL_AURA_PER_TURN,
   HEAL_MAX_ACTIVATIONS,
 } from './transformEffects';
+import { sessionCache, CACHE_KEYS } from './sessionCache';
 
 // ============ Tipos ============
 
@@ -723,6 +724,11 @@ async function settleBets(match: PvpMatch): Promise<void> {
   } catch (e) {
     console.error('Erro ao pagar apostas:', e);
   }
+  // Invalida o cache do Histórico de Conquistas de ambos para atualizar imediatamente no Dashboard
+  try {
+    if (match.challenger_id) sessionCache.invalidate(CACHE_KEYS.xpHistory(match.challenger_id));
+    if (match.opponent_id) sessionCache.invalidate(CACHE_KEYS.xpHistory(match.opponent_id));
+  } catch (e) { /* ignore */ }
 }
 
 // ============ Realtime ============
