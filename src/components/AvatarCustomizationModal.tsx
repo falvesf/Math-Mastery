@@ -478,6 +478,39 @@ export default function AvatarCustomizationModal({
           fetched.push({ id: d.id, ...d, config: parsedConfig } as PresetSkin);
         });
       }
+
+      // Garante que skins desbloqueadas pelo aluno sejam sempre carregadas,
+      // mesmo que pertençam a outro tenant ou não tenham vindo na query por tenant
+      const activeUnlockedUrls = Object.keys(userData?.unlockedSkins || {}).filter(
+        url => (userData?.unlockedSkins?.[url] || 0) > Date.now() && !fetched.some(f => f.url === url)
+      );
+
+      if (activeUnlockedUrls.length > 0) {
+        try {
+          const { data: unlockedData } = await supabase
+            .from('preset_skins')
+            .select('*')
+            .in('url', activeUnlockedUrls);
+
+          if (unlockedData) {
+            unlockedData.forEach(d => {
+              if (!fetched.some(f => f.id === d.id || f.url === d.url)) {
+                const parsedConfig = safeParseAvatarConfig(d.config) || ({} as any);
+                if (d.url && !parsedConfig.customSkinUrl) {
+                  parsedConfig.customSkinUrl = d.url;
+                }
+                if (!parsedConfig.presetSkinId) {
+                  parsedConfig.presetSkinId = d.id;
+                }
+                fetched.push({ id: d.id, ...d, config: parsedConfig } as PresetSkin);
+              }
+            });
+          }
+        } catch (unlockedErr) {
+          console.error('Erro ao buscar skins desbloqueadas do aluno:', unlockedErr);
+        }
+      }
+
       sessionCache.set(cacheKey, fetched, CACHE_TTL.PRESET_SKINS);
       setPresetSkins(fetched);
     } catch (e) {
@@ -2099,7 +2132,8 @@ onClick={() => setConfig(prev => {
                   const expiry = userData?.unlockedSkins?.[s.url];
                   if (!expiry || expiry <= Date.now()) return false;
                 }
-                if (s.genderTarget && s.genderTarget !== 'both' && s.genderTarget !== config.gender) return false;
+                const skinGender = s.genderTarget || (s as any).gender_target;
+                if (skinGender && skinGender !== 'both' && skinGender !== config.gender) return false;
                 return true;
               });
 

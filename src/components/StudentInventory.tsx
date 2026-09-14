@@ -459,11 +459,11 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         return;
       }
       
-      const { data: skinsSnap } = await supabase.from('system_collections').select('*').eq('collection_name', 'preset_skins').eq('data->>url', skinId);
+      const { data: skinsSnap } = await supabase.from('preset_skins').select('*').eq('url', skinId);
       
       if (skinsSnap && skinsSnap.length > 0) {
-        const skinData = skinsSnap[0].data as any;
-        const genderTarget = skinData.genderTarget;
+        const skinData = skinsSnap[0] as any;
+        const genderTarget = skinData.genderTarget || skinData.gender_target;
         const currentGender = userData.avatarConfig?.gender || 'male';
         if (genderTarget && genderTarget !== 'both' && genderTarget !== currentGender) {
           await showAlert(`Esta skin é exclusiva para o gênero ${genderTarget === 'male' ? 'Masculino' : 'Feminino'}. Mude o gênero do seu avatar para usá-la.`);
@@ -485,6 +485,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       
       if (!userData.unlockedSkins) userData.unlockedSkins = {};
       userData.unlockedSkins[skinId] = newExpiry;
+      if (updateUserDataLocally) {
+        updateUserDataLocally({ unlockedSkins: newUnlockedSkins });
+      }
 
       await consumeItemQuantity(item.itemId, 1, item.id);
       fetchInventory();

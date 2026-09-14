@@ -24,6 +24,7 @@ export default function AdminPresetSkinsManager() {
   const [type, setType] = useState<'human' | 'monster' | 'equipment'>('human');
   const [baseModelId, setBaseModelId] = useState<string>('default');
   const [genderTarget, setGenderTarget] = useState<'male' | 'female' | 'both'>('both');
+  const [isGlobal, setIsGlobal] = useState<boolean>(true);
 
   const [models3d, setModels3d] = useState<any[]>([]);
 
@@ -84,6 +85,7 @@ export default function AdminPresetSkinsManager() {
       setType(skin.type || activeTab);
       setBaseModelId(skin.baseModelId || 'default');
       setGenderTarget(skin.genderTarget || 'both');
+      setIsGlobal((skin as any)._isGlobal ?? false);
     } else {
       setEditingId(null);
       setName('');
@@ -91,6 +93,7 @@ export default function AdminPresetSkinsManager() {
       setType(activeTab); // Initialize with the active tab
       setBaseModelId('default');
       setGenderTarget('both');
+      setIsGlobal(true);
     }
     setIsModalOpen(true);
   };
@@ -119,8 +122,8 @@ export default function AdminPresetSkinsManager() {
         type,
         baseModelId: baseModelId === 'default' ? null : baseModelId,
         genderTarget,
-        tenant_id: tenantId || null,
-        is_global: false,
+        tenant_id: isGlobal ? null : (tenantId || null),
+        is_global: isGlobal,
       };
       let saveError: any = null;
       // Se o molde base for "Padrão" (nenhum), também remove o customModelUrl do
@@ -316,6 +319,20 @@ export default function AdminPresetSkinsManager() {
                   <option value="female">Feminino</option>
                 </select>
               </div>
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.9rem' }}>
+                <input 
+                  type="checkbox" 
+                  checked={isGlobal} 
+                  onChange={e => setIsGlobal(e.target.checked)} 
+                  style={{ width: '18px', height: '18px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                />
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Globe size={16} color="var(--accent-primary)" /> Disponível para todas as escolas (Global)
+                </span>
+              </label>
             </div>
 
             <button 
