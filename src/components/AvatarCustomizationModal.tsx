@@ -1713,20 +1713,20 @@ onClick={() => setConfig(prev => {
                 : null;
               const isGlbMonster = customSaveMode && (!!config.customModelUrl || !!activeModel);
               return (<>
-            {/* Tamanho em batalha (zoom persistido no config) — controle único de zoom */}
-            <div style={{ marginBottom: '0.75rem', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+            {/* Tamanho em batalha (zoom persistido no config) — controle único de zoom limitado ao quadro 3D */}
+            <div style={{ width: '100%', marginBottom: '0.75rem', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>⚔️ Tamanho em batalha</span>
-                <span style={{ fontSize: '0.8rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>{Math.round((config.customZoom ?? 1) * 100)}%</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>{Math.round(Math.min(1.3, Math.max(0.6, config.customZoom ?? 1)) * 100)}%</span>
               </div>
               <input
                 type="range"
-                min="0.3"
-                max="3"
+                min="0.6"
+                max="1.3"
                 step="0.05"
-                value={config.customZoom ?? 1}
+                value={Math.min(1.3, Math.max(0.6, config.customZoom ?? 1))}
                 onChange={e => setConfig(prev => ({ ...prev, customZoom: parseFloat(e.target.value) }))}
-                style={{ width: '100%', accentColor: 'var(--gold-primary)' }}
+                style={{ width: '100%', accentColor: 'var(--gold-primary)', cursor: 'pointer' }}
               />
               <button onClick={() => setConfig(prev => ({ ...prev, customZoom: 1 }))} style={{ marginTop: '0.3rem', padding: '0.2rem 0.6rem', background: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.7rem', borderRadius: '6px' }}>
                 Resetar (100%)
@@ -1734,7 +1734,7 @@ onClick={() => setConfig(prev => {
             </div>
 
             {/* Avatar — o customZoom é aplicado DENTRO do AvatarCharacter (no viewer, só o boneco) */}
-            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, width: '100%', minHeight: '380px', position: 'relative' }}>
             <div>
             {(() => {
               const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
@@ -1744,9 +1744,9 @@ onClick={() => setConfig(prev => {
               const modelUrl = config.customModelUrl || activeModel?.url;
 
               if (modelUrl) {
-                return <CustomModelViewer modelUrl={modelUrl} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 220} interactive zoom={config.customZoom} configRotY={config.customRotY} />;
+                return <CustomModelViewer modelUrl={modelUrl} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 200} interactive zoom={config.customZoom} configRotY={config.customRotY} />;
               }
-              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 220} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
+              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 200} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
             })()}
             </div>
             </div>

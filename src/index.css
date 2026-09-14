@@ -1981,8 +1981,8 @@ h3 {
   justify-content: flex-start;
   background: var(--bg-dark);
   border-radius: 16px;
-  padding: 2rem;
-  min-height: 400px;
+  padding: 1.25rem 1rem;
+  min-height: 500px;
   border: 2px solid var(--border-color);
   position: sticky;
   top: 0;
@@ -2005,8 +2005,8 @@ h3 {
     width: 100%;
     flex-shrink: 0;
     transition: transform 0.3s ease;
-    min-height: 250px;
-    padding: 0.5rem;
+    min-height: 380px;
+    padding: 0.75rem;
     position: relative;
     top: auto;
   }

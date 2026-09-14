@@ -419,14 +419,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
   const customHairRef = useRef<THREE.Group | null>(null);
 
-  // Tamanho em batalha (customZoom) aplicado DIRETO no viewer (só o boneco),
-  // multiplicando o zoom base do skinview3d — não escala a área/controles.
-  useEffect(() => {
-    if (viewerRef.current) {
-        const base = 0.9;
-        viewerRef.current.zoom = base * (config?.customZoom || 1);
-    }
-  }, [config?.customZoom]);
+  // Tamanho em batalha (customZoom) é integrado com o enquadramento de câmera
+  // em applyCharacterFraming abaixo, evitando conflito com o recalculador interno do skinview3d.
 
   // Efeito de flash vermelho quando toma dano
   useEffect(() => {
@@ -1495,7 +1489,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     const mult = weapons.length > 0 ? (maxWeaponScale > 14 ? 1.7 : 1.5) : 1;
     const cw = Math.max(0.3, ov.charCanvasW);
     const ch = Math.max(0.3, ov.charCanvasH);
-    const zoom = Math.max(0.1, ov.charZoom);
+    const userZoom = Math.max(0.5, Math.min(1.5, config?.customZoom || 1));
+    const zoom = Math.max(0.1, ov.charZoom * userZoom);
     const fit = Math.max(20, ov.charFit);
 
     viewer.width = Math.round(size * mult * cw);
@@ -1512,7 +1507,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   useEffect(() => {
     applyCharacterFramingRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equippedItemsJson, size]);
+  }, [equippedItemsJson, size, config?.customZoom]);
 
   // Aplica ao vivo quando o Arena Debug altera o render do personagem
   useEffect(() => {
@@ -2911,7 +2906,7 @@ if (config?.customModelUrl) {
           position: 'absolute',
           left: '50%',
           top: '50%',
-          transform: `translate(-50%, -50%) translateY(${Math.max(0, ((config?.customZoom || 1) - 1) * 40)}px)`,
+          transform: 'translate(-50%, -50%)',
           zIndex: 1,
           outline: 'none',
           pointerEvents: (interactive || !!onAvatarClick) ? 'auto' : 'none',
