@@ -1102,33 +1102,39 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                const model = gltf.scene;
                 
                 if (item.extractMeshName) {
-                  let targetNode: THREE.Object3D | null = null;
+                  const targetNames = new Set(
+                    item.extractMeshName.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+                  );
+                  
+                  const targetNodes: THREE.Object3D[] = [];
                   model.traverse((node) => {
-                    if (node.name === item.extractMeshName) {
-                      targetNode = node;
+                    if (targetNames.has((node.name || '').toLowerCase())) {
+                      targetNodes.push(node);
                     }
                   });
                   
-                  if (targetNode) {
-                    // Hide everything first
+                  if (targetNodes.length > 0) {
+                    // Hide all meshes first
                     model.traverse((node) => {
-                      if ((node as THREE.Mesh).isMesh || (node as THREE.Group).isGroup) {
+                      if ((node as THREE.Mesh).isMesh) {
                         node.visible = false;
                       }
                     });
                     
-                    // Show only target and its descendants
-                    targetNode.visible = true;
-                    targetNode.traverse((child) => {
-                      child.visible = true;
+                    // Show target nodes and their descendants
+                    targetNodes.forEach((targetNode) => {
+                      targetNode.visible = true;
+                      targetNode.traverse((child) => {
+                        child.visible = true;
+                      });
+                      
+                      // Also need to ensure parents are visible so it isn't hidden by a parent group!
+                      let current = targetNode.parent;
+                      while (current && current.type !== 'Scene') {
+                        current.visible = true;
+                        current = current.parent;
+                      }
                     });
-                    
-                    // Also need to ensure parents are visible so it isn't hidden by a parent group!
-                    let current = targetNode.parent;
-                    while (current && current.type !== 'Scene') {
-                      current.visible = true;
-                      current = current.parent;
-                    }
                   } else {
                     console.warn(`Mesh extraída '${item.extractMeshName}' não encontrada no item ${item.itemTitle}.`);
                   }

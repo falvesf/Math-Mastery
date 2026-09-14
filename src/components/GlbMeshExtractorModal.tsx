@@ -15,16 +15,57 @@ interface GlbMeshExtractorModalProps {
   onClose: () => void;
 }
 
+export interface MeshNodeInfo {
+  name: string;
+  isGroup: boolean;
+  isPrimary: boolean;
+  meshCount: number;
+  friendlyName?: string;
+  parentName?: string;
+}
+
+const ROOT_WRAPPERS = new Set([
+  'sketchfab_model', 'root', 'gltf_scenerootnode', 'scene', 'osg_scene',
+  'sketchfab_scene', 'world', 'rootnode', 'model'
+]);
+
+const getFriendlyName = (name: string): string => {
+  const n = name.toLowerCase();
+  if (n.includes('diamond')) return 'Espada de Diamante';
+  if (n.includes('netherite')) return 'Espada de Netherite';
+  if (n.includes('gold') || n.includes('ouro')) return 'Espada de Ouro';
+  if (n.includes('iron') || n.includes('ferro')) return 'Espada de Ferro';
+  if (n.includes('copper') || n.includes('cobre')) return 'Espada de Cobre';
+  if (n.includes('stone') || n.includes('pedra')) return 'Espada de Pedra';
+  if (n.includes('wood') || n.includes('madeira')) return 'Espada de Madeira';
+  if (n.includes('helmet') || n.includes('capacete')) return 'Capacete';
+  if (n.includes('chestplate') || n.includes('peitoral')) return 'Peitoral';
+  if (n.includes('legging') || n.includes('calca')) return 'Calça';
+  if (n.includes('boot') || n.includes('bota')) return 'Botas';
+  if (n.includes('shield') || n.includes('escudo')) return 'Escudo';
+  if (n.includes('bow') || n.includes('arco')) return 'Arco';
+  return '';
+};
+
 export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, onSelect, onClose }: GlbMeshExtractorModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [loadingText, setLoadingText] = useState('Inicializando motor 3D...');
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('');
-  const [meshes, setMeshes] = useState<{name: string, isGroup: boolean}[]>([]);
-  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set(currentExtractedName ? [currentExtractedName] : []));
+  const [meshes, setMeshes] = useState<MeshNodeInfo[]>([]);
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(
+    new Set(currentExtractedName ? currentExtractedName.split(',').map(s => s.trim()).filter(Boolean) : [])
+  );
   const selectedNamesArr = [...selectedNames];
   const selectedName = selectedNamesArr[0] || null;
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'primary' | 'all'>('primary');
+  const [clickMode, setClickMode] = useState<'group' | 'mesh'>('group');
+  const clickModeRef = useRef<'group' | 'mesh'>('group');
+  clickModeRef.current = clickMode;
+  const primaryNamesRef = useRef<Set<string>>(new Set());
 
   const toggleMesh = (name: string) => {
     setSelectedNames(prev => {
@@ -264,9 +305,8 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
       if (keepSet.has(node.name) || isBoneNode) {
         let cur: THREE.Object3D | null = node;
         while (cur) { toKeep.add(cur); cur = cur.parent; }
-        if ((node as THREE.Group).isGroup) {
-          node.traverse((d) => toKeep.add(d));
-        }
+        // Mantém todos os filhos e descendentes da peça selecionada
+        node.traverse((d) => toKeep.add(d));
       }
     });
 
@@ -426,34 +466,113 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
           
           scene.add(gltf.scene);
           
-          // Find all selectable nodes and count everything
-          const foundNodes: {name: string, isGroup: boolean}[] = [];
-          let meshCount = 0;
-          let groupCount = 0;
-          
+          // Helper to count descendant meshes
+          const countDescendants = (obj: THREE.Object3D): number => {
+            let count = 0;
+            obj.traverse((c) => {
+              if ((c as THREE.Mesh).isMesh) count++;
+            });
+            return count;
+          };
+
+          // Cache all original materials for meshes
           gltf.scene.traverse((node) => {
-            if ((node as THREE.Mesh).isMesh) meshCount++;
-            if ((node as THREE.Group).isGroup) groupCount++;
-            
-            // Aceitar nós mesmo sem nome explícito, dando um nome genérico para podermos interagir
-            const nodeName = node.name || `${(node as THREE.Mesh).isMesh ? 'Mesh' : 'Group'}_${meshCount + groupCount}`;
-            
             if ((node as THREE.Mesh).isMesh) {
-              foundNodes.push({ name: nodeName, isGroup: false });
               originalMaterialsRef.current.set(node as THREE.Mesh, (node as THREE.Mesh).material);
-              
-              // Se o mesh não tem nome, a gente nomeia pra poder selecionar
-              if (!node.name) node.name = nodeName;
-              
-            } else if ((node as THREE.Group).isGroup && node.children.length > 0) {
-              foundNodes.push({ name: nodeName, isGroup: true });
-              if (!node.name) node.name = nodeName;
             }
           });
-          
-          setDebugInfo(`Raio-X do Arquivo: ${meshCount} Malhas, ${groupCount} Grupos. Tamanho Físico: ${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`);
-          
-          setMeshes(foundNodes.filter((v,i,a)=>a.findIndex(t=>(t.name === v.name))===i)); 
+
+          // Descend through root wrapper nodes that don't represent distinct model choices
+          let branchRoot: THREE.Object3D = gltf.scene;
+          while (
+            branchRoot.children.length === 1 &&
+            (branchRoot === gltf.scene || ROOT_WRAPPERS.has(branchRoot.name.toLowerCase()))
+          ) {
+            branchRoot = branchRoot.children[0];
+          }
+
+          // Top candidates are direct children of the branching point (e.g. the 7 swords)
+          let topCandidates: THREE.Object3D[] = [];
+          if (ROOT_WRAPPERS.has(branchRoot.name.toLowerCase()) || branchRoot === gltf.scene) {
+            topCandidates = branchRoot.children.filter(c => countDescendants(c) > 0);
+          } else {
+            topCandidates = branchRoot.children.length > 0
+              ? branchRoot.children.filter(c => countDescendants(c) > 0)
+              : [branchRoot];
+          }
+
+          const primarySet = new Set<string>();
+          topCandidates.forEach(c => {
+            if (c.name) primarySet.add(c.name);
+          });
+          primaryNamesRef.current = primarySet;
+
+          const foundNodes: MeshNodeInfo[] = [];
+          const seenNames = new Set<string>();
+
+          // 1. Add primary nodes first (e.g. the 7 distinct swords)
+          topCandidates.forEach((node) => {
+            if (!node.name) return;
+            const mc = countDescendants(node);
+            const isGrp = (node.children && node.children.length > 0 && !(node as THREE.Mesh).isMesh);
+            seenNames.add(node.name);
+            foundNodes.push({
+              name: node.name,
+              isGroup: isGrp,
+              isPrimary: true,
+              meshCount: (node as THREE.Mesh).isMesh ? 1 : mc,
+              friendlyName: getFriendlyName(node.name)
+            });
+          });
+
+          // 2. Add all other nodes (subgroups and leaf meshes)
+          let unnamedMeshCount = 0;
+          let unnamedGroupCount = 0;
+
+          gltf.scene.traverse((node) => {
+            if (node === gltf.scene) return;
+            const lowerName = (node.name || '').toLowerCase();
+            if (ROOT_WRAPPERS.has(lowerName)) return;
+
+            const isMesh = (node as THREE.Mesh).isMesh === true;
+            const hasChildren = node.children && node.children.length > 0;
+
+            if (!node.name) {
+              if (isMesh) {
+                unnamedMeshCount++;
+                node.name = `Mesh_${unnamedMeshCount}`;
+              } else if (hasChildren) {
+                unnamedGroupCount++;
+                node.name = `Group_${unnamedGroupCount}`;
+              }
+            }
+
+            if (seenNames.has(node.name)) return;
+
+            const mc = isMesh ? 1 : countDescendants(node);
+            if (mc === 0) return; // ignore empty dummies without geometry
+
+            seenNames.add(node.name);
+            foundNodes.push({
+              name: node.name,
+              isGroup: !isMesh && hasChildren,
+              isPrimary: false,
+              meshCount: mc,
+              friendlyName: getFriendlyName(node.name),
+              parentName: node.parent?.name && !ROOT_WRAPPERS.has(node.parent.name.toLowerCase()) ? node.parent.name : undefined
+            });
+          });
+
+          const totalMeshCount = Array.from(originalMaterialsRef.current.keys()).length;
+          const primaryCount = foundNodes.filter(n => n.isPrimary).length;
+          setDebugInfo(`Raio-X: ${totalMeshCount} Malhas, ${primaryCount > 0 ? `${primaryCount} Objetos Principais` : `${foundNodes.length} Peças`}. Tamanho: ${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`);
+
+          setMeshes(foundNodes);
+          if (primaryCount > 0) {
+            setActiveTab('primary');
+          } else {
+            setActiveTab('all');
+          }
           setLoading(false);
         } catch (err: any) {
           console.error("Erro interno ao processar GLB:", err);
@@ -491,29 +610,45 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     const mouse = new THREE.Vector2();
     
     const onClick = (event: MouseEvent) => {
-      if (!containerRef.current) return;
+      if (!containerRef.current || !cameraRef.current || !sceneRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / containerRef.current.clientWidth) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / containerRef.current.clientHeight) * 2 + 1;
       
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(scene.children, true);
+      raycaster.setFromCamera(mouse, cameraRef.current);
+      const intersects = raycaster.intersectObjects(sceneRef.current.children, true);
       
       if (intersects.length > 0) {
         // Find the mesh
         const object = intersects[0].object;
-        if (object.name) {
-          toggleMesh(object.name);
-        } else {
-          // If the mesh itself has no name, look up the parent tree
-          let parent = object.parent;
-          while (parent && parent.type !== 'Scene') {
-            if (parent.name) {
-              toggleMesh(parent.name);
+        let targetName = object.name;
+        
+        if (clickModeRef.current === 'group') {
+          // Look up parent tree to find matching primary group or highest container
+          let cur: THREE.Object3D | null = object;
+          let matchedPrimary: THREE.Object3D | null = null;
+          let matchedGroup: THREE.Object3D | null = null;
+          
+          while (cur && cur !== sceneRef.current) {
+            if (primaryNamesRef.current.has(cur.name)) {
+              matchedPrimary = cur;
               break;
             }
-            parent = parent.parent;
+            if (cur.children && cur.children.length > 0 && !ROOT_WRAPPERS.has(cur.name.toLowerCase())) {
+              matchedGroup = cur;
+            }
+            cur = cur.parent;
           }
+          
+          if (matchedPrimary) {
+            targetName = matchedPrimary.name;
+          } else if (matchedGroup) {
+            targetName = matchedGroup.name;
+          }
+        }
+        
+        if (targetName) {
+          toggleMesh(targetName);
         }
       }
     };
@@ -602,76 +737,227 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
             {loading && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b', fontWeight: 'bold', padding: '1rem', textAlign: 'center', zIndex: 10 }}>{loadingText}</div>}
             {error && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', fontWeight: 'bold', padding: '1rem', textAlign: 'center', zIndex: 10 }}>{error}</div>}
             <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-            <div style={{ position: 'absolute', bottom: '1rem', left: '1rem', right: '1rem', background: 'rgba(0,0,0,0.7)', padding: '0.5rem', borderRadius: '8px', color: '#fff', fontSize: '0.85rem', textAlign: 'center', pointerEvents: 'none' }}>
-              Dica: Você pode girar a câmera segurando o botão esquerdo do mouse. Clique diretamente num objeto para selecioná-lo!
+            <div style={{ position: 'absolute', bottom: '0.75rem', left: '0.75rem', right: '0.75rem', background: 'rgba(0,0,0,0.85)', padding: '0.5rem 0.75rem', borderRadius: '8px', color: '#fff', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <span>💡 Clique na espada no 3D para selecioná-la!</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}>
+                <span style={{ color: '#9ca3af' }}>Modo de clique:</span>
+                <button
+                  type="button"
+                  onClick={() => setClickMode('group')}
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: clickMode === 'group' ? '#f59e0b' : 'rgba(255,255,255,0.1)',
+                    color: clickMode === 'group' ? '#000' : '#fff',
+                    cursor: 'pointer',
+                    fontWeight: clickMode === 'group' ? 'bold' : 'normal',
+                    fontSize: '0.72rem'
+                  }}
+                >
+                  Espada Inteira
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClickMode('mesh')}
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: clickMode === 'mesh' ? '#f59e0b' : 'rgba(255,255,255,0.1)',
+                    color: clickMode === 'mesh' ? '#000' : '#fff',
+                    cursor: 'pointer',
+                    fontWeight: clickMode === 'mesh' ? 'bold' : 'normal',
+                    fontSize: '0.72rem'
+                  }}
+                >
+                  Cubo Individual
+                </button>
+              </div>
             </div>
           </div>
           
           {/* Right panel: Mesh List & Actions */}
           <div style={{ flex: 1, background: 'var(--bg-card)', borderLeft: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-glass)', flexShrink: 0 }}>
-              <h4 style={{ margin: '0 0 0.5rem', color: '#fff' }}>Malhas Encontradas</h4>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Clique em um nome abaixo ou no objeto 3D para isolá-lo.</p>
-              {debugInfo && <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(59, 130, 246, 0.2)', color: '#93c5fd', fontSize: '0.75rem', borderRadius: '4px' }}>{debugInfo}</div>}
+            <div style={{ padding: '0.85rem 1rem', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ margin: 0, color: '#fff', fontSize: '0.95rem' }}>Peças & Espadas</h4>
+                {debugInfo && <span style={{ fontSize: '0.7rem', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.2)', padding: '2px 6px', borderRadius: '4px' }}>{debugInfo}</span>}
+              </div>
+
+              {/* Search input */}
+              <input
+                type="text"
+                placeholder="🔍 Buscar espada (ex: diamond, netherite)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '0.4rem 0.6rem',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-glass)',
+                  background: 'var(--bg-dark)',
+                  color: '#fff',
+                  fontSize: '0.8rem'
+                }}
+              />
+
+              {/* Filter Tabs if primary items exist */}
+              {meshes.some(m => m.isPrimary) && (
+                <div style={{ display: 'flex', gap: '0.35rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('primary')}
+                    style={{
+                      flex: 1,
+                      padding: '0.35rem 0.5rem',
+                      fontSize: '0.75rem',
+                      borderRadius: '4px',
+                      border: '1px solid ' + (activeTab === 'primary' ? 'var(--gold-primary)' : 'transparent'),
+                      background: activeTab === 'primary' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)',
+                      color: activeTab === 'primary' ? '#fbbf24' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontWeight: activeTab === 'primary' ? 'bold' : 'normal'
+                    }}
+                  >
+                    ⭐ Espadas / Grupos ({meshes.filter(m => m.isPrimary).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('all')}
+                    style={{
+                      flex: 1,
+                      padding: '0.35rem 0.5rem',
+                      fontSize: '0.75rem',
+                      borderRadius: '4px',
+                      border: '1px solid ' + (activeTab === 'all' ? 'var(--gold-primary)' : 'transparent'),
+                      background: activeTab === 'all' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)',
+                      color: activeTab === 'all' ? '#fbbf24' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontWeight: activeTab === 'all' ? 'bold' : 'normal'
+                    }}
+                  >
+                    🧱 Todas as Peças ({meshes.length})
+                  </button>
+                </div>
+              )}
             </div>
             
             <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem', minHeight: 0 }}>
-              {meshes.length === 0 && !loading && <div style={{ padding: '1rem', color: 'var(--text-secondary)', textAlign: 'center', fontSize: '0.9rem' }}>Nenhuma malha nomeada encontrada.</div>}
-              
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <button
+                  type="button"
                   onClick={() => setSelectedNames(new Set())}
-                  style={{ textAlign: 'left', padding: '0.75rem', borderRadius: '6px', border: '1px solid ' + (selectedNames.size === 0 ? '#f59e0b' : 'transparent'), background: selectedNames.size === 0 ? 'rgba(245, 158, 11, 0.1)' : 'transparent', color: selectedNames.size === 0 ? '#f59e0b' : 'var(--text-primary)', cursor: 'pointer' }}
+                  style={{ textAlign: 'left', padding: '0.65rem 0.75rem', borderRadius: '6px', border: '1px solid ' + (selectedNames.size === 0 ? '#f59e0b' : 'transparent'), background: selectedNames.size === 0 ? 'rgba(245, 158, 11, 0.1)' : 'transparent', color: selectedNames.size === 0 ? '#f59e0b' : 'var(--text-primary)', cursor: 'pointer', fontSize: '0.82rem' }}
                   className="hover-brightness"
                 >
                   <i>❌ Não extrair nada (Usar modelo completo)</i>
                 </button>
                 
-                {meshes.map((mesh, i) => {
-                  const isSel = selectedNames.has(mesh.name);
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => toggleMesh(mesh.name)}
-                      style={{ textAlign: 'left', padding: '0.75rem', borderRadius: '6px', border: '1px solid ' + (isSel ? '#f59e0b' : 'var(--border-glass)'), background: isSel ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-dark)', color: isSel ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                      className="hover-brightness"
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSel ? 'bold' : 'normal' }}>
-                        {isSel ? '☑ ' : '☐ '}{mesh.name}
-                      </span>
-                      <span style={{ fontSize: '0.7rem', background: mesh.isGroup ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)', color: mesh.isGroup ? '#60a5fa' : '#34d399', padding: '2px 6px', borderRadius: '4px' }}>
-                        {mesh.isGroup ? 'Group' : 'Mesh'}
-                      </span>
-                    </button>
-                  );
-                })}
+                {(() => {
+                  const filtered = meshes.filter(m => {
+                    if (searchQuery.trim()) {
+                      const q = searchQuery.toLowerCase().trim();
+                      const matchName = m.name.toLowerCase().includes(q);
+                      const matchFriendly = m.friendlyName ? m.friendlyName.toLowerCase().includes(q) : false;
+                      const matchParent = m.parentName ? m.parentName.toLowerCase().includes(q) : false;
+                      return matchName || matchFriendly || matchParent;
+                    }
+                    if (activeTab === 'primary' && meshes.some(x => x.isPrimary)) {
+                      return m.isPrimary;
+                    }
+                    return true;
+                  });
+
+                  if (filtered.length === 0 && !loading) {
+                    return <div style={{ padding: '1rem', color: 'var(--text-secondary)', textAlign: 'center', fontSize: '0.85rem' }}>Nenhum item encontrado com o filtro atual.</div>;
+                  }
+
+                  return filtered.map((mesh, i) => {
+                    const isSel = selectedNames.has(mesh.name);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => toggleMesh(mesh.name)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '0.6rem 0.75rem',
+                          borderRadius: '6px',
+                          border: '1px solid ' + (isSel ? '#f59e0b' : 'var(--border-glass)'),
+                          background: isSel ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-dark)',
+                          color: isSel ? '#fff' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                        className="hover-brightness"
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: isSel ? 'bold' : 'normal', color: isSel ? '#fbbf24' : '#fff', fontSize: '0.82rem' }}>
+                              {isSel ? '☑ ' : '☐ '}{mesh.name}
+                            </span>
+                            {mesh.friendlyName && (
+                              <span style={{ fontSize: '0.7rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.15)', padding: '1px 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                                ✨ {mesh.friendlyName}
+                              </span>
+                            )}
+                          </div>
+                          {mesh.parentName && (
+                            <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>
+                              dentro de: {mesh.parentName}
+                            </span>
+                          )}
+                        </div>
+                        <span style={{
+                          fontSize: '0.68rem',
+                          background: mesh.isGroup ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)',
+                          color: mesh.isGroup ? '#60a5fa' : '#34d399',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
+                        }}>
+                          {mesh.isGroup ? (mesh.meshCount > 1 ? `Grupo (${mesh.meshCount} peças)` : 'Grupo') : 'Mesh'}
+                        </span>
+                      </button>
+                    );
+                  });
+                })()}
               </div>
               
               {/* FERRAMENTAS DE REPARO MOVIDAS PARA DENTRO DA ÁREA COM SCROLL */}
-              <div style={{ marginTop: '1rem', padding: '1rem', borderTop: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '0.5rem', borderRadius: '8px' }}>
-                <h5 style={{ margin: '0 0 0.25rem', color: '#93c5fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>Reparo 3D (Opcional)</h5>
+              <div style={{ marginTop: '1rem', padding: '0.85rem', borderTop: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '0.5rem', borderRadius: '8px' }}>
+                <h5 style={{ margin: '0 0 0.25rem', color: '#93c5fd', fontSize: '0.75rem', textTransform: 'uppercase' }}>Reparo 3D (Opcional)</h5>
                 
                 <button 
+                  type="button"
                   onClick={handleDeleteMesh}
                   disabled={selectedNames.size === 0}
-                  style={{ padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#fca5a5' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(239, 68, 68, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  style={{ padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#fca5a5' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(239, 68, 68, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
                 >
                   🗑️ Deletar Peças Selecionadas
                 </button>
                 
                 <div style={{ display: 'flex', gap: '0.25rem' }}>
                   <button 
+                    type="button"
                     onClick={handleDownloadTexture}
                     disabled={selectedNames.size === 0}
-                    style={{ flex: 1, padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#93c5fd' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(59, 130, 246, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                    style={{ flex: 1, padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#93c5fd' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(59, 130, 246, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                     title="Baixar a imagem da textura para pintar/apagar pixels"
                   >
                     🖼️ Baixar Textura
                   </button>
                   <button 
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={selectedNames.size === 0}
-                    style={{ flex: 1, padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#6ee7b7' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(16, 185, 129, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                    style={{ flex: 1, padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#6ee7b7' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(16, 185, 129, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                     title="Substituir a textura da peça selecionada por uma imagem PNG do seu PC"
                   >
                     📤 Injetar Textura
@@ -680,42 +966,45 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
                 <input type="file" ref={fileInputRef} accept="image/png" style={{ display: 'none' }} onChange={handleUploadTexture} />
                 
                 <button 
+                  type="button"
                   onClick={handleExportFusedGlb}
                   disabled={selectedNames.size === 0}
-                  style={{ padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#fbbf24' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(245, 158, 11, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 'bold' }}
+                  style={{ padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#fbbf24' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(245, 158, 11, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.78rem', fontWeight: 'bold' }}
                 >
                   💾 Fundir Selecionadas em GLB
                 </button>
                 
                 <button 
+                  type="button"
                   onClick={handleExportGlb}
                   disabled={meshes.length === 0}
-                  style={{ marginTop: '0.25rem', padding: '0.5rem', background: meshes.length > 0 ? 'var(--bg-glass)' : 'rgba(255,255,255,0.05)', color: meshes.length > 0 ? '#fff' : '#666', border: '1px solid ' + (meshes.length > 0 ? 'var(--border-glass)' : 'transparent'), borderRadius: '4px', cursor: meshes.length > 0 ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 'bold' }}
+                  style={{ marginTop: '0.25rem', padding: '0.5rem', background: meshes.length > 0 ? 'var(--bg-glass)' : 'rgba(255,255,255,0.05)', color: meshes.length > 0 ? '#fff' : '#666', border: '1px solid ' + (meshes.length > 0 ? 'var(--border-glass)' : 'transparent'), borderRadius: '4px', cursor: meshes.length > 0 ? 'pointer' : 'not-allowed', fontSize: '0.78rem', fontWeight: 'bold' }}
                 >
                   💾 Exportar Novo GLB Corrigido
                 </button>
               </div>
             </div>
-            <div style={{ padding: '1rem', borderTop: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0 }}>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ padding: '0.85rem 1rem', borderTop: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0 }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>Seleção atual:</span>
-                <strong style={{ color: selectedNames.size > 0 ? '#f59e0b' : '#ef4444' }}>
-                  {selectedNames.size === 0 ? 'Nenhuma' : selectedNames.size === 1 ? selectedName : `${selectedNames.size} malhas`}
+                <strong style={{ color: selectedNames.size > 0 ? '#f59e0b' : '#ef4444', textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {selectedNames.size === 0 ? 'Nenhuma' : selectedNames.size === 1 ? (
+                    (() => {
+                      const found = meshes.find(m => m.name === selectedName);
+                      return found?.friendlyName ? `${found.name} (${found.friendlyName})` : selectedName;
+                    })()
+                  ) : `${selectedNames.size} peças selecionadas`}
                 </strong>
               </div>
-              {selectedNames.size > 1 && (
-                <div style={{ fontSize: '0.72rem', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '6px', padding: '0.35rem 0.5rem' }}>
-                  Múltiplas malhas selecionadas: use <b>"Fundir Selecionadas em GLB"</b> para exportar todas juntas em um único arquivo.
-                </div>
-              )}
               <button 
+                type="button"
                 onClick={() => {
-                  onSelect(selectedNames.size === 1 ? selectedName : null);
+                  onSelect(selectedNames.size === 0 ? null : selectedNamesArr.join(', '));
                   onClose();
                 }}
                 style={{ padding: '0.75rem', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                Confirmar Seleção
+                Confirmar Seleção {selectedNames.size > 0 ? `(${selectedNames.size})` : ''}
               </button>
             </div>
           </div>
