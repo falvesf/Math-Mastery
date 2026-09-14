@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 // @ts-ignore
-import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer, Volume2, UploadCloud, DownloadCloud } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer, Volume2, UploadCloud, DownloadCloud, Sparkles, Loader2 } from 'lucide-react';
 // @ts-ignore — força/custo de forja (mantido no import por segurança; usado em cálculo quando necessário)
 import { forgeStrengthFraction, forgeAttributeValue, nextForgeCost, DEFAULT_FORGE_SUCCESS } from '../lib/forge';
 import ImageGalleryModal from './ImageGalleryModal';
@@ -20,6 +20,7 @@ import AudioBankPicker from './AudioBankPicker';
 import { fetchForgeSounds, saveForgeSounds, type ForgeSoundsConfig } from '../lib/forgeSounds';
 import { playSound, playConsumableSound } from '../lib/audioBank';
 import { CONSUMABLE_EFFECT_PRESETS, type ConsumableAnimPreset, resolveConsumableEffect } from '../lib/consumableEffects';
+import { getGrokConfig } from '../lib/aiConfig';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usePermissions } from '../lib/permissions';
@@ -163,6 +164,112 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     const saved = localStorage.getItem('admin_custom_sale_pct');
     return saved ? Number(saved) : 20;
   });
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+
+  const handleGenerateAiDescription = async () => {
+    const title = (formData.title || '').trim();
+    if (!title) {
+      showToast('Digite o Nome do Item primeiro para a IA analisar suas características.', 'info');
+      return;
+    }
+
+    setIsGeneratingDescription(true);
+    try {
+      const cfg = await getGrokConfig();
+      if (!cfg || !cfg.apiKey) {
+        showToast('Chave da IA não configurada no sistema. Configure nas opções de IA do painel.', 'error');
+        setIsGeneratingDescription(false);
+        return;
+      }
+
+      // Descrições existentes de outros itens para evitar repetição/conflito
+      const existingDescs = items
+        .map(i => (i.description || '').trim())
+        .filter(d => d.length > 5 && d !== (formData.description || '').trim())
+        .slice(0, 15);
+
+      // Monta as características definidas no formulário
+      const details: string[] = [];
+      details.push(`Nome do item: "${title}"`);
+      if (formData.rarity) details.push(`Raridade: ${formData.rarity}`);
+      if (formData.itemCategory && formData.itemCategory !== 'none') details.push(`Categoria: ${formData.itemCategory}`);
+      if (formData.avatarPart) details.push(`Slot de equipamento: ${formData.avatarPart}`);
+      if (formData.damageEffect && formData.damageEffect !== 'none') {
+        const eff = DAMAGE_EFFECTS.find(e => e.id === formData.damageEffect);
+        details.push(`Efeito de Dano Especial: ${eff?.label || formData.damageEffect}`);
+      }
+      if (formData.baseAttributeType && formData.baseAttributeType !== 'none') {
+        details.push(`Atributo Base: ${formData.baseAttributeType} (+${formData.baseAttributeValue || 0})`);
+      }
+      if (formData.gameEffect && formData.gameEffect !== 'none') {
+        details.push(`Efeito Especial de Jogo: ${formData.gameEffect}`);
+      }
+
+      const prompt = `Você é um escritor de RPG medieval de fantasia.
+Com base nas seguintes informações do item:
+${details.join('\n')}
+
+Escreva UMA ÚNICA frase curta (máximo de 1 linha, entre 10 e 20 palavras) com a descrição/lore desse item.
+
+REGRAS:
+1. Resumo bem conciso, menos de uma linha (10 a 20 palavras no máximo).
+2. Pegada imersiva de RPG de fantasia / aventura.
+3. NÃO use emojis. NÃO use aspas.
+4. NÃO inicie dizendo "Esta espada é...", "Este item é..." ou repetindo o nome do item.
+5. Deve ser uma descrição ÚNICA e diferente destas descrições já existentes no jogo:
+${existingDescs.map(d => `- "${d}"`).join('\n')}
+
+Responda APENAS com o texto da frase em português brasileiro.`;
+
+      let generated = '';
+      const candidateModels = [cfg.model || 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'];
+
+      for (const model of candidateModels) {
+        try {
+          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${cfg.apiKey}`
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: 'system', content: 'Você é um narrador de RPG especialista em escrever frases de lore poéticas, curtas e impactantes para equipamentos.' },
+                { role: 'user', content: prompt }
+              ],
+              max_tokens: 120,
+              temperature: 0.85
+            })
+          });
+
+          if (res.ok) {
+            const json = await res.json();
+            const text = json?.choices?.[0]?.message?.content || '';
+            if (text.trim()) {
+              generated = text.trim();
+              break;
+            }
+          }
+        } catch (err) {
+          console.warn(`[AI Description] Falha com modelo ${model}:`, err);
+        }
+      }
+
+      if (generated) {
+        const cleaned = generated.replace(/^["'“]+|["'”]+$/g, '').replace(/\r?\n/g, ' ').trim();
+        setFormData(prev => ({ ...prev, description: cleaned }));
+        showToast('✨ Descrição de RPG gerada com sucesso!', 'success');
+      } else {
+        showToast('A IA não retornou um texto no momento. Tente novamente.', 'error');
+      }
+    } catch (e: any) {
+      console.error('Erro ao gerar descrição com IA:', e);
+      showToast('Erro ao comunicar com o serviço de IA.', 'error');
+    } finally {
+      setIsGeneratingDescription(false);
+    }
+  };
 
   // Item montado para PREVIEW 3D no personagem (config de posição e visualização da textura)
   const previewEquippedItems = useMemo(() => {
@@ -2425,8 +2532,49 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
             )}
 
             <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Descrição (Lore do Item)</label>
-              <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} rows={3} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', resize: 'vertical' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <label style={{ margin: 0, color: 'var(--text-secondary)' }}>Descrição (Lore do Item)</label>
+                <button
+                  type="button"
+                  onClick={handleGenerateAiDescription}
+                  disabled={isGeneratingDescription || !formData.title?.trim()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.3rem 0.65rem',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(168, 85, 247, 0.4)',
+                    background: isGeneratingDescription ? 'rgba(168, 85, 247, 0.1)' : 'rgba(168, 85, 247, 0.2)',
+                    color: !formData.title?.trim() ? '#6b7280' : '#d8b4fe',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: (!formData.title?.trim() || isGeneratingDescription) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  className="hover-brightness"
+                  title={!formData.title?.trim() ? 'Digite o Nome do Item primeiro para a IA analisar' : 'Gera uma frase curta e única de RPG com a IA analisando este item'}
+                >
+                  {isGeneratingDescription ? (
+                    <>
+                      <Loader2 className="animate-spin" size={13} />
+                      <span>Criando Lore...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={13} color="#c084fc" />
+                      <span>Gerar Lore com IA</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <textarea
+                value={formData.description || ''}
+                onChange={e => setFormData({...formData, description: e.target.value})}
+                rows={2}
+                placeholder="Ex: Forjada no fogo das profundezas, vibra quando inimigos se aproximam..."
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', resize: 'vertical' }}
+              />
             </div>
 
             <div style={{ marginBottom: '1.5rem' }}>
