@@ -55,7 +55,7 @@ export default function LiveQuestStudent() {
   const [error, setError] = useState('');
   const [powerups, setPowerups] = useState<UserItem[]>([]);
   const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
-  const { showAlert, showConfirm } = useDialog();
+  const { showConfirm, showToast } = useDialog();
   const [chestOpened, setChestOpened] = useState(false);
   const [selectedChestModel, setSelectedChestModel] = useState<any>(null);
   const [activeCoinModel, setActiveCoinModel] = useState<any>(null);
@@ -834,7 +834,7 @@ export default function LiveQuestStudent() {
       const wrongIndices = [0, 1, 2, 3].filter(i => i !== q.correctIndex && !eliminatedOptions.includes(i));
       
       if (wrongIndices.length === 0) {
-        await showAlert('Não há mais opções erradas para eliminar!');
+        showToast('Não há mais opções erradas para eliminar!', 'info');
         return;
       }
       const toEliminate = wrongIndices[Math.floor(Math.random() * wrongIndices.length)];
@@ -846,7 +846,7 @@ export default function LiveQuestStudent() {
       const currentHp = me.hp !== undefined ? me.hp : maxHearts;
       
       if (currentHp >= maxHearts) {
-         await showAlert('Sua vida já está no máximo!');
+         showToast('Sua vida já está no máximo!', 'info');
          return;
       }
       
@@ -864,7 +864,7 @@ export default function LiveQuestStudent() {
       const currentHp = me.hp !== undefined ? me.hp : (userData.hp || maxHearts);
       
       if (currentHp >= maxHearts) {
-         await showAlert('Sua vida já está no máximo!');
+         showToast('Sua vida já está no máximo!', 'info');
          return;
       }
       const newHp = Math.min(maxHearts, currentHp + 1);

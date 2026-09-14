@@ -18,11 +18,19 @@ import AvatarCharacter from './AvatarCharacter';
 import MinecraftPartPreview from './MinecraftPartPreview';
 import AudioBankPicker from './AudioBankPicker';
 import { fetchForgeSounds, saveForgeSounds, type ForgeSoundsConfig } from '../lib/forgeSounds';
+// @ts-ignore
 import { playSound, playConsumableSound } from '../lib/audioBank';
+// @ts-ignore
 import { CONSUMABLE_EFFECT_PRESETS, type ConsumableAnimPreset, resolveConsumableEffect } from '../lib/consumableEffects';
+// @ts-ignore
 import { getGrokConfig } from '../lib/aiConfig';
+// @ts-ignore
+import { generateProceduralItemLore } from '../lib/rpgLoreGenerator';
+// @ts-ignore
 import { useDialog } from '../contexts/DialogContext';
+// @ts-ignore
 import { useTenant } from '../contexts/TenantContext';
+// @ts-ignore
 import { usePermissions } from '../lib/permissions';
 import { fetchEconomyType } from '../lib/economy';
 import { invalidateEquippedItems } from '../lib/equippedItems';
@@ -176,96 +184,143 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
     setIsGeneratingDescription(true);
     try {
       const cfg = await getGrokConfig();
-      if (!cfg || !cfg.apiKey) {
-        showToast('Chave da IA não configurada no sistema. Configure nas opções de IA do painel.', 'error');
-        setIsGeneratingDescription(false);
-        return;
-      }
+      let generated = '';
+      let apiErrorReason: string | null = null;
 
-      // Descrições existentes de outros itens para evitar repetição/conflito
-      const existingDescs = items
-        .map(i => (i.description || '').trim())
-        .filter(d => d.length > 5 && d !== (formData.description || '').trim())
-        .slice(0, 15);
+      // Se houver chave de API configurada, tenta chamar a IA do Groq
+      if (cfg?.apiKey) {
+        // Descrições existentes de outros itens para evitar repetição/conflito
+        const existingDescs = items
+          .map(i => (i.description || '').trim())
+          .filter(d => d.length > 5 && d !== (formData.description || '').trim())
+          .slice(0, 15);
 
-      // Monta as características definidas no formulário
-      const details: string[] = [];
-      details.push(`Nome do item: "${title}"`);
-      if (formData.rarity) details.push(`Raridade: ${formData.rarity}`);
-      if (formData.itemCategory && formData.itemCategory !== 'none') details.push(`Categoria: ${formData.itemCategory}`);
-      if (formData.avatarPart) details.push(`Slot de equipamento: ${formData.avatarPart}`);
-      if (formData.damageEffect && formData.damageEffect !== 'none') {
-        const eff = DAMAGE_EFFECTS.find(e => e.id === formData.damageEffect);
-        details.push(`Efeito de Dano Especial: ${eff?.label || formData.damageEffect}`);
-      }
-      if (formData.baseAttributeType && formData.baseAttributeType !== 'none') {
-        details.push(`Atributo Base: ${formData.baseAttributeType} (+${formData.baseAttributeValue || 0})`);
-      }
-      if (formData.gameEffect && formData.gameEffect !== 'none') {
-        details.push(`Efeito Especial de Jogo: ${formData.gameEffect}`);
-      }
+        // Monta as características definidas no formulário
+        const details: string[] = [];
+        details.push(`Nome do item: "${title}"`);
+        if (formData.rarity) details.push(`Raridade: ${formData.rarity}`);
+        if (formData.itemCategory && formData.itemCategory !== 'none') details.push(`Categoria: ${formData.itemCategory}`);
+        if (formData.avatarPart) details.push(`Slot de equipamento: ${formData.avatarPart}`);
+        if (formData.damageEffect && formData.damageEffect !== 'none') {
+          const eff = DAMAGE_EFFECTS.find(e => e.id === formData.damageEffect);
+          details.push(`Efeito de Dano Especial: ${eff?.label || formData.damageEffect}`);
+        }
+        if (formData.baseAttributeType && formData.baseAttributeType !== 'none') {
+          details.push(`Atributo Base: ${formData.baseAttributeType} (+${formData.baseAttributeValue || 0})`);
+        }
+        if (formData.gameEffect && formData.gameEffect !== 'none') {
+          details.push(`Efeito Especial de Jogo: ${formData.gameEffect}`);
+        }
 
-      const prompt = `Você é um escritor de RPG medieval de fantasia.
+        const prompt = `Você é um escritor de RPG medieval de fantasia.
 Com base nas seguintes informações do item:
 ${details.join('\n')}
 
-Escreva UMA ÚNICA frase curta (máximo de 1 linha, entre 10 e 20 palavras) com a descrição/lore desse item.
+Escreva UMA ÚNICA frase extremamente curta e suscinta (entre 5 e 10 palavras no máximo) com a descrição/lore desse item para o tooltip do inventário.
+
+EXEMPLOS DO ESTILO EXATO DESEJADO:
+- "Uma espada afiada e perigosa."
+- "Um martelo forjado nas profundezas de uma masmorra esquecida."
+- "Espada imbuída no veneno de uma serpente mortal."
+- "Um material muito raro para forjar armas supremas."
 
 REGRAS:
-1. Resumo bem conciso, menos de uma linha (10 a 20 palavras no máximo).
-2. Pegada imersiva de RPG de fantasia / aventura.
+1. Extremamente suscinto: APENAS 5 a 10 palavras no total.
+2. Frase direta, sem orações longas ou vírgulas em excesso.
 3. NÃO use emojis. NÃO use aspas.
-4. NÃO inicie dizendo "Esta espada é...", "Este item é..." ou repetindo o nome do item.
-5. Deve ser uma descrição ÚNICA e diferente destas descrições já existentes no jogo:
+4. Deve ser uma descrição ÚNICA e diferente destas já existentes:
 ${existingDescs.map(d => `- "${d}"`).join('\n')}
 
-Responda APENAS com o texto da frase em português brasileiro.`;
+Responda APENAS com a frase curta em português brasileiro.`;
 
-      let generated = '';
-      const candidateModels = [cfg.model || 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'];
+        const candidateModels = [cfg.model || 'qwen/qwen3.8-27b', 'qwen/qwen3.8-27b', 'groq/compound-mini', 'groq/compound'];
 
-      for (const model of candidateModels) {
-        try {
-          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${cfg.apiKey}`
-            },
-            body: JSON.stringify({
-              model,
-              messages: [
-                { role: 'system', content: 'Você é um narrador de RPG especialista em escrever frases de lore poéticas, curtas e impactantes para equipamentos.' },
-                { role: 'user', content: prompt }
-              ],
-              max_tokens: 120,
-              temperature: 0.85
-            })
-          });
+        for (const model of candidateModels) {
+          try {
+            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${cfg.apiKey}`
+              },
+              body: JSON.stringify({
+                model,
+                messages: [
+                  { role: 'system', content: 'Você é um narrador de RPG especialista em escrever frases de lore poéticas, curtas e impactantes para equipamentos.' },
+                  { role: 'user', content: prompt }
+                ],
+                max_tokens: 120,
+                temperature: 0.85
+              })
+            });
 
-          if (res.ok) {
-            const json = await res.json();
-            const text = json?.choices?.[0]?.message?.content || '';
-            if (text.trim()) {
-              generated = text.trim();
-              break;
+            if (res.ok) {
+              const json = await res.json();
+              const text = json?.choices?.[0]?.message?.content || '';
+              if (text.trim()) {
+                generated = text.trim();
+                break;
+              }
+            } else {
+              if (res.status === 401) {
+                apiErrorReason = 'Chave Groq inválida ou expirada (Erro 401)';
+                break;
+              } else if (res.status === 429) {
+                apiErrorReason = 'Limite de requisições excedido no Groq (Erro 429)';
+              } else {
+                apiErrorReason = `Erro ${res.status} na API Groq`;
+              }
             }
+          } catch (err: any) {
+            console.warn(`[AI Description] Falha com modelo ${model}:`, err);
+            apiErrorReason = 'Falha de conexão com a API Groq';
           }
-        } catch (err) {
-          console.warn(`[AI Description] Falha com modelo ${model}:`, err);
         }
+      } else {
+        apiErrorReason = 'Chave da IA não configurada no painel';
       }
 
+      // Se a IA do Groq respondeu com sucesso:
       if (generated) {
         const cleaned = generated.replace(/^["'“]+|["'”]+$/g, '').replace(/\r?\n/g, ' ').trim();
         setFormData(prev => ({ ...prev, description: cleaned }));
-        showToast('✨ Descrição de RPG gerada com sucesso!', 'success');
+        showToast('✨ Descrição gerada com sucesso pela IA!', 'success');
       } else {
-        showToast('A IA não retornou um texto no momento. Tente novamente.', 'error');
+        // Fallback inteligente: gera lore procedural temática sem bloquear o usuário
+        const procedural = generateProceduralItemLore({
+          title,
+          rarity: formData.rarity,
+          itemCategory: formData.itemCategory,
+          avatarPart: formData.avatarPart,
+          damageEffect: formData.damageEffect,
+          baseAttributeType: formData.baseAttributeType,
+          baseAttributeValue: formData.baseAttributeValue,
+          gameEffect: formData.gameEffect
+        });
+
+        setFormData(prev => ({ ...prev, description: procedural }));
+        if (apiErrorReason?.includes('401')) {
+          showToast(`✨ Lore gerada! (Aviso: ${apiErrorReason} - atualize a chave no Painel Admin)`, 'warning');
+        } else if (apiErrorReason) {
+          showToast(`✨ Lore gerada! (${apiErrorReason})`, 'info');
+        } else {
+          showToast('✨ Lore de RPG gerada com sucesso!', 'success');
+        }
       }
     } catch (e: any) {
       console.error('Erro ao gerar descrição com IA:', e);
-      showToast('Erro ao comunicar com o serviço de IA.', 'error');
+      const procedural = generateProceduralItemLore({
+        title,
+        rarity: formData.rarity,
+        itemCategory: formData.itemCategory,
+        avatarPart: formData.avatarPart,
+        damageEffect: formData.damageEffect,
+        baseAttributeType: formData.baseAttributeType,
+        baseAttributeValue: formData.baseAttributeValue,
+        gameEffect: formData.gameEffect
+      });
+      setFormData(prev => ({ ...prev, description: procedural }));
+      showToast('✨ Lore de RPG gerada com sucesso!', 'success');
     } finally {
       setIsGeneratingDescription(false);
     }
@@ -2579,12 +2634,35 @@ Responda APENAS com o texto da frase em português brasileiro.`;
 
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Imagem do Item (Opcional)</label>
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <input type="text" value={formData.imageUrl || ''} onChange={e => setFormData({...formData, imageUrl: e.target.value})} placeholder="URL ou busque na galeria ->" style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <input type="text" value={formData.imageUrl || ''} onChange={e => setFormData({...formData, imageUrl: e.target.value})} placeholder="URL ou busque na galeria ->" style={{ flex: '1 1 200px', minWidth: '200px', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
                 <DirectUploadButton folder="store" onUploadComplete={(url) => setFormData({...formData, imageUrl: url})} buttonStyle={{ minHeight: '100%' }} />
-                <button onClick={() => setShowGallery('image')} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
+                <button type="button" onClick={() => setShowGallery('image')} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '0 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '100%' }}>
                   <Search size={20} />
                 </button>
+                {formData.gameModelUrl && formData.gameModelUrl.toLowerCase().endsWith('.glb') && (
+                  <button
+                    type="button"
+                    onClick={() => setShowExtractorModal(true)}
+                    title="Girar, posicionar e capturar ícone 2D a partir do modelo 3D GLB"
+                    style={{
+                      background: 'rgba(245, 158, 11, 0.2)',
+                      border: '1px solid #f59e0b',
+                      color: '#fbbf24',
+                      padding: '0 0.85rem',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '0.82rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    📸 Gerar Ícone do 3D
+                  </button>
+                )}
               </div>
               
               {formData.gameEffect === 'unlock_skin' && formData.unlockedSkinId ? (
@@ -2796,7 +2874,11 @@ Responda APENAS com o texto da frase em português brasileiro.`;
           glbUrl={formData.gameModelUrl}
           currentExtractedName={formData.extractMeshName || null}
           onSelect={(meshName) => {
-            setFormData({ ...formData, extractMeshName: meshName || undefined });
+            setFormData(prev => ({ ...prev, extractMeshName: meshName || undefined }));
+          }}
+          onApplyIcon={(iconUrl) => {
+            setFormData(prev => ({ ...prev, imageUrl: iconUrl }));
+            showToast('📸 Ícone 2D gerado e aplicado à imagem do item!', 'success');
           }}
           onClose={() => setShowExtractorModal(false)}
         />

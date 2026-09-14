@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { supabase } from '../lib/supabase';
 
 // Cache global para evitar limite de contextos WebGL e evitar crash (rostinho triste) do navegador
 let sharedRenderer: THREE.WebGLRenderer | null = null;
@@ -12,6 +13,7 @@ interface GlbMeshExtractorModalProps {
   glbUrl: string;
   currentExtractedName: string | null;
   onSelect: (meshName: string | null) => void;
+  onApplyIcon?: (iconUrl: string) => void;
   onClose: () => void;
 }
 
@@ -51,7 +53,7 @@ const getFriendlyName = (name: string): string => {
   return '';
 };
 
-export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, onSelect, onClose }: GlbMeshExtractorModalProps) {
+export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, onSelect, onApplyIcon, onClose }: GlbMeshExtractorModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [loadingText, setLoadingText] = useState('Inicializando motor 3D...');
@@ -70,6 +72,322 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const clickModeRef = useRef<'group' | 'mesh'>('group');
   clickModeRef.current = clickMode;
   const primaryNamesRef = useRef<Set<string>>(new Set());
+
+  // --- REFS E ESTADOS PARA CAPTURA DE ÍCONE 2D ---
+  const boxHelperRef = useRef<THREE.Box3Helper | null>(null);
+  const initialCameraStateRef = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
+  const modelCenterRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+  const modelSizeRef = useRef<THREE.Vector3>(new THREE.Vector3(1, 1, 1));
+  const rawRenderCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  
+  const [capturedIconUrl, setCapturedIconUrl] = useState<string | null>(null);
+  const [showIconPreviewModal, setShowIconPreviewModal] = useState(false);
+  const [isUploadingIcon, setIsUploadingIcon] = useState(false);
+  const [showViewfinder, setShowViewfinder] = useState(true);
+  const [iconFillPercent, setIconFillPercent] = useState<number>(88);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showTemporaryToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const cropAndFitToSquare = (
+    sourceCanvas: HTMLCanvasElement,
+    targetSize = 512,
+    fillPercent = 88
+  ): string => {
+    const ctx = sourceCanvas.getContext('2d');
+    if (!ctx) return sourceCanvas.toDataURL('image/png');
+
+    const w = sourceCanvas.width;
+    const h = sourceCanvas.height;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    let minX = w;
+    let maxX = -1;
+    let minY = h;
+    let maxY = -1;
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        const alpha = data[idx + 3];
+        if (alpha > 15) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    // Se estiver vazio ou inválido, retorna o canvas original
+    if (maxX < minX || maxY < minY) {
+      return sourceCanvas.toDataURL('image/png');
+    }
+
+    // Adiciona margem suave de 2px para preservar o antialiasing sem cortar pixels limítrofes
+    const pad = 2;
+    const cropX = Math.max(0, minX - pad);
+    const cropY = Math.max(0, minY - pad);
+    const cropMaxX = Math.min(w - 1, maxX + pad);
+    const cropMaxY = Math.min(h - 1, maxY + pad);
+
+    const contentWidth = cropMaxX - cropX + 1;
+    const contentHeight = cropMaxY - cropY + 1;
+
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = targetSize;
+    outCanvas.height = targetSize;
+    const outCtx = outCanvas.getContext('2d');
+    if (!outCtx) return sourceCanvas.toDataURL('image/png');
+
+    outCtx.imageSmoothingEnabled = true;
+    outCtx.imageSmoothingQuality = 'high';
+
+    // Área útil proporcional ao fillPercent (ex: 88% ocupa 512 * 0.88 = ~450px)
+    const usableSize = targetSize * (Math.max(40, Math.min(100, fillPercent)) / 100);
+    const scale = Math.min(usableSize / contentWidth, usableSize / contentHeight);
+
+    const drawWidth = contentWidth * scale;
+    const drawHeight = contentHeight * scale;
+
+    const destX = (targetSize - drawWidth) / 2;
+    const destY = (targetSize - drawHeight) / 2;
+
+    outCtx.drawImage(
+      sourceCanvas,
+      cropX, cropY, contentWidth, contentHeight,
+      destX, destY, drawWidth, drawHeight
+    );
+
+    return outCanvas.toDataURL('image/png');
+  };
+
+  const handleZoom = (direction: 'in' | 'out') => {
+    if (!cameraRef.current || !controlsRef.current) return;
+    const factor = direction === 'in' ? 0.75 : 1.35;
+    cameraRef.current.position.lerp(controlsRef.current.target, 1 - factor);
+    controlsRef.current.update();
+  };
+
+  const setCameraPreset = (preset: 'diagonal' | 'front' | 'side' | 'top' | 'reset') => {
+    if (!cameraRef.current || !controlsRef.current) return;
+    const center = modelCenterRef.current;
+    const maxDim = Math.max(modelSizeRef.current.x, modelSizeRef.current.y, modelSizeRef.current.z, 1);
+    
+    if (preset === 'reset') {
+      if (initialCameraStateRef.current) {
+        cameraRef.current.position.copy(initialCameraStateRef.current.position);
+        controlsRef.current.target.copy(initialCameraStateRef.current.target);
+      } else {
+        cameraRef.current.position.set(center.x, center.y + maxDim * 0.5, center.z + maxDim * 2);
+        controlsRef.current.target.copy(center);
+      }
+      controlsRef.current.update();
+      return;
+    }
+
+    if (preset === 'diagonal') {
+      const dist = maxDim * 1.25;
+      cameraRef.current.position.set(center.x + dist * 0.7, center.y + dist * 0.6, center.z + dist * 0.9);
+      controlsRef.current.target.copy(center);
+      controlsRef.current.update();
+    } else if (preset === 'front') {
+      cameraRef.current.position.set(center.x, center.y, center.z + maxDim * 2.0);
+      controlsRef.current.target.copy(center);
+      controlsRef.current.update();
+    } else if (preset === 'side') {
+      cameraRef.current.position.set(center.x + maxDim * 2.0, center.y, center.z);
+      controlsRef.current.target.copy(center);
+      controlsRef.current.update();
+    } else if (preset === 'top') {
+      cameraRef.current.position.set(center.x, center.y + maxDim * 2.2, center.z + 0.001);
+      controlsRef.current.target.copy(center);
+      controlsRef.current.update();
+    }
+  };
+
+  const handleCaptureIcon = () => {
+    if (!sceneRef.current || !cameraRef.current || !rendererRef.current || !containerRef.current) {
+      return alert("Visualizador 3D ainda não está pronto para captura.");
+    }
+
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    const renderer = rendererRef.current;
+    const container = containerRef.current;
+
+    // 1. Ocultar o boxHelper de depuração (caixa amarela neon)
+    const boxWasVisible = boxHelperRef.current ? boxHelperRef.current.visible : false;
+    if (boxHelperRef.current) {
+      boxHelperRef.current.visible = false;
+    }
+
+    // 2. Restaurar materiais originais temporariamente (remover o highlight amarelo)
+    originalMaterialsRef.current.forEach((mat, mesh) => {
+      mesh.material = mat;
+    });
+
+    // 3. Se o usuário tiver peças específicas selecionadas, isolar apenas elas!
+    const hiddenNodes: THREE.Object3D[] = [];
+    if (selectedNames.size > 0) {
+      let rootModel: THREE.Object3D | null = null;
+      scene.traverse((node) => {
+        if (node.userData?.isRootGltf) rootModel = node;
+      });
+
+      if (rootModel) {
+        const selectedObjects = new Set<THREE.Object3D>();
+        (rootModel as THREE.Object3D).traverse((node) => {
+          if (selectedNames.has(node.name)) {
+            selectedObjects.add(node);
+            node.traverse((child) => selectedObjects.add(child));
+          }
+        });
+
+        (rootModel as THREE.Object3D).traverse((node) => {
+          if ((node as THREE.Mesh).isMesh && !selectedObjects.has(node)) {
+            if (node.visible) {
+              node.visible = false;
+              hiddenNodes.push(node);
+            }
+          }
+        });
+      }
+    }
+
+    // 4. Configurar transparência total da cena e do renderizador
+    const prevBackground = scene.background;
+    scene.background = null;
+    const prevClearColor = new THREE.Color();
+    renderer.getClearColor(prevClearColor);
+    const prevClearAlpha = renderer.getClearAlpha();
+    renderer.setClearColor(0x000000, 0);
+
+    // 5. Preservar rigorosamente o aspect ratio, perspectiva e enquadramento que o usuário vê na tela
+    // NUNCA alterar camera.aspect para 1.0 aqui, pois alterar o aspect ratio
+    // deforma a perspectiva 3D, reduz o FOV horizontal e deforma/curva o modelo!
+    const prevPixelRatio = renderer.getPixelRatio();
+    const prevWidth = container.clientWidth || 400;
+    const prevHeight = container.clientHeight || 400;
+    const currentAspect = prevWidth / prevHeight;
+
+    // Garante renderização em alta resolução (mínimo 1024px na menor dimensão) mantendo estritamente o aspect ratio original
+    const minTargetDim = 1024;
+    const scaleMultiplier = Math.max(1, minTargetDim / Math.min(prevWidth, prevHeight));
+    const renderW = Math.round(prevWidth * scaleMultiplier);
+    const renderH = Math.round(prevHeight * scaleMultiplier);
+
+    // Desativa pixelRatio temporariamente para controle 1:1 pixel-perfect do buffer WebGL
+    // sem cortes ou truncamentos causados pelo escalonamento de DPI do Windows (125%, 150%, 200%)
+    renderer.setPixelRatio(1);
+    camera.aspect = currentAspect;
+    camera.updateProjectionMatrix();
+    renderer.setSize(renderW, renderH, false);
+
+    renderer.render(scene, camera);
+
+    // Salva cópia bruta do render no canvas offscreen (tamanho exato renderW x renderH)
+    const offscreen = document.createElement('canvas');
+    offscreen.width = renderW;
+    offscreen.height = renderH;
+    const offCtx = offscreen.getContext('2d');
+    if (offCtx) {
+      offCtx.drawImage(renderer.domElement, 0, 0, renderW, renderH);
+    }
+    rawRenderCanvasRef.current = offscreen;
+
+    // Aplica recorte inteligente proporcional e centraliza perfeitamente no ícone 512x512
+    const croppedDataUrl = cropAndFitToSquare(offscreen, 512, iconFillPercent);
+
+    // 7. Restaurar estado imediatamente
+    renderer.setPixelRatio(prevPixelRatio);
+    camera.aspect = currentAspect;
+    camera.updateProjectionMatrix();
+    renderer.setSize(prevWidth, prevHeight, false);
+    scene.background = prevBackground;
+    renderer.setClearColor(prevClearColor, prevClearAlpha);
+    renderer.render(scene, camera);
+
+    if (boxHelperRef.current) {
+      boxHelperRef.current.visible = boxWasVisible;
+    }
+
+    hiddenNodes.forEach((node) => {
+      node.visible = true;
+    });
+
+    // Re-aplicar highlight se houver seleção
+    if (selectedNames.size > 0) {
+      scene.traverse((node) => {
+        if (selectedNames.has(node.name)) {
+          node.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+              (child as THREE.Mesh).material = highlightMaterial;
+            }
+          });
+        }
+      });
+    }
+
+    setCapturedIconUrl(croppedDataUrl);
+    setShowIconPreviewModal(true);
+  };
+
+  const handleApplyCapturedIcon = async () => {
+    if (!capturedIconUrl) return;
+    setIsUploadingIcon(true);
+
+    try {
+      // 1. Converter dataUrl para Blob
+      const res = await fetch(capturedIconUrl);
+      const blob = await res.blob();
+
+      // 2. Fazer upload para o bucket 'uploads' no Supabase
+      const fileName = `store/icon_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.png`;
+      const { data, error } = await supabase.storage.from('uploads').upload(fileName, blob, {
+        contentType: 'image/png',
+        upsert: true
+      });
+
+      let finalUrl = capturedIconUrl;
+      if (!error && data) {
+        const { data: publicData } = supabase.storage.from('uploads').getPublicUrl(fileName);
+        if (publicData?.publicUrl) {
+          finalUrl = publicData.publicUrl;
+        }
+      } else if (error) {
+        console.warn('Upload para storage retornou erro, usando dataUrl diretamente:', error);
+      }
+
+      if (onApplyIcon) {
+        onApplyIcon(finalUrl);
+      }
+
+      setShowIconPreviewModal(false);
+      showTemporaryToast('✨ Ícone definido com sucesso como arte do item!');
+    } catch (err) {
+      console.error('Falha ao processar ícone:', err);
+      if (onApplyIcon) {
+        onApplyIcon(capturedIconUrl);
+      }
+      setShowIconPreviewModal(false);
+      showTemporaryToast('✨ Ícone aplicado como arte do item!');
+    } finally {
+      setIsUploadingIcon(false);
+    }
+  };
+
+  const handleDownloadCapturedIcon = () => {
+    if (!capturedIconUrl) return;
+    const link = document.createElement('a');
+    link.download = `${selectedName || 'item_3d'}_icon.png`;
+    link.href = capturedIconUrl;
+    link.click();
+  };
 
   const toggleMesh = (name: string) => {
     setSelectedNames(prev => {
@@ -342,38 +660,29 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const handleDownloadTexture = () => {
     if (!selectedName || !sceneRef.current) return;
     
-    let targetMesh: THREE.Mesh | null = null;
-    let fallbackMesh: THREE.Mesh | null = null;
-    
-    sceneRef.current.traverse((node) => {
+    let foundMesh: THREE.Mesh | null = null;
+    sceneRef.current.traverse((node: THREE.Object3D) => {
       if (node.name === selectedName) {
-        node.traverse((child) => {
+        node.traverse((child: THREE.Object3D) => {
           if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
-            if (!fallbackMesh) fallbackMesh = mesh;
-            
+            if (!foundMesh) foundMesh = mesh;
             const mat = mesh.material;
-            const hasMap = Array.isArray(mat) ? mat.some(m => (m as any).map) : (mat as any).map;
-            
-            if (hasMap && !targetMesh) {
-              targetMesh = mesh;
-            }
+            const hasMap = Array.isArray(mat) ? mat.some((m: any) => (m as any).map) : (mat as any).map;
+            if (hasMap) foundMesh = mesh;
           }
         });
       }
     });
-    
-    if (!targetMesh && fallbackMesh) {
-       targetMesh = fallbackMesh;
-    }
-    
-    if (!targetMesh) return alert("Nenhuma malha 3D encontrada na seleção para extrair a textura.");
+
+    if (!(foundMesh as any)) return alert("Nenhuma malha 3D encontrada na seleção para extrair a textura.");
+    const validMesh = (foundMesh as unknown) as THREE.Mesh;
     
     let actualMaterial: THREE.MeshStandardMaterial | null = null;
-    if (Array.isArray(targetMesh.material)) {
-      actualMaterial = (targetMesh.material.find(m => (m as THREE.MeshStandardMaterial).map) || targetMesh.material[0]) as THREE.MeshStandardMaterial;
+    if (Array.isArray(validMesh.material)) {
+      actualMaterial = (validMesh.material.find((m: any) => (m as THREE.MeshStandardMaterial).map) || validMesh.material[0]) as THREE.MeshStandardMaterial;
     } else {
-      actualMaterial = targetMesh.material as THREE.MeshStandardMaterial;
+      actualMaterial = validMesh.material as THREE.MeshStandardMaterial;
     }
 
     if (!actualMaterial || !actualMaterial.map || !actualMaterial.map.image) {
@@ -451,20 +760,21 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     const exporter = new GLTFExporter();
     
     // We only want to export the loaded GLTF model, not the lights or debug helpers
-    let rootToExport: THREE.Object3D | null = null;
-    sceneRef.current.traverse((node) => {
+    let foundRoot: THREE.Object3D | null = null;
+    sceneRef.current.traverse((node: THREE.Object3D) => {
       if (node.userData?.isRootGltf) {
-        rootToExport = node;
+        foundRoot = node;
       }
     });
     
-    if (!rootToExport) {
+    if (!(foundRoot as any)) {
       setLoading(false);
       return alert("Erro: Não foi possível encontrar a raiz do modelo para exportar.");
     }
+    const rootToExport = (foundRoot as unknown) as THREE.Object3D;
     
     // Temporarily restore original materials before exporting (remove yellow highlight)
-    rootToExport.traverse((node) => {
+    rootToExport.traverse((node: THREE.Object3D) => {
       if ((node as THREE.Mesh).isMesh) {
         const mesh = node as THREE.Mesh;
         if (originalMaterialsRef.current.has(mesh)) {
@@ -486,7 +796,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
         
         // Re-apply highlight to selected mesh
         if (selectedName) {
-           rootToExport?.traverse((node) => {
+           rootToExport?.traverse((node: THREE.Object3D) => {
              if (node.name === selectedName && (node as THREE.Mesh).isMesh) {
                 (node as THREE.Mesh).material = highlightMaterial;
              }
@@ -507,16 +817,17 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const handleExportFusedGlb = () => {
     if (selectedNames.size === 0 || !sceneRef.current) return;
 
-    let rootToExport: THREE.Object3D | null = null;
-    sceneRef.current.traverse((node) => {
-      if (node.userData?.isRootGltf) rootToExport = node;
+    let foundFusedRoot: THREE.Object3D | null = null;
+    sceneRef.current.traverse((node: THREE.Object3D) => {
+      if (node.userData?.isRootGltf) foundFusedRoot = node;
     });
-    if (!rootToExport) {
+    if (!(foundFusedRoot as any)) {
       return alert('Erro: Não foi possível encontrar a raiz do modelo para exportar.');
     }
+    const rootToExport = (foundFusedRoot as unknown) as THREE.Object3D;
 
     // Restaura materiais originais (remove o highlight amarelo)
-    rootToExport.traverse((node) => {
+    rootToExport.traverse((node: THREE.Object3D) => {
       if ((node as THREE.Mesh).isMesh) {
         const mesh = node as THREE.Mesh;
         if (originalMaterialsRef.current.has(mesh)) {
@@ -531,20 +842,20 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     // "Cannot set properties of undefined (setting 'isBone')" ao carregar o GLB.
     const keepSet = new Set(selectedNames);
     const toKeep = new Set<THREE.Object3D>();
-    rootToExport.traverse((node) => {
+    rootToExport.traverse((node: THREE.Object3D) => {
       const isBoneNode = (node as any).isBone === true || node.type === 'Bone';
       if (keepSet.has(node.name) || isBoneNode) {
         let cur: THREE.Object3D | null = node;
         while (cur) { toKeep.add(cur); cur = cur.parent; }
         // Mantém todos os filhos e descendentes da peça selecionada
-        node.traverse((d) => toKeep.add(d));
+        node.traverse((d: THREE.Object3D) => toKeep.add(d));
       }
     });
 
     // Nós a remover = filhos que não estão em toKeep
     const toRemove: THREE.Object3D[] = [];
-    rootToExport.traverse((node) => {
-      node.children.forEach((c) => { if (!toKeep.has(c)) toRemove.push(c); });
+    rootToExport.traverse((node: THREE.Object3D) => {
+      node.children.forEach((c: THREE.Object3D) => { if (!toKeep.has(c)) toRemove.push(c); });
     });
 
     // Remove temporariamente as não-selecionadas (exporta o MESMO caminho da
@@ -578,7 +889,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     );
 
     // Re-aplica o highlight nas malhas selecionadas
-    rootToExport.traverse((node) => {
+    rootToExport.traverse((node: THREE.Object3D) => {
       if ((node as THREE.Mesh).isMesh && selectedNames.has(node.name)) {
         (node as THREE.Mesh).material = highlightMaterial;
       }
@@ -606,8 +917,8 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     
     // Setup Renderer (usando o cache global)
     if (!sharedRenderer) {
-      sharedRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      sharedRenderer.setPixelRatio(window.devicePixelRatio);
+      sharedRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      sharedRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       sharedRenderer.outputColorSpace = THREE.SRGBColorSpace;
     }
     const renderer = sharedRenderer;
@@ -672,6 +983,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
           // Adicionar uma caixa amarela neon para debug (mostra exatamente onde o motor acha que o modelo está)
           const boxHelper = new THREE.Box3Helper(box, new THREE.Color(0xffff00));
           scene.add(boxHelper);
+          boxHelperRef.current = boxHelper;
           
           let center = box.getCenter(new THREE.Vector3());
           let size = box.getSize(new THREE.Vector3());
@@ -679,6 +991,9 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
           // Se a caixa estiver corrompida (modelo sem geometria clara), forçamos pro centro
           if (isNaN(center.x) || !isFinite(center.x)) center = new THREE.Vector3(0,0,0);
           if (isNaN(size.x) || !isFinite(size.x)) size = new THREE.Vector3(1,1,1);
+
+          modelCenterRef.current.copy(center);
+          modelSizeRef.current.copy(size);
           
           let maxDim = Math.max(size.x, size.y, size.z);
           if (maxDim === 0 || isNaN(maxDim) || !isFinite(maxDim)) maxDim = 10;
@@ -694,17 +1009,13 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
           
           controls.target.copy(center);
           controls.update();
+
+          initialCameraStateRef.current = {
+            position: camera.position.clone(),
+            target: controls.target.clone()
+          };
           
           scene.add(gltf.scene);
-          
-          // Helper to count descendant meshes
-          const countDescendants = (obj: THREE.Object3D): number => {
-            let count = 0;
-            obj.traverse((c) => {
-              if ((c as THREE.Mesh).isMesh) count++;
-            });
-            return count;
-          };
 
           // Cache all original materials for meshes
           gltf.scene.traverse((node) => {
@@ -864,8 +1175,10 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     }
   }, [selectedNames]);
 
-  return createPortal(
-    <div className="modal-overlay" style={{ zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+  return (
+    <>
+      {createPortal(
+        <div className="modal-overlay" style={{ zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="modal-content" style={{ background: 'var(--bg-dark)', borderRadius: '16px', border: '1px solid var(--gold-primary)', width: '90vw', maxWidth: '1000px', height: '80vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
         
         <div style={{ padding: '1rem', background: 'var(--btn-bg)', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -875,11 +1188,191 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
         
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* Left panel: 3D View */}
-          <div style={{ flex: 2, position: 'relative', background: '#000' }}>
+          <div style={{ flex: 2, position: 'relative', background: '#000', overflow: 'hidden' }}>
             {loading && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b', fontWeight: 'bold', padding: '1rem', textAlign: 'center', zIndex: 10 }}>{loadingText}</div>}
             {error && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', fontWeight: 'bold', padding: '1rem', textAlign: 'center', zIndex: 10 }}>{error}</div>}
+            
+            {/* Top Toolbar: Ângulos de Câmera e Captura de Ícone 2D */}
+            <div style={{
+              position: 'absolute',
+              top: '0.75rem',
+              left: '0.75rem',
+              right: '0.75rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '0.5rem',
+              flexWrap: 'wrap',
+              zIndex: 10,
+              pointerEvents: 'none'
+            }}>
+              {/* Presets de Ângulo de Visão */}
+              <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.8)', padding: '4px 6px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(6px)', pointerEvents: 'auto' }}>
+                <span style={{ fontSize: '0.7rem', color: '#9ca3af', alignSelf: 'center', padding: '0 4px', fontWeight: 'bold' }}>Ângulos:</span>
+                <button
+                  type="button"
+                  onClick={() => setCameraPreset('diagonal')}
+                  title="Posição clássica diagonal de armas e espadas em inventário de RPG"
+                  style={{ padding: '3px 8px', borderRadius: '5px', border: '1px solid rgba(245, 158, 11, 0.4)', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold' }}
+                >
+                  ⚔️ Diagonal RPG
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraPreset('front')}
+                  title="Visão frontal ortogonal (ótimo para armaduras e escudos)"
+                  style={{ padding: '3px 7px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', fontSize: '0.72rem' }}
+                >
+                  👁️ Frontal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraPreset('side')}
+                  title="Visão de perfil lateral"
+                  style={{ padding: '3px 7px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', fontSize: '0.72rem' }}
+                >
+                  📐 Lateral
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraPreset('top')}
+                  title="Visão superior de cima"
+                  style={{ padding: '3px 7px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', fontSize: '0.72rem' }}
+                >
+                  🔝 Topo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraPreset('reset')}
+                  title="Restaurar posição inicial da câmera"
+                  style={{ padding: '3px 7px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.08)', color: '#9ca3af', cursor: 'pointer', fontSize: '0.72rem' }}
+                >
+                  🎯 Reset
+                </button>
+                <div style={{ width: '1px', background: 'rgba(255,255,255,0.2)', margin: '0 2px' }} />
+                <button
+                  type="button"
+                  onClick={() => handleZoom('in')}
+                  title="Aproximar Câmera (Zoom +)"
+                  style={{ padding: '3px 7px', borderRadius: '5px', border: '1px solid rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.15)', color: '#6ee7b7', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold' }}
+                >
+                  ➕ Zoom
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleZoom('out')}
+                  title="Afastar Câmera (Zoom -)"
+                  style={{ padding: '3px 7px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.08)', color: '#d1d5db', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold' }}
+                >
+                  ➖ Zoom
+                </button>
+              </div>
+
+              {/* Ações de Ícone */}
+              <div style={{ display: 'flex', gap: '6px', pointerEvents: 'auto' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowViewfinder(prev => !prev)}
+                  title="Alternar guia de enquadramento 1:1"
+                  style={{
+                    padding: '5px 9px',
+                    borderRadius: '8px',
+                    border: '1px solid ' + (showViewfinder ? '#f59e0b' : 'rgba(255,255,255,0.2)'),
+                    background: showViewfinder ? 'rgba(245, 158, 11, 0.2)' : 'rgba(0,0,0,0.8)',
+                    color: showViewfinder ? '#fbbf24' : '#9ca3af',
+                    cursor: 'pointer',
+                    fontSize: '0.74rem',
+                    fontWeight: 'bold',
+                    backdropFilter: 'blur(6px)'
+                  }}
+                >
+                  🎯 Guia 1:1
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCaptureIcon}
+                  disabled={loading || !!error}
+                  title="Capturar o modelo na posição 3D atual e gerar um ícone transparente de 512x512"
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #f59e0b',
+                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    color: '#000',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontSize: '0.78rem',
+                    fontWeight: 'bold',
+                    boxShadow: '0 0 12px rgba(245, 158, 11, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  📸 Capturar Ícone 2D
+                </button>
+              </div>
+            </div>
+
+            {/* Guia de Enquadramento 1:1 (Viewfinder retangular centralizado) */}
+            {showViewfinder && !loading && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: 'min(70%, 65vh, 380px)',
+                  aspectRatio: '1 / 1',
+                  border: '2px dashed rgba(245, 158, 11, 0.65)',
+                  borderRadius: '16px',
+                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.28), inset 0 0 15px rgba(245, 158, 11, 0.15)',
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  padding: '10px',
+                  zIndex: 4,
+                  boxSizing: 'border-box'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fbbf24', fontSize: '0.68rem', fontWeight: 'bold' }}>
+                  <span>◤ 1:1</span>
+                  <span>ENQUADRAMENTO 3D ◥</span>
+                </div>
+                <div style={{ textAlign: 'center', color: '#fbbf24', fontSize: '0.68rem', background: 'rgba(0,0,0,0.7)', padding: '3px 8px', borderRadius: '4px', alignSelf: 'center', border: '1px solid rgba(245,158,11,0.3)', pointerEvents: 'none' }}>
+                  ✨ Recorte inteligente: expande automaticamente o item no ícone
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fbbf24', fontSize: '0.68rem', fontWeight: 'bold' }}>
+                  <span>◣ 512 x 512</span>
+                  <span>◢</span>
+                </div>
+              </div>
+            )}
+
+            {/* Toast Feedback */}
+            {toastMessage && (
+              <div style={{
+                position: 'absolute',
+                top: '4rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'rgba(16, 185, 129, 0.95)',
+                color: '#fff',
+                padding: '0.55rem 1.1rem',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+                fontSize: '0.85rem',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                zIndex: 100,
+                pointerEvents: 'none'
+              }}>
+                {toastMessage}
+              </div>
+            )}
+
             <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-            <div style={{ position: 'absolute', bottom: '0.75rem', left: '0.75rem', right: '0.75rem', background: 'rgba(0,0,0,0.85)', padding: '0.5rem 0.75rem', borderRadius: '8px', color: '#fff', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ position: 'absolute', bottom: '0.75rem', left: '0.75rem', right: '0.75rem', background: 'rgba(0,0,0,0.85)', padding: '0.5rem 0.75rem', borderRadius: '8px', color: '#fff', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)', zIndex: 6 }}>
               <span>💡 Clique na espada no 3D para selecioná-la!</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}>
                 <span style={{ color: '#9ca3af' }}>Modo de clique:</span>
@@ -1074,8 +1567,32 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
               
               {/* FERRAMENTAS DE REPARO MOVIDAS PARA DENTRO DA ÁREA COM SCROLL */}
               <div style={{ marginTop: '1rem', padding: '0.85rem', borderTop: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '0.5rem', borderRadius: '8px' }}>
-                <h5 style={{ margin: '0 0 0.25rem', color: '#93c5fd', fontSize: '0.75rem', textTransform: 'uppercase' }}>Reparo 3D (Opcional)</h5>
+                <h5 style={{ margin: '0 0 0.25rem', color: '#93c5fd', fontSize: '0.75rem', textTransform: 'uppercase' }}>Reparo 3D & Captura de Ícone</h5>
                 
+                <button 
+                  type="button"
+                  onClick={handleCaptureIcon}
+                  disabled={loading || !!error}
+                  style={{
+                    padding: '0.65rem',
+                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.35))',
+                    color: '#fbbf24',
+                    border: '1px solid #f59e0b',
+                    borderRadius: '6px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontSize: '0.82rem',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.25)'
+                  }}
+                  title="Captura o objeto 3D exatamente no ângulo que você posicionou na tela para usar como ícone/arte do item"
+                >
+                  📸 Capturar Ícone 2D (512x512)
+                </button>
+
                 <button 
                   type="button"
                   onClick={handleSplitDisconnectedMeshes}
@@ -1164,5 +1681,245 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
       </div>
     </div>,
     document.body
+  )}
+
+  {/* Modal de Pré-visualização do Ícone 2D Capturado */}
+  {showIconPreviewModal && capturedIconUrl && createPortal(
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.85)',
+      backdropFilter: 'blur(8px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000005,
+      padding: '1rem'
+    }}>
+      <div style={{
+        background: 'var(--bg-dark, #12131a)',
+        border: '1px solid var(--gold-primary, #f59e0b)',
+        borderRadius: '16px',
+        padding: '1.5rem',
+        width: '100%',
+        maxWidth: '540px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.25rem',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, color: 'var(--gold-primary, #f59e0b)', fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            📸 Ícone 2D Capturado (512x512)
+          </h3>
+          <button
+            type="button"
+            onClick={() => setShowIconPreviewModal(false)}
+            style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1.25rem' }}
+          >
+            ✖
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {/* Checkerboard 1:1 image preview */}
+          <div style={{
+            width: '180px',
+            height: '180px',
+            borderRadius: '12px',
+            border: '2px solid rgba(255,255,255,0.15)',
+            background: 'repeating-conic-gradient(#1f2937 0% 25%, #111827 0% 50%) 50% / 16px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            flexShrink: 0
+          }}>
+            <img
+              src={capturedIconUrl}
+              alt="Ícone 3D Capturado"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          </div>
+
+          {/* Slot / In-game preview */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.78rem', color: '#9ca3af', fontWeight: 'bold', textTransform: 'uppercase' }}>
+              Aparência no Inventário / Loja:
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{
+                width: '68px',
+                height: '68px',
+                borderRadius: '10px',
+                background: 'rgba(0, 0, 0, 0.6)',
+                border: '2px solid #f59e0b',
+                boxShadow: '0 0 10px rgba(245, 158, 11, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4px'
+              }}>
+                <img
+                  src={capturedIconUrl}
+                  alt="Miniatura"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#d1d5db', lineHeight: 1.4 }}>
+                <div style={{ color: '#fbbf24', fontWeight: 'bold' }}>Fundo Transparente</div>
+                <div>Resolução: 512 x 512</div>
+                <div>Proporção: 1:1 Perfeita</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Slider de Escala / Preenchimento no Ícone */}
+        <div style={{
+          background: 'rgba(0, 0, 0, 0.4)',
+          padding: '0.85rem 1rem',
+          borderRadius: '10px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.82rem', color: '#e5e7eb', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              📐 Tamanho / Preenchimento do Ícone:
+            </span>
+            <span style={{ fontSize: '0.88rem', color: '#fbbf24', fontWeight: 'bold' }}>
+              {iconFillPercent}%
+            </span>
+          </div>
+
+          <input
+            type="range"
+            min={50}
+            max={98}
+            value={iconFillPercent}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setIconFillPercent(val);
+              if (rawRenderCanvasRef.current) {
+                const updated = cropAndFitToSquare(rawRenderCanvasRef.current, 512, val);
+                setCapturedIconUrl(updated);
+              }
+            }}
+            style={{ width: '100%', accentColor: '#f59e0b', cursor: 'pointer' }}
+          />
+
+          <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'space-between' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setIconFillPercent(70);
+                if (rawRenderCanvasRef.current) setCapturedIconUrl(cropAndFitToSquare(rawRenderCanvasRef.current, 512, 70));
+              }}
+              style={{ padding: '3px 8px', fontSize: '0.72rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)', background: iconFillPercent === 70 ? '#f59e0b' : 'rgba(255,255,255,0.05)', color: iconFillPercent === 70 ? '#000' : '#d1d5db', cursor: 'pointer' }}
+            >
+              Compacto (70%)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIconFillPercent(88);
+                if (rawRenderCanvasRef.current) setCapturedIconUrl(cropAndFitToSquare(rawRenderCanvasRef.current, 512, 88));
+              }}
+              style={{ padding: '3px 8px', fontSize: '0.72rem', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.5)', background: iconFillPercent === 88 ? '#f59e0b' : 'rgba(245, 158, 11, 0.15)', color: iconFillPercent === 88 ? '#000' : '#fbbf24', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              ⭐ Padrão RPG (88%)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIconFillPercent(96);
+                if (rawRenderCanvasRef.current) setCapturedIconUrl(cropAndFitToSquare(rawRenderCanvasRef.current, 512, 96));
+              }}
+              style={{ padding: '3px 8px', fontSize: '0.72rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)', background: iconFillPercent === 96 ? '#f59e0b' : 'rgba(255,255,255,0.05)', color: iconFillPercent === 96 ? '#000' : '#d1d5db', cursor: 'pointer' }}
+            >
+              Preenchimento Máximo (96%)
+            </button>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+          {onApplyIcon && (
+            <button
+              type="button"
+              onClick={handleApplyCapturedIcon}
+              disabled={isUploadingIcon}
+              style={{
+                padding: '0.75rem',
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+                fontSize: '0.9rem',
+                cursor: isUploadingIcon ? 'wait' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)'
+              }}
+            >
+              {isUploadingIcon ? '⏳ Enviando imagem...' : '⚡ Definir como Imagem do Item'}
+            </button>
+          )}
+
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={handleDownloadCapturedIcon}
+              style={{
+                flex: 1,
+                padding: '0.65rem',
+                background: 'rgba(59, 130, 246, 0.2)',
+                color: '#60a5fa',
+                border: '1px solid #3b82f6',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '0.82rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              📥 Baixar Arquivo PNG
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowIconPreviewModal(false)}
+              style={{
+                flex: 1,
+                padding: '0.65rem',
+                background: 'rgba(255, 255, 255, 0.08)',
+                color: '#fff',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.82rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              🔄 Voltar e Ajustar Posição 3D
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )}
+  </>
   );
 }

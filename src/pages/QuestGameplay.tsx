@@ -102,7 +102,7 @@ export default function QuestGameplay() {
   const { userData, updateUserDataLocally } = useAuth();
   const { tenantId, isSuperAdmin } = useTenant();
   const navigate = useNavigate();
-  const { showAlert, showConfirm } = useDialog();
+  const { showConfirm, showToast } = useDialog();
 
   const [quest, setQuest] = useState<QuestDef | null>(null);
   const [gameState, setGameState] = useState<'loading' | 'intro' | 'playing' | 'result'>('loading');
@@ -1385,7 +1385,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setStressFactors({ lowTimeAnswers: 0, wrongAnswers: 0, hpLost: 0 });
     setCurrentHearts(initialHearts);
     if ((userData?.role === 'student' || userData?.studentViewActive) && initialHearts < 1 && !isStudyMode) {
-      await showAlert("Você precisa de pelo menos 1 coração (vida) para iniciar!");
+      showToast("Você precisa de pelo menos 1 coração (vida) para iniciar!", "warning");
       setGameState('result');
       return;
     }
@@ -2981,7 +2981,7 @@ useEffect(() => {
 
   const handleUsePowerup = async (item: UserItem) => {
     if (gameState !== 'playing') {
-      await showAlert("Você só pode usar itens durante a batalha!");
+      showToast("Você só pode usar itens durante a batalha!", "warning");
       return;
     }
 
@@ -3004,7 +3004,7 @@ useEffect(() => {
         .filter(i => i !== -1);
       
       if (wrongIndices.length === 0) {
-        await showAlert("Não há mais opções erradas para remover!");
+        showToast("Não há mais opções erradas para remover!", "info");
         return;
       }
       const randomWrong = wrongIndices[Math.floor(Math.random() * wrongIndices.length)];
@@ -3028,7 +3028,7 @@ useEffect(() => {
       const maxHearts = calculatedMaxHearts;
       
       if (currentHearts >= maxHearts) {
-         await showAlert("Sua vida já está cheia!");
+         showToast("Sua vida já está cheia!", "info");
          return;
       }
       
@@ -3042,7 +3042,7 @@ useEffect(() => {
       const maxHearts = calculatedMaxHearts;
       
       if (currentHearts >= maxHearts) {
-         await showAlert("Sua vida já está cheia!");
+         showToast("Sua vida já está cheia!", "info");
          return;
       }
       
@@ -3056,14 +3056,14 @@ useEffect(() => {
       }
     } else if (item.gameEffect === 'cure_bleed') {
       if (playerBleeds.length === 0) {
-        await showAlert("Você não está sangrando!");
+        showToast("Você não está sangrando!", "info");
         return;
       }
       setPlayerBleeds([]);
       setBattleMessage('🩹 Bandagem aplicada! O sangramento foi estancado!');
     } else if (item.gameEffect === 'cure_poison') {
       if (playerPoisonTurns <= 0) {
-        await showAlert("Você não está envenenado!");
+        showToast("Você não está envenenado!", "info");
         return;
       }
       setPlayerPoisonTurns(0);

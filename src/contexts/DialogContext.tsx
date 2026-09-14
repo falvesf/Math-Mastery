@@ -13,7 +13,7 @@ interface DialogContextType {
   showConfirm: (message: string, title?: string) => Promise<boolean>;
   showConfirmWithCheckbox: (message: string, checkboxLabel: string, title?: string) => Promise<{ confirmed: boolean, checked: boolean } | null>;
   showPrompt: (message: string, defaultValue?: string, title?: string) => Promise<string | null>;
-  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
 const DialogContext = createContext<DialogContextType | undefined>(undefined);
@@ -26,9 +26,9 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [checkboxState, setCheckboxState] = useState<{ label: string, checked: boolean } | null>(null);
   const [resolvePromise, setResolvePromise] = useState<{ resolve: (value: any) => void } | null>(null);
   
-  const [toasts, setToasts] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info' }[]>([]);
+  const [toasts, setToasts] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info' | 'warning' }[]>([]);
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
@@ -257,8 +257,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         }}>
           {toasts.map(toast => (
             <div key={toast.id} style={{
-              background: toast.type === 'success' ? 'rgba(16, 185, 129, 0.9)' : toast.type === 'error' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(59, 130, 246, 0.9)',
-              color: 'white',
+              background: toast.type === 'success' ? 'rgba(16, 185, 129, 0.95)' : toast.type === 'error' ? 'rgba(239, 68, 68, 0.95)' : toast.type === 'warning' ? 'rgba(245, 158, 11, 0.95)' : 'rgba(59, 130, 246, 0.95)',
+              color: toast.type === 'warning' ? '#000000' : 'white',
               padding: '0.75rem 1.25rem',
               borderRadius: '8px',
               boxShadow: '0 4px 12px rgba(0,0,0,0.3)',

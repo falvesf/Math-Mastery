@@ -18,14 +18,26 @@ export interface GrokConfig {
   model: string;
 }
 
-// Modelos válidos do Groq (api.groq.com). Modelos antigos (grok-*/xAI) NÃO existem aqui.
-const VALID_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile'];
-const DEFAULT_MODEL = 'openai/gpt-oss-120b';
+// Modelos válidos e suportados nativamente pelo Groq (api.groq.com)
+const VALID_MODELS = [
+  'qwen/qwen3.8-27b',
+  'groq/compound-mini',
+  'groq/compound',
+  'openai/gpt-oss-120b',
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant'
+];
+const DEFAULT_MODEL = 'qwen/qwen3.8-27b';
 
 let cache: GrokConfig | null = null;
 
+const LS_KEY_API = 'math_mastery_groq_api_key';
+const LS_KEY_MODEL = 'math_mastery_groq_model';
+
 export async function getGrokConfig(): Promise<GrokConfig | null> {
   if (cache) return cache;
+
+  // 1. Tentar ler do Supabase
   try {
     const { data, error } = await supabase
       .from('system_collections')
@@ -34,22 +46,55 @@ export async function getGrokConfig(): Promise<GrokConfig | null> {
       .eq('doc_id', DOC)
       .limit(1);
       
-    if (error) console.error("Erro ao buscar IA Config:", error);
+    if (error) console.error("Erro ao buscar IA Config no Supabase:", error);
       
     if (data && data.length > 0 && data[0]?.data?.apiKey) {
       const savedModel = data[0].data.model || DEFAULT_MODEL;
-      // Garante um modelo compatível com o Groq (ignora grok-*/xai-* antigos)
       const model = VALID_MODELS.includes(savedModel) ? savedModel : DEFAULT_MODEL;
-      cache = { apiKey: data[0].data.apiKey, model };
+      cache = { apiKey: data[0].data.apiKey.trim(), model };
+      try {
+        localStorage.setItem(LS_KEY_API, cache.apiKey);
+        localStorage.setItem(LS_KEY_MODEL, cache.model);
+      } catch (_) {}
       return cache;
     }
-  } catch (e) { console.error("Exception fetching IA config:", e); }
+  } catch (e) {
+    console.error("Exception fetching IA config from Supabase:", e);
+  }
+
+  // 2. Fallback local: se o Supabase falhar ou estiver vazio, tentar localStorage
+  try {
+    const localKey = localStorage.getItem(LS_KEY_API)?.trim();
+    const localModel = localStorage.getItem(LS_KEY_MODEL)?.trim();
+    if (localKey) {
+      const model = VALID_MODELS.includes(localModel || '') ? localModel! : DEFAULT_MODEL;
+      cache = { apiKey: localKey, model };
+      return cache;
+    }
+  } catch (_) {}
+
   return null;
 }
 
 export async function saveGrokConfig(apiKey: string, model?: string): Promise<boolean> {
+  const cleanKey = apiKey.trim();
+  if (!cleanKey || cleanKey.length < 10) {
+    console.warn("Tentativa de salvar chave vazia ou inválida ignorada.");
+    return false;
+  }
+  const cleanModel = VALID_MODELS.includes(model || '') ? model! : DEFAULT_MODEL;
+  const payloadData = { apiKey: cleanKey, model: cleanModel };
+
+  // 1. Salva em cache e localStorage imediatamente (garantia de nunca se perder localmente)
   try {
-    const payload = { collection_name: COLLECTION, doc_id: DOC, tenant_id: null, data: { apiKey, model: model || 'grok-3-mini' } };
+    localStorage.setItem(LS_KEY_API, cleanKey);
+    localStorage.setItem(LS_KEY_MODEL, cleanModel);
+  } catch (_) {}
+  cache = payloadData;
+
+  // 2. Salva no Supabase
+  try {
+    const payload = { collection_name: COLLECTION, doc_id: DOC, tenant_id: null, data: payloadData };
     const { data: existing, error: existError } = await supabase
       .from('system_collections')
       .select('id')
@@ -66,9 +111,9 @@ export async function saveGrokConfig(apiKey: string, model?: string): Promise<bo
       const { error } = await supabase.from('system_collections').insert(payload);
       if (error) { console.error("Erro no insert IA:", error); return false; }
     }
-    cache = payload.data as GrokConfig;
     return true;
   } catch (e) {
+    console.error("Exceção ao persistir chave no Supabase:", e);
     return false;
   }
 }

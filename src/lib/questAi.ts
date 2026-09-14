@@ -51,8 +51,7 @@ export async function fetchAiQuestFlavor(questId: string, title: string, descrip
   if (cfg?.apiKey) {
     const userPrompt = `Escreva UMA frase curta (máximo 15 palavras), épica de RPG e pedagógica, sobre a missão de matemática "${title}". Não use aspas nem emojis.`;
 
-    // Tenta o modelo configurado; se vier vazio, tenta um modelo confiável (Llama)
-    for (const model of [cfg.model || 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile']) {
+    for (const model of [cfg.model || 'qwen/qwen3.8-27b', 'qwen/qwen3.8-27b', 'groq/compound-mini']) {
       try {
         const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
