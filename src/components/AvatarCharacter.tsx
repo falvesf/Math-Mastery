@@ -2106,7 +2106,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       hasAddons = true;
     }
     
-    if (config?.hairStyle === 'long') {
+    if (config?.hairStyle === 'long' && config?.gender !== 'male') {
       const hairColor = config.hairColor || '#4a3000';
       const hairMaterial = new THREE.MeshBasicMaterial({ color: hairColor });
       

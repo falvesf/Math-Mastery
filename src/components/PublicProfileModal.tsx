@@ -1,5 +1,5 @@
 import { useEffect, useState, Component, type ReactNode } from 'react';
-import { X, Shield, Swords, Trophy, Crosshair, Skull, UserPlus, UserMinus, History, Package, Star } from 'lucide-react';
+import { X, Shield, Swords, Trophy, Crosshair, Skull, UserPlus, UserMinus, History, Package, Star, Hammer, Flame, Sparkles } from 'lucide-react';
 import AvatarCharacter, { type EquippedItem } from './AvatarCharacter';
 import { type UserData } from '../contexts/AuthContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -462,11 +462,20 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                         const isItem = item.type === 'item';
                         const isNegative = item.badgeType === 'xp_negative';
                         const isPvp = item.type === 'pvp';
-                        const isFirstWin = item.id === 'pvp-first-win' || !!item.isSpecialMilestone;
+                        const isForge = item.type === 'forge';
+
+                        const isPvpFirstWin = item.id === 'pvp-first-win';
+                        const isForgeFirst = item.id === 'forge-first-success';
+                        const isForgePlusNine = item.id === 'forge-first-plus-nine';
+                        const isForgeTransmute = item.id === 'forge-first-transmute';
+                        const isSpecialMilestone = isPvpFirstWin || isForgeFirst || isForgePlusNine || isForgeTransmute || !!item.isSpecialMilestone;
                         
                         let borderColor = 'var(--gold-primary)';
                         let badgeBg = 'rgba(251, 191, 36, 0.15)';
                         let badgeColor = 'var(--gold-primary)';
+                        let cardBg = 'rgba(0,0,0,0.3)';
+                        let cardShadow = 'none';
+                        let titleColor = 'var(--text-primary)';
                         
                         if (isRank) {
                           borderColor = '#a855f7';
@@ -476,11 +485,41 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                           borderColor = '#3b82f6';
                           badgeBg = 'rgba(59, 130, 246, 0.15)';
                           badgeColor = '#60a5fa';
+                        } else if (isForge) {
+                          if (isForgeFirst) {
+                            borderColor = '#f97316';
+                            badgeBg = 'rgba(249, 115, 22, 0.22)';
+                            badgeColor = '#f97316';
+                            cardBg = 'linear-gradient(135deg, rgba(249, 115, 22, 0.14) 0%, rgba(234, 88, 12, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                            cardShadow = '0 0 16px rgba(249, 115, 22, 0.18)';
+                            titleColor = '#f97316';
+                          } else if (isForgePlusNine) {
+                            borderColor = '#ea580c';
+                            badgeBg = 'linear-gradient(135deg, rgba(234, 88, 12, 0.35) 0%, rgba(239, 68, 68, 0.25) 100%)';
+                            badgeColor = '#fbbf24';
+                            cardBg = 'linear-gradient(135deg, rgba(239, 68, 68, 0.16) 0%, rgba(234, 88, 12, 0.12) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                            cardShadow = '0 0 20px rgba(234, 88, 12, 0.22)';
+                            titleColor = '#fbbf24';
+                          } else if (isForgeTransmute) {
+                            borderColor = '#a855f7';
+                            badgeBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.35) 0%, rgba(139, 92, 246, 0.25) 100%)';
+                            badgeColor = '#c084fc';
+                            cardBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(139, 92, 246, 0.09) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                            cardShadow = '0 0 18px rgba(168, 85, 247, 0.2)';
+                            titleColor = '#c084fc';
+                          } else {
+                            borderColor = '#f97316';
+                            badgeBg = 'rgba(249, 115, 22, 0.18)';
+                            badgeColor = '#f97316';
+                          }
                         } else if (isPvp) {
-                          if (isFirstWin) {
+                          if (isPvpFirstWin) {
                             borderColor = '#f59e0b';
                             badgeBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.35) 0%, rgba(244, 63, 94, 0.25) 100%)';
                             badgeColor = '#fbbf24';
+                            cardBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(244, 63, 94, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                            cardShadow = '0 0 16px rgba(245, 158, 11, 0.15)';
+                            titleColor = '#fbbf24';
                           } else if (isNegative) {
                             borderColor = 'var(--accent-red)';
                             badgeBg = 'rgba(239, 68, 68, 0.15)';
@@ -510,12 +549,10 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                             key={item.id || index}
                             style={{
                               padding: '0.9rem 1.1rem',
-                              background: isFirstWin
-                                ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(244, 63, 94, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)'
-                                : 'rgba(0,0,0,0.3)',
+                              background: cardBg,
                               borderRadius: '10px',
                               borderLeft: `4px solid ${borderColor}`,
-                              boxShadow: isFirstWin ? '0 0 16px rgba(245, 158, 11, 0.15)' : 'none',
+                              boxShadow: cardShadow,
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
@@ -530,7 +567,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                                   width: '36px',
                                   height: '36px',
                                   borderRadius: '6px',
-                                  background: isFirstWin ? 'rgba(245, 158, 11, 0.18)' : 'rgba(255,255,255,0.05)',
+                                  background: isSpecialMilestone ? `${borderColor}25` : 'rgba(255,255,255,0.05)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -540,8 +577,14 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                                     <Trophy size={18} color="#c084fc" />
                                   ) : isItem ? (
                                     <Package size={18} color="#60a5fa" />
+                                  ) : isForgeFirst ? (
+                                    <Hammer size={18} color="#f97316" />
+                                  ) : isForgePlusNine ? (
+                                    <Flame size={18} color="#ea580c" />
+                                  ) : isForgeTransmute ? (
+                                    <Sparkles size={18} color="#c084fc" />
                                   ) : isPvp ? (
-                                    isFirstWin ? <Trophy size={18} color="#fbbf24" /> : <Swords size={18} color={isNegative ? 'var(--accent-red)' : item.badgeType === 'xp_positive' ? 'var(--accent-green, #10b981)' : '#fb7185'} />
+                                    isPvpFirstWin ? <Trophy size={18} color="#fbbf24" /> : <Swords size={18} color={isNegative ? 'var(--accent-red)' : item.badgeType === 'xp_positive' ? 'var(--accent-green, #10b981)' : '#fb7185'} />
                                   ) : (
                                     <Star size={18} color="var(--gold-primary)" />
                                   )}
@@ -552,12 +595,12 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                                   fontSize: '0.95rem',
                                   margin: '0 0 0.15rem 0',
                                   fontWeight: 'bold',
-                                  color: isFirstWin ? '#fbbf24' : 'var(--text-primary)'
+                                  color: titleColor
                                 }}>
                                   {item.title}
                                 </h4>
                                 {item.subtitle && (
-                                  <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: isFirstWin ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)' }}>
+                                  <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: isSpecialMilestone ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)' }}>
                                     {item.subtitle}
                                   </p>
                                 )}
@@ -574,7 +617,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                               padding: '0.35rem 0.75rem',
                               borderRadius: '16px',
                               whiteSpace: 'nowrap',
-                              border: isFirstWin ? '1px solid rgba(251, 191, 36, 0.6)' : `1px solid ${borderColor}40`
+                              border: isSpecialMilestone ? `1px solid ${borderColor}80` : `1px solid ${borderColor}40`
                             }}>
                               {item.badgeText}
                             </div>

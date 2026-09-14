@@ -16,7 +16,7 @@ import { forgeItemName } from '../lib/forge';
 import { fetchActiveCoin } from '../lib/model3d';
 import { DROPPED_STUDENT_ID } from '../lib/utils';
 import type { StoreItem } from './AdminStoreManager';
-import AvatarCharacter from './AvatarCharacter';
+import AvatarCharacter, { type EquippedItem } from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
 import ItemIcon from './ItemIcon';
 import ItemTooltip from './ItemTooltip';
@@ -95,7 +95,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   none: '—',
 };
 
-export default function StudentStore({ userData }: { userData: UserData }) {
+export default function StudentStore({ userData, equippedItems = [] }: { userData: UserData, equippedItems?: EquippedItem[] }) {
   const { showAlert, showConfirm, showPrompt, showToast } = useDialog();
   const { tenantId } = useTenant();
   const [activeTab, setActiveTab] = useState<'official' | 'market'>('official');
@@ -877,13 +877,21 @@ export default function StudentStore({ userData }: { userData: UserData }) {
             <div style={{ height: '350px', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-card)', borderRadius: '12px', overflow: 'hidden' }}>
               {(() => {
                 let previewConfig: any = { ...(userData.avatarConfig || { gender: 'male' as any, skinColor: '#ffcc99', hairColor: '#4a3000', eyeColor: '#000000', hairStyle: 'short', mouthStyle: 'smile', facialHair: 'none' as any, handedness: 'right' as any, animationState: 'idle' as any }) };
-                let previewEquipped = [];
+                if (previewConfig.gender === 'male' && previewConfig.hairStyle === 'long') {
+                  previewConfig.hairStyle = 'short';
+                }
+                let previewEquipped: EquippedItem[] = [...equippedItems];
                 
                 const type = (previewItem as StoreItem).type || (previewItem as MarketItem).itemType;
                 const isSkinPreview = previewItem.gameEffect === 'unlock_skin';
                 if (isSkinPreview) {
                   previewConfig.customSkinUrl = previewItem.unlockedSkinId || '';
+                  previewEquipped = [];
                 } else if (type === 'equippable') {
+                  const part = previewItem.avatarPart;
+                  if (part) {
+                    previewEquipped = previewEquipped.filter(i => i.avatarPart !== part);
+                  }
                   previewEquipped.push({
                     itemId: previewItem.id,
                     itemTitle: (previewItem as any).itemTitle || (previewItem as any).title,

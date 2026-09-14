@@ -394,7 +394,10 @@ export async function generateMinecraftSkinUrl(config: AvatarConfig, isBlinking:
   // ==========================================
   // CABELO
   // ==========================================
-  const effectiveStyle = config.hairStyle || (gender === 'female' ? 'long' : 'short');
+  let effectiveStyle = config.hairStyle || (gender === 'female' ? 'long' : 'short');
+  if (gender === 'male' && effectiveStyle === 'long') {
+    effectiveStyle = 'short';
+  }
 
   if (effectiveStyle === 'bald') {
       ctx.clearRect(32, 0, 64, 16); 

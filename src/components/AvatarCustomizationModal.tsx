@@ -600,12 +600,19 @@ export default function AvatarCustomizationModal({
       }
 
       if (initialConfig) {
-        setConfig(initialConfig);
+        let loadedConfig = { ...initialConfig };
+        if (loadedConfig.gender === 'male' && loadedConfig.hairStyle === 'long') {
+          loadedConfig.hairStyle = 'short';
+        }
+        setConfig(loadedConfig);
         setZoomOnly(!!(initialConfig as any)?.customModelUrl || !!(initialConfig as any)?.customSkinUrl);
         hasRandomized.current = true;
       } else if (!inline) {
         if (userData?.avatarConfig && !customSaveMode) {
           let loadedConfig = { ...userData.avatarConfig };
+          if (loadedConfig.gender === 'male' && loadedConfig.hairStyle === 'long') {
+            loadedConfig.hairStyle = 'short';
+          }
           if (loadedConfig.customSkinUrl) {
             const isStaff = (userData.role !== 'student' && !userData.studentViewActive) || isAdmin || canSkins;
             const expiry = userData.unlockedSkins?.[loadedConfig.customSkinUrl];
@@ -927,7 +934,7 @@ export default function AvatarCustomizationModal({
       }
       newConfig.lipstickColor = undefined;
       // Estilos de cabelo exclusivamente femininos não migram
-      const femaleOnlyHair = ['ponytail', 'bun', 'braid', 'pigtails', 'bob'];
+      const femaleOnlyHair = ['long', 'ponytail', 'bun', 'braid', 'pigtails', 'bob'];
       if (femaleOnlyHair.includes(newConfig.hairStyle || '')) {
         newConfig.hairStyle = 'short';
       }
@@ -1092,7 +1099,7 @@ export default function AvatarCustomizationModal({
         shirtColor: randomItem(CLOTHES_COLORS),
         pantsColor: randomItem(CLOTHES_COLORS),
         clothingStyle: isFemale ? randomItem(['t-shirt', 'pants-shirt', 'tank-top', 'dress', 'skirt', 'crop-top', 'overalls', 'suit']) : randomItem(['t-shirt', 'pants-shirt', 'tank-top', 'overalls', 'suit']),
-        hairStyle: isFemale ? randomItem(['long', 'ponytail', 'bun', 'braid', 'pigtails', 'bob', 'curly', 'bald']) : randomItem(['short', 'long', 'spiky', 'mohawk', 'messy', 'curly', 'bald']),
+        hairStyle: isFemale ? randomItem(['long', 'ponytail', 'bun', 'braid', 'pigtails', 'bob', 'curly', 'bald']) : randomItem(['short', 'spiky', 'mohawk', 'messy', 'curly', 'bald']),
         hairTieColor: randomItem(HAIR_COLORS),
         facialHair: !isFemale ? randomItem(FACIAL_HAIR_STYLES) : 'none',
         mouthStyle: randomItem(MOUTH_STYLES),
@@ -1206,7 +1213,7 @@ onClick={() => setConfig(prev => {
                         // estilos exclusivos do gênero oposto ao alternar no Debug)
                         const next = { ...prev, gender: newGender };
                         const maleOnlyHair = ['spiky', 'mohawk', 'messy'];
-                        const femaleOnlyHair = ['ponytail', 'bun', 'braid', 'pigtails', 'bob'];
+                        const femaleOnlyHair = ['long', 'ponytail', 'bun', 'braid', 'pigtails', 'bob'];
                         if (newGender === 'female' && maleOnlyHair.includes(next.hairStyle || '')) {
                           next.hairStyle = 'long';
                         } else if (newGender === 'male' && femaleOnlyHair.includes(next.hairStyle || '')) {
@@ -2376,7 +2383,7 @@ onClick={() => setConfig(prev => {
                     >
                       {[
                         { id: 'short', label: 'Curto', genders: ['male'] },
-                        { id: 'long', label: 'Longo', genders: ['female', 'male'] },
+                        { id: 'long', label: 'Longo', genders: ['female'] },
                         { id: 'spiky', label: 'Espetado', genders: ['male'] },
                         { id: 'mohawk', label: 'Moicano', genders: ['male'] },
                         { id: 'messy', label: 'Bagunçado', genders: ['male'] },

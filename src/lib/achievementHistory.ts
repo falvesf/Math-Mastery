@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { fetchBlacksmithMilestones, recordForgeMilestone, recordTransmuteMilestone } from './blacksmithAchievements';
 
 export interface PvpHistoryEntry {
   id: string;
@@ -14,7 +15,7 @@ export interface PvpHistoryEntry {
 
 export interface AchievementItem {
   id: string;
-  type: 'rank_up' | 'quest' | 'item' | 'teacher_xp' | 'pvp';
+  type: 'rank_up' | 'quest' | 'item' | 'teacher_xp' | 'pvp' | 'forge';
   title: string;
   subtitle?: string;
   imageUrl?: string;
@@ -24,7 +25,7 @@ export interface AchievementItem {
   rawDate: string;
   /** Histórico completo de PvP (se houver, para compatibilidade) */
   pvpDetails?: PvpHistoryEntry[];
-  /** Indica se é uma conquista de marco histórico único (ex: Primeira Vitória em PvP) */
+  /** Indica se é uma conquista de marco histórico único (ex: Primeira Vitória em PvP, Primeira Forja, etc.) */
   isSpecialMilestone?: boolean;
 }
 
@@ -368,6 +369,149 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
           rawDate: dateStr,
         });
       });
+    }
+
+    // --- CONQUISTAS DO FERREIRO (Primeira Forja, Primeiro +9, Primeira Transmutação) ---
+    try {
+      const milestones = await fetchBlacksmithMilestones(studentUid);
+
+      // 1. PRIMEIRA FORJA COM SUCESSO
+      if (milestones?.firstForge) {
+        achievements.push({
+          id: 'forge-first-success',
+          type: 'forge',
+          isSpecialMilestone: true,
+          title: 'Primeira Forja com Sucesso',
+          subtitle: `Aprimorou com sucesso ${milestones.firstForge.itemTitle} para +${milestones.firstForge.level}`,
+          imageUrl: milestones.firstForge.imageUrl || '',
+          badgeText: '🔨 1ª Forja',
+          badgeType: 'xp_positive',
+          timestamp: milestones.firstForge.timestamp,
+          rawDate: milestones.firstForge.dateStr,
+        });
+      } else {
+        // Retroativo: verifica se o aluno já possui itens com forja concluída
+        const forgedItems = (userItems || []).filter((i: any) => (i.data?.forgeLevel || 0) > 0);
+        if (forgedItems.length > 0) {
+          const oldest = [...forgedItems].sort((a: any, b: any) => {
+            const tA = new Date(a.data?.purchasedAt || a.created_at || 0).getTime();
+            const tB = new Date(b.data?.purchasedAt || b.created_at || 0).getTime();
+            return tA - tB;
+          })[0];
+          const dateStr = oldest.data?.purchasedAt || oldest.created_at || new Date().toISOString();
+          const timeMs = new Date(dateStr).getTime();
+          const title = oldest.data?.itemTitle || oldest.item_title || 'Equipamento';
+          const lvl = oldest.data?.forgeLevel || 1;
+          achievements.push({
+            id: 'forge-first-success',
+            type: 'forge',
+            isSpecialMilestone: true,
+            title: 'Primeira Forja com Sucesso',
+            subtitle: `Aprimorou com sucesso ${title} para +${lvl}`,
+            imageUrl: oldest.data?.itemImageUrl || oldest.data?.imageUrl || '',
+            badgeText: '🔨 1ª Forja',
+            badgeType: 'xp_positive',
+            timestamp: timeMs,
+            rawDate: dateStr,
+          });
+          recordForgeMilestone(studentUid, { itemTitle: title, level: lvl, imageUrl: oldest.data?.itemImageUrl }).catch(() => {});
+        }
+      }
+
+      // 2. PRIMEIRO ITEM +9 NA FORJA
+      if (milestones?.firstPlusNine) {
+        achievements.push({
+          id: 'forge-first-plus-nine',
+          type: 'forge',
+          isSpecialMilestone: true,
+          title: 'Primeiro Item +9 na Forja',
+          subtitle: `Alcançou o nível máximo de forja (+9) em ${milestones.firstPlusNine.itemTitle}!`,
+          imageUrl: milestones.firstPlusNine.imageUrl || '',
+          badgeText: '🔥 Forja +9',
+          badgeType: 'xp_positive',
+          timestamp: milestones.firstPlusNine.timestamp,
+          rawDate: milestones.firstPlusNine.dateStr,
+        });
+      } else {
+        // Retroativo: verifica se o aluno possui algum item no nível máximo (+9)
+        const plusNineItems = (userItems || []).filter((i: any) => (i.data?.forgeLevel || 0) >= 9);
+        if (plusNineItems.length > 0) {
+          const item9 = plusNineItems[0];
+          const dateStr = item9.data?.purchasedAt || item9.created_at || new Date().toISOString();
+          const timeMs = new Date(dateStr).getTime();
+          const title = item9.data?.itemTitle || item9.item_title || 'Equipamento';
+          achievements.push({
+            id: 'forge-first-plus-nine',
+            type: 'forge',
+            isSpecialMilestone: true,
+            title: 'Primeiro Item +9 na Forja',
+            subtitle: `Alcançou o nível máximo de forja (+9) em ${title}!`,
+            imageUrl: item9.data?.itemImageUrl || item9.data?.imageUrl || '',
+            badgeText: '🔥 Forja +9',
+            badgeType: 'xp_positive',
+            timestamp: timeMs,
+            rawDate: dateStr,
+          });
+          recordForgeMilestone(studentUid, { itemTitle: title, level: 9, imageUrl: item9.data?.itemImageUrl }).catch(() => {});
+        }
+      }
+
+      // 3. PRIMEIRA TRANSMUTAÇÃO COM SUCESSO (arma X em arma Y)
+      if (milestones?.firstTransmute) {
+        achievements.push({
+          id: 'forge-first-transmute',
+          type: 'forge',
+          isSpecialMilestone: true,
+          title: 'Primeira Transmutação com Sucesso',
+          subtitle: `Transformou ${milestones.firstTransmute.sourceTitle} em ${milestones.firstTransmute.resultTitle}`,
+          imageUrl: milestones.firstTransmute.resultImageUrl || milestones.firstTransmute.sourceImageUrl || '',
+          badgeText: '✨ 1ª Transmutação',
+          badgeType: 'rank',
+          timestamp: milestones.firstTransmute.timestamp,
+          rawDate: milestones.firstTransmute.dateStr,
+        });
+      } else {
+        // Retroativo: verifica se possui item transmutado
+        const transmutedItems = (userItems || []).filter((i: any) => i.data?.isTransmuted);
+        if (transmutedItems.length > 0) {
+          const oldestT = transmutedItems[0];
+          const dateStr = oldestT.data?.purchasedAt || oldestT.created_at || new Date().toISOString();
+          const timeMs = new Date(dateStr).getTime();
+          const resTitle = oldestT.data?.itemTitle || oldestT.item_title || 'Item Transmutado';
+          
+          let srcTitle = 'Arma +9';
+          try {
+            const { data: storeSources } = await supabase
+              .from('store_items')
+              .select('id, name, data');
+            const matchSource = (storeSources || []).find((s: any) => s.data?.transmuteConfig?.resultItemId === oldestT.item_id);
+            if (matchSource?.name || matchSource?.data?.title) {
+              srcTitle = `${matchSource.name || matchSource.data.title} +9`;
+            }
+          } catch (_) {}
+
+          achievements.push({
+            id: 'forge-first-transmute',
+            type: 'forge',
+            isSpecialMilestone: true,
+            title: 'Primeira Transmutação com Sucesso',
+            subtitle: `Transformou ${srcTitle} em ${resTitle}`,
+            imageUrl: oldestT.data?.itemImageUrl || oldestT.data?.imageUrl || '',
+            badgeText: '✨ 1ª Transmutação',
+            badgeType: 'rank',
+            timestamp: timeMs,
+            rawDate: dateStr,
+          });
+          recordTransmuteMilestone(studentUid, {
+            sourceTitle: srcTitle,
+            resultTitle: resTitle,
+            sourceImageUrl: '',
+            resultImageUrl: oldestT.data?.itemImageUrl,
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao processar conquistas do ferreiro:', e);
     }
 
     // Ordenar todas as conquistas em ordem cronológica decrescente (mais recente primeiro)

@@ -23,6 +23,7 @@ import { getMinRankIndex, resolveMinRankName } from '../lib/ranks';
 import { useDialog } from '../contexts/DialogContext';
 import { playSound, resolveAudioUrl } from '../lib/audioBank';
 import { fetchForgeSounds, type ForgeSoundsConfig } from '../lib/forgeSounds';
+import { recordForgeMilestone, recordTransmuteMilestone } from '../lib/blacksmithAchievements';
 
 interface BlacksmithModalProps {
   userData: any;
@@ -629,6 +630,14 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     if (data.success) {
       playSound(forgeSounds.successSoundUrl, 0.9);
       showToast("🔥 SUCESSO! O item foi forjado!", 'success');
+      const finalLvl = typeof data.level === 'number' ? data.level : nextLevel;
+      if (userData?.uid && selectedForgeItem) {
+        recordForgeMilestone(userData.uid, {
+          itemTitle: selectedForgeItem.itemTitle || selectedForgeItem.title || 'Equipamento',
+          level: finalLvl,
+          imageUrl: selectedForgeItem.itemImageUrl || selectedForgeItem.imageUrl || '',
+        }).catch(e => console.error('Erro ao registrar conquista de forja:', e));
+      }
     } else if (!useScroll || data.destroyed) {
       playSound(forgeSounds.failSoundUrl, 0.9);
       showToast("💥 QUEBROU! A forja falhou e o item foi destruído nas chamas!", 'error');
@@ -697,7 +706,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     }
     if (data.success) {
       playSound(forgeSounds.successSoundUrl, 0.9);
-      showToast(`✨ SUCESSO ESPETACULAR! O item foi transmutado para "${data.newTitle || resultItemInfo?.title || 'uma nova forma'}"!`, 'success');
+      const resultTitle = data.newTitle || resultItemInfo?.title || 'Item Transmutado';
+      showToast(`✨ SUCESSO ESPETACULAR! O item foi transmutado para "${resultTitle}"!`, 'success');
+      if (userData?.uid && selectedTransmuteItem) {
+        recordTransmuteMilestone(userData.uid, {
+          sourceTitle: selectedTransmuteItem.itemTitle || selectedTransmuteItem.title || 'Arma +9',
+          resultTitle,
+          sourceImageUrl: selectedTransmuteItem.itemImageUrl || selectedTransmuteItem.imageUrl || '',
+          resultImageUrl: resultItemInfo?.imageUrl || '',
+        }).catch(e => console.error('Erro ao registrar conquista de transmutação:', e));
+      }
       setSelectedTransmuteItem(null);
     } else {
       playSound(forgeSounds.failSoundUrl, 0.9);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, Hammer, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus, ChevronDown, ChevronRight, Lock } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, Hammer, Flame, Sparkles, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus, ChevronDown, ChevronRight, Lock } from 'lucide-react';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
@@ -2800,6 +2800,7 @@ export default function Dashboard() {
           initialConfig={liveAvatarConfig || userData.avatarConfig}
           onSave={(newConfig) => {
             setLiveAvatarConfig(newConfig);
+            updateUserDataLocally({ avatarConfig: newConfig });
             setIsCustomizingAvatar(false);
             markTipSeen('intro');
           }}
@@ -3546,13 +3547,23 @@ export default function Dashboard() {
                         const isItem = item.type === 'item';
                         const isNegative = item.badgeType === 'xp_negative';
                         const isPvp = item.type === 'pvp';
-                        const isFirstWin = item.id === 'pvp-first-win' || !!item.isSpecialMilestone;
+                        const isForge = item.type === 'forge';
+
+                        const isPvpFirstWin = item.id === 'pvp-first-win';
+                        const isForgeFirst = item.id === 'forge-first-success';
+                        const isForgePlusNine = item.id === 'forge-first-plus-nine';
+                        const isForgeTransmute = item.id === 'forge-first-transmute';
+                        const isSpecialMilestone = isPvpFirstWin || isForgeFirst || isForgePlusNine || isForgeTransmute || !!item.isSpecialMilestone;
+
                         const isPvpExpanded = expandedPvpId === item.id;
                         const hasPvpDetails = isPvp && (item.pvpDetails || []).length > 0;
 
                         let borderColor = 'var(--gold-primary)';
                         let badgeBg = 'rgba(251, 191, 36, 0.15)';
                         let badgeColor = 'var(--gold-primary)';
+                        let cardBg = 'rgba(0,0,0,0.25)';
+                        let cardShadow = 'none';
+                        let titleColor = 'var(--text-primary)';
 
                         if (isRank) {
                           borderColor = '#a855f7';
@@ -3562,11 +3573,41 @@ export default function Dashboard() {
                           borderColor = '#3b82f6';
                           badgeBg = 'rgba(59, 130, 246, 0.15)';
                           badgeColor = '#60a5fa';
+                        } else if (isForge) {
+                          if (isForgeFirst) {
+                            borderColor = '#f97316';
+                            badgeBg = 'rgba(249, 115, 22, 0.22)';
+                            badgeColor = '#f97316';
+                            cardBg = 'linear-gradient(135deg, rgba(249, 115, 22, 0.14) 0%, rgba(234, 88, 12, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                            cardShadow = '0 0 16px rgba(249, 115, 22, 0.18)';
+                            titleColor = '#f97316';
+                          } else if (isForgePlusNine) {
+                            borderColor = '#ea580c';
+                            badgeBg = 'linear-gradient(135deg, rgba(234, 88, 12, 0.35) 0%, rgba(239, 68, 68, 0.25) 100%)';
+                            badgeColor = '#fbbf24';
+                            cardBg = 'linear-gradient(135deg, rgba(239, 68, 68, 0.16) 0%, rgba(234, 88, 12, 0.12) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                            cardShadow = '0 0 20px rgba(234, 88, 12, 0.22)';
+                            titleColor = '#fbbf24';
+                          } else if (isForgeTransmute) {
+                            borderColor = '#a855f7';
+                            badgeBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.35) 0%, rgba(139, 92, 246, 0.25) 100%)';
+                            badgeColor = '#c084fc';
+                            cardBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(139, 92, 246, 0.09) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                            cardShadow = '0 0 18px rgba(168, 85, 247, 0.2)';
+                            titleColor = '#c084fc';
+                          } else {
+                            borderColor = '#f97316';
+                            badgeBg = 'rgba(249, 115, 22, 0.18)';
+                            badgeColor = '#f97316';
+                          }
                         } else if (isPvp) {
-                          if (isFirstWin) {
+                          if (isPvpFirstWin) {
                             borderColor = '#f59e0b';
                             badgeBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.35) 0%, rgba(244, 63, 94, 0.25) 100%)';
                             badgeColor = '#fbbf24';
+                            cardBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(244, 63, 94, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                            cardShadow = '0 0 16px rgba(245, 158, 11, 0.15)';
+                            titleColor = '#fbbf24';
                           } else if (isNegative) {
                             borderColor = 'var(--accent-red)';
                             badgeBg = 'rgba(239, 68, 68, 0.15)';
@@ -3593,12 +3634,10 @@ export default function Dashboard() {
                             key={item.id || index}
                             style={{
                               padding: '0.9rem 1.1rem',
-                              background: isFirstWin
-                                ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(244, 63, 94, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)'
-                                : 'rgba(0,0,0,0.25)',
+                              background: cardBg,
                               borderRadius: '12px',
                               borderLeft: `4px solid ${borderColor}`,
-                              boxShadow: isFirstWin ? '0 0 16px rgba(245, 158, 11, 0.15)' : 'none',
+                              boxShadow: cardShadow,
                               cursor: hasPvpDetails ? 'pointer' : 'default'
                             }}
                             onClick={hasPvpDetails ? () => setExpandedPvpId(isPvpExpanded ? null : item.id) : undefined}
@@ -3612,7 +3651,7 @@ export default function Dashboard() {
                                     width: '38px',
                                     height: '38px',
                                     borderRadius: '8px',
-                                    background: isFirstWin ? 'rgba(245, 158, 11, 0.18)' : 'rgba(255,255,255,0.05)',
+                                    background: isSpecialMilestone ? `${borderColor}25` : 'rgba(255,255,255,0.05)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
@@ -3622,8 +3661,14 @@ export default function Dashboard() {
                                       <Trophy size={20} color="#c084fc" />
                                     ) : isItem ? (
                                       <Package size={20} color="#60a5fa" />
+                                    ) : isForgeFirst ? (
+                                      <Hammer size={20} color="#f97316" />
+                                    ) : isForgePlusNine ? (
+                                      <Flame size={20} color="#ea580c" />
+                                    ) : isForgeTransmute ? (
+                                      <Sparkles size={20} color="#c084fc" />
                                     ) : isPvp ? (
-                                      isFirstWin ? <Trophy size={20} color="#fbbf24" /> : <Swords size={20} color={isNegative ? 'var(--accent-red)' : item.badgeType === 'xp_positive' ? 'var(--accent-green, #10b981)' : '#fb7185'} />
+                                      isPvpFirstWin ? <Trophy size={20} color="#fbbf24" /> : <Swords size={20} color={isNegative ? 'var(--accent-red)' : item.badgeType === 'xp_positive' ? 'var(--accent-green, #10b981)' : '#fb7185'} />
                                     ) : (
                                       <Star size={20} color="var(--gold-primary)" />
                                     )}
@@ -3634,13 +3679,13 @@ export default function Dashboard() {
                                     fontSize: '0.95rem',
                                     margin: '0 0 0.15rem 0',
                                     fontWeight: 'bold',
-                                    color: isFirstWin ? '#fbbf24' : 'var(--text-primary)',
+                                    color: titleColor,
                                     whiteSpace: 'normal'
                                   }}>
                                     {item.title || item.evalName}
                                   </h4>
                                   {item.subtitle && (
-                                    <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: isFirstWin ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)' }}>
+                                    <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: isSpecialMilestone ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)' }}>
                                       {item.subtitle}
                                     </p>
                                   )}
@@ -3658,7 +3703,7 @@ export default function Dashboard() {
                                   padding: '0.35rem 0.75rem',
                                   borderRadius: '20px',
                                   whiteSpace: 'nowrap',
-                                  border: isFirstWin ? '1px solid rgba(251, 191, 36, 0.6)' : `1px solid ${borderColor}40`
+                                  border: isSpecialMilestone ? `1px solid ${borderColor}80` : `1px solid ${borderColor}40`
                                 }}>
                                   {item.badgeText || (item.xpGained !== undefined ? `${item.xpGained > 0 ? '+' : ''}${item.xpGained} XP` : 'Conquista')}
                                 </div>
@@ -3781,7 +3826,7 @@ export default function Dashboard() {
         )}
 
         {activeTab === 'store' && userData && (
-          <StudentStore userData={userData} />
+          <StudentStore userData={{ ...userData, avatarConfig: liveAvatarConfig || userData.avatarConfig }} equippedItems={equippedItems} />
         )}
 
         {activeTab === 'forge' && userData && (
