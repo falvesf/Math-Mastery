@@ -15,6 +15,7 @@ import { applyEffectAdd, isEffectAddType, EFFECT_ADD_LABELS, DAMAGE_EFFECTS } fr
 import { forgeItemName } from '../lib/forge';
 import { fetchActiveCoin } from '../lib/model3d';
 import { DROPPED_STUDENT_ID } from '../lib/utils';
+import { getGlobalModelTransforms, loadGlobalItemTransforms } from '../lib/itemTransforms';
 import type { StoreItem } from './AdminStoreManager';
 import AvatarCharacter, { type EquippedItem } from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
@@ -139,6 +140,17 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
 
   // Preview Modal
   const [previewItem, setPreviewItem] = useState<StoreItem | MarketItem | null>(null);
+  // Garante que os transforms do Debug 3D (globais) estejam carregados para o provador
+  // e re-renderiza quando chegarem (senão o item aparece em posição padrão/aleatória).
+  const [, setTransformsTick] = useState(0);
+  useEffect(() => {
+    const h = () => setTransformsTick(t => t + 1);
+    window.addEventListener('avatar-transforms-updated', h);
+    return () => window.removeEventListener('avatar-transforms-updated', h);
+  }, []);
+  useEffect(() => {
+    if (previewItem) loadGlobalItemTransforms().catch(() => {});
+  }, [previewItem]);
 
   // Filtros e View
   const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(
@@ -943,16 +955,30 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
                   if (part) {
                     previewEquipped = previewEquipped.filter(i => i.avatarPart !== part);
                   }
+                  const storeTitle = (previewItem as any).itemTitle || (previewItem as any).title;
+                  // Rota/transform do Debug 3D: usa a do próprio item OU a global (por
+                  // título + parte + modelo). Sem isso o item cai numa posição padrão.
+                  const ownMt = (previewItem as any).modelTransforms;
+                  const resolvedMt = ownMt && Object.keys(ownMt).length > 0
+                    ? ownMt
+                    : getGlobalModelTransforms({
+                        itemTitle: storeTitle,
+                        title: storeTitle,
+                        avatarPart: previewItem.avatarPart,
+                        gameModelUrl: previewItem.gameModelUrl,
+                        itemId: previewItem.id,
+                        id: previewItem.id,
+                      });
                   previewEquipped.push({
                     itemId: previewItem.id,
-                    itemTitle: (previewItem as any).itemTitle || (previewItem as any).title,
+                    itemTitle: storeTitle,
                     itemCategory: previewItem.itemCategory,
                     imageUrl: (previewItem as any).imageUrl || (previewItem as any).itemImageUrl || '',
                     avatarPart: previewItem.avatarPart as any,
                     gameModelUrl: previewItem.gameModelUrl,
                     modelTextureUrl: previewItem.modelTextureUrl,
                     minecraftHeadValue: previewItem.minecraftHeadValue,
-                    modelTransforms: previewItem.modelTransforms
+                    modelTransforms: resolvedMt
                   });
                   if (previewConfig.hiddenSlots && previewItem.avatarPart) {
                     previewConfig.hiddenSlots = previewConfig.hiddenSlots.filter((slot: string) => slot !== previewItem.avatarPart);
