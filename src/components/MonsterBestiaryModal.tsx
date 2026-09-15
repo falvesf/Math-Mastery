@@ -136,10 +136,10 @@ export const MonsterBestiaryModal: React.FC<MonsterBestiaryModalProps> = ({
           {/* Coluna Esquerda: Aparência e Estatísticas de Encontro */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{
-              height: '280px',
+              height: '320px',
               width: '100%',
               borderRadius: '12px',
-              background: 'rgba(0,0,0,0.4)',
+              background: 'radial-gradient(circle at 50% 40%, rgba(168, 85, 247, 0.15) 0%, rgba(0,0,0,0.5) 75%)',
               border: '1px solid rgba(168, 85, 247, 0.25)',
               display: 'flex',
               alignItems: 'center',
@@ -148,7 +148,25 @@ export const MonsterBestiaryModal: React.FC<MonsterBestiaryModalProps> = ({
               position: 'relative'
             }}>
               {monsterData.avatarConfig ? (
-                <AvatarCharacter config={monsterData.avatarConfig} size={220} animation="idle" />
+                (() => {
+                  const isCustomModel = !!monsterData.avatarConfig?.customModelUrl;
+                  const effectiveConfig = {
+                    ...monsterData.avatarConfig,
+                    // Se for modelo GLB, normaliza o zoom para caber confortavelmente sem cortes
+                    customZoom: isCustomModel ? Math.min(monsterData.avatarConfig.customZoom || 1, 1.0) : (monsterData.avatarConfig.customZoom || 1)
+                  };
+                  return (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <AvatarCharacter
+                        config={effectiveConfig}
+                        size={isCustomModel ? 270 : 165}
+                        animation="idle"
+                        interactive={true}
+                        role="monster"
+                      />
+                    </div>
+                  );
+                })()
               ) : monsterData.coverImageUrl ? (
                 <img 
                   src={monsterData.coverImageUrl} 

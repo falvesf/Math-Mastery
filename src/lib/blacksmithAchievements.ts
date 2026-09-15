@@ -50,7 +50,7 @@ export async function fetchBlacksmithMilestones(uid: string): Promise<Blacksmith
  */
 export async function recordForgeMilestone(
   uid: string,
-  event: { itemTitle: string; level: number; imageUrl?: string }
+  event: { itemTitle: string; level: number; imageUrl?: string; timestamp?: number; dateStr?: string }
 ): Promise<void> {
   try {
     const current = (await fetchBlacksmithMilestones(uid)) || {};
@@ -61,8 +61,8 @@ export async function recordForgeMilestone(
       current.firstForge = {
         itemTitle: event.itemTitle,
         level: event.level,
-        timestamp: Date.now(),
-        dateStr: new Date().toISOString(),
+        timestamp: event.timestamp || Date.now(),
+        dateStr: event.dateStr || new Date().toISOString(),
         imageUrl: event.imageUrl || '',
       };
       updated = true;
@@ -72,8 +72,8 @@ export async function recordForgeMilestone(
     if (event.level >= 9 && !current.firstPlusNine) {
       current.firstPlusNine = {
         itemTitle: event.itemTitle,
-        timestamp: Date.now(),
-        dateStr: new Date().toISOString(),
+        timestamp: event.timestamp || Date.now(),
+        dateStr: event.dateStr || new Date().toISOString(),
         imageUrl: event.imageUrl || '',
       };
       updated = true;
@@ -98,6 +98,8 @@ export async function recordTransmuteMilestone(
     resultTitle: string;
     sourceImageUrl?: string;
     resultImageUrl?: string;
+    timestamp?: number;
+    dateStr?: string;
   }
 ): Promise<void> {
   try {
@@ -106,8 +108,8 @@ export async function recordTransmuteMilestone(
       current.firstTransmute = {
         sourceTitle: event.sourceTitle,
         resultTitle: event.resultTitle,
-        timestamp: Date.now(),
-        dateStr: new Date().toISOString(),
+        timestamp: event.timestamp || Date.now(),
+        dateStr: event.dateStr || new Date().toISOString(),
         sourceImageUrl: event.sourceImageUrl || '',
         resultImageUrl: event.resultImageUrl || '',
       };
@@ -134,7 +136,7 @@ export async function saveBlacksmithMilestones(uid: string, data: BlacksmithMile
     if (existing && existing.length > 0) {
       await supabase
         .from('system_collections')
-        .update({ data, updated_at: new Date().toISOString() })
+        .update({ data })
         .eq('id', existing[0].id);
     } else {
       await supabase

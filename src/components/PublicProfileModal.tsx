@@ -673,7 +673,42 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                                 }}
                               >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
-                                  {item.imageUrl ? (
+                                  {isBestiary && item.bestiaryData?.avatarConfig ? (
+                                    <div style={{
+                                      width: '42px',
+                                      height: '42px',
+                                      borderRadius: '8px',
+                                      overflow: 'hidden',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      background: 'radial-gradient(circle, rgba(168, 85, 247, 0.25) 0%, rgba(0,0,0,0.6) 100%)',
+                                      border: '1.5px solid rgba(168, 85, 247, 0.5)',
+                                      boxShadow: '0 0 10px rgba(168, 85, 247, 0.2)',
+                                      flexShrink: 0,
+                                      position: 'relative'
+                                    }}>
+                                      <div style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        pointerEvents: 'none'
+                                      }}>
+                                        <AvatarCharacter
+                                          config={{
+                                            ...item.bestiaryData.avatarConfig,
+                                            customZoom: item.bestiaryData.avatarConfig.customModelUrl ? 0.95 : (item.bestiaryData.avatarConfig.customZoom || 1)
+                                          }}
+                                          size={item.bestiaryData.avatarConfig.customModelUrl ? 42 : 23}
+                                          animation="idle"
+                                          interactive={false}
+                                          role="monster"
+                                        />
+                                      </div>
+                                    </div>
+                                  ) : item.imageUrl ? (
                                     <img src={item.imageUrl} alt="" style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '6px', flexShrink: 0 }} />
                                   ) : (
                                     <div style={{

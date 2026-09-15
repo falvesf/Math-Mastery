@@ -511,8 +511,10 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
         const forgedItems = (userItems || []).filter((i: any) => (i.data?.forgeLevel || 0) > 0);
         if (forgedItems.length > 0) {
           const oldest = forgedItems[0];
-          const dateStr = oldest.data?.purchasedAt || oldest.created_at || new Date().toISOString();
-          const timeMs = new Date(dateStr).getTime();
+          const baseDateStr = oldest.data?.purchasedAt ? new Date(oldest.data.purchasedAt).toISOString() : (oldest.created_at || new Date().toISOString());
+          // A forja ocorre estritamente APÓS a aquisição do item (+5 segundos) para manter coerência cronológica
+          const timeMs = new Date(baseDateStr).getTime() + 5000;
+          const dateStr = new Date(timeMs).toISOString();
           const title = oldest.data?.itemTitle || oldest.item_title || 'Equipamento';
           const lvl = oldest.data?.forgeLevel || 1;
           achievements.push({
@@ -527,7 +529,7 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
             timestamp: timeMs,
             rawDate: dateStr,
           });
-          recordForgeMilestone(studentUid, { itemTitle: title, level: lvl, imageUrl: oldest.data?.itemImageUrl }).catch(() => {});
+          recordForgeMilestone(studentUid, { itemTitle: title, level: lvl, imageUrl: oldest.data?.itemImageUrl, timestamp: timeMs, dateStr }).catch(() => {});
         }
       }
 
@@ -548,8 +550,9 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
         const plusNineItems = (userItems || []).filter((i: any) => (i.data?.forgeLevel || 0) >= 9);
         if (plusNineItems.length > 0) {
           const item9 = plusNineItems[0];
-          const dateStr = item9.data?.purchasedAt || item9.created_at || new Date().toISOString();
-          const timeMs = new Date(dateStr).getTime();
+          const baseDateStr = item9.data?.purchasedAt ? new Date(item9.data.purchasedAt).toISOString() : (item9.created_at || new Date().toISOString());
+          const timeMs = new Date(baseDateStr).getTime() + 10000;
+          const dateStr = new Date(timeMs).toISOString();
           const title = item9.data?.itemTitle || item9.item_title || 'Equipamento';
           achievements.push({
             id: 'forge-first-plus-nine',
@@ -563,10 +566,11 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
             timestamp: timeMs,
             rawDate: dateStr,
           });
-          recordForgeMilestone(studentUid, { itemTitle: title, level: 9, imageUrl: item9.data?.itemImageUrl }).catch(() => {});
+          recordForgeMilestone(studentUid, { itemTitle: title, level: 9, imageUrl: item9.data?.itemImageUrl, timestamp: timeMs, dateStr }).catch(() => {});
         }
       }
 
+      // Transmutações só são computadas se registradas de fato via Altar de Transmutação no banco
       if (milestones?.firstTransmute) {
         achievements.push({
           id: 'forge-first-transmute',
@@ -580,42 +584,6 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
           timestamp: milestones.firstTransmute.timestamp,
           rawDate: milestones.firstTransmute.dateStr,
         });
-      } else {
-        const transmutedItems = (userItems || []).filter((i: any) => i.data?.isTransmuted);
-        if (transmutedItems.length > 0) {
-          const oldestT = transmutedItems[0];
-          const dateStr = oldestT.data?.purchasedAt || oldestT.created_at || new Date().toISOString();
-          const timeMs = new Date(dateStr).getTime();
-          const resTitle = oldestT.data?.itemTitle || oldestT.item_title || 'Item Transmutado';
-          
-          let srcTitle = 'Arma +9';
-          try {
-            const { data: storeSources } = await supabase.from('store_items').select('id, name, data');
-            const matchSource = (storeSources || []).find((s: any) => s.data?.transmuteConfig?.resultItemId === oldestT.item_id);
-            if (matchSource?.name || matchSource?.data?.title) {
-              srcTitle = `${matchSource.name || matchSource.data.title} +9`;
-            }
-          } catch (_) {}
-
-          achievements.push({
-            id: 'forge-first-transmute',
-            type: 'forge',
-            isSpecialMilestone: true,
-            title: 'Primeira Transmutação com Sucesso',
-            subtitle: `Transformou ${srcTitle} em ${resTitle}`,
-            imageUrl: oldestT.data?.itemImageUrl || oldestT.data?.imageUrl || '',
-            badgeText: '✨ 1ª Transmutação',
-            badgeType: 'rank',
-            timestamp: timeMs,
-            rawDate: dateStr,
-          });
-          recordTransmuteMilestone(studentUid, {
-            sourceTitle: srcTitle,
-            resultTitle: resTitle,
-            sourceImageUrl: '',
-            resultImageUrl: oldestT.data?.itemImageUrl,
-          }).catch(() => {});
-        }
       }
     } catch (e) {
       console.error('Erro ao processar conquistas do ferreiro:', e);
@@ -702,17 +670,35 @@ export async function fetchStudentActivityLog(studentUid: string): Promise<Achie
 
     groupedItemsMap.forEach((entry) => {
       const countLabel = entry.count > 1 ? `${entry.count}x ` : '';
-      const title = entry.giftedBy
-        ? `Recebeu de presente: ${countLabel}${entry.itemTitle}`
-        : `Adquiriu: ${countLabel}${entry.itemTitle}`;
+      const isMonsterDrop = !!entry.giftedBy && entry.giftedBy.includes('Drop de Monstro');
+      
+      let title = '';
+      let subtitle = '';
+      let badgeText = '';
+
+      if (isMonsterDrop) {
+        const match = entry.giftedBy!.match(/Drop de Monstro \((.+)\)/);
+        const monsterName = match ? match[1] : 'Monstro';
+        title = `Em batalha com ${monsterName}, obteve ${countLabel}${entry.itemTitle}`;
+        subtitle = `Espólio de combate conquistado contra ${monsterName}`;
+        badgeText = entry.count > 1 ? `${entry.count}x Drops` : '⚔️ Drop';
+      } else if (entry.giftedBy) {
+        title = `Recebeu de presente: ${countLabel}${entry.itemTitle}`;
+        subtitle = `Presenteado por ${entry.giftedBy}`;
+        badgeText = entry.count > 1 ? `${entry.count}x Presentes` : '🎁 Presente';
+      } else {
+        title = `Adquiriu: ${countLabel}${entry.itemTitle}`;
+        subtitle = 'Item do Inventário';
+        badgeText = entry.count > 1 ? `${entry.count}x Itens` : 'Item Adquirido';
+      }
 
       logItems.push({
         id: `activity-item-${entry.id}`,
         type: 'item',
         title,
-        subtitle: entry.giftedBy ? `Presenteado por ${entry.giftedBy}` : 'Item do Inventário',
+        subtitle,
         imageUrl: entry.itemImage,
-        badgeText: entry.count > 1 ? `${entry.count}x Itens` : 'Item Adquirido',
+        badgeText,
         badgeType: 'item_received',
         timestamp: entry.timestamp,
         rawDate: entry.dateStr,
