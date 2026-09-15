@@ -347,6 +347,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
       gameEffect: f.gameEffect || 'none',
       rarity: f.rarity || 'common',
       adds: [],
+      extractMeshName: f.extractMeshName || undefined,
     }] as any[];
   }, [formData]);
   

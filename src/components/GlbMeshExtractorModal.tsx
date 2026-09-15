@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -65,6 +65,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   );
   const selectedNamesArr = [...selectedNames];
   const selectedName = selectedNamesArr[0] || null;
+  const [isolateMode, setIsolateMode] = useState<boolean>(true);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'primary' | 'all'>('primary');
@@ -73,13 +74,114 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   clickModeRef.current = clickMode;
   const primaryNamesRef = useRef<Set<string>>(new Set());
 
+  // --- REFS E ESTADOS DE RENDERIZAÇÃO & 3D ---
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
+
+  const highlightMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    emissive: 0x854d0e,
+    emissiveIntensity: 0.5,
+    transparent: true,
+    opacity: 0.9,
+    wireframe: true
+  }), []);
+
   // --- REFS E ESTADOS PARA CAPTURA DE ÍCONE 2D ---
   const boxHelperRef = useRef<THREE.Box3Helper | null>(null);
   const initialCameraStateRef = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const modelCenterRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
   const modelSizeRef = useRef<THREE.Vector3>(new THREE.Vector3(1, 1, 1));
   const rawRenderCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  
+
+  // Função centralizada para atualizar visibilidade e isolamento da malha selecionada
+  const updateSceneVisibility = useCallback(() => {
+    if (!sceneRef.current) return;
+
+    // 1. Restaura materiais originais em todas as malhas
+    originalMaterialsRef.current.forEach((mat, mesh) => {
+      mesh.material = mat;
+    });
+
+    if (selectedNames.size > 0) {
+      const keepSet = new Set(selectedNames);
+      const targetNodes = new Set<THREE.Object3D>();
+
+      sceneRef.current.traverse((node) => {
+        if (keepSet.has(node.name)) {
+          targetNodes.add(node);
+          node.traverse((c) => targetNodes.add(c));
+          let p = node.parent;
+          while (p && p.type !== 'Scene') {
+            targetNodes.add(p);
+            p = p.parent;
+          }
+        }
+      });
+
+      if (isolateMode) {
+        // Isolar peça selecionada: esconde as demais malhas completamente
+        sceneRef.current.traverse((node) => {
+          if ((node as THREE.Mesh).isMesh) {
+            node.visible = targetNodes.has(node);
+          }
+        });
+      } else {
+        // Ver tudo: tudo visível, mas a peça selecionada fica com destaque dourado
+        sceneRef.current.traverse((node) => {
+          if ((node as THREE.Mesh).isMesh) {
+            node.visible = true;
+            if (targetNodes.has(node)) {
+              (node as THREE.Mesh).material = highlightMaterial;
+            }
+          }
+        });
+      }
+
+      // Atualiza a bounding box do helper e o centro de foco para a peça selecionada
+      if (boxHelperRef.current) {
+        const box = new THREE.Box3();
+        targetNodes.forEach((tn) => {
+          tn.traverse((c) => {
+            if ((c as THREE.Mesh).isMesh && c.visible) {
+              box.expandByObject(c);
+            }
+          });
+        });
+        if (!box.isEmpty()) {
+          boxHelperRef.current.box.copy(box);
+          boxHelperRef.current.visible = true;
+          modelCenterRef.current.copy(box.getCenter(new THREE.Vector3()));
+          modelSizeRef.current.copy(box.getSize(new THREE.Vector3()));
+        }
+      }
+    } else {
+      // Nenhuma peça selecionada: mostra tudo normalmente com seus materiais originais
+      sceneRef.current.traverse((node) => {
+        if ((node as THREE.Mesh).isMesh) {
+          node.visible = true;
+        }
+      });
+      if (boxHelperRef.current) {
+        let rootModel: THREE.Object3D | null = null;
+        sceneRef.current.traverse((node) => {
+          if (node.userData?.isRootGltf) rootModel = node;
+        });
+        if (rootModel) {
+          const box = new THREE.Box3().setFromObject(rootModel);
+          boxHelperRef.current.box.copy(box);
+          boxHelperRef.current.visible = true;
+          modelCenterRef.current.copy(box.getCenter(new THREE.Vector3()));
+          modelSizeRef.current.copy(box.getSize(new THREE.Vector3()));
+        }
+      }
+    }
+  }, [selectedNames, isolateMode, highlightMaterial]);
+
   const [capturedIconUrl, setCapturedIconUrl] = useState<string | null>(null);
   const [showIconPreviewModal, setShowIconPreviewModal] = useState(false);
   const [isUploadingIcon, setIsUploadingIcon] = useState(false);
@@ -210,6 +312,16 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     }
   };
 
+  const focusOnSelected = () => {
+    if (!cameraRef.current || !controlsRef.current) return;
+    const center = modelCenterRef.current;
+    const maxDim = Math.max(modelSizeRef.current.x, modelSizeRef.current.y, modelSizeRef.current.z, 0.2);
+    const dist = maxDim * 1.5;
+    cameraRef.current.position.set(center.x + dist * 0.7, center.y + dist * 0.6, center.z + dist * 0.9);
+    controlsRef.current.target.copy(center);
+    controlsRef.current.update();
+  };
+
   const handleCaptureIcon = () => {
     if (!sceneRef.current || !cameraRef.current || !rendererRef.current || !containerRef.current) {
       return alert("Visualizador 3D ainda não está pronto para captura.");
@@ -319,19 +431,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     hiddenNodes.forEach((node) => {
       node.visible = true;
     });
-
-    // Re-aplicar highlight se houver seleção
-    if (selectedNames.size > 0) {
-      scene.traverse((node) => {
-        if (selectedNames.has(node.name)) {
-          node.traverse((child) => {
-            if ((child as THREE.Mesh).isMesh) {
-              (child as THREE.Mesh).material = highlightMaterial;
-            }
-          });
-        }
-      });
-    }
+    updateSceneVisibility();
 
     setCapturedIconUrl(croppedDataUrl);
     setShowIconPreviewModal(true);
@@ -397,24 +497,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
       return next;
     });
   };
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  
-  const highlightMaterial = new THREE.MeshStandardMaterial({
-    color: 0xf59e0b,
-    emissive: 0x854d0e,
-    emissiveIntensity: 0.5,
-    transparent: true,
-    opacity: 0.9,
-    wireframe: true
-  });
-  
-  const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
+
 
   // --- REPAIR TOOLS LOGIC ---
 
@@ -751,29 +834,19 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleExportGlb = () => {
+  const exportModelGlb = (onlySelected: boolean) => {
     if (!sceneRef.current) return;
-    
-    setLoading(true);
-    setLoadingText("Empacotando e exportando GLB...");
-    
-    const exporter = new GLTFExporter();
-    
-    // We only want to export the loaded GLTF model, not the lights or debug helpers
+
     let foundRoot: THREE.Object3D | null = null;
     sceneRef.current.traverse((node: THREE.Object3D) => {
-      if (node.userData?.isRootGltf) {
-        foundRoot = node;
-      }
+      if (node.userData?.isRootGltf) foundRoot = node;
     });
-    
-    if (!(foundRoot as any)) {
-      setLoading(false);
+    if (!foundRoot) {
       return alert("Erro: Não foi possível encontrar a raiz do modelo para exportar.");
     }
-    const rootToExport = (foundRoot as unknown) as THREE.Object3D;
-    
-    // Temporarily restore original materials before exporting (remove yellow highlight)
+    const rootToExport = foundRoot as THREE.Object3D;
+
+    // 1. Restaura materiais originais (remove highlight amarelo/wireframe)
     rootToExport.traverse((node: THREE.Object3D) => {
       if ((node as THREE.Mesh).isMesh) {
         const mesh = node as THREE.Mesh;
@@ -782,118 +855,115 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
         }
       }
     });
-    
+
+    const isPruning = onlySelected && selectedNames.size > 0;
+    const toRemove: THREE.Object3D[] = [];
+    const parents = new Map<THREE.Object3D, THREE.Object3D>();
+    let shiftX = 0;
+    let shiftZ = 0;
+
+    if (isPruning) {
+      const keepSet = new Set(selectedNames);
+      const toKeep = new Set<THREE.Object3D>();
+
+      rootToExport.traverse((node: THREE.Object3D) => {
+        const isBoneNode = (node as any).isBone === true || node.type === 'Bone';
+        if (keepSet.has(node.name) || isBoneNode) {
+          let cur: THREE.Object3D | null = node;
+          while (cur) {
+            toKeep.add(cur);
+            cur = cur.parent;
+          }
+          node.traverse((d: THREE.Object3D) => toKeep.add(d));
+        }
+      });
+
+      // Remove apenas filhos diretos dos nós mantidos que não estejam em toKeep
+      rootToExport.traverse((node: THREE.Object3D) => {
+        if (toKeep.has(node)) {
+          node.children.forEach((c: THREE.Object3D) => {
+            if (!toKeep.has(c)) {
+              toRemove.push(c);
+            }
+          });
+        }
+      });
+
+      toRemove.forEach((n) => {
+        if (n.parent) {
+          parents.set(n, n.parent);
+          n.removeFromParent();
+        }
+      });
+
+      // Recentraliza a peça selecionada no centro horizontal (X=0, Z=0) para alinhamento ideal
+      const box = new THREE.Box3().setFromObject(rootToExport);
+      const center = box.getCenter(new THREE.Vector3());
+      if (!isNaN(center.x) && isFinite(center.x)) shiftX = center.x;
+      if (!isNaN(center.z) && isFinite(center.z)) shiftZ = center.z;
+
+      if (Math.abs(shiftX) > 0.0001 || Math.abs(shiftZ) > 0.0001) {
+        rootToExport.children.forEach((c) => {
+          c.position.x -= shiftX;
+          c.position.z -= shiftZ;
+        });
+      }
+    }
+
+    const cleanup = () => {
+      if (isPruning) {
+        if (Math.abs(shiftX) > 0.0001 || Math.abs(shiftZ) > 0.0001) {
+          rootToExport.children.forEach((c) => {
+            c.position.x += shiftX;
+            c.position.z += shiftZ;
+          });
+        }
+        toRemove.forEach((n) => {
+          const p = parents.get(n);
+          if (p) p.add(n);
+        });
+      }
+      updateSceneVisibility();
+    };
+
+    setLoading(true);
+    setLoadingText(isPruning ? "Exportando peça selecionada em GLB limpo..." : "Empacotando e exportando GLB corrigido...");
+
+    const exporter = new GLTFExporter();
     exporter.parse(
       rootToExport,
       (gltfData) => {
         const blob = new Blob([gltfData as ArrayBuffer], { type: 'model/gltf-binary' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.download = 'repaired_model.glb';
+        const filename = isPruning
+          ? `${(selectedName || 'peca_extraida').replace(/[^a-zA-Z0-9_-]/g, '_')}.glb`
+          : 'modelo_corrigido.glb';
+        link.download = filename;
         link.href = url;
         link.click();
         URL.revokeObjectURL(url);
-        
-        // Re-apply highlight to selected mesh
-        if (selectedName) {
-           rootToExport?.traverse((node: THREE.Object3D) => {
-             if (node.name === selectedName && (node as THREE.Mesh).isMesh) {
-                (node as THREE.Mesh).material = highlightMaterial;
-             }
-           });
-        }
-        
+
+        cleanup();
         setLoading(false);
+        showTemporaryToast(`✅ Modelo exportado com sucesso: ${filename}`);
       },
       (error) => {
+        cleanup();
         console.error('Erro ao exportar:', error);
-        alert("Ocorreu um erro ao exportar o modelo.");
+        alert("Ocorreu um erro ao exportar o modelo GLB.");
         setLoading(false);
       },
       { binary: true }
     );
   };
+
+  const handleExportGlb = () => {
+    exportModelGlb(selectedNames.size > 0);
+  };
   
   const handleExportFusedGlb = () => {
-    if (selectedNames.size === 0 || !sceneRef.current) return;
-
-    let foundFusedRoot: THREE.Object3D | null = null;
-    sceneRef.current.traverse((node: THREE.Object3D) => {
-      if (node.userData?.isRootGltf) foundFusedRoot = node;
-    });
-    if (!(foundFusedRoot as any)) {
-      return alert('Erro: Não foi possível encontrar a raiz do modelo para exportar.');
-    }
-    const rootToExport = (foundFusedRoot as unknown) as THREE.Object3D;
-
-    // Restaura materiais originais (remove o highlight amarelo)
-    rootToExport.traverse((node: THREE.Object3D) => {
-      if ((node as THREE.Mesh).isMesh) {
-        const mesh = node as THREE.Mesh;
-        if (originalMaterialsRef.current.has(mesh)) {
-          mesh.material = originalMaterialsRef.current.get(mesh)!;
-        }
-      }
-    });
-
-    // Coleta os nós que ficam: selecionadas + ancestrais + TODOS os OSSOS (bones)
-    // e suas cadeias. Preservar os ossos é vital: malhas com skinning (esqueleto)
-    // referenciam os ossos por índice; se algum sumir, o GLTFLoader quebra com
-    // "Cannot set properties of undefined (setting 'isBone')" ao carregar o GLB.
-    const keepSet = new Set(selectedNames);
-    const toKeep = new Set<THREE.Object3D>();
-    rootToExport.traverse((node: THREE.Object3D) => {
-      const isBoneNode = (node as any).isBone === true || node.type === 'Bone';
-      if (keepSet.has(node.name) || isBoneNode) {
-        let cur: THREE.Object3D | null = node;
-        while (cur) { toKeep.add(cur); cur = cur.parent; }
-        // Mantém todos os filhos e descendentes da peça selecionada
-        node.traverse((d: THREE.Object3D) => toKeep.add(d));
-      }
-    });
-
-    // Nós a remover = filhos que não estão em toKeep
-    const toRemove: THREE.Object3D[] = [];
-    rootToExport.traverse((node: THREE.Object3D) => {
-      node.children.forEach((c: THREE.Object3D) => { if (!toKeep.has(c)) toRemove.push(c); });
-    });
-
-    // Remove temporariamente as não-selecionadas (exporta o MESMO caminho da
-    // exportação completa, que o sistema reconhece)
-    const parents = new Map<THREE.Object3D, THREE.Object3D | null>();
-    toRemove.forEach((n) => { parents.set(n, n.parent); n.removeFromParent(); });
-
-    setLoading(true);
-    setLoadingText('Fundindo malhas selecionadas e exportando GLB...');
-    const exporter = new GLTFExporter();
-    exporter.parse(
-      rootToExport,
-      (gltfData) => {
-        const blob = new Blob([gltfData as ArrayBuffer], { type: 'model/gltf-binary' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.download = 'fused_meshes.glb';
-        link.href = url;
-        link.click();
-        URL.revokeObjectURL(url);
-        toRemove.forEach((n) => { const p = parents.get(n); if (p) p.add(n); });
-        setLoading(false);
-      },
-      (error) => {
-        toRemove.forEach((n) => { const p = parents.get(n); if (p) p.add(n); });
-        console.error('Erro ao exportar fundido:', error);
-        alert('Ocorreu um erro ao exportar o modelo fundido.');
-        setLoading(false);
-      },
-      { binary: true }
-    );
-
-    // Re-aplica o highlight nas malhas selecionadas
-    rootToExport.traverse((node: THREE.Object3D) => {
-      if ((node as THREE.Mesh).isMesh && selectedNames.has(node.name)) {
-        (node as THREE.Mesh).material = highlightMaterial;
-      }
-    });
+    exportModelGlb(true);
   };
   
   // --- END REPAIR TOOLS LOGIC ---
@@ -1152,28 +1222,10 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     };
   }, [glbUrl]);
   
-  // Highlight effect
+  // Highlight and isolation effect
   useEffect(() => {
-    if (!sceneRef.current) return;
-    
-    // First, restore all original materials
-    originalMaterialsRef.current.forEach((mat, mesh) => {
-      mesh.material = mat;
-    });
-    
-    if (selectedNames.size > 0) {
-      sceneRef.current.traverse((node) => {
-        if (selectedNames.has(node.name)) {
-          // If it's a group, highlight all children
-          node.traverse((child) => {
-            if ((child as THREE.Mesh).isMesh) {
-              (child as THREE.Mesh).material = highlightMaterial;
-            }
-          });
-        }
-      });
-    }
-  }, [selectedNames]);
+    updateSceneVisibility();
+  }, [updateSceneVisibility]);
 
   return (
     <>
@@ -1266,6 +1318,45 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
                 >
                   ➖ Zoom
                 </button>
+                {selectedNames.size > 0 && (
+                  <>
+                    <div style={{ width: '1px', background: 'rgba(255,255,255,0.2)', margin: '0 2px' }} />
+                    <button
+                      type="button"
+                      onClick={focusOnSelected}
+                      title="Centralizar e aproximar a câmera na peça selecionada"
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '5px',
+                        border: '1px solid rgba(59, 130, 246, 0.5)',
+                        background: 'rgba(59, 130, 246, 0.2)',
+                        color: '#93c5fd',
+                        cursor: 'pointer',
+                        fontSize: '0.72rem',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      🎯 Focar Peça
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsolateMode((prev) => !prev)}
+                      title={isolateMode ? "Mostrar o modelo 3D completo" : "Ocultar o restante e isolar apenas a peça selecionada"}
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '5px',
+                        border: '1px solid ' + (isolateMode ? '#10b981' : 'rgba(255,255,255,0.2)'),
+                        background: isolateMode ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255,255,255,0.08)',
+                        color: isolateMode ? '#34d399' : '#e5e7eb',
+                        cursor: 'pointer',
+                        fontSize: '0.72rem',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {isolateMode ? '👁️ Peça Isolada' : '🌐 Ver Tudo'}
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Ações de Ícone */}
@@ -1635,20 +1726,44 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
                 
                 <button 
                   type="button"
-                  onClick={handleExportFusedGlb}
+                  onClick={() => exportModelGlb(true)}
                   disabled={selectedNames.size === 0}
-                  style={{ padding: '0.5rem', background: selectedNames.size > 0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)', color: selectedNames.size > 0 ? '#fbbf24' : '#666', border: '1px solid ' + (selectedNames.size > 0 ? 'rgba(245, 158, 11, 0.5)' : 'transparent'), borderRadius: '4px', cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed', fontSize: '0.78rem', fontWeight: 'bold' }}
+                  style={{
+                    padding: '0.55rem',
+                    background: selectedNames.size > 0 ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.35))' : 'rgba(255,255,255,0.05)',
+                    color: selectedNames.size > 0 ? '#fbbf24' : '#666',
+                    border: '1px solid ' + (selectedNames.size > 0 ? '#f59e0b' : 'transparent'),
+                    borderRadius: '6px',
+                    cursor: selectedNames.size > 0 ? 'pointer' : 'not-allowed',
+                    fontSize: '0.78rem',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem'
+                  }}
+                  title="Exporta um arquivo .GLB contendo APENAS a peça selecionada, com esqueleto preservado e perfeitamente centralizada para uso como item/arma"
                 >
-                  💾 Fundir Selecionadas em GLB
+                  💾 Extrair Peça em Arquivo .GLB
                 </button>
                 
                 <button 
                   type="button"
-                  onClick={handleExportGlb}
+                  onClick={() => exportModelGlb(false)}
                   disabled={meshes.length === 0}
-                  style={{ marginTop: '0.25rem', padding: '0.5rem', background: meshes.length > 0 ? 'var(--bg-glass)' : 'rgba(255,255,255,0.05)', color: meshes.length > 0 ? '#fff' : '#666', border: '1px solid ' + (meshes.length > 0 ? 'var(--border-glass)' : 'transparent'), borderRadius: '4px', cursor: meshes.length > 0 ? 'pointer' : 'not-allowed', fontSize: '0.78rem', fontWeight: 'bold' }}
+                  style={{
+                    marginTop: '0.2rem',
+                    padding: '0.5rem',
+                    background: meshes.length > 0 ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)',
+                    color: meshes.length > 0 ? '#d1d5db' : '#666',
+                    border: '1px solid ' + (meshes.length > 0 ? 'rgba(255,255,255,0.15)' : 'transparent'),
+                    borderRadius: '4px',
+                    cursor: meshes.length > 0 ? 'pointer' : 'not-allowed',
+                    fontSize: '0.76rem'
+                  }}
+                  title="Exporta o modelo completo com todas as correções e texturas injetadas"
                 >
-                  💾 Exportar Novo GLB Corrigido
+                  💾 Exportar Modelo Inteiro Corrigido
                 </button>
               </div>
             </div>

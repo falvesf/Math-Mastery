@@ -1129,6 +1129,29 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                         current = current.parent;
                       }
                     });
+
+                    // Se for arma/item de mão, recentraliza horizontalmente (X e Z) a peça extraída
+                    // Evita que armas recortadas de um pack (com várias lado a lado) fiquem flutuando longe da mão
+                    const partStr = (item.avatarPart || '').toLowerCase();
+                    if (['hand', 'two_handed', 'righthand', 'lefthand', 'accessory', 'head', 'face'].includes(partStr)) {
+                      const extractBox = new THREE.Box3();
+                      targetNodes.forEach((tn) => {
+                        tn.traverse((c) => {
+                          if ((c as THREE.Mesh).isMesh && c.visible) {
+                            extractBox.expandByObject(c);
+                          }
+                        });
+                      });
+                      if (!extractBox.isEmpty()) {
+                        const center = extractBox.getCenter(new THREE.Vector3());
+                        if (Math.abs(center.x) > 0.001 || Math.abs(center.z) > 0.001) {
+                          model.children.forEach((c) => {
+                            c.position.x -= center.x;
+                            c.position.z -= center.z;
+                          });
+                        }
+                      }
+                    }
                   } else {
                     console.warn(`Mesh extraída '${item.extractMeshName}' não encontrada no item ${item.itemTitle}.`);
                   }
