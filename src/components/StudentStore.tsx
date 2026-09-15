@@ -905,14 +905,20 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)', minHeight: '520px', animation: 'fadeIn 0.3s ease-out' }}>
-      {previewItem && (
-        <div className="modal-overlay">
-          <div className="glass-panel modal-content modal-content-sm" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--bg-dark)', border: '2px solid var(--border-color)', borderRadius: '16px' }}>
+      {previewItem && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="modal-overlay" 
+          style={{ zIndex: 21000 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPreviewItem(null);
+          }}
+        >
+          <div className="glass-panel modal-content modal-content-sm" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--bg-dark)', border: '2px solid var(--border-color)', borderRadius: '16px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7)' }}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
                 Prévia: {(previewItem as StoreItem).title || (previewItem as MarketItem).itemTitle}
               </h3>
-              <button onClick={() => setPreviewItem(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+              <button onClick={() => setPreviewItem(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Fechar">
                 <X size={24} />
               </button>
             </div>
@@ -962,7 +968,8 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
               Arraste para girar. O item já está pré-visualizado em seu personagem!
             </p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <div style={{ flexShrink: 0, background: 'var(--bg-panel)', backdropFilter: 'blur(16px)', padding: '0.65rem 0.85rem', border: '1px solid var(--border-glass)', borderRadius: '14px', marginBottom: '0.75rem', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
@@ -1558,10 +1565,35 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
         )}
       </div>
 
-      {marketBuyModalItem && (
-        <div className="modal-overlay">
-          <div className="glass-panel modal-content modal-content-sm">
-            <h3 style={{ marginTop: 0, color: 'var(--gold-primary)', fontSize: '1.5rem' }}>Confirmar Compra</h3>
+      {marketBuyModalItem && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="modal-overlay" 
+          style={{ zIndex: 21000 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setMarketBuyModalItem(null);
+          }}
+        >
+          <div 
+            className="glass-panel modal-content modal-content-sm" 
+            style={{ 
+              maxHeight: '90vh', 
+              overflowY: 'auto', 
+              position: 'relative', 
+              display: 'flex', 
+              flexDirection: 'column',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, color: 'var(--gold-primary)', fontSize: '1.4rem' }}>Confirmar Compra</h3>
+              <button 
+                onClick={() => setMarketBuyModalItem(null)} 
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title="Fechar"
+              >
+                <X size={22} />
+              </button>
+            </div>
             <div className="glass-panel" style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.3)' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
               {marketBuyModalItem.itemImageUrl || marketBuyModalItem.minecraftHeadValue ? (
@@ -1582,7 +1614,7 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
                 <input 
                   type="number" 
                   min="1" 
-                  max={marketBuyModalItem.quantity || 1}
+                  max={marketBuyModalItem.quantity || 1} 
                   value={marketBuyQuantity}
                   onChange={(e) => setMarketBuyQuantity(Math.min(marketBuyModalItem.quantity || 1, Math.max(1, parseInt(e.target.value) || 1)))}
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.5)', color: 'white' }}
@@ -1617,12 +1649,13 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.75rem', position: 'sticky', bottom: 0, background: 'inherit', paddingTop: '0.5rem' }}>
               <button onClick={() => setMarketBuyModalItem(null)} className="login-btn hover-brightness" style={{ flex: 1, background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>Cancelar</button>
               <button onClick={submitMarketBuy} className="login-btn" disabled={purchasing === marketBuyModalItem.id} style={{ flex: 1, background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)' }}>Confirmar</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Tooltip Portal */}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 // @ts-ignore
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Image as ImageIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword, Filter } from 'lucide-react';
+import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Image as ImageIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword, Filter, X } from 'lucide-react';
 import CachedImage from './CachedImage';
 import SkinBuffIcon from './SkinBuffIcon';
 import ItemIcon from './ItemIcon';
@@ -1551,14 +1551,39 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
           })}
         </div>
 
-      {sellModalItem && (
-        <div className="modal-overlay">
-          <div className="glass-panel modal-content modal-content-sm">
-            <h3 style={{ marginTop: 0, color: 'var(--gold-primary)', fontSize: '1.5rem' }}>Vender no Bazar do Jogador</h3>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+      {sellModalItem && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="modal-overlay" 
+          style={{ zIndex: 21000 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSellModalItem(null);
+          }}
+        >
+          <div 
+            className="glass-panel modal-content modal-content-sm" 
+            style={{ 
+              maxHeight: '90vh', 
+              overflowY: 'auto', 
+              position: 'relative', 
+              display: 'flex', 
+              flexDirection: 'column',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, color: 'var(--gold-primary)', fontSize: '1.4rem' }}>Vender no Bazar do Jogador</h3>
+              <button 
+                onClick={() => setSellModalItem(null)} 
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title="Fechar"
+              >
+                <X size={22} />
+              </button>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.25rem', fontSize: '0.9rem' }}>
               Ao colocar este item à venda, ele sairá da sua mochila. Uma taxa de 10% será descontada se outro jogador comprar.
             </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '0.85rem', borderRadius: '12px', marginBottom: '1.25rem' }}>
               {sellModalItem.itemImageUrl || sellModalItem.minecraftHeadValue ? (
                 <ItemIcon item={sellModalItem} size={40} />
               ) : (
@@ -1587,7 +1612,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             </div>
             
             {/* Licença de Venda no Bazar (obrigatória) */}
-            <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ marginBottom: '1.25rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
                 Licença de Venda no Bazar <span style={{ color: 'var(--accent-red)' }}>*</span>
               </label>
@@ -1614,7 +1639,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             </div>
 
             {economyType === 'xp' && (
-              <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Moeda de Recebimento:</label>
                 <select 
                   value={preferredCurrency} 
@@ -1651,18 +1676,44 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               min={preferredCurrency === 'xp' ? Math.max(1, Math.floor((sellModalItem.minSalePrice || 0) / (economySettings?.coinToXPRatio || 10))) : (sellModalItem.minSalePrice || 1)}
             />
             
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.75rem', position: 'sticky', bottom: 0, background: 'inherit', paddingTop: '0.5rem' }}>
               <button onClick={() => setSellModalItem(null)} className="login-btn" style={{ flex: 1, background: 'var(--bg-dark)', color: 'white' }}>Cancelar</button>
               <button onClick={submitSell} className="login-btn" style={{ flex: 1, background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)' }}>Confirmar Venda</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {trashModalItem && (
-        <div className="modal-overlay">
-          <div className="glass-panel modal-content modal-content-sm">
-            <h3 style={{ marginTop: 0, color: 'var(--accent-red)', fontSize: '1.5rem' }}>Jogar Item Fora</h3>
+      {trashModalItem && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="modal-overlay" 
+          style={{ zIndex: 21000 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setTrashModalItem(null);
+          }}
+        >
+          <div 
+            className="glass-panel modal-content modal-content-sm" 
+            style={{ 
+              maxHeight: '90vh', 
+              overflowY: 'auto', 
+              position: 'relative', 
+              display: 'flex', 
+              flexDirection: 'column',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ marginTop: 0, marginBottom: 0, color: 'var(--accent-red)', fontSize: '1.4rem' }}>Jogar Item Fora</h3>
+              <button 
+                onClick={() => setTrashModalItem(null)} 
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title="Fechar"
+              >
+                <X size={22} />
+              </button>
+            </div>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
               Selecione a quantidade que deseja descartar. Itens não destruídos poderão ser encontrados por outros jogadores em missões.
             </p>
@@ -1709,7 +1760,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* Tooltip Portal */}
       {hoveredItem && (
