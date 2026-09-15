@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, Copy, RefreshCcw, Volume2, Database, FileSpreadsheet } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, UserPlus, Copy, RefreshCcw, Volume2, Database, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -2598,13 +2598,13 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
 </label>
                 </div>
                 {canView('users', 'create') && (
-                  <button className="login-btn" onClick={openLocalAccountModal} style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#c084fc', border: '1px solid rgba(139, 92, 246, 0.4)' }}>
-                    <KeyRound size={15} /> Conta Local
+                  <button className="login-btn" onClick={openLocalAccountModal} style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#c084fc', border: '1px solid rgba(139, 92, 246, 0.4)' }} title="Criar Conta Local">
+                    <UserPlus size={15} /><span className="hide-on-mobile"> Conta Local</span>
                   </button>
                 )}
                 {canView('users', 'create') && (
-                  <button className="login-btn" onClick={openLocalAccountsList} style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.35)' }}>
-                    <KeyRound size={15} /> Contas Locais
+                  <button className="login-btn" onClick={openLocalAccountsList} style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.35)' }} title="Gerenciar Contas Locais">
+                    <KeyRound size={15} /><span className="hide-on-mobile"> Contas Locais</span>
                   </button>
                 )}
                 
@@ -2613,9 +2613,9 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                     className="login-btn" 
                     onClick={() => setGeneralTab('gradebook')} 
                     style={{ padding: '0.4rem 0.9rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.4)' }}
-                    title="Abrir Planilha de Notas bimestrais para lançamento de notas e controle de XP"
+                    title="Planilha de Notas"
                   >
-                    <FileSpreadsheet size={15} /> Planilha de Notas
+                    <FileSpreadsheet size={15} /><span className="hide-on-mobile"> Planilha de Notas</span>
                   </button>
                 )}
                 
@@ -2660,23 +2660,25 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                       style={{ width: '100%', padding: '0 2rem 0 1rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.9rem', height: '36px' }}
                     />
                   </div>
-                  <select 
-                    value={studentSortBy} 
-                    onChange={e => setStudentSortBy(e.target.value as any)}
-                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', height: '36px', fontSize: '0.9rem' }}
-                  >
-                    <option value="xp">Por XP</option>
-                    <option value="name">Por Nome</option>
-                    <option value="class">Por Turma</option>
-                    <option value="lastLogin">Por Último Acesso</option>
-                  </select>
-                  <button 
-                    onClick={() => setStudentSortOrder(studentSortOrder === 'desc' ? 'asc' : 'desc')}
-                    style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', height: '36px', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}
-                    title="Alterar Direção"
-                  >
-                    {studentSortOrder === 'asc' ? 'A→Z' : 'Z→A'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexShrink: 0 }}>
+                    <select 
+                      value={studentSortBy} 
+                      onChange={e => setStudentSortBy(e.target.value as any)}
+                      style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', height: '36px', fontSize: '0.9rem' }}
+                    >
+                      <option value="xp">Por XP</option>
+                      <option value="name">Por Nome</option>
+                      <option value="class">Por Turma</option>
+                      <option value="lastLogin">Por Último Acesso</option>
+                    </select>
+                    <button 
+                      onClick={() => setStudentSortOrder(studentSortOrder === 'desc' ? 'asc' : 'desc')}
+                      style={{ padding: '0 0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', height: '36px', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}
+                      title="Alterar Direção"
+                    >
+                      {studentSortOrder === 'asc' ? 'A→Z' : 'Z→A'}
+                    </button>
+                  </div>
                 </div>
                 
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -2881,8 +2883,10 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                                   </span>
                                 )}
                                 <span style={{ color: currentRank.color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}><ShieldAlert size={14} /> {currentRank.name}</span>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--gold-primary)' }}><Star size={14} /> {student.xp || 0} XP</span>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: lastSeenTs > 0 ? (lastSeenRecent ? '#34d399' : '#94a3b8') : '#ef4444', fontWeight: lastSeenRecent ? 'bold' : 'normal' }} title="Último acesso (login/atividade)"><History size={14} /> {lastSeenLabel}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}><Star size={14} /> {student.xp || 0} XP</span>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: lastSeenTs > 0 ? (lastSeenRecent ? '#34d399' : '#94a3b8') : '#ef4444', fontWeight: 'normal', fontSize: '0.82rem' }} title="Último acesso (login/atividade)"><History size={13} /> {lastSeenLabel}</span>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -2953,11 +2957,11 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>Crie desafios ao estilo Kahoot para os alunos faturarem XP.</p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button className="login-btn" onClick={() => setShowAudioBank(v => !v)} style={{ background: showAudioBank ? 'rgba(139,92,246,0.25)' : 'var(--btn-bg)', color: showAudioBank ? '#c084fc' : 'var(--text-primary)', border: `1px solid ${showAudioBank ? 'rgba(139,92,246,0.5)' : 'var(--border-glass)'}` }}>
-                        <Volume2 size={18} style={{ marginRight: '0.4rem' }} /> Banco de Áudio
+                      <button className="login-btn" onClick={() => setShowAudioBank(v => !v)} style={{ background: showAudioBank ? 'rgba(139,92,246,0.25)' : 'var(--btn-bg)', color: showAudioBank ? '#c084fc' : 'var(--text-primary)', border: `1px solid ${showAudioBank ? 'rgba(139,92,246,0.5)' : 'var(--border-glass)'}`, display: 'flex', alignItems: 'center', gap: '0.4rem' }} title="Banco de Áudio">
+                        <Volume2 size={18} /><span className="hide-on-mobile">Banco de Áudio</span>
                       </button>
-                      <button className="login-btn" onClick={handleStartCreateQuest} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
-                        <Plus size={18} style={{ marginRight: '0.5rem' }} /> Nova Missão
+                      <button className="login-btn" onClick={handleStartCreateQuest} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', display: 'flex', alignItems: 'center', gap: '0.4rem' }} title="Nova Missão">
+                        <Plus size={18} /><span className="hide-on-mobile">Nova Missão</span>
                       </button>
                     </div>
                   </div>
@@ -3242,19 +3246,19 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                                   <div className="quest-card-actions" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                                     {quest.mode === 'live' && (
                                       <button onClick={() => navigate(`/live-admin/${quest.id}`, { state: { reset: true } })} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }} title="Iniciar Sessão Ao Vivo">
-                                        <Play size={18} fill="black" /> Iniciar Ao Vivo
+                                        <Play size={18} fill="black" /><span className="quest-card-btn-text"> Iniciar Ao Vivo</span>
                                       </button>
                                     )}
                                     <button onClick={() => openQuestHistory(quest)} style={{ background: 'transparent', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }} title="Ver Histórico">
-                                      <History size={18} /> Histórico
+                                      <History size={18} /><span className="quest-card-btn-text"> Histórico</span>
                                     </button>
                                     {isOwnerOrAdmin && (
                                       <>
                                         <button onClick={() => handleEditQuest(quest)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem' }} title="Editar Missão">
                                           <Edit2 size={20} />
                                         </button>
-                                        <button onClick={() => handleToggleQuestActive(quest.id, quest.active)} style={{ background: quest.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.1)', color: quest.active  ? 'var(--accent-green)'  : 'var(--text-primary)', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                                          {quest.active ? 'Ativa (Visível)' : 'Rascunho (Oculta)'}
+                                        <button onClick={() => handleToggleQuestActive(quest.id, quest.active)} style={{ background: quest.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.1)', color: quest.active ? 'var(--accent-green)' : 'var(--text-primary)', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem' }} title={quest.active ? 'Ativa (Visível)' : 'Rascunho (Oculta)'}>
+                                          {quest.active ? <Eye size={16} /> : <EyeOff size={16} />}<span className="quest-card-btn-text"> {quest.active ? 'Ativa (Visível)' : 'Rascunho (Oculta)'}</span>
                                         </button>
                                         <button onClick={() => handleDeleteQuest(quest.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} title="Excluir Missão">
                                           <Trash2 size={20} />

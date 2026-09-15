@@ -561,7 +561,10 @@ export default function GradebookManager({
           <FileSpreadsheet size={22} color="var(--gold-primary)" />
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-              <h2 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 'bold' }}>Planilha de Notas & Controle de XP</h2>
+              <h2 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 'bold' }}>
+                <span className="hide-on-mobile">Planilha de Notas & Controle de XP</span>
+                <span className="show-on-mobile-inline">Planilha de Notas e XP</span>
+              </h2>
               {saveStatus === 'saving' && (
                 <span style={{ fontSize: '0.72rem', color: 'var(--gold-primary)', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
                   <RefreshCw size={11} className="animate-spin" /> Salvando...
@@ -578,14 +581,14 @@ export default function GradebookManager({
                 </span>
               )}
             </div>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+            <p className="hide-on-mobile" style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
               Substitua integralmente o Excel lançando notas bimestrais, calculando patentes e sincronizando o XP em massa.
             </p>
           </div>
         </div>
 
         {/* Botões de Ação Topo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'nowrap' }}>
           {canDelete && (
             <button
               onClick={() => setBackupModalOpen(true)}
@@ -600,10 +603,10 @@ export default function GradebookManager({
                 alignItems: 'center',
                 gap: '0.35rem'
               }}
-              title="Gerenciar backups em JSON da escola"
+              title="Backups do Tenant - Gerenciar backups em JSON da escola"
             >
               <ShieldCheck size={14} />
-              <span>Backups do Tenant</span>
+              <span className="hide-on-mobile">Backups do Tenant</span>
             </button>
           )}
 
@@ -620,10 +623,10 @@ export default function GradebookManager({
               alignItems: 'center',
               gap: '0.35rem'
             }}
-            title="Exportar como arquivo .xlsx idêntico à planilha oficial"
+            title="Exportar XLSX - Arquivo idêntico à planilha oficial"
           >
             <Download size={14} />
-            <span>Exportar XLSX</span>
+            <span className="hide-on-mobile">Exportar XLSX</span>
           </button>
 
           {canEdit && (
@@ -643,9 +646,10 @@ export default function GradebookManager({
                 gap: '0.35rem',
                 boxShadow: '0 2px 8px rgba(218, 165, 32, 0.25)'
               }}
+              title="Sincronizar XP com Usuários"
             >
               <Sparkles size={14} />
-              <span>Sincronizar XP com Usuários</span>
+              <span className="hide-on-mobile">Sincronizar XP com Usuários</span>
             </button>
           )}
         </div>
@@ -733,11 +737,11 @@ export default function GradebookManager({
       >
         <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
           {[
-            { id: 'all', label: 'Visão Anual (Todos)' },
-            { id: 'b1', label: '1º Bimestre' },
-            { id: 'b2', label: '2º Bimestre' },
-            { id: 'b3', label: '3º Bimestre' },
-            { id: 'b4', label: '4º Bimestre' },
+            { id: 'all', label: 'Visão Anual (Todos)', shortLabel: 'Todos' },
+            { id: 'b1', label: '1º Bimestre', shortLabel: '1º BIM' },
+            { id: 'b2', label: '2º Bimestre', shortLabel: '2º BIM' },
+            { id: 'b3', label: '3º Bimestre', shortLabel: '3º BIM' },
+            { id: 'b4', label: '4º Bimestre', shortLabel: '4º BIM' },
           ].map(tab => (
             <button
               key={tab.id}
@@ -754,7 +758,8 @@ export default function GradebookManager({
                 transition: 'all 0.15s'
               }}
             >
-              {tab.label}
+              <span className="hide-on-mobile">{tab.label}</span>
+              <span className="show-on-mobile-inline">{tab.shortLabel}</span>
             </button>
           ))}
         </div>
@@ -796,10 +801,10 @@ export default function GradebookManager({
                 alignItems: 'center',
                 gap: '0.25rem'
               }}
-              title="Ajusta o XP Base para igualar o XP atual de cada aluno no sistema"
+              title="Ajustar XP Base - Ajusta o XP Base para igualar o XP atual de cada aluno no sistema"
             >
               <RotateCcw size={12} />
-              <span>Ajustar XP Base</span>
+              <span className="hide-on-mobile">Ajustar XP Base</span>
             </button>
           )}
 
@@ -817,10 +822,10 @@ export default function GradebookManager({
               gap: '0.35rem',
               cursor: 'pointer'
             }}
-            title="Personalizar e ocultar/exibir colunas da planilha"
+            title="Colunas - Personalizar e ocultar/exibir colunas da planilha"
           >
             <Columns size={13} color={hiddenColumns.length > 0 ? '#f87171' : 'var(--gold-primary)'} />
-            <span>Colunas</span>
+            <span className="hide-on-mobile">Colunas</span>
             {hiddenColumns.length > 0 && (
               <span style={{
                 fontSize: '0.68rem',
@@ -830,7 +835,7 @@ export default function GradebookManager({
                 color: '#fca5a5',
                 fontWeight: 'bold'
               }}>
-                {hiddenColumns.length} ocultas
+                {hiddenColumns.length}<span className="hide-on-mobile"> ocultas</span>
               </span>
             )}
           </button>
@@ -1682,7 +1687,7 @@ export default function GradebookManager({
           boxShadow: '0 -2px 10px rgba(0,0,0,0.2)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <div className="hide-on-mobile" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <span>⌨️ <strong>Enter</strong>: Próximo aluno na mesma nota</span>
           <span>⌨️ <strong>Tab</strong>: Próxima nota do mesmo aluno</span>
           <span>⌨️ <strong>Setas Cima/Baixo</strong>: Navega entre alunos</span>

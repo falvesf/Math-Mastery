@@ -543,7 +543,7 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
         document.body
       )}
 
-      <div className="glass-panel" style={{ padding: '2rem' }}>
+      <div className="glass-panel admin-rank-panel" style={{ padding: '2rem' }}>
         <div style={{ position: 'sticky', top: '-2rem', zIndex: 40, background: 'var(--bg-card)', padding: '1rem 2rem', margin: '-2rem -2rem 1rem -2rem', backdropFilter: 'blur(10px)', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -553,17 +553,17 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
               Configure as patentes da sua escola. Patentes globais (🌐) são somente leitura.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <button className="login-btn" onClick={importGlobalRanks} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }}>
-              <Copy size={16} /> Importar Patentes Globais
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'nowrap' }}>
+            <button className="login-btn" onClick={importGlobalRanks} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', border: '1px solid var(--border-glass)' }} title="Importar Patentes Globais">
+              <Copy size={16} /><span className="hide-on-mobile"> Importar Patentes Globais</span>
             </button>
             {globalRanks.length > 0 && (
-              <button className="login-btn" onClick={() => setShowRankBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-                <Package size={16} /> Banco de Patentes
+              <button className="login-btn" onClick={() => setShowRankBank(true)} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }} title="Banco de Patentes">
+                <Package size={16} /><span className="hide-on-mobile"> Banco de Patentes</span>
               </button>
             )}
-            <button className="login-btn" onClick={openNew} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }}>
-              <Plus size={18} /> Nova Patente Local
+            <button className="login-btn" onClick={openNew} style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none' }} title="Nova Patente Local">
+              <Plus size={18} /><span className="hide-on-mobile"> Nova Patente Local</span>
             </button>
           </div>
         </div>
@@ -834,11 +834,11 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
           {ranks.map((rank, idx) => {
             const isGlobal = (rank as any)._isGlobal;
             return (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+              <div key={idx} className="admin-rank-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: 1 }}>
                   <AnimatedRankIcon rank={rank} />
-                  <div>
-                    <h3 style={{ margin: 0, color: rank.color, fontSize: '1.2rem', textShadow: `0 0 5px ${rank.color}80`, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={{ margin: 0, color: rank.color, fontSize: '1.2rem', textShadow: `0 0 5px ${rank.color}80`, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       {rank.name}
                       {isGlobal ? <span title="Global (somente leitura)"><Globe size={14} color="var(--text-secondary)" /></span> : <span title="Local (editável)"><Building2 size={14} color="#10b981" /></span>}
                     </h3>
@@ -852,9 +852,9 @@ export default function AdminRankManager({ pixabayKey }: { pixabayKey: string })
                     </p>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button onClick={() => openEdit(rank, idx)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem' }} disabled={isGlobal && !isSuperAdmin}><Edit2 size={18} /></button>
-                  <button onClick={() => handleDeleteRank(idx)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.5rem' }} disabled={(isGlobal && !isSuperAdmin) || ranks.length === 1}><Trash2 size={18} /></button>
+                <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                  <button onClick={() => openEdit(rank, idx)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.35rem' }} disabled={isGlobal && !isSuperAdmin}><Edit2 size={18} /></button>
+                  <button onClick={() => handleDeleteRank(idx)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.35rem' }} disabled={(isGlobal && !isSuperAdmin) || ranks.length === 1}><Trash2 size={18} /></button>
                 </div>
               </div>
             );

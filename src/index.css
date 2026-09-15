@@ -2284,12 +2284,41 @@ html, body {
   gap: 1rem;
 }
 
+.show-on-mobile {
+  display: none !important;
+}
+
+.show-on-mobile-inline {
+  display: none !important;
+}
+
 @media (max-width: 768px) {
   .glass-panel {
     padding: 1rem;
     border-radius: 12px;
   }
   
+  .show-on-mobile {
+    display: block !important;
+  }
+
+  .show-on-mobile-inline {
+    display: inline !important;
+  }
+
+  .admin-rank-panel {
+    padding: 0.75rem !important;
+  }
+
+  .admin-rank-panel .dashboard-header-sticky {
+    padding: 0.75rem !important;
+    margin: -0.75rem -0.75rem 0.75rem -0.75rem !important;
+  }
+
+  .admin-rank-card {
+    padding: 0.65rem 0.75rem !important;
+  }
+
   .compact-nav {
     padding: 0.5rem 0.75rem !important;
     margin-bottom: 0.5rem !important;
@@ -2630,7 +2659,8 @@ html, body {
 
 /* Classes Utilitárias Mobile */
 @media (min-width: 769px) {
-  .show-on-mobile {
+  .show-on-mobile,
+  .show-on-mobile-inline {
     display: none !important;
   }
 }
@@ -2638,6 +2668,9 @@ html, body {
 @media (max-width: 768px) {
   .show-on-mobile {
     display: flex !important;
+  }
+  .show-on-mobile-inline {
+    display: inline !important;
   }
 
   /* Blacksmith Mobile Responsive Drawer */
