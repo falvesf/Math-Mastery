@@ -604,6 +604,9 @@ export default function AvatarCustomizationModal({
         if (loadedConfig.gender === 'male' && loadedConfig.hairStyle === 'long') {
           loadedConfig.hairStyle = 'short';
         }
+        if (customSaveMode && loadedConfig.customZoom !== undefined) {
+          loadedConfig.customZoom = Math.min(1.3, Math.max(0.6, loadedConfig.customZoom));
+        }
         setConfig(loadedConfig);
         setZoomOnly(!!(initialConfig as any)?.customModelUrl || !!(initialConfig as any)?.customSkinUrl);
         hasRandomized.current = true;
@@ -1712,7 +1715,7 @@ onClick={() => setConfig(prev => {
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: inline ? '0' : '1.5rem 2rem' }}>
           <div className="avatar-modal-grid">
           
-          <div className={`avatar-viewer-container ${isMobileDrawerOpen ? 'drawer-open' : ''}`}>
+          <div className={`avatar-viewer-container ${isMobileDrawerOpen ? 'drawer-open' : ''}`} style={customSaveMode ? { minHeight: '560px' } : undefined}>
             {(() => {
               const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
               const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default'
@@ -1740,22 +1743,66 @@ onClick={() => setConfig(prev => {
               </button>
             </div>
 
-            {/* Avatar — o customZoom é aplicado DENTRO do AvatarCharacter (no viewer, só o boneco) */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, width: '100%', minHeight: '380px', position: 'relative' }}>
-            <div>
-            {(() => {
-              const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
-              const activeModel = (activePreset?.baseModelId && activePreset.baseModelId !== 'default' 
-                ? models3d.find(m => m.id === activePreset.baseModelId) 
-                : null) || (config.customModelUrl ? models3d.find(m => m.url === config.customModelUrl) : null);
-              const modelUrl = config.customModelUrl || activeModel?.url;
+            {/* Avatar / Monstro 3D — ocupa de forma ampla todo o espaço vertical e horizontal disponível */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 1,
+              width: '100%',
+              minHeight: customSaveMode ? '480px' : '380px',
+              position: 'relative'
+            }}>
+              <div style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {(() => {
+                  const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
+                  const activeModel = (activePreset?.baseModelId && activePreset.baseModelId !== 'default' 
+                    ? models3d.find(m => m.id === activePreset.baseModelId) 
+                    : null) || (config.customModelUrl ? models3d.find(m => m.url === config.customModelUrl) : null);
+                  const modelUrl = config.customModelUrl || activeModel?.url;
+                  const effectiveZoom = Math.min(1.3, Math.max(0.6, config.customZoom ?? 1));
 
-              if (modelUrl) {
-                return <CustomModelViewer modelUrl={modelUrl} textureUrl={config.customSkinUrl} animation={config.animationState || 'idle'} size={window.innerWidth <= 768 ? 160 : 200} interactive zoom={config.customZoom} configRotY={config.customRotY} />;
-              }
-              return <AvatarCharacter config={config} equippedItems={showEquippedItems ? equippedItems : []} size={window.innerWidth <= 768 ? 160 : 200} animation={config.animationState || 'idle'} interactive={true} debugItemTransform={debugMode ? debugTransform : null} debugItemId={debugMode ? debugItemId : null} debugPose={debugMode ? debugPose : undefined} debugAnimationFrames={debugMode ? debugAnimationFrames : undefined} debugPreviewAnim={debugPreviewAnim} debugAnimationDuration={debugFrameDuration} actionPoses={config.actionPoses} faceCamera={true} />;
-            })()}
-            </div>
+                  if (modelUrl) {
+                    const viewerHeight = customSaveMode ? (window.innerWidth <= 768 ? 340 : 480) : (window.innerWidth <= 768 ? 240 : 360);
+                    return (
+                      <CustomModelViewer
+                        modelUrl={modelUrl}
+                        textureUrl={config.customSkinUrl}
+                        animation={config.animationState || 'idle'}
+                        width="100%"
+                        height={viewerHeight}
+                        interactive
+                        zoom={effectiveZoom}
+                        configRotY={config.customRotY}
+                      />
+                    );
+                  }
+                  const skinSize = customSaveMode ? (window.innerWidth <= 768 ? 180 : 250) : (window.innerWidth <= 768 ? 160 : 200);
+                  return (
+                    <AvatarCharacter
+                      config={{ ...config, customZoom: effectiveZoom }}
+                      equippedItems={showEquippedItems ? equippedItems : []}
+                      size={skinSize}
+                      animation={config.animationState || 'idle'}
+                      interactive={true}
+                      debugItemTransform={debugMode ? debugTransform : null}
+                      debugItemId={debugMode ? debugItemId : null}
+                      debugPose={debugMode ? debugPose : undefined}
+                      debugAnimationFrames={debugMode ? debugAnimationFrames : undefined}
+                      debugPreviewAnim={debugPreviewAnim}
+                      debugAnimationDuration={debugFrameDuration}
+                      actionPoses={config.actionPoses}
+                      faceCamera={true}
+                    />
+                  );
+                })()}
+              </div>
             </div>
             </>)})()}
             
@@ -2069,7 +2116,7 @@ onClick={() => setConfig(prev => {
                             ...skinCfg,
                             customSkinUrl: effectiveSkinUrl,
                             customModelUrl: effectiveModelUrl,
-                            customZoom: skinCfg.customZoom !== undefined ? skinCfg.customZoom : 1,
+                            customZoom: skinCfg.customZoom !== undefined ? Math.min(1.3, Math.max(0.6, skinCfg.customZoom)) : 1,
                             customRotY: skinCfg.customRotY !== undefined ? skinCfg.customRotY : 0,
                             attacks: normalizeMonsterAttacks(skinCfg.attacks),
                           };

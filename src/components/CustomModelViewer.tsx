@@ -47,6 +47,8 @@ interface CustomModelViewerProps {
   textureUrl?: string;
   animation?: string;
   size?: number;
+  width?: number | string;
+  height?: number | string;
   role?: 'player' | 'monster';
   interactive?: boolean;
   /** Multiplicador de escala do modelo (1 = auto-enquadrado padrão) */
@@ -513,25 +515,51 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
   );
 }
 
-export default React.memo(function CustomModelViewer({ modelUrl, textureUrl, animation = 'idle', size = 150, role, interactive = false, zoom = 1, configRotY, chestZoom, chestOffsetX, chestOffsetY, chestRotY, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides, effectTint = null, enraged = false, shatteredCount = 0, preserveDrawingBuffer = false, onCanvasReady, cameraDistance = 10 }: CustomModelViewerProps) {
+export default React.memo(function CustomModelViewer({
+  modelUrl,
+  textureUrl,
+  animation = 'idle',
+  size = 150,
+  width,
+  height,
+  role,
+  interactive = false,
+  zoom = 1,
+  configRotY,
+  chestZoom,
+  chestOffsetX,
+  chestOffsetY,
+  chestRotY,
+  chestOpenOffsetX,
+  chestOpenOffsetY,
+  chestSwapSides,
+  effectTint = null,
+  enraged = false,
+  shatteredCount = 0,
+  preserveDrawingBuffer = false,
+  onCanvasReady,
+  cameraDistance = 10
+}: CustomModelViewerProps) {
   const isChest = modelUrl.includes('chest');
   
   // Interação (girar/zoom) habilitada explicitamente pelo chamador (editores).
   // Em batalha (role preenchido sem interactive) fica travado.
   const allowInteraction = !isChest && interactive;
+  const w = width ?? size;
+  const h = height ?? size;
 
   return (
-    <div style={{ width: size, height: size, position: 'relative', overflow: 'hidden', flexShrink: 0, pointerEvents: allowInteraction ? 'auto' : 'none' }}>
+    <div style={{ width: w, height: h, position: 'relative', overflow: 'hidden', flexShrink: 0, pointerEvents: allowInteraction ? 'auto' : 'none' }}>
       <ModelErrorBoundary key={modelUrl}>
         <Canvas
           gl={{ preserveDrawingBuffer }}
           onCreated={({ gl }) => onCanvasReady?.(gl.domElement)}
-          camera={{ position: [0, 3, cameraDistance], fov: 45 }}
+          camera={{ position: [0, 2.5, cameraDistance], fov: 45 }}
           style={{ width: '100%', height: '100%' }}
         >
           <ambientLight intensity={1.5} />
           <directionalLight position={[5, 10, 5]} intensity={0.5} />
-          <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.5, 0]} />
+          <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.2, 0]} />
           <React.Suspense fallback={null}>
             <ModelErrorBoundary key={modelUrl}>
               <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} zoom={zoom} configRotY={configRotY} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} effectTint={effectTint} enraged={enraged} shatteredCount={shatteredCount} />
