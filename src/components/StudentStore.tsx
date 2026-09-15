@@ -929,7 +929,9 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
                 if (previewConfig.gender === 'male' && previewConfig.hairStyle === 'long') {
                   previewConfig.hairStyle = 'short';
                 }
-                let previewEquipped: EquippedItem[] = [...equippedItems];
+                // Provador: mostra o personagem SEM equipamentos e veste APENAS o item
+                // desta loja, para o jogador ver como ele fica (não os itens já equipados).
+                let previewEquipped: EquippedItem[] = [];
                 
                 const type = (previewItem as StoreItem).type || (previewItem as MarketItem).itemType;
                 const isSkinPreview = previewItem.gameEffect === 'unlock_skin';
