@@ -1114,13 +1114,19 @@ Responda APENAS com a frase curta em português brasileiro.`;
     };
 
     if (editingId) {
-      const { error: saveErr } = await supabase.from('store_items').update({
+      const { data: updatedRows, error: saveErr } = await supabase.from('store_items').update({
         name: itemData.title, description: itemData.description, type: itemData.type,
         price: itemData.cost, image_url: itemData.imageUrl, active: itemData.active,
         rarity: itemData.rarity, avatar_part: itemData.avatarPart, data: itemData
-      }).eq('id', editingId);
+      }).eq('id', editingId).select('id');
       if (saveErr) {
         showToast(`Erro ao salvar o item: ${saveErr.message}`, 'error');
+        return;
+      }
+      // UPDATE em 0 linhas = sem permissão (RLS) ou item inexistente. Antes disso o
+      // código mostrava "sucesso" mesmo sem alterar nada — agora avisa.
+      if (!updatedRows || updatedRows.length === 0) {
+        showToast('Nada foi atualizado — sem permissão para editar este item ou item inexistente.', 'error');
         return;
       }
 
