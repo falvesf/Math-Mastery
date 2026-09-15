@@ -139,7 +139,7 @@ export function setGlobalItemTransform(item: any, transforms: any): void {
 }
 
 export function invalidateGlobalItemTransforms(): void {
-  cache = null;
+  // Recarrega em background mantendo o cache atual válido até a nova resposta chegar (evita retorno undefined transitório)
   loadGlobalItemTransforms(true).catch(() => {});
 }
 

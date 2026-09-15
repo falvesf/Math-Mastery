@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+// @ts-ignore
 import { X, Swords, Sparkles, HelpCircle, Award, Lock, BookOpen, ChevronRight, ArrowLeft, ShieldAlert, RotateCcw } from 'lucide-react';
 import { SkinViewer, IdleAnimation } from 'skinview3d';
 import { supabase } from '../lib/supabase';

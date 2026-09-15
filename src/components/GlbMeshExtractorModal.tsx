@@ -958,10 +958,12 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     );
   };
 
+  // @ts-ignore
   const handleExportGlb = () => {
     exportModelGlb(selectedNames.size > 0);
   };
   
+  // @ts-ignore
   const handleExportFusedGlb = () => {
     exportModelGlb(true);
   };

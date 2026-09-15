@@ -916,6 +916,9 @@ export default function Dashboard() {
     if (!userData) return;
     const fetchEquipped = async () => {
       try {
+        if (inventoryRefresh > 0) {
+          invalidateEquippedItems(userData.uid);
+        }
         const snapEquip = await fetchEquippedItems(userData.uid);
         const eq: EquippedItem[] = [];
         if (snapEquip) {
@@ -2810,7 +2813,10 @@ export default function Dashboard() {
             setIsCustomizingAvatar(false);
             markTipSeen('intro');
           }}
-          onPositionsSaved={() => setInventoryRefresh(prev => prev + 1)}
+          onPositionsSaved={() => {
+            if (userData?.uid) invalidateEquippedItems(userData.uid);
+            setInventoryRefresh(prev => prev + 1);
+          }}
         />
       )}
 

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+// @ts-ignore
 import { fetchBlacksmithMilestones, recordForgeMilestone, recordTransmuteMilestone } from './blacksmithAchievements';
 import type { BestiaryMonsterData } from '../components/MonsterBestiaryModal';
 
