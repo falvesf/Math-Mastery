@@ -14,7 +14,7 @@ import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp, getMaxAddsLimit } from '../lib/ranks';
 // @ts-ignore
-import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig, isStackableItemType } from '../lib/gacha';
+import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig, isStackableItemType, areItemsStackableMatch, getStackableItemSignature } from '../lib/gacha';
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
 import { invalidateEquippedItems } from '../lib/equippedItems';
 import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, enhanceEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType, type EnhanceEffectResult } from '../lib/damageEffects';
@@ -246,7 +246,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch (e) { parsedAdds = []; }
       }
       parsedAdds = orderEffectFirst(parsedAdds);
-      loaded.push({ ...(data || {}), adds: parsedAdds, id: row.id, equipped: row.equipped, studentId: row.student_id, gameEffect: patchedEffect, scrollChanceBonus: patchedScrollBonus, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common' } as UserItem);
+      loaded.push({ ...(data || {}), itemId: row.item_id || data?.itemId, adds: parsedAdds, id: row.id, equipped: row.equipped, studentId: row.student_id, gameEffect: patchedEffect, scrollChanceBonus: patchedScrollBonus, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common', rawData: data } as UserItem);
     });
 
     const finalItems: UserItem[] = [];
@@ -266,7 +266,75 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       }
     });
 
+    // 1. Agrupar e consolidar pilhas duplicadas do mesmo item empilhável (ex: Poções de tenants diferentes)
+    const stackGroups: Record<string, UserItem[]> = {};
+    const unstackableList: UserItem[] = [];
+
     for (const item of loaded) {
+      if (item.forSale || (item as any).isDropped || item.studentId === 'dropped' || item.studentId === DROPPED_STUDENT_ID || item.equipped) {
+        unstackableList.push(item);
+        continue;
+      }
+      const sig = getStackableItemSignature(item);
+      if (sig) {
+        if (!stackGroups[sig]) stackGroups[sig] = [];
+        stackGroups[sig].push(item);
+      } else {
+        unstackableList.push(item);
+      }
+    }
+
+    let needSlotMapUpdate = false;
+    const currentSlotMap = { ...slotMap };
+    const consolidatedStackables: UserItem[] = [];
+
+    for (const sig in stackGroups) {
+      const group = stackGroups[sig];
+      if (group.length === 1) {
+        consolidatedStackables.push(group[0]);
+        continue;
+      }
+
+      // Mais de um registro para o mesmo item empilhável: consolidar pilhas até 99
+      let totalQty = group.reduce((sum, it) => sum + (it.quantity || it.count || 1), 0);
+
+      for (let i = 0; i < group.length; i++) {
+        const it = group[i];
+        const stackQty = Math.min(99, totalQty);
+        totalQty -= stackQty;
+
+        if (stackQty > 0) {
+          const oldQty = it.quantity || it.count || 1;
+          it.quantity = stackQty;
+          it.count = stackQty;
+          consolidatedStackables.push(it);
+
+          if (oldQty !== stackQty) {
+            const baseData = (it as any).rawData || (it as any).data || {};
+            await supabase.from('user_items').update({ data: { ...baseData, quantity: stackQty } }).eq('id', it.id);
+          }
+        } else {
+          // Pilha absorvida: deletar do banco e remover de slotMap
+          await supabase.from('user_items').delete().eq('id', it.id);
+          if (currentSlotMap[it.id] !== undefined) {
+            delete currentSlotMap[it.id];
+            needSlotMapUpdate = true;
+          }
+        }
+      }
+    }
+
+    if (needSlotMapUpdate) {
+      setSlotMap(currentSlotMap);
+      if (userData.inventoryPreferences) {
+        (userData.inventoryPreferences as any).slotMap = currentSlotMap;
+      }
+      await supabase.from('users').update({ inventory_preferences: { ...userData.inventoryPreferences, slotMap: currentSlotMap } }).eq('id', userData.uid);
+    }
+
+    const itemsToProcess = [...unstackableList, ...consolidatedStackables];
+
+    for (const item of itemsToProcess) {
       // Ocultar itens que foram dropados ou que estão à venda
       if (item.forSale || (item as any).isDropped || item.studentId === 'dropped' || item.studentId === DROPPED_STUDENT_ID) continue;
       
@@ -1105,9 +1173,9 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     if (draggedItem.id === targetItem?.id) return;
     
     // Combinar pilhas de itens empilháveis iguais (consumível ou outro)
-    if (targetItem && draggedItem.itemId === targetItem.itemId && isStackableItemType(draggedItem.itemType) && isStackableItemType(targetItem.itemType)) {
-      const draggedQty = draggedItem.count || 1;
-      const targetQty = targetItem.count || 1;
+    if (targetItem && areItemsStackableMatch(draggedItem, targetItem)) {
+      const draggedQty = draggedItem.count || draggedItem.quantity || 1;
+      const targetQty = targetItem.count || targetItem.quantity || 1;
       
       if (targetQty < 99) {
         const spaceLeft = 99 - targetQty;
@@ -1115,6 +1183,15 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         
         if (transferAmount === draggedQty) {
           await supabase.from('user_items').delete().eq('id', draggedItem.id);
+          if (slotMap[draggedItem.id] !== undefined) {
+            const newMap = { ...slotMap };
+            delete newMap[draggedItem.id];
+            setSlotMap(newMap);
+            if (userData.inventoryPreferences) {
+              (userData.inventoryPreferences as any).slotMap = newMap;
+            }
+            await supabase.from('users').update({ inventory_preferences: { ...userData.inventoryPreferences, slotMap: newMap } }).eq('id', userData.uid);
+          }
         } else {
           const { data: draggedData } = await supabase.from('user_items').select('data').eq('id', draggedItem.id).single();
           if (draggedData) await supabase.from('user_items').update({ data: { ...(draggedData.data as any), quantity: draggedQty - transferAmount } }).eq('id', draggedItem.id);
@@ -1356,7 +1433,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   style={{ 
                     ...getGridItemStyle(),
                   background: isFullyDragged ? 'var(--btn-bg)' : 'var(--bg-card)', 
-                  padding: viewMode === 'icons' ? '0.25rem' : (viewMode === 'list' ? '0.4rem 0.5rem' : (viewMode === 'grid-small' ? '0.35rem' : '0.5rem')), 
+                  padding: viewMode === 'icons' ? '2px' : (viewMode === 'list' ? '0.4rem 0.5rem' : (viewMode === 'grid-small' ? '0.35rem' : '0.5rem')), 
                   borderRadius: '8px', 
                   animation: (cascadeAnimationTrigger && item) ? `highlight-cascade 1.2s ease-out ${0.2 + index * 0.15}s` : undefined,
                   border: isFullyDragged ? '2px dashed rgba(255,255,255,0.3)' : undefined,
@@ -1370,7 +1447,8 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   boxShadow: isFullyDragged ? 'none' : undefined,
                   opacity: isFullyDragged ? 0.5 : 1,
                   filter: isOverflow ? 'grayscale(100%)' : (isPartiallyDragged ? 'brightness(0.8)' : 'none'),
-                  ...(viewMode === 'list' ? { boxSizing: 'border-box', minWidth: 0, overflow: 'hidden' } : {})
+                  boxSizing: 'border-box',
+                  ...(viewMode === 'list' ? { minWidth: 0, overflow: 'hidden' } : {})
                 }}>
                     {isOverflow && (
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, background: 'rgba(0,0,0,0.5)', borderRadius: '10px' }}>
@@ -1428,25 +1506,35 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                     </div>
                   )}
                     
-                  <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', height: viewMode === 'icons' ? '44px' : (viewMode === 'grid-small' ? '36px' : (viewMode === 'list' ? '32px' : '48px')), width: viewMode === 'list' ? '32px' : 'fit-content', margin: viewMode === 'list' ? '2px 0 0 0' : '0 auto', flexShrink: 0 }}>
+                  <div style={{ 
+                    position: 'relative', 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    height: viewMode === 'icons' ? '40px' : (viewMode === 'grid-small' ? '36px' : (viewMode === 'list' ? '32px' : '48px')), 
+                    width: viewMode === 'list' ? '32px' : (viewMode === 'icons' ? '40px' : 'fit-content'), 
+                    margin: viewMode === 'list' ? '2px 0 0 0' : '0 auto', 
+                    flexShrink: 0 
+                  }}>
                     {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
-                      <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={viewMode === 'icons' ? 40 : (viewMode === 'grid-small' ? 36 : (viewMode === 'list' ? 28 : 48))} />
+                      <SkinBuffIcon skinUrl={item.unlockedSkinId} durationDays={item.buffDurationDays || 7} size={viewMode === 'icons' ? 38 : (viewMode === 'grid-small' ? 36 : (viewMode === 'list' ? 28 : 48))} />
                     ) : (
-                      <ItemIcon item={item} size={viewMode === 'icons' ? 40 : (viewMode === 'grid-small' ? 36 : (viewMode === 'list' ? 28 : 48))} />
+                      <ItemIcon item={item} size={viewMode === 'icons' ? 38 : (viewMode === 'grid-small' ? 36 : (viewMode === 'list' ? 28 : 48))} />
                     )}
 
                     {displayCount && displayCount > 1 && (
                       <div style={{
                         position: 'absolute',
-                        bottom: '0',
-                        right: '-4px',
-                        color: 'white',
-                        textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
-                        fontSize: viewMode === 'grid-small' ? '0.75rem' : '0.85rem',
-                        fontWeight: 'bold',
+                        bottom: '1px',
+                        right: '2px',
+                        color: '#ffffff',
+                        textShadow: '0 0 2px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
+                        fontSize: viewMode === 'grid-small' ? '0.72rem' : (viewMode === 'icons' ? '0.75rem' : '0.82rem'),
+                        fontWeight: 800,
                         zIndex: 2,
                         pointerEvents: 'none',
-                        lineHeight: 1
+                        lineHeight: 1,
+                        userSelect: 'none'
                       }}>
                         {displayCount}
                       </div>

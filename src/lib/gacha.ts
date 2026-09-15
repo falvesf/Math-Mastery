@@ -10,6 +10,57 @@ export function isStackableItemType(t?: string): boolean {
   return t === 'consumable' || t === 'other';
 }
 
+/**
+ * Retorna a assinatura canônica de um item empilhável para determinar se duas
+ * pilhas representam exatamente o mesmo item no jogo (mesmo de tenants/lojas com item_id diferente).
+ */
+export function getStackableItemSignature(item: any): string | null {
+  if (!item) return null;
+  const itemType = item.itemType || item.type || item.data?.itemType;
+  if (!isStackableItemType(itemType)) return null;
+
+  const data = item.data || {};
+  const norm = (s?: string) => (s || '').trim().toLowerCase();
+  const title = norm(item.itemTitle || item.title || item.name || data.itemTitle || data.title);
+  if (!title) return null;
+
+  const effect = norm(item.gameEffect || data.gameEffect || '');
+
+  // Apenas efeitos específicos com parâmetros variáveis diferenciam a pilha:
+  let extraParam = '';
+  if (effect === 'blacksmith_scroll') {
+    extraParam = String(item.scrollChanceBonus ?? data.scrollChanceBonus ?? 30);
+  } else if (effect === 'bazar_sale_permit') {
+    extraParam = String(item.buffDurationDays ?? data.buffDurationDays ?? 3);
+  } else if (effect === 'unlock_skin') {
+    extraParam = norm(item.unlockedSkinId || data.unlockedSkinId || '');
+  }
+
+  return `${title}::${itemType}::${effect}::${extraParam}`;
+}
+
+/**
+ * Verifica se dois itens são do mesmo tipo empilhável e representam o mesmo item no jogo.
+ */
+export function areItemsStackableMatch(a: any, b: any): boolean {
+  if (!a || !b) return false;
+  if (a.id && b.id && a.id === b.id) return false;
+
+  const typeA = a.itemType || a.type || a.data?.itemType;
+  const typeB = b.itemType || b.type || b.data?.itemType;
+  if (!isStackableItemType(typeA) || !isStackableItemType(typeB)) return false;
+
+  const sigA = getStackableItemSignature(a);
+  const sigB = getStackableItemSignature(b);
+  if (sigA && sigB && sigA === sigB) return true;
+
+  const itemIdA = a.itemId || a.item_id || a.data?.itemId;
+  const itemIdB = b.itemId || b.item_id || b.data?.itemId;
+  if (itemIdA && itemIdB && itemIdA === itemIdB) return true;
+
+  return false;
+}
+
 export interface ItemAdd {
   type: AttributeType | EffectAddType;
   value: number;

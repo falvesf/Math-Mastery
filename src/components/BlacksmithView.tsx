@@ -14,7 +14,7 @@ import ItemTooltip from './ItemTooltip';
 // @ts-ignore
 import { useTenant } from '../contexts/TenantContext';
 // @ts-ignore
-import { calculateTotalStats, isStackableItemType } from '../lib/gacha';
+import { calculateTotalStats, isStackableItemType, getStackableItemSignature } from '../lib/gacha';
 // @ts-ignore
 import { fetchActiveCoin } from '../lib/model3d';
 // @ts-ignore
@@ -324,8 +324,9 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         
       if (!isStackable) continue;
       
-      if (!groups[row.item_id]) groups[row.item_id] = [];
-      groups[row.item_id].push(row);
+      const groupKey = getStackableItemSignature(d) || row.item_id;
+      if (!groups[groupKey]) groups[groupKey] = [];
+      groups[groupKey].push(row);
     }
 
     let hasChanges = false;
