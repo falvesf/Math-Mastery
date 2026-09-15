@@ -426,7 +426,10 @@ Responda APENAS com a frase curta em português brasileiro.`;
       const { data: snap, error: snapErr } = await itemsQuery;
       if (snapErr) console.error('Erro ao buscar itens da loja:', snapErr);
       const loaded: StoreItem[] = [];
-      (snap || []).forEach(row => loaded.push({ id: row.id, _isGlobal: row.is_global ?? false, _tenantId: row.tenant_id ?? null, ...row.data } as StoreItem));
+      // IMPORTANTE: `...row.data` primeiro e `id: row.id` DEPOIS — o JSON `data` pode
+      // conter um `id` (ex.: o id do item do Banco Importado) que sobrescrevia o id
+      // real da linha, fazendo as edições atingirem a linha ERRADA (0 alterações).
+      (snap || []).forEach(row => loaded.push({ ...row.data, id: row.id, _isGlobal: row.is_global ?? false, _tenantId: row.tenant_id ?? null } as StoreItem));
       setItems(loaded);
     
     try {
@@ -1112,6 +1115,13 @@ Responda APENAS com a frase curta em português brasileiro.`;
       fuseCost: formData.gameEffect === 'fuse_item' ? (Number(formData.fuseCost) || 0) : undefined,
       fuseSuccessChance: formData.gameEffect === 'fuse_item' ? (formData.fuseSuccessChance !== undefined && formData.fuseSuccessChance !== null && !isNaN(Number(formData.fuseSuccessChance)) ? Number(formData.fuseSuccessChance) : 75) : undefined,
     };
+    // Nunca persiste metadados no JSON `data` — um `id`/`_isGlobal`/`_tenantId`/`_rawId`
+    // salvo no data sobrescreveria o id real da linha ao recarregar e as edições
+    // passariam a atingir a linha errada (0 alterações, "salvo sem sucesso").
+    delete (itemData as any).id;
+    delete (itemData as any)._isGlobal;
+    delete (itemData as any)._tenantId;
+    delete (itemData as any)._rawId;
 
     if (editingId) {
       const { data: updatedRows, error: saveErr } = await supabase.from('store_items').update({
