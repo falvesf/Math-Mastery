@@ -644,6 +644,8 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                                 onClick={() => {
                                   if (item.bestiaryData) {
                                     setSelectedBestiaryMonster(item.bestiaryData);
+                                  } else if (isBestiary) {
+                                    setSelectedBestiaryMonster({ monsterName: '' } as any);
                                   }
                                 }}
                                 style={{
@@ -656,17 +658,17 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                                   justifyContent: 'space-between',
                                   alignItems: 'center',
                                   gap: '0.75rem',
-                                  cursor: hasBestiaryData ? 'pointer' : 'default',
+                                  cursor: hasBestiaryData || isBestiary ? 'pointer' : 'default',
                                   transition: 'transform 0.15s ease, box-shadow 0.15s ease'
                                 }}
                                 onMouseEnter={(e) => {
-                                  if (hasBestiaryData) {
+                                  if (hasBestiaryData || isBestiary) {
                                     e.currentTarget.style.transform = 'translateY(-2px)';
                                     e.currentTarget.style.boxShadow = `0 4px 20px ${borderColor}50`;
                                   }
                                 }}
                                 onMouseLeave={(e) => {
-                                  if (hasBestiaryData) {
+                                  if (hasBestiaryData || isBestiary) {
                                     e.currentTarget.style.transform = 'translateY(0)';
                                     e.currentTarget.style.boxShadow = cardShadow;
                                   }
@@ -752,7 +754,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                                       flexWrap: 'wrap'
                                     }}>
                                       {item.title}
-                                      {hasBestiaryData && (
+                                      {(hasBestiaryData || isBestiary) && (
                                         <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(168, 85, 247, 0.25)', color: '#c084fc', fontWeight: 'normal' }}>
                                           📖 Abrir Bestiário
                                         </span>
@@ -920,7 +922,9 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
         <MonsterBestiaryModal
           isOpen={!!selectedBestiaryMonster}
           onClose={() => setSelectedBestiaryMonster(null)}
-          monsterData={selectedBestiaryMonster}
+          studentUid={user.uid}
+          initialMonsterName={selectedBestiaryMonster.monsterName || undefined}
+          monsterData={selectedBestiaryMonster.monsterName ? selectedBestiaryMonster : null}
         />
       )}
     </div>

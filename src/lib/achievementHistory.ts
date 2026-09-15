@@ -173,10 +173,31 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
       }
     });
 
+    let earliestDefeatTimeMs = Infinity;
+    let earliestDefeatDateStr = '';
+    let firstDefeatedMonsterName = '';
+
     defeatedMonstersMap.forEach((data, monsterName) => {
       if (data.firstTimeMs > 0) {
+        if (data.firstTimeMs < earliestDefeatTimeMs) {
+          earliestDefeatTimeMs = data.firstTimeMs;
+          earliestDefeatDateStr = data.firstDateStr;
+          firstDefeatedMonsterName = monsterName;
+        }
+
         const preset = monsterPresets.find(p => p.name?.trim().toLowerCase() === monsterName.toLowerCase());
-        const presetConfig = preset?.config ? (typeof preset.config === 'string' ? JSON.parse(preset.config) : preset.config) : null;
+        let presetConfig: any = null;
+        if (preset?.config) {
+          if (typeof preset.config === 'object') presetConfig = preset.config;
+          else if (typeof preset.config === 'string') {
+            try { presetConfig = JSON.parse(preset.config); } catch { presetConfig = null; }
+          }
+        }
+        if (presetConfig) {
+          if (!presetConfig.customSkinUrl && preset?.url) presetConfig.customSkinUrl = preset.url;
+        } else if (preset?.url) {
+          presetConfig = { customSkinUrl: preset.url };
+        }
         
         // Drops possíveis: do preset ou da quest
         const possibleDrops: any[] = presetConfig?.drops || data.questObj?.monsterDrops || [];
@@ -208,6 +229,28 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
         });
       }
     });
+
+    // Marco comemorativo: Desbloqueou o Bestiário ao vencer o primeiro monstro
+    if (earliestDefeatTimeMs < Infinity) {
+      achievements.push({
+        id: 'milestone-unlocked-bestiary',
+        type: 'bestiary',
+        isSpecialMilestone: true,
+        title: 'Desbloqueou o Bestiário',
+        subtitle: `Ao derrotar ${firstDefeatedMonsterName}, o compêndio ancestral de criaturas foi revelado em seu perfil!`,
+        imageUrl: '',
+        badgeText: '📖 Bestiário',
+        badgeType: 'rank',
+        timestamp: earliestDefeatTimeMs + 500,
+        rawDate: earliestDefeatDateStr,
+        bestiaryData: {
+          monsterName: firstDefeatedMonsterName,
+          winsCount: 1,
+          defeatsCount: 0,
+          discoveredDropItemIds: []
+        }
+      });
+    }
 
     // --- 3. DROPS DE MONSTROS (Apenas 1º drop de cada item em combate) ---
     const discoveredDropsMap = new Map<string, any>();
@@ -763,4 +806,221 @@ export async function fetchStudentActivityLog(studentUid: string): Promise<Achie
   }
 
   return logItems;
+}
+
+export interface BestiaryCompendiumEntry {
+  id: string;
+  name: string;
+  monsterName?: string;
+  isUnlocked: boolean;
+  coverImageUrl?: string;
+  avatarConfig?: any;
+  modelUrl?: string;
+  possibleDrops?: Array<{ itemId: string; itemTitle?: string; itemImageUrl?: string; rarity?: string }>;
+  biography?: string;
+  firstDefeatedAt?: string;
+  firstQuestTitle?: string;
+  winsCount: number;
+  defeatsCount: number;
+  discoveredDropItemIds: string[];
+}
+
+export interface StudentBestiaryCompendium {
+  entries: BestiaryCompendiumEntry[];
+  totalMonsters: number;
+  unlockedCount: number;
+  hasUnlockedBestiary: boolean;
+}
+
+/**
+ * Busca o compêndio completo do Bestiário para o aluno:
+ * Lista todos os monstros cadastrados no reino (preset_skins),
+ * sinalizando quais foram desbloqueados (derrotados) pelo aluno,
+ * suas estatísticas pessoais de combate e espólios conquistados.
+ */
+export async function fetchStudentBestiaryCompendium(studentUid: string, _tenantId?: string): Promise<StudentBestiaryCompendium> {
+  try {
+    // 1. Busca presets de monstros em preset_skins
+    const { data: monsterPresets } = await supabase
+      .from('preset_skins')
+      .select('*')
+      .eq('type', 'monster')
+      .order('name', { ascending: true });
+
+    // 2. Busca tentativas de missões do aluno
+    const { data: attempts } = await supabase
+      .from('quest_attempts')
+      .select('*')
+      .eq('student_id', studentUid)
+      .order('created_at', { ascending: true });
+
+    // 3. Busca itens do aluno para identificar drops obtidos
+    const { data: userItems } = await supabase
+      .from('user_items')
+      .select('*')
+      .eq('student_id', studentUid);
+
+    const studentDroppedItemIds = new Set<string>();
+    (userItems || []).forEach((itemDoc: any) => {
+      const gifted = itemDoc.data?.giftedBy || itemDoc.gifted_by || '';
+      if (gifted.includes('Drop de Monstro') && itemDoc.item_id) {
+        studentDroppedItemIds.add(itemDoc.item_id);
+      }
+    });
+
+    // 4. Mapear quests para extrair nomes de monstros
+    const questIds = Array.from(new Set((attempts || []).map((a: any) => a.quest_id).filter(Boolean)));
+    const questMap = new Map<string, any>();
+    if (questIds.length > 0) {
+      const { data: questsData } = await supabase.from('quests').select('*').in('id', questIds);
+      if (questsData) {
+        questsData.forEach((q: any) => questMap.set(q.id, q));
+      }
+    }
+
+    // 5. Computar encontros e vitórias do aluno por monstro
+    const encountersMap = new Map<string, {
+      wins: number;
+      defeats: number;
+      firstDateStr: string;
+      firstTimeMs: number;
+      questTitle: string;
+      questObj: any;
+    }>();
+
+    (attempts || []).forEach((att: any) => {
+      const q = questMap.get(att.quest_id);
+      const rawMonsterName = q?.monsterName || q?.data?.monsterName || att.data?.monsterName;
+      if (!rawMonsterName || !rawMonsterName.trim()) return;
+      const monsterName = rawMonsterName.trim();
+      const normKey = monsterName.toLowerCase();
+
+      const existing = encountersMap.get(normKey) || {
+        wins: 0,
+        defeats: 0,
+        firstDateStr: '',
+        firstTimeMs: 0,
+        questTitle: q?.title || 'Missão',
+        questObj: q
+      };
+
+      if (att.status === 'completed') {
+        existing.wins++;
+        const dateStr = att.completed_at || att.created_at || new Date().toISOString();
+        const timeMs = new Date(dateStr).getTime();
+        if (existing.firstTimeMs === 0 || timeMs < existing.firstTimeMs) {
+          existing.firstTimeMs = timeMs;
+          existing.firstDateStr = dateStr;
+          existing.questTitle = q?.title || 'Missão';
+          existing.questObj = q;
+        }
+      } else if (att.status === 'failed') {
+        existing.defeats++;
+      }
+
+      encountersMap.set(normKey, existing);
+    });
+
+    const entries: BestiaryCompendiumEntry[] = [];
+    const processedKeys = new Set<string>();
+
+    (monsterPresets || []).forEach((preset: any) => {
+      const name = preset.name?.trim() || 'Monstro';
+      const normKey = name.toLowerCase();
+      processedKeys.add(normKey);
+
+      const encounter = encountersMap.get(normKey);
+      const isUnlocked = !!encounter && encounter.wins > 0;
+
+      let presetConfig: any = null;
+      if (preset.config) {
+        if (typeof preset.config === 'object') presetConfig = preset.config;
+        else if (typeof preset.config === 'string') {
+          try { presetConfig = JSON.parse(preset.config); } catch { presetConfig = null; }
+        }
+      }
+
+      // Garante customSkinUrl nos monstros baseados em blocos/skins
+      if (presetConfig) {
+        if (!presetConfig.customSkinUrl && preset.url) {
+          presetConfig.customSkinUrl = preset.url;
+        }
+      } else if (preset.url) {
+        presetConfig = { customSkinUrl: preset.url };
+      }
+
+      // Normaliza customZoom para modelos 3D
+      if (presetConfig && presetConfig.customModelUrl) {
+        presetConfig.customZoom = Math.min(presetConfig.customZoom || 1, 1.0);
+      }
+
+      const possibleDrops: any[] = presetConfig?.drops || encounter?.questObj?.monsterDrops || [];
+      const bio = presetConfig?.biography || encounter?.questObj?.monsterBiography || '';
+
+      entries.push({
+        id: preset.id || `preset-${name}`,
+        name: isUnlocked ? name : '???',
+        monsterName: name,
+        isUnlocked,
+        coverImageUrl: preset.url || '',
+        avatarConfig: presetConfig || encounter?.questObj?.monsterAvatarConfig,
+        modelUrl: preset.baseModelId || presetConfig?.customModelUrl,
+        possibleDrops,
+        biography: bio,
+        firstDefeatedAt: encounter?.firstDateStr,
+        firstQuestTitle: encounter?.questTitle,
+        winsCount: encounter?.wins || 0,
+        defeatsCount: encounter?.defeats || 0,
+        discoveredDropItemIds: Array.from(studentDroppedItemIds)
+      });
+    });
+
+    // Caso o aluno tenha derrotado algum monstro fora dos presets padrão
+    encountersMap.forEach((encounter, normKey) => {
+      if (!processedKeys.has(normKey) && encounter.wins > 0) {
+        const questObj = encounter.questObj;
+        const name = questObj?.monsterName || normKey;
+        entries.push({
+          id: `custom-${normKey}`,
+          name,
+          monsterName: name,
+          isUnlocked: true,
+          coverImageUrl: questObj?.coverImageUrl || '',
+          avatarConfig: questObj?.monsterAvatarConfig,
+          modelUrl: questObj?.monsterModelUrl,
+          possibleDrops: questObj?.monsterDrops || [],
+          biography: questObj?.monsterBiography || '',
+          firstDefeatedAt: encounter.firstDateStr,
+          firstQuestTitle: encounter.questTitle,
+          winsCount: encounter.wins,
+          defeatsCount: encounter.defeats,
+          discoveredDropItemIds: Array.from(studentDroppedItemIds)
+        });
+      }
+    });
+
+    // Ordena: monstros desbloqueados primeiro, depois os bloqueados
+    entries.sort((a, b) => {
+      if (a.isUnlocked && !b.isUnlocked) return -1;
+      if (!a.isUnlocked && b.isUnlocked) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    const unlockedCount = entries.filter(e => e.isUnlocked).length;
+
+    return {
+      entries,
+      totalMonsters: entries.length,
+      unlockedCount,
+      hasUnlockedBestiary: unlockedCount > 0
+    };
+  } catch (err) {
+    console.error('Erro ao buscar compêndio do bestiário:', err);
+    return {
+      entries: [],
+      totalMonsters: 0,
+      unlockedCount: 0,
+      hasUnlockedBestiary: false
+    };
+  }
 }

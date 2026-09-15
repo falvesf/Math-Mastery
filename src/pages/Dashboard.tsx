@@ -21,6 +21,7 @@ import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacte
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
 import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
+import MonsterBestiaryModal from '../components/MonsterBestiaryModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
 import { Edit3, MessageCircle, X, Box, Palette, Menu, Trash2 } from 'lucide-react';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
@@ -137,6 +138,11 @@ export default function Dashboard() {
   const [xpHistory, setXpHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [expandedPvpId, setExpandedPvpId] = useState<string | null>(null);
+  const [isBestiaryModalOpen, setIsBestiaryModalOpen] = useState(false);
+  const [selectedBestiaryMonsterName, setSelectedBestiaryMonsterName] = useState<string | undefined>(undefined);
+  const hasUnlockedBestiary = useMemo(() => {
+    return (xpHistory || []).some((item: any) => item.type === 'bestiary' || item.id === 'milestone-unlocked-bestiary');
+  }, [xpHistory]);
 
   // Companion (boneco) - dicas para iniciantes
   const [onboarding, setOnboarding] = useState<Record<string, boolean>>(userData?.inventoryPreferences?.onboarding || {});
@@ -3211,6 +3217,34 @@ export default function Dashboard() {
               >
                 <Package size={16} /> Mochila
               </button>
+
+              {hasUnlockedBestiary && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBestiaryMonsterName(undefined);
+                    setIsBestiaryModalOpen(true);
+                  }}
+                  className="login-btn"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(126, 34, 206, 0.35) 100%)',
+                    border: '1px solid rgba(168, 85, 247, 0.5)',
+                    color: '#e9d5ff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    fontWeight: 'bold',
+                    padding: '0.4rem 1rem',
+                    fontSize: '0.85rem',
+                    boxShadow: '0 0 12px rgba(168, 85, 247, 0.25)',
+                    transition: 'all 0.2s ease',
+                    cursor: 'pointer'
+                  }}
+                  title="Abrir Bestiário do Reino"
+                >
+                  <span style={{ fontSize: '1rem' }}>👾</span> Bestiário
+                </button>
+              )}
             </div>
 
             <div className="responsive-stack-mobile" style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: (userData?.role === 'student' || userData?.studentViewActive || profileTab === 'inventory') ? 'flex-start' : 'center', width: '100%' }}>
@@ -3548,12 +3582,14 @@ export default function Dashboard() {
                         const isNegative = item.badgeType === 'xp_negative';
                         const isPvp = item.type === 'pvp';
                         const isForge = item.type === 'forge';
+                        const isBestiary = item.type === 'bestiary';
+                        const isBestiaryUnlock = item.id === 'milestone-unlocked-bestiary';
 
                         const isPvpFirstWin = item.id === 'pvp-first-win';
                         const isForgeFirst = item.id === 'forge-first-success';
                         const isForgePlusNine = item.id === 'forge-first-plus-nine';
                         const isForgeTransmute = item.id === 'forge-first-transmute';
-                        const isSpecialMilestone = isPvpFirstWin || isForgeFirst || isForgePlusNine || isForgeTransmute || !!item.isSpecialMilestone;
+                        const isSpecialMilestone = isPvpFirstWin || isForgeFirst || isForgePlusNine || isForgeTransmute || isBestiary || !!item.isSpecialMilestone;
 
                         const isPvpExpanded = expandedPvpId === item.id;
                         const hasPvpDetails = isPvp && (item.pvpDetails || []).length > 0;
@@ -3565,7 +3601,14 @@ export default function Dashboard() {
                         let cardShadow = 'none';
                         let titleColor = 'var(--text-primary)';
 
-                        if (isRank) {
+                        if (isBestiary) {
+                          borderColor = '#a855f7';
+                          badgeBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.35) 0%, rgba(139, 92, 246, 0.25) 100%)';
+                          badgeColor = '#c084fc';
+                          cardBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(99, 102, 241, 0.08) 50%, rgba(0, 0, 0, 0.35) 100%)';
+                          cardShadow = '0 0 16px rgba(168, 85, 247, 0.2)';
+                          titleColor = '#c084fc';
+                        } else if (isRank) {
                           borderColor = '#a855f7';
                           badgeBg = 'rgba(168, 85, 247, 0.2)';
                           badgeColor = '#c084fc';
@@ -3638,13 +3681,84 @@ export default function Dashboard() {
                               borderRadius: '12px',
                               borderLeft: `4px solid ${borderColor}`,
                               boxShadow: cardShadow,
-                              cursor: hasPvpDetails ? 'pointer' : 'default'
+                              cursor: hasPvpDetails || isBestiary ? 'pointer' : 'default',
+                              transition: isBestiary ? 'transform 0.15s ease, box-shadow 0.15s ease' : 'none'
                             }}
-                            onClick={hasPvpDetails ? () => setExpandedPvpId(isPvpExpanded ? null : item.id) : undefined}
+                            onMouseEnter={(e) => {
+                              if (isBestiary) {
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = `0 4px 20px rgba(168, 85, 247, 0.35)`;
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (isBestiary) {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = cardShadow;
+                              }
+                            }}
+                            onClick={() => {
+                              if (hasPvpDetails) {
+                                setExpandedPvpId(isPvpExpanded ? null : item.id);
+                              } else if (isBestiary) {
+                                setSelectedBestiaryMonsterName(item.bestiaryData?.monsterName);
+                                setIsBestiaryModalOpen(true);
+                              }
+                            }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
-                                {item.imageUrl ? (
+                                {isBestiary && !isBestiaryUnlock && item.bestiaryData?.avatarConfig ? (
+                                  <div style={{
+                                    width: '42px',
+                                    height: '42px',
+                                    borderRadius: '8px',
+                                    overflow: 'hidden',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: 'radial-gradient(circle, rgba(168, 85, 247, 0.25) 0%, rgba(0,0,0,0.6) 100%)',
+                                    border: '1.5px solid rgba(168, 85, 247, 0.5)',
+                                    boxShadow: '0 0 10px rgba(168, 85, 247, 0.2)',
+                                    flexShrink: 0,
+                                    position: 'relative'
+                                  }}>
+                                    <div style={{
+                                      width: '100%',
+                                      height: '100%',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      pointerEvents: 'none'
+                                    }}>
+                                      <AvatarCharacter
+                                        config={{
+                                          ...item.bestiaryData.avatarConfig,
+                                          customZoom: item.bestiaryData.avatarConfig.customModelUrl ? 0.95 : (item.bestiaryData.avatarConfig.customZoom || 1)
+                                        }}
+                                        size={item.bestiaryData.avatarConfig.customModelUrl ? 42 : 23}
+                                        animation="idle"
+                                        interactive={false}
+                                        role="monster"
+                                      />
+                                    </div>
+                                  </div>
+                                ) : isBestiaryUnlock ? (
+                                  <div style={{
+                                    width: '42px',
+                                    height: '42px',
+                                    borderRadius: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.35) 0%, rgba(126, 34, 206, 0.2) 100%)',
+                                    border: '1.5px solid #a855f7',
+                                    boxShadow: '0 0 12px rgba(168, 85, 247, 0.35)',
+                                    fontSize: '1.35rem',
+                                    flexShrink: 0
+                                  }}>
+                                    📖
+                                  </div>
+                                ) : item.imageUrl ? (
                                   <img src={item.imageUrl} alt="" style={{ width: '38px', height: '38px', objectFit: 'contain', borderRadius: '8px', flexShrink: 0 }} />
                                 ) : (
                                   <div style={{
@@ -3855,6 +3969,15 @@ export default function Dashboard() {
       />
 
       <AboutModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
+
+      {isBestiaryModalOpen && (
+        <MonsterBestiaryModal
+          isOpen={isBestiaryModalOpen}
+          onClose={() => setIsBestiaryModalOpen(false)}
+          studentUid={userData?.uid}
+          initialMonsterName={selectedBestiaryMonsterName}
+        />
+      )}
 
       <TeacherWanderer
         myUid={userData?.uid}
