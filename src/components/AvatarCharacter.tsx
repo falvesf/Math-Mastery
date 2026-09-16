@@ -307,6 +307,106 @@ function applyItemScale(model: THREE.Object3D, s: number, thickness: number) {
   }
 }
 
+// Cor do brilho de forja (visual "encantado" do Minecraft: ciano-esverdeado).
+export const FORGE_GLOW_COLOR = '#7ef0ff';
+
+// Aplica o BRILHO de forja às malhas do item, proporcional ao nível (+0 opaco →
+// +9 no ápice, igual aos itens encantados). Funciona em materiais Padrão/Phong
+// (emissive); em outros, clareia o `color`.
+export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
+  const lvl = Math.max(0, Math.min(9, Math.floor(level || 0)));
+  if (lvl <= 0) return;
+  const intensity = lvl / 9; // +1 ≈ 0.11 ... +9 = 1
+  const gl = new THREE.Color(FORGE_GLOW_COLOR);
+  model.traverse((child: any) => {
+    if (!child?.isMesh && !child?.isSprite) return;
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    mats.forEach((mat: any) => {
+      if (!mat) return;
+      if ('emissive' in mat) {
+        mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity);
+        if ('emissiveIntensity' in mat) mat.emissiveIntensity = Math.max(0.35, intensity * 1.2);
+      } else if (mat.color) {
+        // Sem emissive (ex.: sprite 2.5D): clareia levemente conforme o nível
+        if (!mat._forgeBase) mat._forgeBase = mat.color.clone();
+        mat.color.copy(mat._forgeBase).lerp(new THREE.Color(0xffffff), intensity * 0.35);
+      }
+      mat.needsUpdate = true;
+    });
+  });
+}
+
+// ===== Estrelas de forja (armadura + arma em +7/+8/+9) =====
+// Pequenas estrelas orbitando/brilhando EM VOLTA do equipamento (não do jogador).
+let _forgeStarTexture: THREE.Texture | null = null;
+function getForgeStarTexture(): THREE.Texture {
+  if (_forgeStarTexture) return _forgeStarTexture;
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(180,245,255,0.95)');
+  g.addColorStop(0.55, 'rgba(120,210,255,0.5)');
+  g.addColorStop(1, 'rgba(120,200,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  _forgeStarTexture = new THREE.CanvasTexture(c);
+  return _forgeStarTexture;
+}
+
+const _forgeStarGroups = new Set<THREE.Group>();
+let _forgeStarRaf = 0;
+let _forgeStarT = 0;
+function _tickForgeStars() {
+  _forgeStarT += 0.06;
+  _forgeStarGroups.forEach(grp => {
+    grp.rotation.y += 0.05;
+    grp.children.forEach((s, i) => {
+      const m = (s as THREE.Sprite).material as THREE.SpriteMaterial;
+      if (m) m.opacity = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(_forgeStarT * 2 + i * 1.7));
+    });
+  });
+  _forgeStarRaf = requestAnimationFrame(_tickForgeStars);
+}
+function registerForgeStarGroup(grp: THREE.Group) {
+  _forgeStarGroups.add(grp);
+  if (!_forgeStarRaf) _forgeStarRaf = requestAnimationFrame(_tickForgeStars);
+}
+export function clearForgeStars() {
+  _forgeStarGroups.clear();
+  if (_forgeStarRaf) { cancelAnimationFrame(_forgeStarRaf); _forgeStarRaf = 0; }
+}
+
+// Cria e anexa estrelas ao modelo do item (armadura/arma) conforme o tier 1(+7)/2(+8)/3(+9).
+function attachForgeStars(model: THREE.Object3D, tier: number) {
+  if (tier <= 0) return;
+  try {
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const cen = box.getCenter(new THREE.Vector3());
+    const tex = getForgeStarTexture();
+    const grp = new THREE.Group();
+    const count = 4 + tier * 3; // +7=7, +8=10, +9=13 estrelas
+    const radius = Math.max(1.5, Math.max(size.x, size.y, size.z) * 0.62);
+    for (let i = 0; i < count; i++) {
+      const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(FORGE_GLOW_COLOR), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false });
+      const spr = new THREE.Sprite(mat);
+      const s = 3 + tier; // tamanho cresce com o tier
+      spr.scale.set(s, s, 1);
+      const a = (i / count) * Math.PI * 2;
+      spr.position.set(Math.cos(a) * radius, (Math.sin(a * 1.7) * 0.5) * size.y, Math.sin(a) * radius);
+      grp.add(spr);
+    }
+    grp.position.copy(cen);
+    grp.renderOrder = 999;
+    model.add(grp);
+    registerForgeStarGroup(grp);
+  } catch (e) {
+    // Sem estrelas se o bounding box falhar — o brilho (emissive) já foi aplicado.
+  }
+}
+
 const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boolean = false) => {
   const color = "rgba(255, 255, 255, 0.4)";
   const opacity = 1;
@@ -391,17 +491,6 @@ export interface AvatarCharacterProps {
 import CustomModelViewer from './CustomModelViewer';
 import ItemTooltip from './ItemTooltip';
 
-// Posições base das estrelas de brilho da forja (sobre o corpo do personagem).
-const FORGE_STARS: { x: number; y: number; d: number; dur: number }[] = [
-  { x: 30, y: 24, d: 0.0, dur: 1.6 }, { x: 52, y: 20, d: 0.3, dur: 1.9 },
-  { x: 70, y: 30, d: 0.7, dur: 1.5 }, { x: 40, y: 36, d: 1.0, dur: 2.0 },
-  { x: 60, y: 42, d: 1.3, dur: 1.7 }, { x: 28, y: 50, d: 1.6, dur: 1.8 },
-  { x: 72, y: 52, d: 0.5, dur: 2.1 }, { x: 46, y: 58, d: 0.9, dur: 1.5 },
-  { x: 62, y: 64, d: 1.4, dur: 1.9 }, { x: 34, y: 70, d: 0.2, dur: 1.6 },
-  { x: 68, y: 74, d: 1.1, dur: 1.8 }, { x: 50, y: 80, d: 1.7, dur: 1.6 },
-  { x: 38, y: 84, d: 0.6, dur: 2.0 }, { x: 58, y: 30, d: 1.9, dur: 1.5 },
-  { x: 44, y: 46, d: 2.1, dur: 1.7 },
-];
 
 const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null }: AvatarCharacterProps) {
   // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
@@ -429,6 +518,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     window.addEventListener('avatar-transforms-updated', handleUpdate);
     return () => window.removeEventListener('avatar-transforms-updated', handleUpdate);
   }, []);
+
+  // Limpa a animação das estrelas de forja ao desmontar
+  useEffect(() => () => { clearForgeStars(); }, []);
 
   const customHairRef = useRef<THREE.Group | null>(null);
 
@@ -503,7 +595,6 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   // Aura de CONJUNTO (armadura completa da mesma raridade, tudo +9). O brilho por item
   // (+7/+8/+9) virou estrelas percorrendo o equipamento (camada .forge-stars).
   const setAura = getEquippedSetAura(equippedItems);
-  const forgeGlowTier = forgeGlowLevelToTier(setAura.forgeGlow);
   let auraStyle: React.CSSProperties = { position: 'absolute', top: '-20%', left: '-20%', right: '-20%', bottom: '-20%', pointerEvents: 'none', zIndex: -1, borderRadius: '50%' };
   if (setAura.active) {
     auraStyle.background = `radial-gradient(circle, ${hexToRgba(setAura.color, 0.55)} 0%, ${hexToRgba(setAura.color, 0.18)} 45%, transparent 72%)`;
@@ -841,6 +932,15 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 (child as THREE.Mesh).frustumCulled = false;
               }
             });
+            // Brilho de forja no item (+1..+9). Não é showSlots/debug: aplica sempre.
+            applyForgeGlowToModel(model, item.forgeLevel || 0);
+            // Estrelas SOMENTE na armadura (body) e na arma, em +7/+8/+9.
+            const _p = String(item.avatarPart || '');
+            const _isStarPart = _p === 'body' || _p === 'hand' || _p === 'two_handed' || _p === 'rightHand' || _p === 'leftHand';
+            if (_isStarPart) {
+              const _tier = forgeGlowLevelToTier(Number(item.forgeLevel) || 0);
+              if (_tier > 0) attachForgeStars(model, _tier);
+            }
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
               const isDefense = item.itemCategory === 'defense';
               const isLeftHanded = config?.handedness === 'left';
@@ -2934,27 +3034,6 @@ if (config?.customModelUrl) {
           desloca o canvas para baixo conforme o zoom aumenta, para a cabeça não cortar no topo */}
 
       <div style={auraStyle} className="forge-aura"></div>
-      {/* Brilho por item (+7/+8/+9): estrelas percorrendo o equipamento. Quantidade e
-          intensidade aumentam com o nível (mais forte = mais brilho). */}
-      {forgeGlowTier > 0 && (
-        <div className="forge-stars" style={{ '--glow-color': setAura.active ? setAura.color : '#ffd76a' } as any}>
-          {FORGE_STARS.slice(0, forgeGlowTier * 5).map((s, i) => (
-            <span
-              key={i}
-              className="forge-star"
-              style={{
-                left: `${s.x}%`,
-                top: `${s.y}%`,
-                width: `${Math.max(2, Math.round(size * 0.018))}px`,
-                height: `${Math.max(2, Math.round(size * 0.018))}px`,
-                animationDelay: `${s.d}s`,
-                animationDuration: `${s.dur}s`,
-                '--star-op': 0.35 + forgeGlowTier * 0.2,
-              } as any}
-            />
-          ))}
-        </div>
-      )}
       <canvas
  
         ref={canvasRef} 
