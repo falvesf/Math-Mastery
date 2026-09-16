@@ -1193,17 +1193,21 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               const _tier = _lvl >= 9 ? 3 : _lvl >= 8 ? 2 : _lvl >= 7 ? 1 : 0;
               const _isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
               if (_tier > 0 && _isGear) {
-                const _isWeapon = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
-                const _style: 'circles' | 'reflect' = _isWeapon ? 'circles' : 'reflect';
+                const _isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
+                const _isShield = _isWeaponSlot && item.itemCategory === 'defense';
+                // Círculos só em ARMA de ataque. Armadura e ESCUDO usam o reflexo deslizante.
+                const _style: 'circles' | 'reflect' = (_isWeaponSlot && !_isShield) ? 'circles' : 'reflect';
                 model.traverse(child => {
                   const m = child as THREE.Mesh;
                   if (!m.isMesh) return;
                   const mats = Array.isArray(m.material) ? m.material : [m.material];
                   mats.forEach(mm => applyForgeGlint(mm, _tier, _style));
                 });
-                // arma: sparkles justas à lâmina; armadura (volume grande): um pouco PARA FORA
-                // da caixa (e em maior quantidade) para não ficarem ocluídas dentro da malha.
-                attachForgeSparkles(model, _tier, _isWeapon ? 0.98 : 1.3, _isWeapon ? 1 : 2);
+                // Arma: sparkles justas à lâmina. Escudo/armadura (volume grande): um pouco
+                // PARA FORA da caixa para não ficarem ocluídas dentro da malha.
+                const _sparkScale = (_isWeaponSlot && !_isShield) ? 0.98 : (_isShield ? 1.22 : 1.3);
+                const _sparkMul = (_isWeaponSlot && !_isShield) ? 1 : (_isShield ? 1.5 : 2);
+                attachForgeSparkles(model, _tier, _sparkScale, _sparkMul);
               }
             }
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
