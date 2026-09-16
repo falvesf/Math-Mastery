@@ -422,8 +422,55 @@ function getForgeGlintTexture(tier: number, repeat: number = 1): THREE.Texture {
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(repeat, repeat);
-  tex.userData.forgeSpeed = FORGE_GLINT_SPEED[t] ?? 1;
+  const _spd = FORGE_GLINT_SPEED[t] ?? 1;
+  tex.userData.forgeSpeedX = 0.002 * _spd;
+  tex.userData.forgeSpeedY = -0.006 * _spd;
   _forgeGlintCache.set(key, tex);
+  _forgeGlintAnimated.add(tex);
+  return tex;
+}
+
+// Textura de REFLEXO (para armadura): uma faixa suave e clara que desliza na diagonal —
+// dá o aspecto de brilho/reflexo percorrendo a superfície (mais natural que círculos).
+const _forgeReflectCache = new Map<number, THREE.Texture>();
+function getForgeReflectTexture(tier: number): THREE.Texture {
+  const t = tier <= 1 ? 1 : tier >= 3 ? 3 : 2;
+  const cached = _forgeReflectCache.get(t);
+  if (cached) return cached;
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#000000';
+  g.fillRect(0, 0, 256, 256);
+  const drawBand = (cx: number, halfW: number, alpha: number, slope: number) => {
+    g.save();
+    g.translate(cx, 128);
+    g.rotate(slope);
+    const grad = g.createLinearGradient(-halfW, 0, halfW, 0);
+    grad.addColorStop(0, 'rgba(255,255,255,0)');
+    grad.addColorStop(0.5, `rgba(255,255,255,${alpha})`);
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(-halfW, -300, halfW * 2, 600);
+    g.restore();
+  };
+  if (t === 1) {
+    drawBand(150, 70, 0.75, -Math.PI / 6);
+  } else if (t === 2) {
+    drawBand(90, 58, 0.85, -Math.PI / 6);
+    drawBand(215, 58, 0.85, -Math.PI / 6);
+  } else {
+    drawBand(70, 52, 0.9, -Math.PI / 6);
+    drawBand(170, 52, 0.9, -Math.PI / 6);
+    drawBand(245, 52, 0.9, -Math.PI / 6);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  const _spd = FORGE_GLINT_SPEED[t] ?? 1;
+  tex.userData.forgeSpeedX = -0.03 * _spd;
+  tex.userData.forgeSpeedY = 0;
+  _forgeReflectCache.set(t, tex);
   _forgeGlintAnimated.add(tex);
   return tex;
 }
@@ -431,9 +478,8 @@ function getForgeGlintTexture(tier: number, repeat: number = 1): THREE.Texture {
 let _forgeGlintRaf = 0;
 function _tickForgeGlint() {
   _forgeGlintAnimated.forEach(tex => {
-    const spd = (tex.userData.forgeSpeed as number) ?? 1;
-    tex.offset.y = (tex.offset.y - 0.006 * spd) % 1;
-    tex.offset.x = (tex.offset.x + 0.002 * spd) % 1;
+    tex.offset.x = (tex.offset.x + ((tex.userData.forgeSpeedX as number) ?? 0)) % 1;
+    tex.offset.y = (tex.offset.y + ((tex.userData.forgeSpeedY as number) ?? 0)) % 1;
   });
   _forgeGlintRaf = requestAnimationFrame(_tickForgeGlint);
 }
@@ -444,13 +490,19 @@ export function stopForgeGlint() {
   if (_forgeGlintRaf) { cancelAnimationFrame(_forgeGlintRaf); _forgeGlintRaf = 0; }
 }
 
-// Aplica os CÍRCULOS (emissiveMap) conforme o tier 1(+7)/2(+8)/3(+9). `repeat` deixa menor.
-function applyForgeGlint(mat: any, tier: number, repeat: number = 1) {
+// Aplica o brilho no material: 'circles' (armas) ou 'reflect' (armadura).
+function applyForgeGlint(mat: any, tier: number, style: 'circles' | 'reflect' = 'circles') {
   if (tier <= 0 || !mat || !('emissiveMap' in mat)) return;
   try {
-    mat.emissiveMap = getForgeGlintTexture(tier, repeat);
-    mat.emissive = new THREE.Color('#bfefff');
-    mat.emissiveIntensity = 0.6 + tier * 0.45; // +7≈1.05, +8≈1.5, +9≈1.95
+    if (style === 'reflect') {
+      mat.emissiveMap = getForgeReflectTexture(tier);
+      mat.emissive = new THREE.Color('#eaf6ff');
+      mat.emissiveIntensity = 0.22 + tier * 0.16; // sutil: sweep de reflexo
+    } else {
+      mat.emissiveMap = getForgeGlintTexture(tier, 1);
+      mat.emissive = new THREE.Color('#bfefff');
+      mat.emissiveIntensity = 0.6 + tier * 0.45; // +7≈1.05, +8≈1.5, +9≈1.95
+    }
     mat.needsUpdate = true;
     startForgeGlint();
   } catch (e) { /* sem glint */ }
@@ -1142,12 +1194,12 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               const _isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
               if (_tier > 0 && _isGear) {
                 const _isWeapon = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
-                const _repeat = _isWeapon ? 1 : 2; // armadura: círculos menores no material
+                const _style: 'circles' | 'reflect' = _isWeapon ? 'circles' : 'reflect';
                 model.traverse(child => {
                   const m = child as THREE.Mesh;
                   if (!m.isMesh) return;
                   const mats = Array.isArray(m.material) ? m.material : [m.material];
-                  mats.forEach(mm => applyForgeGlint(mm, _tier, _repeat));
+                  mats.forEach(mm => applyForgeGlint(mm, _tier, _style));
                 });
                 // arma: sparkles justas à lâmina; armadura (volume grande): um pouco PARA FORA
                 // da caixa para não ficarem ocluídas dentro da malha.
