@@ -388,24 +388,27 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
 }
 
 // ===== Brilho de forja NO MATERIAL (emissiveMap com CÍRCULOS que deslizam) =====
-// Textura de círculos brilhantes aplicada como `emissiveMap` no material do item
-// (armadura/arma em +7/+8/+9) e deslocada (offset) a cada frame → os círculos
-// percorrem a superfície do equipamento. Nada de overlay/CSS.
-// Densidade e velocidade por tier: +7 tem menos círculos e desliza mais devagar;
-// +8 aumenta; +9 fica com a quantidade e a velocidade cheias.
-const _forgeGlintTexByTier = new Map<number, THREE.Texture>();
+// Círculos brilhantes aplicados como `emissiveMap` no material do item e deslocados
+// (offset) a cada frame → percorrem a superfície. Nada de overlay/CSS.
+// Densidade/velocidade por tier: +7 menos e mais devagar; +8 aumenta; +9 máximo.
+// `repeat` multiplica o tiling: em peças grandes (armadura) deixa os círculos menores.
 const FORGE_GLINT_COUNT: Record<number, number> = { 1: 8, 2: 18, 3: 30 };
 const FORGE_GLINT_SPEED: Record<number, number> = { 1: 0.45, 2: 0.72, 3: 1 };
-function getForgeGlintTexture(tier: number): THREE.Texture {
+const _forgeGlintCache = new Map<string, THREE.Texture>();
+const _forgeGlintAnimated = new Set<THREE.Texture>();
+function getForgeGlintTexture(tier: number, repeat: number = 1): THREE.Texture {
   const t = tier <= 1 ? 1 : tier >= 3 ? 3 : 2;
-  const cached = _forgeGlintTexByTier.get(t);
+  const key = `${t}_${repeat}`;
+  const cached = _forgeGlintCache.get(key);
   if (cached) return cached;
   const c = document.createElement('canvas');
   c.width = 128; c.height = 128;
   const g = c.getContext('2d')!;
   g.fillStyle = '#000000';
   g.fillRect(0, 0, 128, 128);
-  const count = FORGE_GLINT_COUNT[t] || 30;
+  // Mantém a densidade por área: mais tiles (repeat) → menos círculos por tile
+  const baseCount = FORGE_GLINT_COUNT[t] || 30;
+  const count = Math.max(3, Math.round(baseCount / (repeat * repeat)));
   for (let i = 0; i < count; i++) {
     const x = Math.random() * 128, y = Math.random() * 128, r = 1.5 + Math.random() * 3.5;
     const rad = g.createRadialGradient(x, y, 0, x, y, r * 2.4);
@@ -418,14 +421,16 @@ function getForgeGlintTexture(tier: number): THREE.Texture {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeat, repeat);
   tex.userData.forgeSpeed = FORGE_GLINT_SPEED[t] ?? 1;
-  _forgeGlintTexByTier.set(t, tex);
+  _forgeGlintCache.set(key, tex);
+  _forgeGlintAnimated.add(tex);
   return tex;
 }
 
 let _forgeGlintRaf = 0;
 function _tickForgeGlint() {
-  _forgeGlintTexByTier.forEach(tex => {
+  _forgeGlintAnimated.forEach(tex => {
     const spd = (tex.userData.forgeSpeed as number) ?? 1;
     tex.offset.y = (tex.offset.y - 0.006 * spd) % 1;
     tex.offset.x = (tex.offset.x + 0.002 * spd) % 1;
@@ -439,11 +444,11 @@ export function stopForgeGlint() {
   if (_forgeGlintRaf) { cancelAnimationFrame(_forgeGlintRaf); _forgeGlintRaf = 0; }
 }
 
-// Aplica os CÍRCULOS (emissiveMap) conforme o tier 1(+7)/2(+8)/3(+9).
-function applyForgeGlint(mat: any, tier: number) {
+// Aplica os CÍRCULOS (emissiveMap) conforme o tier 1(+7)/2(+8)/3(+9). `repeat` deixa menor.
+function applyForgeGlint(mat: any, tier: number, repeat: number = 1) {
   if (tier <= 0 || !mat || !('emissiveMap' in mat)) return;
   try {
-    mat.emissiveMap = getForgeGlintTexture(tier);
+    mat.emissiveMap = getForgeGlintTexture(tier, repeat);
     mat.emissive = new THREE.Color('#bfefff');
     mat.emissiveIntensity = 0.6 + tier * 0.45; // +7≈1.05, +8≈1.5, +9≈1.95
     mat.needsUpdate = true;
@@ -554,14 +559,14 @@ export function stopForgeSparkles() {
   if (_forgeSparkRaf) { cancelAnimationFrame(_forgeSparkRaf); _forgeSparkRaf = 0; }
 }
 
-function attachForgeSparkles(model: THREE.Object3D, tier: number) {
+function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScale: number = 0.98) {
   if (tier <= 0) return;
   try {
     const box = new THREE.Box3().setFromObject(model);
     if (box.isEmpty()) return;
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    const half = new THREE.Vector3(size.x * 0.5 * 0.98, size.y * 0.5 * 0.98, size.z * 0.5 * 0.98);
+    const half = new THREE.Vector3(size.x * 0.5 * boxScale, size.y * 0.5 * boxScale, size.z * 0.5 * boxScale);
     const tex = getForgeSparkTexture();
     const grp = new THREE.Group();
     grp.userData.forgeModel = model;
@@ -1136,13 +1141,17 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               const _tier = _lvl >= 9 ? 3 : _lvl >= 8 ? 2 : _lvl >= 7 ? 1 : 0;
               const _isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
               if (_tier > 0 && _isGear) {
+                const _isWeapon = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
+                const _repeat = _isWeapon ? 1 : 2; // armadura: círculos menores no material
                 model.traverse(child => {
                   const m = child as THREE.Mesh;
                   if (!m.isMesh) return;
                   const mats = Array.isArray(m.material) ? m.material : [m.material];
-                  mats.forEach(mm => applyForgeGlint(mm, _tier));
+                  mats.forEach(mm => applyForgeGlint(mm, _tier, _repeat));
                 });
-                attachForgeSparkles(model, _tier);
+                // arma: sparkles justas à lâmina; armadura (volume grande): um pouco PARA FORA
+                // da caixa para não ficarem ocluídas dentro da malha.
+                attachForgeSparkles(model, _tier, _isWeapon ? 0.98 : 1.3);
               }
             }
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
