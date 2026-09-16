@@ -13,7 +13,7 @@ import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType }
 import { isEffectAddType, EFFECT_ADD_LABELS } from '../lib/damageEffects';
 import { generateVoxelItemFromImage, updateVoxelCurve, setVoxelThickness } from '../lib/VoxelItemGenerator';
 import { getGlobalModelTransforms } from '../lib/itemTransforms';
-import { getEquippedSetAura, forgeGlowTier as forgeGlowLevelToTier, hexToRgba } from '../lib/equipAura';
+import { getEquippedSetAura, hexToRgba } from '../lib/equipAura';
 import { Eye, EyeOff, PackageX } from 'lucide-react';
 
 export interface AvatarConfig {
@@ -324,83 +324,17 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
     mats.forEach((mat: any) => {
       if (!mat) return;
       if ('emissive' in mat) {
-        mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.22);
-        if ('emissiveIntensity' in mat) mat.emissiveIntensity = 0.35;
+        // "Pinta" o material com um brilho (emissive) que cresce com o nível
+        mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.4);
+        if ('emissiveIntensity' in mat) mat.emissiveIntensity = 0.6;
       } else if (mat.color) {
         // Sem emissive (ex.: sprite 2.5D): clareia levemente conforme o nível
         if (!mat._forgeBase) mat._forgeBase = mat.color.clone();
-        mat.color.copy(mat._forgeBase).lerp(new THREE.Color(0xffffff), intensity * 0.12);
+        mat.color.copy(mat._forgeBase).lerp(new THREE.Color(0xffffff), intensity * 0.22);
       }
       mat.needsUpdate = true;
     });
   });
-}
-
-// ===== Estrelas de forja (SÓ na armadura body e na arma, +7/+8/+9) =====
-// SEGURANÇA: usam depthTest (respeitam a profundidade → NÃO desenham por cima do
-// boneco) e são pequenas/fracas. Diferença crucial do que quebrou antes (depthTest:false).
-let _forgeStarTexture: THREE.Texture | null = null;
-function getForgeStarTexture(): THREE.Texture {
-  if (_forgeStarTexture) return _forgeStarTexture;
-  const c = document.createElement('canvas');
-  c.width = 64; c.height = 64;
-  const ctx = c.getContext('2d')!;
-  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.3, 'rgba(190,246,255,0.9)');
-  g.addColorStop(1, 'rgba(120,200,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 64, 64);
-  _forgeStarTexture = new THREE.CanvasTexture(c);
-  return _forgeStarTexture;
-}
-
-const _forgeStarGroups = new Set<THREE.Group>();
-let _forgeStarRaf = 0;
-let _forgeStarT = 0;
-function _tickForgeStars() {
-  _forgeStarT += 0.05;
-  _forgeStarGroups.forEach(grp => {
-    grp.rotation.y += 0.04;
-    grp.children.forEach((s, i) => {
-      const m = (s as THREE.Sprite).material as THREE.SpriteMaterial;
-      if (m) m.opacity = 0.25 + 0.45 * (0.5 + 0.5 * Math.sin(_forgeStarT * 2 + i * 1.7));
-    });
-  });
-  _forgeStarRaf = requestAnimationFrame(_tickForgeStars);
-}
-function registerForgeStarGroup(grp: THREE.Group) {
-  _forgeStarGroups.add(grp);
-  if (!_forgeStarRaf) _forgeStarRaf = requestAnimationFrame(_tickForgeStars);
-}
-export function clearForgeStars() {
-  _forgeStarGroups.clear();
-  if (_forgeStarRaf) { cancelAnimationFrame(_forgeStarRaf); _forgeStarRaf = 0; }
-}
-
-function attachForgeStars(model: THREE.Object3D, tier: number) {
-  if (tier <= 0) return;
-  try {
-    const box = new THREE.Box3().setFromObject(model);
-    const size = box.getSize(new THREE.Vector3());
-    const cen = box.getCenter(new THREE.Vector3());
-    const tex = getForgeStarTexture();
-    const grp = new THREE.Group();
-    const count = 3 + tier * 2; // +7=5, +8=7, +9=9 estrelas
-    const radius = Math.max(1.2, Math.max(size.x, size.y, size.z) * 0.6);
-    for (let i = 0; i < count; i++) {
-      const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(FORGE_GLOW_COLOR), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, opacity: 0.6 });
-      const spr = new THREE.Sprite(mat);
-      const s = 1.4 + tier * 0.5; // +7≈1.9 ... +9≈2.9 (pequenas)
-      spr.scale.set(s, s, 1);
-      const a = (i / count) * Math.PI * 2;
-      spr.position.set(Math.cos(a) * radius, (Math.sin(a * 1.7) * 0.5) * size.y, Math.sin(a) * radius);
-      grp.add(spr);
-    }
-    grp.position.copy(cen);
-    model.add(grp);
-    registerForgeStarGroup(grp);
-  } catch (e) { /* sem estrelas se o bounding box falhar */ }
 }
 
 const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boolean = false) => {
@@ -514,9 +448,6 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     window.addEventListener('avatar-transforms-updated', handleUpdate);
     return () => window.removeEventListener('avatar-transforms-updated', handleUpdate);
   }, []);
-
-  // Limpa a animação das estrelas de forja ao desmontar
-  useEffect(() => () => { clearForgeStars(); }, []);
 
   const customHairRef = useRef<THREE.Group | null>(null);
 
@@ -928,15 +859,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 (child as THREE.Mesh).frustumCulled = false;
               }
             });
-            // Brilho de forja no item (+1..+9) — bem SUTIL (não pode cobrir o boneco).
+            // Brilho de forja: PINTA o material do equipamento (emissive/cor no THREE),
+// proporcional ao nível (+0 opaco → +9 máximo). Nada de overlay/CSS.
             applyForgeGlowToModel(model, item.forgeLevel || 0);
-            // Estrelas SOMENTE na armadura (body) e na arma, em +7/+8/+9.
-            const _p = String(item.avatarPart || '');
-            const _isStarPart = _p === 'body' || _p === 'hand' || _p === 'two_handed' || _p === 'rightHand' || _p === 'leftHand';
-            if (_isStarPart) {
-              const _tier = forgeGlowLevelToTier(Number(item.forgeLevel) || 0);
-              if (_tier > 0) attachForgeStars(model, _tier);
-            }
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
               const isDefense = item.itemCategory === 'defense';
               const isLeftHanded = config?.handedness === 'left';
