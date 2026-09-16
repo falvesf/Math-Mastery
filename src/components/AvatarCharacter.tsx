@@ -531,7 +531,12 @@ function _tickForgeSpark() {
     }
     grp.children.forEach((s, i) => {
       const spr = s as THREE.Sprite;
-      const sc = baseSize * inv;
+      const ph = (spr.userData.phase as number) ?? i * 2.1;
+      const sp = (spr.userData.speed as number) ?? 2;
+      const sizeMul = (spr.userData.sizeMul as number) ?? 1;
+      // tamanho aleatório + leve pulsar sincronizado com o brilho
+      const pulse = 0.8 + 0.4 * (0.5 + 0.5 * Math.sin(_forgeSparkT * sp + ph));
+      const sc = baseSize * sizeMul * pulse * inv;
       spr.scale.set(sc, sc, 1);
       // Deriva aleatória ao redor do item; ao sair da caixa, reaparece em outro ponto aleatório
       if (center && half) {
@@ -545,8 +550,6 @@ function _tickForgeSpark() {
         }
       }
       const m = spr.material as THREE.SpriteMaterial;
-      const ph = (spr.userData.phase as number) ?? i * 2.1;
-      const sp = (spr.userData.speed as number) ?? 2;
       if (m) m.opacity = 0.15 + 0.8 * (0.5 + 0.5 * Math.sin(_forgeSparkT * sp + ph));
     });
   });
@@ -564,15 +567,15 @@ function attachForgeSparkles(model: THREE.Object3D, tier: number) {
     if (box.isEmpty()) return;
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    const half = new THREE.Vector3(size.x * 0.5 * 1.18, size.y * 0.5 * 1.18, size.z * 0.5 * 1.18);
+    const half = new THREE.Vector3(size.x * 0.5 * 0.98, size.y * 0.5 * 0.98, size.z * 0.5 * 0.98);
     const tex = getForgeSparkTexture();
     const grp = new THREE.Group();
     grp.userData.forgeModel = model;
-    grp.userData.forgeSparkSize = 1.6 + tier * 0.5; // tamanho MUNDIAL (compensado no tick)
+    grp.userData.forgeSparkSize = 0.95 + tier * 0.25; // tamanho MUNDIAL base (compensado no tick)
     grp.userData.forgeCenter = center.clone();
     grp.userData.forgeHalf = half.clone();
-    const count = 6 + tier * 4; // +7=10, +8=14, +9=18
-    const rate = 0.005; // velocidade de deriva (proporcional ao tamanho do item)
+    const count = 4 + tier * 2; // +7=6, +8=8, +9=10 (menos estrelas)
+    const rate = 0.0025; // deriva mais lenta (ficam próximas do item)
     for (let i = 0; i < count; i++) {
       const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color('#dff6ff'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, opacity: 0.7 });
       const spr = new THREE.Sprite(mat);
@@ -584,6 +587,7 @@ function attachForgeSparkles(model: THREE.Object3D, tier: number) {
       );
       spr.userData.phase = Math.random() * Math.PI * 2;
       spr.userData.speed = 1.5 + Math.random() * 2.5;
+      spr.userData.sizeMul = 0.6 + Math.random() * 0.9; // tamanhos aleatórios (0.6x a 1.5x)
       grp.add(spr);
     }
     model.add(grp);
