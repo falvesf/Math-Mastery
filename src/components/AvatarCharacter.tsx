@@ -13,6 +13,7 @@ import { ATTRIBUTE_LABELS, type ItemAdd, type ItemCategory, type AttributeType }
 import { isEffectAddType, EFFECT_ADD_LABELS } from '../lib/damageEffects';
 import { generateVoxelItemFromImage, updateVoxelCurve, setVoxelThickness } from '../lib/VoxelItemGenerator';
 import { getGlobalModelTransforms } from '../lib/itemTransforms';
+import { getEquippedSetAura, forgeGlowTier as forgeGlowLevelToTier, hexToRgba } from '../lib/equipAura';
 import { Eye, EyeOff, PackageX } from 'lucide-react';
 
 export interface AvatarConfig {
@@ -390,6 +391,18 @@ export interface AvatarCharacterProps {
 import CustomModelViewer from './CustomModelViewer';
 import ItemTooltip from './ItemTooltip';
 
+// Posições base das estrelas de brilho da forja (sobre o corpo do personagem).
+const FORGE_STARS: { x: number; y: number; d: number; dur: number }[] = [
+  { x: 30, y: 24, d: 0.0, dur: 1.6 }, { x: 52, y: 20, d: 0.3, dur: 1.9 },
+  { x: 70, y: 30, d: 0.7, dur: 1.5 }, { x: 40, y: 36, d: 1.0, dur: 2.0 },
+  { x: 60, y: 42, d: 1.3, dur: 1.7 }, { x: 28, y: 50, d: 1.6, dur: 1.8 },
+  { x: 72, y: 52, d: 0.5, dur: 2.1 }, { x: 46, y: 58, d: 0.9, dur: 1.5 },
+  { x: 62, y: 64, d: 1.4, dur: 1.9 }, { x: 34, y: 70, d: 0.2, dur: 1.6 },
+  { x: 68, y: 74, d: 1.1, dur: 1.8 }, { x: 50, y: 80, d: 1.7, dur: 1.6 },
+  { x: 38, y: 84, d: 0.6, dur: 2.0 }, { x: 58, y: 30, d: 1.9, dur: 1.5 },
+  { x: 44, y: 46, d: 2.1, dur: 1.7 },
+];
+
 const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null }: AvatarCharacterProps) {
   // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
   // useMemo garante uma referência ESTÁVEL (senão efeitos com [config] entrariam em loop).
@@ -487,14 +500,15 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   } | null>(null);
 
 
-  const highestForgeLevel = equippedItems.length > 0 ? Math.max(...equippedItems.map(i => i.forgeLevel || 0), 0) : 0;
+  // Aura de CONJUNTO (armadura completa da mesma raridade, tudo +9). O brilho por item
+  // (+7/+8/+9) virou estrelas percorrendo o equipamento (camada .forge-stars).
+  const setAura = getEquippedSetAura(equippedItems);
+  const forgeGlowTier = forgeGlowLevelToTier(setAura.forgeGlow);
   let auraStyle: React.CSSProperties = { position: 'absolute', top: '-20%', left: '-20%', right: '-20%', bottom: '-20%', pointerEvents: 'none', zIndex: -1, borderRadius: '50%' };
-  if (highestForgeLevel >= 9) {
-    auraStyle.background = 'radial-gradient(circle, rgba(239, 68, 68, 0.5) 0%, transparent 70%)';
+  if (setAura.active) {
+    auraStyle.background = `radial-gradient(circle, ${hexToRgba(setAura.color, 0.55)} 0%, ${hexToRgba(setAura.color, 0.18)} 45%, transparent 72%)`;
     auraStyle.animation = 'pulse 2s infinite alternate';
-  } else if (highestForgeLevel >= 7) {
-    auraStyle.background = 'radial-gradient(circle, rgba(245, 158, 11, 0.4) 0%, transparent 70%)';
-    auraStyle.animation = 'pulse 3s infinite alternate';
+    auraStyle.filter = 'blur(2px)';
   } else {
     auraStyle.display = 'none';
   }
@@ -2920,6 +2934,27 @@ if (config?.customModelUrl) {
           desloca o canvas para baixo conforme o zoom aumenta, para a cabeça não cortar no topo */}
 
       <div style={auraStyle} className="forge-aura"></div>
+      {/* Brilho por item (+7/+8/+9): estrelas percorrendo o equipamento. Quantidade e
+          intensidade aumentam com o nível (mais forte = mais brilho). */}
+      {forgeGlowTier > 0 && (
+        <div className="forge-stars" style={{ '--glow-color': setAura.active ? setAura.color : '#ffd76a' } as any}>
+          {FORGE_STARS.slice(0, forgeGlowTier * 5).map((s, i) => (
+            <span
+              key={i}
+              className="forge-star"
+              style={{
+                left: `${s.x}%`,
+                top: `${s.y}%`,
+                width: `${Math.max(2, Math.round(size * 0.018))}px`,
+                height: `${Math.max(2, Math.round(size * 0.018))}px`,
+                animationDelay: `${s.d}s`,
+                animationDuration: `${s.dur}s`,
+                '--star-op': 0.35 + forgeGlowTier * 0.2,
+              } as any}
+            />
+          ))}
+        </div>
+      )}
       <canvas
  
         ref={canvasRef} 

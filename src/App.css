@@ -1791,3 +1791,10 @@
 }
 
 
+
+/* ==== Brilho de forja: estrelas (+7/+8/+9) e aura de conjunto ==== */
+.forge-stars { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: visible; }
+.forge-star { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #ffffff; box-shadow: 0 0 5px #ffffff, 0 0 12px var(--glow-color, #ffd76a); opacity: 0; animation-name: forge-star-fly; animation-timing-function: linear; animation-iteration-count: infinite; }
+.forge-star::after { content: ''; position: absolute; left: 50%; top: 50%; width: 11px; height: 1.5px; margin-left: -5.5px; margin-top: -0.75px; border-radius: 2px; background: var(--glow-color, #ffd76a); opacity: 0.8; }
+.forge-star::before { content: ''; position: absolute; left: 50%; top: 50%; height: 11px; width: 1.5px; margin-left: -0.75px; margin-top: -5.5px; border-radius: 2px; background: var(--glow-color, #ffd76a); opacity: 0.8; }
+@keyframes forge-star-fly { 0% { opacity: 0; transform: translateY(10px) scale(0.5); } 30% { opacity: var(--star-op, 0.9); } 70% { opacity: var(--star-op, 0.9); } 100% { opacity: 0; transform: translateY(-14px) scale(1.15); } }
