@@ -503,11 +503,27 @@ function getForgeSparkTexture(): THREE.Texture {
 const _forgeSparkGroups = new Set<THREE.Group>();
 let _forgeSparkRaf = 0;
 let _forgeSparkT = 0;
+
+// Escolhe um ponto aleatório na SUPERFÍCIE da caixa (para as estrelas ficarem ao redor)
+function _forgeRandomSurfacePoint(center: THREE.Vector3, half: THREE.Vector3, out: THREE.Vector3) {
+  const ax = Math.floor(Math.random() * 6);
+  const fx = Math.random() * 2 - 1, fy = Math.random() * 2 - 1, fz = Math.random() * 2 - 1;
+  if (ax === 0) out.set(center.x + half.x, center.y + fy * half.y, center.z + fz * half.z);
+  else if (ax === 1) out.set(center.x - half.x, center.y + fy * half.y, center.z + fz * half.z);
+  else if (ax === 2) out.set(center.x + fx * half.x, center.y + half.y, center.z + fz * half.z);
+  else if (ax === 3) out.set(center.x + fx * half.x, center.y - half.y, center.z + fz * half.z);
+  else if (ax === 4) out.set(center.x + fx * half.x, center.y + fy * half.y, center.z + half.z);
+  else out.set(center.x + fx * half.x, center.y + fy * half.y, center.z - half.z);
+  return out;
+}
+
 function _tickForgeSpark() {
   _forgeSparkT += 0.05;
   _forgeSparkGroups.forEach(grp => {
     const model = grp.userData.forgeModel as THREE.Object3D | undefined;
     const baseSize = (grp.userData.forgeSparkSize as number) || 2;
+    const center = grp.userData.forgeCenter as THREE.Vector3 | undefined;
+    const half = grp.userData.forgeHalf as THREE.Vector3 | undefined;
     let inv = 1;
     if (model) {
       const ws = model.getWorldScale(new THREE.Vector3());
@@ -517,8 +533,21 @@ function _tickForgeSpark() {
       const spr = s as THREE.Sprite;
       const sc = baseSize * inv;
       spr.scale.set(sc, sc, 1);
+      // Deriva aleatória ao redor do item; ao sair da caixa, reaparece em outro ponto aleatório
+      if (center && half) {
+        const p = spr.position;
+        const vel = spr.userData.vel as THREE.Vector3 | undefined;
+        if (vel) p.add(vel);
+        if (p.x < center.x - half.x || p.x > center.x + half.x ||
+            p.y < center.y - half.y || p.y > center.y + half.y ||
+            p.z < center.z - half.z || p.z > center.z + half.z) {
+          _forgeRandomSurfacePoint(center, half, p);
+        }
+      }
       const m = spr.material as THREE.SpriteMaterial;
-      if (m) m.opacity = 0.2 + 0.7 * (0.5 + 0.5 * Math.sin(_forgeSparkT * 2 + i * 2.1));
+      const ph = (spr.userData.phase as number) ?? i * 2.1;
+      const sp = (spr.userData.speed as number) ?? 2;
+      if (m) m.opacity = 0.15 + 0.8 * (0.5 + 0.5 * Math.sin(_forgeSparkT * sp + ph));
     });
   });
   _forgeSparkRaf = requestAnimationFrame(_tickForgeSpark);
@@ -535,20 +564,26 @@ function attachForgeSparkles(model: THREE.Object3D, tier: number) {
     if (box.isEmpty()) return;
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
+    const half = new THREE.Vector3(size.x * 0.5 * 1.18, size.y * 0.5 * 1.18, size.z * 0.5 * 1.18);
     const tex = getForgeSparkTexture();
     const grp = new THREE.Group();
     grp.userData.forgeModel = model;
     grp.userData.forgeSparkSize = 1.6 + tier * 0.5; // tamanho MUNDIAL (compensado no tick)
+    grp.userData.forgeCenter = center.clone();
+    grp.userData.forgeHalf = half.clone();
     const count = 6 + tier * 4; // +7=10, +8=14, +9=18
+    const rate = 0.005; // velocidade de deriva (proporcional ao tamanho do item)
     for (let i = 0; i < count; i++) {
       const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color('#dff6ff'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, opacity: 0.7 });
       const spr = new THREE.Sprite(mat);
-      const nx = Math.random() * 2 - 1, ny = Math.random() * 2 - 1, nz = Math.random() * 2 - 1;
-      spr.position.set(
-        center.x + nx * size.x * 0.5 * 1.18,
-        center.y + ny * size.y * 0.5 * 1.18,
-        center.z + nz * size.z * 0.5 * 1.18
+      _forgeRandomSurfacePoint(center, half, spr.position);
+      spr.userData.vel = new THREE.Vector3(
+        (Math.random() * 2 - 1) * size.x * rate,
+        (Math.random() * 2 - 1) * size.y * rate,
+        (Math.random() * 2 - 1) * size.z * rate
       );
+      spr.userData.phase = Math.random() * Math.PI * 2;
+      spr.userData.speed = 1.5 + Math.random() * 2.5;
       grp.add(spr);
     }
     model.add(grp);
