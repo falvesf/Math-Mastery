@@ -372,70 +372,45 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
   });
 }
 
-// ===== Estrelas de forja NO MATERIAL (emissiveMap que desliza) =====
-// Textura de pontinhos brilhantes. Aplicada como `emissiveMap` no material do item
-// (armadura/arma em +7/+8/+9) e deslocada (offset) a cada frame → as "estrelas"
+// ===== Brilho de forja NO MATERIAL (emissiveMap com CÍRCULOS que deslizam) =====
+// Textura de círculos brilhantes aplicada como `emissiveMap` no material do item
+// (armadura/arma em +7/+8/+9) e deslocada (offset) a cada frame → os círculos
 // percorrem a superfície do equipamento. Nada de overlay/CSS.
-let _forgeGlintTex: THREE.Texture | null = null;
-function getForgeGlintTexture(): THREE.Texture {
-  if (_forgeGlintTex) return _forgeGlintTex;
+// Densidade por tier: +7 tem MENOS círculos; +8 a quantidade cheia (+9 igual a +8).
+const _forgeGlintTexByTier = new Map<number, THREE.Texture>();
+const FORGE_GLINT_COUNT: Record<number, number> = { 1: 14, 2: 30, 3: 30 };
+function getForgeGlintTexture(tier: number): THREE.Texture {
+  const t = tier <= 1 ? 1 : tier >= 3 ? 3 : 2;
+  const cached = _forgeGlintTexByTier.get(t);
+  if (cached) return cached;
   const c = document.createElement('canvas');
   c.width = 128; c.height = 128;
   const g = c.getContext('2d')!;
   g.fillStyle = '#000000';
   g.fillRect(0, 0, 128, 128);
-  // Estrelinhas de 4 pontas (estilo Metin2): dois losangos finos (cruz) + núcleo brilhante.
-  const drawSparkle = (cx: number, cy: number, size: number) => {
-    const halo = g.createRadialGradient(cx, cy, 0, cx, cy, size);
-    halo.addColorStop(0, 'rgba(210,246,255,0.55)');
-    halo.addColorStop(1, 'rgba(120,200,255,0)');
-    g.fillStyle = halo;
-    g.beginPath(); g.arc(cx, cy, size, 0, Math.PI * 2); g.fill();
-    const arm = g.createLinearGradient(cx - size, cy, cx + size, cy);
-    arm.addColorStop(0, 'rgba(255,255,255,0)');
-    arm.addColorStop(0.5, 'rgba(255,255,255,1)');
-    arm.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = arm;
-    g.beginPath();
-    g.moveTo(cx - size, cy); g.lineTo(cx, cy - size * 0.16); g.lineTo(cx + size, cy); g.lineTo(cx, cy + size * 0.16);
-    g.closePath(); g.fill();
-    const armV = g.createLinearGradient(cx, cy - size, cx, cy + size);
-    armV.addColorStop(0, 'rgba(255,255,255,0)');
-    armV.addColorStop(0.5, 'rgba(255,255,255,1)');
-    armV.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = armV;
-    g.beginPath();
-    g.moveTo(cx, cy - size); g.lineTo(cx + size * 0.16, cy); g.lineTo(cx, cy + size); g.lineTo(cx - size * 0.16, cy);
-    g.closePath(); g.fill();
-    const core = g.createRadialGradient(cx, cy, 0, cx, cy, size * 0.24);
-    core.addColorStop(0, 'rgba(255,255,255,1)');
-    core.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = core;
-    g.beginPath(); g.arc(cx, cy, size * 0.24, 0, Math.PI * 2); g.fill();
-  };
-  const spots: [number, number][] = [
-    [18, 22], [64, 14], [104, 30], [30, 62], [88, 60],
-    [14, 96], [58, 88], [100, 100], [44, 40], [76, 78],
-    [40, 10], [92, 44], [22, 76], [70, 108], [112, 70],
-    [6, 50], [52, 58], [82, 24], [36, 112], [108, 12],
-    [60, 70], [26, 34], [96, 84], [12, 118], [118, 46],
-    [48, 24], [74, 54], [34, 90], [86, 108], [56, 40],
-    [16, 8], [102, 118],
-  ];
-  spots.forEach(([x, y]) => drawSparkle(x, y, 6 + Math.random() * 5));
+  const count = FORGE_GLINT_COUNT[t] || 30;
+  for (let i = 0; i < count; i++) {
+    const x = Math.random() * 128, y = Math.random() * 128, r = 1.5 + Math.random() * 3.5;
+    const rad = g.createRadialGradient(x, y, 0, x, y, r * 2.4);
+    rad.addColorStop(0, 'rgba(255,255,255,1)');
+    rad.addColorStop(0.45, 'rgba(215,245,255,0.75)');
+    rad.addColorStop(1, 'rgba(150,215,255,0)');
+    g.fillStyle = rad;
+    g.beginPath(); g.arc(x, y, r * 2.4, 0, Math.PI * 2); g.fill();
+  }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  _forgeGlintTex = tex;
+  _forgeGlintTexByTier.set(t, tex);
   return tex;
 }
 
 let _forgeGlintRaf = 0;
 function _tickForgeGlint() {
-  if (_forgeGlintTex) {
-    _forgeGlintTex.offset.y = (_forgeGlintTex.offset.y - 0.006) % 1;
-    _forgeGlintTex.offset.x = (_forgeGlintTex.offset.x + 0.002) % 1;
-  }
+  _forgeGlintTexByTier.forEach(tex => {
+    tex.offset.y = (tex.offset.y - 0.006) % 1;
+    tex.offset.x = (tex.offset.x + 0.002) % 1;
+  });
   _forgeGlintRaf = requestAnimationFrame(_tickForgeGlint);
 }
 export function startForgeGlint() {
@@ -445,11 +420,11 @@ export function stopForgeGlint() {
   if (_forgeGlintRaf) { cancelAnimationFrame(_forgeGlintRaf); _forgeGlintRaf = 0; }
 }
 
-// Aplica as estrelas (emissiveMap) conforme o tier 1(+7)/2(+8)/3(+9).
+// Aplica os CÍRCULOS (emissiveMap) conforme o tier 1(+7)/2(+8)/3(+9).
 function applyForgeGlint(mat: any, tier: number) {
   if (tier <= 0 || !mat || !('emissiveMap' in mat)) return;
   try {
-    mat.emissiveMap = getForgeGlintTexture();
+    mat.emissiveMap = getForgeGlintTexture(tier);
     mat.emissive = new THREE.Color('#bfefff');
     mat.emissiveIntensity = 0.6 + tier * 0.45; // +7≈1.05, +8≈1.5, +9≈1.95
     mat.needsUpdate = true;
@@ -576,8 +551,20 @@ function attachForgeSparkles(model: THREE.Object3D, tier: number) {
     grp.userData.forgeHalf = half.clone();
     const count = 4 + tier * 2; // +7=6, +8=8, +9=10 (menos estrelas)
     const rate = 0.0025; // deriva mais lenta (ficam próximas do item)
+    // Cores por tier (estilo Metin2): +7 = 1 verde + resto branco; +8 = 1 rosé + 1 dourada
+    // + resto branco; +9 = todas brancas.
+    const starColors: string[] = new Array(count).fill('#ffffff');
+    if (tier === 1) {
+      starColors[Math.floor(Math.random() * count)] = '#4dff5a';
+    } else if (tier === 2) {
+      const i0 = Math.floor(Math.random() * count);
+      let i1 = Math.floor(Math.random() * count);
+      while (i1 === i0) i1 = Math.floor(Math.random() * count);
+      starColors[i0] = '#ff9ec7';
+      starColors[i1] = '#ffd24a';
+    }
     for (let i = 0; i < count; i++) {
-      const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color('#dff6ff'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, opacity: 0.7 });
+      const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(starColors[i]), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, opacity: 0.7 });
       const spr = new THREE.Sprite(mat);
       _forgeRandomSurfacePoint(center, half, spr.position);
       spr.userData.vel = new THREE.Vector3(
