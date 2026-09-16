@@ -310,31 +310,123 @@ function applyItemScale(model: THREE.Object3D, s: number, thickness: number) {
 // Cor do brilho de forja (visual "encantado" do Minecraft: ciano-esverdeado).
 export const FORGE_GLOW_COLOR = '#7ef0ff';
 
-// Aplica o BRILHO de forja às malhas do item, proporcional ao nível (+0 opaco →
-// +9 no ápice, igual aos itens encantados). Funciona em materiais Padrão/Phong
-// (emissive); em outros, clareia o `color`.
+// Environment map simples (gradiente céu→chão + um "sol") para o item REFLETIR a luz
+// quando ganha metalness/brilho — dá o aspecto metálico polido (esfera refletindo luz).
+let _forgeEnvMap: THREE.Texture | null = null;
+function getForgeEnvMap(): THREE.Texture | null {
+  if (_forgeEnvMap) return _forgeEnvMap;
+  try {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 128;
+    const g = c.getContext('2d')!;
+    const grad = g.createLinearGradient(0, 0, 0, 128);
+    grad.addColorStop(0, '#eaf4ff');
+    grad.addColorStop(0.45, '#9fbcd8');
+    grad.addColorStop(0.55, '#5b6b7d');
+    grad.addColorStop(1, '#20262e');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 128);
+    const sun = g.createRadialGradient(72, 34, 2, 72, 34, 46);
+    sun.addColorStop(0, 'rgba(255,255,255,1)');
+    sun.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = sun;
+    g.fillRect(0, 0, 256, 128);
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    _forgeEnvMap = tex;
+  } catch {
+    _forgeEnvMap = null;
+  }
+  return _forgeEnvMap;
+}
+
+// Aplica o BRILHO de forja (metalness/roughness + reflexo) proporcional ao nível:
+// +0 = opaco (superfície difusa) → +9 = metálico polido refletindo a luz.
 export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
   const lvl = Math.max(0, Math.min(9, Math.floor(level || 0)));
   if (lvl <= 0) return;
   const intensity = lvl / 9; // +1 ≈ 0.11 ... +9 = 1
+  const env = getForgeEnvMap();
   const gl = new THREE.Color(FORGE_GLOW_COLOR);
   model.traverse((child: any) => {
     if (!child?.isMesh && !child?.isSprite) return;
     const mats = Array.isArray(child.material) ? child.material : [child.material];
     mats.forEach((mat: any) => {
       if (!mat) return;
-      if ('emissive' in mat) {
-        // "Pinta" o material com um brilho (emissive) que cresce com o nível
-        mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.4);
-        if ('emissiveIntensity' in mat) mat.emissiveIntensity = 0.6;
+      if ('metalness' in mat || 'roughness' in mat || 'envMap' in mat) {
+        // Reflexo metálico cresce com o nível (superfície vai ficando polida)
+        if (env) mat.envMap = env;
+        if ('envMapIntensity' in mat) mat.envMapIntensity = 0.4 + intensity * 1.6;
+        if ('metalness' in mat) mat.metalness = Math.min(1, (Number(mat.metalness) || 0) + intensity * 0.75);
+        if ('roughness' in mat) mat.roughness = Math.max(0.08, (Number(mat.roughness) || 1) * (1 - intensity * 0.85));
+        // Um leve tom ciano "encantado" no nível alto (sem deixar opaco)
+        if ('emissive' in mat) mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.06);
       } else if (mat.color) {
-        // Sem emissive (ex.: sprite 2.5D): clareia levemente conforme o nível
+        // Sem metalness (ex.: sprite 2.5D): clareia levemente conforme o nível
         if (!mat._forgeBase) mat._forgeBase = mat.color.clone();
         mat.color.copy(mat._forgeBase).lerp(new THREE.Color(0xffffff), intensity * 0.22);
       }
       mat.needsUpdate = true;
     });
   });
+}
+
+// ===== Estrelas de forja NO MATERIAL (emissiveMap que desliza) =====
+// Textura de pontinhos brilhantes. Aplicada como `emissiveMap` no material do item
+// (armadura/arma em +7/+8/+9) e deslocada (offset) a cada frame → as "estrelas"
+// percorrem a superfície do equipamento. Nada de overlay/CSS.
+let _forgeGlintTex: THREE.Texture | null = null;
+function getForgeGlintTexture(): THREE.Texture {
+  if (_forgeGlintTex) return _forgeGlintTex;
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#000000';
+  g.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 42; i++) {
+    const x = Math.random() * 128, y = Math.random() * 128, r = 1 + Math.random() * 2;
+    const rad = g.createRadialGradient(x, y, 0, x, y, r * 5);
+    rad.addColorStop(0, 'rgba(255,255,255,1)');
+    rad.addColorStop(0.35, 'rgba(190,240,255,0.7)');
+    rad.addColorStop(1, 'rgba(120,200,255,0)');
+    g.fillStyle = rad;
+    g.beginPath();
+    g.arc(x, y, r * 5, 0, Math.PI * 2);
+    g.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  _forgeGlintTex = tex;
+  return tex;
+}
+
+let _forgeGlintRaf = 0;
+function _tickForgeGlint() {
+  if (_forgeGlintTex) {
+    _forgeGlintTex.offset.y = (_forgeGlintTex.offset.y - 0.006) % 1;
+    _forgeGlintTex.offset.x = (_forgeGlintTex.offset.x + 0.002) % 1;
+  }
+  _forgeGlintRaf = requestAnimationFrame(_tickForgeGlint);
+}
+export function startForgeGlint() {
+  if (!_forgeGlintRaf) _forgeGlintRaf = requestAnimationFrame(_tickForgeGlint);
+}
+export function stopForgeGlint() {
+  if (_forgeGlintRaf) { cancelAnimationFrame(_forgeGlintRaf); _forgeGlintRaf = 0; }
+}
+
+// Aplica as estrelas (emissiveMap) conforme o tier 1(+7)/2(+8)/3(+9).
+function applyForgeGlint(mat: any, tier: number) {
+  if (tier <= 0 || !mat || !('emissiveMap' in mat)) return;
+  try {
+    mat.emissiveMap = getForgeGlintTexture();
+    mat.emissive = new THREE.Color('#bfefff');
+    mat.emissiveIntensity = 0.35 + tier * 0.3; // +7≈0.65, +8≈0.95, +9≈1.25
+    mat.needsUpdate = true;
+    startForgeGlint();
+  } catch (e) { /* sem glint */ }
 }
 
 const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boolean = false) => {
@@ -449,6 +541,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     return () => window.removeEventListener('avatar-transforms-updated', handleUpdate);
   }, []);
 
+  // Para a animação das estrelas de forja ao desmontar
+  useEffect(() => () => { stopForgeGlint(); }, []);
+
   const customHairRef = useRef<THREE.Group | null>(null);
 
   // Tamanho em batalha (customZoom) é integrado com o enquadramento de câmera
@@ -520,7 +615,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
 
 
   // Aura de CONJUNTO (armadura completa da mesma raridade, tudo +9). O brilho por item
-  // (+7/+8/+9) virou estrelas percorrendo o equipamento (camada .forge-stars).
+  // (+7/+8/+9) é feito NO MATERIAL: reflexo metálico + estrelas (emissiveMap deslizante).
   const setAura = getEquippedSetAura(equippedItems);
   let auraStyle: React.CSSProperties = { position: 'absolute', top: '-20%', left: '-20%', right: '-20%', bottom: '-20%', pointerEvents: 'none', zIndex: -1, borderRadius: '50%' };
   if (setAura.active) {
@@ -862,6 +957,20 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             // Brilho de forja: PINTA o material do equipamento (emissive/cor no THREE),
 // proporcional ao nível (+0 opaco → +9 máximo). Nada de overlay/CSS.
             applyForgeGlowToModel(model, item.forgeLevel || 0);
+            // Estrelas de forja (emissiveMap que desliza) só na armadura e na arma, +7/+8/+9
+            {
+              const _lvl = item.forgeLevel || 0;
+              const _tier = _lvl >= 9 ? 3 : _lvl >= 8 ? 2 : _lvl >= 7 ? 1 : 0;
+              const _isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
+              if (_tier > 0 && _isGear) {
+                model.traverse(child => {
+                  const m = child as THREE.Mesh;
+                  if (!m.isMesh) return;
+                  const mats = Array.isArray(m.material) ? m.material : [m.material];
+                  mats.forEach(mm => applyForgeGlint(mm, _tier));
+                });
+              }
+            }
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
               const isDefense = item.itemCategory === 'defense';
               const isLeftHanded = config?.handedness === 'left';
