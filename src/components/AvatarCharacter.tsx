@@ -611,7 +611,7 @@ export function stopForgeSparkles() {
   if (_forgeSparkRaf) { cancelAnimationFrame(_forgeSparkRaf); _forgeSparkRaf = 0; }
 }
 
-function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScale: number = 0.98) {
+function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScale: number = 0.98, countMul: number = 1) {
   if (tier <= 0) return;
   try {
     const box = new THREE.Box3().setFromObject(model);
@@ -625,7 +625,7 @@ function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScale: numb
     grp.userData.forgeSparkSize = 0.95 + tier * 0.25; // tamanho MUNDIAL base (compensado no tick)
     grp.userData.forgeCenter = center.clone();
     grp.userData.forgeHalf = half.clone();
-    const count = 4 + tier * 2; // +7=6, +8=8, +9=10 (menos estrelas)
+    const count = Math.max(3, Math.round((4 + tier * 2) * countMul)); // arma: 6/8/10; armadura: o dobro
     const rate = 0.0025; // deriva mais lenta (ficam próximas do item)
     // Cores por tier (estilo Metin2): +7 = 1 verde + resto branco; +8 = 1 rosé + 1 dourada
     // + resto branco; +9 = todas brancas.
@@ -1202,8 +1202,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                   mats.forEach(mm => applyForgeGlint(mm, _tier, _style));
                 });
                 // arma: sparkles justas à lâmina; armadura (volume grande): um pouco PARA FORA
-                // da caixa para não ficarem ocluídas dentro da malha.
-                attachForgeSparkles(model, _tier, _isWeapon ? 0.98 : 1.3);
+                // da caixa (e em maior quantidade) para não ficarem ocluídas dentro da malha.
+                attachForgeSparkles(model, _tier, _isWeapon ? 0.98 : 1.3, _isWeapon ? 1 : 2);
               }
             }
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
