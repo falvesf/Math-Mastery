@@ -367,17 +367,19 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
       const isPbr = ('metalness' in mat || 'roughness' in mat || 'envMap' in mat);
       if (isPbr) {
         if (env) mat.envMap = env;
-        // +9: metálico polido refletindo; +0: fosco (película que tira o brilho)
-        if ('metalness' in mat) mat.metalness = _forgeLerp(Math.min(1, mat._forgeBaseMetalness + 0.75), mat._forgeBaseMetalness * 0.12, film);
-        if ('roughness' in mat) mat.roughness = _forgeLerp(Math.max(0.08, mat._forgeBaseRoughness * 0.15), 0.92, film);
-        if ('envMapIntensity' in mat) mat.envMapIntensity = _forgeLerp(2.0, 0.1, film);
+        // +9: metálico polido refletindo; +0: bem fosco (película que tira o brilho)
+        if ('metalness' in mat) mat.metalness = _forgeLerp(Math.min(1, mat._forgeBaseMetalness + 0.75), 0, film);
+        if ('roughness' in mat) mat.roughness = _forgeLerp(Math.max(0.08, mat._forgeBaseRoughness * 0.15), 1.0, film);
+        if ('envMapIntensity' in mat) mat.envMapIntensity = _forgeLerp(2.0, 0.02, film);
         // Um leve tom ciano "encantado" só nos níveis altos
         if ('emissive' in mat) mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.06);
       }
       if (mat.color) {
         const c = mat._forgeBaseColor.clone();
         if (!isPbr) c.lerp(white, intensity * 0.22); // sprite 2.5D: clareia conforme o nível
-        c.multiplyScalar(1 - film * 0.15);           // película escurece levemente no nível baixo
+        c.multiplyScalar(1 - film * 0.28);           // película escurece mais no nível baixo
+        const lum = c.r * 0.299 + c.g * 0.587 + c.b * 0.114; // dessatura (aspecto opaco)
+        c.lerp(new THREE.Color(lum, lum, lum), film * 0.25);
         mat.color.copy(c);
       }
       mat.needsUpdate = true;
