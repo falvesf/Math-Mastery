@@ -377,9 +377,9 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
       if (mat.color) {
         const c = mat._forgeBaseColor.clone();
         if (!isPbr) c.lerp(white, intensity * 0.22); // sprite 2.5D: clareia conforme o nível
-        c.multiplyScalar(1 - film * 0.28);           // película escurece mais no nível baixo
+        c.multiplyScalar(1 - film * 0.38);           // película escurece bem no nível baixo
         const lum = c.r * 0.299 + c.g * 0.587 + c.b * 0.114; // dessatura (aspecto opaco)
-        c.lerp(new THREE.Color(lum, lum, lum), film * 0.25);
+        c.lerp(new THREE.Color(lum, lum, lum), film * 0.4);
         mat.color.copy(c);
       }
       mat.needsUpdate = true;
@@ -1755,7 +1755,10 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           if (!appliedTransform) {
             mesh.position.set(0, partBase.y, 0);
           }
-          
+
+          // Película de forja também nas peças de skin (Minecraft): escurece/dessatura o +0.
+          applyForgeGlowToModel(mesh, item.forgeLevel || 0);
+
           parent.add(mesh);
           loadedModels.push({ parent, model: mesh });
           loadedModelsRef.current.push({ itemId: item.itemId || item.docId, avatarPart: item.avatarPart, model: mesh, item });
