@@ -847,10 +847,12 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   // Aura de CONJUNTO (armadura completa da mesma raridade, tudo +9). O brilho por item
   // (+7/+8/+9) é feito NO MATERIAL: reflexo metálico + estrelas (emissiveMap deslizante).
   const setAura = getEquippedSetAura(equippedItems);
-  let auraStyle: React.CSSProperties = { position: 'absolute', top: '-20%', left: '-20%', right: '-20%', bottom: '-20%', pointerEvents: 'none', zIndex: -1, borderRadius: '50%' };
+  // Aura posicionada por TRANSFORM (translate/scale) — não usa top/bottom negativos,
+  // então NÃO vaza do container nem desloca o personagem.
+  let auraStyle: React.CSSProperties = { position: 'absolute', top: '50%', left: '50%', width: '150%', height: '150%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: -1, borderRadius: '50%' };
   if (setAura.active) {
     auraStyle.background = `radial-gradient(circle, ${hexToRgba(setAura.color, 0.55)} 0%, ${hexToRgba(setAura.color, 0.18)} 45%, transparent 72%)`;
-    auraStyle.animation = 'pulse 2s infinite alternate';
+    auraStyle.animation = 'forge-aura-pulse 2s infinite alternate';
     auraStyle.filter = 'blur(2px)';
   } else {
     auraStyle.display = 'none';

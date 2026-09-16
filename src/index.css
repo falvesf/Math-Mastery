@@ -254,6 +254,12 @@ h3 {
 }
 @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.1); } }
 
+/* Aura de conjunto da forja: mantém o translate(-50%,-50%) para NÃO deslocar o layout */
+@keyframes forge-aura-pulse {
+  0%, 100% { opacity: 0.95; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 0.55; transform: translate(-50%, -50%) scale(1.08); }
+}
+
 /* Heart disappearing animation - right to left */
 @keyframes heart-die {
   0% { transform: scale(1); opacity: 1; filter: hue-rotate(0deg); }
