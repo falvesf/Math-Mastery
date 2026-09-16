@@ -376,9 +376,11 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
 // Textura de círculos brilhantes aplicada como `emissiveMap` no material do item
 // (armadura/arma em +7/+8/+9) e deslocada (offset) a cada frame → os círculos
 // percorrem a superfície do equipamento. Nada de overlay/CSS.
-// Densidade por tier: +7 tem MENOS círculos; +8 a quantidade cheia (+9 igual a +8).
+// Densidade e velocidade por tier: +7 tem menos círculos e desliza mais devagar;
+// +8 aumenta; +9 fica com a quantidade e a velocidade cheias.
 const _forgeGlintTexByTier = new Map<number, THREE.Texture>();
-const FORGE_GLINT_COUNT: Record<number, number> = { 1: 14, 2: 30, 3: 30 };
+const FORGE_GLINT_COUNT: Record<number, number> = { 1: 8, 2: 18, 3: 30 };
+const FORGE_GLINT_SPEED: Record<number, number> = { 1: 0.45, 2: 0.72, 3: 1 };
 function getForgeGlintTexture(tier: number): THREE.Texture {
   const t = tier <= 1 ? 1 : tier >= 3 ? 3 : 2;
   const cached = _forgeGlintTexByTier.get(t);
@@ -401,6 +403,7 @@ function getForgeGlintTexture(tier: number): THREE.Texture {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
+  tex.userData.forgeSpeed = FORGE_GLINT_SPEED[t] ?? 1;
   _forgeGlintTexByTier.set(t, tex);
   return tex;
 }
@@ -408,8 +411,9 @@ function getForgeGlintTexture(tier: number): THREE.Texture {
 let _forgeGlintRaf = 0;
 function _tickForgeGlint() {
   _forgeGlintTexByTier.forEach(tex => {
-    tex.offset.y = (tex.offset.y - 0.006) % 1;
-    tex.offset.x = (tex.offset.x + 0.002) % 1;
+    const spd = (tex.userData.forgeSpeed as number) ?? 1;
+    tex.offset.y = (tex.offset.y - 0.006 * spd) % 1;
+    tex.offset.x = (tex.offset.x + 0.002 * spd) % 1;
   });
   _forgeGlintRaf = requestAnimationFrame(_tickForgeGlint);
 }
