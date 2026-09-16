@@ -468,7 +468,7 @@ function getForgeReflectTexture(tier: number): THREE.Texture {
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   const _spd = FORGE_GLINT_SPEED[t] ?? 1;
-  tex.userData.forgeSpeedX = -0.03 * _spd;
+  tex.userData.forgeSpeedX = -0.0135 * _spd; // +9 fica com a velocidade que o +7 tinha antes
   tex.userData.forgeSpeedY = 0;
   _forgeReflectCache.set(t, tex);
   _forgeGlintAnimated.add(tex);
