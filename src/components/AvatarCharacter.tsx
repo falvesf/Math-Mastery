@@ -416,8 +416,13 @@ function getForgeGlintTexture(): THREE.Texture {
   const spots: [number, number][] = [
     [18, 22], [64, 14], [104, 30], [30, 62], [88, 60],
     [14, 96], [58, 88], [100, 100], [44, 40], [76, 78],
+    [40, 10], [92, 44], [22, 76], [70, 108], [112, 70],
+    [6, 50], [52, 58], [82, 24], [36, 112], [108, 12],
+    [60, 70], [26, 34], [96, 84], [12, 118], [118, 46],
+    [48, 24], [74, 54], [34, 90], [86, 108], [56, 40],
+    [16, 8], [102, 118],
   ];
-  spots.forEach(([x, y]) => drawSparkle(x, y, 7 + Math.random() * 4));
+  spots.forEach(([x, y]) => drawSparkle(x, y, 6 + Math.random() * 5));
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
@@ -446,10 +451,110 @@ function applyForgeGlint(mat: any, tier: number) {
   try {
     mat.emissiveMap = getForgeGlintTexture();
     mat.emissive = new THREE.Color('#bfefff');
-    mat.emissiveIntensity = 0.35 + tier * 0.3; // +7≈0.65, +8≈0.95, +9≈1.25
+    mat.emissiveIntensity = 0.6 + tier * 0.45; // +7≈1.05, +8≈1.5, +9≈1.95
     mat.needsUpdate = true;
     startForgeGlint();
   } catch (e) { /* sem glint */ }
+}
+
+// ===== Sparkles que SOBRESSAEM da arma (sprites filhas do item) =====
+// Ficam "fora" da silhueta mas acompanham a peça. Tamanho é compensado pelo scale
+// do modelo (armas são escaladas ~10x) para NÃO inflar e não deslocar o avatar.
+let _forgeSparkTex: THREE.Texture | null = null;
+function getForgeSparkTexture(): THREE.Texture {
+  if (_forgeSparkTex) return _forgeSparkTex;
+  const S = 64;
+  const c = document.createElement('canvas');
+  c.width = S; c.height = S;
+  const g = c.getContext('2d')!;
+  const cx = S / 2, cy = S / 2;
+  const size = S / 2;
+  const halo = g.createRadialGradient(cx, cy, 0, cx, cy, size);
+  halo.addColorStop(0, 'rgba(220,248,255,0.7)');
+  halo.addColorStop(1, 'rgba(120,200,255,0)');
+  g.fillStyle = halo;
+  g.beginPath(); g.arc(cx, cy, size, 0, Math.PI * 2); g.fill();
+  const armH = g.createLinearGradient(0, cy, S, cy);
+  armH.addColorStop(0, 'rgba(255,255,255,0)');
+  armH.addColorStop(0.5, 'rgba(255,255,255,1)');
+  armH.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = armH;
+  g.beginPath();
+  g.moveTo(0, cy); g.lineTo(cx, cy - 5); g.lineTo(S, cy); g.lineTo(cx, cy + 5);
+  g.closePath(); g.fill();
+  const armV = g.createLinearGradient(cx, 0, cx, S);
+  armV.addColorStop(0, 'rgba(255,255,255,0)');
+  armV.addColorStop(0.5, 'rgba(255,255,255,1)');
+  armV.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = armV;
+  g.beginPath();
+  g.moveTo(cx, 0); g.lineTo(cx + 5, cy); g.lineTo(cx, S); g.lineTo(cx - 5, cy);
+  g.closePath(); g.fill();
+  const core = g.createRadialGradient(cx, cy, 0, cx, cy, size * 0.36);
+  core.addColorStop(0, 'rgba(255,255,255,1)');
+  core.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = core;
+  g.beginPath(); g.arc(cx, cy, size * 0.36, 0, Math.PI * 2); g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  _forgeSparkTex = tex;
+  return tex;
+}
+
+const _forgeSparkGroups = new Set<THREE.Group>();
+let _forgeSparkRaf = 0;
+let _forgeSparkT = 0;
+function _tickForgeSpark() {
+  _forgeSparkT += 0.05;
+  _forgeSparkGroups.forEach(grp => {
+    const model = grp.userData.forgeModel as THREE.Object3D | undefined;
+    const baseSize = (grp.userData.forgeSparkSize as number) || 2;
+    let inv = 1;
+    if (model) {
+      const ws = model.getWorldScale(new THREE.Vector3());
+      inv = 1 / Math.max(0.0001, (Math.abs(ws.x) + Math.abs(ws.y) + Math.abs(ws.z)) / 3);
+    }
+    grp.children.forEach((s, i) => {
+      const spr = s as THREE.Sprite;
+      const sc = baseSize * inv;
+      spr.scale.set(sc, sc, 1);
+      const m = spr.material as THREE.SpriteMaterial;
+      if (m) m.opacity = 0.2 + 0.7 * (0.5 + 0.5 * Math.sin(_forgeSparkT * 2 + i * 2.1));
+    });
+  });
+  _forgeSparkRaf = requestAnimationFrame(_tickForgeSpark);
+}
+export function stopForgeSparkles() {
+  _forgeSparkGroups.clear();
+  if (_forgeSparkRaf) { cancelAnimationFrame(_forgeSparkRaf); _forgeSparkRaf = 0; }
+}
+
+function attachForgeSparkles(model: THREE.Object3D, tier: number) {
+  if (tier <= 0) return;
+  try {
+    const box = new THREE.Box3().setFromObject(model);
+    if (box.isEmpty()) return;
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const tex = getForgeSparkTexture();
+    const grp = new THREE.Group();
+    grp.userData.forgeModel = model;
+    grp.userData.forgeSparkSize = 1.6 + tier * 0.5; // tamanho MUNDIAL (compensado no tick)
+    const count = 6 + tier * 4; // +7=10, +8=14, +9=18
+    for (let i = 0; i < count; i++) {
+      const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color('#dff6ff'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, opacity: 0.7 });
+      const spr = new THREE.Sprite(mat);
+      const nx = Math.random() * 2 - 1, ny = Math.random() * 2 - 1, nz = Math.random() * 2 - 1;
+      spr.position.set(
+        center.x + nx * size.x * 0.5 * 1.18,
+        center.y + ny * size.y * 0.5 * 1.18,
+        center.z + nz * size.z * 0.5 * 1.18
+      );
+      grp.add(spr);
+    }
+    model.add(grp);
+    _forgeSparkGroups.add(grp);
+    if (!_forgeSparkRaf) _forgeSparkRaf = requestAnimationFrame(_tickForgeSpark);
+  } catch (e) { /* sem sparkles */ }
 }
 
 const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boolean = false) => {
@@ -565,7 +670,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   }, []);
 
   // Para a animação das estrelas de forja ao desmontar
-  useEffect(() => () => { stopForgeGlint(); }, []);
+  useEffect(() => () => { stopForgeGlint(); stopForgeSparkles(); }, []);
 
   const customHairRef = useRef<THREE.Group | null>(null);
 
@@ -992,6 +1097,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                   const mats = Array.isArray(m.material) ? m.material : [m.material];
                   mats.forEach(mm => applyForgeGlint(mm, _tier));
                 });
+                attachForgeSparkles(model, _tier);
               }
             }
             if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
