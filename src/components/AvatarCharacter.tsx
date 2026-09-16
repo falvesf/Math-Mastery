@@ -384,17 +384,40 @@ function getForgeGlintTexture(): THREE.Texture {
   const g = c.getContext('2d')!;
   g.fillStyle = '#000000';
   g.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 42; i++) {
-    const x = Math.random() * 128, y = Math.random() * 128, r = 1 + Math.random() * 2;
-    const rad = g.createRadialGradient(x, y, 0, x, y, r * 5);
-    rad.addColorStop(0, 'rgba(255,255,255,1)');
-    rad.addColorStop(0.35, 'rgba(190,240,255,0.7)');
-    rad.addColorStop(1, 'rgba(120,200,255,0)');
-    g.fillStyle = rad;
+  // Estrelinhas de 4 pontas (estilo Metin2): dois losangos finos (cruz) + núcleo brilhante.
+  const drawSparkle = (cx: number, cy: number, size: number) => {
+    const halo = g.createRadialGradient(cx, cy, 0, cx, cy, size);
+    halo.addColorStop(0, 'rgba(210,246,255,0.55)');
+    halo.addColorStop(1, 'rgba(120,200,255,0)');
+    g.fillStyle = halo;
+    g.beginPath(); g.arc(cx, cy, size, 0, Math.PI * 2); g.fill();
+    const arm = g.createLinearGradient(cx - size, cy, cx + size, cy);
+    arm.addColorStop(0, 'rgba(255,255,255,0)');
+    arm.addColorStop(0.5, 'rgba(255,255,255,1)');
+    arm.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = arm;
     g.beginPath();
-    g.arc(x, y, r * 5, 0, Math.PI * 2);
-    g.fill();
-  }
+    g.moveTo(cx - size, cy); g.lineTo(cx, cy - size * 0.16); g.lineTo(cx + size, cy); g.lineTo(cx, cy + size * 0.16);
+    g.closePath(); g.fill();
+    const armV = g.createLinearGradient(cx, cy - size, cx, cy + size);
+    armV.addColorStop(0, 'rgba(255,255,255,0)');
+    armV.addColorStop(0.5, 'rgba(255,255,255,1)');
+    armV.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = armV;
+    g.beginPath();
+    g.moveTo(cx, cy - size); g.lineTo(cx + size * 0.16, cy); g.lineTo(cx, cy + size); g.lineTo(cx - size * 0.16, cy);
+    g.closePath(); g.fill();
+    const core = g.createRadialGradient(cx, cy, 0, cx, cy, size * 0.24);
+    core.addColorStop(0, 'rgba(255,255,255,1)');
+    core.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = core;
+    g.beginPath(); g.arc(cx, cy, size * 0.24, 0, Math.PI * 2); g.fill();
+  };
+  const spots: [number, number][] = [
+    [18, 22], [64, 14], [104, 30], [30, 62], [88, 60],
+    [14, 96], [58, 88], [100, 100], [44, 40], [76, 78],
+  ];
+  spots.forEach(([x, y]) => drawSparkle(x, y, 7 + Math.random() * 4));
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
