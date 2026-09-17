@@ -3053,14 +3053,16 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (pAv) tops.push(pAv.getBoundingClientRect().top);
       if (mAv) tops.push(mAv.getBoundingClientRect().top);
       if (tops.length === 0) return;
-      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops));
+      // Desconta o "padding" do canvas acima da cabeça do boneco.
+      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops) + 60);
     };
     const raf = requestAnimationFrame(measure);
+    const timers = [120, 450, 900, 1600].map(t => setTimeout(measure, t));
     window.addEventListener('resize', measure);
     const ro = new ResizeObserver(() => measure());
     if (questionTitleRef.current) ro.observe(questionTitleRef.current);
     if (questionOptionsRef.current) ro.observe(questionOptionsRef.current);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', measure); ro.disconnect(); };
+    return () => { cancelAnimationFrame(raf); timers.forEach(clearTimeout); window.removeEventListener('resize', measure); ro.disconnect(); };
   }, [gameState, currentQIndex, arenaDebug, feedback, eliminatedOptions.length]);
 
   const handleUsePowerup = async (item: UserItem) => {

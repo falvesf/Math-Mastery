@@ -3039,17 +3039,20 @@ useEffect(() => {
       if (pAv) tops.push(pAv.getBoundingClientRect().top);
       if (mAv) tops.push(mAv.getBoundingClientRect().top);
       if (tops.length === 0) return;
-      // Só move para baixo se as alternativas REALMENTE entrariam na área dos bonecos.
-      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops));
+      // Desconta o "padding" do canvas acima da cabeça (o container do avatar começa
+      // mais alto que o boneco visível). Só move para baixo quando as alternativas
+      // REALMENTE entram na altura do boneco.
+      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops) + 60);
     };
-    // Mede após o layout estabilizar (pergunta/estado mudam).
+    // Mede após o layout estabilizar (pergunta/imagem/entrada da arena mudam a altura).
     const raf = requestAnimationFrame(measure);
+    const timers = [120, 450, 900, 1600].map(t => setTimeout(measure, t));
     window.addEventListener('resize', measure);
     // A imagem da pergunta carrega depois e muda a altura → re-mede quando o título/opções mudarem de tamanho.
     const ro = new ResizeObserver(() => measure());
     if (questionTitleRef.current) ro.observe(questionTitleRef.current);
     if (questionOptionsRef.current) ro.observe(questionOptionsRef.current);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', measure); ro.disconnect(); };
+    return () => { cancelAnimationFrame(raf); timers.forEach(clearTimeout); window.removeEventListener('resize', measure); ro.disconnect(); };
   }, [gameState, currentQIndex, arenaDebug, feedback, eliminatedOptions.length]);
 
   const handleUsePowerup = async (item: UserItem) => {
