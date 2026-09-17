@@ -360,15 +360,50 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
                 <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.35rem' }}>🏟️ Arena (fundo da missão)</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <button onClick={() => setArenaIdx(Math.max(0, arenaIdx - 1))} disabled={arenaIdx === 0} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0.4rem', color: 'var(--text-primary)', cursor: 'pointer' }}><ChevronLeft size={16} /></button>
-                  <div style={{ flex: 1, height: '90px', borderRadius: '10px', overflow: 'hidden', border: '2px solid var(--gold-primary)', background: '#000 center/cover no-repeat', backgroundImage: arenas[arenaIdx] ? `url(${arenas[arenaIdx].battle_bg_url || arenas[arenaIdx].battleBgUrl})` : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {!arenas[arenaIdx] && <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Sem arenas disponíveis</span>}
+                  <div style={{ flex: 1, height: '90px', borderRadius: '10px', overflow: 'hidden', border: '2px solid var(--gold-primary)', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {!arenas[arenaIdx] ? (
+                      <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Sem arenas disponíveis</span>
+                    ) : arenas[arenaIdx].is3D || (arenas[arenaIdx].battle_bg_url && arenas[arenaIdx].battle_bg_url.startsWith('voxel:')) ? (
+                      <div style={{
+                        width: '100%',
+                        height: '100%',
+                        background: `radial-gradient(circle at 50% 30%, ${arenas[arenaIdx].skyColor || '#1e1b4b'} 0%, #0a0e1a 100%)`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '2px',
+                        border: `1px solid ${arenas[arenaIdx].primaryColor || '#2dd4bf'}`,
+                      }}>
+                        <span style={{ fontSize: '1.8rem' }}>{arenas[arenaIdx].icon || '🧱'}</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: '900', color: '#fff' }}>{arenas[arenaIdx].title}</span>
+                        <span style={{ fontSize: '0.55rem', fontWeight: 'bold', background: '#2dd4bf', color: '#000', padding: '1px 6px', borderRadius: '4px' }}>
+                          🧱 ARENA 3D VOXEL
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        height: '100%',
+                        backgroundImage: `url(${arenas[arenaIdx].battle_bg_url || arenas[arenaIdx].battleBgUrl})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                      }} />
+                    )}
                   </div>
                   <button onClick={() => setArenaIdx(Math.min(arenas.length - 1, arenaIdx + 1))} disabled={arenaIdx >= arenas.length - 1} style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0.4rem', color: 'var(--text-primary)', cursor: 'pointer' }}><ChevronRight size={16} /></button>
                 </div>
-                {arenas[arenaIdx] && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>
-                    {arenas[arenaIdx].title || arenas[arenaIdx].name || 'Arena'}
+                {arenas[arenaIdx] && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 'bold', color: arenas[arenaIdx].is3D ? '#2dd4bf' : 'var(--text-primary)' }}>
+                      {arenas[arenaIdx].title || arenas[arenaIdx].name || 'Arena'}
+                    </span>
+                    {arenas[arenaIdx].is3D && (
+                      <span style={{ padding: '0.05rem 0.4rem', borderRadius: '6px', background: 'rgba(45,212,191,0.2)', color: '#2dd4bf', fontSize: '0.62rem', fontWeight: 'bold' }}>
+                        ✨ Voxel 3D
+                      </span>
+                    )}
                     {arenas[arenaIdx].tenant_id && arenaTenantNames[arenas[arenaIdx].tenant_id] && (
-                      <span style={{ marginLeft: '0.4rem', padding: '0.05rem 0.4rem', borderRadius: '8px', background: 'rgba(139,92,246,0.2)', color: '#c084fc', fontSize: '0.62rem', fontWeight: 'bold' }}>
+                      <span style={{ padding: '0.05rem 0.4rem', borderRadius: '8px', background: 'rgba(139,92,246,0.2)', color: '#c084fc', fontSize: '0.62rem', fontWeight: 'bold' }}>
                         {arenaTenantNames[arenas[arenaIdx].tenant_id]}
                       </span>
                     )}

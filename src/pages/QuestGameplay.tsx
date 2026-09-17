@@ -1164,6 +1164,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
         qData.questions = processedQuestions;
 
         setQuest(qData);
+        if (qData.battleBgUrl?.startsWith('voxel:')) {
+          setArenaRenderMode('3d');
+        }
         setCurrentXp(qData.baseXp);
         setGameState('intro');
 
@@ -3397,7 +3400,7 @@ useEffect(() => {
                   }}
                 >
                   <span style={{ fontSize: '1rem' }}>{arenaRenderMode === '3d' ? '🧱' : '🖼️'}</span>
-                  <span>{arenaRenderMode === '3d' ? 'Cenário: 3D Voxel' : 'Cenário: 2D'}</span>
+                  <span>{arenaRenderMode === '3d' ? `Cenário: 3D (${(quest?.battleBgUrl?.startsWith('voxel:') ? quest.battleBgUrl.replace('voxel:', '') : (arenaDebug.biome3D || 'plains')).toUpperCase()})` : 'Cenário: 2D'}</span>
                 </button>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5  ? 'var(--accent-red)'  : 'var(--text-primary)' }}>
@@ -3416,6 +3419,7 @@ useEffect(() => {
             {arenaRenderMode === '3d' ? (
               <VoxelArena3D
                 deviceMode={effectiveDevice}
+                biome={(quest?.battleBgUrl?.startsWith('voxel:') ? quest.battleBgUrl.replace('voxel:', '') : (arenaDebug.biome3D || 'plains')) as any}
                 cameraPitch={arenaDebug.cameraPitch3D}
                 cameraDist={arenaDebug.cameraDist3D}
                 cameraTargetY={arenaDebug.cameraTargetY3D}
@@ -3657,7 +3661,7 @@ useEffect(() => {
             {/* Player Side */}
             <div 
               ref={playerSideRef}
-              className={`quest-arena-side-player ${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : ''} ${userData?.avatarConfig?.customModelUrl ? 'is-3d' : ''}`}
+              className={`quest-arena-side-player ${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : ''} ${(userData?.avatarConfig?.customModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
               style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (playerAnim.startsWith('attack') || playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 30 : (monsterAnim.startsWith('death-') ? 20 : 26), pointerEvents: 'none' }}
             >
               {playerBubble && (
@@ -3669,7 +3673,9 @@ useEffect(() => {
               <div style={{ position: 'absolute', top: '-20px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap' }}>
                 <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
               </div>
-              <div className="quest-arena-avatars" style={{ position: 'relative', width: playerAnim.startsWith('attack-fatal') ? '220px' : '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', transform: `translate(${arenaRenderMode === '3d' ? (arenaDebug.playerOffsetX3D ?? 0) : arenaDebug.playerOffsetX}px, ${arenaRenderMode === '3d' ? 0 : arenaDebug.playerOffsetY}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.playerScale3D ?? 1) : arenaDebug.playerScale})` }}>
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '220px' : '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', transform: `translate(${arenaRenderMode === '3d' ? (arenaDebug.playerOffsetX3D ?? 0) : arenaDebug.playerOffsetX}px, ${arenaRenderMode === '3d' ? 0 : arenaDebug.playerOffsetY}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.playerScale3D ?? 1) : arenaDebug.playerScale})` }}>
+                {/* Sombra dinâmica do personagem */}
+                <div className="avatar-ground-shadow" />
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-80px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
                   <ConsumableAnimationOverlay anim={activeConsumableAnim} onComplete={() => setActiveConsumableAnim(null)} />
@@ -3749,7 +3755,7 @@ useEffect(() => {
                 monsterProceduralAnim === 'dance_transform' ? 'anim-dance-magic' :
                 monsterProceduralAnim === 'roar_shockwave' ? 'anim-roar-wave' :
                 monsterBodyThrow ? 'monster-body-throw' : ''
-              } ${effectiveMonsterModelUrl ? 'is-3d' : ''}`}
+              } ${(effectiveMonsterModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
               style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? 35 : (monsterAnim.startsWith('attack') || monsterAnim.startsWith('death-') || monsterProceduralAnim || monsterBodyThrow) ? 30 : 26, pointerEvents: 'none' }}
             >
               {monsterBubble && (
@@ -3779,6 +3785,8 @@ useEffect(() => {
                   className="quest-arena-avatars"
                   style={{ position: 'relative', width: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', transform: `translate(${(arenaRenderMode === '3d' ? (arenaDebug.monsterOffsetX3D ?? 0) : arenaDebug.monsterOffsetX) + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0)}px, ${(arenaRenderMode === '3d' ? 0 : arenaDebug.monsterOffsetY) + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0)}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.monsterScale3D ?? 1) : arenaDebug.monsterScale})`, transformOrigin: 'bottom center' }}
                 >
+                  {/* Sombra dinâmica do monstro */}
+                  <div className="avatar-ground-shadow" />
                   {((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showDeathArea) && (
                     <div style={{ position: 'absolute', top: 0, left: 0, transform: `translate(${arenaDebug.monsterOffsetX + arenaDebug.deathOffsetX}px, ${arenaDebug.monsterOffsetY + arenaDebug.deathOffsetY}px) scale(${arenaDebug.monsterScale})`, width: '160px', height: '228px', border: '2px dashed #fbbf24', borderRadius: '8px', background: 'rgba(251,191,36,0.08)', zIndex: 29, pointerEvents: 'none', boxSizing: 'border-box' }}>
                       <span style={{ position: 'absolute', top: '-20px', left: 0, fontSize: '0.6rem', color: '#fbbf24', fontWeight: 'bold', background: 'rgba(0,0,0,0.75)', padding: '0 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>⚰️ X:{arenaDebug.deathOffsetX} Y:{arenaDebug.deathOffsetY}</span>

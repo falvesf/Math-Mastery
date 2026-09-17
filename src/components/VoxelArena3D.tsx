@@ -7,6 +7,16 @@ import {
   getGrassSideTexture,
   getDirtTexture,
   getSunTexture,
+  getNetherBricksTexture,
+  getNetherrackTexture,
+  getSandstoneTexture,
+  getSandTexture,
+  getSnowTopTexture,
+  getSnowSideTexture,
+  getIceStoneTexture,
+  getEndStoneTexture,
+  getPurpurTexture,
+  type VoxelBiomeType,
 } from '../lib/voxelTextures';
 
 // --- Polyfill de compatibilidade entre skinview3d (Three 0.156) e Three.js r170+ ---
@@ -53,8 +63,8 @@ export interface VoxelArena3DProps {
   healActive?: boolean;
   /** Terremoto/abalo na arena */
   arenaQuake?: boolean;
-  /** Bioma do cenário 3D */
-  biome?: 'plains' | 'nether' | 'desert';
+  /** Bioma do cenário 3D: planície, nether, deserto, tundra/neve ou the end */
+  biome?: VoxelBiomeType;
 
   // --- Jogador (3D) ---
   playerConfig?: any;
@@ -81,10 +91,10 @@ export interface VoxelArena3DProps {
 /**
  * VoxelArena3D
  * Cenário 3D Único e Integrado em tempo real estilo Minecraft:
- * - Plataforma central de Tijolos de Pedra (Stone Bricks)
- * - Campos de Grama (Grass Blocks) ao redor com horizonte infinito
- * - Céu azul Minecraft, névoa e Sol Quadrado
- * - Nuvens cúbicas volumétricas flutuando pelo céu
+ * - Plataforma central temática (Stone Bricks, Nether Bricks, Sandstone, Ice Stone, Purpur)
+ * - Chão circundante infinito com blocos do bioma
+ * - Céu, névoa e iluminação específicos de cada dimensão
+ * - Efeitos atmosféricos e partículas procedurais (nuvens, brasas vulcânicas, neve, partículas do Ender)
  * - Personagem 3D do Jogador renderizado DIRETAMENTE na cena sobre a plataforma
  * - Personagem 3D do Monstro renderizado DIRETAMENTE na cena sobre a plataforma
  * - Câmera adaptativa com proporções perfeitas para desktop e mobile
@@ -94,6 +104,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   deviceMode,
   healActive = false,
   arenaQuake = false,
+  biome = 'plains',
   // @ts-ignore
   playerConfig,
   // @ts-ignore
@@ -179,12 +190,40 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     const height = container.clientHeight || 450;
     const aspect = width / height;
 
-    // 1. Cena e Neblina
+    // 1. Configurações Temáticas por Bioma
+    const isPlains = biome === 'plains';
+    const isNether = biome === 'nether';
+    const isDesert = biome === 'desert';
+    const isSnow = biome === 'snow';
+    const isEnd = biome === 'end';
+
+    let skyHex = '#78a7ff';
+    let fogHex = '#78a7ff';
+    let fogDensity = 0.022;
+
+    if (isNether) {
+      skyHex = '#1c0508';
+      fogHex = '#2d0a0e';
+      fogDensity = 0.032;
+    } else if (isDesert) {
+      skyHex = '#6eb6ff';
+      fogHex = '#bde0fe';
+      fogDensity = 0.016;
+    } else if (isSnow) {
+      skyHex = '#8faec9';
+      fogHex = '#a9c2d6';
+      fogDensity = 0.026;
+    } else if (isEnd) {
+      skyHex = '#0a0514';
+      fogHex = '#130924';
+      fogDensity = 0.028;
+    }
+
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    const skyColor = new THREE.Color('#78a7ff');
+    const skyColor = new THREE.Color(skyHex);
     scene.background = skyColor;
-    scene.fog = new THREE.FogExp2(skyColor, 0.022);
+    scene.fog = new THREE.FogExp2(new THREE.Color(fogHex), fogDensity);
 
     // 2. Câmera Isométrica com Profundidade 3D Rica em Desktop e Mobile
     const computeCameraConfig = (currAspect: number) => {
@@ -206,8 +245,6 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const baseLookAtY = 0.4 + (cameraTargetY || 0);
 
       // Inclinação para manter o ângulo isométrico idêntico ao desktop (~15.6°)
-      // Isso garante que tanto desktop quanto mobile mostrem todas as linhas de blocos de pedra
-      // com perspectiva profunda, sem jamais achatar a plataforma.
       const pitchDeg = 15.6 + (cameraPitch || 0);
       const pitchRad = (pitchDeg * Math.PI) / 180;
       const effectiveCamY = baseLookAtY + (effectiveDist * Math.tan(pitchRad));
@@ -234,17 +271,54 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = isNether ? 1.25 : (isEnd ? 1.2 : 1.1);
 
-    // 4. Luzes da Arena
-    const hemiLight = new THREE.HemisphereLight('#b8d5ff', '#4d6932', 0.85);
+    // 4. Luzes da Arena adaptadas ao bioma
+    let hemiSky = '#b8d5ff';
+    let hemiGround = '#4d6932';
+    let dirColor = '#fff4e0';
+    let dirIntensity = 1.6;
+    let ambColor = '#a0b8d8';
+    let ambIntensity = 0.4;
+
+    if (isNether) {
+      hemiSky = '#ff4d2d';
+      hemiGround = '#22080a';
+      dirColor = '#ff6622';
+      dirIntensity = 1.8;
+      ambColor = '#661118';
+      ambIntensity = 0.55;
+    } else if (isDesert) {
+      hemiSky = '#dbeafe';
+      hemiGround = '#b48c4a';
+      dirColor = '#fff5d0';
+      dirIntensity = 2.0;
+      ambColor = '#ffe8ba';
+      ambIntensity = 0.45;
+    } else if (isSnow) {
+      hemiSky = '#f1f5f9';
+      hemiGround = '#64748b';
+      dirColor = '#e0f2fe';
+      dirIntensity = 1.5;
+      ambColor = '#cbd5e1';
+      ambIntensity = 0.5;
+    } else if (isEnd) {
+      hemiSky = '#c084fc';
+      hemiGround = '#1e1b4b';
+      dirColor = '#d8b4fe';
+      dirIntensity = 1.4;
+      ambColor = '#3b0764';
+      ambIntensity = 0.6;
+    }
+
+    const hemiLight = new THREE.HemisphereLight(hemiSky, hemiGround, 0.85);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight('#fff4e0', 1.6);
+    const sunLight = new THREE.DirectionalLight(dirColor, dirIntensity);
     sunLight.position.set(8, 16, 10);
     scene.add(sunLight);
 
-    const ambientLight = new THREE.AmbientLight('#a0b8d8', 0.4);
+    const ambientLight = new THREE.AmbientLight(ambColor, ambIntensity);
     scene.add(ambientLight);
 
     const healLight = new THREE.PointLight('#2dd4bf', 0, 10, 1.5);
@@ -252,34 +326,60 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     scene.add(healLight);
     healLightRef.current = healLight;
 
-    // 5. Texturas e Materiais dos Blocos
-    const stoneTex = getStoneBricksTexture();
-    const grassTopTex = getGrassTopTexture();
-    const grassSideTex = getGrassSideTexture();
-    const dirtTex = getDirtTexture();
+    // 5. Texturas e Materiais dos Blocos por Bioma
+    let platformTex = getStoneBricksTexture();
+    if (isNether) platformTex = getNetherBricksTexture();
+    else if (isDesert) platformTex = getSandstoneTexture();
+    else if (isSnow) platformTex = getIceStoneTexture();
+    else if (isEnd) platformTex = getPurpurTexture();
 
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 
-    const stoneMaterial = new THREE.MeshStandardMaterial({
-      map: stoneTex,
-      roughness: 0.85,
-      metalness: 0.05,
+    const platformMaterial = new THREE.MeshStandardMaterial({
+      map: platformTex,
+      roughness: isSnow ? 0.7 : 0.85,
+      metalness: isSnow ? 0.1 : 0.05,
     });
 
-    const grassMaterials = [
-      new THREE.MeshStandardMaterial({ map: grassSideTex, roughness: 0.9 }),
-      new THREE.MeshStandardMaterial({ map: grassSideTex, roughness: 0.9 }),
-      new THREE.MeshStandardMaterial({ map: grassTopTex, roughness: 0.85 }),
-      new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 0.95 }),
-      new THREE.MeshStandardMaterial({ map: grassSideTex, roughness: 0.9 }),
-      new THREE.MeshStandardMaterial({ map: grassSideTex, roughness: 0.9 }),
-    ];
+    let groundMaterials: THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[];
+    if (isNether) {
+      groundMaterials = new THREE.MeshStandardMaterial({ map: getNetherrackTexture(), roughness: 0.92 });
+    } else if (isDesert) {
+      groundMaterials = new THREE.MeshStandardMaterial({ map: getSandTexture(), roughness: 0.95 });
+    } else if (isSnow) {
+      const snowTop = getSnowTopTexture();
+      const snowSide = getSnowSideTexture();
+      const dirtTex = getDirtTexture();
+      groundMaterials = [
+        new THREE.MeshStandardMaterial({ map: snowSide, roughness: 0.9 }),
+        new THREE.MeshStandardMaterial({ map: snowSide, roughness: 0.9 }),
+        new THREE.MeshStandardMaterial({ map: snowTop, roughness: 0.85 }),
+        new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 0.95 }),
+        new THREE.MeshStandardMaterial({ map: snowSide, roughness: 0.9 }),
+        new THREE.MeshStandardMaterial({ map: snowSide, roughness: 0.9 }),
+      ];
+    } else if (isEnd) {
+      groundMaterials = new THREE.MeshStandardMaterial({ map: getEndStoneTexture(), roughness: 0.88 });
+    } else {
+      // plains
+      const grassTopTex = getGrassTopTexture();
+      const grassSideTex = getGrassSideTexture();
+      const dirtTex = getDirtTexture();
+      groundMaterials = [
+        new THREE.MeshStandardMaterial({ map: grassSideTex, roughness: 0.9 }),
+        new THREE.MeshStandardMaterial({ map: grassSideTex, roughness: 0.9 }),
+        new THREE.MeshStandardMaterial({ map: grassTopTex, roughness: 0.85 }),
+        new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 0.95 }),
+        new THREE.MeshStandardMaterial({ map: grassSideTex, roughness: 0.9 }),
+        new THREE.MeshStandardMaterial({ map: grassSideTex, roughness: 0.9 }),
+      ];
+    }
 
-    // 6. Plataforma de Luta em Tijolos de Pedra (Stone Bricks)
+    // 6. Plataforma de Luta
     const platW = 14;
     const platD = 8;
     const platCount = platW * platD;
-    const platformMesh = new THREE.InstancedMesh(boxGeo, stoneMaterial, platCount);
+    const platformMesh = new THREE.InstancedMesh(boxGeo, platformMaterial, platCount);
 
     const dummy = new THREE.Object3D();
     let idx = 0;
@@ -299,25 +399,21 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     platformMesh.instanceMatrix.needsUpdate = true;
     scene.add(platformMesh);
 
-    // 7. Campo de Grama Circundante (Grass Plains)
-    // Ampliado para frente (+Z) e laterais (X) para que em qualquer inclinação ou tela mobile
-    // o chão continue sólido de grama verde, sem jamais exibir abismo ou corte de tela
+    // 7. Chão Circundante do Bioma
     const grassW = 42;
     const grassD = 38;
     const totalGrass = grassW * grassD;
-    const grassMesh = new THREE.InstancedMesh(boxGeo, grassMaterials, totalGrass);
+    const grassMesh = new THREE.InstancedMesh(boxGeo, groundMaterials, totalGrass);
 
     let gIdx = 0;
     const gHalfW = grassW / 2;
     const gHalfD = grassD / 2;
-    // Desloca o centro da grama ligeiramente para a frente (+Z) para cobrir até a base da câmera
     const grassCenterZOffset = 5;
 
     for (let x = 0; x < grassW; x++) {
       for (let z = 0; z < grassD; z++) {
         const posX = x - gHalfW + 0.5;
         const posZ = (z - gHalfD + 0.5) + grassCenterZOffset;
-        // Altura de 3 blocos para formar uma camada espessa e sólida de terra Minecraft
         dummy.position.set(posX, -2, posZ);
         dummy.scale.set(1, 3, 1);
         dummy.updateMatrix();
@@ -327,52 +423,113 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     grassMesh.instanceMatrix.needsUpdate = true;
     scene.add(grassMesh);
 
-    // 8. Sol Quadrado do Minecraft
-    const sunTex = getSunTexture();
-    const sunGeo = new THREE.PlaneGeometry(6, 6);
-    const sunMat = new THREE.MeshBasicMaterial({
-      map: sunTex,
-      transparent: true,
-      depthWrite: false,
-    });
-    const sunMesh = new THREE.Mesh(sunGeo, sunMat);
-    sunMesh.position.set(14, 18, -25);
-    sunMesh.lookAt(0, 5, 0);
-    scene.add(sunMesh);
+    // 8. Astro Celeste (Sol / Fenda Infernal / Vórtice Ender)
+    let sunGeo: THREE.BufferGeometry | null = null;
+    let sunMat: THREE.Material | null = null;
+    let sunMesh: THREE.Mesh | null = null;
 
-    // 9. Nuvens Cúbicas Flutuantes
-    const cloudsGroup = new THREE.Group();
-    cloudsGroupRef.current = cloudsGroup;
-    const cloudMat = new THREE.MeshBasicMaterial({
-      color: '#ffffff',
-      transparent: true,
-      opacity: 0.85,
-    });
+    if (isPlains || isDesert || isSnow) {
+      const sunTex = getSunTexture();
+      sunGeo = new THREE.PlaneGeometry(isDesert ? 7.5 : (isSnow ? 5.5 : 6), isDesert ? 7.5 : (isSnow ? 5.5 : 6));
+      sunMat = new THREE.MeshBasicMaterial({
+        map: sunTex,
+        transparent: true,
+        depthWrite: false,
+        color: isSnow ? '#e0f2fe' : (isDesert ? '#fff8db' : '#ffffff'),
+      });
+      sunMesh = new THREE.Mesh(sunGeo, sunMat);
+      sunMesh.position.set(14, 18, -25);
+      sunMesh.lookAt(0, 5, 0);
+      scene.add(sunMesh);
+    } else if (isEnd) {
+      // Vórtice cósmico roxo do Ender
+      sunGeo = new THREE.PlaneGeometry(8, 8);
+      const canvasVortex = document.createElement('canvas');
+      canvasVortex.width = 32;
+      canvasVortex.height = 32;
+      const vCtx = canvasVortex.getContext('2d')!;
+      const vGrad = vCtx.createRadialGradient(16, 16, 2, 16, 16, 15);
+      vGrad.addColorStop(0, '#ffffff');
+      vGrad.addColorStop(0.3, '#c084fc');
+      vGrad.addColorStop(0.7, '#6b21a8');
+      vGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      vCtx.fillStyle = vGrad;
+      vCtx.fillRect(0, 0, 32, 32);
+      const vortexTex = new THREE.CanvasTexture(canvasVortex);
+      sunMat = new THREE.MeshBasicMaterial({
+        map: vortexTex,
+        transparent: true,
+        depthWrite: false,
+      });
+      sunMesh = new THREE.Mesh(sunGeo, sunMat);
+      sunMesh.position.set(14, 18, -25);
+      sunMesh.lookAt(0, 5, 0);
+      scene.add(sunMesh);
+    }
 
-    const cloudDefs = [
-      { x: -18, y: 14, z: -18, w: 12, h: 2, d: 8 },
-      { x: -5, y: 15, z: -25, w: 16, h: 2, d: 10 },
-      { x: 12, y: 14.5, z: -20, w: 14, h: 2, d: 7 },
-      { x: 26, y: 15, z: -15, w: 10, h: 2, d: 6 },
-      { x: -28, y: 15.5, z: -12, w: 15, h: 2, d: 9 },
-    ];
+    // 9. Nuvens Cúbicas (Plains, Desert e Snow)
+    let cloudMat: THREE.MeshBasicMaterial | null = null;
+    let cloudsGroup: THREE.Group | null = null;
+    if (isPlains || isDesert || isSnow) {
+      cloudsGroup = new THREE.Group();
+      cloudsGroupRef.current = cloudsGroup;
+      cloudMat = new THREE.MeshBasicMaterial({
+        color: isDesert ? '#fff7ed' : '#ffffff',
+        transparent: true,
+        opacity: isDesert ? 0.6 : (isSnow ? 0.75 : 0.85),
+      });
 
-    cloudDefs.forEach((c) => {
-      const cGeo = new THREE.BoxGeometry(c.w, c.h, c.d);
-      const cMesh = new THREE.Mesh(cGeo, cloudMat);
-      cMesh.position.set(c.x, c.y, c.z);
-      cloudsGroup.add(cMesh);
-    });
-    scene.add(cloudsGroup);
+      const cloudDefs = [
+        { x: -18, y: 14, z: -18, w: 12, h: 2, d: 8 },
+        { x: -5, y: 15, z: -25, w: 16, h: 2, d: 10 },
+        { x: 12, y: 14.5, z: -20, w: 14, h: 2, d: 7 },
+        { x: 26, y: 15, z: -15, w: 10, h: 2, d: 6 },
+        { x: -28, y: 15.5, z: -12, w: 15, h: 2, d: 9 },
+      ];
 
-    // 10. Sombras dos Personagens no chão de pedra
+      cloudDefs.forEach((c) => {
+        const cGeo = new THREE.BoxGeometry(c.w, c.h, c.d);
+        const cMesh = new THREE.Mesh(cGeo, cloudMat!);
+        cMesh.position.set(c.x, c.y, c.z);
+        cloudsGroup!.add(cMesh);
+      });
+      scene.add(cloudsGroup);
+    }
+
+    // 10. Partículas Ambientais em 3D (Nether brasas, Snow neve, End partículas)
+    const particleCount = (isNether || isSnow || isEnd) ? 45 : 0;
+    let particleMesh: THREE.InstancedMesh | null = null;
+    let particlePositions: { x: number; y: number; z: number; speed: number; rotSpeed: number }[] = [];
+    let particleGeo: THREE.BoxGeometry | null = null;
+    let particleMat: THREE.MeshBasicMaterial | null = null;
+
+    if (particleCount > 0) {
+      const pSize = isSnow ? 0.16 : (isNether ? 0.18 : 0.22);
+      particleGeo = new THREE.BoxGeometry(pSize, pSize, pSize);
+      const pColor = isNether ? '#ff6622' : (isSnow ? '#ffffff' : '#c084fc');
+      particleMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true, opacity: isSnow ? 0.85 : 0.75 });
+      particleMesh = new THREE.InstancedMesh(particleGeo, particleMat, particleCount);
+
+      for (let i = 0; i < particleCount; i++) {
+        particlePositions.push({
+          x: (Math.random() - 0.5) * 26,
+          y: Math.random() * 14,
+          z: (Math.random() - 0.5) * 18,
+          speed: isNether ? (0.8 + Math.random() * 1.2) : (isSnow ? -(0.9 + Math.random() * 1.1) : (0.3 + Math.random() * 0.5)),
+          rotSpeed: (Math.random() - 0.5) * 2,
+        });
+      }
+      scene.add(particleMesh);
+    }
+
+    // 10. Marcadores de Referência dos Personagens na Plataforma (Sombras Base)
     const shadowTexCanvas = document.createElement('canvas');
     shadowTexCanvas.width = 32;
     shadowTexCanvas.height = 32;
     const sCtx = shadowTexCanvas.getContext('2d')!;
     const grad = sCtx.createRadialGradient(16, 16, 2, 16, 16, 15);
-    grad.addColorStop(0, 'rgba(0, 0, 0, 0.65)');
-    grad.addColorStop(0.5, 'rgba(0, 0, 0, 0.35)');
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
+    grad.addColorStop(0.5, 'rgba(0, 0, 0, 0.22)');
     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     sCtx.fillStyle = grad;
     sCtx.fillRect(0, 0, 32, 32);
@@ -437,45 +594,39 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       if (isDisposed) return;
       animFrameRef.current = requestAnimationFrame(animate);
       const elapsedTime = clock.getElapsedTime();
-      const now = performance.now() / 1000;
 
       // Nuvens se deslocam suavemente pelo céu
       if (cloudsGroupRef.current) {
         cloudsGroupRef.current.position.x = (elapsedTime * 0.4) % 60;
       }
 
-      // Sombra acompanha avanço de ataque do jogador
-      if (playerAttackStartRef.current != null) {
-        const t = now - playerAttackStartRef.current;
-        if (t < 0.3) {
-          playerShadow.position.x = -3.6 + (t / 0.3) * 5.4;
-        } else if (t < 0.65) {
-          playerShadow.position.x = 1.8;
-        } else if (t < 1.1) {
-          playerShadow.position.x = 1.8 - ((t - 0.65) / 0.45) * 5.4;
-        } else {
-          playerShadow.position.x = -3.6;
-          playerAttackStartRef.current = null;
-        }
-      } else {
-        playerShadow.position.x = -3.6;
-      }
+      // Partículas flutuantes em tempo real (Nether brasas, Snow neve, End partículas)
+      if (particleMesh && particlePositions.length > 0) {
+        const pDummy = new THREE.Object3D();
+        for (let i = 0; i < particlePositions.length; i++) {
+          const p = particlePositions[i];
+          p.y += p.speed * 0.016;
+          if (isNether && p.y > 15) {
+            p.y = 0;
+            p.x = (Math.random() - 0.5) * 26;
+            p.z = (Math.random() - 0.5) * 18;
+          } else if (isSnow && p.y < -1) {
+            p.y = 14;
+            p.x = (Math.random() - 0.5) * 26;
+            p.z = (Math.random() - 0.5) * 18;
+          } else if (isEnd && p.y > 14) {
+            p.y = 0;
+            p.x = (Math.random() - 0.5) * 26;
+            p.z = (Math.random() - 0.5) * 18;
+          }
 
-      // Sombra acompanha avanço de ataque do monstro
-      if (monsterAttackStartRef.current != null) {
-        const t = now - monsterAttackStartRef.current;
-        if (t < 0.3) {
-          monsterShadow.position.x = 3.6 - (t / 0.3) * 5.4;
-        } else if (t < 0.65) {
-          monsterShadow.position.x = -1.8;
-        } else if (t < 1.1) {
-          monsterShadow.position.x = -1.8 + ((t - 0.65) / 0.45) * 5.4;
-        } else {
-          monsterShadow.position.x = 3.6;
-          monsterAttackStartRef.current = null;
+          pDummy.position.set(p.x, p.y, p.z);
+          pDummy.rotation.x += p.rotSpeed * 0.016;
+          pDummy.rotation.y += p.rotSpeed * 0.016;
+          pDummy.updateMatrix();
+          particleMesh.setMatrixAt(i, pDummy.matrix);
         }
-      } else {
-        monsterShadow.position.x = 3.6;
+        particleMesh.instanceMatrix.needsUpdate = true;
       }
 
       // Câmera estável com suave balanço horizontal de respiração
@@ -528,10 +679,17 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       }
       renderer.dispose();
       boxGeo.dispose();
-      stoneMaterial.dispose();
-      grassMaterials.forEach((m) => m.dispose());
-      sunGeo.dispose();
-      sunMat.dispose();
+      platformMaterial.dispose();
+      if (Array.isArray(groundMaterials)) {
+        groundMaterials.forEach((m) => m.dispose());
+      } else if (groundMaterials) {
+        (groundMaterials as THREE.Material).dispose();
+      }
+      if (sunGeo) sunGeo.dispose();
+      if (sunMat) sunMat.dispose();
+      if (cloudMat) cloudMat.dispose();
+      if (particleGeo) particleGeo.dispose();
+      if (particleMat) particleMat.dispose();
       shadowGeo.dispose();
       shadowMat.dispose();
     };
@@ -547,6 +705,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     cameraPitch,
     cameraDist,
     cameraTargetY,
+    biome,
   ]);
 
   return (

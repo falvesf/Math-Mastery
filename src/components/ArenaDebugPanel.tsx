@@ -74,6 +74,8 @@ export interface ArenaDebugConfig {
   charFit: number;
   /** Ativa o cenário 3D Voxel estilo Minecraft na arena */
   enable3DArena?: boolean;
+  /** Bioma do cenário 3D em teste */
+  biome3D?: 'plains' | 'nether' | 'desert' | 'snow' | 'end';
   // Ajustes finos do Modo 3D Voxel
   playerOffsetX3D?: number;
   playerOffsetY3D?: number;
@@ -155,6 +157,7 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   charZoom: 0.9,
   charFit: 60,
   enable3DArena: false,
+  biome3D: 'plains',
   playerOffsetX3D: 0,
   playerOffsetY3D: 0,
   playerScale3D: 1,
@@ -632,6 +635,7 @@ export default function ArenaDebugPanel({
     forceRewards: config.forceRewards ?? false,
     guaranteedCrit: config.guaranteedCrit ?? false,
     enable3DArena: config.enable3DArena ?? false,
+    biome3D: config.biome3D || 'plains',
     playerOffsetX3D: config.playerOffsetX3D ?? 0,
     playerOffsetY3D: config.playerOffsetY3D ?? 0,
     playerScale3D: config.playerScale3D ?? 1,
@@ -799,6 +803,30 @@ export default function ArenaDebugPanel({
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '0.68rem', color: '#8b5cf6', fontWeight: 'bold', marginBottom: '0.2rem' }}>🏟️ Arena & Distância 3D</div>
               <Slider label="Gap 3D" value={safeConfig.arenaGap3D ?? 0} onChange={v => update('arenaGap3D', v)} min={-400} max={600} unit="px" />
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
+              <div style={{ fontSize: '0.68rem', color: '#06b6d4', fontWeight: 'bold', marginBottom: '0.2rem' }}>🌍 Bioma 3D em Teste</div>
+              <select
+                value={safeConfig.biome3D || 'plains'}
+                onChange={e => update('biome3D', e.target.value as any)}
+                style={{
+                  width: '100%',
+                  padding: '0.35rem 0.5rem',
+                  borderRadius: '6px',
+                  background: 'rgba(0,0,0,0.5)',
+                  border: '1px solid var(--border-glass)',
+                  color: '#2dd4bf',
+                  fontSize: '0.72rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                <option value="plains">🌲 Planície (Plains)</option>
+                <option value="nether">🔥 Nether Vulcânico</option>
+                <option value="desert">🏜️ Deserto das Areias</option>
+                <option value="snow">❄️ Tundra Congelada</option>
+                <option value="end">🌌 The End (O Vazio)</option>
+              </select>
             </div>
 
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>

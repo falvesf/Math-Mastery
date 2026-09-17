@@ -1061,11 +1061,13 @@
 /* Eleva os personagens para ficarem em pé em cima da plataforma de tijolos de pedra e sobre as sombras */
 .is-3d-arena .quest-arena-side-player {
   bottom: calc(var(--shadow-player-lift, 60px) + var(--player-lift-3d, 0px)) !important;
+  transform-origin: bottom center !important;
   transition: bottom 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
 .is-3d-arena .quest-arena-side-monster {
   bottom: calc(var(--shadow-monster-lift, 60px) + var(--monster-lift-3d, 0px)) !important;
+  transform-origin: bottom center !important;
   transition: bottom 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 

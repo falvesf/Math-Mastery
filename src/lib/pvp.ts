@@ -13,6 +13,7 @@ import {
   HEAL_MAX_ACTIVATIONS,
 } from './transformEffects';
 import { sessionCache, CACHE_KEYS } from './sessionCache';
+import { VOXEL_BIOMES } from './voxelTextures';
 
 // ============ Tipos ============
 
@@ -131,9 +132,14 @@ export function normalizeEquippedItems(userItemRows: any[]): any[] {
 // Normaliza a arena (quest) — aceita snake_case e camelCase para o fundo/áudio.
 export function normalizeArena(arena: any): any {
   const a = arena || {};
+  const bgUrl = a.battleBgUrl || a.battle_bg_url || '';
+  const is3D = a.is3D || bgUrl.startsWith('voxel:');
+  const biome = a.biome || (bgUrl.startsWith('voxel:') ? bgUrl.replace('voxel:', '') : 'plains');
   return {
     ...a,
-    battleBgUrl: a.battleBgUrl || a.battle_bg_url || '',
+    is3D,
+    biome,
+    battleBgUrl: bgUrl,
     battleBgPosX: a.battleBgPosX ?? a.battle_bg_pos_x ?? 0,
     battleBgPosY: a.battleBgPosY ?? a.battle_bg_pos_y ?? 0,
     battleBgScale: a.battleBgScale ?? a.battle_bg_scale ?? 1,
@@ -155,7 +161,7 @@ function mapRow(row: any): PvpMatch | null {
     challenger_name: row.challenger_name,
     opponent_name: row.opponent_name,
     status: row.status,
-    arena: row.arena || {},
+    arena: normalizeArena(row.arena),
     question_count: row.question_count || 5,
     bet: row.bet || { challenger: { type: 'none' }, opponent: { type: 'none' } },
     questions: row.questions || [],
@@ -203,20 +209,40 @@ export async function fetchAvailableQuestions(): Promise<any[]> {
 // @ts-ignore
 export async function fetchArenas(tenantId?: string): Promise<any[]> {
   try {
-    // Arenas de duelo: inclui TODOS os tenants (gama maior de possibilidades no PvP),
-    // além das da própria escola. Deduplica por fundo e ordena por nome.
+    // 1. Arenas 3D Voxel disponíveis para combate
+    const voxelArenas = VOXEL_BIOMES.map(b => ({
+      id: `voxel:${b.id}`,
+      title: `${b.title} (3D)`,
+      name: `${b.title} (3D)`,
+      battle_bg_url: `voxel:${b.id}`,
+      battleBgUrl: `voxel:${b.id}`,
+      is3D: true,
+      biome: b.id,
+      icon: b.icon,
+      badge: b.badge,
+      description: b.description,
+      primaryColor: b.primaryColor,
+      skyColor: b.skyColor,
+      ambientDesc: b.ambientDesc,
+    }));
+
+    // 2. Arenas 2D baseadas nas missões cadastradas
     const { data } = await supabase.from('quests').select('*');
     const arenas = (data || []).filter((x: any) => (x.battle_bg_url || x.battleBgUrl));
-    const seen = new Set<string>();
+    const seen = new Set<string>(voxelArenas.map(v => v.battle_bg_url));
     const unique = arenas.filter((a: any) => {
       const url = a.battle_bg_url || a.battleBgUrl || '';
       if (seen.has(url)) return false;
       seen.add(url);
       return true;
     });
-    return unique.sort((a: any, b: any) =>
+
+    const sorted2D = unique.sort((a: any, b: any) =>
       (a.title || a.name || '').localeCompare(b.title || b.name || '')
     );
+
+    // Retorna primeiro as Arenas 3D Voxel, seguidas das arenas 2D
+    return [...voxelArenas, ...sorted2D];
   } catch (e) {
     console.error('Erro ao buscar arenas:', e);
     return [];

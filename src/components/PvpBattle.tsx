@@ -18,6 +18,7 @@ import DamageEffectOverlay from './DamageEffectOverlay';
 import { getEquippedDamageEffect, getEquippedDamageEffectInfo } from '../lib/damageEffects';
 import { getTransformModelUrl, TRANSFORM_LABELS, heartIsHalf } from '../lib/transformEffects';
 import CustomModelViewer from './CustomModelViewer';
+import VoxelArena3D from './VoxelArena3D';
 
 interface PvpBattleProps {
   matchId: string;
@@ -119,6 +120,34 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
       console.log('[PvP] Arena background:', bg);
     }
   }, [match?.arena?.battleBgUrl, match?.arena?.battle_bg_url]);
+
+  // Modo 3D Voxel na Arena do PvP
+  const currentArenaBg = match?.arena?.battleBgUrl || match?.arena?.battle_bg_url || arenaBgRef.current || '';
+  const isArena3D = currentArenaBg.startsWith('voxel:') || !!match?.arena?.is3D;
+  const pvpBiome = (isArena3D && currentArenaBg.startsWith('voxel:'))
+    ? currentArenaBg.replace('voxel:', '')
+    : (match?.arena?.biome || 'plains');
+
+  const [renderMode3D, setRenderMode3D] = useState<boolean>(() => {
+    const saved = localStorage.getItem('mm_pvp_render_mode');
+    if (saved === '3d') return true;
+    if (saved === '2d') return false;
+    return isArena3D;
+  });
+
+  useEffect(() => {
+    if (isArena3D) {
+      setRenderMode3D(true);
+    }
+  }, [isArena3D]);
+
+  const toggleRenderMode3D = () => {
+    setRenderMode3D(prev => {
+      const next = !prev;
+      localStorage.setItem('mm_pvp_render_mode', next ? '3d' : '2d');
+      return next;
+    });
+  };
 
   // Bonecos ESTÁVEIS por conteúdo (JSON) — o match é re-criado a cada update do realtime,
   // então usar match.playerX direto faria os avatares reiniciarem (sem equipamentos).
@@ -550,8 +579,17 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
       const rightName = isSpectator ? match.player2?.name : them?.name;
       return (
         <div style={{ minHeight: '100vh', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-dark)', position: 'relative', overflow: 'hidden' }}>
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220' }}>
-            {arenaBg && <img src={arenaBg} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0, pointerEvents: 'none' }} />}
+          <div className={renderMode3D ? 'is-3d-arena' : ''} style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220' }}>
+            {renderMode3D ? (
+              <VoxelArena3D
+                deviceMode={window.innerWidth < 768 ? 'mobile' : 'desktop'}
+                biome={pvpBiome as any}
+              />
+            ) : (
+              arenaBg && !arenaBg.startsWith('voxel:') && (
+                <img src={arenaBg} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0, pointerEvents: 'none' }} />
+              )
+            )}
             {/* Emojis de torcida durante o fatal/celebração */}
           {visibleEmojis.length > 0 && (
             <div style={{ position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none', overflow: 'hidden' }}>
@@ -568,6 +606,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
             <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: `${arenaGap}px` }}>
               {/* JOGADOR 1 — esquerda */}
               <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: meLunge ? `translateX(${teleportPx}px)` : 'none', transition: 'transform 0.35s ease-in' }}>
+                <div className="avatar-ground-shadow pvp" />
                 {fatalLeftWon
                   ? <AvatarCharacter config={fatalLeftConfig} equippedItems={fatalLeftEquip} size={170} animation={winnerAnim} interactive={false} />
                   : renderLoser(fatalLeftConfig, fatalLeftEquip)}
@@ -578,6 +617,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
               </div>
               {/* JOGADOR 2 — direita */}
               <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: themLunge ? `translateX(-${teleportPx}px)` : 'none', transition: 'transform 0.35s ease-in' }}>
+                <div className="avatar-ground-shadow pvp" />
                 {fatalLeftWon
                   ? renderLoser(fatalRightConfig, fatalRightEquip, 'monster')
                   : <AvatarCharacter config={fatalRightConfig} equippedItems={fatalRightEquip} size={170} animation={winnerAnim} interactive={false} role="monster" />}
@@ -697,15 +737,42 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 1rem', background: 'var(--btn-bg)', borderBottom: '1px solid var(--border-glass)', zIndex: 30 }}>
         <button onClick={fadeAndStopMusic} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><ChevronLeft size={18} /> Sair</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: isSpectator ? '#10b981' : 'var(--gold-primary)', fontWeight: 'bold' }}><Swords size={18} /> {isSpectator ? 'Assistindo Duelo' : 'Duelo'}</div>
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{match.current_question_index + 1}/{match.questions.length}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <button
+            onClick={toggleRenderMode3D}
+            style={{
+              padding: '0.2rem 0.55rem',
+              borderRadius: '12px',
+              border: renderMode3D ? '1px solid #2dd4bf' : '1px solid var(--border-glass)',
+              background: renderMode3D ? 'rgba(45, 212, 191, 0.2)' : 'rgba(0,0,0,0.4)',
+              color: renderMode3D ? '#2dd4bf' : 'var(--text-secondary)',
+              fontSize: '0.68rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+            }}
+            title="Alternar Cenário 3D / 2D"
+          >
+            {renderMode3D ? `🧱 3D (${pvpBiome.toUpperCase()})` : '🖼️ 2D'}
+          </button>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{match.current_question_index + 1}/{match.questions.length}</div>
+        </div>
       </div>
 
       {/* Arena */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220' }}>
-        {arenaBg && (
-          // @ts-ignore
-          <img src={arenaBg} alt="" onError={(e) => console.error('[PvP] falha ao carregar fundo:', arenaBg)}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0, pointerEvents: 'none' }} />
+      <div className={renderMode3D ? 'is-3d-arena' : ''} style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220' }}>
+        {renderMode3D ? (
+          <VoxelArena3D
+            deviceMode={window.innerWidth < 768 ? 'mobile' : 'desktop'}
+            biome={pvpBiome as any}
+          />
+        ) : (
+          arenaBg && !arenaBg.startsWith('voxel:') && (
+            <img src={arenaBg} alt="" onError={(e) => console.error('[PvP] falha ao carregar fundo:', arenaBg)}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0, pointerEvents: 'none' }} />
+          )
         )}
         {/* Espectadores (figuras pequenas vibrando ao fundo) */}
         {(() => {
@@ -741,6 +808,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
         <div style={{ position: 'absolute', inset: 0, zIndex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: `${arenaGap}px` }}>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: leftLunge ? `translateX(${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
             <div style={{ position: 'relative' }}>
+              <div className="avatar-ground-shadow pvp" />
               {safeLeft?.transform ? (
                 <div style={{ position: 'relative' }}>
                   <div className={safeLeft.transform.animal === 'sapo' ? 'transform-hop' : (safeLeft.transform.animal === 'rato' ? 'rat-scurry' : undefined)} style={{ transformOrigin: 'bottom center' }}>
@@ -782,6 +850,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
           </div>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: rightLunge ? `translateX(-${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
             <div style={{ position: 'relative' }}>
+              <div className="avatar-ground-shadow pvp" />
               {safeRight?.transform ? (
                 <div style={{ position: 'relative' }}>
                   <div className={safeRight.transform.animal === 'sapo' ? 'transform-hop' : (safeRight.transform.animal === 'rato' ? 'rat-scurry' : undefined)} style={{ transformOrigin: 'bottom center' }}>

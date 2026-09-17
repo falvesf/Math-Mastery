@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy, Menu, Volume2, XCircle } from 'lucide-react';
+import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy, Menu, Volume2, XCircle, Box } from 'lucide-react';
 import AvatarCharacter, { type AvatarConfig, safeParseAvatarConfig } from './AvatarCharacter';
 import DirectUploadButton from './DirectUploadButton';
 import AudioBankPicker from './AudioBankPicker';
 import { getSafeUrl } from '../lib/utils';
+import { VOXEL_BIOMES, type VoxelBiomeType } from '../lib/voxelTextures';
 
 // @ts-ignore
 void Plus;
@@ -694,88 +695,245 @@ function MonsterTab(p: QuestConfigModalProps) {
 }
 
 function ArenaTab(p: QuestConfigModalProps) {
+  const is3D = !!p.questBattleBgUrl && p.questBattleBgUrl.startsWith('voxel:');
+  const currentBiomeId = is3D ? p.questBattleBgUrl.replace('voxel:', '') : 'plains';
+  const currentBiome = VOXEL_BIOMES.find(b => b.id === currentBiomeId) || VOXEL_BIOMES[0];
+
   return (
     <div style={{ background: 'rgba(139, 92, 246, 0.05)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-      <h4 style={{ color: '#8b5cf6', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <ImageIcon size={20} /> Fundo da Arena de Batalha
-      </h4>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-        Escolha uma imagem de fundo personalizada para a arena de batalha. Se não selecionar, será usado o fundo padrão.
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.8rem', marginBottom: '1rem' }}>
+        <h4 style={{ color: '#8b5cf6', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <ImageIcon size={20} /> Cenário da Arena de Batalha
+        </h4>
 
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        {/* Preview do fundo atual */}
-        <div style={{ width: '200px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', flexShrink: 0 }}>
-          {p.questBattleBgUrl ? (
-            <div style={{
-              width: '100%',
-              height: '100%',
-              backgroundImage: `url("${getSafeUrl(p.questBattleBgUrl)}")`,
-              backgroundSize: `${p.questBattleBgScale * 100}%`,
-              backgroundPosition: `${p.questBattleBgPosX}% ${p.questBattleBgPosY}%`,
-              backgroundRepeat: 'no-repeat'
-            }} />
-          ) : (
-            <div style={{ width: '100%', height: '100%', background: 'url(/battle_bg.png) center/cover', opacity: 0.5 }} />
-          )}
-        </div>
-
-        <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {/* Botões de ação */}
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button
-              onClick={p.onGalleryArena}
-              style={{ padding: '0.5rem 1rem', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}
-            >
-              <Search size={16} /> Galeria
-            </button>
-            <DirectUploadButton
-              folder="arena-backgrounds"
-              onUploadComplete={(url) => p.setQuestBattleBgUrl(url)}
-              buttonStyle={{ padding: '0.5rem 1rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}
-            />
-            {p.questBattleBgUrl && (
-              <button
-                onClick={p.onOpenArenaEditor}
-                style={{ padding: '0.5rem 1rem', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-blue)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}
-              >
-                <Move size={16} /> Ajustar Posição
-              </button>
-            )}
-            <button
-              onClick={() => { p.setQuestBattleBgUrl(''); p.setQuestBattleBgPosX(50); p.setQuestBattleBgPosY(50); p.setQuestBattleBgScale(1.2); p.setQuestBattleBgMoveEnabled(true); p.setQuestBattleBgMoveDirection('diagonal'); p.setQuestBattleBgMoveSpeed(10); p.setQuestBattleBgMoveDuration(30); }}
-              style={{ padding: '0.5rem 1rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}
-            >
-              Usar Padrão
-            </button>
-          </div>
-
-          {/* Position Info */}
-          {p.questBattleBgUrl && (p.questBattleBgPosX !== 50 || p.questBattleBgPosY !== 50 || p.questBattleBgScale !== 1.2) && (
-            <div style={{
-              display: 'flex', gap: '1rem',
-              background: 'rgba(59, 130, 246, 0.1)',
-              padding: '0.5rem 0.75rem',
+        {/* Alternador de Modo: 2D vs 3D Voxel */}
+        <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(0, 0, 0, 0.4)', padding: '0.25rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+          <button
+            type="button"
+            onClick={() => {
+              if (is3D) p.setQuestBattleBgUrl('');
+            }}
+            style={{
+              padding: '0.4rem 0.85rem',
               borderRadius: '6px',
-              fontSize: '0.75rem',
-              color: 'var(--accent-blue)'
-            }}>
-              <span>X: {p.questBattleBgPosX.toFixed(0)}%</span>
-              <span>Y: {p.questBattleBgPosY.toFixed(0)}%</span>
-              <span>Zoom: {p.questBattleBgScale.toFixed(2)}x</span>
-            </div>
-          )}
-
-          {/* Input manual de URL */}
-          <input
-            type="text"
-            value={p.questBattleBgUrl}
-            onChange={e => p.setQuestBattleBgUrl(e.target.value)}
-            placeholder="Ou cole a URL da imagem aqui..."
-            style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
-          />
+              border: !is3D ? '1px solid rgba(139, 92, 246, 0.6)' : '1px solid transparent',
+              background: !is3D ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
+              color: !is3D ? '#c084fc' : 'var(--text-secondary)',
+              fontSize: '0.8rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <ImageIcon size={15} /> 🖼️ Imagem 2D
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!is3D) p.setQuestBattleBgUrl('voxel:plains');
+            }}
+            style={{
+              padding: '0.4rem 0.85rem',
+              borderRadius: '6px',
+              border: is3D ? '1px solid rgba(45, 212, 191, 0.6)' : '1px solid transparent',
+              background: is3D ? 'rgba(45, 212, 191, 0.25)' : 'transparent',
+              color: is3D ? '#2dd4bf' : 'var(--text-secondary)',
+              fontSize: '0.8rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Box size={15} /> 🧱 Arena 3D Voxel
+          </button>
         </div>
       </div>
+
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.2rem' }}>
+        {is3D
+          ? 'Escolha em qual bioma 3D estilo Minecraft este desafio será disputado. A arena será gerada proceduralmente em tempo real com iluminação e partículas imersivas.'
+          : 'Escolha uma imagem de fundo personalizada para a arena de batalha. Se não selecionar, será usado o fundo padrão.'}
+      </p>
+
+      {/* SEÇÃO 3D VOXEL */}
+      {is3D ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Banner de Status do Bioma Selecionado */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            padding: '0.85rem 1.2rem',
+            borderRadius: '10px',
+            background: 'rgba(45, 212, 191, 0.1)',
+            border: '1px solid rgba(45, 212, 191, 0.35)',
+            flexWrap: 'wrap',
+          }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '8px',
+              background: `radial-gradient(circle at 50% 30%, ${currentBiome.skyColor} 0%, #090d16 100%)`,
+              border: `1px solid ${currentBiome.primaryColor}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '2rem',
+              flexShrink: 0,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            }}>
+              {currentBiome.icon}
+            </div>
+
+            <div style={{ flex: 1, minWidth: '180px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '1rem', fontWeight: '900', color: '#fff' }}>{currentBiome.title}</span>
+                <span style={{ fontSize: '0.65rem', fontWeight: '900', background: '#2dd4bf', color: '#000', padding: '1px 6px', borderRadius: '4px' }}>
+                  ARENA 3D ATIVA
+                </span>
+              </div>
+              <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                {currentBiome.description} • <span style={{ color: currentBiome.primaryColor, fontWeight: 'bold' }}>{currentBiome.ambientDesc}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Grade de Seleção dos Biomas */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: '0.75rem',
+            marginTop: '0.5rem',
+          }}>
+            {VOXEL_BIOMES.map((b) => {
+              const isSelected = currentBiomeId === b.id;
+              return (
+                <div
+                  key={b.id}
+                  onClick={() => p.setQuestBattleBgUrl(`voxel:${b.id}`)}
+                  style={{
+                    background: isSelected ? 'rgba(45, 212, 191, 0.16)' : 'rgba(255, 255, 255, 0.03)',
+                    border: isSelected ? `2px solid #2dd4bf` : '1px solid var(--border-glass)',
+                    borderRadius: '10px',
+                    padding: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.35rem',
+                    position: 'relative',
+                    transition: 'all 0.15s ease',
+                    transform: isSelected ? 'scale(1.02)' : 'none',
+                    boxShadow: isSelected ? '0 0 16px rgba(45, 212, 191, 0.25)' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '1.6rem' }}>{b.icon}</span>
+                    {isSelected ? (
+                      <span style={{ fontSize: '0.62rem', background: '#2dd4bf', color: '#000', fontWeight: '900', padding: '2px 6px', borderRadius: '4px' }}>
+                        ATIVO
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '2px 5px', borderRadius: '4px' }}>
+                        3D
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.88rem', color: isSelected ? '#2dd4bf' : 'var(--text-primary)', marginTop: '0.2rem' }}>
+                    {b.title}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: '1.25' }}>
+                    {b.description}
+                  </div>
+                  <div style={{ fontSize: '0.65rem', color: b.primaryColor, marginTop: 'auto', paddingTop: '4px', fontWeight: 'bold' }}>
+                    ✨ {b.ambientDesc}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        /* SEÇÃO 2D CLÁSSICA */
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          {/* Preview do fundo atual */}
+          <div style={{ width: '200px', height: '100px', borderRadius: '8px', border: '1px solid var(--border-glass)', overflow: 'hidden', background: 'var(--bg-dark)', flexShrink: 0 }}>
+            {p.questBattleBgUrl ? (
+              <div style={{
+                width: '100%',
+                height: '100%',
+                backgroundImage: `url("${getSafeUrl(p.questBattleBgUrl)}")`,
+                backgroundSize: `${p.questBattleBgScale * 100}%`,
+                backgroundPosition: `${p.questBattleBgPosX}% ${p.questBattleBgPosY}%`,
+                backgroundRepeat: 'no-repeat'
+              }} />
+            ) : (
+              <div style={{ width: '100%', height: '100%', background: 'url(/battle_bg.png) center/cover', opacity: 0.5 }} />
+            )}
+          </div>
+
+          <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Botões de ação */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                onClick={p.onGalleryArena}
+                style={{ padding: '0.5rem 1rem', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}
+              >
+                <Search size={16} /> Galeria
+              </button>
+              <DirectUploadButton
+                folder="arena-backgrounds"
+                onUploadComplete={(url) => p.setQuestBattleBgUrl(url)}
+                buttonStyle={{ padding: '0.5rem 1rem', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }}
+              />
+              {p.questBattleBgUrl && (
+                <button
+                  onClick={p.onOpenArenaEditor}
+                  style={{ padding: '0.5rem 1rem', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-blue)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}
+                >
+                  <Move size={16} /> Ajustar Posição
+                </button>
+              )}
+              <button
+                onClick={() => { p.setQuestBattleBgUrl(''); p.setQuestBattleBgPosX(50); p.setQuestBattleBgPosY(50); p.setQuestBattleBgScale(1.2); p.setQuestBattleBgMoveEnabled(true); p.setQuestBattleBgMoveDirection('diagonal'); p.setQuestBattleBgMoveSpeed(10); p.setQuestBattleBgMoveDuration(30); }}
+                style={{ padding: '0.5rem 1rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                Usar Padrão
+              </button>
+            </div>
+
+            {/* Position Info */}
+            {p.questBattleBgUrl && (p.questBattleBgPosX !== 50 || p.questBattleBgPosY !== 50 || p.questBattleBgScale !== 1.2) && (
+              <div style={{
+                display: 'flex', gap: '1rem',
+                background: 'rgba(59, 130, 246, 0.1)',
+                padding: '0.5rem 0.75rem',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                color: 'var(--accent-blue)'
+              }}>
+                <span>X: {p.questBattleBgPosX.toFixed(0)}%</span>
+                <span>Y: {p.questBattleBgPosY.toFixed(0)}%</span>
+                <span>Zoom: {p.questBattleBgScale.toFixed(2)}x</span>
+              </div>
+            )}
+
+            {/* Input manual de URL */}
+            <input
+              type="text"
+              value={p.questBattleBgUrl}
+              onChange={e => p.setQuestBattleBgUrl(e.target.value)}
+              placeholder="Ou cole a URL da imagem aqui..."
+              style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem' }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* SEÇÃO DA MÚSICA DA BATALHA */}
       <hr style={{ borderColor: 'rgba(255, 255, 255, 0.1)', margin: '1.5rem 0' }} />

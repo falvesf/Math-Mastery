@@ -339,12 +339,18 @@ h3 {
   animation: teleport-attack-monster 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
-.teleport-player.is-3d {
-  animation: teleport-attack-player-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+.teleport-player.is-3d,
+.is-3d-arena .teleport-player,
+.is-3d-arena .quest-arena-side-player.teleport-player {
+  animation: teleport-attack-player-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+  transform-origin: bottom center !important;
 }
 
-.teleport-monster.is-3d {
-  animation: teleport-attack-monster-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+.teleport-monster.is-3d,
+.is-3d-arena .teleport-monster,
+.is-3d-arena .quest-arena-side-monster.teleport-monster {
+  animation: teleport-attack-monster-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+  transform-origin: bottom center !important;
 }
 
 @keyframes teleport-attack-player-3d {
@@ -393,20 +399,28 @@ h3 {
   animation: teleport-attack-monster-fatal 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
-.teleport-player-fatal.is-3d {
-  animation: teleport-attack-player-fatal-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+.teleport-player-fatal.is-3d,
+.is-3d-arena .teleport-player-fatal {
+  animation: teleport-attack-player-fatal-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+  transform-origin: bottom center !important;
 }
 
-.teleport-monster-fatal.is-3d {
-  animation: teleport-attack-monster-fatal-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+.teleport-monster-fatal.is-3d,
+.is-3d-arena .teleport-monster-fatal {
+  animation: teleport-attack-monster-fatal-3d 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+  transform-origin: bottom center !important;
 }
 
-.teleport-player-fatal-slow.is-3d {
-  animation: teleport-attack-player-fatal-3d 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+.teleport-player-fatal-slow.is-3d,
+.is-3d-arena .teleport-player-fatal-slow {
+  animation: teleport-attack-player-fatal-3d 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+  transform-origin: bottom center !important;
 }
 
-.teleport-monster-fatal-slow.is-3d {
-  animation: teleport-attack-monster-fatal-3d 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+.teleport-monster-fatal-slow.is-3d,
+.is-3d-arena .teleport-monster-fatal-slow {
+  animation: teleport-attack-monster-fatal-3d 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+  transform-origin: bottom center !important;
 }
 
 @keyframes teleport-attack-player-fatal-3d {
@@ -437,6 +451,46 @@ h3 {
 
 .teleport-monster-fatal-slow {
   animation: teleport-attack-monster-fatal 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* =========================================================
+   Sombra Dinâmica dos Personagens (segue nas ações)
+   ========================================================= */
+.avatar-ground-shadow {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 22px;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.28) 46%, rgba(0, 0, 0, 0) 74%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.25s ease;
+}
+
+.is-3d-arena .avatar-ground-shadow {
+  width: 104px;
+  height: 24px;
+  bottom: -6px;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.65) 0%, rgba(0, 0, 0, 0.32) 48%, rgba(0, 0, 0, 0) 75%);
+  filter: blur(0.5px);
+}
+
+.avatar-ground-shadow.pvp {
+  bottom: 0px;
+  width: 100px;
+  height: 22px;
+}
+
+/* Fade out da sombra se o personagem evaporar ou for eliminado */
+.anim-death-evaporate ~ .avatar-ground-shadow,
+.anim-death-fall ~ .avatar-ground-shadow,
+.anim-death-explode ~ .avatar-ground-shadow,
+.is-eliminated .avatar-ground-shadow {
+  opacity: 0;
+  transition: opacity 1.5s ease-out;
 }
 
 .anim-death-fall {

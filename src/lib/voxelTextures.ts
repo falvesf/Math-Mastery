@@ -211,3 +211,371 @@ export function getSunTexture(): THREE.CanvasTexture {
   textureCache['minecraft_sun'] = tex;
   return tex;
 }
+
+/**
+ * Textura de Tijolos do Nether (Nether Bricks)
+ * Tijolos estreitos em carmesim escuro e vinho com juntas pretas
+ */
+export function getNetherBricksTexture(): THREE.CanvasTexture {
+  if (textureCache['nether_bricks']) return textureCache['nether_bricks'];
+
+  const { canvas, ctx } = createPixelCanvas(16, 16);
+  const palette = ['#2c0d12', '#371319', '#24080c', '#3f161c', '#1e0508'];
+  const darkMortar = '#120204';
+  const lightBevel = '#4d1c24';
+
+  let seed = 505;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const idx = Math.floor(seededRandom(seed++) * palette.length);
+      ctx.fillStyle = palette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Linhas horizontais de argamassa do Nether
+  ctx.fillStyle = darkMortar;
+  ctx.fillRect(0, 0, 16, 1);
+  ctx.fillRect(0, 8, 16, 1);
+  ctx.fillRect(0, 15, 16, 1);
+
+  // Juntas verticais
+  ctx.fillRect(8, 1, 1, 7);
+  ctx.fillRect(0, 9, 1, 6);
+  ctx.fillRect(15, 9, 1, 6);
+
+  // Brilho avermelhado sutil nos cantos
+  ctx.fillStyle = lightBevel;
+  ctx.fillRect(1, 1, 7, 1);
+  ctx.fillRect(9, 1, 7, 1);
+  ctx.fillRect(1, 9, 14, 1);
+
+  const tex = makeTexture(canvas);
+  textureCache['nether_bricks'] = tex;
+  return tex;
+}
+
+/**
+ * Textura de Netherrack (Pedra porosa infernal)
+ */
+export function getNetherrackTexture(): THREE.CanvasTexture {
+  if (textureCache['netherrack']) return textureCache['netherrack'];
+
+  const { canvas, ctx } = createPixelCanvas(16, 16);
+  const palette = ['#681b1b', '#561313', '#772222', '#440e0e', '#882929', '#380a0a'];
+  const emberColor = '#a83232';
+
+  let seed = 606;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const idx = Math.floor(seededRandom(seed++) * palette.length);
+      ctx.fillStyle = palette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Pontos de brasas/rocha viva
+  for (let i = 0; i < 18; i++) {
+    const x = Math.floor(seededRandom(seed++) * 16);
+    const y = Math.floor(seededRandom(seed++) * 16);
+    ctx.fillStyle = emberColor;
+    ctx.fillRect(x, y, 1, 1);
+  }
+
+  const tex = makeTexture(canvas);
+  textureCache['netherrack'] = tex;
+  return tex;
+}
+
+/**
+ * Textura de Arenito (Sandstone)
+ * Bloco talhado dourado das pirâmides do deserto
+ */
+export function getSandstoneTexture(): THREE.CanvasTexture {
+  if (textureCache['sandstone']) return textureCache['sandstone'];
+
+  const { canvas, ctx } = createPixelCanvas(16, 16);
+  const palette = ['#d8b870', '#cca960', '#e4c785', '#bfa054', '#eed698'];
+  const darkGroove = '#a3843e';
+  const lightEdge = '#f5e4b2';
+
+  let seed = 707;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const idx = Math.floor(seededRandom(seed++) * palette.length);
+      ctx.fillStyle = palette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Friso decorativo talhado
+  ctx.fillStyle = darkGroove;
+  ctx.fillRect(0, 3, 16, 1);
+  ctx.fillRect(0, 12, 16, 1);
+  ctx.fillStyle = lightEdge;
+  ctx.fillRect(0, 4, 16, 1);
+  ctx.fillRect(0, 13, 16, 1);
+
+  const tex = makeTexture(canvas);
+  textureCache['sandstone'] = tex;
+  return tex;
+}
+
+/**
+ * Textura de Areia do Deserto (Desert Sand)
+ */
+export function getSandTexture(): THREE.CanvasTexture {
+  if (textureCache['sand']) return textureCache['sand'];
+
+  const { canvas, ctx } = createPixelCanvas(16, 16);
+  const palette = ['#dbbc76', '#cfb068', '#e5c988', '#c4a45a', '#ebd094'];
+
+  let seed = 808;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const idx = Math.floor(seededRandom(seed++) * palette.length);
+      ctx.fillStyle = palette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  const tex = makeTexture(canvas);
+  textureCache['sand'] = tex;
+  return tex;
+}
+
+/**
+ * Textura de Neve no Topo (Snow Block Top)
+ */
+export function getSnowTopTexture(): THREE.CanvasTexture {
+  if (textureCache['snow_top']) return textureCache['snow_top'];
+
+  const { canvas, ctx } = createPixelCanvas(16, 16);
+  const palette = ['#ffffff', '#f4f8fb', '#eaf2f8', '#deebf5', '#d4e4f0'];
+
+  let seed = 909;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const idx = Math.floor(seededRandom(seed++) * palette.length);
+      ctx.fillStyle = palette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  const tex = makeTexture(canvas);
+  textureCache['snow_top'] = tex;
+  return tex;
+}
+
+/**
+ * Textura Lateral do Bloco de Neve (Snow Block Side)
+ * Terra embaixo + camada espessa de neve branca no topo
+ */
+export function getSnowSideTexture(): THREE.CanvasTexture {
+  if (textureCache['snow_side']) return textureCache['snow_side'];
+
+  const { canvas, ctx } = createPixelCanvas(16, 16);
+  const dirtPalette = ['#775438', '#66452c', '#553720', '#835f41'];
+  const snowPalette = ['#ffffff', '#f4f8fb', '#eaf2f8', '#deebf5'];
+
+  let seed = 1001;
+  // Fundo de terra
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const idx = Math.floor(seededRandom(seed++) * dirtPalette.length);
+      ctx.fillStyle = dirtPalette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Camada espessa e irregular de neve no topo
+  const snowDepth = [5, 6, 5, 7, 6, 5, 6, 7, 5, 6, 7, 6, 5, 6, 5, 6];
+  for (let x = 0; x < 16; x++) {
+    const depth = snowDepth[x];
+    for (let y = 0; y < depth; y++) {
+      const idx = Math.floor(seededRandom(seed++) * snowPalette.length);
+      ctx.fillStyle = snowPalette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  const tex = makeTexture(canvas);
+  textureCache['snow_side'] = tex;
+  return tex;
+}
+
+/**
+ * Textura de Pedra Glacial / Gelo Compacto (Ice Stone)
+ */
+export function getIceStoneTexture(): THREE.CanvasTexture {
+  if (textureCache['ice_stone']) return textureCache['ice_stone'];
+
+  const { canvas, ctx } = createPixelCanvas(16, 16);
+  const palette = ['#7ca3ba', '#6c93aa', '#8bb2c9', '#5b8198', '#9ac0d7', '#4d7187'];
+
+  let seed = 1102;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const idx = Math.floor(seededRandom(seed++) * palette.length);
+      ctx.fillStyle = palette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Linhas de blocos de gelo
+  ctx.fillStyle = '#426377';
+  ctx.fillRect(0, 0, 16, 1);
+  ctx.fillRect(0, 8, 16, 1);
+  ctx.fillRect(8, 1, 1, 7);
+  ctx.fillRect(0, 9, 1, 7);
+
+  // Brilho cristalino
+  ctx.fillStyle = '#b3d8ee';
+  ctx.fillRect(1, 1, 7, 1);
+  ctx.fillRect(9, 1, 7, 1);
+
+  const tex = makeTexture(canvas);
+  textureCache['ice_stone'] = tex;
+  return tex;
+}
+
+/**
+ * Textura de Pedra do End (End Stone)
+ * Rocha amarelada pontilhada de crateras da dimensão The End
+ */
+export function getEndStoneTexture(): THREE.CanvasTexture {
+  if (textureCache['end_stone']) return textureCache['end_stone'];
+
+  const { canvas, ctx } = createPixelCanvas(16, 16);
+  const palette = ['#d7d69b', '#cac98f', '#e3e2aa', '#bdbe82', '#ecebb8', '#b0b176'];
+
+  let seed = 1203;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const idx = Math.floor(seededRandom(seed++) * palette.length);
+      ctx.fillStyle = palette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Manchas escuras crateradas
+  for (let i = 0; i < 15; i++) {
+    const x = Math.floor(seededRandom(seed++) * 15);
+    const y = Math.floor(seededRandom(seed++) * 15);
+    ctx.fillStyle = '#9b9d62';
+    ctx.fillRect(x, y, 2, 1);
+  }
+
+  const tex = makeTexture(canvas);
+  textureCache['end_stone'] = tex;
+  return tex;
+}
+
+/**
+ * Textura de Bloco Purpur (Purpur Block)
+ * Tijolos roxos da fortaleza do End
+ */
+export function getPurpurTexture(): THREE.CanvasTexture {
+  if (textureCache['purpur']) return textureCache['purpur'];
+
+  const { canvas, ctx } = createPixelCanvas(16, 16);
+  const palette = ['#a26ca3', '#945e95', '#af78b0', '#834f84', '#6d3c6e'];
+  const darkEdge = '#5c2f5d';
+  const lightEdge = '#bd87be';
+
+  let seed = 1304;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const idx = Math.floor(seededRandom(seed++) * palette.length);
+      ctx.fillStyle = palette[idx];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Moldura do bloco Purpur
+  ctx.fillStyle = darkEdge;
+  ctx.strokeRect(0.5, 0.5, 15, 15);
+  ctx.fillStyle = lightEdge;
+  ctx.fillRect(1, 1, 14, 1);
+  ctx.fillRect(1, 1, 1, 14);
+
+  const tex = makeTexture(canvas);
+  textureCache['purpur'] = tex;
+  return tex;
+}
+
+// ==========================================
+// Metadados Globais dos Biomas Voxel
+// ==========================================
+
+export type VoxelBiomeType = 'plains' | 'nether' | 'desert' | 'snow' | 'end';
+
+export interface VoxelBiomeMeta {
+  id: VoxelBiomeType;
+  title: string;
+  name: string;
+  description: string;
+  badge: string;
+  icon: string;
+  primaryColor: string;
+  skyColor: string;
+  ambientDesc: string;
+}
+
+export const VOXEL_BIOMES: VoxelBiomeMeta[] = [
+  {
+    id: 'plains',
+    title: 'Planície Verdejante',
+    name: 'Planície (Minecraft)',
+    description: 'Campos verdes clássicos, tijolos de pedra e céu ensolarado.',
+    badge: '🌲 Planície',
+    icon: '🌲',
+    primaryColor: '#4c7e28',
+    skyColor: '#78a7ff',
+    ambientDesc: 'Céu azul e nuvens flutuantes',
+  },
+  {
+    id: 'nether',
+    title: 'Nether Vulcânico',
+    name: 'Nether (Infernal)',
+    description: 'Fortaleza de tijolos do nether, netherrack e bruma carmesim.',
+    badge: '🔥 Nether',
+    icon: '🔥',
+    primaryColor: '#701d1d',
+    skyColor: '#1c0508',
+    ambientDesc: 'Névoa densa e brasas incandescentes',
+  },
+  {
+    id: 'desert',
+    title: 'Deserto das Areias',
+    name: 'Deserto (Pirâmides)',
+    description: 'Dunas douradas, arenito talhado e sol escaldante.',
+    badge: '🏜️ Deserto',
+    icon: '🏜️',
+    primaryColor: '#d4b574',
+    skyColor: '#6eb6ff',
+    ambientDesc: 'Sol escaldante e dunas infinitas',
+  },
+  {
+    id: 'snow',
+    title: 'Tundra Congelada',
+    name: 'Tundra (Gelo & Neve)',
+    description: 'Campos de neve fofa, pedra glacial e flocos caindo suavemente.',
+    badge: '❄️ Tundra',
+    icon: '❄️',
+    primaryColor: '#a0c4d8',
+    skyColor: '#8faec9',
+    ambientDesc: 'Névoa fria e flocos de neve',
+  },
+  {
+    id: 'end',
+    title: 'O Fim / The End',
+    name: 'The End (O Vazio)',
+    description: 'Rocha espacial do End, blocos Purpur e vazio cósmico arroxeado.',
+    badge: '🌌 The End',
+    icon: '🌌',
+    primaryColor: '#6c436d',
+    skyColor: '#0a0514',
+    ambientDesc: 'Vazio cósmico e partículas do Ender',
+  },
+];
