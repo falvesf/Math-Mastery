@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 import { supabase } from '../lib/supabase';
@@ -664,6 +664,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
   const [arenaWidth, setArenaWidth] = useState(800);
   const arenaRef = useRef<HTMLDivElement>(null);
+  // Quando as alternativas caem na mesma altura dos bonecos (ficam por cima e não dá
+  // para clicar), movemos as respostas para BAIXO da arena. Se a pergunta ficar acima
+  // dos bonecos, mantemos no topo.
+  const questionTitleRef = useRef<HTMLDivElement>(null);
+  const questionOptionsRef = useRef<HTMLDivElement>(null);
+  const playerSideRef = useRef<HTMLDivElement>(null);
+  const monsterSideRef = useRef<HTMLDivElement>(null);
+  const [answersBelow, setAnswersBelow] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const gameStateRef = useRef(gameState);
 
@@ -2979,6 +2987,37 @@ useEffect(() => {
     return () => window.removeEventListener('resize', sync);
   }, [monsterAnim, arenaDebug, currentQIndex]);
 
+  // Decide se as ALTERNATIVAS ficam por cima dos bonecos. Se sim, movemos as respostas
+  // para baixo da arena (senão mantemos no topo). Mede o fundo do bloco da pergunta +
+  // a altura das alternativas vs o topo dos bonecos.
+  useLayoutEffect(() => {
+    if (gameState !== 'playing') return;
+    const measure = () => {
+      const titleEl = questionTitleRef.current;
+      const optionsEl = questionOptionsRef.current;
+      const playerEl = playerSideRef.current;
+      const monsterEl = monsterSideRef.current;
+      if (!titleEl || !optionsEl) return;
+      const titleBottom = titleEl.getBoundingClientRect().bottom;
+      const optionsHeight = optionsEl.getBoundingClientRect().height || 0;
+      const tops: number[] = [];
+      if (playerEl) tops.push(playerEl.getBoundingClientRect().top);
+      if (monsterEl) tops.push(monsterEl.getBoundingClientRect().top);
+      if (tops.length === 0) return;
+      const charsTop = Math.min(...tops);
+      // Há sobreposição se o fundo da pergunta + as alternativas passam do topo dos bonecos.
+      setAnswersBelow(titleBottom + optionsHeight + 12 > charsTop);
+    };
+    // Mede após o layout estabilizar (pergunta/estado mudam).
+    const raf = requestAnimationFrame(measure);
+    window.addEventListener('resize', measure);
+    // A imagem da pergunta carrega depois e muda a altura → re-mede quando o título/opções mudarem de tamanho.
+    const ro = new ResizeObserver(() => measure());
+    if (questionTitleRef.current) ro.observe(questionTitleRef.current);
+    if (questionOptionsRef.current) ro.observe(questionOptionsRef.current);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', measure); ro.disconnect(); };
+  }, [gameState, currentQIndex, arenaDebug, feedback, eliminatedOptions.length]);
+
   const handleUsePowerup = async (item: UserItem) => {
     if (gameState !== 'playing') {
       showToast("Você só pode usar itens durante a batalha!", "warning");
@@ -3513,14 +3552,46 @@ useEffect(() => {
 
             {/* Question Overlay - Sobre a arena, abaixo dos balões de fala */}
             <div className="quest-question-overlay">
-              <div className="quest-question-title">
+              <div className="quest-question-title" ref={questionTitleRef}>
                 {quest?.questions[currentQIndex].imageUrl && (
                   <img src={getSafeUrl(quest?.questions[currentQIndex].imageUrl)} alt="Quest" />
                 )}
                 <h2 dangerouslySetInnerHTML={{ __html: quest?.questions[currentQIndex].title || '' }} />
               </div>
               
-              <div className="quest-options-compact">
+              {!answersBelow && (
+                <div className="quest-options-compact" ref={questionOptionsRef}>
+                  {quest?.questions[currentQIndex].options
+                    .map((opt, idx) => ({ opt, idx }))
+                    .filter(({ opt }) => (opt.text && opt.text.trim() !== '') || (opt.imageUrl && opt.imageUrl.trim() !== ''))
+                    .map(({ opt, idx: i }) => {
+                    const isEliminated = eliminatedOptions.includes(i);
+                    const isCorrectAnswer = feedback === 'correct' && i === quest?.questions[currentQIndex].correctIndex;
+                    const isWrongSelected = feedback === 'wrong' && i === lastSelectedOption;
+                    
+                    return (
+                      <button 
+                        key={i} 
+                        id={`quest-opt-${i}`}
+                        onClick={() => !isEliminated && handleAnswer(i)}
+                        disabled={feedback !== null || isEliminated || playerFrozenAt > Date.now()}
+                        className={`quest-option-btn ${isEliminated ? 'eliminated' : ''} ${isCorrectAnswer ? 'correct' : ''} ${isWrongSelected ? 'wrong' : ''}`}
+                      >
+                        {isEliminated && <XCircle size={16} color="rgba(239, 68, 68, 0.5)" style={{ position: 'absolute' }} />}
+                        <span className="option-letter">{String.fromCharCode(65 + i)}</span>
+                        {opt.imageUrl && <img src={getSafeUrl(opt.imageUrl)} alt="" className="option-img" />}
+                        <span className="option-text">{opt.text}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Alternativas ABAIXO DA ARENA (quando a pergunta fica na altura dos bonecos
+                e as respostas ficariam por cima/atrás deles, sem dar para clicar). */}
+            {answersBelow && (
+              <div ref={questionOptionsRef} className="quest-question-overlay" style={{ position: 'fixed', top: 'auto', bottom: 0, left: 0, right: 0, display: 'flex', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--border-glass)', zIndex: 60, pointerEvents: 'auto' }}>
                 {quest?.questions[currentQIndex].options
                   .map((opt, idx) => ({ opt, idx }))
                   .filter(({ opt }) => (opt.text && opt.text.trim() !== '') || (opt.imageUrl && opt.imageUrl.trim() !== ''))
@@ -3528,7 +3599,6 @@ useEffect(() => {
                   const isEliminated = eliminatedOptions.includes(i);
                   const isCorrectAnswer = feedback === 'correct' && i === quest?.questions[currentQIndex].correctIndex;
                   const isWrongSelected = feedback === 'wrong' && i === lastSelectedOption;
-                  
                   return (
                     <button 
                       key={i} 
@@ -3545,10 +3615,11 @@ useEffect(() => {
                   );
                 })}
               </div>
-            </div>
+            )}
             
             {/* Player Side */}
             <div 
+              ref={playerSideRef}
               className={`quest-arena-side-player ${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : ''} ${userData?.avatarConfig?.customModelUrl ? 'is-3d' : ''}`}
               style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (playerAnim.startsWith('attack') || playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 30 : (monsterAnim.startsWith('death-') ? 20 : 26), pointerEvents: 'none' }}
             >
@@ -3630,6 +3701,7 @@ useEffect(() => {
 
             {/* Monster Side */}
             <div 
+              ref={monsterSideRef}
               className={`quest-arena-side-monster ${
                 monsterAnim === 'attack' ? 'teleport-monster' :
                 (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` :
