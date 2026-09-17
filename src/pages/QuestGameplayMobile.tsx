@@ -3018,11 +3018,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (!titleEl || !optionsEl) return;
       const titleBottom = titleEl.getBoundingClientRect().bottom;
       const optionsHeight = optionsEl.getBoundingClientRect().height || 0;
+      // Topo do CONTAINER DO AVATAR (corpo), não do wrapper (nome/balões).
       const tops: number[] = [];
-      if (playerEl) tops.push(playerEl.getBoundingClientRect().top);
-      if (monsterEl) tops.push(monsterEl.getBoundingClientRect().top);
+      const pAv = playerEl?.querySelector('.quest-arena-avatars');
+      const mAv = monsterEl?.querySelector('.quest-arena-avatars');
+      if (pAv) tops.push(pAv.getBoundingClientRect().top);
+      if (mAv) tops.push(mAv.getBoundingClientRect().top);
       if (tops.length === 0) return;
-      setAnswersBelow(titleBottom + optionsHeight + 12 > Math.min(...tops));
+      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops));
     };
     const raf = requestAnimationFrame(measure);
     window.addEventListener('resize', measure);

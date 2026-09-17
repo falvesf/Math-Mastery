@@ -3000,13 +3000,16 @@ useEffect(() => {
       if (!titleEl || !optionsEl) return;
       const titleBottom = titleEl.getBoundingClientRect().bottom;
       const optionsHeight = optionsEl.getBoundingClientRect().height || 0;
+      // Usa o topo do CONTAINER DO AVATAR (corpo do boneco), não do wrapper (que inclui
+      // nome/balões) — senão dispara cedo demais e move as respostas sem necessidade.
       const tops: number[] = [];
-      if (playerEl) tops.push(playerEl.getBoundingClientRect().top);
-      if (monsterEl) tops.push(monsterEl.getBoundingClientRect().top);
+      const pAv = playerEl?.querySelector('.quest-arena-avatars');
+      const mAv = monsterEl?.querySelector('.quest-arena-avatars');
+      if (pAv) tops.push(pAv.getBoundingClientRect().top);
+      if (mAv) tops.push(mAv.getBoundingClientRect().top);
       if (tops.length === 0) return;
-      const charsTop = Math.min(...tops);
-      // Há sobreposição se o fundo da pergunta + as alternativas passam do topo dos bonecos.
-      setAnswersBelow(titleBottom + optionsHeight + 12 > charsTop);
+      // Só move para baixo se as alternativas REALMENTE entrariam na área dos bonecos.
+      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops));
     };
     // Mede após o layout estabilizar (pergunta/estado mudam).
     const raf = requestAnimationFrame(measure);
