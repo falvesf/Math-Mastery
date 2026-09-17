@@ -738,13 +738,15 @@ export interface AvatarCharacterProps {
    *  partes caídas são renderizadas num canvas próprio. Assim elas NÃO acompanham o monstro
    *  quando ele ataca ou sofre dano — ficam imóveis no chão. */
   fallenLayerPortal?: HTMLElement | null;
+  /** Multiplicador de velocidade da animação (1 = normal; 0 = parado/congelado). */
+  slowFactor?: number;
 }
 
 import CustomModelViewer from './CustomModelViewer';
 import ItemTooltip from './ItemTooltip';
 
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null, slowFactor = 1 }: AvatarCharacterProps) {
   // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
   // useMemo garante uma referência ESTÁVEL (senão efeitos com [config] entrariam em loop).
   const configMemo = useMemo(() => config || ({} as any), [config]);
@@ -918,6 +920,15 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Lentidão progressiva (gelo): multiplica a velocidade da animação. 0 = parado (congelado).
+  // Roda a cada render para reaplicar sempre que a animação for trocada.
+  useEffect(() => {
+    const v = viewerRef.current as any;
+    if (v && v.animation) {
+      v.animation.speed = Math.max(0, slowFactor);
+    }
+  });
 
   // 2. Update size and interactivity when they change
   useEffect(() => {

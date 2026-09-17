@@ -26,6 +26,7 @@ import { fetchPlayerBattleQuotes, pickPlayerBattleQuote, DEFAULT_PLAYER_BATTLE_Q
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
 import DamageEffectOverlay from '../components/DamageEffectOverlay';
+import IceRockView from '../components/IceRockView';
 import LootBeamDrop, { type DroppedBattleItem } from '../components/LootBeamDrop';
 import FloatingDamageNumber from '../components/FloatingDamageNumber';
 import QuestDamageRankingModal from '../components/QuestDamageRankingModal';
@@ -152,6 +153,7 @@ export default function QuestGameplay() {
   const [effectLevel, setEffectLevel] = useState(0);
   const [effectFlash, setEffectFlash] = useState(false);
   const [frozen, setFrozen] = useState(false);
+  const [freezeTurns, setFreezeTurns] = useState(0);
   const [drainBlink, setDrainBlink] = useState(false);
   const fallenPartsRef = useRef<string[]>([]);
   // Efeitos de itens mágicos: transformação do monstro + aura de cura
@@ -1857,6 +1859,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             setTimeout(() => setEffectFlash(false), 600);
             if (damageEffect === 'freeze' && effectLevel + 1 >= FREEZE_HITS_TO_FREEZE) {
               setFrozen(true);
+              setFreezeTurns(3);
             }
             // TRANSFORMAR: só se o monstro estiver na forma NORMAL
             if (damageEffect === 'transform' && !transformRef.current) {
@@ -1928,6 +1931,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
       }
     } else {
       setFeedback('wrong');
+      
+      // CONGELADO: o monstro não consegue atacar enquanto está preso no gelo.
+      if (frozen) {
+        setBattleMessage('🧊 O monstro está CONGELADO e não consegue atacar!');
+        setTimeout(() => {
+          setFeedback(null);
+          setLastSelectedOption(null);
+          nextQuestion();
+        }, 1600);
+        return;
+      }
       
       const chance = getMonsterSpecialChance();
       const isMonsterCrit = (userData?.role === 'student' || !!userData?.studentViewActive) && !isStudyMode && (Math.random() * 100 < chance);
@@ -2368,6 +2382,20 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setCurrentHearts(heal);
       setHealAuraTurns(healAuraTurns - 1);
     }
+
+    // Tick do CONGELAMENTO (2 turnos após o turno do congelamento; o gelo derrete a cada turno).
+    setFreezeTurns(prev => {
+      if (prev <= 0) return 0;
+      const next = prev - 1;
+      if (next <= 0) {
+        setFrozen(false);
+        setEffectLevel(0);
+        setBattleMessage('O gelo derreteu! O monstro voltou a se mover.');
+      } else {
+        setBattleMessage('O monstro está CONGELADO e não consegue atacar! O gelo está derretendo...');
+      }
+      return next;
+    });
 
     if (currentQIndex < quest.questions.length - 1) {
       setCurrentQIndex(nextIndex);
@@ -3869,19 +3897,27 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
                     if (modelUrl) {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
-                      const effectTintColor = healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null);
+                      const effectTintColor = healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : null) : null);
+                      const monsterSlowFactor = frozen ? 0 : (damageEffect === 'freeze' && effectLevel > 0 ? Math.max(0.22, 1 - effectLevel * 0.27) : 1);
                       const monsterZoom = effectiveMonsterZoom;
                       const mSize = Math.round(190 * Math.max(1, monsterZoom * 0.7));
                       const mCam = 10 * Math.max(1, monsterZoom * 0.7);
-                      return <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><CustomModelViewer modelUrl={modelUrl} textureUrl={effectiveMonsterSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : (monsterSpecialAnim || monsterAnim)} role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} effectTint={effectTintColor} enraged={monsterRageActive} shatteredCount={fallenPartsRef.current.length} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} /></div>;
+                      return <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><CustomModelViewer modelUrl={modelUrl} textureUrl={effectiveMonsterSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : (monsterSpecialAnim || monsterAnim)} role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} effectTint={effectTintColor} enraged={monsterRageActive} shatteredCount={fallenPartsRef.current.length} slowFactor={monsterSlowFactor} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} /></div>;
                     } else if (quest?.monsterAvatarConfig) {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
-                      const effectTintColor = healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : null) : null);
-                      return <div ref={monsterCharWrapRef} style={{ marginBottom: '-60px', ...wrapperStyle, transform: `scale(${effectiveMonsterZoom}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={170} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={healTint || (monsterRageActive ? '#ff2222' : effectTintColor)} fallenBodyParts={fallenPartsRef.current} fallenLayerPortal={fallenLayerEl} /></div>;
+                      const effectTintColor = healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : null) : null);
+                      const monsterSlowFactor = frozen ? 0 : (damageEffect === 'freeze' && effectLevel > 0 ? Math.max(0.22, 1 - effectLevel * 0.27) : 1);
+                      return <div ref={monsterCharWrapRef} style={{ marginBottom: '-60px', ...wrapperStyle, transform: `scale(${effectiveMonsterZoom}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={170} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={healTint || (monsterRageActive ? '#ff2222' : effectTintColor)} slowFactor={monsterSlowFactor} fallenBodyParts={fallenPartsRef.current} fallenLayerPortal={fallenLayerEl} /></div>;
                     } else {
                       return <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: healTint ? 'drop-shadow(0 0 15px #2dd4bf) hue-rotate(65deg)' : 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />;
                     }
                   })()}
+                  {/* Rocha de GELO 3D envolvendo o monstro congelado (derrete a cada turno) */}
+                  {frozen && (
+                    <div style={{ position: 'absolute', left: '50%', bottom: 0, transform: 'translateX(-50%)', zIndex: 4, pointerEvents: 'none' }}>
+                      <IceRockView size={Math.round(200 * Math.max(1, effectiveMonsterZoom))} melt={Math.max(0.12, freezeTurns / 3)} />
+                    </div>
+                  )}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (currentQIndex / Math.max(1, quest?.questions.length || 1)) * (damageEffect === 'impact' ? 2 : 1))) } as any} />
                   <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} drainBlink={drainBlink} />
                   {transformPuff && (

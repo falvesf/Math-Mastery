@@ -70,7 +70,9 @@ interface CustomModelViewerProps {
   cameraDistance?: number;
   /** Desmonta o modelo (malhas espalhadas/caídas) — efeito estrondo em monstros GLB.
    *  Nº de "partes" que caíram (0 = intacto). As malhas inferiores caem primeiro. */
-shatteredCount?: number;
+  shatteredCount?: number;
+  /** Multiplicador de velocidade da animação (1 = normal; 0 = parado/congelado). */
+  slowFactor?: number;
   /** Mantém o buffer do canvas (necessário para capturar toDataURL — fatality de corte). */
   preserveDrawingBuffer?: boolean;
   /** Expõe o canvas WebGL assim que criado (para capturar "foto" do modelo). */
@@ -178,7 +180,7 @@ export function computeEntityFit(scene: THREE.Object3D): { scale: number; posY: 
   return { scale: fitScale, posY };
 }
 
-function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, configRotY, effectTint = null, enraged = false, shatteredCount = 0 }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean, configRotY?: number, effectTint?: string | null, enraged?: boolean, shatteredCount?: number }) {
+function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, configRotY, effectTint = null, enraged = false, shatteredCount = 0, slowFactor = 1 }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean, configRotY?: number, effectTint?: string | null, enraged?: boolean, shatteredCount?: number, slowFactor?: number }) {
   const safeModelUrl = resolveModelUrl(modelUrl);
   const { scene: originalScene, animations } = useGLTF(safeModelUrl);
   
@@ -212,7 +214,7 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
         });
       }
     });
-  }, [scene, effectTint, enraged]);
+  }, [scene, effectTint, enraged, textureUrl]);
 
   // Efeito de fúria: pulso incandescente vermelho nos blocos 3D do modelo
   useFrame((state) => {
@@ -253,6 +255,11 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
   }, [enraged, scene]);
 
   const { actions, mixer } = useAnimations(animations, scene);
+
+  // Lentidão progressiva (gelo): reduz a velocidade da animação. 0 = parado (congelado).
+  useEffect(() => {
+    if (mixer) mixer.timeScale = Math.max(0, slowFactor);
+  }, [mixer, slowFactor]);
 
   // Guarda a pose original de todos os ossos e meshes
   const initialTransforms = useMemo(() => {
@@ -467,10 +474,10 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
 // Decide como enquadrar o modelo na área:
 //  - Baús: enquadramento MANUAL (baseline + chestZoom + offsets + giro), WYSIWYG com o preview.
 //  - Jogadores/monstros: escala/posição fixas (comportamento atual).
-function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chestZoom = 1, chestOffsetX = 0, chestOffsetY = 0, chestRotY = 0, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides = false, configRotY = 0, effectTint = null, enraged = false, shatteredCount = 0 }: {
+function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chestZoom = 1, chestOffsetX = 0, chestOffsetY = 0, chestRotY = 0, chestOpenOffsetX, chestOpenOffsetY, chestSwapSides = false, configRotY = 0, effectTint = null, enraged = false, shatteredCount = 0, slowFactor = 1 }: {
   modelUrl: string; textureUrl?: string; animationName?: string; role?: 'player' | 'monster';
   zoom?: number; chestZoom?: number; chestOffsetX?: number; chestOffsetY?: number; chestRotY?: number;
-  chestOpenOffsetX?: number; chestOpenOffsetY?: number; chestSwapSides?: boolean; configRotY?: number; effectTint?: string | null; enraged?: boolean; shatteredCount?: number;
+  chestOpenOffsetX?: number; chestOpenOffsetY?: number; chestSwapSides?: boolean; configRotY?: number; effectTint?: string | null; enraged?: boolean; shatteredCount?: number; slowFactor?: number;
 }) {
   const safeModelUrl = resolveModelUrl(modelUrl);
   const { scene, animations } = useGLTF(safeModelUrl);
@@ -488,7 +495,7 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
   }, [scene, isChest, hasOpenAnim, chestSwapSides]);
 
   const content = (
-    <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animationName} role={role} chestSwapSides={chestSwapSides} configRotY={configRotY} effectTint={effectTint} enraged={enraged} shatteredCount={shatteredCount} />
+    <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animationName} role={role} chestSwapSides={chestSwapSides} configRotY={configRotY} effectTint={effectTint} enraged={enraged} shatteredCount={shatteredCount} slowFactor={slowFactor} />
   );
 
   if (!isChest) {
@@ -536,6 +543,7 @@ export default React.memo(function CustomModelViewer({
   effectTint = null,
   enraged = false,
   shatteredCount = 0,
+  slowFactor = 1,
   preserveDrawingBuffer = false,
   onCanvasReady,
   cameraDistance = 10
@@ -562,7 +570,7 @@ export default React.memo(function CustomModelViewer({
           <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.2, 0]} />
           <React.Suspense fallback={null}>
             <ModelErrorBoundary key={modelUrl}>
-              <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} zoom={zoom} configRotY={configRotY} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} effectTint={effectTint} enraged={enraged} shatteredCount={shatteredCount} />
+              <ModelGroup modelUrl={modelUrl} textureUrl={textureUrl} animationName={animation} role={role} zoom={zoom} configRotY={configRotY} chestZoom={chestZoom} chestOffsetX={chestOffsetX} chestOffsetY={chestOffsetY} chestRotY={chestRotY} chestOpenOffsetX={chestOpenOffsetX} chestOpenOffsetY={chestOpenOffsetY} chestSwapSides={chestSwapSides} effectTint={effectTint} enraged={enraged} shatteredCount={shatteredCount} slowFactor={slowFactor} />
             </ModelErrorBoundary>
           </React.Suspense>
         </Canvas>

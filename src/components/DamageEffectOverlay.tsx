@@ -26,11 +26,9 @@ export default function DamageEffectOverlay({ effect, level, justHit = false, fr
 
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', overflow: 'visible' }}>
-      {/* FOGO — chamas persistentes + tint que derrete (fica mais intenso com os acertos) */}
+      {/* FOGO — chamas persistentes (a pintura dos blocos agora é feita em 3D via effectTint) */}
       {effect === 'burn' && (
         <>
-          <div className={`de-burn-tint de-lvl-${lvl}`} />
-          <div className={`de-burn-glow de-lvl-${lvl}`} />
           <div className="de-fire" style={{ opacity: Math.min(1, 0.45 + lvl * 0.11), height: `${32 + lvl * 12}%` }}>
             {Array.from({ length: 6 + lvl * 3 }).map((_, i) => (
               <span key={i} className="de-flame" style={{ left: `${6 + (i * 12) % 86}%`, height: `${28 + lvl * 7 + (i % 3) * 8}px`, animationDelay: `${(i % 5) * 0.16}s`, animationDuration: `${0.5 + (i % 3) * 0.2}s` }} />
@@ -39,20 +37,12 @@ export default function DamageEffectOverlay({ effect, level, justHit = false, fr
         </>
       )}
 
-      {/* GELO — camada de gelo crescente; congela totalmente no nível máximo */}
-      {effect === 'freeze' && (
-        <>
-          <div className={`de-frost de-lvl-${lvl}`} />
-          {frozen && <div className="de-frozen-block"><span>❄️</span></div>}
-          {!frozen && <div className="de-ice-shards"><span>❄</span></div>}
-        </>
-      )}
+      {/* GELO — o visual agora é 3D (IceRockView), então não há camada CSS de gelo aqui. */}
+      {effect === 'freeze' && null}
 
-      {/* VENENO — tint verde crescente + névoa tóxica */}
+      {/* VENENO — névoa tóxica (pintura verde dos blocos feita em 3D) */}
       {effect === 'poison' && (
         <>
-          <div className={`de-poison-tint de-lvl-${lvl}`} />
-          <div className={`de-poison-glow de-lvl-${lvl}`} />
           <div className="de-poison-bubbles" style={{ opacity: Math.min(1, 0.3 + lvl * 0.12) }}>
             {Array.from({ length: 5 + lvl * 2 }).map((_, i) => (
               <span key={i} className="de-bubble" style={{ left: `${10 + (i * 17) % 80}%`, animationDelay: `${(i % 4) * 0.35}s` }} />
@@ -61,11 +51,9 @@ export default function DamageEffectOverlay({ effect, level, justHit = false, fr
         </>
       )}
 
-      {/* SANGRAMENTO — tint vermelha + gotejamento de sangue */}
+      {/* SANGRAMENTO — gotejamento (pintura vermelha dos blocos feita em 3D) */}
       {effect === 'bleed' && (
         <>
-          <div className={`de-bleed-tint de-lvl-${lvl}`} />
-          <div className={`de-bleed-glow de-lvl-${lvl}`} />
           <div className="de-blood" style={{ opacity: Math.min(1, 0.3 + lvl * 0.13) }}>
             {Array.from({ length: 5 + lvl * 2 }).map((_, i) => (
               <span key={i} className="de-drop" style={{ left: `${12 + (i * 18) % 76}%`, animationDelay: `${(i % 4) * 0.3}s` }} />
