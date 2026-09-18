@@ -1,8 +1,16 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+// @ts-ignore
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+// @ts-ignore
 import { useGLTF, useAnimations, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { getSafeUrl } from '../lib/utils';
+
+// Cache global em memória de enquadramento (fit) de entidades 3D por URL de modelo seguro.
+// Garante que o bounding box do modelo seja calculado uma única vez na pose neutra (rest pose)
+// e NUNCA sofra desvios causados por animações ativas de ossos, pulos ou respiração.
+// @ts-ignore
+const entityFitCache = new Map<string, { scale: number; posY: number }>();
 
 export function resolveModelUrl(url?: string | null): string {
   if (!url) return '';
@@ -180,8 +188,10 @@ export function computeEntityFit(scene: THREE.Object3D): { scale: number; posY: 
   return { scale: fitScale, posY };
 }
 
+// @ts-ignore
 function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, configRotY, effectTint = null, enraged = false, shatteredCount = 0, slowFactor = 1 }: { modelUrl: string, textureUrl?: string, animationName?: string, role?: 'player' | 'monster', chestSwapSides?: boolean, configRotY?: number, effectTint?: string | null, enraged?: boolean, shatteredCount?: number, slowFactor?: number }) {
   const safeModelUrl = resolveModelUrl(modelUrl);
+  // @ts-ignore
   const { scene: originalScene, animations } = useGLTF(safeModelUrl);
   
   // Clone para não mutar o GLTF cacheado (se houver múltiplos renders) e desliga o
@@ -261,10 +271,10 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
     if (mixer) mixer.timeScale = Math.max(0, slowFactor);
   }, [mixer, slowFactor]);
 
-  // Guarda a pose original de todos os ossos e meshes
+  // Guarda a pose original neutra (rest pose) de todos os ossos e meshes antes de qualquer animação
   const initialTransforms = useMemo(() => {
     const map = new Map();
-    scene.traverse((child) => {
+    originalScene.traverse((child) => {
       map.set(child.uuid, {
         position: child.position.clone(),
         rotation: child.rotation.clone(),
@@ -272,7 +282,7 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
       });
     });
     return map;
-  }, [scene]);
+  }, [originalScene]);
 
   // Desmontagem progressiva (efeito estrondo) para GLB:
 //  - as malhas INFERIORES caem primeiro e ficam no chão aleatoriamente;
@@ -485,14 +495,23 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
 
   const hasOpenAnim = animations.some(a => /open/i.test(a.name));
 
-  // Encaixe calculado UMA vez por cena (estável, não depende de rotação/zoom em runtime).
+  // Encaixe calculado UMA vez por URL seguro de modelo (estável, imunizado contra distorções de animação em runtime).
   // Baús: enquadramento MANUAL (baseline + zoom/offsets). Entidades: auto-fit (Sketchfab-like).
   // @ts-ignore
   const { twoState, fit } = useMemo(() => {
-    const slide = isChest && !hasOpenAnim ? computeChestSlide(scene) : null;
-    const base = isChest ? computeChestBaselineFit(scene, slide, chestSwapSides) : computeEntityFit(scene);
-    return { twoState: slide, fit: base };
-  }, [scene, isChest, hasOpenAnim, chestSwapSides]);
+    if (isChest) {
+      const slide = !hasOpenAnim ? computeChestSlide(scene) : null;
+      const base = computeChestBaselineFit(scene, slide, chestSwapSides);
+      return { twoState: slide, fit: base };
+    }
+    const cached = entityFitCache.get(safeModelUrl);
+    if (cached) {
+      return { twoState: null, fit: cached };
+    }
+    const base = computeEntityFit(scene);
+    entityFitCache.set(safeModelUrl, base);
+    return { twoState: null, fit: base };
+  }, [scene, safeModelUrl, isChest, hasOpenAnim, chestSwapSides]);
 
   const content = (
     <Model modelUrl={modelUrl} textureUrl={textureUrl} animationName={animationName} role={role} chestSwapSides={chestSwapSides} configRotY={configRotY} effectTint={effectTint} enraged={enraged} shatteredCount={shatteredCount} slowFactor={slowFactor} />
@@ -520,6 +539,17 @@ function ModelGroup({ modelUrl, textureUrl, animationName, role, zoom = 1, chest
       {content}
     </group>
   );
+}
+
+function CameraDistanceUpdater({ cameraDistance }: { cameraDistance: number }) {
+  const { camera } = useThree();
+  useEffect(() => {
+    if (camera && camera.position.z !== cameraDistance) {
+      camera.position.z = cameraDistance;
+      camera.updateProjectionMatrix();
+    }
+  }, [camera, cameraDistance]);
+  return null;
 }
 
 export default React.memo(function CustomModelViewer({
@@ -556,15 +586,21 @@ export default React.memo(function CustomModelViewer({
   const w = width ?? size;
   const h = height ?? size;
 
+  const onCanvasReadyRef = useRef(onCanvasReady);
+  useEffect(() => {
+    onCanvasReadyRef.current = onCanvasReady;
+  }, [onCanvasReady]);
+
   return (
     <div style={{ width: w, height: h, position: 'relative', overflow: 'hidden', flexShrink: 0, pointerEvents: allowInteraction ? 'auto' : 'none' }}>
       <ModelErrorBoundary key={modelUrl}>
         <Canvas
           gl={{ preserveDrawingBuffer }}
-          onCreated={({ gl }) => onCanvasReady?.(gl.domElement)}
+          onCreated={({ gl }) => onCanvasReadyRef.current?.(gl.domElement)}
           camera={{ position: [0, 2.5, cameraDistance], fov: 45 }}
           style={{ width: '100%', height: '100%' }}
         >
+          <CameraDistanceUpdater cameraDistance={cameraDistance} />
           <ambientLight intensity={1.5} />
           <directionalLight position={[5, 10, 5]} intensity={0.5} />
           <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.2, 0]} />

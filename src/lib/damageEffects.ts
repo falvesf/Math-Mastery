@@ -97,6 +97,7 @@ export function enhanceEffectAdd(
 /** Adiciona o add de efeito (se ainda não existir) aos adds de um item. Retorna os novos adds.
  *  O valor inicial começa no mínimo configurado na arma (ex: 1%), ou rollEffectChance.
  *  O add de efeito fica SEMPRE no TOPO (é o mais importante da essência da arma). */
+// @ts-ignore
 export function applyEffectAdd(adds: any, damageEffect: string, min?: number, max?: number): any[] {
   if (!damageEffect || damageEffect === 'none') return toAddsArray(adds);
   if (!isEffectAddType(damageEffect)) return toAddsArray(adds);

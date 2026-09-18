@@ -1012,9 +1012,12 @@ export default function LiveQuestStudent() {
             <h2 style={{ fontSize: '3rem', margin: 0, textShadow: '0 0 10px rgba(255,255,255,0.5)' }}>VS</h2>
           </div>
 
-          <div ref={arenaRef} style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'space-between', padding: '0 10%', zIndex: 2, '--attack-dist': arenaWidth ? `${Math.max(50, arenaWidth - 200)}px` : '150px' } as any}>
-            {/* Player (Left) */}
-            <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: '1rem' }}>
+          {(() => {
+            const combatDist2D = Math.max(120, Math.min(260, (arenaWidth || 1000) * 0.22));
+            return (
+              <div ref={arenaRef} style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none', '--attack-dist': `${Math.max(120, Math.round(combatDist2D * 2))}px` } as any}>
+                {/* Player (Left) */}
+                <div style={{ position: 'absolute', left: `calc(50% - ${combatDist2D}px)`, bottom: '1rem', width: '160px', marginLeft: '-80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', pointerEvents: 'auto' }}>
               <div
                 className={`${studentAnim === 'attack' ? 'teleport-player' : ''} ${isEliminated ? 'anim-death-fall' : ''}`}
                 style={{
@@ -1063,7 +1066,7 @@ export default function LiveQuestStudent() {
             </div>
 
             {/* Monster (Right) */}
-            <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: '1rem' }}>
+            <div style={{ position: 'absolute', left: `calc(50% + ${combatDist2D}px)`, bottom: '1rem', width: '160px', marginLeft: '-80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', pointerEvents: 'auto' }}>
               <div
                 className={monsterAnim === 'attack' ? 'teleport-monster' : ''}
                 style={{
@@ -1260,7 +1263,9 @@ export default function LiveQuestStudent() {
                 })}
               </div>
             </div>
-          </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* ANSWER BUTTONS */}

@@ -136,12 +136,65 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Refs de animação Three.js
-  const animFrameRef = useRef<number | null>(null);
-  const healLightRef = useRef<THREE.PointLight | null>(null);
+  // Refs Three.js desacoplados do ciclo de vida da cena
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const healLightRef = useRef<THREE.PointLight | null>(null);
   const cloudsGroupRef = useRef<THREE.Group | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Ref para atualizar posições de overlay sem reconstruir o renderer
+  const updateOverlayPositionsRef = useRef<(() => void) | null>(null);
+
+  // 2. Câmera Isométrica com Profundidade 3D Rica em Desktop e Mobile (função desacoplada)
+  const computeCameraConfig = (currAspect: number, pMode?: 'desktop' | 'mobile', pPitch = 0, pDist = 0, pTargetY = 0) => {
+    const isMobile = pMode ? (pMode === 'mobile') : (typeof window !== 'undefined' ? (window.innerWidth <= 768 || currAspect < 1.35) : false);
+
+    // Distância base em Z: mantém ambos os combatentes (-3.6 a +3.6) no campo de visão
+    let baseZ = 12.5;
+    if (isMobile) {
+      // No mobile (vertical), calcula Z para cobrir os 7.2m de combate com margem elegante
+      const targetVisibleWidth = 9.2;
+      const requiredZ = targetVisibleWidth / (0.768 * Math.max(0.48, currAspect));
+      baseZ = Math.max(12.5, Math.min(16.8, requiredZ));
+    }
+
+    // Aplica offset de distância configurável (zoom)
+    const effectiveDist = baseZ + (pDist || 0);
+
+    // Ponto focal vertical (centro de interesse no topo da plataforma)
+    const baseLookAtY = 0.4 + (pTargetY || 0);
+
+    // Inclinação para manter o ângulo isométrico idêntico ao desktop (~15.6°)
+    const pitchDeg = 15.6 + (pPitch || 0);
+    const pitchRad = (pitchDeg * Math.PI) / 180;
+    const effectiveCamY = baseLookAtY + (effectiveDist * Math.tan(pitchRad));
+
+    return {
+      camY: effectiveCamY,
+      camZ: effectiveDist,
+      lookAtY: baseLookAtY,
+    };
+  };
+
+  // Atualiza a câmera e projeção matematicamente em tempo real SEM descartar o WebGL
+  useEffect(() => {
+    const camera = cameraRef.current;
+    const container = containerRef.current;
+    if (!camera || !container) return;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w === 0 || h === 0) return;
+
+    const currAspect = w / h;
+    const camCfg = computeCameraConfig(currAspect, deviceMode, cameraPitch, cameraDist, cameraTargetY);
+    camera.aspect = currAspect;
+    camera.position.set(0, camCfg.camY, camCfg.camZ);
+    camera.lookAt(0, camCfg.lookAtY, 0);
+    camera.updateProjectionMatrix();
+
+    updateOverlayPositionsRef.current?.();
+  }, [cameraPitch, cameraDist, cameraTargetY, deviceMode]);
 
   // Refs de estado de animação para transições suaves da sombra
   const playerAnimRef = useRef(playerAnim);
@@ -225,38 +278,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     scene.background = skyColor;
     scene.fog = new THREE.FogExp2(new THREE.Color(fogHex), fogDensity);
 
-    // 2. Câmera Isométrica com Profundidade 3D Rica em Desktop e Mobile
-    const computeCameraConfig = (currAspect: number) => {
-      const isMobile = deviceMode ? (deviceMode === 'mobile') : (window.innerWidth <= 768 || currAspect < 1.35);
-
-      // Distância base em Z: mantém ambos os combatentes (-3.6 a +3.6) no campo de visão
-      let baseZ = 12.5;
-      if (isMobile) {
-        // No mobile (vertical), calcula Z para cobrir os 7.2m de combate com margem elegante
-        const targetVisibleWidth = 9.2;
-        const requiredZ = targetVisibleWidth / (0.768 * Math.max(0.48, currAspect));
-        baseZ = Math.max(12.5, Math.min(16.8, requiredZ));
-      }
-
-      // Aplica offset de distância configurável (zoom)
-      const effectiveDist = baseZ + (cameraDist || 0);
-
-      // Ponto focal vertical (centro de interesse no topo da plataforma)
-      const baseLookAtY = 0.4 + (cameraTargetY || 0);
-
-      // Inclinação para manter o ângulo isométrico idêntico ao desktop (~15.6°)
-      const pitchDeg = 15.6 + (cameraPitch || 0);
-      const pitchRad = (pitchDeg * Math.PI) / 180;
-      const effectiveCamY = baseLookAtY + (effectiveDist * Math.tan(pitchRad));
-
-      return {
-        camY: effectiveCamY,
-        camZ: effectiveDist,
-        lookAtY: baseLookAtY,
-      };
-    };
-
-    const initialCam = computeCameraConfig(aspect);
+    const initialCam = computeCameraConfig(aspect, deviceMode, cameraPitch, cameraDist, cameraTargetY);
     const camera = new THREE.PerspectiveCamera(42, aspect, 0.1, 150);
     camera.position.set(0, initialCam.camY, initialCam.camZ);
     camera.lookAt(0, initialCam.lookAtY, 0);
@@ -552,7 +574,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     monsterShadow.position.set(3.6, 0.51, 0.2);
     scene.add(monsterShadow);
 
-    // 11. Sincronização de Projeção para Elevação dos Personagens na Plataforma
+    // 11. Sincronização de Projeção para Elevação e Posição X dos Personagens na Plataforma
     const updateOverlayPositions = () => {
       if (!container || !camera) return;
       const h = container.clientHeight;
@@ -564,11 +586,13 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       // Ponto na superfície da plataforma de pedra sob o jogador
       const pGround = new THREE.Vector3(-3.6, 0.51, 0.2);
       pGround.project(camera);
+      const pLeftPx = (pGround.x * 0.5 + 0.5) * w;
       const pBottomPx = (pGround.y * 0.5 + 0.5) * h;
 
       // Ponto na superfície da plataforma de pedra sob o monstro
       const mGround = new THREE.Vector3(3.6, 0.51, 0.2);
       mGround.project(camera);
+      const mLeftPx = (mGround.x * 0.5 + 0.5) * w;
       const mBottomPx = (mGround.y * 0.5 + 0.5) * h;
 
       // Compensa o padding inferior da arena (60px no desktop, 16px no mobile)
@@ -576,6 +600,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const bottomPadding = isMobile ? 16 : 60;
       const pLift = Math.max(0, pBottomPx - bottomPadding);
       const mLift = Math.max(0, mBottomPx - bottomPadding);
+      const attackDistPx = Math.max(50, Math.round(mLeftPx - pLeftPx));
 
       const parent = container.parentElement;
       if (parent) {
@@ -583,8 +608,13 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         parent.style.setProperty('--shadow-monster-lift', `${Math.round(mLift)}px`);
         parent.style.setProperty('--shadow-player-bottom', `${Math.round(pBottomPx)}px`);
         parent.style.setProperty('--shadow-monster-bottom', `${Math.round(mBottomPx)}px`);
+        parent.style.setProperty('--shadow-player-x', `${Math.round(pLeftPx)}px`);
+        parent.style.setProperty('--shadow-monster-x', `${Math.round(mLeftPx)}px`);
+        parent.style.setProperty('--shadow-attack-dist', `${attackDistPx}px`);
+        parent.style.setProperty('--attack-dist', `${attackDistPx}px`);
       }
     };
+    updateOverlayPositionsRef.current = updateOverlayPositions;
     updateOverlayPositions();
 
     // 12. Loop de Animação e Renderização
@@ -655,7 +685,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       camera.aspect = newAspect;
 
       // Câmera adaptativa para manter visão proporcional em telas verticais/mobile
-      const newCam = computeCameraConfig(newAspect);
+      const newCam = computeCameraConfig(newAspect, deviceMode, cameraPitch, cameraDist, cameraTargetY);
       camera.position.set(0, newCam.camY, newCam.camZ);
       camera.lookAt(0, newCam.lookAtY, 0);
       camera.updateProjectionMatrix();
@@ -672,6 +702,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
 
     return () => {
       isDisposed = true;
+      updateOverlayPositionsRef.current = null;
       window.removeEventListener('resize', handleResize);
       resizeObserver.disconnect();
       if (animFrameRef.current) {
@@ -693,20 +724,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       shadowGeo.dispose();
       shadowMat.dispose();
     };
-  }, [
-    playerModelUrl,
-    playerSkinUrl,
-    JSON.stringify(playerConfig),
-    monsterModelUrl,
-    monsterSkinUrl,
-    monsterZoom,
-    monsterRotY,
-    deviceMode,
-    cameraPitch,
-    cameraDist,
-    cameraTargetY,
-    biome,
-  ]);
+  }, [biome]);
 
   return (
     <div

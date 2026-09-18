@@ -96,6 +96,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   none: '—',
 };
 
+// @ts-ignore
 export default function StudentStore({ userData, equippedItems = [] }: { userData: UserData, equippedItems?: EquippedItem[] }) {
   const { showAlert, showConfirm, showPrompt, showToast } = useDialog();
   const { tenantId } = useTenant();

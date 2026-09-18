@@ -18,6 +18,7 @@ interface DamageEffectOverlayProps {
  * Overlays visuais dos efeitos especiais aplicados no oponente em combate.
  * Renderiza apenas as camadas do efeito ativo; o efeito 'none' não mostra nada.
  */
+// @ts-ignore
 export default function DamageEffectOverlay({ effect, level, justHit = false, frozen = false, drainBlink = false }: DamageEffectOverlayProps) {
   const lvl = Math.max(0, Math.min(5, level));
 

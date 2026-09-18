@@ -20,10 +20,11 @@ export default function LandingPage() {
     setError('');
     try {
       const currentOrigin = window.location.origin.replace(/^http:\/\/(math-mastery\.com\.br)/i, 'https://$1');
+      const redirectUrl = `${currentOrigin}/`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: currentOrigin + (import.meta.env.BASE_URL || '/')
+          redirectTo: redirectUrl
         }
       });
       if (error) throw error;

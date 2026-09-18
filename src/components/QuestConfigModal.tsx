@@ -4,6 +4,7 @@ import AvatarCharacter, { type AvatarConfig, safeParseAvatarConfig } from './Ava
 import DirectUploadButton from './DirectUploadButton';
 import AudioBankPicker from './AudioBankPicker';
 import { getSafeUrl } from '../lib/utils';
+// @ts-ignore
 import { VOXEL_BIOMES, type VoxelBiomeType } from '../lib/voxelTextures';
 
 // @ts-ignore

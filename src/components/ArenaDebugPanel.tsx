@@ -225,6 +225,23 @@ const DraggableWidget = ({
     return 0.95;
   });
   const dragStart = useRef({ x: 0, y: 0 });
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const handleWheelCapture = () => {
+      if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+        document.activeElement.blur();
+      }
+    };
+    el.addEventListener('wheel', handleWheelCapture, { capture: true, passive: true });
+    window.addEventListener('wheel', handleWheelCapture, { capture: true, passive: true });
+    return () => {
+      el.removeEventListener('wheel', handleWheelCapture, { capture: true });
+      window.removeEventListener('wheel', handleWheelCapture, { capture: true });
+    };
+  }, [isMinimized]);
 
   useEffect(() => {
     localStorage.setItem(`arenaDebug_widgetPos_${id}`, JSON.stringify(pos));
@@ -341,12 +358,17 @@ const DraggableWidget = ({
               </button>
               <input
                 type="range"
+                tabIndex={-1}
                 min="0.2"
                 max="1"
                 step="0.05"
                 value={widgetOpacity}
                 onChange={(e) => setWidgetOpacity(parseFloat(e.target.value))}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); e.currentTarget.blur(); }}
+                onFocus={(e) => e.currentTarget.blur()}
+                onPointerUp={(e) => e.currentTarget.blur()}
+                onMouseUp={(e) => e.currentTarget.blur()}
+                onWheel={(e) => e.currentTarget.blur()}
                 style={{
                   width: '40px',
                   height: '8px',
@@ -488,7 +510,10 @@ const DraggableWidget = ({
         ) : null}
       </div>
       {!isMinimized && (
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingRight: '0.5rem' }}>
+        <div 
+          ref={scrollContainerRef}
+          style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingRight: '0.5rem', overscrollBehavior: 'contain' }}
+        >
           {children}
         </div>
       )}
@@ -520,10 +545,11 @@ const DraggableWidget = ({
 };
 
 const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit?: string }) => {
-  const [localVal, setLocalVal] = useState<string>(() => (isNaN(value) ? '0' : value.toFixed(step < 1 ? 1 : 0)));
+  const getDecimals = (s: number) => (s < 0.1 ? 2 : (s < 1 ? 1 : 0));
+  const [localVal, setLocalVal] = useState<string>(() => (isNaN(value) ? '0' : value.toFixed(getDecimals(step))));
 
   useEffect(() => {
-    setLocalVal(isNaN(value) ? '0' : value.toFixed(step < 1 ? 1 : 0));
+    setLocalVal(isNaN(value) ? '0' : value.toFixed(getDecimals(step)));
   }, [value, step]);
 
   return (
@@ -531,6 +557,7 @@ const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { lab
       <span style={{ fontSize: '0.65rem', color: '#94a3b8', minWidth: '55px', whiteSpace: 'nowrap' }}>{label}</span>
       <input 
         type="range" 
+        tabIndex={-1}
         min={min} 
         max={max} 
         step={step} 
@@ -539,24 +566,41 @@ const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { lab
           const v = parseFloat(e.target.value);
           onChange(v);
         }} 
+        onFocus={e => e.currentTarget.blur()}
+        onPointerDown={e => {
+          e.stopPropagation();
+          (e.target as HTMLElement)?.blur();
+        }}
+        onPointerUp={e => e.currentTarget.blur()}
+        onMouseDown={e => {
+          e.stopPropagation();
+        }}
+        onMouseUp={e => e.currentTarget.blur()}
+        onClick={e => e.currentTarget.blur()}
+        onWheel={e => e.currentTarget.blur()}
         style={{ flex: 1, height: '12px', accentColor: '#f59e0b', cursor: 'pointer' }} 
       />
       <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
         <input
-          type="number"
-          step={step}
+          type="text"
+          inputMode="decimal"
           value={localVal}
           onChange={e => {
-            setLocalVal(e.target.value);
-            const num = parseFloat(e.target.value);
+            const raw = e.target.value;
+            setLocalVal(raw);
+            const num = parseFloat(raw.replace(',', '.'));
             if (!isNaN(num)) onChange(num);
           }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
+          onWheel={e => e.currentTarget.blur()}
           onBlur={() => {
-            const num = parseFloat(localVal);
+            const num = parseFloat(localVal.replace(',', '.'));
             if (isNaN(num)) {
               setLocalVal(value.toString());
             } else {
-              setLocalVal(num.toFixed(step < 1 ? 1 : 0));
+              setLocalVal(num.toFixed(getDecimals(step)));
             }
           }}
           style={{
@@ -591,6 +635,7 @@ interface ArenaDebugPanelProps {
   onSelectMode?: (mode: ArenaModeKey | 'auto') => void;
   deviceKey?: 'mobile' | 'desktop';
   onSwitchDevice?: (device: 'mobile' | 'desktop') => void;
+  currentMonsterModelUrl?: string | null;
 }
 
 const Toggle = ({ label, value, onChange: onToggle }: { label: string; value: boolean; onChange: (v: boolean) => void }) => (
@@ -615,7 +660,8 @@ export default function ArenaDebugPanel({
   manualModeOverride = null,
   onSelectMode,
   deviceKey, 
-  onSwitchDevice 
+  onSwitchDevice,
+  currentMonsterModelUrl
 }: ArenaDebugPanelProps) {
   const [tab, setTab] = useState<'player' | 'monster' | 'arena' | 'arena3d' | 'projectile' | 'combat' | 'visual' | 'render'>('player');
 
@@ -663,6 +709,39 @@ export default function ArenaDebugPanel({
     }
   };
 
+  const updateMultiple = (updates: Partial<ArenaDebugConfig>) => {
+    const next = { ...safeConfig, ...updates };
+    onChange(next);
+    const keys = Object.keys(updates);
+    if (keys.some(k => ['charCanvasW', 'charCanvasH', 'charZoom', 'charFit'].includes(k))) {
+      window.dispatchEvent(new CustomEvent('arena-char-render', { detail: next }));
+    }
+  };
+
+  const resetToMathematicalDefaults = () => {
+    const next: ArenaDebugConfig = {
+      ...safeConfig,
+      playerOffsetX: 0,
+      playerOffsetY: 0,
+      monsterOffsetX: 0,
+      monsterOffsetY: 0,
+      playerOffsetX3D: 0,
+      playerOffsetY3D: 0,
+      monsterOffsetX3D: 0,
+      monsterOffsetY3D: 0,
+      playerScale: 1,
+      monsterScale: 1,
+      playerScale3D: 1,
+      monsterScale3D: 1,
+      arenaGap: 0,
+      arenaGap3D: 0,
+    };
+    onChange(next);
+    setTimeout(() => {
+      onSave();
+    }, 50);
+  };
+
   if (!isAdmin) return null;
 
   const tabs = [
@@ -687,6 +766,44 @@ export default function ArenaDebugPanel({
       deviceKey={deviceKey}
       onSwitchDevice={onSwitchDevice}
     >
+      {/* Informações de Resolução e Ancoragem Matemática */}
+      <div style={{ background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(56, 189, 248, 0.35)', borderRadius: '6px', padding: '0.3rem 0.45rem', marginBottom: '0.35rem', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.62rem', color: '#38bdf8', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '3px' }}>
+            📐 Ancoragem Matemática
+          </span>
+          <span style={{ fontSize: '0.58rem', color: '#94a3b8', fontFamily: 'monospace', background: 'rgba(0,0,0,0.4)', padding: '1px 4px', borderRadius: '3px' }}>
+            {windowWidth ? `${windowWidth}px` : (typeof window !== 'undefined' ? `${window.innerWidth}px` : '')}
+          </span>
+        </div>
+        <div style={{ fontSize: '0.52rem', color: '#94a3b8', lineHeight: 1.2 }}>
+          3D ancorado às pedras | 2D centralizado a 50%
+        </div>
+        <button
+          type="button"
+          onClick={resetToMathematicalDefaults}
+          style={{
+            marginTop: '2px',
+            padding: '0.25rem 0.4rem',
+            background: 'rgba(56, 189, 248, 0.15)',
+            border: '1px solid rgba(56, 189, 248, 0.4)',
+            borderRadius: '4px',
+            color: '#38bdf8',
+            cursor: 'pointer',
+            fontSize: '0.58rem',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '3px',
+            transition: 'all 0.15s'
+          }}
+          title="Zera offsets manuais (X=0, Y=0) e ativa o posicionamento puramente calibrado pelos cálculos 3D/2D"
+        >
+          🔄 Restaurar Padrões Calibrados (Zero Offsets)
+        </button>
+      </div>
+
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: '0.2rem', marginBottom: '0.4rem', flexShrink: 0, alignItems: 'center', position: 'sticky', top: 0, zIndex: 5, background: 'rgba(30, 35, 45, 0.95)', paddingTop: '0.2rem', paddingBottom: '0.2rem' }}>
         {tabs.map(t => (
@@ -711,9 +828,19 @@ export default function ArenaDebugPanel({
 
         {tab === 'monster' && (
           <>
-            <Slider label="X" value={safeConfig.monsterOffsetX} onChange={v => update('monsterOffsetX', v)} min={-200} max={200} />
-            <Slider label="Y" value={safeConfig.monsterOffsetY} onChange={v => update('monsterOffsetY', v)} min={-200} max={200} />
-            <Slider label="Escala" value={safeConfig.monsterScale} onChange={v => update('monsterScale', v)} min={0.3} max={2} step={0.1} unit="x" />
+            {activeModeKey.startsWith('3d') ? (
+              <>
+                <Slider label="X" value={safeConfig.monsterOffsetX3D ?? 0} onChange={v => update('monsterOffsetX3D', v)} min={-600} max={600} unit="px" />
+                <Slider label="Elevação Y" value={safeConfig.monsterOffsetY3D ?? 0} onChange={v => update('monsterOffsetY3D', v)} min={-400} max={400} unit="px" />
+                <Slider label="Escala" value={safeConfig.monsterScale3D ?? 1} onChange={v => updateMultiple({ monsterScale3D: v, monsterScale: v })} min={0.3} max={2.5} step={0.05} unit="x" />
+              </>
+            ) : (
+              <>
+                <Slider label="X" value={safeConfig.monsterOffsetX} onChange={v => update('monsterOffsetX', v)} min={-200} max={200} />
+                <Slider label="Y" value={safeConfig.monsterOffsetY} onChange={v => update('monsterOffsetY', v)} min={-200} max={200} />
+                <Slider label="Escala" value={safeConfig.monsterScale} onChange={v => updateMultiple({ monsterScale: v, monsterScale3D: v })} min={0.3} max={2} step={0.05} unit="x" />
+              </>
+            )}
             <Slider label="Nome X" value={safeConfig.monsterNameX} onChange={v => update('monsterNameX', v)} min={-300} max={300} />
             <Slider label="Nome Y" value={safeConfig.monsterNameY} onChange={v => update('monsterNameY', v)} min={-300} max={300} />
 
@@ -724,7 +851,13 @@ export default function ArenaDebugPanel({
               <Toggle label="Ver retângulo da fatalidade" value={safeConfig.showDeathArea} onChange={v => update('showDeathArea', v)} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.3rem' }}>
                 <span style={{ fontSize: '0.65rem', color: '#94a3b8', minWidth: '58px', whiteSpace: 'nowrap' }}>Forçar:</span>
-                <select value={safeConfig.forcedFatality} onChange={e => update('forcedFatality', e.target.value)} style={{ flex: 1, padding: '0.3rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.65rem' }}>
+                <select 
+                  value={safeConfig.forcedFatality} 
+                  onChange={e => update('forcedFatality', e.target.value)} 
+                  onFocus={e => e.currentTarget.blur()}
+                  onWheel={e => e.currentTarget.blur()}
+                  style={{ flex: 1, padding: '0.3rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.65rem' }}
+                >
                   <option value="">🎲 Aleatória</option>
                   <option value="death-fall">Queda</option>
                   <option value="death-evaporate">Evaporar</option>
@@ -737,6 +870,33 @@ export default function ArenaDebugPanel({
 
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 'bold', marginBottom: '0.3rem' }}>🎯 Modelos .GLB</div>
+              {currentMonsterModelUrl && (
+                <div style={{ marginBottom: '0.3rem', padding: '0.25rem 0.4rem', background: 'rgba(139,92,246,0.15)', borderRadius: '4px', border: '1px solid rgba(139,92,246,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ overflow: 'hidden' }}>
+                    <div style={{ fontSize: '0.55rem', color: '#a78bfa', fontWeight: 'bold' }}>Monstro da Arena:</div>
+                    <div style={{ fontSize: '0.58rem', color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '160px' }} title={currentMonsterModelUrl}>
+                      {currentMonsterModelUrl.split('/').pop()?.substring(0, 24) || currentMonsterModelUrl}
+                    </div>
+                  </div>
+                  {!safeConfig.modelConfigs[currentMonsterModelUrl] && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateMultiple({
+                          modelConfigs: {
+                            ...safeConfig.modelConfigs,
+                            [currentMonsterModelUrl]: { scale: 1, offsetX: 0, offsetY: 0 }
+                          },
+                          selectedModelUrl: currentMonsterModelUrl
+                        });
+                      }}
+                      style={{ padding: '0.2rem 0.4rem', background: '#8b5cf6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.58rem', fontWeight: 'bold' }}
+                    >
+                      + Ajustar Este
+                    </button>
+                  )}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
                 <input type="text" value={safeConfig.selectedModelUrl} onChange={e => update('selectedModelUrl', e.target.value)} placeholder="URL do modelo .glb" style={{ flex: 1, padding: '0.3rem 0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.65rem' }} />
                 <button onClick={() => { if (safeConfig.selectedModelUrl && !safeConfig.modelConfigs[safeConfig.selectedModelUrl]) update('modelConfigs', { ...safeConfig.modelConfigs, [safeConfig.selectedModelUrl]: { scale: 1, offsetX: 0, offsetY: 0 } }); }} style={{ padding: '0.3rem 0.5rem', background: '#8b5cf6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold' }}>+</button>
@@ -745,9 +905,9 @@ export default function ArenaDebugPanel({
                 <div key={url} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '6px', padding: '0.4rem', marginBottom: '0.3rem', border: safeConfig.selectedModelUrl === url ? '1px solid #8b5cf6' : '1px solid transparent' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
                     <span onClick={() => update('selectedModelUrl', url)} style={{ fontSize: '0.6rem', color: '#a78bfa', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }} title={url}>{url.split('/').pop()?.substring(0, 25) || url}</span>
-                    <button onClick={() => { const nc = { ...safeConfig.modelConfigs }; delete nc[url]; update('modelConfigs', nc); if (safeConfig.selectedModelUrl === url) update('selectedModelUrl', ''); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 0.2rem', fontSize: '0.7rem' }}>✕</button>
+                    <button onClick={() => { const nc = { ...safeConfig.modelConfigs }; delete nc[url]; updateMultiple({ modelConfigs: nc, ...(safeConfig.selectedModelUrl === url ? { selectedModelUrl: '' } : {}) }); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 0.2rem', fontSize: '0.7rem' }}>✕</button>
                   </div>
-                  <Slider label="Escala" value={cfg.scale} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, scale: v } })} min={0.1} max={5} step={0.1} unit="x" />
+                  <Slider label="Escala" value={cfg.scale} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, scale: v } })} min={0.1} max={5} step={0.05} unit="x" />
                   <Slider label="X" value={cfg.offsetX} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, offsetX: v } })} min={-300} max={300} />
                   <Slider label="Y" value={cfg.offsetY} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, offsetY: v } })} min={-300} max={300} />
                 </div>
@@ -797,7 +957,7 @@ export default function ArenaDebugPanel({
               <div style={{ fontSize: '0.68rem', color: '#ef4444', fontWeight: 'bold', marginBottom: '0.2rem' }}>👹 Monstro no 3D</div>
               <Slider label="X" value={safeConfig.monsterOffsetX3D ?? 0} onChange={v => update('monsterOffsetX3D', v)} min={-600} max={600} unit="px" />
               <Slider label="Elevação Y" value={safeConfig.monsterOffsetY3D ?? 0} onChange={v => update('monsterOffsetY3D', v)} min={-400} max={400} unit="px" />
-              <Slider label="Escala" value={safeConfig.monsterScale3D ?? 1} onChange={v => update('monsterScale3D', v)} min={0.3} max={2.5} step={0.05} unit="x" />
+              <Slider label="Escala" value={safeConfig.monsterScale3D ?? 1} onChange={v => updateMultiple({ monsterScale3D: v, monsterScale: v })} min={0.3} max={2.5} step={0.05} unit="x" />
             </div>
 
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
@@ -810,6 +970,8 @@ export default function ArenaDebugPanel({
               <select
                 value={safeConfig.biome3D || 'plains'}
                 onChange={e => update('biome3D', e.target.value as any)}
+                onFocus={e => e.currentTarget.blur()}
+                onWheel={e => e.currentTarget.blur()}
                 style={{
                   width: '100%',
                   padding: '0.35rem 0.5rem',

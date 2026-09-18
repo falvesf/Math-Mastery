@@ -1053,22 +1053,27 @@
   background: transparent !important;
 }
 
-/* Os avatares exibem todos os equipamentos, armaduras, armas, escudos e skins originais */
-.is-3d-arena .quest-arena-avatars {
-  display: flex !important;
+/* Posiciona os personagens diretamente em cima das plataformas de pedra calculadas pelo Three.js */
+.is-3d-arena .quest-arena-side-player,
+.is-3d-arena .pvp-fighter-left {
+  position: absolute !important;
+  left: calc(var(--shadow-player-x, 25%) + var(--player-lift-x, 0px)) !important;
+  bottom: calc(var(--shadow-player-bottom, 60px) + var(--player-lift-3d, 0px)) !important;
+  width: 160px !important;
+  margin-left: -80px !important;
+  transform-origin: bottom center !important;
+  transition: none !important;
 }
 
-/* Eleva os personagens para ficarem em pé em cima da plataforma de tijolos de pedra e sobre as sombras */
-.is-3d-arena .quest-arena-side-player {
-  bottom: calc(var(--shadow-player-lift, 60px) + var(--player-lift-3d, 0px)) !important;
+.is-3d-arena .quest-arena-side-monster,
+.is-3d-arena .pvp-fighter-right {
+  position: absolute !important;
+  left: calc(var(--shadow-monster-x, 75%) + var(--monster-lift-x, 0px)) !important;
+  bottom: calc(var(--shadow-monster-bottom, 60px) + var(--monster-lift-3d, 0px)) !important;
+  width: 160px !important;
+  margin-left: -80px !important;
   transform-origin: bottom center !important;
-  transition: bottom 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
-}
-
-.is-3d-arena .quest-arena-side-monster {
-  bottom: calc(var(--shadow-monster-lift, 60px) + var(--monster-lift-3d, 0px)) !important;
-  transform-origin: bottom center !important;
-  transition: bottom 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  transition: none !important;
 }
 
 .arena-quake-3d {

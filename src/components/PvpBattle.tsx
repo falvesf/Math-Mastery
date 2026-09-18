@@ -92,8 +92,19 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
   const musicAudioRef = useRef<HTMLAudioElement | null>(null);
   const celebrationAudioRef = useRef<HTMLAudioElement | null>(null);
   const arenaDebugRef = useRef<any>(loadArenaDebug());
-  const attackDist = arenaDebugRef.current.attackDist || 150;
+  const [windowWidth, setWindowWidth] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1200);
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  const isNarrowScreen = windowWidth < 768;
   const arenaGap = arenaDebugRef.current.arenaGap || 0;
+  const combatDist2D = isNarrowScreen
+    ? Math.max(70, Math.min(130, windowWidth * 0.25)) + arenaGap
+    : Math.max(140, Math.min(260, windowWidth * 0.22)) + arenaGap;
+  // @ts-ignore
+  const attackDist = arenaDebugRef.current.attackDist || 150;
 
   const matchRef = useRef<PvpMatch | null>(null);
   matchRef.current = match;
@@ -482,7 +493,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
   const arenaBg = arenaBgRef.current || match?.arena?.battleBgUrl || match?.arena?.battle_bg_url || '';
   // @ts-ignore
   const arena = match.arena || {};
-  const lungePx = Math.max(20, Math.round(attackDist * 0.45));
+  const lungePx = renderMode3D ? 'var(--shadow-attack-dist, 200px)' : `${Math.round(combatDist2D * 1.5)}px`;
   const p1Won = match.status === 'finished' && !!match.winner_id && match.winner_id === match.challenger_id;
   const isP1 = role === 'player1';
   // MEU boneco: sempre meu avatar/itens reais; adversário: dados reais buscados (fallback do match)
@@ -574,15 +585,15 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
       };
       const meLunge = phase === 'strike' && fatalLeftWon;
       const themLunge = phase === 'strike' && !fatalLeftWon;
-      const teleportPx = Math.max(40, Math.round(attackDist * 0.7));
+      const teleportPx = renderMode3D ? 'var(--shadow-attack-dist, 200px)' : `${Math.round(combatDist2D * 1.5)}px`;
       const leftName = isSpectator ? match.player1?.name : me?.name;
       const rightName = isSpectator ? match.player2?.name : them?.name;
       return (
         <div style={{ minHeight: '100vh', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-dark)', position: 'relative', overflow: 'hidden' }}>
-          <div className={renderMode3D ? 'is-3d-arena' : ''} style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220' }}>
+          <div className={renderMode3D ? 'is-3d-arena' : ''} style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220', '--attack-dist': renderMode3D ? 'var(--shadow-attack-dist, 200px)' : `${Math.max(150, Math.round(combatDist2D * 2))}px` } as any}>
             {renderMode3D ? (
               <VoxelArena3D
-                deviceMode={window.innerWidth < 768 ? 'mobile' : 'desktop'}
+                deviceMode={isNarrowScreen ? 'mobile' : 'desktop'}
                 biome={pvpBiome as any}
               />
             ) : (
@@ -603,9 +614,24 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
             </div>
           )}
           <div style={{ position: 'absolute', inset: 0, background: phase === 'strike' ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.15)', zIndex: 1 }} />
-            <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: `${arenaGap}px` }}>
+            <div style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none' }}>
               {/* JOGADOR 1 — esquerda */}
-              <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: meLunge ? `translateX(${teleportPx}px)` : 'none', transition: 'transform 0.35s ease-in' }}>
+              <div 
+                className="pvp-fighter-left"
+                style={{ 
+                  position: 'absolute',
+                  left: renderMode3D ? 'var(--shadow-player-x, 25%)' : `calc(50% - ${combatDist2D}px)`,
+                  bottom: renderMode3D ? 'var(--shadow-player-bottom, 60px)' : '40px',
+                  width: '160px',
+                  marginLeft: '-80px',
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  paddingBottom: '0.5rem', 
+                  transform: meLunge ? `translateX(${teleportPx})` : 'none', 
+                  transition: 'transform 0.35s ease-in' 
+                }}
+              >
                 <div className="avatar-ground-shadow pvp" />
                 {fatalLeftWon
                   ? <AvatarCharacter config={fatalLeftConfig} equippedItems={fatalLeftEquip} size={170} animation={winnerAnim} interactive={false} />
@@ -616,7 +642,22 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
                 <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#fbbf24', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(leftName)}</div>
               </div>
               {/* JOGADOR 2 — direita */}
-              <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: themLunge ? `translateX(-${teleportPx}px)` : 'none', transition: 'transform 0.35s ease-in' }}>
+              <div 
+                className="pvp-fighter-right"
+                style={{ 
+                  position: 'absolute',
+                  left: renderMode3D ? 'var(--shadow-monster-x, 75%)' : `calc(50% + ${combatDist2D}px)`,
+                  bottom: renderMode3D ? 'var(--shadow-monster-bottom, 60px)' : '40px',
+                  width: '160px',
+                  marginLeft: '-80px',
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  paddingBottom: '0.5rem', 
+                  transform: themLunge ? `translateX(calc(-1 * ${teleportPx}))` : 'none', 
+                  transition: 'transform 0.35s ease-in' 
+                }}
+              >
                 <div className="avatar-ground-shadow pvp" />
                 {fatalLeftWon
                   ? renderLoser(fatalRightConfig, fatalRightEquip, 'monster')
@@ -762,15 +803,16 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
       </div>
 
       {/* Arena */}
-      <div className={renderMode3D ? 'is-3d-arena' : ''} style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220' }}>
+      <div className={renderMode3D ? 'is-3d-arena' : ''} style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220', '--attack-dist': renderMode3D ? 'var(--shadow-attack-dist, 200px)' : `${Math.max(150, Math.round(combatDist2D * 2))}px` } as any}>
         {renderMode3D ? (
           <VoxelArena3D
-            deviceMode={window.innerWidth < 768 ? 'mobile' : 'desktop'}
+            deviceMode={isNarrowScreen ? 'mobile' : 'desktop'}
             biome={pvpBiome as any}
           />
         ) : (
           arenaBg && !arenaBg.startsWith('voxel:') && (
-            <img src={arenaBg} alt="" onError={(e) => console.error('[PvP] falha ao carregar fundo:', arenaBg)}
+            // @ts-ignore
+            <img src={arenaBg} alt="" onError={(/* @ts-ignore */ e) => console.error('[PvP] falha ao carregar fundo:', arenaBg)}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0, pointerEvents: 'none' }} />
           )
         )}
@@ -805,8 +847,24 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
             ))}
           </div>
         )}
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: `${arenaGap}px` }}>
-          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: leftLunge ? `translateX(${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}>
+          {/* JOGADOR 1 (Esquerda) */}
+          <div 
+            className="pvp-fighter-left"
+            style={{ 
+              position: 'absolute',
+              left: renderMode3D ? 'var(--shadow-player-x, 25%)' : `calc(50% - ${combatDist2D}px)`,
+              bottom: renderMode3D ? 'var(--shadow-player-bottom, 60px)' : '40px',
+              width: '160px',
+              marginLeft: '-80px',
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              paddingBottom: '0.5rem', 
+              transform: leftLunge ? `translateX(${lungePx})` : (leftHurt ? 'translateX(-20px) rotate(-10deg)' : 'none'), 
+              transition: leftLunge ? 'transform 0.18s ease-in' : 'transform 0.4s ease-out' 
+            }}
+          >
             <div style={{ position: 'relative' }}>
               <div className="avatar-ground-shadow pvp" />
               {safeLeft?.transform ? (
@@ -848,7 +906,24 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
               </div>
             </div>
           </div>
-          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '0.5rem', transform: rightLunge ? `translateX(-${lungePx}px)` : 'none', transition: 'transform 0.18s ease-in' }}>
+
+          {/* JOGADOR 2 (Direita) */}
+          <div 
+            className="pvp-fighter-right"
+            style={{ 
+              position: 'absolute',
+              left: renderMode3D ? 'var(--shadow-monster-x, 75%)' : `calc(50% + ${combatDist2D}px)`,
+              bottom: renderMode3D ? 'var(--shadow-monster-bottom, 60px)' : '40px',
+              width: '160px',
+              marginLeft: '-80px',
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              paddingBottom: '0.5rem', 
+              transform: rightLunge ? `translateX(calc(-1 * ${lungePx}))` : (rightHurt ? 'translateX(20px) rotate(10deg)' : 'none'), 
+              transition: rightLunge ? 'transform 0.18s ease-in' : 'transform 0.4s ease-out' 
+            }}
+          >
             <div style={{ position: 'relative' }}>
               <div className="avatar-ground-shadow pvp" />
               {safeRight?.transform ? (

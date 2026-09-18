@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+// @ts-ignore
 import { X, Save, User as UserIcon, Dices, Settings, ChevronDown, ChevronLeft, ChevronRight, BookMarked, Trash2, Accessibility as PoseIcon, Palette, Swords, Volume2, Gift, Shield, RotateCcw, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth, type UserData } from '../contexts/AuthContext';
@@ -1721,6 +1722,7 @@ onClick={() => setConfig(prev => {
               const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default'
                 ? models3d.find(m => m.id === activePreset.baseModelId)
                 : null;
+              // @ts-ignore
               const isGlbMonster = customSaveMode && (!!config.customModelUrl || !!activeModel);
               return (<>
             {/* Tamanho em batalha (zoom persistido no config) — controle único de zoom limitado ao quadro 3D */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 import { supabase } from '../lib/supabase';
@@ -340,6 +340,9 @@ export default function QuestGameplay() {
   const heartsRef = useRef(currentHearts);
   // Fatality de corte: captura o modelo atual como "foto" (canvas) e corta a imagem.
   const monsterCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const handleMonsterCanvasReady = useCallback((c: HTMLCanvasElement | null) => {
+    monsterCanvasRef.current = c;
+  }, []);
   const [sliceSnapshot, setSliceSnapshot] = useState<string | null>(null);
   const fatalityActiveRef = useRef(false);
 
@@ -740,7 +743,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
   const arenaDebug = configsByMode[activeModeKey];
 
+  const hasUserModifiedDebugRef = useRef(false);
+
   const handleArenaDebugChange = (newConfig: ArenaDebugConfig) => {
+    hasUserModifiedDebugRef.current = true;
     setConfigsByMode(prev => {
       const updated = { ...prev, [activeModeKey]: newConfig };
       try {
@@ -827,24 +833,28 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
         const data3dDesk = parseDoc(res3dDesk, resLegacyDesk);
         const data3dMob = parseDoc(res3dMob, resLegacyMob);
-        const data2dDesk = parseDoc(res2dDesk, resLegacyDesk);
-        const data2dMob = parseDoc(res2dMob, resLegacyMob);
+        const data2dDesk = parseDoc(res2dDesk, null);
+        const data2dMob = parseDoc(res2dMob, null);
 
         setConfigsByMode(prev => {
           const next = { ...prev };
-          if (data3dDesk) {
+          const shouldUpdate = (k: ArenaModeKey) => {
+            if (hasUserModifiedDebugRef.current && k === activeModeKey) return false;
+            return true;
+          };
+          if (data3dDesk && shouldUpdate('3d_desktop')) {
             next['3d_desktop'] = { ...DEFAULT_ARENA_DEBUG, ...data3dDesk, ...shared };
             try { localStorage.setItem('arenaDebugConfig_3d_desktop', JSON.stringify(next['3d_desktop'])); } catch {}
           }
-          if (data3dMob) {
+          if (data3dMob && shouldUpdate('3d_mobile')) {
             next['3d_mobile'] = { ...DEFAULT_ARENA_DEBUG, ...data3dMob, ...shared };
             try { localStorage.setItem('arenaDebugConfig_3d_mobile', JSON.stringify(next['3d_mobile'])); } catch {}
           }
-          if (data2dDesk) {
+          if (data2dDesk && shouldUpdate('2d_desktop')) {
             next['2d_desktop'] = { ...DEFAULT_ARENA_DEBUG, ...data2dDesk, ...shared };
             try { localStorage.setItem('arenaDebugConfig_2d_desktop', JSON.stringify(next['2d_desktop'])); } catch {}
           }
-          if (data2dMob) {
+          if (data2dMob && shouldUpdate('2d_mobile')) {
             next['2d_mobile'] = { ...DEFAULT_ARENA_DEBUG, ...data2dMob, ...shared };
             try { localStorage.setItem('arenaDebugConfig_2d_mobile', JSON.stringify(next['2d_mobile'])); } catch {}
           }
@@ -982,8 +992,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
   }, [gameState, questId, userData]);
 
   useEffect(() => {
-    // Não re-executar se já estamos jogando ou em resultado
+    // Não re-executar se já estamos jogando ou em resultado ou se a quest já foi carregada
     if (gameState !== 'loading') return;
+    if (quest && quest.id === questId) return;
 
     const fetchQuest = async () => {
       try {
@@ -1304,7 +1315,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     };
 
     fetchQuest();
-  }, [questId, userData]);
+  }, [questId, userData?.uid]);
 
   // Timer Logic
   useEffect(() => {
@@ -3413,8 +3424,10 @@ useEffect(() => {
         </div>
 
         {/* Battle Arena Fixed */}
-        {gameState === 'playing' && (
-          <div ref={arenaRef} className={`battle-arena-bg quest-arena ${arenaRenderMode === '3d' ? 'is-3d-arena' : ''} ${arenaQuake ? 'arena-quake' : ''}`} style={{ '--attack-dist': `${Math.max(50, arenaWidth - 340)}px`, '--arena-char-bottom-padding': '60px', '--player-lift-3d': `${arenaDebug.playerOffsetY3D || 0}px`, '--monster-lift-3d': `${arenaDebug.monsterOffsetY3D || 0}px`, position: 'relative', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: `${arenaRenderMode === '3d' ? (arenaDebug.arenaGap3D ?? arenaDebug.arenaGap) : arenaDebug.arenaGap}px`, paddingTop: '130px', paddingBottom: '60px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, userSelect: 'none', WebkitUserSelect: 'none' } as any}>
+        {(() => {
+          const combatDist2D = Math.max(160, Math.min(320, (arenaWidth || 1200) * 0.22)) + (arenaDebug.arenaGap || 0);
+          return gameState === 'playing' && (
+            <div ref={arenaRef} className={`battle-arena-bg quest-arena ${arenaRenderMode === '3d' ? 'is-3d-arena' : ''} ${arenaQuake ? 'arena-quake' : ''}`} style={{ '--attack-dist': arenaRenderMode === '3d' ? 'var(--shadow-attack-dist, 200px)' : `${Math.max(150, Math.round(combatDist2D * 2))}px`, '--arena-char-bottom-padding': '60px', '--player-lift-x': `${arenaDebug.playerOffsetX3D || 0}px`, '--monster-lift-x': `${arenaDebug.monsterOffsetX3D || 0}px`, '--player-lift-3d': `${arenaDebug.playerOffsetY3D || 0}px`, '--monster-lift-3d': `${arenaDebug.monsterOffsetY3D || 0}px`, position: 'relative', width: '100%', display: 'block', paddingTop: '130px', paddingBottom: '60px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, userSelect: 'none', WebkitUserSelect: 'none' } as any}>
             {/* Cenário: 3D Voxel Minecraft ou Imagem 2D Clássica */}
             {arenaRenderMode === '3d' ? (
               <VoxelArena3D
@@ -3662,7 +3675,25 @@ useEffect(() => {
             <div 
               ref={playerSideRef}
               className={`quest-arena-side-player ${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : ''} ${(userData?.avatarConfig?.customModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined, transition: playerAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (playerAnim.startsWith('attack') || playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 30 : (monsterAnim.startsWith('death-') ? 20 : 26), pointerEvents: 'none' }}
+              style={{
+                position: 'absolute',
+                left: arenaRenderMode === '3d'
+                  ? `calc(var(--shadow-player-x, 25%) + ${(arenaDebug.playerOffsetX3D ?? 0)}px)`
+                  : `calc(50% - ${combatDist2D}px + ${(arenaDebug.playerOffsetX ?? 0)}px)`,
+                bottom: arenaRenderMode === '3d'
+                  ? `calc(var(--shadow-player-bottom, 60px) + ${(arenaDebug.playerOffsetY3D ?? 0)}px)`
+                  : `calc(60px + ${(arenaDebug.playerOffsetY ?? 0)}px)`,
+                width: '160px',
+                marginLeft: '-80px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.5rem',
+                transform: playerAnim === 'hurt' ? 'translateX(-20px) rotate(-10deg)' : undefined,
+                transition: playerAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                zIndex: (playerAnim.startsWith('attack') || playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 30 : (monsterAnim.startsWith('death-') ? 20 : 26),
+                pointerEvents: 'none'
+              }}
             >
               {playerBubble && (
                 <div className="speech-bubble player">
@@ -3673,7 +3704,7 @@ useEffect(() => {
               <div style={{ position: 'absolute', top: '-20px', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap' }}>
                 <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
               </div>
-              <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '220px' : '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', transform: `translate(${arenaRenderMode === '3d' ? (arenaDebug.playerOffsetX3D ?? 0) : arenaDebug.playerOffsetX}px, ${arenaRenderMode === '3d' ? 0 : arenaDebug.playerOffsetY}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.playerScale3D ?? 1) : arenaDebug.playerScale})` }}>
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '220px' : '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', transform: `scale(${arenaRenderMode === '3d' ? (arenaDebug.playerScale3D ?? 1) : arenaDebug.playerScale})` }}>
                 {/* Sombra dinâmica do personagem */}
                 <div className="avatar-ground-shadow" />
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-80px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
@@ -3734,7 +3765,7 @@ useEffect(() => {
             </div>
 
             {/* Battle Message */}
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 2rem', zIndex: 20, opacity: battleMessage ? 1 : 0, transition: 'opacity 0.3s' }}>
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 20, opacity: battleMessage ? 1 : 0, transition: 'opacity 0.3s', pointerEvents: 'none' }}>
               <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '1rem', textAlign: 'center', minWidth: '250px', backdropFilter: 'blur(10px)', boxShadow: 'var(--shadow-glass)' }}>
                 <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)', minHeight: '1.5em', fontStyle: 'italic', textShadow: battleMessage.includes('FATALITY') ? '0 0 10px red' : 'none' }}>
                   {battleMessage}
@@ -3756,7 +3787,25 @@ useEffect(() => {
                 monsterProceduralAnim === 'roar_shockwave' ? 'anim-roar-wave' :
                 monsterBodyThrow ? 'monster-body-throw' : ''
               } ${(effectiveMonsterModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined, transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)', zIndex: (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? 35 : (monsterAnim.startsWith('attack') || monsterAnim.startsWith('death-') || monsterProceduralAnim || monsterBodyThrow) ? 30 : 26, pointerEvents: 'none' }}
+              style={{
+                position: 'absolute',
+                left: arenaRenderMode === '3d'
+                  ? `calc(var(--shadow-monster-x, 75%) + ${(arenaDebug.monsterOffsetX3D ?? 0)}px)`
+                  : `calc(50% + ${combatDist2D}px + ${(arenaDebug.monsterOffsetX ?? 0)}px)`,
+                bottom: arenaRenderMode === '3d'
+                  ? `calc(var(--shadow-monster-bottom, 60px) + ${(arenaDebug.monsterOffsetY3D ?? 0)}px)`
+                  : `calc(60px + ${(arenaDebug.monsterOffsetY ?? 0)}px)`,
+                width: '160px',
+                marginLeft: '-80px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.5rem',
+                transform: monsterAnim === 'hurt' ? 'translateX(20px) rotate(10deg)' : undefined,
+                transition: monsterAnim.startsWith('attack') ? 'none' : 'transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                zIndex: (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? 35 : (monsterAnim.startsWith('attack') || monsterAnim.startsWith('death-') || monsterProceduralAnim || monsterBodyThrow) ? 30 : 26,
+                pointerEvents: 'none'
+              }}
             >
               {monsterBubble && (
                 <div className="speech-bubble monster">
@@ -3783,7 +3832,7 @@ useEffect(() => {
               ) : (
                 <div 
                   className="quest-arena-avatars"
-                  style={{ position: 'relative', width: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', transform: `translate(${(arenaRenderMode === '3d' ? (arenaDebug.monsterOffsetX3D ?? 0) : arenaDebug.monsterOffsetX) + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0)}px, ${(arenaRenderMode === '3d' ? 0 : arenaDebug.monsterOffsetY) + (monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0)}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.monsterScale3D ?? 1) : arenaDebug.monsterScale})`, transformOrigin: 'bottom center' }}
+                  style={{ position: 'relative', width: '160px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arenaDebug.monsterScale3D ?? 1) : arenaDebug.monsterScale})`, transformOrigin: 'bottom center' }}
                 >
                   {/* Sombra dinâmica do monstro */}
                   <div className="avatar-ground-shadow" />
@@ -3855,7 +3904,7 @@ useEffect(() => {
                                 <span className="rat-speed-line" style={{ top: '74%', animationDelay: '0.3s' }} />
                               </>
                             )}
-                            <CustomModelViewer modelUrl={animalUrl} size={viewerSize} configRotY={rotY} animation="none" role="monster" effectTint={tint} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
+                            <CustomModelViewer modelUrl={animalUrl} size={viewerSize} configRotY={rotY} animation="none" role="monster" effectTint={tint} preserveDrawingBuffer onCanvasReady={handleMonsterCanvasReady} />
                             {/* Badge da transformação — perto do topo do modelo (não "muito longe") */}
                             <div style={{ position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
                               <span style={{ fontSize: '0.65rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', background: isPig && tr.enraged ? 'rgba(239,68,68,0.9)' : 'rgba(168,85,247,0.9)', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>
@@ -3871,13 +3920,17 @@ useEffect(() => {
                     // Lentidão do gelo: fica mais lento a cada golpe (1-3). Congelado = parado (0).
                     const monsterSlowFactor = frozen ? 0 : (damageEffect === 'freeze' && effectLevel > 0 ? Math.max(0.22, 1 - effectLevel * 0.27) : 1);
                     if (effectiveMonsterModelUrl) {
+                      const modelCfg = arenaDebug.modelConfigs?.[effectiveMonsterModelUrl];
+                      const modelScale = modelCfg?.scale ?? 1;
+                      const modelOX = modelCfg?.offsetX ?? 0;
+                      const modelOY = modelCfg?.offsetY ?? 0;
                       const monsterZoom = effectiveMonsterZoom;
                       // Zoom alto corta a cabeça: aumenta o canvas E afasta a câmera p/ caber
                       const mSize = Math.round(240 * Math.max(1, monsterZoom * 0.7));
                       const mCam = 10 * Math.max(1, monsterZoom * 0.7);
                       return (
-                        <div style={{ transform: `scaleY(${meltPct})`, transformOrigin: 'bottom center' }}>
-                          <CustomModelViewer modelUrl={effectiveMonsterModelUrl} textureUrl={effectiveMonsterSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : (monsterSpecialAnim || monsterAnim)} role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} effectTint={effectTintColor} enraged={monsterRageActive} shatteredCount={fallenPartsRef.current.length} slowFactor={monsterSlowFactor} preserveDrawingBuffer onCanvasReady={(c) => { monsterCanvasRef.current = c; }} />
+                        <div style={{ transform: `translate(${modelOX}px, ${modelOY}px) scale(${modelScale}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}>
+                          <CustomModelViewer modelUrl={effectiveMonsterModelUrl} textureUrl={effectiveMonsterSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : (monsterSpecialAnim || monsterAnim)} role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} effectTint={effectTintColor} enraged={monsterRageActive} shatteredCount={fallenPartsRef.current.length} slowFactor={monsterSlowFactor} preserveDrawingBuffer onCanvasReady={handleMonsterCanvasReady} />
                         </div>
                       );
                     }
@@ -3935,7 +3988,7 @@ useEffect(() => {
                     '--proj-size': `${Math.round(58 * effectiveMonsterZoom)}px`,
                     '--proj-start-x': `${arenaDebug.projStartX ?? 0}px`,
                     '--proj-start-y': `${arenaDebug.projStartY ?? 40}px`,
-                    '--effective-proj-dist': `${(arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) ? arenaDebug.projTargetDist : Math.max(50, arenaWidth - 340 + (arenaDebug.projStartX ?? 0))}px`,
+                    '--effective-proj-dist': `${(arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) ? arenaDebug.projTargetDist : (arenaRenderMode === '3d' ? 'var(--shadow-attack-dist, 200px)' : `${Math.max(50, Math.round(combatDist2D * 2) + (arenaDebug.projStartX ?? 0))}px`)}`,
                     '--proj-target-y': `${arenaDebug.projTargetY ?? 80}px`,
                     '--proj-arc': `${arenaDebug.projArcHeight ?? 245}px`,
                   } as any}
@@ -4007,7 +4060,8 @@ useEffect(() => {
               style={{ position: 'absolute', left: fallenLayerBox?.left ?? 0, top: fallenLayerBox?.top ?? 0, width: fallenLayerBox?.width ?? 0, height: fallenLayerBox?.height ?? 0, zIndex: 24, pointerEvents: 'none', overflow: 'hidden' }}
             />
           </div>
-        )}
+        );
+      })()}
 
         {/* Content Area */}
         <div className="quest-content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: 'auto', userSelect: 'none', WebkitUserSelect: 'none' }}>
@@ -4234,6 +4288,7 @@ useEffect(() => {
           activeModeKey={activeModeKey}
           manualModeOverride={manualModeOverride}
           onSelectMode={handleSelectMode}
+          currentMonsterModelUrl={effectiveMonsterModelUrl}
         />
       )}
       {/* Modal de Ranking de Dano */}
