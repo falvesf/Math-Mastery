@@ -227,21 +227,54 @@ const DraggableWidget = ({
     return 0.95;
   });
   const dragStart = useRef({ x: 0, y: 0 });
+  const widgetRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const opacityInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const handleWheelCapture = () => {
-      if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
-        document.activeElement.blur();
+    const opEl = opacityInputRef.current;
+    if (!opEl) return;
+    const block = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    opEl.addEventListener('wheel', block, { passive: false });
+    return () => opEl.removeEventListener('wheel', block);
+  }, []);
+
+  useEffect(() => {
+    const widgetEl = widgetRef.current;
+    if (!widgetEl) return;
+
+    const handleWheelCapture = (e: WheelEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      const isInputOrSelect =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'SELECT' ||
+        target.tagName === 'TEXTAREA' ||
+        Boolean(target.closest('input, select, textarea'));
+
+      if (isInputOrSelect) {
+        // Bloqueia 100% o navegador/Chromium de alterar o valor de sliders e campos ao usar o scroll do mouse!
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+          document.activeElement.blur();
+        }
+
+        // Encaminha a rolagem perfeitamente para o painel de debug
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop += e.deltaY;
+        }
       }
     };
-    el.addEventListener('wheel', handleWheelCapture, { capture: true, passive: true });
-    window.addEventListener('wheel', handleWheelCapture, { capture: true, passive: true });
+
+    widgetEl.addEventListener('wheel', handleWheelCapture, { capture: true, passive: false });
     return () => {
-      el.removeEventListener('wheel', handleWheelCapture, { capture: true });
-      window.removeEventListener('wheel', handleWheelCapture, { capture: true });
+      widgetEl.removeEventListener('wheel', handleWheelCapture, { capture: true });
     };
   }, [isMinimized]);
 
@@ -269,6 +302,7 @@ const DraggableWidget = ({
 
   return createPortal(
     <div
+      ref={widgetRef}
       style={{
         position: 'fixed', 
         left: typeof pos?.x === 'number' && !isNaN(pos.x) ? pos.x : defaultPos.x, 
@@ -359,6 +393,7 @@ const DraggableWidget = ({
                 🪟
               </button>
               <input
+                ref={opacityInputRef}
                 type="range"
                 tabIndex={-1}
                 min="0.2"
@@ -370,7 +405,6 @@ const DraggableWidget = ({
                 onFocus={(e) => e.currentTarget.blur()}
                 onPointerUp={(e) => e.currentTarget.blur()}
                 onMouseUp={(e) => e.currentTarget.blur()}
-                onWheel={(e) => e.currentTarget.blur()}
                 style={{
                   width: '40px',
                   height: '8px',
@@ -559,15 +593,33 @@ const DraggableWidget = ({
 const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit?: string }) => {
   const getDecimals = (s: number) => (s < 0.1 ? 2 : (s < 1 ? 1 : 0));
   const [localVal, setLocalVal] = useState<string>(() => (isNaN(value) ? '0' : value.toFixed(getDecimals(step))));
+  const rangeRef = useRef<HTMLInputElement>(null);
+  const textRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLocalVal(isNaN(value) ? '0' : value.toFixed(getDecimals(step)));
   }, [value, step]);
 
+  useEffect(() => {
+    const blockWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const rEl = rangeRef.current;
+    const tEl = textRef.current;
+    if (rEl) rEl.addEventListener('wheel', blockWheel, { passive: false });
+    if (tEl) tEl.addEventListener('wheel', blockWheel, { passive: false });
+    return () => {
+      if (rEl) rEl.removeEventListener('wheel', blockWheel);
+      if (tEl) tEl.removeEventListener('wheel', blockWheel);
+    };
+  }, []);
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.18rem', width: '100%', boxSizing: 'border-box' }}>
       <span style={{ fontSize: '0.65rem', color: '#94a3b8', minWidth: '50px', flexShrink: 0, whiteSpace: 'nowrap' }}>{label}</span>
       <input 
+        ref={rangeRef}
         type="range" 
         tabIndex={-1}
         min={min} 
@@ -589,11 +641,11 @@ const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { lab
         }}
         onMouseUp={e => e.currentTarget.blur()}
         onClick={e => e.currentTarget.blur()}
-        onWheel={e => e.currentTarget.blur()}
         style={{ flex: 1, minWidth: 0, height: '12px', accentColor: '#f59e0b', cursor: 'pointer' }} 
       />
       <div style={{ display: 'flex', alignItems: 'center', gap: '1px', flexShrink: 0 }}>
         <input
+          ref={textRef}
           type="text"
           inputMode="decimal"
           value={localVal}
@@ -606,7 +658,6 @@ const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { lab
           onKeyDown={e => {
             if (e.key === 'Enter') e.currentTarget.blur();
           }}
-          onWheel={e => e.currentTarget.blur()}
           onBlur={() => {
             const num = parseFloat(localVal.replace(',', '.'));
             if (isNaN(num)) {
@@ -731,8 +782,21 @@ export default function ArenaDebugPanel({
   };
 
   const resetToMathematicalDefaults = () => {
+    // Também reseta configurações customizadas de escala/offsets do modelo 3D atual se existir
+    const updatedModelConfigs = { ...safeConfig.modelConfigs };
+    if (currentMonsterModelUrl && updatedModelConfigs[currentMonsterModelUrl]) {
+      updatedModelConfigs[currentMonsterModelUrl] = {
+        scale: 1,
+        offsetX: 0,
+        offsetY: 0,
+        shadowOffsetY: 0,
+        shadowScale: 1
+      };
+    }
+
     const next: ArenaDebugConfig = {
       ...safeConfig,
+      modelConfigs: updatedModelConfigs,
       playerOffsetX: 0,
       playerOffsetY: 0,
       monsterOffsetX: 0,
@@ -867,7 +931,6 @@ export default function ArenaDebugPanel({
                   value={safeConfig.forcedFatality} 
                   onChange={e => update('forcedFatality', e.target.value)} 
                   onFocus={e => e.currentTarget.blur()}
-                  onWheel={e => e.currentTarget.blur()}
                   style={{ flex: 1, padding: '0.3rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.65rem' }}
                 >
                   <option value="">🎲 Aleatória</option>
@@ -883,30 +946,47 @@ export default function ArenaDebugPanel({
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 'bold', marginBottom: '0.3rem' }}>🎯 Modelos .GLB</div>
               {currentMonsterModelUrl && (
-                <div style={{ marginBottom: '0.3rem', padding: '0.25rem 0.4rem', background: 'rgba(139,92,246,0.15)', borderRadius: '4px', border: '1px solid rgba(139,92,246,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ overflow: 'hidden' }}>
+                <div style={{ marginBottom: '0.3rem', padding: '0.25rem 0.4rem', background: 'rgba(139,92,246,0.15)', borderRadius: '4px', border: '1px solid rgba(139,92,246,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.3rem' }}>
+                  <div style={{ overflow: 'hidden', flex: 1 }}>
                     <div style={{ fontSize: '0.55rem', color: '#a78bfa', fontWeight: 'bold' }}>Monstro da Arena:</div>
                     <div style={{ fontSize: '0.58rem', color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '160px' }} title={currentMonsterModelUrl}>
                       {currentMonsterModelUrl.split('/').pop()?.substring(0, 24) || currentMonsterModelUrl}
                     </div>
                   </div>
-                  {!safeConfig.modelConfigs[currentMonsterModelUrl] && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        updateMultiple({
-                          modelConfigs: {
+                  <div style={{ display: 'flex', gap: '0.2rem', alignItems: 'center' }}>
+                    {safeConfig.modelConfigs[currentMonsterModelUrl] && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          update('modelConfigs', {
                             ...safeConfig.modelConfigs,
                             [currentMonsterModelUrl]: { scale: 1, offsetX: 0, offsetY: 0, shadowOffsetY: 0, shadowScale: 1 }
-                          },
-                          selectedModelUrl: currentMonsterModelUrl
-                        });
-                      }}
-                      style={{ padding: '0.2rem 0.4rem', background: '#8b5cf6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.58rem', fontWeight: 'bold' }}
-                    >
-                      + Ajustar Este
-                    </button>
-                  )}
+                          });
+                        }}
+                        style={{ padding: '0.2rem 0.4rem', background: 'rgba(56,189,248,0.2)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8', borderRadius: '4px', cursor: 'pointer', fontSize: '0.58rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                        title="Restaurar tamanho padrão (1x centralizado) deste monstro"
+                      >
+                        🔄 1x Padrão
+                      </button>
+                    )}
+                    {!safeConfig.modelConfigs[currentMonsterModelUrl] && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateMultiple({
+                            modelConfigs: {
+                              ...safeConfig.modelConfigs,
+                              [currentMonsterModelUrl]: { scale: 1, offsetX: 0, offsetY: 0, shadowOffsetY: 0, shadowScale: 1 }
+                            },
+                            selectedModelUrl: currentMonsterModelUrl
+                          });
+                        }}
+                        style={{ padding: '0.2rem 0.4rem', background: '#8b5cf6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.58rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                      >
+                        + Ajustar Este
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
@@ -916,8 +996,18 @@ export default function ArenaDebugPanel({
               {Object.entries(safeConfig.modelConfigs).map(([url, cfg]) => (
                 <div key={url} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '6px', padding: '0.4rem', marginBottom: '0.3rem', border: safeConfig.selectedModelUrl === url ? '1px solid #8b5cf6' : '1px solid transparent' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
-                    <span onClick={() => update('selectedModelUrl', url)} style={{ fontSize: '0.6rem', color: '#a78bfa', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }} title={url}>{url.split('/').pop()?.substring(0, 25) || url}</span>
-                    <button onClick={() => { const nc = { ...safeConfig.modelConfigs }; delete nc[url]; updateMultiple({ modelConfigs: nc, ...(safeConfig.selectedModelUrl === url ? { selectedModelUrl: '' } : {}) }); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 0.2rem', fontSize: '0.7rem' }}>✕</button>
+                    <span onClick={() => update('selectedModelUrl', url)} style={{ fontSize: '0.6rem', color: '#a78bfa', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }} title={url}>{url.split('/').pop()?.substring(0, 25) || url}</span>
+                    <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                      <button 
+                        type="button" 
+                        onClick={() => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { scale: 1, offsetX: 0, offsetY: 0, shadowOffsetY: 0, shadowScale: 1 } })} 
+                        style={{ background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.35)', color: '#38bdf8', cursor: 'pointer', padding: '0.1rem 0.35rem', borderRadius: '3px', fontSize: '0.55rem', fontWeight: 'bold' }} 
+                        title="Restaurar tamanho padrão (1x centralizado)"
+                      >
+                        🔄 1x
+                      </button>
+                      <button onClick={() => { const nc = { ...safeConfig.modelConfigs }; delete nc[url]; updateMultiple({ modelConfigs: nc, ...(safeConfig.selectedModelUrl === url ? { selectedModelUrl: '' } : {}) }); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 0.2rem', fontSize: '0.7rem' }}>✕</button>
+                    </div>
                   </div>
                   <Slider label="Escala" value={cfg.scale} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, scale: v } })} min={0.1} max={5} step={0.05} unit="x" />
                   <Slider label="X" value={cfg.offsetX} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, offsetX: v } })} min={-300} max={300} />
@@ -985,7 +1075,6 @@ export default function ArenaDebugPanel({
                 value={safeConfig.biome3D || 'plains'}
                 onChange={e => update('biome3D', e.target.value as any)}
                 onFocus={e => e.currentTarget.blur()}
-                onWheel={e => e.currentTarget.blur()}
                 style={{
                   width: '100%',
                   padding: '0.35rem 0.5rem',
