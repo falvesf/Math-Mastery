@@ -3750,7 +3750,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '170px' : '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arenaDebug.playerScale3D ?? 1) : arenaDebug.playerScale})` }}>
                 {/* Sombra dinâmica do personagem */}
                 <div className="avatar-ground-shadow" />
-                <div style={{ position: 'relative', display: 'inline-block', marginBottom: '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
+                <div style={{ position: 'relative', display: 'inline-block', marginBottom: userData?.avatarConfig?.customModelUrl ? `-${Math.round(170 * 0.2236)}px` : '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
                   <ConsumableAnimationOverlay anim={activeConsumableAnim} onComplete={() => setActiveConsumableAnim(null)} />
                   <div
@@ -3873,13 +3873,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   </div>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                     {effectiveMonsterModelUrl && sliceSnapshot
-                      ? <img src={sliceSnapshot} alt="" style={{ width: '190px', height: '190px', objectFit: 'contain', imageRendering: 'auto' }} />
-                      : effectiveMonsterModelUrl ? <CustomModelViewer modelUrl={effectiveMonsterModelUrl} textureUrl={effectiveMonsterSkinUrl} size={190} animation="none" role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} /> : <div style={{ marginBottom: '-60px', transform: `scale(${effectiveMonsterZoom})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={170} animation="idle" interactive={false} role="monster" /></div>}
+                      ? <img src={sliceSnapshot} alt="" style={{ width: '190px', height: '190px', objectFit: 'contain', imageRendering: 'auto', marginBottom: `-${Math.round(190 * 0.2236)}px` }} />
+                      : effectiveMonsterModelUrl ? <div style={{ marginBottom: `-${Math.round(190 * 0.2236)}px` }}><CustomModelViewer modelUrl={effectiveMonsterModelUrl} textureUrl={effectiveMonsterSkinUrl} size={190} animation="none" role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} /></div> : <div style={{ marginBottom: '-60px', transform: `scale(${effectiveMonsterZoom})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={170} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                   <div className="death-slice-right" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                     {effectiveMonsterModelUrl && sliceSnapshot
-                      ? <img src={sliceSnapshot} alt="" style={{ width: '190px', height: '190px', objectFit: 'contain', imageRendering: 'auto' }} />
-                      : effectiveMonsterModelUrl ? <CustomModelViewer modelUrl={effectiveMonsterModelUrl} textureUrl={effectiveMonsterSkinUrl} size={190} animation="none" role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} /> : <div style={{ marginBottom: '-60px', transform: `scale(${effectiveMonsterZoom})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={170} animation="idle" interactive={false} role="monster" /></div>}
+                      ? <img src={sliceSnapshot} alt="" style={{ width: '190px', height: '190px', objectFit: 'contain', imageRendering: 'auto', marginBottom: `-${Math.round(190 * 0.2236)}px` }} />
+                      : effectiveMonsterModelUrl ? <div style={{ marginBottom: `-${Math.round(190 * 0.2236)}px` }}><CustomModelViewer modelUrl={effectiveMonsterModelUrl} textureUrl={effectiveMonsterSkinUrl} size={190} animation="none" role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} /></div> : <div style={{ marginBottom: '-60px', transform: `scale(${effectiveMonsterZoom})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest?.monsterAvatarConfig || null} equippedItems={[]} size={170} animation="idle" interactive={false} role="monster" /></div>}
                   </div>
                 </div>
               ) : (
@@ -3887,8 +3887,26 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   className="quest-arena-avatars"
                   style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', transform: `translate(${monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0}px, ${monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.monsterScale3D ?? 1) : arenaDebug.monsterScale})`, transformOrigin: 'bottom center' }}
                 >
-                  {/* Sombra dinâmica do monstro */}
-                  <div className="avatar-ground-shadow" />
+                  {/* Sombra dinâmica do monstro (segue transforms e offsets do GLB) */}
+                  {(() => {
+                    const isMonsterGlb = !!(effectiveMonsterModelUrl || transformState);
+                    const monsterModelCfg = effectiveMonsterModelUrl ? arenaDebug.modelConfigs?.[effectiveMonsterModelUrl] : null;
+                    const monsterModelScale = monsterModelCfg?.scale ?? 1;
+                    const monsterModelOX = monsterModelCfg?.offsetX ?? 0;
+                    const monsterModelOY = monsterModelCfg?.offsetY ?? 0;
+                    const monsterShadowOY = monsterModelCfg?.shadowOffsetY ?? 0;
+                    const monsterShadowScale = monsterModelCfg?.shadowScale ?? 1;
+                    return (
+                      <div
+                        className="avatar-ground-shadow"
+                        style={isMonsterGlb ? {
+                          transform: `translateX(calc(-50% + ${monsterModelOX}px)) translateY(${monsterModelOY + monsterShadowOY}px) scale(${monsterModelScale * monsterShadowScale})`,
+                          bottom: arenaRenderMode === '3d' ? '-6px' : '-4px',
+                          opacity: monsterAnim.startsWith('death-') ? 0 : 1,
+                        } : undefined}
+                      />
+                    );
+                  })()}
                   {/* A animação fica num FILHO para não sobrescrever a posição (transform) do pai */}
                   <div className={`${
                     monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : 
@@ -3937,12 +3955,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       // o canvas do viewer (não CSS scale, que cortava o topo).
                       const animCls = isFrog ? 'transform-hop' : '';
                       const viewerSize = isRat ? 210 : 190;
+                      const trFeetBottom = Math.round(viewerSize * 0.2236);
                       // Porco: em repouso olha para a câmera (180°); ao ATACAR vira para o JOGADOR
                       // (esquerda = 90°) e golpeia de frente, não de lado.
                       const rotY = isPig ? (monsterAnim === 'attack' ? 90 : 180) : 0;
                       const tint = healTint || (isPig && tr.enraged ? '#ff2222' : null);
                       return (
-                        <div style={{ transformOrigin: 'bottom center' }}>
+                        <div style={{ transformOrigin: 'bottom center', marginBottom: `-${trFeetBottom}px` }}>
                           <div className={animCls || undefined} style={{ position: 'relative' }}>
                             {isRat && (
                               <>
@@ -3975,7 +3994,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       const monsterZoom = effectiveMonsterZoom;
                       const mSize = Math.round(190 * Math.max(1, monsterZoom * 0.7));
                       const mCam = 10 * Math.max(1, monsterZoom * 0.7);
-                      return <div style={{ transform: `translate(${modelOX}px, ${modelOY}px) scale(${modelScale}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><CustomModelViewer modelUrl={modelUrl} textureUrl={effectiveMonsterSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : (monsterSpecialAnim || monsterAnim)} role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} effectTint={effectTintColor} enraged={monsterRageActive} shatteredCount={fallenPartsRef.current.length} slowFactor={monsterSlowFactor} preserveDrawingBuffer onCanvasReady={handleMonsterCanvasReady} /></div>;
+                      const glbFeetBottom = Math.round(mSize * 0.2236);
+                      return <div style={{ transform: `translate(${modelOX}px, ${modelOY}px) scale(${modelScale}) scaleY(${meltPct})`, transformOrigin: 'bottom center', marginBottom: `-${glbFeetBottom}px` }}><CustomModelViewer modelUrl={modelUrl} textureUrl={effectiveMonsterSkinUrl} size={mSize} cameraDistance={mCam} animation={frozen ? 'none' : (monsterSpecialAnim || monsterAnim)} role="monster" zoom={effectiveMonsterZoom} configRotY={effectiveMonsterRotY} effectTint={effectTintColor} enraged={monsterRageActive} shatteredCount={fallenPartsRef.current.length} slowFactor={monsterSlowFactor} preserveDrawingBuffer onCanvasReady={handleMonsterCanvasReady} /></div>;
                     } else if (quest?.monsterAvatarConfig) {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
                       const effectTintColor = healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : null) : null);

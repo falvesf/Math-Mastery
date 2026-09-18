@@ -869,7 +869,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
               <div className="avatar-ground-shadow pvp" />
               {safeLeft?.transform ? (
                 <div style={{ position: 'relative' }}>
-                  <div className={safeLeft.transform.animal === 'sapo' ? 'transform-hop' : (safeLeft.transform.animal === 'rato' ? 'rat-scurry' : undefined)} style={{ transformOrigin: 'bottom center' }}>
+                  <div className={safeLeft.transform.animal === 'sapo' ? 'transform-hop' : (safeLeft.transform.animal === 'rato' ? 'rat-scurry' : undefined)} style={{ transformOrigin: 'bottom center', marginBottom: `-${Math.round(190 * 0.2236)}px` }}>
                     <CustomModelViewer modelUrl={getTransformModelUrl(safeLeft.transform.animal)} size={190} configRotY={safeLeft.transform.animal === 'porco' ? (leftAnswered ? -90 : 180) : 0} animation="none" role="monster" effectTint={safeLeft.transform.animal === 'porco' && safeLeft.transform.enraged ? '#ff2222' : null} />
                   </div>
                   <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>
@@ -928,7 +928,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
               <div className="avatar-ground-shadow pvp" />
               {safeRight?.transform ? (
                 <div style={{ position: 'relative' }}>
-                  <div className={safeRight.transform.animal === 'sapo' ? 'transform-hop' : (safeRight.transform.animal === 'rato' ? 'rat-scurry' : undefined)} style={{ transformOrigin: 'bottom center' }}>
+                  <div className={safeRight.transform.animal === 'sapo' ? 'transform-hop' : (safeRight.transform.animal === 'rato' ? 'rat-scurry' : undefined)} style={{ transformOrigin: 'bottom center', marginBottom: `-${Math.round(190 * 0.2236)}px` }}>
                     <CustomModelViewer modelUrl={getTransformModelUrl(safeRight.transform.animal)} size={190} configRotY={safeRight.transform.animal === 'porco' ? (rightAnswered ? 90 : 180) : 0} animation="none" role="monster" effectTint={safeRight.transform.animal === 'porco' && safeRight.transform.enraged ? '#ff2222' : null} />
                   </div>
                   <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', zIndex: 6 }}>

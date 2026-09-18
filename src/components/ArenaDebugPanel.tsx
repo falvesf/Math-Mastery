@@ -5,6 +5,8 @@ export interface ModelTransform {
   scale: number;
   offsetX: number;
   offsetY: number;
+  shadowOffsetY?: number;
+  shadowScale?: number;
 }
 
 export interface ArenaDebugConfig {
@@ -214,7 +216,7 @@ const DraggableWidget = ({
   });
   const [widgetWidth, setWidgetWidth] = useState(() => {
     const saved = localStorage.getItem(`arenaDebug_widgetW_${id}`);
-    return saved && !isNaN(parseInt(saved)) ? parseInt(saved) : 270;
+    return saved && !isNaN(parseInt(saved)) ? Math.max(285, parseInt(saved)) : 290;
   });
   const [widgetOpacity, setWidgetOpacity] = useState<number>(() => {
     const saved = localStorage.getItem('arenaDebug_widgetOpacity');
@@ -512,7 +514,17 @@ const DraggableWidget = ({
       {!isMinimized && (
         <div 
           ref={scrollContainerRef}
-          style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingRight: '0.5rem', overscrollBehavior: 'contain' }}
+          className="arena-debug-scroll"
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            paddingRight: '0.65rem',
+            paddingLeft: '0.1rem',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(245, 158, 11, 0.4) transparent',
+            overscrollBehavior: 'contain'
+          }}
         >
           {children}
         </div>
@@ -553,8 +565,8 @@ const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { lab
   }, [value, step]);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.18rem' }}>
-      <span style={{ fontSize: '0.65rem', color: '#94a3b8', minWidth: '55px', whiteSpace: 'nowrap' }}>{label}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.18rem', width: '100%', boxSizing: 'border-box' }}>
+      <span style={{ fontSize: '0.65rem', color: '#94a3b8', minWidth: '50px', flexShrink: 0, whiteSpace: 'nowrap' }}>{label}</span>
       <input 
         type="range" 
         tabIndex={-1}
@@ -578,9 +590,9 @@ const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { lab
         onMouseUp={e => e.currentTarget.blur()}
         onClick={e => e.currentTarget.blur()}
         onWheel={e => e.currentTarget.blur()}
-        style={{ flex: 1, height: '12px', accentColor: '#f59e0b', cursor: 'pointer' }} 
+        style={{ flex: 1, minWidth: 0, height: '12px', accentColor: '#f59e0b', cursor: 'pointer' }} 
       />
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1px', flexShrink: 0 }}>
         <input
           type="text"
           inputMode="decimal"
@@ -604,7 +616,7 @@ const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { lab
             }
           }}
           style={{
-            width: '46px',
+            width: '42px',
             fontSize: '0.65rem',
             color: '#fbbf24',
             fontFamily: 'monospace',
@@ -615,7 +627,7 @@ const Slider = ({ label, value, onChange, min, max, step = 1, unit = '' }: { lab
             padding: '1px 2px',
           }}
         />
-        {unit && <span style={{ fontSize: '0.58rem', color: '#94a3b8', minWidth: '12px' }}>{unit}</span>}
+        {unit && <span style={{ fontSize: '0.58rem', color: '#94a3b8', minWidth: '10px' }}>{unit}</span>}
       </div>
     </div>
   );
@@ -885,7 +897,7 @@ export default function ArenaDebugPanel({
                         updateMultiple({
                           modelConfigs: {
                             ...safeConfig.modelConfigs,
-                            [currentMonsterModelUrl]: { scale: 1, offsetX: 0, offsetY: 0 }
+                            [currentMonsterModelUrl]: { scale: 1, offsetX: 0, offsetY: 0, shadowOffsetY: 0, shadowScale: 1 }
                           },
                           selectedModelUrl: currentMonsterModelUrl
                         });
@@ -899,7 +911,7 @@ export default function ArenaDebugPanel({
               )}
               <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
                 <input type="text" value={safeConfig.selectedModelUrl} onChange={e => update('selectedModelUrl', e.target.value)} placeholder="URL do modelo .glb" style={{ flex: 1, padding: '0.3rem 0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.65rem' }} />
-                <button onClick={() => { if (safeConfig.selectedModelUrl && !safeConfig.modelConfigs[safeConfig.selectedModelUrl]) update('modelConfigs', { ...safeConfig.modelConfigs, [safeConfig.selectedModelUrl]: { scale: 1, offsetX: 0, offsetY: 0 } }); }} style={{ padding: '0.3rem 0.5rem', background: '#8b5cf6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold' }}>+</button>
+                <button onClick={() => { if (safeConfig.selectedModelUrl && !safeConfig.modelConfigs[safeConfig.selectedModelUrl]) update('modelConfigs', { ...safeConfig.modelConfigs, [safeConfig.selectedModelUrl]: { scale: 1, offsetX: 0, offsetY: 0, shadowOffsetY: 0, shadowScale: 1 } }); }} style={{ padding: '0.3rem 0.5rem', background: '#8b5cf6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold' }}>+</button>
               </div>
               {Object.entries(safeConfig.modelConfigs).map(([url, cfg]) => (
                 <div key={url} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '6px', padding: '0.4rem', marginBottom: '0.3rem', border: safeConfig.selectedModelUrl === url ? '1px solid #8b5cf6' : '1px solid transparent' }}>
@@ -910,6 +922,8 @@ export default function ArenaDebugPanel({
                   <Slider label="Escala" value={cfg.scale} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, scale: v } })} min={0.1} max={5} step={0.05} unit="x" />
                   <Slider label="X" value={cfg.offsetX} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, offsetX: v } })} min={-300} max={300} />
                   <Slider label="Y" value={cfg.offsetY} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, offsetY: v } })} min={-300} max={300} />
+                  <Slider label="Sombra Y" value={cfg.shadowOffsetY ?? 0} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, shadowOffsetY: v } })} min={-100} max={100} unit="px" />
+                  <Slider label="Sombra Tam." value={cfg.shadowScale ?? 1} onChange={v => update('modelConfigs', { ...safeConfig.modelConfigs, [url]: { ...cfg, shadowScale: v } })} min={0.2} max={3} step={0.05} unit="x" />
                 </div>
               ))}
             </div>

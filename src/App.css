@@ -1805,3 +1805,19 @@
 .forge-star::after { content: ''; position: absolute; left: 50%; top: 50%; width: 11px; height: 1.5px; margin-left: -5.5px; margin-top: -0.75px; border-radius: 2px; background: var(--glow-color, #ffd76a); opacity: 0.8; }
 .forge-star::before { content: ''; position: absolute; left: 50%; top: 50%; height: 11px; width: 1.5px; margin-left: -0.75px; margin-top: -5.5px; border-radius: 2px; background: var(--glow-color, #ffd76a); opacity: 0.8; }
 @keyframes forge-star-fly { 0% { opacity: 0; transform: translateY(10px) scale(0.5); } 30% { opacity: var(--star-op, 0.9); } 70% { opacity: var(--star-op, 0.9); } 100% { opacity: 0; transform: translateY(-14px) scale(1.15); } }
+
+/* ==== Custom Scrollbar for Arena Debug Panel ==== */
+.arena-debug-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.arena-debug-scroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+.arena-debug-scroll::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.4);
+  border-radius: 4px;
+}
+.arena-debug-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.7);
+}
