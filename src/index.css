@@ -870,11 +870,13 @@ h3 {
 }
 
 .quest-question-overlay .quest-option-btn .option-img {
-  width: 32px;
-  height: 32px;
-  object-fit: cover;
+  max-width: 64px;
+  max-height: 44px;
+  min-width: 32px;
+  object-fit: contain;
   border-radius: 4px;
   flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .quest-question-overlay .quest-option-btn.eliminated {

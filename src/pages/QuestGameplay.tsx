@@ -3032,11 +3032,31 @@ useEffect(() => {
     return () => window.removeEventListener('resize', sync);
   }, [monsterAnim, arenaDebug, currentQIndex]);
 
-  // Decide se as ALTERNATIVAS ficam por cima dos bonecos. Se sim, movemos as respostas
-  // para baixo da arena (senão mantemos no topo). Mede o fundo do bloco da pergunta +
-  // a altura das alternativas vs o topo dos bonecos.
+  // Detecta se a pergunta ou alguma das alternativas possui figuras/imagens
+  const currentQuestion = quest?.questions[currentQIndex];
+  const hasQuestionFigure = Boolean(
+    (currentQuestion?.imageUrl && currentQuestion.imageUrl.trim() !== '') ||
+    (currentQuestion?.title && /<img\b[^>]*>/i.test(currentQuestion.title))
+  );
+  const hasOptionsFigure = Boolean(
+    currentQuestion?.options?.some(opt => 
+      (opt.imageUrl && opt.imageUrl.trim() !== '') ||
+      (opt.text && /<img\b[^>]*>/i.test(opt.text))
+    )
+  );
+  const hasFigures = hasQuestionFigure || hasOptionsFigure;
+  const showAnswersBelow = answersBelow || hasFigures;
+
+  // Decide se as ALTERNATIVAS ficam por cima dos bonecos. Se sim (ou se houver figuras na
+  // pergunta ou respostas), movemos as respostas para baixo da arena (senão mantemos no topo).
   useLayoutEffect(() => {
     if (gameState !== 'playing') return;
+    if (hasFigures) {
+      setAnswersBelow(true);
+      return;
+    }
+    // Quando não houver figuras, reinicia no topo até medir se colide com avatares
+    setAnswersBelow(false);
     const measure = () => {
       const titleEl = questionTitleRef.current;
       const optionsEl = questionOptionsRef.current;
@@ -3045,18 +3065,15 @@ useEffect(() => {
       if (!titleEl || !optionsEl) return;
       const titleBottom = titleEl.getBoundingClientRect().bottom;
       const optionsHeight = optionsEl.getBoundingClientRect().height || 0;
-      // Usa o topo do CONTAINER DO AVATAR (corpo do boneco), não do wrapper (que inclui
-      // nome/balões) — senão dispara cedo demais e move as respostas sem necessidade.
+      // Usa o topo do CONTAINER DO AVATAR (corpo do boneco), não do wrapper
       const tops: number[] = [];
       const pAv = playerEl?.querySelector('.quest-arena-avatars');
       const mAv = monsterEl?.querySelector('.quest-arena-avatars');
       if (pAv) tops.push(pAv.getBoundingClientRect().top);
       if (mAv) tops.push(mAv.getBoundingClientRect().top);
       if (tops.length === 0) return;
-      // Desconta o "padding" do canvas acima da cabeça (o container do avatar começa
-      // mais alto que o boneco visível). Só move para baixo quando as alternativas
-      // REALMENTE entram na altura do boneco.
-      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops) + 60);
+      // Margem de segurança de 15px para evitar tocar nos nomes ("Você", monstro) e corações
+      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops) - 15);
     };
     // Mede após o layout estabilizar (pergunta/imagem/entrada da arena mudam a altura).
     const raf = requestAnimationFrame(measure);
@@ -3067,7 +3084,7 @@ useEffect(() => {
     if (questionTitleRef.current) ro.observe(questionTitleRef.current);
     if (questionOptionsRef.current) ro.observe(questionOptionsRef.current);
     return () => { cancelAnimationFrame(raf); timers.forEach(clearTimeout); window.removeEventListener('resize', measure); ro.disconnect(); };
-  }, [gameState, currentQIndex, arenaDebug, feedback, eliminatedOptions.length]);
+  }, [gameState, currentQIndex, hasFigures, arenaDebug, feedback, eliminatedOptions.length]);
 
   const handleUsePowerup = async (item: UserItem) => {
     if (gameState !== 'playing') {
@@ -3613,7 +3630,7 @@ useEffect(() => {
                 <h2 dangerouslySetInnerHTML={{ __html: quest?.questions[currentQIndex].title || '' }} />
               </div>
               
-              {!answersBelow && (
+              {!showAnswersBelow && (
                 <div className="quest-options-compact" ref={questionOptionsRef}>
                   {quest?.questions[currentQIndex].options
                     .map((opt, idx) => ({ opt, idx }))
@@ -3634,7 +3651,13 @@ useEffect(() => {
                         {isEliminated && <XCircle size={16} color="rgba(239, 68, 68, 0.5)" style={{ position: 'absolute' }} />}
                         <span className="option-letter">{String.fromCharCode(65 + i)}</span>
                         {opt.imageUrl && <img src={getSafeUrl(opt.imageUrl)} alt="" className="option-img" />}
-                        <span className="option-text">{opt.text}</span>
+                        {opt.text && (
+                          /<[a-z][\s\S]*>/i.test(opt.text) ? (
+                            <span className="option-text" dangerouslySetInnerHTML={{ __html: opt.text }} />
+                          ) : (
+                            <span className="option-text">{opt.text}</span>
+                          )
+                        )}
                       </button>
                     );
                   })}
@@ -3642,9 +3665,8 @@ useEffect(() => {
               )}
             </div>
 
-            {/* Alternativas ABAIXO DA ARENA (quando a pergunta fica na altura dos bonecos
-                e as respostas ficariam por cima/atrás deles, sem dar para clicar). */}
-            {answersBelow && (
+            {/* Alternativas ABAIXO DA ARENA (quando há figuras ou quando a pergunta fica na altura dos bonecos) */}
+            {showAnswersBelow && (
               <div ref={questionOptionsRef} className="quest-question-overlay" style={{ position: 'fixed', top: 'auto', bottom: 0, left: 0, right: 0, display: 'flex', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--border-glass)', zIndex: 60, pointerEvents: 'auto' }}>
                 {quest?.questions[currentQIndex].options
                   .map((opt, idx) => ({ opt, idx }))
@@ -3664,7 +3686,13 @@ useEffect(() => {
                       {isEliminated && <XCircle size={16} color="rgba(239, 68, 68, 0.5)" style={{ position: 'absolute' }} />}
                       <span className="option-letter">{String.fromCharCode(65 + i)}</span>
                       {opt.imageUrl && <img src={getSafeUrl(opt.imageUrl)} alt="" className="option-img" />}
-                      <span className="option-text">{opt.text}</span>
+                      {opt.text && (
+                        /<[a-z][\s\S]*>/i.test(opt.text) ? (
+                          <span className="option-text" dangerouslySetInnerHTML={{ __html: opt.text }} />
+                        ) : (
+                          <span className="option-text">{opt.text}</span>
+                        )
+                      )}
                     </button>
                   );
                 })}
@@ -4084,7 +4112,7 @@ useEffect(() => {
       })()}
 
         {/* Content Area */}
-        <div className="quest-content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: 'auto', userSelect: 'none', WebkitUserSelect: 'none' }}>
+        <div className="quest-content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: 'auto', paddingBottom: showAnswersBelow ? '85px' : undefined, userSelect: 'none', WebkitUserSelect: 'none' }}>
 
           
           {gameState === 'intro' && quest && (

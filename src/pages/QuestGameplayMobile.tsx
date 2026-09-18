@@ -3062,9 +3062,29 @@ const dealTransformDamageToPlayer = (damage: number) => {
     return () => window.removeEventListener('resize', sync);
   }, [monsterAnim, arenaDebug, currentQIndex]);
 
+  // Detecta se a pergunta ou alguma das alternativas possui figuras/imagens
+  const currentQuestion = quest?.questions[currentQIndex];
+  const hasQuestionFigure = Boolean(
+    (currentQuestion?.imageUrl && currentQuestion.imageUrl.trim() !== '') ||
+    (currentQuestion?.title && /<img\b[^>]*>/i.test(currentQuestion.title))
+  );
+  const hasOptionsFigure = Boolean(
+    currentQuestion?.options?.some(opt => 
+      (opt.imageUrl && opt.imageUrl.trim() !== '') ||
+      (opt.text && /<img\b[^>]*>/i.test(opt.text))
+    )
+  );
+  const hasFigures = hasQuestionFigure || hasOptionsFigure;
+  const showAnswersBelow = answersBelow || hasFigures;
+
   // Decide se as alternativas ficam sobre os bonecos → move para baixo da arena.
   useLayoutEffect(() => {
     if (gameState !== 'playing') return;
+    if (hasFigures) {
+      setAnswersBelow(true);
+      return;
+    }
+    setAnswersBelow(false);
     const measure = () => {
       const titleEl = questionTitleRef.current;
       const optionsEl = questionOptionsRef.current;
@@ -3080,8 +3100,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (pAv) tops.push(pAv.getBoundingClientRect().top);
       if (mAv) tops.push(mAv.getBoundingClientRect().top);
       if (tops.length === 0) return;
-      // Desconta o "padding" do canvas acima da cabeça do boneco.
-      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops) + 60);
+      // Margem de 15px para evitar tocar nos nomes e corações dos personagens
+      setAnswersBelow(titleBottom + optionsHeight > Math.min(...tops) - 15);
     };
     const raf = requestAnimationFrame(measure);
     const timers = [120, 450, 900, 1600].map(t => setTimeout(measure, t));
@@ -3090,7 +3110,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     if (questionTitleRef.current) ro.observe(questionTitleRef.current);
     if (questionOptionsRef.current) ro.observe(questionOptionsRef.current);
     return () => { cancelAnimationFrame(raf); timers.forEach(clearTimeout); window.removeEventListener('resize', measure); ro.disconnect(); };
-  }, [gameState, currentQIndex, arenaDebug, feedback, eliminatedOptions.length]);
+  }, [gameState, currentQIndex, hasFigures, arenaDebug, feedback, eliminatedOptions.length]);
 
   const handleUsePowerup = async (item: UserItem) => {
     if (gameState !== 'playing') {
@@ -3652,7 +3672,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 <h2 dangerouslySetInnerHTML={{ __html: quest?.questions[currentQIndex].title || '' }} />
               </div>
               
-              {!answersBelow && (
+              {!showAnswersBelow && (
                 <div className="quest-options-compact" ref={questionOptionsRef}>
                   {quest?.questions[currentQIndex].options
                     .map((opt, idx) => ({ opt, idx }))
@@ -3673,7 +3693,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
                         {isEliminated && <XCircle size={16} color="rgba(239, 68, 68, 0.5)" style={{ position: 'absolute' }} />}
                         <span className="option-letter">{String.fromCharCode(65 + i)}</span>
                         {opt.imageUrl && <img src={getSafeUrl(opt.imageUrl)} alt="" className="option-img" />}
-                        <span className="option-text">{opt.text}</span>
+                        {opt.text && (
+                          /<[a-z][\s\S]*>/i.test(opt.text) ? (
+                            <span className="option-text" dangerouslySetInnerHTML={{ __html: opt.text }} />
+                          ) : (
+                            <span className="option-text">{opt.text}</span>
+                          )
+                        )}
                       </button>
                     );
                   })}
@@ -3681,8 +3707,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
               )}
             </div>
 
-            {/* Alternativas ABAIXO DA ARENA (quando a pergunta fica na altura dos bonecos). */}
-            {answersBelow && (
+            {/* Alternativas ABAIXO DA ARENA (quando há figuras ou quando a pergunta fica na altura dos bonecos) */}
+            {showAnswersBelow && (
               <div ref={questionOptionsRef} className="quest-question-overlay" style={{ position: 'fixed', top: 'auto', bottom: 0, left: 0, right: 0, display: 'flex', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--border-glass)', zIndex: 60, pointerEvents: 'auto' }}>
                 {quest?.questions[currentQIndex].options
                   .map((opt, idx) => ({ opt, idx }))
@@ -3702,7 +3728,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       {isEliminated && <XCircle size={16} color="rgba(239, 68, 68, 0.5)" style={{ position: 'absolute' }} />}
                       <span className="option-letter">{String.fromCharCode(65 + i)}</span>
                       {opt.imageUrl && <img src={getSafeUrl(opt.imageUrl)} alt="" className="option-img" />}
-                      <span className="option-text">{opt.text}</span>
+                      {opt.text && (
+                        /<[a-z][\s\S]*>/i.test(opt.text) ? (
+                          <span className="option-text" dangerouslySetInnerHTML={{ __html: opt.text }} />
+                        ) : (
+                          <span className="option-text">{opt.text}</span>
+                        )
+                      )}
                     </button>
                   );
                 })}
@@ -4131,7 +4163,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         })()}
 
         {/* Content Area */}
-        <div className="quest-content-area" style={{ flex: gameState === 'playing' ? '0 0 auto' : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: gameState === 'playing' ? 'visible' : 'auto', minHeight: 0, userSelect: 'none', WebkitUserSelect: 'none' }}>
+        <div className="quest-content-area" style={{ flex: gameState === 'playing' ? '0 0 auto' : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: gameState === 'playing' ? 'visible' : 'auto', minHeight: 0, paddingBottom: showAnswersBelow ? '85px' : undefined, userSelect: 'none', WebkitUserSelect: 'none' }}>
 
           
           {gameState === 'intro' && quest && (
