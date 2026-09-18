@@ -895,6 +895,37 @@ h3 {
   border-color: var(--accent-red);
 }
 
+/* Alternativas renderizadas dentro da arena na grama, abaixo das pedras */
+.quest-options-on-grass {
+  position: absolute !important;
+  top: auto !important;
+  bottom: 12px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: auto !important;
+  max-width: 96% !important;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  padding: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  z-index: 50 !important;
+  pointer-events: auto !important;
+}
+
+@media (max-width: 600px) {
+  .quest-options-on-grass {
+    bottom: 8px !important;
+    gap: 0.35rem !important;
+    max-width: 98% !important;
+  }
+}
+
 /* Mobile: proteção extra — se mesmo assim houver muitas alternativas, elas
    rolam internamente em vez de irem para trás/em cima dos bonecos. */
 @media (max-width: 600px) {

@@ -3707,9 +3707,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
               )}
             </div>
 
-            {/* Alternativas ABAIXO DA ARENA (quando há figuras ou quando a pergunta fica na altura dos bonecos) */}
+            {/* Alternativas ABAIXO DA ARENA (renderizadas dentro da arena na grama, abaixo das pedras) */}
             {showAnswersBelow && (
-              <div ref={questionOptionsRef} className="quest-question-overlay" style={{ position: 'fixed', top: 'auto', bottom: 0, left: 0, right: 0, display: 'flex', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--border-glass)', zIndex: 60, pointerEvents: 'auto' }}>
+              <div ref={questionOptionsRef} className="quest-question-overlay quest-options-on-grass">
                 {quest?.questions[currentQIndex].options
                   .map((opt, idx) => ({ opt, idx }))
                   .filter(({ opt }) => (opt.text && opt.text.trim() !== '') || (opt.imageUrl && opt.imageUrl.trim() !== ''))
@@ -4163,7 +4163,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         })()}
 
         {/* Content Area */}
-        <div className="quest-content-area" style={{ flex: gameState === 'playing' ? '0 0 auto' : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: gameState === 'playing' ? 'visible' : 'auto', minHeight: 0, paddingBottom: showAnswersBelow ? '85px' : undefined, userSelect: 'none', WebkitUserSelect: 'none' }}>
+        <div className="quest-content-area" style={{ flex: gameState === 'playing' ? '0 0 auto' : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: gameState === 'playing' ? 'flex-start' : 'center', overflowY: gameState === 'playing' ? 'visible' : 'auto', minHeight: 0, userSelect: 'none', WebkitUserSelect: 'none' }}>
 
           
           {gameState === 'intro' && quest && (
