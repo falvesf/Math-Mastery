@@ -3443,8 +3443,12 @@ useEffect(() => {
         {/* Battle Arena Fixed */}
         {(() => {
           const combatDist2D = Math.max(160, Math.min(320, (arenaWidth || 1200) * 0.22)) + (arenaDebug.arenaGap || 0);
+          // 150 era o default antigo — trata como 0 (Automático) para não prejudicar configs existentes
+          const effectiveAttackDist = (arenaDebug.attackDist && arenaDebug.attackDist !== 150) ? arenaDebug.attackDist : 0;
+          const autoDist2D = Math.max(120, Math.round(combatDist2D * 2));
+          const finalAttackDist2D = effectiveAttackDist > 0 ? effectiveAttackDist : autoDist2D;
           return gameState === 'playing' && (
-            <div ref={arenaRef} className={`battle-arena-bg quest-arena ${arenaRenderMode === '3d' ? 'is-3d-arena' : ''} ${arenaQuake ? 'arena-quake' : ''}`} style={{ '--attack-dist': arenaRenderMode === '3d' ? 'var(--shadow-attack-dist, 200px)' : `${Math.max(150, Math.round(combatDist2D * 2))}px`, '--arena-char-bottom-padding': '60px', '--player-lift-x': `${arenaDebug.playerOffsetX3D || 0}px`, '--monster-lift-x': `${arenaDebug.monsterOffsetX3D || 0}px`, '--player-lift-3d': `${arenaDebug.playerOffsetY3D || 0}px`, '--monster-lift-3d': `${arenaDebug.monsterOffsetY3D || 0}px`, position: 'relative', width: '100%', display: 'block', paddingTop: '130px', paddingBottom: '60px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, userSelect: 'none', WebkitUserSelect: 'none' } as any}>
+            <div ref={arenaRef} className={`battle-arena-bg quest-arena ${arenaRenderMode === '3d' ? 'is-3d-arena' : ''} ${arenaQuake ? 'arena-quake' : ''}`} style={{ '--attack-dist': arenaRenderMode === '3d' ? (effectiveAttackDist > 0 ? `${effectiveAttackDist}px` : 'var(--shadow-attack-dist, 200px)') : `${finalAttackDist2D}px`, '--arena-char-bottom-padding': '60px', '--player-lift-x': `${arenaDebug.playerOffsetX3D || 0}px`, '--monster-lift-x': `${arenaDebug.monsterOffsetX3D || 0}px`, '--player-lift-3d': `${arenaDebug.playerOffsetY3D || 0}px`, '--monster-lift-3d': `${arenaDebug.monsterOffsetY3D || 0}px`, position: 'relative', width: '100%', display: 'block', paddingTop: '130px', paddingBottom: '60px', borderBottom: '1px solid var(--border-glass)', flexShrink: 0, zIndex: 20, userSelect: 'none', WebkitUserSelect: 'none' } as any}>
             {/* Cenário: 3D Voxel Minecraft ou Imagem 2D Clássica */}
             {arenaRenderMode === '3d' ? (
               <VoxelArena3D
@@ -3455,6 +3459,7 @@ useEffect(() => {
                 cameraTargetY={arenaDebug.cameraTargetY3D}
                 healActive={monsterHealPulse}
                 arenaQuake={arenaQuake}
+                attackDist={effectiveAttackDist}
                 playerConfig={userData?.avatarConfig || null}
                 playerEquippedItems={playerEquippedItems}
                 playerAnim={activePlayerAnim}
@@ -4330,6 +4335,8 @@ useEffect(() => {
           onTestPlayerBubble={() => setPlayerBubble('Teste!')}
           onTestMonsterBubble={() => setMonsterBubble('Teste!')}
           onTestProjectile={triggerTestProjectile}
+          onTestPlayerAttack={() => { setPlayerAnim('attack'); setTimeout(() => setPlayerAnim('idle'), 1600); }}
+          onTestMonsterAttack={() => { setMonsterAnim('attack'); setTimeout(() => setMonsterAnim('idle'), 1600); }}
           isAdmin={userData?.role === 'admin' || userData?.role === 'superadmin'}
           deviceKey={effectiveDevice}
           windowWidth={windowWidth}

@@ -118,7 +118,7 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   arenaHeight: 300,
   arenaPaddingTop: 16,
   arenaGap: 0,
-  attackDist: 150,
+  attackDist: 0,
   coinAreaX: 50,
   coinAreaY: 70,
   coinAreaW: 80,
@@ -691,6 +691,8 @@ interface ArenaDebugPanelProps {
   onTestPlayerBubble: () => void;
   onTestMonsterBubble: () => void;
   onTestProjectile?: () => void;
+  onTestPlayerAttack?: () => void;
+  onTestMonsterAttack?: () => void;
   isAdmin: boolean;
   activeModeKey?: ArenaModeKey;
   windowWidth?: number;
@@ -716,7 +718,9 @@ export default function ArenaDebugPanel({
   onSave, 
   onTestPlayerBubble, 
   onTestMonsterBubble, 
-  onTestProjectile, 
+  onTestProjectile,
+  onTestPlayerAttack,
+  onTestMonsterAttack,
   isAdmin, 
   activeModeKey = '3d_desktop', 
   windowWidth, 
@@ -761,6 +765,8 @@ export default function ArenaDebugPanel({
     projTargetY: config.projTargetY ?? 80,
     projArcHeight: config.projArcHeight ?? 245,
     showProjRange: config.showProjRange ?? false,
+    // normaliza: 0 = automático; 150 era o default antigo, trata como automático
+    attackDist: (config.attackDist === 150 || config.attackDist == null) ? 0 : config.attackDist,
   };
 
   const update = (key: keyof ArenaDebugConfig, value: any) => {
@@ -1025,7 +1031,10 @@ export default function ArenaDebugPanel({
             <Slider label="Altura" value={safeConfig.arenaHeight} onChange={v => update('arenaHeight', v)} min={150} max={768} unit="px" />
             <Slider label="Topo" value={safeConfig.arenaPaddingTop} onChange={v => update('arenaPaddingTop', v)} min={0} max={200} unit="px" />
             <Slider label="Gap" value={safeConfig.arenaGap} onChange={v => update('arenaGap', v)} min={-100} max={100} unit="px" />
-            <Slider label="Ataque" value={safeConfig.attackDist} onChange={v => update('attackDist', v)} min={50} max={400} unit="px" />
+            <Slider label="Ataque" value={safeConfig.attackDist} onChange={v => update('attackDist', v)} min={0} max={1500} step={5} unit="px" />
+            <div style={{ fontSize: '0.58rem', color: '#94a3b8', marginBottom: '0.3rem' }}>
+              {safeConfig.attackDist === 0 ? '✨ 0 = Automático (distância calculada até o oponente)' : `🎯 Distância configurada: ${safeConfig.attackDist}px`}
+            </div>
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '0.7rem', color: '#fbbf24', fontWeight: 'bold', marginBottom: '0.3rem' }}>💰 Área de Moedas (%)</div>
               <Toggle label="Ver área" value={safeConfig.showCoinArea} onChange={v => update('showCoinArea', v)} />
@@ -1067,6 +1076,29 @@ export default function ArenaDebugPanel({
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '0.68rem', color: '#8b5cf6', fontWeight: 'bold', marginBottom: '0.2rem' }}>🏟️ Arena & Distância 3D</div>
               <Slider label="Gap 3D" value={safeConfig.arenaGap3D ?? 0} onChange={v => update('arenaGap3D', v)} min={-400} max={600} unit="px" />
+              <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                <div style={{ fontSize: '0.65rem', color: '#f97316', fontWeight: 'bold', marginBottom: '0.2rem' }}>⚔️ Distância do Golpe Corpo a Corpo</div>
+                <Slider label="Ataque" value={safeConfig.attackDist} onChange={v => update('attackDist', v)} min={0} max={1500} step={5} unit="px" />
+                <div style={{ fontSize: '0.58rem', color: '#94a3b8', marginBottom: '0.3rem' }}>
+                  {safeConfig.attackDist === 0 ? '✨ 0 = Automático (distância calculada pelos modelos 3D)' : `🎯 Distância configurada: ${safeConfig.attackDist}px`}
+                </div>
+                {onTestPlayerAttack && (
+                  <button
+                    onClick={onTestPlayerAttack}
+                    style={{ width: '100%', padding: '0.4rem', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.5)', borderRadius: '6px', color: '#60a5fa', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 'bold', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}
+                  >
+                    ⚔️ Testar Ataque do Jogador
+                  </button>
+                )}
+                {onTestMonsterAttack && (
+                  <button
+                    onClick={onTestMonsterAttack}
+                    style={{ width: '100%', padding: '0.4rem', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}
+                  >
+                    👹 Testar Ataque do Monstro
+                  </button>
+                )}
+              </div>
             </div>
 
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
@@ -1146,6 +1178,30 @@ export default function ArenaDebugPanel({
             <Toggle label="Forçar perda de moedas" value={safeConfig.forceCoinLoss} onChange={v => update('forceCoinLoss', v)} />
             <Toggle label="Admin recebe recompensas (teste)" value={safeConfig.forceRewards} onChange={v => update('forceRewards', v)} />
             <Toggle label="Crítico garantido (teste)" value={safeConfig.guaranteedCrit} onChange={v => update('guaranteedCrit', v)} />
+
+            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
+              <div style={{ fontSize: '0.68rem', color: '#f97316', fontWeight: 'bold', marginBottom: '0.2rem' }}>⚔️ Distância do Golpe Corpo a Corpo</div>
+              <Slider label="Ataque" value={safeConfig.attackDist} onChange={v => update('attackDist', v)} min={0} max={1500} step={5} unit="px" />
+              <div style={{ fontSize: '0.58rem', color: '#94a3b8', marginBottom: '0.3rem' }}>
+                {safeConfig.attackDist === 0 ? '✨ 0 = Automático (distância calculada até o oponente)' : `🎯 Distância configurada: ${safeConfig.attackDist}px`}
+              </div>
+              {onTestPlayerAttack && (
+                <button
+                  onClick={onTestPlayerAttack}
+                  style={{ width: '100%', padding: '0.4rem', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.5)', borderRadius: '6px', color: '#60a5fa', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 'bold', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}
+                >
+                  ⚔️ Testar Ataque do Jogador
+                </button>
+              )}
+              {onTestMonsterAttack && (
+                <button
+                  onClick={onTestMonsterAttack}
+                  style={{ width: '100%', padding: '0.4rem', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}
+                >
+                  👹 Testar Ataque do Monstro
+                </button>
+              )}
+            </div>
           </>
         )}
 

@@ -63,6 +63,8 @@ export interface VoxelArena3DProps {
   healActive?: boolean;
   /** Terremoto/abalo na arena */
   arenaQuake?: boolean;
+  /** Distância configurada do golpe corpo a corpo (em px). Se omitido ou 0, usa a distância calculada automaticamente */
+  attackDist?: number;
   /** Bioma do cenário 3D: planície, nether, deserto, tundra/neve ou the end */
   biome?: VoxelBiomeType;
 
@@ -104,6 +106,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   deviceMode,
   healActive = false,
   arenaQuake = false,
+  attackDist,
   biome = 'plains',
   // @ts-ignore
   playerConfig,
@@ -601,6 +604,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const pLift = Math.max(0, pBottomPx - bottomPadding);
       const mLift = Math.max(0, mBottomPx - bottomPadding);
       const attackDistPx = Math.max(50, Math.round(mLeftPx - pLeftPx));
+      // Usa a distância configurada pelo slider (attackDist prop) quando > 0
+      const finalAttackDist = (attackDist && attackDist > 0) ? attackDist : attackDistPx;
 
       const parent = container.parentElement;
       if (parent) {
@@ -611,7 +616,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         parent.style.setProperty('--shadow-player-x', `${Math.round(pLeftPx)}px`);
         parent.style.setProperty('--shadow-monster-x', `${Math.round(mLeftPx)}px`);
         parent.style.setProperty('--shadow-attack-dist', `${attackDistPx}px`);
-        parent.style.setProperty('--attack-dist', `${attackDistPx}px`);
+        parent.style.setProperty('--attack-dist', `${finalAttackDist}px`);
       }
     };
     updateOverlayPositionsRef.current = updateOverlayPositions;
@@ -725,6 +730,21 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       shadowMat.dispose();
     };
   }, [biome]);
+
+  // Atualiza --attack-dist imediatamente quando o slider mudar (sem esperar resize)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const parent = container.parentElement;
+    if (!parent) return;
+    if (attackDist && attackDist > 0) {
+      parent.style.setProperty('--attack-dist', `${attackDist}px`);
+    } else {
+      // Ao zerar o slider, restaura a distância calculada automaticamente
+      const auto = parent.style.getPropertyValue('--shadow-attack-dist');
+      if (auto) parent.style.setProperty('--attack-dist', auto);
+    }
+  }, [attackDist]);
 
   return (
     <div
