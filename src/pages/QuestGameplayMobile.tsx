@@ -2768,11 +2768,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
     const minV = Math.max(1, cfg.minValue ?? 1);
     const maxV = Math.max(minV, cfg.maxValue ?? minV);
 
-    // Moedas caem na área configurável — cada moeda tem valor aleatório
+    // Moedas caem na área configurável — respeita o retângulo (e mantém dentro dele).
+    const cW = arenaDebug?.coinAreaW ?? 0;
+    const cH = arenaDebug?.coinAreaH ?? 0;
+    const padX = cW > 0 ? Math.min(4, cW * 0.15) : 0;
+    const padY = cH > 0 ? Math.min(4, cH * 0.2) : 0;
     const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
       id: Date.now() + i,
-      x: arenaDebug.coinAreaX + Math.random() * arenaDebug.coinAreaW,
-      y: arenaRenderMode === '3d' ? (48 + Math.random() * 8) : (arenaDebug.coinAreaY + Math.random() * arenaDebug.coinAreaH),
+      x: (arenaDebug?.coinAreaX ?? 0) + padX + Math.random() * Math.max(0, cW - padX * 2),
+      y: arenaRenderMode === '3d'
+        ? (arenaDebug?.coinAreaY ?? 48)
+        : (arenaDebug?.coinAreaY ?? 0) + padY + Math.random() * Math.max(0, cH - padY * 2),
       value: Math.floor(((Math.random() * (maxV - minV + 1)) + minV) * coelhoMult)
     }));
     setDroppedCoins(prev => [...prev, ...newCoins]);
@@ -2797,11 +2803,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
         // Marca como dropado nesta batalha (garante que caia apenas 1 por vez e não duplique)
         droppedBattleItemIdsRef.current.add(drop.itemId);
 
-        const dropX = (arenaDebug?.coinAreaX != null)
-          ? (arenaDebug.coinAreaX + Math.random() * (arenaDebug.coinAreaW || 30))
+        const _padX = (arenaDebug?.coinAreaW ?? 0) > 0 ? Math.min(4, (arenaDebug.coinAreaW) * 0.15) : 0;
+        const _padY = (arenaDebug?.coinAreaH ?? 0) > 0 ? Math.min(4, (arenaDebug.coinAreaH) * 0.2) : 0;
+        const dropX = (arenaDebug?.coinAreaX != null && (arenaDebug.coinAreaW ?? 0) > 0)
+          ? (arenaDebug.coinAreaX + _padX + Math.random() * Math.max(0, arenaDebug.coinAreaW - _padX * 2))
           : (60 + Math.random() * 25);
-        const dropY = (arenaDebug?.coinAreaY != null)
-          ? (arenaRenderMode === '3d' ? (48 + Math.random() * 8) : (arenaDebug.coinAreaY + Math.random() * (arenaDebug.coinAreaH || 15)))
+        const dropY = (arenaDebug?.coinAreaY != null && (arenaDebug.coinAreaH ?? 0) > 0)
+          ? (arenaRenderMode === '3d' ? arenaDebug.coinAreaY : (arenaDebug.coinAreaY + _padY + Math.random() * Math.max(0, arenaDebug.coinAreaH - _padY * 2)))
           : (arenaRenderMode === '3d' ? (48 + Math.random() * 8) : (75 + Math.random() * 12));
 
         const newDrop: DroppedBattleItem = {

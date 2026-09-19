@@ -2719,14 +2719,22 @@ if (tr.turnsLeft <= 1) {
     const minV = Math.max(1, cfg.minValue ?? 1);
     const maxV = Math.max(minV, cfg.maxValue ?? minV);
 
-    // Moedas caem no chão, aos pés do monstro (lado direito), com variação curta
-    const arenaW = arenaRef.current?.offsetWidth || arenaWidth || 900;
-    const arenaH = arenaRef.current?.offsetHeight || 380;
-    const groundY = arenaRenderMode === '3d' ? 51 : (((arenaH - 50) / arenaH) * 100);
+    // Moedas caem no chão. Se a Área de Moedas estiver configurada no Arena Debug,
+    // respeita o retângulo (em % da arena); senão, cai aos pés do monstro.
+    const groundY = arenaRenderMode === '3d' ? 51 : (((arenaH) - 50) / arenaH) * 100;
+    const cX = arenaDebug?.coinAreaX, cY = arenaDebug?.coinAreaY, cW = arenaDebug?.coinAreaW, cH = arenaDebug?.coinAreaH;
+    const useArea = cX != null && cY != null && (cW ?? 0) > 0 && (cH ?? 0) > 0;
+    // Mantém a moeda DENTRO do retângulo (margem para o tamanho do ícone em %)
+    const padX = useArea ? Math.min(4, (cW as number) * 0.15) : 0;
+    const padY = useArea ? Math.min(4, (cH as number) * 0.2) : 0;
     const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
       id: Date.now() + i,
-      x: ((arenaW - 205 + Math.random() * 155) / arenaW) * 100,
-      y: arenaRenderMode === '3d' ? Math.min(60, groundY - 4 + Math.random() * 8) : Math.min(90, groundY - 7 + Math.random() * 12),
+      x: useArea
+        ? (cX as number) + padX + Math.random() * Math.max(0, (cW as number) - padX * 2)
+        : ((arenaW - 205 + Math.random() * 155) / arenaW) * 100,
+      y: useArea
+        ? (cY as number) + padY + Math.random() * Math.max(0, (cH as number) - padY * 2)
+        : (arenaRenderMode === '3d' ? Math.min(60, groundY - 4 + Math.random() * 8) : Math.min(90, groundY - 7 + Math.random() * 12)),
       value: Math.floor(((Math.random() * (maxV - minV + 1)) + minV) * coelhoMult)
     }));
     setDroppedCoins(prev => [...prev, ...newCoins]);
@@ -2755,11 +2763,14 @@ if (tr.turnsLeft <= 1) {
         const arenaH = arenaRef.current?.offsetHeight || 380;
         const groundY = arenaRenderMode === '3d' ? 51 : (((arenaH - 50) / arenaH) * 100);
 
-        const dropX = arenaDebug?.coinAreaX != null
-          ? (arenaDebug.coinAreaX + Math.random() * (arenaDebug.coinAreaW || 30))
+        // Mantém o item DENTRO do retângulo configurado (se houver)
+        const padX = (arenaDebug?.coinAreaW ?? 0) > 0 ? Math.min(4, (arenaDebug.coinAreaW) * 0.15) : 0;
+        const padY = (arenaDebug?.coinAreaH ?? 0) > 0 ? Math.min(4, (arenaDebug.coinAreaH) * 0.2) : 0;
+        const dropX = arenaDebug?.coinAreaX != null && (arenaDebug.coinAreaW ?? 0) > 0
+          ? (arenaDebug.coinAreaX + padX + Math.random() * Math.max(0, arenaDebug.coinAreaW - padX * 2))
           : (((arenaW - 205 + Math.random() * 155) / arenaW) * 100);
-        const dropY = arenaDebug?.coinAreaY != null
-          ? (arenaDebug.coinAreaY + Math.random() * (arenaDebug.coinAreaH || 15))
+        const dropY = arenaDebug?.coinAreaY != null && (arenaDebug.coinAreaH ?? 0) > 0
+          ? (arenaDebug.coinAreaY + padY + Math.random() * Math.max(0, arenaDebug.coinAreaH - padY * 2))
           : (arenaRenderMode === '3d' ? Math.min(60, groundY - 4 + Math.random() * 8) : Math.min(90, groundY - 7 + Math.random() * 12));
 
         const newDrop: DroppedBattleItem = {
@@ -3535,6 +3546,19 @@ useEffect(() => {
                     onComplete={handleFloatingDamageComplete}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Área de Moedas (retângulo de debug) — Monster */}
+            {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showCoinArea && (
+              <div style={{ position: 'absolute', left: `${arenaDebug.coinAreaX}%`, top: `${arenaDebug.coinAreaY}%`, width: `${arenaDebug.coinAreaW}%`, height: `${arenaDebug.coinAreaH}%`, border: '2px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', zIndex: 39, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '0.6rem', color: '#10b981', background: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>💰 Drop Monstro</span>
+              </div>
+            )}
+            {/* Área de Queda do Jogador — retângulo de debug */}
+            {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showPlayerCoinArea && (
+              <div style={{ position: 'absolute', left: `${arenaDebug.playerCoinAreaX}%`, top: `${arenaDebug.playerCoinAreaY}%`, width: `${arenaDebug.playerCoinAreaW}%`, height: `${arenaDebug.playerCoinAreaH}%`, border: '2px solid #3b82f6', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', zIndex: 39, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '0.6rem', color: '#3b82f6', background: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>💰 Queda Jogador</span>
               </div>
             )}
 
