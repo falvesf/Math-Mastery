@@ -606,6 +606,10 @@ export default React.memo(function CustomModelViewer({
           gl={glOptions}
           onCreated={({ gl }) => onCanvasReadyRef.current?.(gl.domElement)}
           camera={DEFAULT_CANVAS_CAMERA}
+          // Não re-medir o canvas em eventos de SCROLL (padrão do R3F = true). Com o painel
+          // do Arena Debug (portal) rolando por cima, esse re-measure redimensionava a cena
+          // do WebGL e "resetava" escala/posição do modelo GLB.
+          resize={{ scroll: false }}
           style={{ width: '100%', height: '100%' }}
         >
           <CameraDistanceUpdater cameraDistance={cameraDistance} />
