@@ -3981,7 +3981,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               <div style={{ position: 'absolute', top: `${arena.playerNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap' }}>
                 <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
               </div>
-              <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '170px' : '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arena.playerScale3D ?? 1) : arena.playerScale})` }}>
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '170px' : '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', height: (arena.unified3D && userData?.avatarConfig?.customModelUrl) ? 'var(--shadow-player-head-lift, 170px)' : undefined, transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arena.playerScale3D ?? 1) : arena.playerScale})` }}>
                 {/* Sombra dinâmica do personagem */}
                 <div className="avatar-ground-shadow" />
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: userData?.avatarConfig?.customModelUrl ? `-${Math.round(170 * 0.2236)}px` : '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
@@ -4121,7 +4121,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               ) : (
                 <div 
                   className="quest-arena-avatars"
-                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', transform: `translate(${monsterAnim.startsWith('death-') ? arena.deathOffsetX : 0}px, ${monsterAnim.startsWith('death-') ? arena.deathOffsetY : 0}px) scale(${arenaRenderMode === '3d' ? (arena.monsterScale3D ?? 1) : arena.monsterScale})`, transformOrigin: 'bottom center' }}
+                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', height: (arena.unified3D && effectiveMonsterModelUrl) ? 'var(--shadow-monster-head-lift, 190px)' : undefined, outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', transform: `translate(${monsterAnim.startsWith('death-') ? arena.deathOffsetX : 0}px, ${monsterAnim.startsWith('death-') ? arena.deathOffsetY : 0}px) scale(${arenaRenderMode === '3d' ? (arena.monsterScale3D ?? 1) : arena.monsterScale})`, transformOrigin: 'bottom center' }}
                 >
                   {/* Sombra dinâmica do monstro (segue transforms e offsets do GLB) */}
                   {(() => {

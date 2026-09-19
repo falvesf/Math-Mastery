@@ -803,6 +803,24 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       }
       const pBottomArena = pBottomPx + stageOffsetBottom;
       const mBottomArena = mBottomPx + stageOffsetBottom;
+
+      // Fase B (unificado): projeta a CABEÇA dos bonecos 3D para ancorar nome/corações.
+      // Em modo unificado o corpo é renderizado na cena (altura = UNIFIED_ENTITY_HEIGHT),
+      // então escrevemos a altura em px (dos pés ao topo da cabeça) nas variáveis
+      // --shadow-*-head-lift. Sem unificado, a UI usa a altura natural do overlay.
+      let mHeadLift = 0;
+      let pHeadLift = 0;
+      if (unified3DRef.current) {
+        const mHeadY = 0.51 + UNIFIED_ENTITY_HEIGHT * Math.max(0.2, monsterZoomRef.current || 1);
+        const pHeadY = 0.51 + UNIFIED_ENTITY_HEIGHT;
+        const mHead = new THREE.Vector3(3.6, mHeadY, 0.2).project(camera);
+        const pHead = new THREE.Vector3(-3.6, pHeadY, 0.2).project(camera);
+        const mHeadTop = (mHead.y * 0.5 + 0.5) * h + stageOffsetBottom;
+        const pHeadTop = (pHead.y * 0.5 + 0.5) * h + stageOffsetBottom;
+        mHeadLift = Math.max(0, Math.round(mHeadTop - mBottomArena));
+        pHeadLift = Math.max(0, Math.round(pHeadTop - pBottomArena));
+      }
+
       if (arenaEl) {
         arenaEl.style.setProperty('--shadow-player-lift', `${Math.round(pLift)}px`);
         arenaEl.style.setProperty('--shadow-monster-lift', `${Math.round(mLift)}px`);
@@ -810,6 +828,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         arenaEl.style.setProperty('--shadow-monster-bottom', `${Math.round(mBottomArena)}px`);
         arenaEl.style.setProperty('--shadow-player-x', `${Math.round(pLeftPx + stageOffsetX)}px`);
         arenaEl.style.setProperty('--shadow-monster-x', `${Math.round(mLeftPx + stageOffsetX)}px`);
+        arenaEl.style.setProperty('--shadow-monster-head-lift', `${mHeadLift}px`);
+        arenaEl.style.setProperty('--shadow-player-head-lift', `${pHeadLift}px`);
         arenaEl.style.setProperty('--shadow-attack-dist', `${attackDistPx}px`);
         arenaEl.style.setProperty('--attack-dist', `${finalAttackDist}px`);
       }
@@ -949,6 +969,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // Rotação extra (graus) do modelo GLB do jogador (config.customRotY)
   const playerRotYRef = useRef(Number((playerConfig as any)?.customRotY ?? 0) || 0);
   playerRotYRef.current = Number((playerConfig as any)?.customRotY ?? 0) || 0;
+  // Flag de cena unificada para o closure do updateOverlayPositions (criado uma vez)
+  const unified3DRef = useRef(unified3D);
+  unified3DRef.current = unified3D;
 
   // Carrega jogador + monstro GLB e insere na cena.
   useEffect(() => {
@@ -1065,6 +1088,11 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     if (!unified3D) return;
     applyEntityTint(unifiedMonsterRootRef.current, monsterEffectTint, monsterEnraged);
   }, [unified3D, monsterEffectTint, monsterEnraged, monsterModelUrl]);
+
+  // Recalcula a projeção da cabeça quando a cena unificada liga/desliga ou o zoom muda.
+  useEffect(() => {
+    updateOverlayPositionsRef.current?.();
+  }, [unified3D, monsterZoom, playerConfig]);
 
   // Atualiza --attack-dist imediatamente quando o slider mudar (sem esperar resize)
   useEffect(() => {
