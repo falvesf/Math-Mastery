@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { PlayerObject } from 'skinview3d';
 import {
@@ -138,6 +138,13 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
+
+  // Proporção FIXA por modo: 9:16 (mobile) / 16:9 (desktop). O stage 3D mantém essa
+  // proporção e é centralizado; devices fora do padrão ganham só margem.
+  const isMobileMode = deviceMode ? (deviceMode === 'mobile') : (typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
+  const STAGE_ASPECT = isMobileMode ? (9 / 16) : (16 / 9);
+  const [stageSize, setStageSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
   // Refs Three.js desacoplados do ciclo de vida da cena
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -204,6 +211,34 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
 
     updateOverlayPositionsRef.current?.();
   }, [cameraPitch, cameraDist, cameraTargetY, deviceMode]);
+
+  // Mede o espaço disponível e calcula o "stage" com a proporção fixa (letterbox)
+  useEffect(() => {
+    const outer = outerRef.current;
+    if (!outer) return;
+    const measure = () => {
+      const aw = outer.clientWidth;
+      const ah = outer.clientHeight;
+      if (aw === 0 || ah === 0) return;
+      const areaAspect = aw / ah;
+      let w: number, h: number;
+      if (areaAspect > STAGE_ASPECT) {
+        // Área mais larga que o alvo → limita pela altura, margem nas laterais
+        h = ah;
+        w = Math.round(ah * STAGE_ASPECT);
+      } else {
+        // Área mais alta que o alvo → limita pela largura, margem em cima/baixo
+        w = aw;
+        h = Math.round(aw / STAGE_ASPECT);
+      }
+      setStageSize(prev => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    measure();
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(outer);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, [STAGE_ASPECT]);
 
   // Refs de estado de animação para transições suaves da sombra
   const playerAnimRef = useRef(playerAnim);
@@ -755,24 +790,40 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
 
   return (
     <div
-      ref={containerRef}
       className={`voxel-arena-3d-root ${arenaQuake ? 'arena-quake-3d' : ''}`}
+      ref={outerRef}
       style={{
         position: 'absolute',
         inset: 0,
         overflow: 'hidden',
         zIndex: 0,
         pointerEvents: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
-      <canvas
-        ref={canvasRef}
+      {/* "Stage" com PROPORÇÃO FIXA por modo (9:16 mobile / 16:9 desktop): garante o
+          MESMO enquadramento em qualquer device do mesmo modo. Fora do padrão (iPhone,
+          Android alto, tablet), sobra apenas margem — o fundo do jogo preenche atrás. */}
+      <div
+        ref={containerRef}
         style={{
-          width: '100%',
-          height: '100%',
-          display: 'block',
+          position: 'relative',
+          width: stageSize.w || '100%',
+          height: stageSize.h || '100%',
+          flexShrink: 0,
         }}
-      />
+      >
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'block',
+          }}
+        />
+      </div>
     </div>
   );
 };
