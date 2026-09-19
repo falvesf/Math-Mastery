@@ -719,10 +719,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setArenaRenderMode(prev => {
       const next = prev === '2d' ? '3d' : '2d';
       localStorage.setItem('mm_arena_render_mode', next);
-      if (manualModeOverride) {
-        const dev = manualModeOverride.endsWith('mobile') ? 'mobile' : 'desktop';
-        setManualModeOverride(`${next}_${dev}` as ArenaModeKey);
-      }
+      const dev = (manualModeOverride?.endsWith('mobile') ?? (windowWidth < 768)) ? 'mobile' : 'desktop';
+      setManualModeOverride(`${next}_${dev}` as ArenaModeKey);
       return next;
     });
   };

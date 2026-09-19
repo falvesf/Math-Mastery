@@ -717,10 +717,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setArenaRenderMode(prev => {
       const next = prev === '2d' ? '3d' : '2d';
       localStorage.setItem('mm_arena_render_mode', next);
-      if (manualModeOverride) {
-        const dev = manualModeOverride.endsWith('mobile') ? 'mobile' : 'desktop';
-        setManualModeOverride(`${next}_${dev}` as ArenaModeKey);
-      }
+      // Mantém o painel de Debug no PERFIL correspondente ao que está sendo exibido
+      // (3D/2D), preservando o device (desktop/mobile). Assim 2D e 3D ficam independentes.
+      const dev = (manualModeOverride?.endsWith('mobile') ?? (windowWidth < 768)) ? 'mobile' : 'desktop';
+      setManualModeOverride(`${next}_${dev}` as ArenaModeKey);
       return next;
     });
   };
