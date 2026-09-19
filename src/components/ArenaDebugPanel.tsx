@@ -98,6 +98,8 @@ export interface ArenaDebugConfig {
   projArcHeight?: number;
   /** Exibe o retângulo do campo de ação / range da magia na arena (apenas para o usuário no debug) */
   showProjRange?: boolean;
+  /** TESTE (Fase B): renderiza jogador + monstro DENTRO da cena 3D unificada (sem overlays CSS). */
+  unified3D?: boolean;
 }
 
 export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
@@ -176,6 +178,7 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   projTargetY: 80,
   projArcHeight: 245,
   showProjRange: false,
+  unified3D: false,
 };
 
 export type ArenaModeKey = '3d_desktop' | '3d_mobile' | '2d_desktop' | '2d_mobile';
@@ -764,6 +767,7 @@ export default function ArenaDebugPanel({
     projTargetY: config.projTargetY ?? 80,
     projArcHeight: config.projArcHeight ?? 245,
     showProjRange: config.showProjRange ?? false,
+    unified3D: config.unified3D ?? false,
     // normaliza: 0 = automático; 150 era o default antigo, trata como automático
     attackDist: (config.attackDist === 150 || config.attackDist == null) ? 0 : config.attackDist,
   };
@@ -1057,6 +1061,12 @@ export default function ArenaDebugPanel({
           <>
             <div style={{ fontSize: '0.7rem', color: '#06b6d4', fontWeight: 'bold', marginBottom: '0.2rem' }}>🧱 Cenário 3D Voxel (Minecraft)</div>
             <Toggle label="Ativar Modo 3D" value={!!safeConfig.enable3DArena} onChange={v => update('enable3DArena', v)} />
+            <Toggle label="🧪 Cena 3D unificada (Fase B - teste)" value={!!safeConfig.unified3D} onChange={v => update('unified3D', v)} />
+            {safeConfig.unified3D && (
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                Renderiza jogador + monstro DENTRO da cena (sem overlays). Teste: posições ficam automáticas.
+              </div>
+            )}
 
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '0.68rem', color: '#3b82f6', fontWeight: 'bold', marginBottom: '0.2rem' }}>👤 Jogador no 3D</div>

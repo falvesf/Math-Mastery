@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { PlayerObject } from 'skinview3d';
+import { getSafeUrl } from '../lib/utils';
 import {
   getStoneBricksTexture,
   getGrassTopTexture,
@@ -91,6 +94,9 @@ export interface VoxelArena3DProps {
 
   /** Reporta o tamanho (em px) do stage 3D sempre que ele é medido/redimensionado. */
   onStageSizeChange?: (size: { w: number; h: number }) => void;
+
+  /** TESTE (Fase B): renderiza jogador + monstro DENTRO da cena (unificada), sem overlays. */
+  unified3D?: boolean;
 }
 
 /**
@@ -139,6 +145,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   cameraDist = 0,
   cameraTargetY = 0,
   onStageSizeChange,
+  unified3D = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -156,6 +163,19 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const healLightRef = useRef<THREE.PointLight | null>(null);
   const cloudsGroupRef = useRef<THREE.Group | null>(null);
   const animFrameRef = useRef<number | null>(null);
+
+  // Refs das entidades unificadas (Fase B): jogador + monstro dentro da cena
+  const unifiedMonsterGroupRef = useRef<THREE.Group | null>(null);
+  const unifiedPlayerGroupRef = useRef<THREE.Group | null>(null);
+  const unifiedMonsterMixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const unifiedPlayerMixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const unifiedMonsterActionsRef = useRef<Record<string, THREE.AnimationAction>>({});
+  const unifiedPlayerActionsRef = useRef<Record<string, THREE.AnimationAction>>({});
+  // Guarda o modelo cru (sem tint) para restaurar materiais a cada mudança de efeito
+  const unifiedMonsterRootRef = useRef<THREE.Object3D | null>(null);
+  const unifiedPlayerRootRef = useRef<THREE.Object3D | null>(null);
+  const unifiedMonsterOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
+  const unifiedPlayerOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
 
   // Ref para atualizar posições de overlay sem reconstruir o renderer
   const updateOverlayPositionsRef = useRef<(() => void) | null>(null);
@@ -691,6 +711,11 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       if (isDisposed) return;
       animFrameRef.current = requestAnimationFrame(animate);
       const elapsedTime = clock.getElapsedTime();
+      const delta = clock.getDelta();
+
+      // Atualiza os mixers de animação das entidades unificadas (Fase B)
+      if (unifiedMonsterMixerRef.current) unifiedMonsterMixerRef.current.update(delta);
+      if (unifiedPlayerMixerRef.current) unifiedPlayerMixerRef.current.update(delta);
 
       // Nuvens se deslocam suavemente pelo céu
       if (cloudsGroupRef.current) {
@@ -792,6 +817,187 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       shadowMat.dispose();
     };
   }, [biome]);
+
+  // =====================================================================
+  // FASE B (TESTE): renderização UNIFICADA — jogador e monstro GLB dentro
+  // da MESMA cena 3D (sem overlays CSS). As posições ficam em coordenadas
+  // de mundo e a projeção da câmera resolve automaticamente (sem offsets).
+  // =====================================================================
+
+  // Guarda os valores atuais de zoom/rotY/tint para os callbacks de load assíncrono
+  const monsterZoomRef = useRef(monsterZoom);
+  monsterZoomRef.current = monsterZoom;
+  const monsterRotYRef = useRef(monsterRotY);
+  monsterRotYRef.current = monsterRotY;
+  const monsterEffectTintRef = useRef(monsterEffectTint);
+  monsterEffectTintRef.current = monsterEffectTint;
+  const monsterEnragedRef = useRef(monsterEnraged);
+  monsterEnragedRef.current = monsterEnraged;
+
+  // Aplica tint (dano/efeito) e fúria nos materiais de uma entidade unificada.
+  const applyUnifiedTint = (root: THREE.Object3D | null, tint: string | null, enraged: boolean) => {
+    if (!root) return;
+    root.traverse((c) => {
+      const mesh = c as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.material) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((mat: any) => {
+        if (!mat.color) return;
+        if (!mat._origColor) {
+          mat._origColor = mat.color.clone();
+          mat._origEmissive = mat.emissive ? mat.emissive.clone() : null;
+        }
+        if (enraged) {
+          mat.color.copy(mat._origColor).lerp(new THREE.Color('#ff1111'), 0.7);
+          if (mat.emissive) mat.emissive.setRGB(0.6, 0.02, 0.02);
+        } else if (tint) {
+          const c = new THREE.Color(tint);
+          mat.color.copy(mat._origColor).lerp(c, 0.35);
+          if (mat.emissive) mat.emissive.copy(c).multiplyScalar(0.25);
+        } else {
+          mat.color.copy(mat._origColor);
+          if (mat.emissive) {
+            if (mat._origEmissive) mat.emissive.copy(mat._origEmissive);
+            else mat.emissive.setRGB(0, 0, 0);
+          }
+        }
+        mat.needsUpdate = true;
+      });
+    });
+  };
+
+  // Carrega jogador + monstro GLB e insere na cena.
+  useEffect(() => {
+    if (!unified3D) return;
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    let disposed = false;
+    const loader = new GLTFLoader();
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    loader.setDRACOLoader(draco);
+
+    const fitToGround = (obj: THREE.Object3D, targetHeight: number) => {
+      const box = new THREE.Box3().setFromObject(obj);
+      if (box.isEmpty()) return;
+      const h = box.max.y - box.min.y;
+      if (h <= 0) return;
+      obj.scale.setScalar(targetHeight / h);
+      obj.updateMatrixWorld(true);
+      const b2 = new THREE.Box3().setFromObject(obj);
+      obj.position.y -= b2.min.y;
+    };
+
+    const loadEntity = (
+      url: string | null | undefined,
+      x: number,
+      zoom: number,
+      rotYDeg: number,
+      onReady: (group: THREE.Group, root: THREE.Object3D, mixer: THREE.AnimationMixer, actions: Record<string, THREE.AnimationAction>) => void
+    ) => {
+      if (!url) return;
+      const safe = getSafeUrl(url);
+      loader.load(safe, (gltf) => {
+        if (disposed) return;
+        const group = new THREE.Group();
+        const root = gltf.scene;
+        fitToGround(root, 2.6 * Math.max(0.2, zoom || 1));
+        group.add(root);
+        group.position.set(x, 0.51, 0.2);
+        group.rotation.y = THREE.MathUtils.degToRad(rotYDeg || 0);
+        scene.add(group);
+        const mixer = new THREE.AnimationMixer(root);
+        const actions: Record<string, THREE.AnimationAction> = {};
+        gltf.animations.forEach((clip) => { actions[clip.name] = mixer.clipAction(clip); });
+        onReady(group, root, mixer, actions);
+      }, undefined, (err) => {
+        console.warn('[VoxelArena3D] Falha ao carregar GLB unificado:', safe, err);
+      });
+    };
+
+    // Monstro (GLB)
+    loadEntity(monsterModelUrl, 3.6, monsterZoomRef.current, monsterRotYRef.current, (group, root, mixer, actions) => {
+      unifiedMonsterGroupRef.current = group;
+      unifiedMonsterRootRef.current = root;
+      unifiedMonsterMixerRef.current = mixer;
+      unifiedMonsterActionsRef.current = actions;
+      applyUnifiedTint(root, monsterEffectTintRef.current, monsterEnragedRef.current);
+    });
+
+    // Jogador (GLB customizado)
+    loadEntity(playerModelUrl, -3.6, 1, 180, (group, root, mixer, actions) => {
+      unifiedPlayerGroupRef.current = group;
+      unifiedPlayerRootRef.current = root;
+      unifiedPlayerMixerRef.current = mixer;
+      unifiedPlayerActionsRef.current = actions;
+    });
+
+    return () => {
+      disposed = true;
+      [unifiedMonsterGroupRef, unifiedPlayerGroupRef].forEach((ref) => {
+        if (ref.current) {
+          scene.remove(ref.current);
+          ref.current.traverse((c) => {
+            const mesh = c as THREE.Mesh;
+            if (mesh.isMesh) {
+              mesh.geometry?.dispose();
+              const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+              mats.forEach((m: any) => m?.dispose?.());
+            }
+          });
+        }
+      });
+      unifiedMonsterMixerRef.current?.stopAllAction();
+      unifiedPlayerMixerRef.current?.stopAllAction();
+      unifiedMonsterGroupRef.current = null;
+      unifiedPlayerGroupRef.current = null;
+      unifiedMonsterRootRef.current = null;
+      unifiedPlayerRootRef.current = null;
+      unifiedMonsterMixerRef.current = null;
+      unifiedPlayerMixerRef.current = null;
+      unifiedMonsterActionsRef.current = {};
+      unifiedPlayerActionsRef.current = {};
+      draco.dispose();
+    };
+  }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, monsterZoom, monsterRotY]);
+
+  // Aplica a animação (por nome) nas entidades unificadas.
+  useEffect(() => {
+    const playAnim = (
+      actionsRef: React.MutableRefObject<Record<string, THREE.AnimationAction>>,
+      mixerRef: React.MutableRefObject<THREE.AnimationMixer | null>,
+      animName: string
+    ) => {
+      const actions = actionsRef.current;
+      const mixer = mixerRef.current;
+      if (!mixer) return;
+      const name = animName || 'idle';
+      if (name === 'none') { mixer.stopAllAction(); return; }
+      const keys = Object.keys(actions);
+      if (keys.length === 0) return;
+      const candidates = [name, name.toLowerCase(), name.toUpperCase(), `animation.${name}`, `animation.${name.toLowerCase()}`, `Armature|${name}`, `Armature|${name.toLowerCase()}`];
+      let action: THREE.AnimationAction | null = null;
+      for (const c of candidates) { if (actions[c]) { action = actions[c]; break; } }
+      if (!action) {
+        const idle = keys.find((k) => /idle/i.test(k));
+        action = idle ? actions[idle] : actions[keys[0]];
+      }
+      if (action) {
+        mixer.stopAllAction();
+        action.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.2).play();
+      }
+    };
+    if (!unified3D) return;
+    playAnim(unifiedMonsterActionsRef, unifiedMonsterMixerRef, monsterAnim);
+    playAnim(unifiedPlayerActionsRef, unifiedPlayerMixerRef, playerAnim);
+  }, [unified3D, monsterAnim, playerAnim, monsterModelUrl, playerModelUrl]);
+
+  // Reaplica tint/fúria quando os efeitos mudam.
+  useEffect(() => {
+    if (!unified3D) return;
+    applyUnifiedTint(unifiedMonsterRootRef.current, monsterEffectTint, monsterEnraged);
+  }, [unified3D, monsterEffectTint, monsterEnraged, monsterModelUrl]);
 
   // Atualiza --attack-dist imediatamente quando o slider mudar (sem esperar resize)
   useEffect(() => {

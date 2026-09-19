@@ -3669,6 +3669,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               <VoxelArena3D
                 deviceMode={effectiveDevice}
                 onStageSizeChange={setStage3DSize}
+                unified3D={!!arena.unified3D}
                 // Bioma: sempre o da missão (voxel:<bioma>); fallback = Planícies.
                 // Exceção: admin com o painel Debug ABERTO pré-visualiza outro bioma em tela
                 // (sem salvar, sem afetar jogadores). Fechando o painel, volta ao da missão.
@@ -3997,7 +3998,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     title={playerFrozenAt > Date.now() ? 'Congelado!' : playerPoisonTurns > 0 ? `Envenenado por ${playerPoisonTurns} turno(s)` : playerBurnTurns > 0 ? 'Queimando!' : playerElectricTurns > 0 ? 'Eletrocutado!' : undefined}
                     style={{ position: 'relative' }}
                   >
-                    <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={170} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
+                    {!(arena.unified3D && userData?.avatarConfig?.customModelUrl) && (
+                      <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={170} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
+                    )}
                   </div>
                   {playerBleeds.map(b => (
                     <div key={b.id} className="bleed-wound" style={{ top: `${b.y}%`, left: `${b.x}%` }} title="Sangrando!">
@@ -4220,6 +4223,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     const modelOY = modelCfg?.offsetY ?? 0;
 
                     if (modelUrl) {
+                      // Fase B (teste): em cena unificada, o GLB é renderizado dentro do VoxelArena3D.
+                      if (arena.unified3D) return null;
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
                       const effectTintColor = (monsterHitFlash ? '#ff2222' : null) || healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : null) : null);
                       const monsterSlowFactor = frozen ? 0 : (damageEffect === 'freeze' && effectLevel > 0 ? Math.max(0.22, 1 - effectLevel * 0.27) : 1);
