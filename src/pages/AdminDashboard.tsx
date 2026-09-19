@@ -1771,7 +1771,10 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     const sanitizedQuest = JSON.parse(JSON.stringify({ ...newQuest, ...{
       cover_image_url: newQuest.coverImageUrl || null,
       battle_bg_url: newQuest.battleBgUrl || null,
+      // Novas colunas (gravadas em camelCase E snake_case para funcionar em qualquer schema)
+      arena3D: newQuest.arena3D ?? false,
       arena_3d: newQuest.arena3D ?? false,
+      battleBiome: newQuest.battleBiome || 'plains',
       battle_biome: newQuest.battleBiome || 'plains',
       battle_bg_pos_x: newQuest.battleBgPosX,
       battle_bg_pos_y: newQuest.battleBgPosY,
