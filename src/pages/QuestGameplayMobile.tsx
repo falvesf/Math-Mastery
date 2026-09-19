@@ -803,6 +803,21 @@ const dealTransformDamageToPlayer = (damage: number) => {
     }
   };
 
+  // Ao REDIMENSIONAR a tela, se o device detectado mudar (desktop <-> mobile),
+  // cancela o override manual para o painel voltar a seguir a tela — evitando
+  // salvar as configurações de um modo no outro por engano.
+  const prevAutoDeviceRef = useRef<'desktop' | 'mobile' | null>(null);
+  useEffect(() => {
+    if (prevAutoDeviceRef.current === null) {
+      prevAutoDeviceRef.current = autoDevice;
+      return;
+    }
+    if (prevAutoDeviceRef.current !== autoDevice) {
+      prevAutoDeviceRef.current = autoDevice;
+      setManualModeOverride(null);
+    }
+  }, [autoDevice]);
+
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   const [battleQuotes, setBattleQuotes] = useState<PlayerBattleQuotes>(DEFAULT_PLAYER_BATTLE_QUOTES);
