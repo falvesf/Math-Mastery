@@ -3546,9 +3546,11 @@ useEffect(() => {
             {arenaRenderMode === '3d' ? (
               <VoxelArena3D
                 deviceMode={effectiveDevice}
+                // Bioma: SEMPRE o da missão (voxel:<bioma>); se não configurado, Planícies.
+                // O bioma de teste do Arena Debug NUNCA influencia a batalha.
                 biome={(quest?.battleBgUrl?.startsWith('voxel:')
                   ? quest.battleBgUrl.replace('voxel:', '')
-                  : ((showDebugPanel && (userData?.role === 'admin' || isSuperAdmin)) ? (arenaDebug.biome3D || 'plains') : 'plains')) as any}
+                  : 'plains') as any}
                 cameraPitch={arenaDebug.cameraPitch3D}
                 cameraDist={arenaDebug.cameraDist3D}
                 cameraTargetY={arenaDebug.cameraTargetY3D}

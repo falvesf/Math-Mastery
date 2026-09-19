@@ -1100,30 +1100,8 @@ export default function ArenaDebugPanel({
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
-              <div style={{ fontSize: '0.68rem', color: '#06b6d4', fontWeight: 'bold', marginBottom: '0.2rem' }}>🌍 Bioma 3D em Teste</div>
-              <select
-                value={safeConfig.biome3D || 'plains'}
-                onChange={e => update('biome3D', e.target.value as any)}
-                onFocus={e => e.currentTarget.blur()}
-                style={{
-                  width: '100%',
-                  padding: '0.35rem 0.5rem',
-                  borderRadius: '6px',
-                  background: 'rgba(0,0,0,0.5)',
-                  border: '1px solid var(--border-glass)',
-                  color: '#2dd4bf',
-                  fontSize: '0.72rem',
-                  fontWeight: 'bold',
-                }}
-              >
-                <option value="plains">🌲 Planície (Plains)</option>
-                <option value="nether">🔥 Nether Vulcânico</option>
-                <option value="desert">🏜️ Deserto das Areias</option>
-                <option value="snow">❄️ Tundra Congelada</option>
-                <option value="end">🌌 The End (O Vazio)</option>
-              </select>
-            </div>
+            {/* O bioma é definido nas Configurações da Missão (Cenário da Arena). O Arena Debug
+                não altera mais o bioma para não sobrescrever a escolha da missão. */}
 
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 'bold', marginBottom: '0.2rem' }}>🎥 Câmera & Profundidade 3D</div>
