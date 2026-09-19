@@ -1100,8 +1100,36 @@ export default function ArenaDebugPanel({
               </div>
             </div>
 
-            {/* O bioma é definido nas Configurações da Missão (Cenário da Arena). O Arena Debug
-                não altera mais o bioma para não sobrescrever a escolha da missão. */}
+            {/* Pré-visualização de bioma: serve APENAS para testar aqui (admin, com o painel
+                aberto). NÃO é salvo no servidor e NUNCA sobrescreve o bioma definido nas
+                Configurações da Missão para os jogadores. */}
+            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
+              <div style={{ fontSize: '0.68rem', color: '#06b6d4', fontWeight: 'bold', marginBottom: '0.2rem' }}>🌍 Pré-visualizar Bioma (somente teste)</div>
+              <select
+                value={safeConfig.biome3D || 'plains'}
+                onChange={e => update('biome3D', e.target.value as any)}
+                onFocus={e => e.currentTarget.blur()}
+                style={{
+                  width: '100%',
+                  padding: '0.35rem 0.5rem',
+                  borderRadius: '6px',
+                  background: 'rgba(0,0,0,0.5)',
+                  border: '1px solid var(--border-glass)',
+                  color: '#2dd4bf',
+                  fontSize: '0.72rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                <option value="plains">🌲 Planície (Plains)</option>
+                <option value="nether">🔥 Nether Vulcânico</option>
+                <option value="desert">🏜️ Deserto das Areias</option>
+                <option value="snow">❄️ Tundra Congelada</option>
+                <option value="end">🌌 The End (O Vazio)</option>
+              </select>
+              <div style={{ fontSize: '0.55rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                O bioma dos jogadores é o definido em <b>Configurações da Missão</b>. Isto aqui só pré-visualiza.
+              </div>
+            </div>
 
             <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.4rem', marginTop: '0.3rem' }}>
               <div style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 'bold', marginBottom: '0.2rem' }}>🎥 Câmera & Profundidade 3D</div>

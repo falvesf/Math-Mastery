@@ -901,6 +901,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     SHARED_DEBUG_TOGGLES.forEach(k => {
       delete dataToSave[k];
     });
+    // biome3D é apenas pré-visualização local (o bioma real vem das Configurações da Missão)
+    delete (dataToSave as any).biome3D;
 
     const docId = `arena_${activeModeKey}`;
     const payload: any = {
@@ -3582,12 +3584,12 @@ const dealTransformDamageToPlayer = (damage: number) => {
             {arenaRenderMode === '3d' ? (
               <VoxelArena3D
                 deviceMode={effectiveDevice}
-                // Bioma: SEMPRE o da missão (voxel:<bioma>); se não configurado, Planícies.
-                // O bioma de teste do Arena Debug NUNCA influencia a batalha (nem para admins),
-                // porque isso sobrescreveria a escolha feita nas Configurações da Missão.
-                biome={(quest?.battleBgUrl?.startsWith('voxel:')
-                  ? quest.battleBgUrl.replace('voxel:', '')
-                  : 'plains') as any}
+                // Bioma: sempre o da missão (voxel:<bioma>); fallback = Planícies.
+                // Exceção: admin com o painel Debug ABERTO pré-visualiza outro bioma em tela
+                // (sem salvar, sem afetar jogadores). Fechando o painel, volta ao da missão.
+                biome={((showDebugPanel && (userData?.role === 'admin' || isSuperAdmin))
+                  ? (arenaDebug.biome3D || 'plains')
+                  : (quest?.battleBgUrl?.startsWith('voxel:') ? quest.battleBgUrl.replace('voxel:', '') : 'plains')) as any}
                 cameraPitch={arenaDebug.cameraPitch3D}
                 cameraDist={arenaDebug.cameraDist3D}
                 cameraTargetY={arenaDebug.cameraTargetY3D}
