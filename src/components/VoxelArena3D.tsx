@@ -149,6 +149,12 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // Ref para atualizar posições de overlay sem reconstruir o renderer
   const updateOverlayPositionsRef = useRef<(() => void) | null>(null);
 
+  // Mantém o valor ATUAL do slider de distância de ataque acessível aos closures
+  // antigos (updateOverlayPositions é criado no mount; sem isso ele usaria o valor
+  // inicial e reverteria --attack-dist para o automático em resize/câmera).
+  const attackDistRef = useRef<number | undefined>(attackDist);
+  attackDistRef.current = attackDist;
+
   // 2. Câmera Isométrica com Profundidade 3D Rica em Desktop e Mobile (função desacoplada)
   const computeCameraConfig = (currAspect: number, pMode?: 'desktop' | 'mobile', pPitch = 0, pDist = 0, pTargetY = 0) => {
     const isMobile = pMode ? (pMode === 'mobile') : (typeof window !== 'undefined' ? (window.innerWidth <= 768 || currAspect < 1.35) : false);
@@ -604,8 +610,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const pLift = Math.max(0, pBottomPx - bottomPadding);
       const mLift = Math.max(0, mBottomPx - bottomPadding);
       const attackDistPx = Math.max(50, Math.round(mLeftPx - pLeftPx));
-      // Usa a distância configurada pelo slider (attackDist prop) quando > 0
-      const finalAttackDist = (attackDist && attackDist > 0) ? attackDist : attackDistPx;
+      // Usa a distância configurada pelo slider quando > 0 (lido do ref = valor ATUAL)
+      const configuredDist = attackDistRef.current;
+      const finalAttackDist = (configuredDist && configuredDist > 0) ? configuredDist : attackDistPx;
 
       const parent = container.parentElement;
       if (parent) {
