@@ -168,6 +168,42 @@ function isCombatAnim(anim?: string): boolean {
   return !!anim && (anim.startsWith('attack') || anim === 'hurt' || anim === 'attack-fatal' || anim === 'attack-fatal-slow' || anim.startsWith('death') || anim.startsWith('victory'));
 }
 
+// Avanço do ataque corpo a corpo em unidades de mundo. O monstro parte de x=+3.6 e
+// alcança ~-1.6 (perto do jogador); o jogador o espelho. Ajustável para calibrar.
+const UNIFIED_LUNGE = 5.2;
+
+const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
+const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+// Atualiza o avanço (tween de posição X) de um boneco no loop de animação.
+// mode 'go': avança 0.6s, segura 0.3s, volta 0.6s. mode 'hold': avança e fica (fatal/vitória).
+function updateMoveTween(
+  moveRef: React.MutableRefObject<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>,
+  group: THREE.Group | null,
+  nowMs: number
+) {
+  const m = moveRef.current;
+  if (!m || !group) return;
+  const elapsed = (nowMs - m.start) / 1000;
+  if (m.mode === 'go') {
+    let x = m.fromX;
+    if (elapsed < 0.6) {
+      x = lerp(m.fromX, m.toX, easeInOut(clamp01(elapsed / 0.6)));
+    } else if (elapsed < 0.9) {
+      x = m.toX;
+    } else if (elapsed < 1.5) {
+      x = lerp(m.toX, m.restX, easeInOut(clamp01((elapsed - 0.9) / 0.6)));
+    } else {
+      x = m.restX;
+      moveRef.current = null;
+    }
+    group.position.x = x;
+  } else {
+    group.position.x = elapsed < 0.6 ? lerp(m.fromX, m.toX, easeInOut(clamp01(elapsed / 0.6))) : m.toX;
+  }
+}
+
 
 
 export interface VoxelArena3DProps {
@@ -289,6 +325,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const unifiedPlayerRootRef = useRef<THREE.Object3D | null>(null);
   const unifiedMonsterOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
   const unifiedPlayerOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
+  // Tweens de avanço (ataque corpo a corpo) das entidades unificadas
+  const monsterMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>(null);
+  const playerMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>(null);
 
   // Ref para atualizar posições de overlay sem reconstruir o renderer
   const updateOverlayPositionsRef = useRef<(() => void) | null>(null);
@@ -849,6 +888,10 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       // Atualiza os mixers de animação das entidades unificadas (Fase B)
       if (unifiedMonsterMixerRef.current) unifiedMonsterMixerRef.current.update(delta);
       if (unifiedPlayerMixerRef.current) unifiedPlayerMixerRef.current.update(delta);
+      // Avanço do ataque corpo a corpo (tween de X) no loop
+      const nowMs = performance.now();
+      updateMoveTween(monsterMoveRef, unifiedMonsterGroupRef.current, nowMs);
+      updateMoveTween(playerMoveRef, unifiedPlayerGroupRef.current, nowMs);
 
       // Nuvens se deslocam suavemente pelo céu
       if (cloudsGroupRef.current) {
@@ -1082,6 +1125,34 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     playEntityAnimByName(unifiedMonsterActionsRef.current, unifiedMonsterMixerRef.current, monsterAnim);
     playEntityAnimByName(unifiedPlayerActionsRef.current, unifiedPlayerMixerRef.current, playerAnim);
   }, [unified3D, monsterAnim, playerAnim, monsterModelUrl, playerModelUrl, monsterRotY]);
+
+  // Avanço corpo a corpo: quando entra em ataque/fatal/vitória, lança o tween de X.
+  useEffect(() => {
+    if (!unified3D) return;
+    const now = performance.now();
+    const monGroup = unifiedMonsterGroupRef.current;
+    if (monGroup) {
+      const isAttack = monsterAnim?.startsWith('attack');
+      const isVictory = monsterAnim?.startsWith('victory');
+      if (isAttack || isVictory) {
+        const isFatal = monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow';
+        monsterMoveRef.current = { fromX: monGroup.position.x, toX: 3.6 - UNIFIED_LUNGE, restX: 3.6, start: now, mode: (isVictory || isFatal) ? 'hold' : 'go' };
+      } else {
+        monsterMoveRef.current = { fromX: monGroup.position.x, toX: 3.6, restX: 3.6, start: now, mode: 'go' };
+      }
+    }
+    const playGroup = unifiedPlayerGroupRef.current;
+    if (playGroup) {
+      const isAttack = playerAnim?.startsWith('attack');
+      const isVictory = playerAnim?.startsWith('victory');
+      if (isAttack || isVictory) {
+        const isFatal = playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow';
+        playerMoveRef.current = { fromX: playGroup.position.x, toX: -3.6 + UNIFIED_LUNGE, restX: -3.6, start: now, mode: (isVictory || isFatal) ? 'hold' : 'go' };
+      } else {
+        playerMoveRef.current = { fromX: playGroup.position.x, toX: -3.6, restX: -3.6, start: now, mode: 'go' };
+      }
+    }
+  }, [unified3D, monsterAnim, playerAnim]);
 
   // Reaplica tint/fúria quando os efeitos mudam.
   useEffect(() => {
