@@ -175,6 +175,8 @@ export default function QuestGameplay() {
     effect: MonsterEffectType | string;
     customUrl?: string;
     start?: number;
+    /** Distância (px) até o alvo, calculada no momento do disparo. */
+    distPx?: number;
   } | null>(null);
   // @ts-ignore (usado internamente p/ indicar golpe especial ativo)
   const [monsterSpecialActive, setMonsterSpecialActive] = useState(false);
@@ -980,12 +982,32 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setTimeout(() => setMonsterBubble(''), 15000);
   };
 
+  // Lê a distância REAL (px) para o projétil voar até o alvo. Em 3D, o valor vem da
+  // projeção da câmera (--shadow-attack-dist). Evitamos depender de var() aninhado em
+  // calc() dentro de keyframes (o Chromium não resolve de forma confiável) e passamos
+  // um número concreto em px.
+  const getProjectileDistPx = (): number => {
+    if (arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) return arenaDebug.projTargetDist;
+    if (arenaRenderMode === '3d') {
+      const el = arenaRef.current;
+      if (el) {
+        const raw = getComputedStyle(el).getPropertyValue('--shadow-attack-dist').trim();
+        const n = parseFloat(raw);
+        if (isFinite(n) && n > 0) return Math.round(n);
+      }
+      return 200;
+    }
+    const combatDist2D = Math.max(70, Math.min(130, (arenaWidth || 360) * 0.25)) + (arenaDebug.arenaGap || 0);
+    return Math.max(50, Math.round(combatDist2D * 2) + (arenaDebug.projStartX ?? 0));
+  };
+
   const triggerTestProjectile = () => {
     setMonsterBodyThrow(true);
     setMonsterProjectile({
       id: Date.now(),
       type: 'rock',
       effect: 'none',
+      distPx: getProjectileDistPx(),
     });
     playMonsterAttackSound();
     setTimeout(() => {
@@ -2289,6 +2311,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           type: decision.projectileType || 'rock',
           effect: decision.effect || 'none',
           customUrl: decision.projectileUrl ? (getSafeUrl(decision.projectileUrl) || decision.projectileUrl) : undefined,
+          distPx: getProjectileDistPx(),
         });
         playMonsterAttackSound();
 
@@ -4220,7 +4243,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     '--proj-size': `${Math.round(50 * effectiveMonsterZoom)}px`,
                     '--proj-start-x': `${arenaDebug.projStartX ?? 0}px`,
                     '--proj-start-y': `${arenaDebug.projStartY ?? 40}px`,
-                    '--effective-proj-dist': `${(arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) ? arenaDebug.projTargetDist : (arenaRenderMode === '3d' ? 'var(--shadow-attack-dist, 200px)' : `${Math.max(50, Math.round(combatDist2D * 2) + (arenaDebug.projStartX ?? 0))}px`)}`,
+                    '--effective-proj-dist': `${monsterProjectile.distPx ?? getProjectileDistPx()}px`,
                     '--proj-target-y': `${arenaDebug.projTargetY ?? 80}px`,
                     '--proj-arc': `${arenaDebug.projArcHeight ?? 245}px`,
                   } as any}
