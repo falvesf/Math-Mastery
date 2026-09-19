@@ -41,7 +41,7 @@ import {
   DEFAULT_MONSTER_STATS,
   type MonsterStatsConfig,
 } from '../lib/combatDamage';
-import { getEquippedDamageEffect, getEquippedDamageEffectInfo, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
+import { getEquippedDamageEffect, getEquippedDamageEffectInfo, getEquippedWeaponFatality, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
 import {
   type TransformState,
   rollTransformAnimal,
@@ -1659,15 +1659,19 @@ const dealTransformDamageToPlayer = (damage: number) => {
     // Se não tem arma, só animações simples (sem explosão, corte)
     const deaths = hasAttackWeapon 
       ? ['death-fall', 'death-evaporate', 'death-slice', 'death-explode']
-      : ['death-fall', 'death-evaporate'];
+      : ['death-fall'];
     // Fatalidade temática do efeito da arma
     const effectFatal: Record<string, string> = { burn: 'death-explode', poison: 'death-evaporate', impact: 'death-explode', bleed: 'death-slice', electric: 'death-explode' };
     const effectFatality = hasAttackWeapon && damageEffect !== 'none' ? effectFatal[damageEffect] : null;
+    // Fatality fixo definido na arma (override por item)
+    const weaponFatality = hasAttackWeapon ? getEquippedWeaponFatality(playerEquippedItems) : undefined;
     // Força uma fatalidade específica via Arena Debug (SÓ para quem tem acesso ao Debug — alunos usam aleatória)
     const canForce = canArenaDebug('arena_debug', 'view') || isSuperAdmin || userData?.role === 'admin';
     const fatality = canForce && arenaDebug.forcedFatality && deaths.includes(arenaDebug.forcedFatality)
       ? arenaDebug.forcedFatality
-      : (effectFatality || deaths[Math.floor(Math.random() * deaths.length)]);
+      : (weaponFatality && deaths.includes(weaponFatality)
+          ? weaponFatality
+          : (effectFatality || deaths[Math.floor(Math.random() * deaths.length)]));
     
     let msg = '';
     if (hasAttackWeapon) {

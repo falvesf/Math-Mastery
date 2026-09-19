@@ -13,9 +13,33 @@ export const DAMAGE_EFFECTS: { id: string; label: string; desc: string }[] = [
   { id: 'electric', label: '⚡ Elétrico', desc: 'Add "Eletrocutar": chance de causar choques elétricos' },
   { id: 'poison', label: '☠️ Veneno', desc: 'Add "Envenenar": chance de envenenar e drenar a vida' },
   { id: 'bleed', label: '🩸 Sangramento', desc: 'Add "Perfurar": chance de sangrar o inimigo' },
-  { id: 'transform', label: '🐸 Transformar', desc: 'Add "Transformar": chance de transformar o monstro em Sapo, Coelho, Porco ou Rato (3 turnos)' },
+  { id: 'transform', label: '🌀 Transformar', desc: 'Add "Transformar": chance de transformar o monstro em Sapo, Coelho, Porco ou Rato (3 turnos)' },
   { id: 'heal', label: '💚 Cura', desc: 'Add "Cura": chance de ativar uma aura que cura 0,5 coração por turno (3 turnos)' },
 ];
+
+// Fatalitys disponíveis no jogo (a animação que decide como o inimigo morre).
+// Usado no editor de armas (mão/duas mãos) para fixar um fatality à arma.
+export const FATALITY_OPTIONS: { id: string; label: string; desc: string }[] = [
+  { id: 'auto', label: 'Automático (segue o efeito de dano)', desc: 'Deixa a lógica padrão escolher conforme o efeito da arma.' },
+  { id: 'death-fall', label: '💫 Cair (queda)', desc: 'O inimigo cai/desmorona.' },
+  { id: 'death-explode', label: '💥 Explodir', desc: 'O inimigo explode.' },
+  { id: 'death-slice', label: '🗡️ Corte ao meio', desc: 'O inimigo é cortado ao meio.' },
+  { id: 'death-evaporate', label: '🌫️ Evaporar/Desintegrar', desc: 'O inimigo se desintegra.' },
+];
+
+/** Mapa: efeito de dano -> fatality padrão (mesma lógica atual da batalha). */
+export const FATALITY_BY_EFFECT: Record<string, string> = {
+  burn: 'death-explode',
+  poison: 'death-evaporate',
+  impact: 'death-explode',
+  bleed: 'death-slice',
+  electric: 'death-explode',
+};
+
+export function getFatalityLabel(id?: string): string {
+  const f = FATALITY_OPTIONS.find(x => x.id === (id || 'auto'));
+  return f ? f.label : 'Automático';
+}
 
 // Rótulos/ícones dos ADDS de efeito (exibidos no tooltip igual aos atributos)
 export const EFFECT_ADD_LABELS: Record<EffectAddType, { label: string; icon: string; color: string }> = {
@@ -150,4 +174,20 @@ export function getEquippedDamageEffectInfo(equippedItems: any[]): { effect: str
 /** Retorna o efeito (sem chance) da arma equipada — para o render/overlay. */
 export function getEquippedDamageEffect(equippedItems: any[]): string {
   return getEquippedDamageEffectInfo(equippedItems).effect;
+}
+
+/** Retorna o fatality fixo da arma equipada (death-fall|death-evaporate|death-slice|death-explode), ou undefined se "auto". */
+export function getEquippedWeaponFatality(equippedItems: any[]): string | undefined {
+  const weapons = (equippedItems || []).filter(i =>
+    i.itemCategory === 'attack'
+    || (i.baseAttributeType === 'attack' && (i.baseAttributeValue || 0) > 0)
+    || i.avatarPart === 'hand'
+    || i.avatarPart === 'two_handed'
+    || i.avatarPart === 'rightHand'
+    || i.avatarPart === 'leftHand'
+  );
+  for (const w of weapons) {
+    if (w.fatality && w.fatality !== 'auto') return w.fatality;
+  }
+  return undefined;
 }

@@ -38,7 +38,7 @@ import { RANKS, resolveMinRankName } from '../lib/ranks';
 import type { RankDef } from '../lib/ranks';
 import { type ItemCategory, type AttributeType, type GachaConfig, type ItemAdd } from '../lib/gacha';
 import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharacter';
-import { DAMAGE_EFFECTS } from '../lib/damageEffects';
+import { DAMAGE_EFFECTS, FATALITY_OPTIONS, getFatalityLabel, FATALITY_BY_EFFECT } from '../lib/damageEffects';
 import { v4 as uuidv4 } from 'uuid';
 import { computeItemTransformKey, invalidateGlobalItemTransforms } from '../lib/itemTransforms';
 // @ts-ignore
@@ -99,6 +99,8 @@ export interface StoreItem {
   damageEffect?: string; // Efeito especial de dano em batalha (burn, freeze, impact, electric, poison, none)
   damageEffectMin?: number; // Força mínima do efeito especial (%) (ex: 1%)
   damageEffectMax?: number; // Força máxima do efeito especial (%) (ex: 25%)
+  /** Fatality fixo desta arma (death-fall|death-evaporate|death-slice|death-explode). Vazio = segue o efeito de dano. */
+  fatality?: string;
   battleSoundUrl?: string;
   criticalSoundUrl?: string; // Som tocado em acertos críticos de armas
   consumableAnimPreset?: string; // Preset visual do consumível (aura_rosy, aura_gold, eat_food, tea_strike, etc.)
@@ -914,6 +916,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
       damageEffect: item.damageEffect || 'none',
       damageEffectMin: item.damageEffectMin ?? null,
       damageEffectMax: item.damageEffectMax ?? null,
+      fatality: item.fatality || undefined,
       baseAttributeType: item.baseAttributeType,
       baseAttributeValue: item.baseAttributeValue,
       fixedAttributes: item.fixedAttributes,
@@ -1093,6 +1096,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
 
     const itemData = {
       ...formData,
+      fatality: formData.fatality && formData.fatality !== 'auto' ? formData.fatality : undefined,
       damageEffectMin: formData.damageEffect && formData.damageEffect !== 'none' && formData.damageEffectMin !== undefined && formData.damageEffectMin !== null ? Number(formData.damageEffectMin) : undefined,
       damageEffectMax: formData.damageEffect && formData.damageEffect !== 'none' && formData.damageEffectMax !== undefined && formData.damageEffectMax !== null ? Number(formData.damageEffectMax) : undefined,
       usableInQuest: isBattleEffect ? true : (formData.usableInQuest || false),
@@ -1170,6 +1174,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
           damageEffect: itemData.damageEffect || 'none',
           damageEffectMin: itemData.damageEffectMin ?? null,
           damageEffectMax: itemData.damageEffectMax ?? null,
+          fatality: itemData.fatality || undefined,
           baseAttributeType: itemData.baseAttributeType || 'none',
           baseAttributeValue: itemData.baseAttributeValue || 0,
           itemTitle: itemData.title,
@@ -2242,6 +2247,24 @@ Responda APENAS com a frase curta em português brasileiro.`;
                         </select>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>
                           {DAMAGE_EFFECTS.find(ef => ef.id === (formData.damageEffect || 'none'))?.desc}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Fatalidade (como o inimigo morre)</label>
+                        <select value={formData.fatality || 'auto'} onChange={e => {
+                          const val = e.target.value;
+                          setFormData({
+                            ...formData,
+                            fatality: val === 'auto' ? undefined : val,
+                          });
+                        }} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                          {FATALITY_OPTIONS.map(ft => <option key={ft.id} value={ft.id}>{ft.label}</option>)}
+                        </select>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>
+                          {formData.fatality
+                            ? (FATALITY_OPTIONS.find(ft => ft.id === formData.fatality)?.desc || '')
+                            : `Automático: ${DAMAGE_EFFECTS.find(ef => ef.id === (formData.damageEffect || 'none')) && formData.damageEffect && formData.damageEffect !== 'none' ? getFatalityLabel(FATALITY_BY_EFFECT[formData.damageEffect]) : 'Sorteado entre os disponíveis'}`}
                         </div>
                       </div>
 
