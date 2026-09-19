@@ -769,6 +769,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
       const updated = { ...prev, [activeModeKey]: newConfig };
       try {
         localStorage.setItem(`arenaDebugConfig_${activeModeKey}`, JSON.stringify(newConfig));
+        // Marca como "não salvo": impede que o carregamento do servidor sobrescreva
+        // este modo (evitando perder ajustes ao trocar de modo/remontar a tela).
+        localStorage.setItem(`arenaDebugDirty_${activeModeKey}`, '1');
       } catch (e) {
         console.warn('Erro ao salvar no localStorage:', e);
       }
@@ -858,6 +861,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           const next = { ...prev };
           const shouldUpdate = (k: ArenaModeKey) => {
             if (hasUserModifiedDebugRef.current && k === activeModeKey) return false;
+            // Nunca sobrescreve um modo com ajustes locais ainda não salvos.
+            try { if (localStorage.getItem(`arenaDebugDirty_${k}`)) return false; } catch {}
             return true;
           };
           if (data3dDesk && shouldUpdate('3d_desktop')) {
@@ -922,7 +927,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
         });
       }
 
-      try { localStorage.setItem(`arenaDebugConfig_${activeModeKey}`, JSON.stringify(currentConfig)); } catch (e) {}
+      try {
+        localStorage.setItem(`arenaDebugConfig_${activeModeKey}`, JSON.stringify(currentConfig));
+        localStorage.removeItem(`arenaDebugDirty_${activeModeKey}`);
+      } catch (e) {}
 
       const modeLabels: Record<ArenaModeKey, string> = {
         '3d_desktop': '🧱 3D Desktop',
