@@ -88,6 +88,9 @@ export interface VoxelArena3DProps {
   cameraPitch?: number;
   cameraDist?: number;
   cameraTargetY?: number;
+
+  /** Reporta o tamanho (em px) do stage 3D sempre que ele é medido/redimensionado. */
+  onStageSizeChange?: (size: { w: number; h: number }) => void;
 }
 
 /**
@@ -135,6 +138,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   cameraPitch = 0,
   cameraDist = 0,
   cameraTargetY = 0,
+  onStageSizeChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -232,6 +236,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         h = Math.round(aw / STAGE_ASPECT);
       }
       setStageSize(prev => (prev.w === w && prev.h === h ? prev : { w, h }));
+      onStageSizeChange?.({ w, h });
     };
     measure();
     const ro = new ResizeObserver(() => measure());

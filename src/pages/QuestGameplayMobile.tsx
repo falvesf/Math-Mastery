@@ -42,6 +42,7 @@ import {
   type MonsterStatsConfig,
 } from '../lib/combatDamage';
 import { getEquippedDamageEffect, getEquippedDamageEffectInfo, getEquippedWeaponFatality, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
+import { scaleArenaDebug, computeArenaScale } from '../lib/arenaScale';
 import {
   type TransformState,
   rollTransformAnimal,
@@ -335,7 +336,7 @@ export default function QuestGameplay() {
   // tolerando variações (barra inicial, encoding, querystring) pelo nome do arquivo.
   const normalizeModelKey = (u: string) => String(u).replace(/\\/g, '/').split('?')[0].split('#')[0].toLowerCase();
   const getMonsterModelCfg = (url: string | undefined | null) => {
-    const cfgs = arenaDebug.modelConfigs || {};
+    const cfgs = arena.modelConfigs || {};
     if (!url) return null;
     if (cfgs[url]) return cfgs[url];
     const target = normalizeModelKey(url);
@@ -704,6 +705,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [arenaWidth, setArenaWidth] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 360);
   const [manualModeOverride, setManualModeOverride] = useState<ArenaModeKey | null>(null);
+  // Tamanho real do stage 3D (letterbox) reportado pelo VoxelArena3D — usado para
+  // calcular a escala de resolução dos offsets do Arena Debug no modo 3D.
+  const [stage3DSize, setStage3DSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
   const arenaRef = useRef<HTMLDivElement>(null);
   // Alternativas que caem na altura dos bonecos → move para baixo da arena.
@@ -772,6 +776,18 @@ const dealTransformDamageToPlayer = (damage: number) => {
   });
 
   const arenaDebug = configsByMode[activeModeKey];
+
+  // Escala de resolução: torna os offsets em px do Arena Debug proporcionais ao tamanho
+  // da arena, para que UMA configuração valha em qualquer resolução do mesmo modo.
+  // No 3D usamos a largura real do stage (letterbox); no 2D usamos a largura da arena.
+  const arenaScale = useMemo(() => {
+    const baseW = arenaRenderMode === '3d' ? (stage3DSize.w || arenaWidth) : arenaWidth;
+    return computeArenaScale(baseW, effectiveDevice);
+  }, [arenaRenderMode, stage3DSize.w, arenaWidth, effectiveDevice]);
+
+  // Config ESCALADA usada APENAS no render. O `arenaDebug` (bruto) continua sendo o que
+  // o painel de Debug edita e o que é salvo no localStorage.
+  const arena = useMemo(() => scaleArenaDebug(arenaDebug, arenaScale), [arenaDebug, arenaScale]);
 
   const hasUserModifiedDebugRef = useRef(false);
 
@@ -998,7 +1014,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
   // calc() dentro de keyframes (o Chromium não resolve de forma confiável) e passamos
   // um número concreto em px.
   const getProjectileDistPx = (): number => {
-    if (arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) return arenaDebug.projTargetDist;
+    if (arena.projTargetDist && arena.projTargetDist > 0) return arena.projTargetDist;
     if (arenaRenderMode === '3d') {
       const el = arenaRef.current;
       if (el) {
@@ -1008,8 +1024,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
       }
       return 200;
     }
-    const combatDist2D = Math.max(70, Math.min(130, (arenaWidth || 360) * 0.25)) + (arenaDebug.arenaGap || 0);
-    return Math.max(50, Math.round(combatDist2D * 2) + (arenaDebug.projStartX ?? 0));
+    const combatDist2D = Math.max(70, Math.min(130, (arenaWidth || 360) * 0.25)) + (arena.arenaGap || 0);
+    return Math.max(50, Math.round(combatDist2D * 2) + (arena.projStartX ?? 0));
   };
 
   const triggerTestProjectile = () => {
@@ -1524,9 +1540,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
     if (isSurpriseAttack) {
       let newHearts = Math.max(0, initialHearts - 1);
       // Debug: evitar 1-hit kill
-      if (((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.noInstantKill) && newHearts === 0) newHearts = 1;
+      if (((userData?.role === 'admin' || isSuperAdmin) && arena.noInstantKill) && newHearts === 0) newHearts = 1;
       // Debug: admin imortal
-      if (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin)) newHearts = initialHearts;
+      if (arena.adminImmortal && (userData?.role === 'admin' || isSuperAdmin)) newHearts = initialHearts;
       drainHeartsAnimated(newHearts);
       setGameState('playing');
       setTransition('enter');
@@ -1676,8 +1692,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     const weaponFatality = hasAttackWeapon ? getEquippedWeaponFatality(playerEquippedItems) : undefined;
     // Força uma fatalidade específica via Arena Debug (SÓ para quem tem acesso ao Debug — alunos usam aleatória)
     const canForce = canArenaDebug('arena_debug', 'view') || isSuperAdmin || userData?.role === 'admin';
-    const fatality = canForce && arenaDebug.forcedFatality && deaths.includes(arenaDebug.forcedFatality)
-      ? arenaDebug.forcedFatality
+    const fatality = canForce && arena.forcedFatality && deaths.includes(arena.forcedFatality)
+      ? arena.forcedFatality
       : (weaponFatality && deaths.includes(weaponFatality)
           ? weaponFatality
           : (effectFatality || deaths[Math.floor(Math.random() * deaths.length)]));
@@ -1900,7 +1916,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       const critChance = bonusCritActive ? baseCritChance * 2.5 : baseCritChance;
       
       // Debug: crítico garantido para testar
-      const debugGuaranteedCrit = !!arenaDebug.guaranteedCrit && (userData?.role === 'admin' || isSuperAdmin);
+      const debugGuaranteedCrit = !!arena.guaranteedCrit && (userData?.role === 'admin' || isSuperAdmin);
       const isCritical = debugGuaranteedCrit || Math.random() < critChance;
       
       if (isCritical) {
@@ -1935,7 +1951,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
       if (!nextQExists) {
         // Debug: monstro imortal - não finaliza, volta ao início
-        if ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.monsterImmortal) {
+        if ((userData?.role === 'admin' || isSuperAdmin) && arena.monsterImmortal) {
           setCurrentQIndex(0);
           setMonsterHearts(quest?.questions.length || 0);
           setMonsterHeartFrac(1);
@@ -2085,9 +2101,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
       const tr = transformRef.current;
       let damage = computeMonsterDamageToPlayer(currentHearts, isHardcore, tr, isMonsterCrit);
       // Debug: admin imortal
-      if (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin)) damage = 0;
+      if (arena.adminImmortal && (userData?.role === 'admin' || isSuperAdmin)) damage = 0;
       // Debug: evitar 1-hit kill - nunca deixa morrer de uma vez
-      if (((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.noInstantKill) && damage >= currentHearts) damage = Math.max(0, currentHearts - 1);
+      if (((userData?.role === 'admin' || isSuperAdmin) && arena.noInstantKill) && damage >= currentHearts) damage = Math.max(0, currentHearts - 1);
 
       // Porco: errar quebra a sequência de golpes certos (enfurecer)
       if (tr?.animal === 'porco' && tr.consecutiveCorrect > 0 && !tr.enraged) {
@@ -2106,7 +2122,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
       // Moedas perdidas quando o jogador é atingido
       const dropCoinsIfDamaged = () => {
-        const shouldLoseCoins = economySettings?.coinsLostInCombat || arenaDebug.forceCoinLoss;
+        const shouldLoseCoins = economySettings?.coinsLostInCombat || arena.forceCoinLoss;
         if (shouldLoseCoins && !isStudyMode && !hasShield) {
           const currentCoins = userData?.coins || 0;
           if (currentCoins > 0) {
@@ -2166,7 +2182,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               supabase.from('users').update({ coins: newCoins }).eq('id', userData.uid).then(({error}) => { if(error) console.error(error); });
               updateUserDataLocally({ coins: newCoins });
             }
-          } else if ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.forceCoinLoss) {
+          } else if ((userData?.role === 'admin' || isSuperAdmin) && arena.forceCoinLoss) {
             setLostCoinsDisplay(0);
             setBattleMessage('Sem moedas para perder!');
           }
@@ -2202,7 +2218,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         spawnFloatingDamage(monsterHit.damage, monsterHit.isCritical, 'player');
 
         const finalHearts = Math.max(0, currentHearts - appliedDamage);
-        const isFatalForPlayer = (arenaDebug.adminImmortal && (userData?.role === 'admin' || isSuperAdmin) ? false : (((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.noInstantKill) ? finalHearts === 0 : (isMonsterDamageFatal(appliedDamage, currentHearts) || (isHardcore && tr?.animal !== 'sapo'))));
+        const isFatalForPlayer = (arena.adminImmortal && (userData?.role === 'admin' || isSuperAdmin) ? false : (((userData?.role === 'admin' || isSuperAdmin) && arena.noInstantKill) ? finalHearts === 0 : (isMonsterDamageFatal(appliedDamage, currentHearts) || (isHardcore && tr?.animal !== 'sapo'))));
 
         if (isFatalForPlayer) {
           if (isMonsterCrit) {
@@ -2594,7 +2610,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     const isStudent = userData?.role === 'student' || !!userData?.studentViewActive;
     // Debug: admins testam recompensas recebendo XP/moedas/baú como se fossem alunos.
     // Também ignora tentativas antigas (admin que já foi aluno) para SEMPRE receber o baú no teste.
-    const forceRewards = !!arenaDebug.forceRewards && (userData?.role === 'admin' || isSuperAdmin);
+    const forceRewards = !!arena.forceRewards && (userData?.role === 'admin' || isSuperAdmin);
     const isEligibleForXP = (isStudent || forceRewards) && !isStudyMode;
     const isEligibleForChest = forceRewards || (isStudent && !alreadyCompletedRef.current); // Baú só na 1ª conclusão (alunos)
     
@@ -2957,13 +2973,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
         // Marca como dropado nesta batalha (garante que caia apenas 1 por vez e não duplique)
         droppedBattleItemIdsRef.current.add(drop.itemId);
 
-        const _padX = (arenaDebug?.coinAreaW ?? 0) > 0 ? Math.min(4, (arenaDebug.coinAreaW) * 0.15) : 0;
-        const _padY = (arenaDebug?.coinAreaH ?? 0) > 0 ? Math.min(4, (arenaDebug.coinAreaH) * 0.2) : 0;
-        const dropX = (arenaDebug?.coinAreaX != null && (arenaDebug.coinAreaW ?? 0) > 0)
-          ? (arenaDebug.coinAreaX + _padX + Math.random() * Math.max(0, arenaDebug.coinAreaW - _padX * 2))
+        const _padX = (arenaDebug?.coinAreaW ?? 0) > 0 ? Math.min(4, (arena.coinAreaW) * 0.15) : 0;
+        const _padY = (arenaDebug?.coinAreaH ?? 0) > 0 ? Math.min(4, (arena.coinAreaH) * 0.2) : 0;
+        const dropX = (arenaDebug?.coinAreaX != null && (arena.coinAreaW ?? 0) > 0)
+          ? (arena.coinAreaX + _padX + Math.random() * Math.max(0, arena.coinAreaW - _padX * 2))
           : (60 + Math.random() * 25);
-        const dropY = (arenaDebug?.coinAreaY != null && (arenaDebug.coinAreaH ?? 0) > 0)
-          ? (arenaRenderMode === '3d' ? arenaDebug.coinAreaY : (arenaDebug.coinAreaY + _padY + Math.random() * Math.max(0, arenaDebug.coinAreaH - _padY * 2)))
+        const dropY = (arenaDebug?.coinAreaY != null && (arena.coinAreaH ?? 0) > 0)
+          ? (arenaRenderMode === '3d' ? arena.coinAreaY : (arena.coinAreaY + _padY + Math.random() * Math.max(0, arena.coinAreaH - _padY * 2)))
           : (arenaRenderMode === '3d' ? (48 + Math.random() * 8) : (75 + Math.random() * 12));
 
         const newDrop: DroppedBattleItem = {
@@ -3640,27 +3656,28 @@ const dealTransformDamageToPlayer = (damage: number) => {
         {/* Battle Arena Fixed */}
         {(() => {
           const combatDist2D = isNarrowScreen
-            ? Math.max(70, Math.min(130, (arenaWidth || 360) * 0.25)) + (arenaDebug.arenaGap || 0)
-            : Math.max(140, Math.min(260, (arenaWidth || 1200) * 0.22)) + (arenaDebug.arenaGap || 0);
+            ? Math.max(70, Math.min(130, (arenaWidth || 360) * 0.25)) + (arena.arenaGap || 0)
+            : Math.max(140, Math.min(260, (arenaWidth || 1200) * 0.22)) + (arena.arenaGap || 0);
           // 150 era o default antigo — trata como 0 (Automático) para não prejudicar configs existentes
-          const effectiveAttackDist = (arenaDebug.attackDist && arenaDebug.attackDist !== 150) ? arenaDebug.attackDist : 0;
+          const effectiveAttackDist = (arena.attackDist && arena.attackDist !== 150) ? arena.attackDist : 0;
           const autoDist2D = Math.max(120, Math.round(combatDist2D * 2));
           const finalAttackDist2D = effectiveAttackDist > 0 ? effectiveAttackDist : autoDist2D;
           return gameState === 'playing' && (
-            <div ref={arenaRef} className={`battle-arena-bg quest-arena ${arenaRenderMode === '3d' ? 'is-3d-arena' : ''} ${arenaQuake ? 'arena-quake' : ''}`} style={{ '--attack-dist': arenaRenderMode === '3d' ? (effectiveAttackDist > 0 ? `${effectiveAttackDist}px` : 'var(--shadow-attack-dist, 200px)') : `${finalAttackDist2D}px`, '--arena-char-bottom-padding': '16px', '--player-lift-x': `${arenaDebug.playerOffsetX3D || 0}px`, '--monster-lift-x': `${arenaDebug.monsterOffsetX3D || 0}px`, '--player-lift-3d': `${arenaDebug.playerOffsetY3D || 0}px`, '--monster-lift-3d': `${arenaDebug.monsterOffsetY3D || 0}px`, position: 'relative', width: '100%', display: 'block', padding: `${arenaDebug.arenaPaddingTop}px 0.5rem 1rem`, flex: '1 1 auto', maxHeight: `${arenaDebug.arenaHeight}px`, zIndex: 20, overflow: 'hidden', userSelect: 'none', WebkitUserSelect: 'none' } as any}>
+            <div ref={arenaRef} className={`battle-arena-bg quest-arena ${arenaRenderMode === '3d' ? 'is-3d-arena' : ''} ${arenaQuake ? 'arena-quake' : ''}`} style={{ '--attack-dist': arenaRenderMode === '3d' ? (effectiveAttackDist > 0 ? `${effectiveAttackDist}px` : 'var(--shadow-attack-dist, 200px)') : `${finalAttackDist2D}px`, '--arena-char-bottom-padding': '16px', '--player-lift-x': `${arena.playerOffsetX3D || 0}px`, '--monster-lift-x': `${arena.monsterOffsetX3D || 0}px`, '--player-lift-3d': `${arena.playerOffsetY3D || 0}px`, '--monster-lift-3d': `${arena.monsterOffsetY3D || 0}px`, position: 'relative', width: '100%', display: 'block', padding: `${arena.arenaPaddingTop}px 0.5rem 1rem`, flex: '1 1 auto', maxHeight: `${arena.arenaHeight}px`, zIndex: 20, overflow: 'hidden', userSelect: 'none', WebkitUserSelect: 'none' } as any}>
             {/* Cenário: 3D Voxel Minecraft ou Imagem 2D Clássica */}
             {arenaRenderMode === '3d' ? (
               <VoxelArena3D
                 deviceMode={effectiveDevice}
+                onStageSizeChange={setStage3DSize}
                 // Bioma: sempre o da missão (voxel:<bioma>); fallback = Planícies.
                 // Exceção: admin com o painel Debug ABERTO pré-visualiza outro bioma em tela
                 // (sem salvar, sem afetar jogadores). Fechando o painel, volta ao da missão.
                 biome={((showDebugPanel && (userData?.role === 'admin' || isSuperAdmin))
-                  ? (arenaDebug.biome3D || 'plains')
+                  ? (arena.biome3D || 'plains')
                   : ((quest as any)?.battleBiome || 'plains')) as any}
-                cameraPitch={arenaDebug.cameraPitch3D}
-                cameraDist={arenaDebug.cameraDist3D}
-                cameraTargetY={arenaDebug.cameraTargetY3D}
+                cameraPitch={arena.cameraPitch3D}
+                cameraDist={arena.cameraDist3D}
+                cameraTargetY={arena.cameraTargetY3D}
                 healActive={monsterHealPulse}
                 arenaQuake={arenaQuake}
                 attackDist={effectiveAttackDist}
@@ -3717,14 +3734,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
             )}
 
             {/* Coin Drop Area Debug Rectangle (Monster) */}
-            {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showCoinArea && (
-              <div style={{ position: 'absolute', left: `${arenaDebug.coinAreaX}%`, top: `${arenaDebug.coinAreaY}%`, width: `${arenaDebug.coinAreaW}%`, height: `${arenaDebug.coinAreaH}%`, border: '2px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', zIndex: 39, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {(userData?.role === 'admin' || isSuperAdmin) && arena.showCoinArea && (
+              <div style={{ position: 'absolute', left: `${arena.coinAreaX}%`, top: `${arena.coinAreaY}%`, width: `${arena.coinAreaW}%`, height: `${arena.coinAreaH}%`, border: '2px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', zIndex: 39, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: '0.6rem', color: '#10b981', background: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>💰 Drop Monstro</span>
               </div>
             )}
             {/* Player Coin Drop Area Debug Rectangle */}
-            {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showPlayerCoinArea && (
-              <div style={{ position: 'absolute', left: `${arenaDebug.playerCoinAreaX}%`, top: `${arenaDebug.playerCoinAreaY}%`, width: `${arenaDebug.playerCoinAreaW}%`, height: `${arenaDebug.playerCoinAreaH}%`, border: '2px solid #3b82f6', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', zIndex: 39, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {(userData?.role === 'admin' || isSuperAdmin) && arena.showPlayerCoinArea && (
+              <div style={{ position: 'absolute', left: `${arena.playerCoinAreaX}%`, top: `${arena.playerCoinAreaY}%`, width: `${arena.playerCoinAreaW}%`, height: `${arena.playerCoinAreaH}%`, border: '2px solid #3b82f6', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', zIndex: 39, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: '0.6rem', color: '#3b82f6', background: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>💧 Queda Jogador</span>
               </div>
             )}
@@ -3932,11 +3949,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
               style={{
                 position: 'absolute',
                 left: arenaRenderMode === '3d'
-                  ? `calc(var(--shadow-player-x, 25%) + ${(arenaDebug.playerOffsetX3D ?? 0)}px)`
-                  : `calc(50% - ${combatDist2D}px + ${(arenaDebug.playerOffsetX ?? 0)}px)`,
+                  ? `calc(var(--shadow-player-x, 25%) + ${(arena.playerOffsetX3D ?? 0)}px)`
+                  : `calc(50% - ${combatDist2D}px + ${(arena.playerOffsetX ?? 0)}px)`,
                 bottom: arenaRenderMode === '3d'
-                  ? `calc(var(--shadow-player-bottom, 60px) + ${(arenaDebug.playerOffsetY3D ?? 0)}px)`
-                  : `calc(16px + ${(arenaDebug.playerOffsetY ?? 0)}px)`,
+                  ? `calc(var(--shadow-player-bottom, 60px) + ${(arena.playerOffsetY3D ?? 0)}px)`
+                  : `calc(16px + ${(arena.playerOffsetY ?? 0)}px)`,
                 width: '160px',
                 marginLeft: '-80px',
                 display: 'flex',
@@ -3949,21 +3966,21 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 pointerEvents: 'none'
               }}
             >
-              {(playerBubble || arenaDebug.playerBubbleAlwaysOn) && (
-                <div className="speech-bubble player debug-bubble" style={{ '--bubble-max-w': `${arenaDebug.playerBubbleMaxWidth || 200}px`, '--bubble-font': `${arenaDebug.playerBubbleFontSize || 14}px`, '--bubble-rotate': `${arenaDebug.playerBubbleRotate || 0}deg`, position: 'absolute', left: `calc(50% + ${arenaDebug.playerBubbleX}px)`, top: `${arenaDebug.playerBubbleY}px`, bottom: 'auto', transform: 'translateX(-50%)', zIndex: 30 } as any}>
+              {(playerBubble || arena.playerBubbleAlwaysOn) && (
+                <div className="speech-bubble player debug-bubble" style={{ '--bubble-max-w': `${arena.playerBubbleMaxWidth || 200}px`, '--bubble-font': `${arena.playerBubbleFontSize || 14}px`, '--bubble-rotate': `${arena.playerBubbleRotate || 0}deg`, position: 'absolute', left: `calc(50% + ${arena.playerBubbleX}px)`, top: `${arena.playerBubbleY}px`, bottom: 'auto', transform: 'translateX(-50%)', zIndex: 30 } as any}>
                   {playerBubble || 'Olá!'}
                 </div>
               )}
-              {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBubbleOrigins && (
-                <div style={{ position: 'absolute', left: `calc(50% + ${arenaDebug.playerBubbleX}px)`, top: `${arenaDebug.playerBubbleY}px`, width: `${arenaDebug.bubbleOriginSize}px`, height: `${arenaDebug.bubbleOriginSize}px`, borderRadius: '50%', border: '2px dashed #3b82f6', background: 'rgba(59,130,246,0.15)', transform: 'translate(-50%, -50%)', zIndex: 29, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {(userData?.role === 'admin' || isSuperAdmin) && arena.showBubbleOrigins && (
+                <div style={{ position: 'absolute', left: `calc(50% + ${arena.playerBubbleX}px)`, top: `${arena.playerBubbleY}px`, width: `${arena.bubbleOriginSize}px`, height: `${arena.bubbleOriginSize}px`, borderRadius: '50%', border: '2px dashed #3b82f6', background: 'rgba(59,130,246,0.15)', transform: 'translate(-50%, -50%)', zIndex: 29, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: '0.5rem', color: '#3b82f6', fontWeight: 'bold' }}>F</span>
                 </div>
               )}
               {/* Nome do jogador - pequeno, acima da cabeça */}
-              <div style={{ position: 'absolute', top: `${arenaDebug.playerNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arenaDebug.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap' }}>
+              <div style={{ position: 'absolute', top: `${arena.playerNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap' }}>
                 <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
               </div>
-              <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '170px' : '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arenaDebug.playerScale3D ?? 1) : arenaDebug.playerScale})` }}>
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '170px' : '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arena.playerScale3D ?? 1) : arena.playerScale})` }}>
                 {/* Sombra dinâmica do personagem */}
                 <div className="avatar-ground-shadow" />
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: userData?.avatarConfig?.customModelUrl ? `-${Math.round(170 * 0.2236)}px` : '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
@@ -4049,11 +4066,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
               style={{
                 position: 'absolute',
                 left: arenaRenderMode === '3d'
-                  ? `calc(var(--shadow-monster-x, 75%) + ${(arenaDebug.monsterOffsetX3D ?? 0)}px)`
-                  : `calc(50% + ${combatDist2D}px + ${(arenaDebug.monsterOffsetX ?? 0)}px)`,
+                  ? `calc(var(--shadow-monster-x, 75%) + ${(arena.monsterOffsetX3D ?? 0)}px)`
+                  : `calc(50% + ${combatDist2D}px + ${(arena.monsterOffsetX ?? 0)}px)`,
                 bottom: arenaRenderMode === '3d'
-                  ? `calc(var(--shadow-monster-bottom, 60px) + ${(arenaDebug.monsterOffsetY3D ?? 0)}px)`
-                  : `calc(16px + ${(arenaDebug.monsterOffsetY ?? 0)}px)`,
+                  ? `calc(var(--shadow-monster-bottom, 60px) + ${(arena.monsterOffsetY3D ?? 0)}px)`
+                  : `calc(16px + ${(arena.monsterOffsetY ?? 0)}px)`,
                 width: '160px',
                 marginLeft: '-80px',
                 display: 'flex',
@@ -4066,25 +4083,25 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 pointerEvents: 'none'
               }}
             >
-              {(monsterBubble || arenaDebug.monsterBubbleAlwaysOn) && (
-                <div className="speech-bubble monster debug-bubble" style={{ '--bubble-max-w': `${arenaDebug.monsterBubbleMaxWidth || 200}px`, '--bubble-font': `${arenaDebug.playerBubbleFontSize || 14}px`, '--bubble-rotate': `${arenaDebug.monsterBubbleRotate || 0}deg`, position: 'absolute', left: `calc(50% + ${arenaDebug.monsterBubbleX}px)`, top: `${arenaDebug.monsterBubbleY}px`, bottom: 'auto', transform: 'translateX(-50%)', zIndex: 30 } as any}>
+              {(monsterBubble || arena.monsterBubbleAlwaysOn) && (
+                <div className="speech-bubble monster debug-bubble" style={{ '--bubble-max-w': `${arena.monsterBubbleMaxWidth || 200}px`, '--bubble-font': `${arena.playerBubbleFontSize || 14}px`, '--bubble-rotate': `${arena.monsterBubbleRotate || 0}deg`, position: 'absolute', left: `calc(50% + ${arena.monsterBubbleX}px)`, top: `${arena.monsterBubbleY}px`, bottom: 'auto', transform: 'translateX(-50%)', zIndex: 30 } as any}>
                   {monsterBubble || 'Grrr!'}
                 </div>
               )}
-              {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBubbleOrigins && (
-                <div style={{ position: 'absolute', left: `calc(50% + ${arenaDebug.monsterBubbleX}px)`, top: `${arenaDebug.monsterBubbleY}px`, width: `${arenaDebug.bubbleOriginSize}px`, height: `${arenaDebug.bubbleOriginSize}px`, borderRadius: '50%', border: '2px dashed #ef4444', background: 'rgba(239,68,68,0.15)', transform: 'translate(-50%, -50%)', zIndex: 29, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {(userData?.role === 'admin' || isSuperAdmin) && arena.showBubbleOrigins && (
+                <div style={{ position: 'absolute', left: `calc(50% + ${arena.monsterBubbleX}px)`, top: `${arena.monsterBubbleY}px`, width: `${arena.bubbleOriginSize}px`, height: `${arena.bubbleOriginSize}px`, borderRadius: '50%', border: '2px dashed #ef4444', background: 'rgba(239,68,68,0.15)', transform: 'translate(-50%, -50%)', zIndex: 29, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: '0.5rem', color: '#ef4444', fontWeight: 'bold' }}>F</span>
                 </div>
               )}
-              {(userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showDeathArea && (
-                <div style={{ position: 'absolute', top: 0, left: 'calc(50% - 20px)', transform: `translate(calc(-50% + ${arenaDebug.monsterOffsetX + arenaDebug.deathOffsetX}px), ${arenaDebug.monsterOffsetY + arenaDebug.deathOffsetY}px) scale(${arenaDebug.monsterScale})`, width: '130px', height: '200px', border: '2px dashed #fbbf24', borderRadius: '8px', background: 'rgba(251,191,36,0.08)', zIndex: 29, pointerEvents: 'none', boxSizing: 'border-box' }}>
-                  <span style={{ position: 'absolute', top: '-20px', left: 0, fontSize: '0.6rem', color: '#fbbf24', fontWeight: 'bold', background: 'rgba(0,0,0,0.75)', padding: '0 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>⚰️ X:{arenaDebug.deathOffsetX} Y:{arenaDebug.deathOffsetY}</span>
+              {(userData?.role === 'admin' || isSuperAdmin) && arena.showDeathArea && (
+                <div style={{ position: 'absolute', top: 0, left: 'calc(50% - 20px)', transform: `translate(calc(-50% + ${arena.monsterOffsetX + arena.deathOffsetX}px), ${arena.monsterOffsetY + arena.deathOffsetY}px) scale(${arena.monsterScale})`, width: '130px', height: '200px', border: '2px dashed #fbbf24', borderRadius: '8px', background: 'rgba(251,191,36,0.08)', zIndex: 29, pointerEvents: 'none', boxSizing: 'border-box' }}>
+                  <span style={{ position: 'absolute', top: '-20px', left: 0, fontSize: '0.6rem', color: '#fbbf24', fontWeight: 'bold', background: 'rgba(0,0,0,0.75)', padding: '0 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>⚰️ X:{arena.deathOffsetX} Y:{arena.deathOffsetY}</span>
                 </div>
               )}
               {monsterAnim === 'death-slice' ? (
-                <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', height: '200px', transform: `translate(${arenaDebug.monsterOffsetX + arenaDebug.deathOffsetX}px, ${arenaDebug.monsterOffsetY + arenaDebug.deathOffsetY}px)` }}>
+                <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', height: '200px', transform: `translate(${arena.monsterOffsetX + arena.deathOffsetX}px, ${arena.monsterOffsetY + arena.deathOffsetY}px)` }}>
                   {/* Nome do monstro - acompanha death-slice */}
-                  <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY - (effectiveMonsterZoom - 1) * (effectiveMonsterModelUrl ? 150 : 230)}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                  <div style={{ position: 'absolute', top: `${arena.monsterNameY - (effectiveMonsterZoom - 1) * (effectiveMonsterModelUrl ? 150 : 230)}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', opacity: 0.3 }}>{quest?.monsterName || 'Inimigo'}</span>
                   </div>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -4101,7 +4118,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               ) : (
                 <div 
                   className="quest-arena-avatars"
-                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', transform: `translate(${monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetX : 0}px, ${monsterAnim.startsWith('death-') ? arenaDebug.deathOffsetY : 0}px) scale(${arenaRenderMode === '3d' ? (arenaDebug.monsterScale3D ?? 1) : arenaDebug.monsterScale})`, transformOrigin: 'bottom center' }}
+                  style={{ position: 'relative', width: '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid red' : 'none', outlineOffset: '2px', transform: `translate(${monsterAnim.startsWith('death-') ? arena.deathOffsetX : 0}px, ${monsterAnim.startsWith('death-') ? arena.deathOffsetY : 0}px) scale(${arenaRenderMode === '3d' ? (arena.monsterScale3D ?? 1) : arena.monsterScale})`, transformOrigin: 'bottom center' }}
                 >
                   {/* Sombra dinâmica do monstro (segue transforms e offsets do GLB) */}
                   {(() => {
@@ -4129,7 +4146,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
                   }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center' }}>
-                  <div style={{ position: 'absolute', top: `${arenaDebug.monsterNameY - (effectiveMonsterZoom - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 150 : 230)}px`, left: '50%', transform: `translateX(calc(-50% + ${arenaDebug.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
+                  <div style={{ position: 'absolute', top: `${arena.monsterNameY - (effectiveMonsterZoom - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 150 : 230)}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
                       {(() => {
@@ -4268,11 +4285,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   className="monster-projectile"
                   style={{
                     '--proj-size': `${Math.round(50 * effectiveMonsterZoom)}px`,
-                    '--proj-start-x': `${arenaDebug.projStartX ?? 0}px`,
-                    '--proj-start-y': `${arenaDebug.projStartY ?? 40}px`,
+                    '--proj-start-x': `${arena.projStartX ?? 0}px`,
+                    '--proj-start-y': `${arena.projStartY ?? 40}px`,
                     '--effective-proj-dist': `${monsterProjectile.distPx ?? getProjectileDistPx()}px`,
-                    '--proj-target-y': `${arenaDebug.projTargetY ?? 80}px`,
-                    '--proj-arc': `${arenaDebug.projArcHeight ?? 245}px`,
+                    '--proj-target-y': `${arena.projTargetY ?? 80}px`,
+                    '--proj-arc': `${arena.projArcHeight ?? 245}px`,
                   } as any}
                   onAnimationEnd={() => setMonsterProjectile(null)}
                 >
@@ -4285,15 +4302,15 @@ const dealTransformDamageToPlayer = (damage: number) => {
               )}
 
               {/* Retângulo de Range / Campo de Ação da Magia (Apenas para o usuário no Debug) */}
-              {((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.showProjRange) && (
+              {((userData?.role === 'admin' || isSuperAdmin) && arena.showProjRange) && (
                 <div
                   className="proj-range-debug-box"
                   style={{
                     position: 'absolute',
-                    right: `calc(50% - ${(arenaDebug.projStartX ?? 0)}px)`,
-                    bottom: `${arenaDebug.projStartY ?? 40}px`,
-                    width: `${(arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) ? arenaDebug.projTargetDist : Math.max(50, (arenaDebug.attackDist || 240) + (arenaDebug.projStartX ?? 0))}px`,
-                    height: `${Math.max(arenaDebug.projArcHeight ?? 245, (arenaDebug.projTargetY ?? 80) + 30)}px`,
+                    right: `calc(50% - ${(arena.projStartX ?? 0)}px)`,
+                    bottom: `${arena.projStartY ?? 40}px`,
+                    width: `${(arena.projTargetDist && arena.projTargetDist > 0) ? arena.projTargetDist : Math.max(50, (arena.attackDist || 240) + (arena.projStartX ?? 0))}px`,
+                    height: `${Math.max(arena.projArcHeight ?? 245, (arena.projTargetY ?? 80) + 30)}px`,
                     border: '2px dashed #f59e0b',
                     borderRadius: '10px',
                     background: 'linear-gradient(to top, rgba(245, 158, 11, 0.05), rgba(245, 158, 11, 0.16))',
@@ -4310,7 +4327,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     viewBox="0 0 100 100"
                   >
                     <path
-                      d={`M 100 100 Q 50 0 0 ${Math.max(0, Math.min(100, 100 - (((arenaDebug.projTargetY ?? 80)) / Math.max(arenaDebug.projArcHeight ?? 245, (arenaDebug.projTargetY ?? 80) + 30)) * 100))}`}
+                      d={`M 100 100 Q 50 0 0 ${Math.max(0, Math.min(100, 100 - (((arena.projTargetY ?? 80)) / Math.max(arena.projArcHeight ?? 245, (arena.projTargetY ?? 80) + 30)) * 100))}`}
                       fill="none"
                       stroke="#f59e0b"
                       strokeWidth="2.5"
@@ -4320,17 +4337,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
                   {/* Badge Origem (Monstro) */}
                   <div style={{ position: 'absolute', bottom: -12, right: -6, transform: 'translateY(100%)', background: 'rgba(239, 68, 68, 0.95)', color: '#fff', fontSize: '0.58rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 2px 6px rgba(0,0,0,0.5)' }}>
-                    🔴 Origem ({arenaDebug.projStartX ?? 0}px, {arenaDebug.projStartY ?? 40}px)
+                    🔴 Origem ({arena.projStartX ?? 0}px, {arena.projStartY ?? 40}px)
                   </div>
 
                   {/* Badge Impacto (Jogador) */}
-                  <div style={{ position: 'absolute', top: `${Math.max(0, Math.min(100, 100 - (((arenaDebug.projTargetY ?? 80)) / Math.max(arenaDebug.projArcHeight ?? 245, (arenaDebug.projTargetY ?? 80) + 30)) * 100))}%`, left: -6, transform: 'translate(-100%, -50%)', background: 'rgba(59, 130, 246, 0.95)', color: '#fff', fontSize: '0.58rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 2px 6px rgba(0,0,0,0.5)' }}>
-                    🎯 Impacto ({arenaDebug.projTargetY ?? 80}px)
+                  <div style={{ position: 'absolute', top: `${Math.max(0, Math.min(100, 100 - (((arena.projTargetY ?? 80)) / Math.max(arena.projArcHeight ?? 245, (arena.projTargetY ?? 80) + 30)) * 100))}%`, left: -6, transform: 'translate(-100%, -50%)', background: 'rgba(59, 130, 246, 0.95)', color: '#fff', fontSize: '0.58rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 2px 6px rgba(0,0,0,0.5)' }}>
+                    🎯 Impacto ({arena.projTargetY ?? 80}px)
                   </div>
 
                   {/* Badge Topo do Arco & Alcance */}
                   <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translate(-50%, -100%)', background: 'rgba(245, 158, 11, 0.95)', color: '#000', fontSize: '0.58rem', fontWeight: 'bold', padding: '2px 8px', borderRadius: '4px', whiteSpace: 'nowrap', border: '1px solid rgba(0,0,0,0.2)', boxShadow: '0 2px 6px rgba(0,0,0,0.5)' }}>
-                    ⚡ Range: { (arenaDebug.projTargetDist && arenaDebug.projTargetDist > 0) ? arenaDebug.projTargetDist : Math.max(50, (arenaDebug.attackDist || 240) + (arenaDebug.projStartX ?? 0)) }px · Arco: {arenaDebug.projArcHeight ?? 245}px
+                    ⚡ Range: { (arena.projTargetDist && arena.projTargetDist > 0) ? arena.projTargetDist : Math.max(50, (arena.attackDist || 240) + (arena.projStartX ?? 0)) }px · Arco: {arena.projArcHeight ?? 245}px
                   </div>
                 </div>
               )}
