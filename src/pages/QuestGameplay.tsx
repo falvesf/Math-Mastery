@@ -6,7 +6,7 @@ import { RANKS, getRankForXp } from '../lib/ranks';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
-import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircle, Package, Coins } from 'lucide-react';
+import { ArrowLeft, Clock, Heart, ShieldAlert, Star, Swords, Shield, Zap, XCircle, Package, Coins, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem, safeParseAvatarConfig } from '../components/AvatarCharacter';
 import CustomModelViewer from '../components/CustomModelViewer';
@@ -126,6 +126,8 @@ export default function QuestGameplay() {
   
   // Power-up States
   const [powerups, setPowerups] = useState<UserItem[]>([]);
+  // Barra de itens utilizáveis (slots): índice de rolagem para mostrar 6 por vez
+  const [itemScrollIndex, setItemScrollIndex] = useState(0);
   const [playerEquippedItems, setPlayerEquippedItems] = useState<EquippedItem[]>([]);
   const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
   const [currentHearts, setCurrentHearts] = useState<number>(3);
@@ -3456,30 +3458,6 @@ useEffect(() => {
           </div>
           
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
-            {gameState === 'playing' && powerups.length > 0 && (
-              <div style={{ display: 'flex', gap: '0.5rem', marginRight: '1rem', overflowX: 'auto', maxWidth: '300px', paddingBottom: '0.2rem', scrollbarWidth: 'thin' }}>
-                {powerups.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => handleUsePowerup(p)}
-                    title={`Usar: ${p.itemTitle}`}
-                    style={{ position: 'relative', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    {p.itemImageUrl ? (
-                      <img src={getSafeUrl(p.itemImageUrl)} alt={p.itemTitle} style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'cover' }} />
-                    ) : (
-                      <Zap size={24} color="var(--gold-primary)" style={{ padding: '4px' }} />
-                    )}
-                    {p.count && p.count > 1 && (
-                      <span style={{ position: 'absolute', top: -5, right: -5, background: 'var(--accent-red)', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', zIndex: 2 }}>
-                        {p.count}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-
             {hasShield && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(59, 130, 246, 0.3)', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid var(--accent-blue)', color: 'var(--accent-blue)', animation: 'epicGlow 2s infinite alternate' }}>
                 <Shield size={18} />
@@ -4475,6 +4453,64 @@ useEffect(() => {
           )}
 
         </div>
+
+        {/* Barra fixa de itens utilizáveis (movida do cabeçalho) */}
+        {gameState === 'playing' && powerups.length > 0 && (() => {
+          const VISIBLE = 6;
+          const maxScroll = Math.max(0, Math.ceil(powerups.length / VISIBLE) - 1) * VISIBLE;
+          const scroll = Math.min(itemScrollIndex, maxScroll);
+          const visible = powerups.slice(scroll, scroll + VISIBLE);
+          const canLeft = scroll > 0;
+          const canRight = scroll + VISIBLE < powerups.length;
+          return (
+            <div style={{ flexShrink: 0, width: '100%', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--border-glass)', padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem', zIndex: 25 }}>
+              <button
+                type="button"
+                onClick={() => setItemScrollIndex(Math.max(0, scroll - VISIBLE))}
+                disabled={!canLeft}
+                aria-label="Itens anteriores"
+                style={{ width: '32px', height: '32px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: canLeft ? 'rgba(245,158,11,0.2)' : 'transparent', border: canLeft ? '1px solid var(--gold-primary)' : '1px solid transparent', borderRadius: '50%', color: canLeft ? 'var(--gold-primary)' : 'transparent', cursor: canLeft ? 'pointer' : 'default', padding: 0 }}
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0 }}>
+                {visible.map(p => {
+                  const qty = p.count ?? p.quantity;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => handleUsePowerup(p)}
+                      title={`Usar: ${p.itemTitle}`}
+                      style={{ position: 'relative', width: '48px', height: '48px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >
+                      {p.itemImageUrl ? (
+                        <img src={getSafeUrl(p.itemImageUrl)} alt={p.itemTitle} style={{ width: '36px', height: '36px', borderRadius: '4px', objectFit: 'contain' }} />
+                      ) : (
+                        <Zap size={24} color="var(--gold-primary)" />
+                      )}
+                      {qty && qty > 1 && (
+                        <span style={{ position: 'absolute', top: -5, right: -5, background: 'var(--accent-red)', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '10px', zIndex: 2 }}>
+                          {qty}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setItemScrollIndex(Math.min(maxScroll, scroll + VISIBLE))}
+                disabled={!canRight}
+                aria-label="Próximos itens"
+                style={{ width: '32px', height: '32px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: canRight ? 'rgba(245,158,11,0.2)' : 'transparent', border: canRight ? '1px solid var(--gold-primary)' : '1px solid transparent', borderRadius: '50%', color: canRight ? 'var(--gold-primary)' : 'transparent', cursor: canRight ? 'pointer' : 'default', padding: 0 }}
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Transição de batalha estilo FF7 */}
