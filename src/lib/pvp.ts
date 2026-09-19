@@ -132,14 +132,19 @@ export function normalizeEquippedItems(userItemRows: any[]): any[] {
 // Normaliza a arena (quest) — aceita snake_case e camelCase para o fundo/áudio.
 export function normalizeArena(arena: any): any {
   const a = arena || {};
-  const bgUrl = a.battleBgUrl || a.battle_bg_url || '';
-  const is3D = a.is3D || bgUrl.startsWith('voxel:');
-  const biome = a.biome || (bgUrl.startsWith('voxel:') ? bgUrl.replace('voxel:', '') : 'plains');
+  let bgUrl = a.battleBgUrl || a.battle_bg_url || '';
+  // Compat: valores antigos guardavam 'voxel:<bioma>' em battle_bg_url.
+  const legacyVoxel = typeof bgUrl === 'string' && bgUrl.startsWith('voxel:');
+  if (legacyVoxel) bgUrl = '';
+  const is3D = a.is3D ?? a.arena3D ?? a.arena_3d ?? legacyVoxel ?? false;
+  const biome = a.biome || a.battleBiome || a.battle_biome || (legacyVoxel ? (a.battleBgUrl || a.battle_bg_url).replace('voxel:', '') : 'plains');
   return {
     ...a,
     is3D,
     biome,
     battleBgUrl: bgUrl,
+    arena3D: is3D,
+    battleBiome: biome,
     battleBgPosX: a.battleBgPosX ?? a.battle_bg_pos_x ?? 0,
     battleBgPosY: a.battleBgPosY ?? a.battle_bg_pos_y ?? 0,
     battleBgScale: a.battleBgScale ?? a.battle_bg_scale ?? 1,
@@ -214,10 +219,12 @@ export async function fetchArenas(tenantId?: string): Promise<any[]> {
       id: `voxel:${b.id}`,
       title: `${b.title} (3D)`,
       name: `${b.title} (3D)`,
-      battle_bg_url: `voxel:${b.id}`,
-      battleBgUrl: `voxel:${b.id}`,
+      battle_bg_url: '',
+      battleBgUrl: '',
       is3D: true,
+      arena3D: true,
       biome: b.id,
+      battleBiome: b.id,
       icon: b.icon,
       badge: b.badge,
       description: b.description,
@@ -226,14 +233,17 @@ export async function fetchArenas(tenantId?: string): Promise<any[]> {
       ambientDesc: b.ambientDesc,
     }));
 
-    // 2. Arenas 2D baseadas nas missões cadastradas
+    // 2. Arenas baseadas nas missões cadastradas. Cada missão pode ter imagem 2D E/OU 3D:
+    //    se arena3D estiver ligado, usa o bioma; senão, a imagem 2D.
     const { data } = await supabase.from('quests').select('*');
-    const arenas = (data || []).filter((x: any) => (x.battle_bg_url || x.battleBgUrl));
-    const seen = new Set<string>(voxelArenas.map(v => v.battle_bg_url));
+    const arenas = (data || [])
+      .map((x: any) => normalizeArena(x))
+      .filter((a: any) => a.is3D || a.battleBgUrl);
+    const seen = new Set<string>(voxelArenas.map(v => `${v.biome}`));
     const unique = arenas.filter((a: any) => {
-      const url = a.battle_bg_url || a.battleBgUrl || '';
-      if (seen.has(url)) return false;
-      seen.add(url);
+      const key = a.is3D ? `biome:${a.biome}` : `url:${a.battleBgUrl}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
 

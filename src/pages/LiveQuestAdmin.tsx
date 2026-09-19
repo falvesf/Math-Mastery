@@ -807,7 +807,7 @@ export default function LiveQuestAdmin() {
              className="battle-arena-bg-image" 
              style={{ 
                opacity: 0.5,
-               ...(quest?.battleBgUrl ? { 
+                ...((quest?.battleBgUrl && !quest.battleBgUrl.startsWith('voxel:')) ? { 
                  background: `url("${getSafeUrl(quest.battleBgUrl)}") ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
                  ...(quest.battleBgMoveEnabled !== false
                    ? {

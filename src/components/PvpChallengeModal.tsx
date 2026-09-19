@@ -363,7 +363,7 @@ export default function PvpChallengeModal({ open, onClose, mode, userData, conta
                   <div style={{ flex: 1, height: '90px', borderRadius: '10px', overflow: 'hidden', border: '2px solid var(--gold-primary)', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {!arenas[arenaIdx] ? (
                       <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Sem arenas disponíveis</span>
-                    ) : arenas[arenaIdx].is3D || (arenas[arenaIdx].battle_bg_url && arenas[arenaIdx].battle_bg_url.startsWith('voxel:')) ? (
+                    ) : (arenas[arenaIdx].is3D || arenas[arenaIdx].arena3D || (arenas[arenaIdx].battle_bg_url && arenas[arenaIdx].battle_bg_url.startsWith('voxel:'))) ? (
                       <div style={{
                         width: '100%',
                         height: '100%',

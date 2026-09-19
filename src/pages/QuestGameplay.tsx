@@ -1055,6 +1055,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           liveChest3rdPlace: snap.live_chest_3rd_place || snap.liveChest3rdPlace || null,
           monsterDrops: snap.monster_drops || snap.monsterDrops || null,
           battleBgUrl: snap.battle_bg_url || snap.battleBgUrl || null,
+          arena3D: (snap.arena_3d ?? snap.arena3D ?? (typeof (snap.battle_bg_url || snap.battleBgUrl) === 'string' && (snap.battle_bg_url || snap.battleBgUrl || '').startsWith('voxel:'))) || false,
+          battleBiome: snap.battle_biome || snap.battleBiome || (((snap.battle_bg_url || snap.battleBgUrl || '').startsWith('voxel:')) ? (snap.battle_bg_url || snap.battleBgUrl).replace('voxel:', '') : 'plains'),
           podiumBgUrl: snap.podium_bg_url || snap.podiumBgUrl || null,
           monsterAttackSound: snap.monster_attack_sound || snap.monsterAttackSound || '',
           monsterGruntSound: snap.monster_grunt_sound || snap.monsterGruntSound || '',
@@ -1205,7 +1207,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         qData.questions = processedQuestions;
 
         setQuest(qData);
-        if (qData.battleBgUrl?.startsWith('voxel:')) {
+        if ((qData as any).arena3D) {
           setArenaRenderMode('3d');
         }
         setCurrentXp(qData.baseXp);
@@ -3523,7 +3525,7 @@ useEffect(() => {
                   }}
                 >
                   <span style={{ fontSize: '1rem' }}>{arenaRenderMode === '3d' ? '🧱' : '🖼️'}</span>
-                  <span>{arenaRenderMode === '3d' ? `Cenário: 3D (${(quest?.battleBgUrl?.startsWith('voxel:') ? quest.battleBgUrl.replace('voxel:', '') : (arenaDebug.biome3D || 'plains')).toUpperCase()})` : 'Cenário: 2D'}</span>
+                  <span>{arenaRenderMode === '3d' ? `Cenário: 3D (${((showDebugPanel && (userData?.role === 'admin' || isSuperAdmin)) ? (arenaDebug.biome3D || 'plains') : ((quest as any)?.battleBiome || 'plains')).toUpperCase()})` : 'Cenário: 2D'}</span>
                 </button>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '20px', border: `1px solid ${timeLeft <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}`, color: timeLeft <= 5  ? 'var(--accent-red)'  : 'var(--text-primary)' }}>
@@ -3552,7 +3554,7 @@ useEffect(() => {
                 // aberto pré-visualiza outro bioma em tela (sem salvar, sem afetar jogadores).
                 biome={((showDebugPanel && (userData?.role === 'admin' || isSuperAdmin))
                   ? (arenaDebug.biome3D || 'plains')
-                  : (quest?.battleBgUrl?.startsWith('voxel:') ? quest.battleBgUrl.replace('voxel:', '') : 'plains')) as any}
+                  : ((quest as any)?.battleBiome || 'plains')) as any}
                 cameraPitch={arenaDebug.cameraPitch3D}
                 cameraDist={arenaDebug.cameraDist3D}
                 cameraTargetY={arenaDebug.cameraTargetY3D}

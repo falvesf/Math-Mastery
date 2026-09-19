@@ -122,11 +122,11 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
     }
   }, [match?.status]);
 
-  // Fundo da arena: captura UMA VEZ e nunca perde (imune a re-renders/estado atrasado)
+  // Fundo da arena: captura UMA VEZ e nunca perde (imune a re-renders/estado atrasado).
   const arenaBgRef = useRef<string>('');
   useEffect(() => {
     const bg = match?.arena?.battleBgUrl || match?.arena?.battle_bg_url || '';
-    if (bg) {
+    if (bg && !bg.startsWith('voxel:')) {
       arenaBgRef.current = bg;
       console.log('[PvP] Arena background:', bg);
     }
@@ -134,10 +134,8 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
 
   // Modo 3D Voxel na Arena do PvP
   const currentArenaBg = match?.arena?.battleBgUrl || match?.arena?.battle_bg_url || arenaBgRef.current || '';
-  const isArena3D = currentArenaBg.startsWith('voxel:') || !!match?.arena?.is3D;
-  const pvpBiome = (isArena3D && currentArenaBg.startsWith('voxel:'))
-    ? currentArenaBg.replace('voxel:', '')
-    : (match?.arena?.biome || 'plains');
+  const isArena3D = !!match?.arena?.is3D || !!match?.arena?.arena3D || currentArenaBg.startsWith('voxel:');
+  const pvpBiome = (match?.arena?.biome || match?.arena?.battleBiome || (currentArenaBg.startsWith('voxel:') ? currentArenaBg.replace('voxel:', '') : 'plains'));
 
   const [renderMode3D, setRenderMode3D] = useState<boolean>(() => {
     const saved = localStorage.getItem('mm_pvp_render_mode');

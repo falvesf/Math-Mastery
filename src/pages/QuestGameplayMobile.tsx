@@ -1074,6 +1074,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           liveChest3rdPlace: snap.live_chest_3rd_place || snap.liveChest3rdPlace || null,
           monsterDrops: snap.monster_drops || snap.monsterDrops || null,
           battleBgUrl: snap.battle_bg_url || snap.battleBgUrl || null,
+          arena3D: (snap.arena_3d ?? snap.arena3D ?? (typeof (snap.battle_bg_url || snap.battleBgUrl) === 'string' && (snap.battle_bg_url || snap.battleBgUrl || '').startsWith('voxel:'))) || false,
+          battleBiome: snap.battle_biome || snap.battleBiome || (((snap.battle_bg_url || snap.battleBgUrl || '').startsWith('voxel:')) ? (snap.battle_bg_url || snap.battleBgUrl).replace('voxel:', '') : 'plains'),
           podiumBgUrl: snap.podium_bg_url || snap.podiumBgUrl || null,
           battleMusicUrl: snap.battle_music_url || snap.battleMusicUrl || '',
           battleMusicVolume: snap.battle_music_volume ?? 0.5,
@@ -1227,7 +1229,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         qData.questions = processedQuestions;
 
         setQuest(qData);
-        if (qData.battleBgUrl?.startsWith('voxel:')) {
+        if ((qData as any).arena3D) {
           setArenaRenderMode('3d');
         }
         setCurrentXp(qData.baseXp);
@@ -3589,7 +3591,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 // (sem salvar, sem afetar jogadores). Fechando o painel, volta ao da missão.
                 biome={((showDebugPanel && (userData?.role === 'admin' || isSuperAdmin))
                   ? (arenaDebug.biome3D || 'plains')
-                  : (quest?.battleBgUrl?.startsWith('voxel:') ? quest.battleBgUrl.replace('voxel:', '') : 'plains')) as any}
+                  : ((quest as any)?.battleBiome || 'plains')) as any}
                 cameraPitch={arenaDebug.cameraPitch3D}
                 cameraDist={arenaDebug.cameraDist3D}
                 cameraTargetY={arenaDebug.cameraTargetY3D}

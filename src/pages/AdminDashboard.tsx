@@ -95,6 +95,10 @@ export interface QuestDef {
     forgeLevel?: number;
   }[];
   battleBgUrl?: string;
+  /** Liga/desliga a arena 3D Voxel (independente da imagem 2D). */
+  arena3D?: boolean;
+  /** Bioma da arena 3D (independente da imagem 2D). 'plains' = padrão. */
+  battleBiome?: 'plains' | 'nether' | 'desert' | 'snow' | 'end';
   battleBgPosX?: number;
   battleBgPosY?: number;
   battleBgScale?: number;
@@ -770,6 +774,8 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
   const [questMonsterDefeatQuotes, setQuestMonsterDefeatQuotes] = useState('');
   const [questMonsterDrops, setQuestMonsterDrops] = useState<{itemId: string, dropChance: number}[]>([]);
   const [questBattleBgUrl, setQuestBattleBgUrl] = useState('');
+  const [questArena3D, setQuestArena3D] = useState(false);
+  const [questBattleBiome, setQuestBattleBiome] = useState<'plains' | 'nether' | 'desert' | 'snow' | 'end'>('plains');
   const [questBattleBgPosX, setQuestBattleBgPosX] = useState(50);
   const [questBattleBgPosY, setQuestBattleBgPosY] = useState(50);
   const [questBattleBgScale, setQuestBattleBgScale] = useState(1.2);
@@ -858,6 +864,8 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       chestConfig: d.chestconfig || d.chestConfig || null,
       combatCoinDrop: d.combatcoindrop || d.combatCoinDrop || null,
       battleBgUrl: d.battle_bg_url || d.battleBgUrl || null,
+      arena3D: d.arena_3d ?? d.arena3D ?? (typeof (d.battle_bg_url || d.battleBgUrl) === 'string' && (d.battle_bg_url || d.battleBgUrl || '').startsWith('voxel:')),
+      battleBiome: (d.battle_biome || d.battleBiome || (((d.battle_bg_url || d.battleBgUrl || '').startsWith('voxel:')) ? (d.battle_bg_url || d.battleBgUrl).replace('voxel:', '') : 'plains')),
       battleBgPosX: d.battle_bg_pos_x ?? d.battleBgPosX ?? 50,
       battleBgPosY: d.battle_bg_pos_y ?? d.battleBgPosY ?? 50,
       battleBgScale: d.battle_bg_scale ?? d.battleBgScale ?? 1.2,
@@ -1645,7 +1653,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     setIsCreatingQuest(false);
     setEditingQuestId(null);
     setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-    setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestPodiumBgUrl(''); setQuestBattleMusicUrl(''); setQuestBattleMusicVolume(0.5); setQuestMonsterGender(''); setQuestMonsterAttackSound(''); setQuestMonsterGruntSound(''); setQuestMonsterDamageSound(''); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
+    setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestArena3D(false); setQuestBattleBiome('plains'); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestPodiumBgUrl(''); setQuestBattleMusicUrl(''); setQuestBattleMusicVolume(0.5); setQuestMonsterGender(''); setQuestMonsterAttackSound(''); setQuestMonsterGruntSound(''); setQuestMonsterDamageSound(''); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
     setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
     setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
     setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -1721,6 +1729,8 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       monsterDefeatQuotes: questMonsterDefeatQuotes,
       monsterDrops: questMonsterDrops,
       battleBgUrl: questBattleBgUrl,
+      arena3D: questArena3D,
+      battleBiome: questBattleBiome,
       battleBgPosX: questBattleBgPosX,
       battleBgPosY: questBattleBgPosY,
       battleBgScale: questBattleBgScale,
@@ -1761,6 +1771,8 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     const sanitizedQuest = JSON.parse(JSON.stringify({ ...newQuest, ...{
       cover_image_url: newQuest.coverImageUrl || null,
       battle_bg_url: newQuest.battleBgUrl || null,
+      arena_3d: newQuest.arena3D ?? false,
+      battle_biome: newQuest.battleBiome || 'plains',
       battle_bg_pos_x: newQuest.battleBgPosX,
       battle_bg_pos_y: newQuest.battleBgPosY,
       battle_bg_scale: newQuest.battleBgScale,
@@ -1814,7 +1826,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       setIsCreatingQuest(false);
       setEditingQuestId(null);
       setQuestTitle(''); setQuestDesc(''); setQuestCover(''); setQuestMode('classic'); setQuestXp('1000'); setQuestRetries(false); setQuestPenalty('0'); setQuestMonsterName(''); setQuestMonsterConfig(null);
-      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestPodiumBgUrl(''); setQuestBattleMusicUrl(''); setQuestBattleMusicVolume(0.5); setQuestMonsterGender(''); setQuestMonsterAttackSound(''); setQuestMonsterGruntSound(''); setQuestMonsterDamageSound(''); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
+      setQuestMonsterModelUrl(''); setQuestMonsterQuotes({}); setQuestMonsterDefeatQuotes(''); setQuestMonsterDrops([]); setQuestBattleBgUrl(''); setQuestArena3D(false); setQuestBattleBiome('plains'); setQuestBattleBgPosX(50); setQuestBattleBgPosY(50); setQuestBattleBgScale(1.2); setQuestBattleBgMoveEnabled(true); setQuestBattleBgMoveDirection('diagonal'); setQuestBattleBgMoveSpeed(10); setQuestBattleBgMoveDuration(30); setQuestPodiumBgUrl(''); setQuestBattleMusicUrl(''); setQuestBattleMusicVolume(0.5); setQuestMonsterGender(''); setQuestMonsterAttackSound(''); setQuestMonsterGruntSound(''); setQuestMonsterDamageSound(''); setQuestCombatCoinMin(2); setQuestCombatCoinMax(6); setQuestCombatCoinMinValue(1); setQuestCombatCoinMaxValue(3); setQuestChestConfig({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1], slotChances: [50, 25, 10, 5], dropChance: 100 });
       setQuestLiveChest1st({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest2nd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
       setQuestLiveChest3rd({ itemIds: ['', '', '', ''], itemQuantities: [1, 1, 1, 1] });
@@ -1845,6 +1857,8 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     setQuestMonsterDefeatQuotes(quest.monsterDefeatQuotes || '');
     setQuestMonsterDrops(quest.monsterDrops || []);
     setQuestBattleBgUrl(quest.battleBgUrl || '');
+    setQuestArena3D(!!quest.arena3D);
+    setQuestBattleBiome((quest.battleBiome || 'plains') as any);
     setQuestBattleBgPosX(quest.battleBgPosX ?? 50);
     setQuestBattleBgPosY(quest.battleBgPosY ?? 50);
     setQuestBattleBgScale(quest.battleBgScale ?? 1.2);
@@ -4250,6 +4264,10 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
           setQuestMonsterDamageSound={setQuestMonsterDamageSound}
           questBattleBgUrl={questBattleBgUrl}
           setQuestBattleBgUrl={setQuestBattleBgUrl}
+          questArena3D={questArena3D}
+          setQuestArena3D={setQuestArena3D}
+          questBattleBiome={questBattleBiome}
+          setQuestBattleBiome={setQuestBattleBiome}
           questBattleBgPosX={questBattleBgPosX}
           setQuestBattleBgPosX={setQuestBattleBgPosX}
           questBattleBgPosY={questBattleBgPosY}

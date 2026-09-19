@@ -245,6 +245,12 @@ export interface QuestConfigModalProps {
   // Arena
   questBattleBgUrl: string;
   setQuestBattleBgUrl: (v: string) => void;
+  /** Arena 3D Voxel ligada/desligada (independente da imagem 2D). */
+  questArena3D: boolean;
+  setQuestArena3D: (v: boolean) => void;
+  /** Bioma da arena 3D (independente da imagem 2D). */
+  questBattleBiome: 'plains' | 'nether' | 'desert' | 'snow' | 'end';
+  setQuestBattleBiome: (v: 'plains' | 'nether' | 'desert' | 'snow' | 'end') => void;
   questBattleBgPosX: number;
   setQuestBattleBgPosX: (v: number) => void;
   questBattleBgPosY: number;
@@ -696,8 +702,9 @@ function MonsterTab(p: QuestConfigModalProps) {
 }
 
 function ArenaTab(p: QuestConfigModalProps) {
-  const is3D = !!p.questBattleBgUrl && p.questBattleBgUrl.startsWith('voxel:');
-  const currentBiomeId = is3D ? p.questBattleBgUrl.replace('voxel:', '') : 'plains';
+  // 2D e 3D são INDEPENDENTES: agora coexistem (uma imagem 2D e um bioma 3D salvos juntos).
+  const is3D = p.questArena3D;
+  const currentBiomeId = p.questBattleBiome || 'plains';
   const currentBiome = VOXEL_BIOMES.find(b => b.id === currentBiomeId) || VOXEL_BIOMES[0];
 
   return (
@@ -712,7 +719,7 @@ function ArenaTab(p: QuestConfigModalProps) {
           <button
             type="button"
             onClick={() => {
-              if (is3D) p.setQuestBattleBgUrl('');
+              p.setQuestArena3D(false);
             }}
             style={{
               padding: '0.4rem 0.85rem',
@@ -734,7 +741,8 @@ function ArenaTab(p: QuestConfigModalProps) {
           <button
             type="button"
             onClick={() => {
-              if (!is3D) p.setQuestBattleBgUrl('voxel:plains');
+              p.setQuestArena3D(true);
+              if (!p.questBattleBiome) p.setQuestBattleBiome('plains');
             }}
             style={{
               padding: '0.4rem 0.85rem',
@@ -817,7 +825,7 @@ function ArenaTab(p: QuestConfigModalProps) {
               return (
                 <div
                   key={b.id}
-                  onClick={() => p.setQuestBattleBgUrl(`voxel:${b.id}`)}
+                  onClick={() => p.setQuestBattleBiome(b.id as any)}
                   style={{
                     background: isSelected ? 'rgba(45, 212, 191, 0.16)' : 'rgba(255, 255, 255, 0.03)',
                     border: isSelected ? `2px solid #2dd4bf` : '1px solid var(--border-glass)',
