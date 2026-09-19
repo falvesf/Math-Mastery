@@ -3408,7 +3408,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       position: 'relative', 
       height: '100vh',
       overflow: 'hidden',
-      background: quest?.battleBgUrl ? `url("${getSafeUrl(quest.battleBgUrl)}") center/cover no-repeat` : (quest?.coverImageUrl ? `url("${getSafeUrl(quest.coverImageUrl)}") center/cover no-repeat` : 'var(--bg-dark)')
+      background: (quest?.battleBgUrl && !quest.battleBgUrl.startsWith('voxel:')) ? `url("${getSafeUrl(quest.battleBgUrl)}") center/cover no-repeat` : (quest?.coverImageUrl ? `url("${getSafeUrl(quest.coverImageUrl)}") center/cover no-repeat` : 'var(--bg-dark)')
     }}>
       {/* Dark overlay for readability */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(8px)' }} />
@@ -3614,7 +3614,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
                 <div 
                   className="battle-arena-bg-image" 
-                  style={quest?.battleBgUrl ? ({
+                  style={(quest?.battleBgUrl && !quest.battleBgUrl.startsWith('voxel:')) ? ({
                     background: `url("${getSafeUrl(quest.battleBgUrl)}") ${quest.battleBgPosX ?? 50}% ${quest.battleBgPosY ?? 50}% / ${(quest.battleBgScale ?? 1.2) * 100}% no-repeat`,
                     ...(quest.battleBgMoveEnabled !== false
                       ? {
