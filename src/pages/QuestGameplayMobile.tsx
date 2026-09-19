@@ -387,6 +387,9 @@ export default function QuestGameplay() {
   // Fração do coração ATUAL do monstro (1 = cheio, 0.5 = metade, 0.333 = 1/3, 0.25 = 1/4).
   // Golpe crítico danifica o coração atual e o renderiza conforme o RNG sorteado.
   const [monsterHeartFrac, setMonsterHeartFrac] = useState<number>(1);
+  // Corações (vida) restantes do monstro — independentes da quantidade de perguntas.
+  // Cada acerto (sem esquiva) remove 1 coração; esquiva preserva o coração; o golpe final zera tudo.
+  const [monsterHearts, setMonsterHearts] = useState<number>(0);
   
   // Feedback Visual (certo/errado)
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
@@ -1526,6 +1529,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setGameState('playing');
       setTransition('enter');
       setCurrentQIndex(0);
+      setMonsterHearts(quest?.questions.length || 0);
+      setMonsterHeartFrac(1);
       setEliminatedOptions([]);
       setHasShield(false);
       setEffectLevel(0);
@@ -1553,6 +1558,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setGameState('playing');
       setTransition('enter');
       setCurrentQIndex(0);
+      setMonsterHearts(quest?.questions.length || 0);
+      setMonsterHeartFrac(1);
       setEliminatedOptions([]);
       setHasShield(false);
       
@@ -1752,6 +1759,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           setMonsterAnim(fatality);
           setMonsterRageActive(false);
           setMonsterHealPulse(false);
+          // Golpe final: acaba com TODOS os corações restantes do monstro.
+          setMonsterHearts(0);
           // Fatality de corte: captura o modelo GLB atual como "foto" (evita renderizar
           // 2 viewers 3D — que travavam/faziam o monstro sumir) e corta a imagem.
           if (fatality === 'death-slice' && monsterCanvasRef.current) {
@@ -1926,6 +1935,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
         // Debug: monstro imortal - não finaliza, volta ao início
         if ((userData?.role === 'admin' || isSuperAdmin) && arenaDebug.monsterImmortal) {
           setCurrentQIndex(0);
+          setMonsterHearts(quest?.questions.length || 0);
+          setMonsterHeartFrac(1);
           setFeedback(null);
           setLastSelectedOption(null);
           setBattleMessage('O monstro regenerou! Continue lutando!');
@@ -1949,8 +1960,12 @@ const dealTransformDamageToPlayer = (damage: number) => {
             monsterCombatStats.evasion,
             effectiveCrit
           );
-          if (hitRoll.isEvasion) {
+          const evaded = hitRoll.isEvasion;
+          if (evaded) {
             spawnFloatingDamage(0, false, 'monster', true);
+            // Esquiva: o monstro não perde coração, moedas nem itens.
+            setMonsterHeartFrac(1);
+            setBattleMessage('O monstro ESQUIVOU do seu ataque!');
           } else {
             spawnFloatingDamage(hitRoll.damage, hitRoll.isCritical, 'monster');
             maxHitDamageDealtRef.current = Math.max(maxHitDamageDealtRef.current, hitRoll.damage);
@@ -1959,79 +1974,84 @@ const dealTransformDamageToPlayer = (damage: number) => {
             setMonsterHitFlash(true);
             setTimeout(() => setMonsterHitFlash(false), 350);
           }
-          // Efeito especial aplicado ANTES do som de dano para que o golpe que
-          // TRANSFORMA use o som do animal.
-          if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
-            setEffectLevel(l => l + 1);
-            // Status no monstro dura no MÁXIMO 2 turnos (o turno de aplicação não conta).
-            if (damageEffect !== 'impact' && damageEffect !== 'freeze' && damageEffect !== 'transform') {
-              setMonsterStatusTurns(2);
-            }
-            setEffectFlash(true);
-            setTimeout(() => setEffectFlash(false), 600);
-            if (damageEffect === 'freeze' && effectLevel + 1 >= FREEZE_HITS_TO_FREEZE) {
-              setFrozen(true);
-              setFreezeTurns(3);
-            }
-            // TRANSFORMAR: só se o monstro estiver na forma NORMAL
-            if (damageEffect === 'transform' && !transformRef.current) {
-              const animal = rollTransformAnimal();
-              const newTransform = { animal, turnsLeft: TRANSFORM_TURNS + 1, consecutiveCorrect: 0, enraged: false, ratBleeding: false };
-              transformRef.current = newTransform; // sincrono p/ o som do golpe já usar o do animal
-              setTransformState(newTransform);
-              triggerTransformPuff('appear');
-              setBattleMessage(`TRANSFORMADO! O monstro virou ${TRANSFORM_LABELS[animal]}!`);
-              // Porco ataca o jogador NO MOMENTO da transformação — com delay maior para o
-              // puff terminar e o porco virar para o boneco antes do golpe
-              if (animal === 'porco') {
-                setTimeout(() => dealTransformDamageToPlayer(1), 1300);
+          if (!evaded) {
+            // Efeito especial aplicado ANTES do som de dano para que o golpe que
+            // TRANSFORMA use o som do animal.
+            if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
+              setEffectLevel(l => l + 1);
+              // Status no monstro dura no MÁXIMO 2 turnos (o turno de aplicação não conta).
+              if (damageEffect !== 'impact' && damageEffect !== 'freeze' && damageEffect !== 'transform') {
+                setMonsterStatusTurns(2);
               }
-              if (animal === 'rato') {
-                // nova transformação em rato: limpa sangramentos anteriores
-                setPlayerBleeds([]);
+              setEffectFlash(true);
+              setTimeout(() => setEffectFlash(false), 600);
+              if (damageEffect === 'freeze' && effectLevel + 1 >= FREEZE_HITS_TO_FREEZE) {
+                setFrozen(true);
+                setFreezeTurns(3);
               }
-              if (animal === 'sapo') {
-                setPlayerPoisonTurns(0);
+              // TRANSFORMAR: só se o monstro estiver na forma NORMAL
+              if (damageEffect === 'transform' && !transformRef.current) {
+                const animal = rollTransformAnimal();
+                const newTransform = { animal, turnsLeft: TRANSFORM_TURNS + 1, consecutiveCorrect: 0, enraged: false, ratBleeding: false };
+                transformRef.current = newTransform; // sincrono p/ o som do golpe já usar o do animal
+                setTransformState(newTransform);
+                triggerTransformPuff('appear');
+                setBattleMessage(`TRANSFORMADO! O monstro virou ${TRANSFORM_LABELS[animal]}!`);
+                // Porco ataca o jogador NO MOMENTO da transformação — com delay maior para o
+                // puff terminar e o porco virar para o boneco antes do golpe
+                if (animal === 'porco') {
+                  setTimeout(() => dealTransformDamageToPlayer(1), 1300);
+                }
+                if (animal === 'rato') {
+                  // nova transformação em rato: limpa sangramentos anteriores
+                  setPlayerBleeds([]);
+                }
+                if (animal === 'sapo') {
+                  setPlayerPoisonTurns(0);
+                }
+              }
+            }
+            playMonsterDamageSound();
+            dropCoins(effectiveCrit);
+            checkAndDropMonsterItem();
+            // Acerto efetivo: o monstro perde 1 coração.
+            setMonsterHearts(h => Math.max(0, h - 1));
+            setMonsterHeartFrac(1);
+            // Coelho: cada golpe que ele recebe acelera o tempo (+5%) e dobra o drop
+            if (transformRef.current?.animal === 'coelho') {
+              coelhoHitsRef.current += 1;
+              coelhoDropRef.current += 1;
+              setCoelhoHits(coelhoHitsRef.current);
+              setCoelhoTransformHits(coelhoDropRef.current);
+            }
+            // Porco: golpes certos seguidos sem errar → enfurece com 2 acertos
+            const tr = transformRef.current;
+            if (tr?.animal === 'porco' && !tr.enraged) {
+              const newStreak = tr.consecutiveCorrect + 1;
+              if (newStreak >= TRANSFORM_ENRAGE_HITS) {
+                setTransformState({ ...tr, enraged: true, consecutiveCorrect: newStreak });
+                setBattleMessage('O PORCO FICOU ENFURECIDO! Ele está vermelho e furioso!');
+              } else {
+                setTransformState({ ...tr, consecutiveCorrect: newStreak });
+              }
+            }
+            // Rato: ao levar dano, volta a ser monstro IMEDIATAMENTE — mas o SANGRAMENTO
+            // continua (é consequência da mordida e dura 2 turnos).
+            if (tr?.animal === 'rato') {
+              triggerTransformPuff('revert');
+              setTransformState(null);
+              setBattleMessage('O RATO voltou a ser monstro, mas você continua sangrando!');
+            }
+            // CURA: chance de ativar a aura ao acertar o monstro (máx 3x, sem cumulativo)
+            if (damageEffect === 'heal' && Math.random() * 100 < effectChance) {
+              if (healAuraTurns <= 0 && healActivationsRef.current < HEAL_MAX_ACTIVATIONS) {
+                healActivationsRef.current += 1;
+                setHealAuraTurns(HEAL_AURA_TURNS);
+                setBattleMessage('AURA DE CURA ATIVADA! +0,5 coração por turno por 3 turnos!');
               }
             }
           }
-          playMonsterDamageSound();
-          dropCoins(effectiveCrit);
-          checkAndDropMonsterItem();
           advanceStatusTurns(); // o golpe do jogador é uma ação de ataque
-          // Coelho: cada golpe que ele recebe acelera o tempo (+5%) e dobra o drop
-          if (transformRef.current?.animal === 'coelho') {
-            coelhoHitsRef.current += 1;
-            coelhoDropRef.current += 1;
-            setCoelhoHits(coelhoHitsRef.current);
-            setCoelhoTransformHits(coelhoDropRef.current);
-          }
-          // Porco: golpes certos seguidos sem errar → enfurece com 2 acertos
-          const tr = transformRef.current;
-          if (tr?.animal === 'porco' && !tr.enraged) {
-            const newStreak = tr.consecutiveCorrect + 1;
-            if (newStreak >= TRANSFORM_ENRAGE_HITS) {
-              setTransformState({ ...tr, enraged: true, consecutiveCorrect: newStreak });
-              setBattleMessage('O PORCO FICOU ENFURECIDO! Ele está vermelho e furioso!');
-            } else {
-              setTransformState({ ...tr, consecutiveCorrect: newStreak });
-            }
-          }
-          // Rato: ao levar dano, volta a ser monstro IMEDIATAMENTE — mas o SANGRAMENTO
-          // continua (é consequência da mordida e dura 2 turnos).
-          if (tr?.animal === 'rato') {
-            triggerTransformPuff('revert');
-            setTransformState(null);
-            setBattleMessage('O RATO voltou a ser monstro, mas você continua sangrando!');
-          }
-          // CURA: chance de ativar a aura ao acertar o monstro (máx 3x, sem cumulativo)
-          if (damageEffect === 'heal' && Math.random() * 100 < effectChance) {
-            if (healAuraTurns <= 0 && healActivationsRef.current < HEAL_MAX_ACTIVATIONS) {
-              healActivationsRef.current += 1;
-              setHealAuraTurns(HEAL_AURA_TURNS);
-              setBattleMessage('AURA DE CURA ATIVADA! +0,5 coração por turno por 3 turnos!');
-            }
-          }
         }, 500);
         setTimeout(() => { setPlayerAnim('idle'); setMonsterAnim('idle'); }, 1500);
         setTimeout(() => {
@@ -4135,8 +4155,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
                       {(() => {
-                        const totalHearts = quest?.questions.length || 0;
-                        const remainingHearts = Math.max(0, totalHearts - currentQIndex - (monsterAnim.startsWith('death-') ? 1 : 0));
+                        const remainingHearts = Math.max(0, monsterHearts - (monsterAnim.startsWith('death-') ? 1 : 0));
                         if (remainingHearts <= 0) return null;
                         // Corações cheios (todos, exceto o atual que pode estar danificado por crítico)
                         const fullHearts = Math.max(0, remainingHearts - 1);
