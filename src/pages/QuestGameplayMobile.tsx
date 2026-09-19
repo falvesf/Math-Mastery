@@ -3946,7 +3946,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             {/* Player Side */}
             <div 
               ref={playerSideRef}
-              className={`quest-arena-side-player ${playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : ''} ${(userData?.avatarConfig?.customModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
+              className={`quest-arena-side-player ${(arena.unified3D && userData?.avatarConfig?.customModelUrl) ? '' : (playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : '')} ${(userData?.avatarConfig?.customModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
               style={{
                 position: 'absolute',
                 left: arenaRenderMode === '3d'
@@ -4056,15 +4056,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
             <div 
               ref={monsterSideRef}
               className={`quest-arena-side-monster ${
-                monsterAnim === 'attack' ? 'teleport-monster' :
-                (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` :
-                (monsterAnim === 'idle-victory' || monsterAnim.startsWith('victory-')) ? 'teleport-monster-victory' :
-                monsterProceduralAnim === 'jump_slam' ? 'anim-jump-slam' :
-                monsterProceduralAnim === 'spin_tornado' ? 'anim-spin-tornado' :
-                monsterProceduralAnim === 'rush_charge' ? 'anim-rush-charge' :
-                monsterProceduralAnim === 'dance_transform' ? 'anim-dance-magic' :
-                monsterProceduralAnim === 'roar_shockwave' ? 'anim-roar-wave' :
-                monsterBodyThrow ? 'monster-body-throw' : ''
+                (arena.unified3D && effectiveMonsterModelUrl) ? '' : (
+                  monsterAnim === 'attack' ? 'teleport-monster' :
+                  (monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow') ? `teleport-monster-fatal${monsterAnim === 'attack-fatal-slow' ? '-slow' : ''}` :
+                  (monsterAnim === 'idle-victory' || monsterAnim.startsWith('victory-')) ? 'teleport-monster-victory' :
+                  monsterProceduralAnim === 'jump_slam' ? 'anim-jump-slam' :
+                  monsterProceduralAnim === 'spin_tornado' ? 'anim-spin-tornado' :
+                  monsterProceduralAnim === 'rush_charge' ? 'anim-rush-charge' :
+                  monsterProceduralAnim === 'dance_transform' ? 'anim-dance-magic' :
+                  monsterProceduralAnim === 'roar_shockwave' ? 'anim-roar-wave' :
+                  monsterBodyThrow ? 'monster-body-throw' : ''
+                )
               } ${(effectiveMonsterModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
               style={{
                 position: 'absolute',
