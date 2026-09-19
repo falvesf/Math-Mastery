@@ -10,8 +10,6 @@ interface DamageEffectOverlayProps {
   justHit?: boolean;
   /** Congelado (efeito de gelo após N acertos) */
   frozen?: boolean;
-  /** Piscada vermelha de drenagem (veneno/sangramento) */
-  drainBlink?: boolean;
 }
 
 /**
@@ -19,7 +17,7 @@ interface DamageEffectOverlayProps {
  * Renderiza apenas as camadas do efeito ativo; o efeito 'none' não mostra nada.
  */
 // @ts-ignore
-export default function DamageEffectOverlay({ effect, level, justHit = false, frozen = false, drainBlink = false }: DamageEffectOverlayProps) {
+export default function DamageEffectOverlay({ effect, level, justHit = false, frozen = false }: DamageEffectOverlayProps) {
   const lvl = Math.max(0, Math.min(5, level));
 
   // Efeitos só aparecem APÓS o primeiro dano sofrido pelo oponente
@@ -84,9 +82,6 @@ export default function DamageEffectOverlay({ effect, level, justHit = false, fr
           ))}
         </div>
       )}
-
-      {/* Piscada de drenagem (veneno/sangramento) */}
-      {drainBlink && <div className="de-drain-blink" />}
     </div>
   );
 }

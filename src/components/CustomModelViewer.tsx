@@ -206,7 +206,8 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
     return c;
   }, [originalScene]);
 
-  // Efeito de dano direto nos materiais do modelo (veneno/fogo/sangramento)
+  // Efeito de dano direto nos materiais do modelo (veneno/fogo/sangramento/impacto).
+  // Usa cor + emissive para ficar visível mesmo em modelos escuros e texturizados.
   useEffect(() => {
     if (enraged) return;
     scene.traverse((child: any) => {
@@ -215,10 +216,21 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
         mats.forEach((mat: any) => {
           if (!mat.color) return;
           if (!mat._originalColor) mat._originalColor = mat.color.clone();
+          if (!mat._originalEmissive && mat.emissive) mat._originalEmissive = mat.emissive.clone();
           if (effectTint) {
-            mat.color.copy(mat._originalColor).lerp(new THREE.Color(effectTint), 0.6);
+            const tint = new THREE.Color(effectTint);
+            // Mistura na cor (funciona em modelos claros)...
+            mat.color.copy(mat._originalColor).lerp(tint, 0.75);
+            // ...e adiciona emissive (garante o "flash" em modelos escuros/texturizados)
+            if ('emissive' in mat && mat.emissive) {
+              mat.emissive.copy(tint).multiplyScalar(0.85);
+            }
           } else {
             mat.color.copy(mat._originalColor);
+            if ('emissive' in mat && mat.emissive) {
+              if (mat._originalEmissive) mat.emissive.copy(mat._originalEmissive);
+              else mat.emissive.setRGB(0, 0, 0);
+            }
           }
           mat.needsUpdate = true;
         });

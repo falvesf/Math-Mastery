@@ -156,6 +156,8 @@ export default function QuestGameplay() {
   const [frozen, setFrozen] = useState(false);
   const [freezeTurns, setFreezeTurns] = useState(0);
   const [drainBlink, setDrainBlink] = useState(false);
+  void drainBlink; void setDrainBlink;
+
   const fallenPartsRef = useRef<string[]>([]);
   // Efeitos de itens mágicos: transformação do monstro + aura de cura
   const [transformState, setTransformState] = useState<TransformState | null>(null);
@@ -3135,8 +3137,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
   useEffect(() => {
     if (gameState !== 'playing' || (damageEffect !== 'poison' && damageEffect !== 'bleed') || effectLevel === 0) return;
     const iv = setInterval(() => {
-      setDrainBlink(true);
-      setTimeout(() => setDrainBlink(false), 550);
+      // Dano de veneno/sangramento pintado no próprio modelo (tint 3D), não com CSS.
+      setMonsterHitFlash(true);
+      setTimeout(() => setMonsterHitFlash(false), 300);
       setMonsterHeartFrac(f => Math.max(0.06, f - 0.18));
       playMonsterDamageSound();
       if (economySettings?.coinsDropInCombat) {
@@ -4204,7 +4207,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     </div>
                   )}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (currentQIndex / Math.max(1, quest?.questions.length || 1)) * (damageEffect === 'impact' ? 2 : 1))) } as any} />
-                  <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} drainBlink={drainBlink} />
+                  <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} />
                   {transformPuff && (
                     <div key={transformPuff.id} className={`transform-puff${transformPuff.kind === 'revert' ? ' puff-revert' : ''}`}>
                       <div className="puff-shockwave-ring" />
