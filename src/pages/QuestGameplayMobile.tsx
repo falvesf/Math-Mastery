@@ -3983,7 +3983,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
               </div>
               <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '170px' : '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', height: (arena.unified3D && userData?.avatarConfig?.customModelUrl) ? 'var(--shadow-player-head-lift, 170px)' : undefined, transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arena.playerScale3D ?? 1) : arena.playerScale})` }}>
                 {/* Sombra dinâmica do personagem */}
-                <div className="avatar-ground-shadow" />
+                <div className="avatar-ground-shadow" style={(!(arena.unified3D && userData?.avatarConfig?.customModelUrl) ? undefined : { opacity: 0 })} />
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: userData?.avatarConfig?.customModelUrl ? `-${Math.round(170 * 0.2236)}px` : '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
                   <ConsumableAnimationOverlay anim={activeConsumableAnim} onComplete={() => setActiveConsumableAnim(null)} />
@@ -4138,7 +4138,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                         style={isMonsterGlb ? {
                           transform: `translateX(calc(-50% + ${monsterModelOX}px)) translateY(${monsterModelOY + monsterShadowOY}px) scale(${monsterModelScale * monsterShadowScale})`,
                           bottom: arenaRenderMode === '3d' ? '-6px' : '-4px',
-                          opacity: monsterAnim.startsWith('death-') ? 0 : 1,
+                          opacity: (arena.unified3D && effectiveMonsterModelUrl) ? 0 : (monsterAnim.startsWith('death-') ? 0 : 1),
                         } : undefined}
                       />
                     );

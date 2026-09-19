@@ -856,8 +856,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         const pHead = new THREE.Vector3(-3.6, pHeadY, 0.2).project(camera);
         const mHeadTop = (mHead.y * 0.5 + 0.5) * h + stageOffsetBottom;
         const pHeadTop = (pHead.y * 0.5 + 0.5) * h + stageOffsetBottom;
-        mHeadLift = Math.max(0, Math.round(mHeadTop - mBottomArena));
-        pHeadLift = Math.max(0, Math.round(pHeadTop - pBottomArena));
+        mHeadLift = Math.max(0, Math.round(mBottomArena - mHeadTop));
+        pHeadLift = Math.max(0, Math.round(pBottomArena - pHeadTop));
       }
 
       if (arenaEl) {
