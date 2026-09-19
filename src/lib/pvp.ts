@@ -133,7 +133,7 @@ export function normalizeEquippedItems(userItemRows: any[]): any[] {
 export function normalizeArena(arena: any): any {
   const a = arena || {};
   let bgUrl = a.battleBgUrl || a.battle_bg_url || '';
-  // Compat: valores antigos guardavam 'voxel:<bioma>' em battle_bg_url.
+  // Compat: valores antigos guardavam 'voxel:<bioma>' em battleBgUrl.
   const legacyVoxel = typeof bgUrl === 'string' && bgUrl.startsWith('voxel:');
   if (legacyVoxel) bgUrl = '';
   const is3D = a.is3D ?? a.arena3D ?? a.arena_3d ?? legacyVoxel ?? false;
