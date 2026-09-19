@@ -55,6 +55,113 @@ try {
   console.warn('[VoxelArena3D] Falha ao pré-aplicar polyfill:', e);
 }
 
+// =====================================================================
+// FASE B (teste): helpers de renderização UNIFICADA de entidades GLB.
+// =====================================================================
+
+// Altura-alvo (em unidades de mundo) dos bonecos na cena unificada. ~1.9 equivale
+// ao tamanho de um personagem Minecraft sobre a plataforma (blocos de 1 unidade).
+const UNIFIED_ENTITY_HEIGHT = 1.9;
+
+// Escala o objeto para a altura-alvo e ancora os pés em y=0 (relativo ao pai).
+function fitEntityToGround(obj: THREE.Object3D, targetHeight: number) {
+  const box = new THREE.Box3().setFromObject(obj);
+  if (box.isEmpty()) return;
+  const h = box.max.y - box.min.y;
+  if (h <= 0) return;
+  obj.scale.setScalar(targetHeight / h);
+  obj.updateMatrixWorld(true);
+  const b2 = new THREE.Box3().setFromObject(obj);
+  obj.position.y -= b2.min.y;
+}
+
+// Toca uma animação por nome (com fallback para idle / primeira disponível).
+function playEntityAnimByName(
+  actions: Record<string, THREE.AnimationAction>,
+  mixer: THREE.AnimationMixer | null,
+  animName: string
+) {
+  if (!mixer) return;
+  const name = animName || 'idle';
+  if (name === 'none') { mixer.stopAllAction(); return; }
+  const keys = Object.keys(actions);
+  if (keys.length === 0) return;
+  const candidates = [
+    name, name.toLowerCase(), name.toUpperCase(),
+    `animation.${name}`, `animation.${name.toLowerCase()}`,
+    `Armature|${name}`, `Armature|${name.toLowerCase()}`,
+  ];
+  let action: THREE.AnimationAction | null = null;
+  for (const c of candidates) { if (actions[c]) { action = actions[c]; break; } }
+  if (!action) {
+    const idle = keys.find((k) => /idle/i.test(k));
+    action = idle ? actions[idle] : actions[keys[0]];
+  }
+  if (action) {
+    mixer.stopAllAction();
+    action.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.2).play();
+  }
+}
+
+// Aplica a SKIN (textura) nos materiais do modelo GLB, igual ao CustomModelViewer.
+function applySkinTexture(root: THREE.Object3D, skinUrl: string | null | undefined, done: () => void) {
+  if (!skinUrl) { done(); return; }
+  const texLoader = new THREE.TextureLoader();
+  texLoader.crossOrigin = 'anonymous';
+  texLoader.load(getSafeUrl(skinUrl), (texture) => {
+    texture.flipY = false;
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    root.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.isMesh && mesh.material) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mats.forEach((mat: any) => {
+          const newMat = mat.clone();
+          newMat.map = texture;
+          newMat.transparent = false;
+          newMat.alphaTest = 0.5;
+          newMat.needsUpdate = true;
+          mesh.material = newMat;
+        });
+      }
+    });
+    done();
+  }, undefined, () => { done(); });
+}
+
+// Aplica tint de efeito (dano/veneno/fogo) e fúria nos materiais de uma entidade.
+function applyEntityTint(root: THREE.Object3D | null, tint: string | null, enraged: boolean) {
+  if (!root) return;
+  root.traverse((c) => {
+    const mesh = c as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    mats.forEach((mat: any) => {
+      if (!mat.color) return;
+      if (!mat._origColor) {
+        mat._origColor = mat.color.clone();
+        mat._origEmissive = mat.emissive ? mat.emissive.clone() : null;
+      }
+      if (enraged) {
+        mat.color.copy(mat._origColor).lerp(new THREE.Color('#ff1111'), 0.7);
+        if (mat.emissive) mat.emissive.setRGB(0.6, 0.02, 0.02);
+      } else if (tint) {
+        const c = new THREE.Color(tint);
+        mat.color.copy(mat._origColor).lerp(c, 0.35);
+        if (mat.emissive) mat.emissive.copy(c).multiplyScalar(0.25);
+      } else {
+        mat.color.copy(mat._origColor);
+        if (mat.emissive) {
+          if (mat._origEmissive) mat.emissive.copy(mat._origEmissive);
+          else mat.emissive.setRGB(0, 0, 0);
+        }
+      }
+      mat.needsUpdate = true;
+    });
+  });
+}
+
 
 
 export interface VoxelArena3DProps {
@@ -824,7 +931,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // de mundo e a projeção da câmera resolve automaticamente (sem offsets).
   // =====================================================================
 
-  // Guarda os valores atuais de zoom/rotY/tint para os callbacks de load assíncrono
+  // Guarda os valores atuais para os callbacks de load assíncrono
   const monsterZoomRef = useRef(monsterZoom);
   monsterZoomRef.current = monsterZoom;
   const monsterRotYRef = useRef(monsterRotY);
@@ -833,38 +940,6 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   monsterEffectTintRef.current = monsterEffectTint;
   const monsterEnragedRef = useRef(monsterEnraged);
   monsterEnragedRef.current = monsterEnraged;
-
-  // Aplica tint (dano/efeito) e fúria nos materiais de uma entidade unificada.
-  const applyUnifiedTint = (root: THREE.Object3D | null, tint: string | null, enraged: boolean) => {
-    if (!root) return;
-    root.traverse((c) => {
-      const mesh = c as THREE.Mesh;
-      if (!mesh.isMesh || !mesh.material) return;
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      mats.forEach((mat: any) => {
-        if (!mat.color) return;
-        if (!mat._origColor) {
-          mat._origColor = mat.color.clone();
-          mat._origEmissive = mat.emissive ? mat.emissive.clone() : null;
-        }
-        if (enraged) {
-          mat.color.copy(mat._origColor).lerp(new THREE.Color('#ff1111'), 0.7);
-          if (mat.emissive) mat.emissive.setRGB(0.6, 0.02, 0.02);
-        } else if (tint) {
-          const c = new THREE.Color(tint);
-          mat.color.copy(mat._origColor).lerp(c, 0.35);
-          if (mat.emissive) mat.emissive.copy(c).multiplyScalar(0.25);
-        } else {
-          mat.color.copy(mat._origColor);
-          if (mat.emissive) {
-            if (mat._origEmissive) mat.emissive.copy(mat._origEmissive);
-            else mat.emissive.setRGB(0, 0, 0);
-          }
-        }
-        mat.needsUpdate = true;
-      });
-    });
-  };
 
   // Carrega jogador + monstro GLB e insere na cena.
   useEffect(() => {
@@ -878,19 +953,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
     loader.setDRACOLoader(draco);
 
-    const fitToGround = (obj: THREE.Object3D, targetHeight: number) => {
-      const box = new THREE.Box3().setFromObject(obj);
-      if (box.isEmpty()) return;
-      const h = box.max.y - box.min.y;
-      if (h <= 0) return;
-      obj.scale.setScalar(targetHeight / h);
-      obj.updateMatrixWorld(true);
-      const b2 = new THREE.Box3().setFromObject(obj);
-      obj.position.y -= b2.min.y;
-    };
-
     const loadEntity = (
       url: string | null | undefined,
+      skinUrl: string | null | undefined,
       x: number,
       zoom: number,
       rotYDeg: number,
@@ -902,7 +967,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         if (disposed) return;
         const group = new THREE.Group();
         const root = gltf.scene;
-        fitToGround(root, 2.6 * Math.max(0.2, zoom || 1));
+        fitEntityToGround(root, UNIFIED_ENTITY_HEIGHT * Math.max(0.2, zoom || 1));
         group.add(root);
         group.position.set(x, 0.51, 0.2);
         group.rotation.y = THREE.MathUtils.degToRad(rotYDeg || 0);
@@ -910,27 +975,33 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         const mixer = new THREE.AnimationMixer(root);
         const actions: Record<string, THREE.AnimationAction> = {};
         gltf.animations.forEach((clip) => { actions[clip.name] = mixer.clipAction(clip); });
-        onReady(group, root, mixer, actions);
+        // Aplica a SKIN (se houver) ANTES de concluir (tint + animação).
+        applySkinTexture(root, skinUrl, () => {
+          if (disposed) return;
+          onReady(group, root, mixer, actions);
+        });
       }, undefined, (err) => {
         console.warn('[VoxelArena3D] Falha ao carregar GLB unificado:', safe, err);
       });
     };
 
     // Monstro (GLB)
-    loadEntity(monsterModelUrl, 3.6, monsterZoomRef.current, monsterRotYRef.current, (group, root, mixer, actions) => {
+    loadEntity(monsterModelUrl, monsterSkinUrl, 3.6, monsterZoomRef.current, monsterRotYRef.current, (group, root, mixer, actions) => {
       unifiedMonsterGroupRef.current = group;
       unifiedMonsterRootRef.current = root;
       unifiedMonsterMixerRef.current = mixer;
       unifiedMonsterActionsRef.current = actions;
-      applyUnifiedTint(root, monsterEffectTintRef.current, monsterEnragedRef.current);
+      applyEntityTint(root, monsterEffectTintRef.current, monsterEnragedRef.current);
+      playEntityAnimByName(actions, mixer, monsterAnimRef.current);
     });
 
     // Jogador (GLB customizado)
-    loadEntity(playerModelUrl, -3.6, 1, 180, (group, root, mixer, actions) => {
+    loadEntity(playerModelUrl, playerSkinUrl, -3.6, 1, 180, (group, root, mixer, actions) => {
       unifiedPlayerGroupRef.current = group;
       unifiedPlayerRootRef.current = root;
       unifiedPlayerMixerRef.current = mixer;
       unifiedPlayerActionsRef.current = actions;
+      playEntityAnimByName(actions, mixer, playerAnimRef.current);
     });
 
     return () => {
@@ -962,41 +1033,17 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     };
   }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, monsterZoom, monsterRotY]);
 
-  // Aplica a animação (por nome) nas entidades unificadas.
+  // Aplica a animação (por nome) quando monsterAnim/playerAnim mudam.
   useEffect(() => {
-    const playAnim = (
-      actionsRef: React.MutableRefObject<Record<string, THREE.AnimationAction>>,
-      mixerRef: React.MutableRefObject<THREE.AnimationMixer | null>,
-      animName: string
-    ) => {
-      const actions = actionsRef.current;
-      const mixer = mixerRef.current;
-      if (!mixer) return;
-      const name = animName || 'idle';
-      if (name === 'none') { mixer.stopAllAction(); return; }
-      const keys = Object.keys(actions);
-      if (keys.length === 0) return;
-      const candidates = [name, name.toLowerCase(), name.toUpperCase(), `animation.${name}`, `animation.${name.toLowerCase()}`, `Armature|${name}`, `Armature|${name.toLowerCase()}`];
-      let action: THREE.AnimationAction | null = null;
-      for (const c of candidates) { if (actions[c]) { action = actions[c]; break; } }
-      if (!action) {
-        const idle = keys.find((k) => /idle/i.test(k));
-        action = idle ? actions[idle] : actions[keys[0]];
-      }
-      if (action) {
-        mixer.stopAllAction();
-        action.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.2).play();
-      }
-    };
     if (!unified3D) return;
-    playAnim(unifiedMonsterActionsRef, unifiedMonsterMixerRef, monsterAnim);
-    playAnim(unifiedPlayerActionsRef, unifiedPlayerMixerRef, playerAnim);
+    playEntityAnimByName(unifiedMonsterActionsRef.current, unifiedMonsterMixerRef.current, monsterAnim);
+    playEntityAnimByName(unifiedPlayerActionsRef.current, unifiedPlayerMixerRef.current, playerAnim);
   }, [unified3D, monsterAnim, playerAnim, monsterModelUrl, playerModelUrl]);
 
   // Reaplica tint/fúria quando os efeitos mudam.
   useEffect(() => {
     if (!unified3D) return;
-    applyUnifiedTint(unifiedMonsterRootRef.current, monsterEffectTint, monsterEnraged);
+    applyEntityTint(unifiedMonsterRootRef.current, monsterEffectTint, monsterEnraged);
   }, [unified3D, monsterEffectTint, monsterEnraged, monsterModelUrl]);
 
   // Atualiza --attack-dist imediatamente quando o slider mudar (sem esperar resize)
