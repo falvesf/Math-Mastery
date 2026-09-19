@@ -323,7 +323,7 @@ export default function QuestGameplay() {
 
   // Golpes configurados do monstro (Entidades 3D > Monstros tem prioridade sobre o snapshot antigo da quest)
   const monsterAttacks = normalizeMonsterAttacks(galleryMonsterAttacks || (quest as any)?.monsterAvatarConfig?.attacks || (quest as any)?.monsterAttacks);
-  const effectiveMonsterZoom = galleryMonsterZoom || (quest as any)?.monsterAvatarConfig?.customZoom || 1;
+  const effectiveMonsterZoom = Number(galleryMonsterZoom ?? (quest as any)?.monsterAvatarConfig?.customZoom ?? 1) || 1;
   const effectiveMonsterRotY = galleryMonsterRotY ?? (quest as any)?.monsterAvatarConfig?.customRotY;
   const effectiveMonsterSkinUrl = galleryMonsterSkinUrl || (quest as any)?.monsterAvatarConfig?.customSkinUrl;
   const effectiveMonsterModelUrl = galleryMonsterModelUrl || (quest as any)?.monsterModelUrl || (quest as any)?.monsterAvatarConfig?.customModelUrl;
