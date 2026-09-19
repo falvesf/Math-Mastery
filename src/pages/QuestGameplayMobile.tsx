@@ -2071,11 +2071,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
             });
             playerLostCoinsRef.current = { ...playerLostCoinsRef.current, ...Object.fromEntries(newFalling.map(c => [c.id, c.value])) };
             setFallingCoins(prev => [...prev, ...newFalling]);
-            // Some após 3s (tempo para recuperar)
-            setTimeout(() => {
-              setFallingCoins(prev => prev.filter(c => !newFalling.find(nc => nc.id === c.id)));
-              newFalling.forEach(c => { delete playerLostCoinsRef.current[c.id]; });
-            }, 3000);
+            // Cada moeda some individualmente, com tempo aleatório entre 3s e 7s
+            newFalling.forEach(c => {
+              const delay = 3000 + Math.random() * 4000;
+              setTimeout(() => {
+                setFallingCoins(prev => prev.filter(fc => fc.id !== c.id));
+                delete playerLostCoinsRef.current[c.id];
+              }, delay);
+            });
 
             if (userData?.uid) {
               const newCoins = Math.max(0, currentCoins - lost);
@@ -3687,6 +3690,12 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     )}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Pops de valor das moedas (monstro E jogador) — independentes */}
+            {coinPops.length > 0 && (
+              <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none' }}>
                 {coinPops.map(pop => (
                   <div
                     key={pop.id}
