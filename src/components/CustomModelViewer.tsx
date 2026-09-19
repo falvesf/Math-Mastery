@@ -552,6 +552,11 @@ function CameraDistanceUpdater({ cameraDistance }: { cameraDistance: number }) {
   return null;
 }
 
+// Câmera padrão ESTÁVEL (mesmo objeto sempre) para o R3F não reconfigurar/resetar a
+// cena quando o componente pai re-renderiza (ex.: scroll do painel). A distância é
+// ajustada em runtime pelo CameraDistanceUpdater.
+const DEFAULT_CANVAS_CAMERA = { position: [0, 2.5, 10] as [number, number, number], fov: 45 };
+
 export default React.memo(function CustomModelViewer({
   modelUrl,
   textureUrl,
@@ -591,13 +596,16 @@ export default React.memo(function CustomModelViewer({
     onCanvasReadyRef.current = onCanvasReady;
   }, [onCanvasReady]);
 
+  // Objeto estável para os parâmetros do GL (evita o R3F reconfigurar a cena em re-renders).
+  const glOptions = useMemo(() => ({ preserveDrawingBuffer }), [preserveDrawingBuffer]);
+
   return (
     <div style={{ width: w, height: h, position: 'relative', overflow: 'hidden', flexShrink: 0, pointerEvents: allowInteraction ? 'auto' : 'none' }}>
       <ModelErrorBoundary key={modelUrl}>
         <Canvas
-          gl={{ preserveDrawingBuffer }}
+          gl={glOptions}
           onCreated={({ gl }) => onCanvasReadyRef.current?.(gl.domElement)}
-          camera={{ position: [0, 2.5, cameraDistance], fov: 45 }}
+          camera={DEFAULT_CANVAS_CAMERA}
           style={{ width: '100%', height: '100%' }}
         >
           <CameraDistanceUpdater cameraDistance={cameraDistance} />
