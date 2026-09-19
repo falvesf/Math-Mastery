@@ -327,6 +327,24 @@ export default function QuestGameplay() {
   const effectiveMonsterRotY = galleryMonsterRotY ?? (quest as any)?.monsterAvatarConfig?.customRotY;
   const effectiveMonsterSkinUrl = galleryMonsterSkinUrl || (quest as any)?.monsterAvatarConfig?.customSkinUrl;
   const effectiveMonsterModelUrl = galleryMonsterModelUrl || (quest as any)?.monsterModelUrl || (quest as any)?.monsterAvatarConfig?.customModelUrl;
+
+  // Busca resiliente do ajuste do modelo (Arena Debug > modelConfigs) por URL.
+  // A URL pode variar (quest vs galeria, barra inicial, encoding, querystring),
+  // então caímos para o nome do arquivo — evitando que o GLB "resete" escala/posição.
+  const normalizeModelKey = (u: string) => String(u).replace(/\\/g, '/').split('?')[0].split('#')[0].toLowerCase();
+  const getMonsterModelCfg = (url: string | undefined | null) => {
+    const cfgs = arenaDebug.modelConfigs || {};
+    if (!url) return null;
+    if (cfgs[url]) return cfgs[url];
+    const target = normalizeModelKey(url);
+    const targetFile = decodeURIComponent(target.split('/').pop() || '');
+    for (const k of Object.keys(cfgs)) {
+      const kn = normalizeModelKey(k);
+      if (kn === target) return cfgs[k];
+      if (decodeURIComponent(kn.split('/').pop() || '') === targetFile) return cfgs[k];
+    }
+    return null;
+  };
   // Coelho: aceleração do tempo persistente (+5%/golpe) e drop generoso (dobra por golpe)
   const [coelhoHits, setCoelhoHits] = useState(0);
   // @ts-ignore (contagem de golpes na transformação atual — usada junto do coelhoDropRef)
@@ -3870,7 +3888,7 @@ useEffect(() => {
                   {/* Sombra dinâmica do monstro (segue transforms e offsets do GLB) */}
                   {(() => {
                     const isMonsterGlb = !!(effectiveMonsterModelUrl || transformState);
-                    const monsterModelCfg = effectiveMonsterModelUrl ? arenaDebug.modelConfigs?.[effectiveMonsterModelUrl] : null;
+                    const monsterModelCfg = getMonsterModelCfg(effectiveMonsterModelUrl);
                     const monsterModelScale = monsterModelCfg?.scale ?? 1;
                     const monsterModelOX = monsterModelCfg?.offsetX ?? 0;
                     const monsterModelOY = monsterModelCfg?.offsetY ?? 0;
@@ -3972,7 +3990,7 @@ useEffect(() => {
                     // Lentidão do gelo: fica mais lento a cada golpe (1-3). Congelado = parado (0).
                     const monsterSlowFactor = frozen ? 0 : (damageEffect === 'freeze' && effectLevel > 0 ? Math.max(0.22, 1 - effectLevel * 0.27) : 1);
                     if (effectiveMonsterModelUrl) {
-                      const modelCfg = arenaDebug.modelConfigs?.[effectiveMonsterModelUrl];
+                      const modelCfg = getMonsterModelCfg(effectiveMonsterModelUrl);
                       const modelScale = modelCfg?.scale ?? 1;
                       const modelOX = modelCfg?.offsetX ?? 0;
                       const modelOY = modelCfg?.offsetY ?? 0;
