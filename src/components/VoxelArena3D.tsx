@@ -204,6 +204,107 @@ function updateMoveTween(
   }
 }
 
+// Ajusta a opacidade de todos os materiais de um grupo (para evaporar/explodir).
+function setGroupOpacity(group: THREE.Object3D, opacity: number) {
+  group.traverse((c) => {
+    const mesh = c as THREE.Mesh;
+    if (mesh.isMesh && mesh.material) {
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((mat: any) => {
+        mat.transparent = true;
+        mat.opacity = opacity;
+        mat.needsUpdate = true;
+      });
+    }
+  });
+}
+
+// Aplica a animação de MORTE (fatality) no grupo, conforme o tipo.
+// death-fall: cai para frente e deita. death-explode: cresce e some.
+// death-evaporate: cresce, sobe e desintegra. death-slice: cai (fallback simples).
+function applyDeathTween(
+  deathRef: React.MutableRefObject<{ type: string; start: number } | null>,
+  group: THREE.Group | null,
+  nowMs: number
+) {
+  const d = deathRef.current;
+  if (!d || !group) return;
+  const el = (nowMs - d.start) / 1000;
+  if (el < 0.05) console.log('[FASEB applyDeath]', d.type, 'group=', !!group, 'el=', el.toFixed(3));
+  if (d.type === 'death-explode') {
+    const t = clamp01(el / 0.9);
+    group.scale.setScalar(1 + easeInOut(t) * 0.6);
+    setGroupOpacity(group, 1 - t);
+  } else if (d.type === 'death-evaporate') {
+    const t = clamp01(el / 1.2);
+    group.scale.setScalar(1 + easeInOut(t) * 0.3);
+    group.position.y = 0.51 + easeInOut(t) * 0.4;
+    setGroupOpacity(group, 1 - t);
+  } else {
+    // death-fall / death-slice: cai para a frente e deita no chão.
+    const t = clamp01(el / 1.2);
+    group.rotation.x = easeInOut(t) * 1.5;
+    group.position.y = 0.51 - easeInOut(t) * 0.25;
+  }
+}
+
+// Aplica um GOLPE ESPECIAL procedural (pulo/giro/investida/rugido) no grupo.
+// O monstro deve REALMENTE se mover até o alvo e agir (não só o efeito).
+function applySpecialTween(
+  specialRef: React.MutableRefObject<{ type: string; start: number } | null>,
+  group: THREE.Group | null,
+  nowMs: number,
+  isMonster: boolean
+) {
+  const s = specialRef.current;
+  if (!s || !group) return;
+  const el = (nowMs - s.start) / 1000;
+  const dir = isMonster ? 1 : -1; // monstro em +x avança para -x; jogador em -x avança para +x
+  const restX = isMonster ? 3.6 : -3.6;
+  if (s.type === 'jump_slam') {
+    // Arco: avança até o jogador (~0.75s, dano) e volta (~1.5s), subindo e caindo.
+    const t = clamp01(el / 1.5);
+    const out = easeInOut(clamp01(t / 0.5));
+    const back = easeInOut(clamp01((t - 0.5) / 0.5));
+    const xPhase = t < 0.5 ? out : 1 - back;
+    group.position.x = restX - dir * xPhase * 5.0;
+    group.position.y = 0.51 + (t < 0.5 ? Math.sin(clamp01(t / 0.5) * Math.PI) * 2.2 : 0);
+    group.rotation.x = xPhase * 0.6; // inclina ao cair
+  } else if (s.type === 'spin_tornado') {
+    // Gira e AVANÇA até o alvo (~0.7s, dano) e volta (~1.4s).
+    group.rotation.y += 0.6;
+    const t = clamp01(el / 1.4);
+    group.position.x = restX - dir * Math.sin(t * Math.PI) * 5.0;
+  } else if (s.type === 'rush_charge') {
+    // Investida: avança na diagonal (x + leve rotação de inclinação) até o alvo e volta.
+    const t = clamp01(el / 1.2);
+    group.position.x = restX - dir * Math.sin(t * Math.PI) * 5.0;
+    group.rotation.x = Math.sin(t * Math.PI) * 0.35;
+  } else if (s.type === 'roar_shockwave') {
+    const t = clamp01(el / 1.2);
+    group.scale.setScalar(1 + Math.sin(t * Math.PI) * 0.18);
+  } else {
+    // dance_transform e outros: balanço suave.
+    group.rotation.z = Math.sin(el * 6) * 0.12;
+  }
+}
+
+// Pose de ARREMESSO (ranged): inclina para trás e lança para frente (projétil).
+function applyThrowTween(
+  throwStartRef: React.MutableRefObject<number | null>,
+  group: THREE.Group | null,
+  nowMs: number
+) {
+  const start = throwStartRef.current;
+  if (start == null || !group) return;
+  const el = (nowMs - start) / 1000;
+  let rx = 0;
+  if (el < 0.25) rx = -easeInOut(clamp01(el / 0.25)) * 0.35; // inclina p/ trás
+  else if (el < 0.6) rx = lerp(-0.35, 0.25, easeInOut(clamp01((el - 0.25) / 0.35))); // lança p/ frente
+  else rx = lerp(0.25, 0, easeInOut(clamp01((el - 0.6) / 0.4))); // recupera
+  group.rotation.x = rx;
+}
+
 
 
 export interface VoxelArena3DProps {
@@ -211,6 +312,18 @@ export interface VoxelArena3DProps {
   deviceMode?: 'desktop' | 'mobile';
   /** Animação atual do monstro para efeitos de luz dinâmicos */
   monsterAnim?: string;
+  /** Animação procedural de golpe especial do monstro (jump_slam, spin_tornado, ...) */
+  monsterProceduralAnim?: string;
+  /** Nome da animação GLB do golpe especial (prioritária sobre monsterAnim) */
+  monsterSpecialAnim?: string;
+  /** Se o monstro está arremessando o projétil (throw) */
+  monsterBodyThrow?: boolean;
+  /** Efeito de dano ativo no monstro (burn/freeze/poison/bleed/impact/electric) */
+  monsterDamageEffect?: string;
+  /** Nível do efeito de dano (0 = sem efeito) */
+  monsterEffectLevel?: number;
+  /** Fator de lentidão do monstro (gelo): 1 = normal, <1 = mais lento */
+  monsterSlowFactor?: number;
   /** Se o monstro está no pulso de cura verde água */
   healActive?: boolean;
   /** Terremoto/abalo na arena */
@@ -282,6 +395,12 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // @ts-ignore
   monsterConfig,
   monsterAnim = 'idle',
+  monsterProceduralAnim,
+  monsterSpecialAnim,
+  monsterBodyThrow = false,
+  monsterDamageEffect,
+  monsterEffectLevel = 0,
+  monsterSlowFactor = 1,
   // @ts-ignore
   monsterZoom = 1,
   // @ts-ignore
@@ -328,6 +447,27 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // Tweens de avanço (ataque corpo a corpo) das entidades unificadas
   const monsterMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>(null);
   const playerMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>(null);
+  // Tweens de morte (fatality)
+  const monsterDeathRef = useRef<{ type: string; start: number } | null>(null);
+  const playerDeathRef = useRef<{ type: string; start: number } | null>(null);
+  // Última animação tratada (para detectar transições, não re-runs do efeito)
+  const prevMonsterAnimRef = useRef(monsterAnim);
+  const prevPlayerAnimRef = useRef(playerAnim);
+  // Golpe especial procedural (jump_slam, spin_tornado, ...)
+  const monsterSpecialRef = useRef<{ type: string; start: number } | null>(null);
+  const playerSpecialRef = useRef<{ type: string; start: number } | null>(null);
+  // Arremesso de projétil (ranged): quando monsterBodyThrow liga, marca o início
+  const monsterThrowStartRef = useRef<number | null>(null);
+  // Lentidão (gelo) e escala base (para derretimento ao queimar)
+  const monsterSlowFactorRef = useRef(monsterSlowFactor);
+  monsterSlowFactorRef.current = monsterSlowFactor;
+  const monsterDamageEffectRef = useRef(monsterDamageEffect);
+  monsterDamageEffectRef.current = monsterDamageEffect;
+  const monsterEffectLevelRef = useRef(monsterEffectLevel);
+  monsterEffectLevelRef.current = monsterEffectLevel;
+  const unifiedMonsterBaseScaleRef = useRef(1);
+  // Métricas do stage (w/h/offsets) para projetar a posição atual das entidades por frame
+  const stageMetricsRef = useRef({ w: 0, h: 0, offsetX: 0, offsetBottom: 0 });
 
   // Ref para atualizar posições de overlay sem reconstruir o renderer
   const updateOverlayPositionsRef = useRef<(() => void) | null>(null);
@@ -842,6 +982,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       }
       const pBottomArena = pBottomPx + stageOffsetBottom;
       const mBottomArena = mBottomPx + stageOffsetBottom;
+      // Guarda métricas para projeção por frame (nome/corações seguem o avanço)
+      stageMetricsRef.current = { w, h, offsetX: stageOffsetX, offsetBottom: stageOffsetBottom };
 
       // Fase B (unificado): projeta a CABEÇA dos bonecos 3D para ancorar nome/corações.
       // Em modo unificado o corpo é renderizado na cena (altura = UNIFIED_ENTITY_HEIGHT),
@@ -858,6 +1000,15 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         const pHeadTop = (pHead.y * 0.5 + 0.5) * h + stageOffsetBottom;
         mHeadLift = Math.max(0, Math.round(mHeadTop - mBottomArena));
         pHeadLift = Math.max(0, Math.round(pHeadTop - pBottomArena));
+        console.log('[FASEB headlift]', {
+          unified3D: unified3DRef.current,
+          mHeadNDC: mHead.y.toFixed(3),
+          mFeetNDC: mGround.y.toFixed(3),
+          mHeadTop: Math.round(mHeadTop),
+          mBottomArena: Math.round(mBottomArena),
+          lift: mHeadLift,
+          containerH: h,
+        });
       }
 
       if (arenaEl) {
@@ -886,12 +1037,62 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const delta = clock.getDelta();
 
       // Atualiza os mixers de animação das entidades unificadas (Fase B)
-      if (unifiedMonsterMixerRef.current) unifiedMonsterMixerRef.current.update(delta);
+      if (unifiedMonsterMixerRef.current) {
+        unifiedMonsterMixerRef.current.timeScale = monsterSlowFactorRef.current;
+        unifiedMonsterMixerRef.current.update(delta);
+      }
       if (unifiedPlayerMixerRef.current) unifiedPlayerMixerRef.current.update(delta);
+      // Derretimento ao queimar: encolhe verticalmente (scaleY) conforme o nível do fogo.
+      if (unifiedMonsterRootRef.current && monsterDamageEffectRef.current === 'burn' && monsterEffectLevelRef.current > 0) {
+        const meltPct = Math.max(0.55, 1 - monsterEffectLevelRef.current * 0.09);
+        unifiedMonsterRootRef.current.scale.y = unifiedMonsterBaseScaleRef.current * meltPct;
+      } else if (unifiedMonsterRootRef.current && unifiedMonsterRootRef.current.scale.y !== unifiedMonsterBaseScaleRef.current) {
+        unifiedMonsterRootRef.current.scale.y = unifiedMonsterBaseScaleRef.current;
+      }
       // Avanço do ataque corpo a corpo (tween de X) no loop
       const nowMs = performance.now();
-      updateMoveTween(monsterMoveRef, unifiedMonsterGroupRef.current, nowMs);
-      updateMoveTween(playerMoveRef, unifiedPlayerGroupRef.current, nowMs);
+      const monSpecialActive = !!monsterSpecialRef.current;
+      const playSpecialActive = !!playerSpecialRef.current;
+      if (!monSpecialActive) updateMoveTween(monsterMoveRef, unifiedMonsterGroupRef.current, nowMs);
+      if (!playSpecialActive) updateMoveTween(playerMoveRef, unifiedPlayerGroupRef.current, nowMs);
+      // Fatality (morte) no loop
+      applyDeathTween(monsterDeathRef, unifiedMonsterGroupRef.current, nowMs);
+      applyDeathTween(playerDeathRef, unifiedPlayerGroupRef.current, nowMs);
+      // Golpe especial procedural no loop
+      applySpecialTween(monsterSpecialRef, unifiedMonsterGroupRef.current, nowMs, true);
+      applySpecialTween(playerSpecialRef, unifiedPlayerGroupRef.current, nowMs, false);
+      // Pose de arremesso do projétil (ranged)
+      applyThrowTween(monsterThrowStartRef, unifiedMonsterGroupRef.current, nowMs);
+
+      // Projeta a posição ATUAL do monstro/jogador (para nome/corações seguirem o avanço
+      // e os golpes). Só quando há movimento ativo (tween de ataque/especial/morte).
+      const cam = cameraRef.current;
+      const mets = stageMetricsRef.current;
+      const arenaEl = (outerRef.current?.parentElement || containerRef.current?.parentElement) as HTMLElement | null;
+      if (cam && mets.w > 0 && (monsterMoveRef.current || monsterSpecialRef.current || monsterDeathRef.current) && unifiedMonsterGroupRef.current) {
+        const g = unifiedMonsterGroupRef.current.position;
+        const mp = new THREE.Vector3(g.x, g.y, 0.2).project(cam);
+        const mX = (mp.x * 0.5 + 0.5) * mets.w + mets.offsetX;
+        const mB = (mp.y * 0.5 + 0.5) * mets.h + mets.offsetBottom;
+        arenaEl?.style.setProperty('--shadow-monster-x', `${Math.round(mX)}px`);
+        arenaEl?.style.setProperty('--shadow-monster-bottom', `${Math.round(mB)}px`);
+      }
+      if (cam && mets.w > 0 && (playerMoveRef.current || playerSpecialRef.current || playerDeathRef.current) && unifiedPlayerGroupRef.current) {
+        const g = unifiedPlayerGroupRef.current.position;
+        const pp = new THREE.Vector3(g.x, g.y, 0.2).project(cam);
+        const pX = (pp.x * 0.5 + 0.5) * mets.w + mets.offsetX;
+        const pB = (pp.y * 0.5 + 0.5) * mets.h + mets.offsetBottom;
+        arenaEl?.style.setProperty('--shadow-player-x', `${Math.round(pX)}px`);
+        arenaEl?.style.setProperty('--shadow-player-bottom', `${Math.round(pB)}px`);
+      }
+      // Respiração procedural no idle (o GLB pode não ter animação de idle própria):
+      // leve escala oscilando (~1.5%) — os pés ficam fixos pois o grupo escala a partir da base.
+      if (unifiedMonsterGroupRef.current && !isCombatAnim(monsterAnimRef.current) && !monSpecialActive) {
+        unifiedMonsterGroupRef.current.scale.setScalar(1 + Math.sin(elapsedTime * 2.4) * 0.015);
+      }
+      if (unifiedPlayerGroupRef.current && !isCombatAnim(playerAnimRef.current) && !playSpecialActive) {
+        unifiedPlayerGroupRef.current.scale.setScalar(1 + Math.sin(elapsedTime * 2.4 + 0.6) * 0.015);
+      }
 
       // Nuvens se deslocam suavemente pelo céu
       if (cloudsGroupRef.current) {
@@ -1045,8 +1246,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         fitEntityToGround(root, UNIFIED_ENTITY_HEIGHT * Math.max(0.2, zoom || 1));
         group.add(root);
         group.position.set(x, 0.51, 0.2);
-        // Rotação base: repouso olha para a câmera (+z). Modelos Blockbench nascem virados
-        // para -z, então +Math.PI os vira para a câmera (mesmo padrão do CustomModelViewer).
+        // Rotação inicial de REPOUSO: olham para a câmera (+z). Modelos Blockbench nascem
+        // virados para -z, então +Math.PI os vira para a câmera (padrão do jogo atual).
+        // O efeito de animação alterna para o oponente durante o combate.
         group.rotation.y = Math.PI + THREE.MathUtils.degToRad(rotYDeg || 0);
         scene.add(group);
         const mixer = new THREE.AnimationMixer(root);
@@ -1068,6 +1270,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedMonsterRootRef.current = root;
       unifiedMonsterMixerRef.current = mixer;
       unifiedMonsterActionsRef.current = actions;
+      unifiedMonsterBaseScaleRef.current = root.scale.x || 1;
       applyEntityTint(root, monsterEffectTintRef.current, monsterEnragedRef.current);
       playEntityAnimByName(actions, mixer, monsterAnimRef.current);
     });
@@ -1110,21 +1313,96 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     };
   }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, monsterZoom, monsterRotY]);
 
-  // Aplica a animação (por nome) e a rotação (repouso vs combate) quando muda.
+  // Aplica a animação (por nome) e a rotação (repouso = câmera, combate = oponente).
   useEffect(() => {
     if (!unified3D) return;
-    // Rotação: em repouso olham para a câmera; em combate viram para o oponente.
-    if (unifiedMonsterGroupRef.current) {
-      const base = isCombatAnim(monsterAnim) ? -Math.PI / 2 : Math.PI;
-      unifiedMonsterGroupRef.current.rotation.y = base + THREE.MathUtils.degToRad(monsterRotYRef.current);
+    const monChanged = monsterAnim !== prevMonsterAnimRef.current;
+    const playChanged = playerAnim !== prevPlayerAnimRef.current;
+    prevMonsterAnimRef.current = monsterAnim;
+    prevPlayerAnimRef.current = playerAnim;
+
+    const monCombat = isCombatAnim(monsterAnim);
+    if (unifiedMonsterGroupRef.current && !monsterSpecialRef.current && !monsterThrowStartRef.current) {
+      // Monstro (direita) vira -x (jogador) em combate; repouso olha para a câmera.
+      unifiedMonsterGroupRef.current.rotation.y = (monCombat ? Math.PI / 2 : Math.PI) + THREE.MathUtils.degToRad(monsterRotYRef.current);
+      // Reset de escala só na TRANSIÇÃO para combate (evita interromper o tween de morte).
+      if (monChanged && monCombat) unifiedMonsterGroupRef.current.scale.setScalar(1);
     }
-    if (unifiedPlayerGroupRef.current) {
-      const base = isCombatAnim(playerAnim) ? Math.PI / 2 : Math.PI;
-      unifiedPlayerGroupRef.current.rotation.y = base + THREE.MathUtils.degToRad(playerRotYRef.current);
+    // Morte do monstro (fatality) — inicia SÓ quando a morte é nova (re-runs não reiniciam).
+    if (monsterAnim.startsWith('death')) {
+      if (!monsterDeathRef.current || monsterDeathRef.current.type !== monsterAnim) {
+        monsterDeathRef.current = { type: monsterAnim, start: performance.now() };
+        console.log('[FASEB death-set]', monsterAnim, 'group=', !!unifiedMonsterGroupRef.current);
+      }
+    } else if (monsterDeathRef.current) {
+      monsterDeathRef.current = null;
+      if (unifiedMonsterGroupRef.current) {
+        unifiedMonsterGroupRef.current.rotation.x = 0;
+        unifiedMonsterGroupRef.current.position.y = 0.51;
+        unifiedMonsterGroupRef.current.scale.setScalar(1);
+        setGroupOpacity(unifiedMonsterGroupRef.current, 1);
+      }
     }
-    playEntityAnimByName(unifiedMonsterActionsRef.current, unifiedMonsterMixerRef.current, monsterAnim);
+    const playCombat = isCombatAnim(playerAnim);
+    if (unifiedPlayerGroupRef.current && !playerSpecialRef.current) {
+      // Jogador (esquerda) vira +x (monstro) em combate; repouso olha para a câmera.
+      unifiedPlayerGroupRef.current.rotation.y = (playCombat ? -Math.PI / 2 : Math.PI) + THREE.MathUtils.degToRad(playerRotYRef.current);
+      if (playChanged && playCombat) unifiedPlayerGroupRef.current.scale.setScalar(1);
+    }
+    if (playerAnim.startsWith('death')) {
+      if (!playerDeathRef.current || playerDeathRef.current.type !== playerAnim) {
+        playerDeathRef.current = { type: playerAnim, start: performance.now() };
+      }
+    } else if (playerDeathRef.current) {
+      playerDeathRef.current = null;
+      if (unifiedPlayerGroupRef.current) {
+        unifiedPlayerGroupRef.current.rotation.x = 0;
+        unifiedPlayerGroupRef.current.position.y = 0.51;
+        unifiedPlayerGroupRef.current.scale.setScalar(1);
+        setGroupOpacity(unifiedPlayerGroupRef.current, 1);
+      }
+    }
+    playEntityAnimByName(unifiedMonsterActionsRef.current, unifiedMonsterMixerRef.current, monsterSpecialAnim || monsterAnim);
     playEntityAnimByName(unifiedPlayerActionsRef.current, unifiedPlayerMixerRef.current, playerAnim);
-  }, [unified3D, monsterAnim, playerAnim, monsterModelUrl, playerModelUrl, monsterRotY]);
+  }, [unified3D, monsterAnim, playerAnim, monsterSpecialAnim, monsterModelUrl, playerModelUrl, monsterRotY]);
+
+  // Golpe especial procedural: inicia quando monsterProceduralAnim muda; reseta ao limpar.
+  useEffect(() => {
+    if (!unified3D) return;
+    if (monsterProceduralAnim && monsterProceduralAnim !== '') {
+      monsterSpecialRef.current = { type: monsterProceduralAnim, start: performance.now() };
+      if (unifiedMonsterGroupRef.current) {
+        // Vira para o jogador ao iniciar o golpe especial.
+        unifiedMonsterGroupRef.current.rotation.y = Math.PI / 2 + THREE.MathUtils.degToRad(monsterRotYRef.current);
+      }
+    } else if (monsterSpecialRef.current) {
+      monsterSpecialRef.current = null;
+      if (unifiedMonsterGroupRef.current) {
+        unifiedMonsterGroupRef.current.position.y = 0.51;
+        unifiedMonsterGroupRef.current.position.x = 3.6;
+        unifiedMonsterGroupRef.current.rotation.z = 0;
+        unifiedMonsterGroupRef.current.rotation.y = Math.PI + THREE.MathUtils.degToRad(monsterRotYRef.current);
+        unifiedMonsterGroupRef.current.scale.setScalar(1);
+      }
+    }
+  }, [unified3D, monsterProceduralAnim]);
+
+  // Arremesso de projétil (ranged): marca o início, vira para o alvo; ao limpar, restaura.
+  useEffect(() => {
+    if (!unified3D) return;
+    if (monsterBodyThrow) {
+      monsterThrowStartRef.current = performance.now();
+      if (unifiedMonsterGroupRef.current) {
+        unifiedMonsterGroupRef.current.rotation.y = Math.PI / 2 + THREE.MathUtils.degToRad(monsterRotYRef.current);
+      }
+    } else if (monsterThrowStartRef.current != null) {
+      monsterThrowStartRef.current = null;
+      if (unifiedMonsterGroupRef.current) {
+        unifiedMonsterGroupRef.current.rotation.x = 0;
+        unifiedMonsterGroupRef.current.rotation.y = Math.PI + THREE.MathUtils.degToRad(monsterRotYRef.current);
+      }
+    }
+  }, [unified3D, monsterBodyThrow]);
 
   // Avanço corpo a corpo: quando entra em ataque/fatal/vitória, lança o tween de X.
   useEffect(() => {

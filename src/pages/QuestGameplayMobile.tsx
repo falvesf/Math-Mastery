@@ -666,7 +666,8 @@ export default function QuestGameplay() {
 
   // Animate hearts dying - simple delay then update
   const drainHeartsAnimated = (newHearts: number, onComplete?: () => void) => {
-    const heartsToLose = currentHearts - newHearts;
+    const current = heartsRef.current;
+    const heartsToLose = Math.max(0, current - newHearts);
     if (heartsToLose <= 0) {
       setCurrentHearts(newHearts);
       if (onComplete) onComplete();
@@ -675,7 +676,12 @@ export default function QuestGameplay() {
 
     // Small delay for dramatic effect, then update
     setTimeout(() => {
-      setCurrentHearts(newHearts);
+      // Re-lê o HP ATUAL no momento do tick: se o jogador curou nesse meio tempo
+      // (poção/elixir), drena do valor ATUAL em vez de sobrescrever a cura com um
+      // valor absoluto obsoleto (bug: HP voltava ao valor antigo).
+      const now = heartsRef.current;
+      const final = Math.max(0, now - heartsToLose);
+      setCurrentHearts(final);
       if (onComplete) onComplete();
     }, heartsToLose * 150); // 150ms per heart for stagger effect
   };
@@ -788,6 +794,24 @@ const dealTransformDamageToPlayer = (damage: number) => {
   // Config ESCALADA usada APENAS no render. O `arenaDebug` (bruto) continua sendo o que
   // o painel de Debug edita e o que é salvo no localStorage.
   const arena = useMemo(() => scaleArenaDebug(arenaDebug, arenaScale), [arenaDebug, arenaScale]);
+
+  // DEBUG TEMPORÁRIO (Fase B) — remover antes do push final
+  useEffect(() => {
+    if (gameState !== 'playing') return;
+    const el = arenaRef.current;
+    let lift = 'n/a';
+    if (el) {
+      lift = getComputedStyle(el).getPropertyValue('--shadow-monster-head-lift').trim();
+    }
+    console.log('[FASEB name]', {
+      unified3D: !!arena.unified3D,
+      modelUrl: !!effectiveMonsterModelUrl,
+      liftVar: lift,
+      renderMode: arenaRenderMode,
+      heightApplied: !!(arena.unified3D && effectiveMonsterModelUrl),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState, arena.unified3D, effectiveMonsterModelUrl, arenaRenderMode, arenaWidth]);
 
   const hasUserModifiedDebugRef = useRef(false);
 
@@ -3204,10 +3228,15 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setMonsterHeartFrac(f => Math.max(0.06, f - 0.18));
       playMonsterDamageSound();
       if (economySettings?.coinsDropInCombat) {
+        // Dropa dentro da ÁREA de moedas configurada (não em posição fixa).
+        const cX = arena.coinAreaX ?? 50;
+        const cY = arena.coinAreaY ?? 70;
+        const cW = arena.coinAreaW ?? 80;
+        const cH = arena.coinAreaH ?? 30;
         const extra = Array.from({ length: 1 + Math.floor(Math.random() * 3) }).map((_, i) => ({
           id: Date.now() + Math.random() * 1000 + i,
-          x: 62 + Math.random() * 20,
-          y: 78 + Math.random() * 10,
+          x: cX + Math.random() * cW,
+          y: cY + Math.random() * cH,
           value: Math.max(1, Math.floor(Math.random() * (economySettings.maxCoinsValue || 3)) + 1)
         }));
         setDroppedCoins(prev => [...prev, ...extra]);
@@ -3691,10 +3720,16 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 monsterSkinUrl={effectiveMonsterSkinUrl}
                 monsterConfig={quest?.monsterAvatarConfig}
                 monsterAnim={monsterAnim}
+                monsterProceduralAnim={monsterProceduralAnim}
+                monsterSpecialAnim={monsterSpecialAnim}
+                monsterBodyThrow={monsterBodyThrow}
+                monsterDamageEffect={damageEffect}
+                monsterEffectLevel={effectLevel}
+                monsterSlowFactor={frozen ? 0 : (damageEffect === 'freeze' && effectLevel > 0 ? Math.max(0.22, 1 - effectLevel * 0.27) : 1)}
                 monsterZoom={effectiveMonsterZoom}
                 monsterRotY={effectiveMonsterRotY}
                 monsterEnraged={monsterRageActive}
-                monsterEffectTint={monsterHealPulse ? '#2dd4bf' : (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : undefined) : undefined)}
+                monsterEffectTint={monsterHitFlash ? '#ff2222' : (monsterHealPulse ? '#2dd4bf' : (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : undefined) : undefined))}
               />
             ) : (
               <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
@@ -4103,10 +4138,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   <span style={{ position: 'absolute', top: '-20px', left: 0, fontSize: '0.6rem', color: '#fbbf24', fontWeight: 'bold', background: 'rgba(0,0,0,0.75)', padding: '0 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>⚰️ X:{arena.deathOffsetX} Y:{arena.deathOffsetY}</span>
                 </div>
               )}
-              {monsterAnim === 'death-slice' ? (
+              {monsterAnim === 'death-slice' && !(arena.unified3D && effectiveMonsterModelUrl) ? (
                 <div className="quest-arena-avatars" style={{ position: 'relative', width: '130px', height: '200px', transform: `translate(${arena.monsterOffsetX + arena.deathOffsetX}px, ${arena.monsterOffsetY + arena.deathOffsetY}px)` }}>
                   {/* Nome do monstro - acompanha death-slice */}
-                  <div style={{ position: 'absolute', top: `${arena.monsterNameY - (effectiveMonsterZoom - 1) * (effectiveMonsterModelUrl ? 150 : 230)}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                  <div style={{ position: 'absolute', top: `${(arena.unified3D && effectiveMonsterModelUrl) ? -36 : (arena.monsterNameY - (effectiveMonsterZoom - 1) * (effectiveMonsterModelUrl ? 150 : 230))}px`, left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', opacity: 0.3 }}>{quest?.monsterName || 'Inimigo'}</span>
                   </div>
                   <div className="death-slice-left" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -4147,11 +4182,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   })()}
                   {/* A animação fica num FILHO para não sobrescrever a posição (transform) do pai */}
                   <div className={`${
-                    monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : 
-                    monsterAnim === 'death-fall' ? 'anim-death-fall' :
-                    monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
+                    (arena.unified3D && effectiveMonsterModelUrl) ? '' : (
+                      monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : 
+                      monsterAnim === 'death-fall' ? 'anim-death-fall' :
+                      monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
+                    )
                   }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center', height: (arena.unified3D && effectiveMonsterModelUrl) ? 'var(--shadow-monster-head-lift, 190px)' : undefined }}>
-                  <div style={{ position: 'absolute', top: `${arena.monsterNameY - (effectiveMonsterZoom - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 150 : 230)}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
+                  <div style={{ position: 'absolute', top: `${(arena.unified3D && effectiveMonsterModelUrl) ? -36 : (arena.monsterNameY - (effectiveMonsterZoom - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 150 : 230))}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
                       {(() => {

@@ -155,8 +155,12 @@ export function toAddsArray(adds: any): any[] {
  * Retorna { effect, chance }. Sem add de efeito, cai no campo legado damageEffect com chance 100.
  */
 export function getEquippedDamageEffectInfo(equippedItems: any[]): { effect: string; chance: number } {
+  // Mesma detecção de arma do hasAttackWeapon: itemCategory 'attack', atributo base
+  // de ataque, ou avatarPart de mão/duas mãos.
   const weapons = (equippedItems || []).filter(i =>
-    (i.avatarPart === 'hand' || i.avatarPart === 'two_handed' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand')
+    i.itemCategory === 'attack'
+    || (i.baseAttributeType === 'attack' && (i.baseAttributeValue || 0) > 0)
+    || (i.avatarPart === 'hand' || i.avatarPart === 'two_handed' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand')
   );
   for (const w of weapons) {
     const effectAdd = (w.adds || []).find((a: any) => isEffectAddType(a.type));
