@@ -162,6 +162,12 @@ function applyEntityTint(root: THREE.Object3D | null, tint: string | null, enrag
   });
 }
 
+// Rotação base dos bonecos na arena: repouso olha para a câmera (+z → Math.PI para
+// modelos Blockbench), combate vira para o oponente (jogador vira +x, monstro vira -x).
+function isCombatAnim(anim?: string): boolean {
+  return !!anim && (anim.startsWith('attack') || anim === 'hurt' || anim === 'attack-fatal' || anim === 'attack-fatal-slow' || anim.startsWith('death') || anim.startsWith('victory'));
+}
+
 
 
 export interface VoxelArena3DProps {
@@ -940,6 +946,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   monsterEffectTintRef.current = monsterEffectTint;
   const monsterEnragedRef = useRef(monsterEnraged);
   monsterEnragedRef.current = monsterEnraged;
+  // Rotação extra (graus) do modelo GLB do jogador (config.customRotY)
+  const playerRotYRef = useRef(Number((playerConfig as any)?.customRotY ?? 0) || 0);
+  playerRotYRef.current = Number((playerConfig as any)?.customRotY ?? 0) || 0;
 
   // Carrega jogador + monstro GLB e insere na cena.
   useEffect(() => {
@@ -970,7 +979,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         fitEntityToGround(root, UNIFIED_ENTITY_HEIGHT * Math.max(0.2, zoom || 1));
         group.add(root);
         group.position.set(x, 0.51, 0.2);
-        group.rotation.y = THREE.MathUtils.degToRad(rotYDeg || 0);
+        // Rotação base: repouso olha para a câmera (+z). Modelos Blockbench nascem virados
+        // para -z, então +Math.PI os vira para a câmera (mesmo padrão do CustomModelViewer).
+        group.rotation.y = Math.PI + THREE.MathUtils.degToRad(rotYDeg || 0);
         scene.add(group);
         const mixer = new THREE.AnimationMixer(root);
         const actions: Record<string, THREE.AnimationAction> = {};
@@ -995,8 +1006,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       playEntityAnimByName(actions, mixer, monsterAnimRef.current);
     });
 
-    // Jogador (GLB customizado)
-    loadEntity(playerModelUrl, playerSkinUrl, -3.6, 1, 180, (group, root, mixer, actions) => {
+    // Jogador (GLB customizado) — rotY extra vem de playerConfig.customRotY
+    loadEntity(playerModelUrl, playerSkinUrl, -3.6, 1, playerRotYRef.current, (group, root, mixer, actions) => {
       unifiedPlayerGroupRef.current = group;
       unifiedPlayerRootRef.current = root;
       unifiedPlayerMixerRef.current = mixer;
@@ -1033,12 +1044,21 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     };
   }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, monsterZoom, monsterRotY]);
 
-  // Aplica a animação (por nome) quando monsterAnim/playerAnim mudam.
+  // Aplica a animação (por nome) e a rotação (repouso vs combate) quando muda.
   useEffect(() => {
     if (!unified3D) return;
+    // Rotação: em repouso olham para a câmera; em combate viram para o oponente.
+    if (unifiedMonsterGroupRef.current) {
+      const base = isCombatAnim(monsterAnim) ? -Math.PI / 2 : Math.PI;
+      unifiedMonsterGroupRef.current.rotation.y = base + THREE.MathUtils.degToRad(monsterRotYRef.current);
+    }
+    if (unifiedPlayerGroupRef.current) {
+      const base = isCombatAnim(playerAnim) ? Math.PI / 2 : Math.PI;
+      unifiedPlayerGroupRef.current.rotation.y = base + THREE.MathUtils.degToRad(playerRotYRef.current);
+    }
     playEntityAnimByName(unifiedMonsterActionsRef.current, unifiedMonsterMixerRef.current, monsterAnim);
     playEntityAnimByName(unifiedPlayerActionsRef.current, unifiedPlayerMixerRef.current, playerAnim);
-  }, [unified3D, monsterAnim, playerAnim, monsterModelUrl, playerModelUrl]);
+  }, [unified3D, monsterAnim, playerAnim, monsterModelUrl, playerModelUrl, monsterRotY]);
 
   // Reaplica tint/fúria quando os efeitos mudam.
   useEffect(() => {
