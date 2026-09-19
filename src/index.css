@@ -201,10 +201,8 @@ h3 {
   100% { transform: scale(1) rotate(0deg); opacity: 1; }
 }
 
-@keyframes coin-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
+/* Moeda parada com brilho estático (sem pulsar/pular) */
+.drop-coin-glow { filter: drop-shadow(0 0 4px rgba(255, 214, 106, 0.85)) drop-shadow(0 0 9px rgba(245, 158, 11, 0.55)) brightness(1.06); }
 
 @keyframes coin-value-rise {
   0% { opacity: 0; transform: translate(-50%, -10px) scale(0.6); }

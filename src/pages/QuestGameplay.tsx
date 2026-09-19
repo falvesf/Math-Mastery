@@ -457,6 +457,8 @@ export default function QuestGameplay() {
   const droppedBattleItemIdsRef = useRef<Set<string>>(new Set());
   const monsterStoreItemsMapRef = useRef<Map<string, any>>(new Map());
   const collectedBattleDropsRef = useRef<any[]>([]);
+  // Valor recuperável de cada moeda perdida do jogador (id -> valor)
+  const playerLostCoinsRef = useRef<Record<number, number>>({});
 
   // --- Áudio da batalha (sons globais: dano do personagem + batalha/fatalidades) ---
   const playerDamageSoundsRef = useRef<{ male: string; female: string }>({ male: '', female: '' });
@@ -1978,7 +1980,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
         if (quote) setMonsterBubble(quote);
       }
 
-      // Moedas perdidas quando o jogador é atingido
+      // Moedas perdidas quando o jogador é atingido — caem na ÁREA DE QUEDA DO JOGADOR
+      // e ficam clicáveis por 3s para o jogador tentar recuperá-las antes de sumirem.
       const dropCoinsIfDamaged = () => {
         if (economySettings?.coinsLostInCombat && !isStudyMode && !hasShield) {
           const rankObj = getRankForXp(userData?.xp || 0);
@@ -1986,20 +1989,48 @@ const dealTransformDamageToPlayer = (damage: number) => {
           const hpMultiplier = Math.max(1, Math.ceil(monsterHpPercentage / 10));
           const maxLost = rankIndex * hpMultiplier;
           const lost = Math.floor(Math.random() * maxLost) + 1;
-          
+
           setLostCoinsDisplay(lost);
           playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
 
-          const newFalling = Array.from({ length: Math.min(lost, 6) }).map((_, i) => ({
-            id: Date.now() + i,
-            x: 8 + Math.random() * 20,
-            y: 42 + Math.random() * 15,
-            value: Math.ceil(lost / Math.min(lost, 6))
-          }));
+          // Distribui o valor perdido entre as moedas que vão cair (aleatório)
+          const n = Math.min(lost, 6);
+          const values: number[] = [];
+          let remaining = lost;
+          for (let i = 0; i < n; i++) {
+            const left = n - i;
+            const v = left === 1 ? remaining : Math.max(1, Math.floor(Math.random() * Math.max(1, Math.floor(remaining / left) * 2)) + 1);
+            const clamped = Math.min(v, Math.max(0, remaining - (left - 1)));
+            values.push(clamped);
+            remaining -= clamped;
+          }
+          // Distribui em grade com jitter aleatório dentro da área do jogador
+          const pcX = arenaDebug?.playerCoinAreaX ?? 8;
+          const pcY = arenaDebug?.playerCoinAreaY ?? 55;
+          const pcW = arenaDebug?.playerCoinAreaW ?? 24;
+          const pcH = arenaDebug?.playerCoinAreaH ?? 10;
+          const padX = Math.min(4, pcW * 0.15);
+          const padY = Math.min(3, pcH * 0.25);
+          const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+          const rows = Math.max(1, Math.ceil(n / cols));
+
+          // Guarda o "valor por moeda" num ref para saber quanto recuperar ao clicar
+          const newFalling = Array.from({ length: n }).map((_, i) => {
+            const gx = i % cols, gy = Math.floor(i / cols);
+            const jitter = () => (Math.random() - 0.5) * 0.7;
+            const x = Math.min(pcX + pcW - padX, Math.max(pcX + padX,
+              pcX + padX + (((gx + 0.5) / cols) + jitter() / cols) * Math.max(0, pcW - padX * 2)));
+            const y = Math.min(pcY + pcH - padY, Math.max(pcY + padY,
+              pcY + padY + (((gy + 0.5) / rows) + jitter() / rows) * Math.max(0, pcH - padY * 2)));
+            return { id: Date.now() + i, x, y, value: values[i] };
+          });
+          playerLostCoinsRef.current = { ...playerLostCoinsRef.current, ...Object.fromEntries(newFalling.map(c => [c.id, c.value])) };
           setFallingCoins(prev => [...prev, ...newFalling]);
+          // Some sozinhas após 3s (tempo para o jogador tentar recuperar)
           setTimeout(() => {
             setFallingCoins(prev => prev.filter(c => !newFalling.find(nc => nc.id === c.id)));
-          }, 2500);
+            newFalling.forEach(c => { delete playerLostCoinsRef.current[c.id]; });
+          }, 3000);
 
           if (userData?.uid) {
              const currentCoins = userData.coins || 0;
@@ -2688,6 +2719,20 @@ if (tr.turnsLeft <= 1) {
     playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
   };
 
+  // Recupera uma moeda perdida do jogador (clicada antes de sumir, em até 3s)
+  const collectLostCoin = (coin: { id: number; x: number; y: number; value: number }) => {
+    const value = playerLostCoinsRef.current[coin.id] ?? coin.value ?? 0;
+    delete playerLostCoinsRef.current[coin.id];
+    setFallingCoins(prev => prev.filter(c => c.id !== coin.id));
+    setCoinPops(prev => [...prev, { id: Date.now() + Math.random(), x: coin.x, y: coin.y, value }]);
+    playCoinCollect((activeCoinModel as any)?.coinSoundUrl);
+    if (!userData?.uid) return;
+    supabase.rpc('collect_combat_coin', { p_student_id: userData.uid, p_value: value }).then(({ data, error }) => {
+      if (error) { console.error('collect_combat_coin (recuperação):', error); }
+      else if (data && data.ok) { userData.coins = data.coins; }
+    });
+  };
+
   const dropCoins = (isCrit = false) => {
     if (!economySettings?.coinsDropInCombat) return;
     const tr = transformRef.current;
@@ -2727,16 +2772,27 @@ if (tr.turnsLeft <= 1) {
     // Mantém a moeda DENTRO do retângulo (margem para o tamanho do ícone em %)
     const padX = useArea ? Math.min(4, (cW as number) * 0.15) : 0;
     const padY = useArea ? Math.min(4, (cH as number) * 0.2) : 0;
-    const newCoins = Array.from({ length: Math.min(dropped, 8) }).map((_, i) => ({
-      id: Date.now() + i,
-      x: useArea
-        ? (cX as number) + padX + Math.random() * Math.max(0, (cW as number) - padX * 2)
-        : ((arenaW - 205 + Math.random() * 155) / arenaW) * 100,
-      y: useArea
-        ? (cY as number) + padY + Math.random() * Math.max(0, (cH as number) - padY * 2)
-        : (arenaRenderMode === '3d' ? Math.min(60, groundY - 4 + Math.random() * 8) : Math.min(90, groundY - 7 + Math.random() * 12)),
-      value: Math.floor(((Math.random() * (maxV - minV + 1)) + minV) * coelhoMult)
-    }));
+    // Distribui em uma grade com jitter aleatório para NÃO ficarem enfileiradas
+    const n = Math.min(dropped, 8);
+    const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+    const rows = Math.max(1, Math.ceil(n / cols));
+    const newCoins = Array.from({ length: n }).map((_, i) => {
+      const gx = i % cols;
+      const gy = Math.floor(i / cols);
+      const jitter = () => (Math.random() - 0.5) * 0.7;
+      return {
+        id: Date.now() + i,
+        x: useArea
+          ? Math.min((cX as number) + (cW as number) - padX, Math.max((cX as number) + padX,
+              (cX as number) + padX + (((gx + 0.5) / cols) + jitter() / cols) * Math.max(0, (cW as number) - padX * 2)))
+          : ((arenaW - 205 + Math.random() * 155) / arenaW) * 100,
+        y: useArea
+          ? Math.min((cY as number) + (cH as number) - padY, Math.max((cY as number) + padY,
+              (cY as number) + padY + (((gy + 0.5) / rows) + jitter() / rows) * Math.max(0, (cH as number) - padY * 2)))
+          : (arenaRenderMode === '3d' ? Math.min(60, groundY - 4 + Math.random() * 8) : Math.min(90, groundY - 7 + Math.random() * 12)),
+        value: Math.floor(((Math.random() * (maxV - minV + 1)) + minV) * coelhoMult)
+      };
+    });
     setDroppedCoins(prev => [...prev, ...newCoins]);
     setCoinsToRescue(dropped);
     setTimeout(() => setCoinsToRescue(null), 2500);
@@ -3591,12 +3647,12 @@ useEffect(() => {
                   >
                     {activeCoinModel ? (
                       activeCoinModel.open_url ? (
-                        <img src={activeCoinModel.open_url} alt="Moeda" style={{ width: '26px', height: '26px', objectFit: 'contain', animation: 'coin-bounce 0.8s infinite' }} />
+                        <img src={activeCoinModel.open_url} alt="Moeda" className="drop-coin-glow" style={{ width: '26px', height: '26px', objectFit: 'contain' }} />
                       ) : (
-                        <img src={activeCoinModel.url} alt="Moeda" style={{ width: '26px', height: '26px', objectFit: 'contain', animation: 'coin-bounce 0.8s infinite' }} />
+                        <img src={activeCoinModel.url} alt="Moeda" className="drop-coin-glow" style={{ width: '26px', height: '26px', objectFit: 'contain' }} />
                       )
                     ) : (
-                      <Coins size={15} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
+                      <Coins size={15} className="drop-coin-glow" color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.4)" />
                     )}
                   </button>
                 ))}
@@ -3644,29 +3700,35 @@ useEffect(() => {
               </div>
             )}
 
-            {/* Moedas PERDIDAS: saem do corpo do jogador e caem ao chão */}
+            {/* Moedas PERDIDAS do jogador: caem na área de queda, clicáveis por 3s */}
             {fallingCoins.length > 0 && (
-              <div style={{ position: 'absolute', inset: 0, zIndex: 45, pointerEvents: 'none', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', inset: 0, zIndex: 45, pointerEvents: 'none' }}>
                 {fallingCoins.map(coin => (
-                  <div
+                  <button
                     key={coin.id}
+                    onClick={() => collectLostCoin(coin)}
+                    title="Recuperar moeda perdida!"
                     style={{
                       position: 'absolute',
                       left: `${coin.x}%`,
                       top: `${coin.y}%`,
-                      animation: 'coin-loss 2.2s ease-in forwards',
+                      pointerEvents: 'auto',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: 0,
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.25rem',
+                      gap: '0.2rem',
+                      cursor: 'pointer',
+                      animation: 'coin-pop 0.35s ease-out',
                     }}
                   >
                     {activeCoinModel?.url ? (
-                      <img src={activeCoinModel.open_url || activeCoinModel.url} alt="Moeda" style={{ width: 18, height: 18, objectFit: 'contain' }} />
+                      <img src={activeCoinModel.open_url || activeCoinModel.url} alt="Moeda" className="drop-coin-glow" style={{ width: 22, height: 22, objectFit: 'contain' }} />
                     ) : (
-                      <Coins size={16} color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.5)" />
+                      <Coins size={18} className="drop-coin-glow" color="var(--gold-primary)" fill="rgba(245, 158, 11, 0.5)" />
                     )}
-                    <span style={{ fontSize: '0.65rem', color: 'var(--accent-red)', fontWeight: 'bold' }}>-{coin.value}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
