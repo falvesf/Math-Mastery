@@ -649,16 +649,31 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const configuredDist = attackDistRef.current;
       const finalAttackDist = (configuredDist && configuredDist > 0) ? configuredDist : attackDistPx;
 
-      const parent = container.parentElement;
-      if (parent) {
-        parent.style.setProperty('--shadow-player-lift', `${Math.round(pLift)}px`);
-        parent.style.setProperty('--shadow-monster-lift', `${Math.round(mLift)}px`);
-        parent.style.setProperty('--shadow-player-bottom', `${Math.round(pBottomPx)}px`);
-        parent.style.setProperty('--shadow-monster-bottom', `${Math.round(mBottomPx)}px`);
-        parent.style.setProperty('--shadow-player-x', `${Math.round(pLeftPx)}px`);
-        parent.style.setProperty('--shadow-monster-x', `${Math.round(mLeftPx)}px`);
-        parent.style.setProperty('--shadow-attack-dist', `${attackDistPx}px`);
-        parent.style.setProperty('--attack-dist', `${finalAttackDist}px`);
+      // As posições projetadas são relativas ao STAGE (letterbox). O wrapper do jogador/
+      // monstro/projétil usa coordenadas relativas à ARENA, então somamos o deslocamento
+      // do stage dentro da arena (centralização). As vars vão para a ARENA (ancestral comum).
+      const outer = outerRef.current;
+      const arenaEl = (outer?.parentElement || container.parentElement) as HTMLElement | null;
+      let stageOffsetX = 0;
+      let stageOffsetBottom = 0;
+      if (outer && arenaEl) {
+        const outerRect = outer.getBoundingClientRect();
+        const arenaRect = arenaEl.getBoundingClientRect();
+        stageOffsetX = outerRect.left - arenaRect.left;
+        // `bottom` é medido a partir da base da arena:
+        stageOffsetBottom = arenaRect.bottom - outerRect.bottom;
+      }
+      const pBottomArena = pBottomPx + stageOffsetBottom;
+      const mBottomArena = mBottomPx + stageOffsetBottom;
+      if (arenaEl) {
+        arenaEl.style.setProperty('--shadow-player-lift', `${Math.round(pLift)}px`);
+        arenaEl.style.setProperty('--shadow-monster-lift', `${Math.round(mLift)}px`);
+        arenaEl.style.setProperty('--shadow-player-bottom', `${Math.round(pBottomArena)}px`);
+        arenaEl.style.setProperty('--shadow-monster-bottom', `${Math.round(mBottomArena)}px`);
+        arenaEl.style.setProperty('--shadow-player-x', `${Math.round(pLeftPx + stageOffsetX)}px`);
+        arenaEl.style.setProperty('--shadow-monster-x', `${Math.round(mLeftPx + stageOffsetX)}px`);
+        arenaEl.style.setProperty('--shadow-attack-dist', `${attackDistPx}px`);
+        arenaEl.style.setProperty('--attack-dist', `${finalAttackDist}px`);
       }
     };
     updateOverlayPositionsRef.current = updateOverlayPositions;
@@ -775,16 +790,15 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
 
   // Atualiza --attack-dist imediatamente quando o slider mudar (sem esperar resize)
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const parent = container.parentElement;
-    if (!parent) return;
+    const outer = outerRef.current;
+    const arenaEl = (outer?.parentElement || containerRef.current?.parentElement) as HTMLElement | null;
+    if (!arenaEl) return;
     if (attackDist && attackDist > 0) {
-      parent.style.setProperty('--attack-dist', `${attackDist}px`);
+      arenaEl.style.setProperty('--attack-dist', `${attackDist}px`);
     } else {
       // Ao zerar o slider, restaura a distância calculada automaticamente
-      const auto = parent.style.getPropertyValue('--shadow-attack-dist');
-      if (auto) parent.style.setProperty('--attack-dist', auto);
+      const auto = arenaEl.style.getPropertyValue('--shadow-attack-dist');
+      if (auto) arenaEl.style.setProperty('--attack-dist', auto);
     }
   }, [attackDist]);
 
