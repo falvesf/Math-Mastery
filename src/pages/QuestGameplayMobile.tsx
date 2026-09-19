@@ -3582,7 +3582,12 @@ const dealTransformDamageToPlayer = (damage: number) => {
             {arenaRenderMode === '3d' ? (
               <VoxelArena3D
                 deviceMode={effectiveDevice}
-                biome={(quest?.battleBgUrl?.startsWith('voxel:') ? quest.battleBgUrl.replace('voxel:', '') : (arenaDebug.biome3D || 'plains')) as any}
+                // Bioma: SEMPRE o da missão; se não configurado, Planícies (padrão).
+                // O bioma de teste do Arena Debug só vale enquanto o painel Debug está aberto
+                // (pré-visualização do admin) — nunca influencia a experiência dos jogadores.
+                biome={(quest?.battleBgUrl?.startsWith('voxel:')
+                  ? quest.battleBgUrl.replace('voxel:', '')
+                  : ((showDebugPanel && (userData?.role === 'admin' || isSuperAdmin)) ? (arenaDebug.biome3D || 'plains') : 'plains')) as any}
                 cameraPitch={arenaDebug.cameraPitch3D}
                 cameraDist={arenaDebug.cameraDist3D}
                 cameraTargetY={arenaDebug.cameraTargetY3D}

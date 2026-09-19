@@ -3546,7 +3546,9 @@ useEffect(() => {
             {arenaRenderMode === '3d' ? (
               <VoxelArena3D
                 deviceMode={effectiveDevice}
-                biome={(quest?.battleBgUrl?.startsWith('voxel:') ? quest.battleBgUrl.replace('voxel:', '') : (arenaDebug.biome3D || 'plains')) as any}
+                biome={(quest?.battleBgUrl?.startsWith('voxel:')
+                  ? quest.battleBgUrl.replace('voxel:', '')
+                  : ((showDebugPanel && (userData?.role === 'admin' || isSuperAdmin)) ? (arenaDebug.biome3D || 'plains') : 'plains')) as any}
                 cameraPitch={arenaDebug.cameraPitch3D}
                 cameraDist={arenaDebug.cameraDist3D}
                 cameraTargetY={arenaDebug.cameraTargetY3D}
