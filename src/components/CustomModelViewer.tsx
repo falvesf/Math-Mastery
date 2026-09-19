@@ -219,11 +219,11 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
           if (!mat._originalEmissive && mat.emissive) mat._originalEmissive = mat.emissive.clone();
           if (effectTint) {
             const tint = new THREE.Color(effectTint);
-            // Mistura na cor (funciona em modelos claros)...
-            mat.color.copy(mat._originalColor).lerp(tint, 0.75);
-            // ...e adiciona emissive (garante o "flash" em modelos escuros/texturizados)
+            // Tint SUTIL: mistura leve na cor + emissive baixo, para parecer um efeito
+            // translúcido por cima (e não uma pintura sólida).
+            mat.color.copy(mat._originalColor).lerp(tint, 0.35);
             if ('emissive' in mat && mat.emissive) {
-              mat.emissive.copy(tint).multiplyScalar(0.85);
+              mat.emissive.copy(tint).multiplyScalar(0.25);
             }
           } else {
             mat.color.copy(mat._originalColor);
