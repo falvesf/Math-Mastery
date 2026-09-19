@@ -151,6 +151,9 @@ export default function QuestGameplay() {
   const [playerAnim, setPlayerAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
   const [effectLevel, setEffectLevel] = useState(0);
+  // Turnos restantes do status aplicado no MONSTRO (poison/burn/bleed/electric/etc.).
+  // O turno em que o status foi inflingido NÃO conta. Máx. 2 turnos (evita farm infinito).
+  const [monsterStatusTurns, setMonsterStatusTurns] = useState(0);
   const [effectFlash, setEffectFlash] = useState(false);
   const [monsterHitFlash, setMonsterHitFlash] = useState(false);
   const [frozen, setFrozen] = useState(false);
@@ -1526,6 +1529,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setEliminatedOptions([]);
       setHasShield(false);
       setEffectLevel(0);
+      setMonsterStatusTurns(0);
       setFrozen(false);
       setEffectFlash(false);
       fallenPartsRef.current = [];
@@ -1955,6 +1959,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
           // TRANSFORMA use o som do animal.
           if (damageEffect !== 'none' && Math.random() * 100 < effectChance) {
             setEffectLevel(l => l + 1);
+            // Status no monstro dura no MÁXIMO 2 turnos (o turno de aplicação não conta).
+            if (damageEffect !== 'impact' && damageEffect !== 'freeze' && damageEffect !== 'transform') {
+              setMonsterStatusTurns(2);
+            }
             setEffectFlash(true);
             setTimeout(() => setEffectFlash(false), 600);
             if (damageEffect === 'freeze' && effectLevel + 1 >= FREEZE_HITS_TO_FREEZE) {
@@ -2525,6 +2533,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
         setBattleMessage('O gelo derreteu! O monstro voltou a se mover.');
       } else {
         setBattleMessage('O monstro está CONGELADO e não consegue atacar! O gelo está derretendo...');
+      }
+      return next;
+    });
+
+    // Tick do status do MONSTRO (poison/burn/bleed/electric): dura no máx. 2 turnos.
+    setMonsterStatusTurns(prev => {
+      if (prev <= 0) return 0;
+      const next = prev - 1;
+      if (next <= 0) {
+        setEffectLevel(0);
+        setBattleMessage('O efeito no monstro passou!');
       }
       return next;
     });
