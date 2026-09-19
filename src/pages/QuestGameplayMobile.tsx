@@ -4150,7 +4150,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : 
                     monsterAnim === 'death-fall' ? 'anim-death-fall' :
                     monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
-                  }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center' }}>
+                  }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center', height: (arena.unified3D && effectiveMonsterModelUrl) ? 'var(--shadow-monster-head-lift, 190px)' : undefined }}>
                   <div style={{ position: 'absolute', top: `${arena.monsterNameY - (effectiveMonsterZoom - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 150 : 230)}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
