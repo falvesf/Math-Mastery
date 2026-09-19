@@ -152,6 +152,7 @@ export default function QuestGameplay() {
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
   const [effectLevel, setEffectLevel] = useState(0);
   const [effectFlash, setEffectFlash] = useState(false);
+  const [monsterHitFlash, setMonsterHitFlash] = useState(false);
   const [frozen, setFrozen] = useState(false);
   const [freezeTurns, setFreezeTurns] = useState(0);
   const [drainBlink, setDrainBlink] = useState(false);
@@ -1944,6 +1945,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
             spawnFloatingDamage(hitRoll.damage, hitRoll.isCritical, 'monster');
             maxHitDamageDealtRef.current = Math.max(maxHitDamageDealtRef.current, hitRoll.damage);
             totalDamageDealtRef.current += hitRoll.damage;
+            // Flash vermelho de IMPACTO no monstro (funciona também para GLB)
+            setMonsterHitFlash(true);
+            setTimeout(() => setMonsterHitFlash(false), 350);
           }
           // Efeito especial aplicado ANTES do som de dano para que o golpe que
           // TRANSFORMA use o som do animal.
@@ -4177,7 +4181,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
                     if (modelUrl) {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
-                      const effectTintColor = healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : null) : null);
+                      const effectTintColor = (monsterHitFlash ? '#ff2222' : null) || healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : null) : null);
                       const monsterSlowFactor = frozen ? 0 : (damageEffect === 'freeze' && effectLevel > 0 ? Math.max(0.22, 1 - effectLevel * 0.27) : 1);
                       const monsterZoom = effectiveMonsterZoom;
                       const mSize = Math.round(190 * Math.max(1, monsterZoom * 0.7));
@@ -4188,7 +4192,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       const meltPct = damageEffect === 'burn' ? Math.max(0.55, 1 - effectLevel * 0.09) : 1;
                       const effectTintColor = healTint || (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : null) : null);
                       const monsterSlowFactor = frozen ? 0 : (damageEffect === 'freeze' && effectLevel > 0 ? Math.max(0.22, 1 - effectLevel * 0.27) : 1);
-                      return <div ref={monsterCharWrapRef} style={{ marginBottom: '-60px', transform: `scale(${effectiveMonsterZoom}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={170} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={healTint || (monsterRageActive ? '#ff2222' : effectTintColor)} slowFactor={monsterSlowFactor} fallenBodyParts={fallenPartsRef.current} fallenLayerPortal={fallenLayerEl} /></div>;
+                      return <div ref={monsterCharWrapRef} style={{ marginBottom: '-60px', transform: `scale(${effectiveMonsterZoom}) scaleY(${meltPct})`, transformOrigin: 'bottom center' }}><AvatarCharacter config={quest.monsterAvatarConfig} equippedItems={[]} size={170} animation={frozen ? 'idle' : ((monsterAnim === 'hurt' || monsterAnim === 'attack' || monsterAnim === 'attack-fatal-slow') ? monsterAnim as any : 'idle')} interactive={false} role="monster" hurt={!frozen && monsterAnim === 'hurt'} effectTint={healTint || (monsterRageActive ? '#ff2222' : (monsterHitFlash ? '#ff2222' : effectTintColor))} slowFactor={monsterSlowFactor} fallenBodyParts={fallenPartsRef.current} fallenLayerPortal={fallenLayerEl} /></div>;
                     } else {
                       return <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${quest?.title || 'monster'}&colors=red,orange,yellow`} alt="Monster" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: healTint ? 'drop-shadow(0 0 15px #2dd4bf) hue-rotate(65deg)' : 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))' }} />;
                     }
