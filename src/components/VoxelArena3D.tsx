@@ -7,6 +7,10 @@ import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/G
 // @ts-ignore
 import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/DRACOLoader.js';
 import { PlayerObject } from 'skinview3d';
+import { IdleAnimation, WalkingAnimation, RunningAnimation, HitAnimation, FunctionAnimation, PlayerAnimation } from 'skinview3d';
+import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
+import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
+import { resolveModelTransform, applyForgeGlowToModel, applyForgeGlint, type EquippedItem } from './AvatarCharacter';
 import { getSafeUrl } from '../lib/utils';
 import {
   getStoneBricksTexture,
@@ -89,6 +93,115 @@ function playEntityAnimByName(
   if (action) {
     mixer.stopAllAction();
     action.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.2).play();
+  }
+}
+
+// ===== Animação procedural do jogador NATIVO (skinview3d) =====
+// Constrói uma PlayerAnimation a partir do nome de animação da arena.
+function makeNativeAnimation(name: string): PlayerAnimation {
+  const n = (name || 'idle').toLowerCase();
+  if (n === 'walk') return new WalkingAnimation();
+  if (n === 'run') return new RunningAnimation();
+  if (n === 'hurt' || n === 'exhausted') return new HitAnimation();
+  if (n.startsWith('attack')) {
+    // Ataque: braço dominante levanta e golpeia para frente.
+    return new FunctionAnimation((player: any, progress: number) => {
+      const swing = Math.sin(Math.min(1, progress) * Math.PI);
+      const ra = player.skin.rightArm; const la = player.skin.leftArm;
+      if (ra) { ra.rotation.x = -Math.PI / 2 * swing; ra.rotation.z = 0; }
+      if (la) { la.rotation.x = Math.PI * 0.15 * swing; la.rotation.z = Math.PI * 0.02; }
+    });
+  }
+  if (n.startsWith('victory') || n === 'idle-victory' || n === 'cheer') {
+    // Comemoração: braços para cima.
+    return new FunctionAnimation((player: any, progress: number) => {
+      const la = player.skin.leftArm; const ra = player.skin.rightArm;
+      if (la) { la.rotation.x = -Math.PI * 0.9; la.rotation.z = 0.25; }
+      if (ra) { ra.rotation.x = -Math.PI * 0.9; ra.rotation.z = -0.25; }
+      if (player.skin.body) player.skin.body.rotation.x = Math.sin(progress * Math.PI * 2) * 0.06;
+    });
+  }
+  if (n.startsWith('death')) {
+    return new FunctionAnimation(() => { /* queda tratada pelo tween de grupo */ });
+  }
+  return new IdleAnimation();
+}
+
+// Anexa os itens equipados ao boneco nativo (skinview3d) — mesma lógica do AvatarCharacter.
+function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loader: any) {
+  if (!player || !items?.length) return;
+  const isLeftHanded = config?.handedness === 'left';
+  const inv = isLeftHanded ? -1 : 1;
+  const IMG_EXT_RE = /\.(png|gif|jpe?g|webp|avif)$/i;
+
+  const attach = (model: any, item: any) => {
+    model.traverse((c: any) => { if (c.isMesh) c.frustumCulled = false; });
+    try { applyForgeGlowToModel(model, item.forgeLevel || 0); } catch { /* noop */ }
+    try {
+      const lvl = item.forgeLevel || 0;
+      const tier = lvl >= 9 ? 3 : lvl >= 8 ? 2 : lvl >= 7 ? 1 : 0;
+      const isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
+      const isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
+      if (tier > 0 && isGear) {
+        const style = (isWeaponSlot && item.itemCategory !== 'defense') ? 'circles' : 'reflect';
+        model.traverse((c: any) => {
+          if (!c.isMesh) return;
+          const mats = Array.isArray(c.material) ? c.material : [c.material];
+          mats.forEach((mm: any) => applyForgeGlint(mm, tier, style as any));
+        });
+      }
+    } catch { /* noop */ }
+
+    const transform = resolveModelTransform(item, config?.gender, config?.handedness, false) || item.modelTransforms?.common;
+    const p = String(item.avatarPart);
+    if (['rightHand', 'leftHand', 'hand', 'two_handed'].includes(p)) {
+      const isDefense = item.itemCategory === 'defense';
+      const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
+      const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
+      const targetArm = isDefense ? nonDominantArm : dominantArm;
+      if (transform) {
+        model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
+        model.position.set(transform.posX * inv, transform.posY, transform.posZ);
+        model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
+        model.translateY(transform.slide);
+      } else {
+        model.scale.set(10, 10, 10);
+        model.position.set(0, -12, 0);
+        model.rotation.set(Math.PI / 2, 0, 0);
+      }
+      targetArm.add(model);
+    } else if (p === 'head' || p === 'face') {
+      const s = item.minecraftHeadValue ? 9.2 : 16;
+      model.scale.set(transform?.scale ?? s, transform?.scale ?? s, (transform?.scale ?? s) * (transform?.thickness ?? 1));
+      if (transform) { model.position.set(transform.posX, transform.posY, transform.posZ); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide); }
+      else { model.position.set(0, 0, 0); model.rotation.set(0, Math.PI, 0); }
+      player.skin.head.add(model);
+    } else if (p === 'legs' || p === 'feet') {
+      model.scale.set(transform?.scale ?? 16, transform?.scale ?? 16, (transform?.scale ?? 16) * (transform?.thickness ?? 1));
+      if (transform) { model.position.set(transform.posX ?? 0, transform.posY ?? 0, transform.posZ ?? 0); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide ?? 0); }
+      else model.position.set(0, p === 'feet' ? -22 : -15, 0);
+      player.skin.body.add(model);
+    } else {
+      model.scale.set(transform?.scale ?? 16, transform?.scale ?? 16, (transform?.scale ?? 16) * (transform?.thickness ?? 1));
+      if (transform) { model.position.set(transform.posX, transform.posY, transform.posZ); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide); }
+      else model.position.set(0, -6, 0);
+      player.skin.body.add(model);
+    }
+  };
+
+  for (const item of items) {
+    if (!item?.gameModelUrl) continue;
+    const raw = item.gameModelUrl;
+    try {
+      if (IMG_EXT_RE.test(raw.split('?')[0])) {
+        const transform = resolveModelTransform(item, config?.gender, config?.handedness, false) || item.modelTransforms?.common;
+        generateVoxelItemFromImage(raw, item.backColor, transform?.curveX || 0, transform?.curveY || 0, undefined, 0.12 * (transform?.thickness ?? 1))
+          .then((m: any) => attach(m, item))
+          .catch(() => {});
+      } else {
+        loader.load(raw, (gltf: any) => attach(gltf.scene, item), undefined, () => {});
+      }
+    } catch (e) { console.warn('[VoxelArena3D] falha ao anexar item nativo:', e); }
   }
 }
 
@@ -455,6 +568,16 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const unifiedPlayerRootRef = useRef<THREE.Object3D | null>(null);
   const unifiedMonsterOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
   const unifiedPlayerOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
+  // Jogador nativo (skinview3d): quando não há GLB customizado, o boneco é o próprio
+  // PlayerObject do skinview3d, inserido direto na cena — fidelidade total (expressões,
+  // glint, sparkles, animações), já que agora usamos a mesma versão do Three (0.156).
+  const nativePlayerRef = useRef<{
+    viewer: any;
+    player: any;
+    skinViewer: any;
+    currentAnim: string;
+    anim: any;
+  } | null>(null);
   // Tweens de avanço (ataque corpo a corpo) das entidades unificadas
   const monsterMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>(null);
   const playerMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>(null);
@@ -1074,6 +1197,10 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         unifiedMonsterMixerRef.current.update(delta);
       }
       if (unifiedPlayerMixerRef.current) unifiedPlayerMixerRef.current.update(delta);
+      // Jogador NATIVO (skinview3d): avança a PlayerAnimation manualmente.
+      if (nativePlayerRef.current) {
+        try { nativePlayerRef.current.anim?.update?.(nativePlayerRef.current.player, delta); } catch { /* noop */ }
+      }
       // Derretimento ao queimar: encolhe verticalmente (scaleY) conforme o nível do fogo.
       if (unifiedMonsterRootRef.current && monsterDamageEffectRef.current === 'burn' && monsterEffectLevelRef.current > 0) {
         const meltPct = Math.max(0.55, 1 - monsterEffectLevelRef.current * 0.09);
@@ -1425,14 +1552,58 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       playEntityAnimByName(actions, mixer, monsterAnimRef.current);
     });
 
-    // Jogador (GLB customizado) — rotY extra vem de playerConfig.customRotY
-    loadEntity(playerModelUrl, playerSkinUrl, -3.6, 1, playerRotYRef.current, (group, root, mixer, actions) => {
-      unifiedPlayerGroupRef.current = group;
-      unifiedPlayerRootRef.current = root;
-      unifiedPlayerMixerRef.current = mixer;
-      unifiedPlayerActionsRef.current = actions;
-      playEntityAnimByName(actions, mixer, playerAnimRef.current);
-    });
+    // Jogador: se houver GLB customizado, usa o fluxo GLB; senão, carrega o boneco
+    // NATIVO do skinview3d (fidelidade total: expressões, glint, itens, animações).
+    if (playerModelUrl) {
+      loadEntity(playerModelUrl, playerSkinUrl, -3.6, 1, playerRotYRef.current, (group, root, mixer, actions) => {
+        unifiedPlayerGroupRef.current = group;
+        unifiedPlayerRootRef.current = root;
+        unifiedPlayerMixerRef.current = mixer;
+        unifiedPlayerActionsRef.current = actions;
+        playEntityAnimByName(actions, mixer, playerAnimRef.current);
+      });
+    } else {
+      // ---- Boneco NATIVO do skinview3d ----
+      const buildNativePlayer = async () => {
+        try {
+          const { SkinViewer } = await import('skinview3d');
+          const skinUrl = playerSkinUrl || await generateMinecraftSkinUrl(playerConfig || ({} as any));
+          const viewer = new SkinViewer({ width: 150, height: 250, renderPaused: true });
+          await viewer.loadSkin(skinUrl, { model: playerConfig?.gender === 'female' ? 'slim' : 'default' });
+          if (disposed) { try { viewer.dispose(); } catch { /* noop */ } return; }
+
+          const player = (viewer as any).playerObject;
+          fitEntityToGround(player, UNIFIED_ENTITY_HEIGHT);
+
+          const group = new THREE.Group();
+          group.add(player);
+          group.position.set(-3.6, 0.51, 0.2);
+          group.rotation.y = Math.PI + THREE.MathUtils.degToRad(playerRotYRef.current || 0);
+          scene.add(group);
+
+          // Anexa os itens equipados (mesma lógica do AvatarCharacter).
+          attachEquippedItemsToPlayer(player, playerConfig, playerEquippedItems, loader);
+
+          nativePlayerRef.current = {
+            viewer,
+            player,
+            skinViewer: viewer,
+            currentAnim: '',
+            anim: new IdleAnimation(),
+          };
+          unifiedPlayerGroupRef.current = group;
+          unifiedPlayerRootRef.current = player;
+
+          // Aplica a animação atual.
+          const animName = playerAnimRef.current || 'idle';
+          nativePlayerRef.current.anim = makeNativeAnimation(animName);
+          nativePlayerRef.current.currentAnim = animName;
+        } catch (e) {
+          console.warn('[VoxelArena3D] Falha ao carregar boneco nativo (skinview3d):', e);
+        }
+      };
+      buildNativePlayer();
+    }
 
     return () => {
       disposed = true;
@@ -1451,6 +1622,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       });
       unifiedMonsterMixerRef.current?.stopAllAction();
       unifiedPlayerMixerRef.current?.stopAllAction();
+      try { nativePlayerRef.current?.viewer?.dispose?.(); } catch { /* noop */ }
+      nativePlayerRef.current = null;
       unifiedMonsterGroupRef.current = null;
       unifiedPlayerGroupRef.current = null;
       unifiedMonsterRootRef.current = null;
@@ -1461,7 +1634,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedPlayerActionsRef.current = {};
       draco.dispose();
     };
-  }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, monsterZoom, monsterRotY]);
+  }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, playerConfig, playerEquippedItems, monsterZoom, monsterRotY]);
 
   // Aplica a animação (por nome) e a rotação (repouso = câmera, combate = oponente).
   useEffect(() => {
@@ -1516,7 +1689,15 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       }
     }
     playEntityAnimByName(unifiedMonsterActionsRef.current, unifiedMonsterMixerRef.current, monsterSpecialAnim || monsterAnim);
-    playEntityAnimByName(unifiedPlayerActionsRef.current, unifiedPlayerMixerRef.current, playerAnim);
+    if (nativePlayerRef.current) {
+      // Jogador NATIVO: troca a PlayerAnimation do skinview3d conforme o nome.
+      if (nativePlayerRef.current.currentAnim !== playerAnim) {
+        nativePlayerRef.current.anim = makeNativeAnimation(playerAnim);
+        nativePlayerRef.current.currentAnim = playerAnim;
+      }
+    } else {
+      playEntityAnimByName(unifiedPlayerActionsRef.current, unifiedPlayerMixerRef.current, playerAnim);
+    }
   }, [unified3D, monsterAnim, playerAnim, monsterSpecialAnim, monsterModelUrl, playerModelUrl, monsterRotY]);
 
   // Golpe especial procedural: inicia quando monsterProceduralAnim muda; reseta ao limpar.

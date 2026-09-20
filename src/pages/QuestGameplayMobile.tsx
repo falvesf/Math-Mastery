@@ -3640,11 +3640,12 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
   const activePlayerAnim = (playerAnim === 'idle' || playerAnim === 'exhausted') ? baseAnim : playerAnim;
 
-  // O jogador é renderizado DENTRO da cena 3D (e o overlay CSS é escondido) quando há
-  // cena unificada + um modelo GLB para ele: customModelUrl (upload manual) ou
-  // exportedModelUrl (gerado a partir da skin + itens no perfil).
-  const playerHasUnifiedModel = !!(arena.unified3D && (userData?.avatarConfig?.customModelUrl || userData?.avatarConfig?.exportedModelUrl));
-  const playerHasAnyModel = !!(userData?.avatarConfig?.customModelUrl || userData?.avatarConfig?.exportedModelUrl);
+  // O jogador é renderizado DENTRO da cena 3D unificada sempre que ela está ativa:
+  // - com customModelUrl: usa o GLB enviado manualmente;
+  // - sem ele: usa o boneco NATIVO do skinview3d (fidelidade total).
+  // Em ambos os casos o overlay CSS do avatar é escondido.
+  const playerHasUnifiedModel = !!(arena.unified3D);
+  const playerHasAnyModel = !!(arena.unified3D || userData?.avatarConfig?.customModelUrl || userData?.avatarConfig?.exportedModelUrl);
 
   return (
     <div className="app-container" style={{ 
@@ -3820,8 +3821,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 playerConfig={userData?.avatarConfig || null}
                 playerEquippedItems={playerEquippedItems}
                 playerAnim={activePlayerAnim}
-                playerModelUrl={userData?.avatarConfig?.customModelUrl || userData?.avatarConfig?.exportedModelUrl}
-                playerSkinUrl={userData?.avatarConfig?.customModelUrl ? userData?.avatarConfig?.customSkinUrl : (userData?.avatarConfig?.exportedModelUrl ? null : userData?.avatarConfig?.customSkinUrl)}
+                playerModelUrl={userData?.avatarConfig?.customModelUrl}
+                playerSkinUrl={userData?.avatarConfig?.customSkinUrl}
                 monsterModelUrl={effectiveMonsterModelUrl}
                 monsterSkinUrl={effectiveMonsterSkinUrl}
                 monsterConfig={quest?.monsterAvatarConfig}
