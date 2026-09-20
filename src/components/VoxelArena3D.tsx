@@ -104,7 +104,19 @@ function makeNativeAnimation(name: string): PlayerAnimation {
   const n = (name || 'idle').toLowerCase();
   if (n === 'walk') return new WalkingAnimation();
   if (n === 'run') return new RunningAnimation();
-  if (n === 'hurt' || n === 'exhausted') return new HitAnimation();
+  if (n === 'hurt' || n === 'exhausted') {
+    // Pose clara de "levar dano": corpo inclina para trás e cabeça joga para trás,
+    // braços caem. (O HitAnimation do skinview3d ergue o braço e parece um ataque.)
+    return new FunctionAnimation((player: any, progress: number) => {
+      const p = Math.min(1, progress);
+      const recoil = Math.sin(p * Math.PI);
+      if (player.skin.body) { player.skin.body.rotation.x = -0.25 * recoil; player.skin.body.rotation.y = 0.12 * recoil; }
+      if (player.skin.head) { player.skin.head.rotation.x = -0.3 * recoil; }
+      const la = player.skin.leftArm; const ra = player.skin.rightArm;
+      if (la) { la.rotation.x = 0.25 * recoil; la.rotation.z = 0.1; }
+      if (ra) { ra.rotation.x = 0.25 * recoil; ra.rotation.z = -0.1; }
+    });
+  }
   if (n.startsWith('attack')) {
     // Ataque: braço dominante levanta e golpeia para frente.
     return new FunctionAnimation((player: any, progress: number) => {
@@ -132,6 +144,7 @@ function makeNativeAnimation(name: string): PlayerAnimation {
 // Anexa os itens equipados ao boneco nativo (skinview3d) — mesma lógica do AvatarCharacter.
 function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loader: any) {
   if (!player || !items?.length) return;
+  console.log('[ARENA-ITEM] total de itens recebidos:', items.length, items.map((i: any) => `${i.avatarPart}:${i.itemTitle}`));
   const isLeftHanded = config?.handedness === 'left';
   const inv = isLeftHanded ? -1 : 1;
   const IMG_EXT_RE = /\.(png|gif|jpe?g|webp|avif)$/i;
@@ -194,14 +207,27 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
   for (const item of items) {
     if (!item?.gameModelUrl) continue;
     const raw = item.gameModelUrl;
+    // Resolve a URL como no AvatarCharacter: prefixa /models/ quando relativo, adiciona
+    // BASE_URL e codifica espaços (ex.: "cintura diamante.glb"). Sem isso o loader busca
+    // o index.html e falha ("Unexpected token '<'").
+    let finalUrl = String(raw).replace(/\\/g, '/');
+    if (!finalUrl.startsWith('http') && !finalUrl.startsWith('/')) {
+      if (!finalUrl.startsWith('models/')) finalUrl = `models/${finalUrl}`;
+      finalUrl = `/${finalUrl}`;
+    } else if (finalUrl.startsWith('/') && !finalUrl.startsWith('/models/')) {
+      finalUrl = `/models${finalUrl}`;
+    }
+    if (finalUrl.startsWith('/')) finalUrl = import.meta.env.BASE_URL + finalUrl.substring(1);
+    finalUrl = finalUrl.startsWith('http') ? finalUrl : encodeURI(finalUrl);
     try {
-      if (IMG_EXT_RE.test(raw.split('?')[0])) {
+      console.log('[ARENA-ITEM] carregando:', item.avatarPart, item.itemTitle, finalUrl);
+      if (IMG_EXT_RE.test(finalUrl.split('?')[0])) {
         const transform = resolveModelTransform(item, config?.gender, config?.handedness, false) || item.modelTransforms?.common;
-        generateVoxelItemFromImage(raw, item.backColor, transform?.curveX || 0, transform?.curveY || 0, undefined, 0.12 * (transform?.thickness ?? 1))
+        generateVoxelItemFromImage(finalUrl, item.backColor, transform?.curveX || 0, transform?.curveY || 0, undefined, 0.12 * (transform?.thickness ?? 1))
           .then((m: any) => attach(m, item))
-          .catch(() => {});
+          .catch((e: any) => console.warn('[ARENA-ITEM] falha voxel:', item.itemTitle, e));
       } else {
-        loader.load(raw, (gltf: any) => {
+        loader.load(finalUrl, (gltf: any) => {
           let model = gltf.scene;
           // Itens com SkinnedMesh (ex.: armaduras/elmo/botas de packs) NÃO renderizam ao
           // serem reparentados sem clonar o esqueleto. Clona com SkeletonUtils.
@@ -210,8 +236,9 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
           if (hasSkin) {
             try { model = skeletonClone(model); } catch { /* mantém o original */ }
           }
+          console.log('[ARENA-ITEM] GLB ok:', item.avatarPart, item.itemTitle, 'skinned:', hasSkin);
           attach(model, item);
-        }, undefined, () => {});
+        }, undefined, (err: any) => console.warn('[ARENA-ITEM] falha GLB:', item.itemTitle, finalUrl, err));
       }
     } catch (e) { console.warn('[VoxelArena3D] falha ao anexar item nativo:', e); }
   }
@@ -246,7 +273,7 @@ function applySkinTexture(root: THREE.Object3D, skinUrl: string | null | undefin
 
 // Aplica tint de efeito (dano/veneno/fogo) e fúria nos materiais de uma entidade.
 // `amount` (0-1) permite tint parcial (ex.: azul do gelo esmaecendo ao descongelar).
-function applyEntityTint(root: THREE.Object3D | null, tint: string | null, enraged: boolean, amount: number = 1) {
+function applyEntityTint(root: THREE.Object3D | null, tint: string | null, enraged: boolean, amount: number = 1, strength: number = 0.35) {
   if (!root) return;
   root.traverse((c) => {
     const mesh = c as THREE.Mesh;
@@ -263,7 +290,7 @@ function applyEntityTint(root: THREE.Object3D | null, tint: string | null, enrag
         if (mat.emissive) mat.emissive.setRGB(0.6, 0.02, 0.02);
       } else if (tint && amount > 0.001) {
         const c = new THREE.Color(tint);
-        mat.color.copy(mat._origColor).lerp(c, 0.35 * amount);
+        mat.color.copy(mat._origColor).lerp(c, strength * amount);
         if (mat.emissive) mat.emissive.copy(c).multiplyScalar(0.25 * amount);
       } else {
         mat.color.copy(mat._origColor);
@@ -447,6 +474,12 @@ export interface VoxelArena3DProps {
   monsterFrozen?: boolean;
   /** Intensidade do tint (0-1) — ex.: azul do gelo esmaecendo ao descongelar */
   monsterEffectTintAmount?: number;
+  /** Tint de efeito de status no JOGADOR (veneno/fogo/raio/sangramento/gelo/cura) */
+  playerEffectTint?: string | null;
+  /** Intensidade do tint do jogador (0-1) */
+  playerEffectTintAmount?: number;
+  /** Força do blend do tint do jogador (0-1). Flash de dano usa valor alto p/ ficar evidente. */
+  playerEffectTintStrength?: number;
   /** Fator de derretimento do gelo (1 = cheio, menor = derretendo) */
   monsterFreezeMelt?: number;
   /** Contador que incrementa quando o gelo é quebrado por golpe (estilhaça) */
@@ -535,6 +568,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   monsterFrozen = false,
   monsterFreezeMelt = 1,
   monsterEffectTintAmount = 1,
+  playerEffectTint = null,
+  playerEffectTintAmount = 1,
+  playerEffectTintStrength = 0.35,
   iceBreakTick = 0,
   playerRecoil = false,
   // @ts-ignore
@@ -560,6 +596,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const isMobileMode = deviceMode ? (deviceMode === 'mobile') : (typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
   const STAGE_ASPECT = isMobileMode ? (9 / 16) : (16 / 9);
   const [stageSize, setStageSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  // Incrementa quando o grupo do monstro é (re)criado, para o efeito do gelo recriar
+  // o gelo/poça caso o monstro já esteja congelado (ex.: após re-render/resize).
+  const [monsterEpoch, setMonsterEpoch] = useState(0);
 
   // Refs Three.js desacoplados do ciclo de vida da cena
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -1165,15 +1204,6 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         const pHeadTop = (pHead.y * 0.5 + 0.5) * h + stageOffsetBottom;
         mHeadLift = Math.max(0, Math.round(mHeadTop - mBottomArena));
         pHeadLift = Math.max(0, Math.round(pHeadTop - pBottomArena));
-        console.log('[FASEB headlift]', {
-          unified3D: unified3DRef.current,
-          mHeadNDC: mHead.y.toFixed(3),
-          mFeetNDC: mGround.y.toFixed(3),
-          mHeadTop: Math.round(mHeadTop),
-          mBottomArena: Math.round(mBottomArena),
-          lift: mHeadLift,
-          containerH: h,
-        });
       }
 
       if (arenaEl) {
@@ -1252,7 +1282,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         const g = unifiedPlayerGroupRef.current;
         const walkT = clamp01(el / 1.8);
         g.position.x = playerWalkStartXRef.current * (1 - easeInOut(walkT));
-        g.rotation.y = -Math.PI / 2; // olha para onde o monstro fugiu
+        // Olha para onde o monstro fugiu (+x). Base de combate difere por tipo de boneco.
+        g.rotation.y = (nativePlayerRef.current ? Math.PI / 2 : -Math.PI / 2) + THREE.MathUtils.degToRad(playerRotYRef.current);
       }
       // Fatality (morte) no loop
       applyDeathTween(monsterDeathRef, unifiedMonsterGroupRef.current, nowMs);
@@ -1497,6 +1528,12 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   monsterEffectTintRef.current = monsterEffectTint;
   const monsterEffectTintAmountRef = useRef(monsterEffectTintAmount);
   monsterEffectTintAmountRef.current = monsterEffectTintAmount;
+  const playerEffectTintRef = useRef(playerEffectTint);
+  playerEffectTintRef.current = playerEffectTint;
+  const playerEffectTintAmountRef = useRef(playerEffectTintAmount);
+  playerEffectTintAmountRef.current = playerEffectTintAmount;
+  const playerEffectTintStrengthRef = useRef(playerEffectTintStrength);
+  playerEffectTintStrengthRef.current = playerEffectTintStrength;
   const monsterEnragedRef = useRef(monsterEnraged);
   monsterEnragedRef.current = monsterEnraged;
   // Rotação extra (graus) do modelo GLB do jogador (config.customRotY)
@@ -1505,6 +1542,12 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // Flag de cena unificada para o closure do updateOverlayPositions (criado uma vez)
   const unified3DRef = useRef(unified3D);
   unified3DRef.current = unified3D;
+
+  // Chaves serializadas: as props `playerConfig`/`playerEquippedItems` costumam chegar
+  // como novas REFERÊNCIAS a cada render. Usá-las direto nas deps fazia o efeito de carga
+  // rodar em loop (piscava a arena e recarregava os itens 3D sem parar).
+  const playerConfigKey = JSON.stringify(playerConfig ?? null);
+  const playerEquippedItemsKey = JSON.stringify(playerEquippedItems ?? []);
 
   // Carrega jogador + monstro GLB e insere na cena.
   useEffect(() => {
@@ -1562,6 +1605,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedMonsterBaseScaleRef.current = root.scale.x || 1;
       applyEntityTint(root, monsterEffectTintRef.current, monsterEnragedRef.current, monsterEffectTintAmountRef.current);
       playEntityAnimByName(actions, mixer, monsterAnimRef.current);
+      // Sinaliza que o grupo do monstro está pronto (recria gelo/poça se congelado).
+      setMonsterEpoch((e) => e + 1);
     });
 
     // Jogador: se houver GLB customizado, usa o fluxo GLB; senão, carrega o boneco
@@ -1611,6 +1656,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
           const animName = playerAnimRef.current || 'idle';
           nativePlayerRef.current.anim = makeNativeAnimation(animName);
           nativePlayerRef.current.currentAnim = animName;
+          // Reaplica o tint atual (o efeito pode ter rodado antes do boneco existir).
+          applyEntityTint(player, playerEffectTintRef.current, false, playerEffectTintAmountRef.current, playerEffectTintStrengthRef.current);
         } catch (e) {
           console.warn('[VoxelArena3D] Falha ao carregar boneco nativo (skinview3d):', e);
         }
@@ -1637,6 +1684,12 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedPlayerMixerRef.current?.stopAllAction();
       try { nativePlayerRef.current?.viewer?.dispose?.(); } catch { /* noop */ }
       nativePlayerRef.current = null;
+      // O grupo do monstro é destruído aqui; o gelo e a poça iam junto, mas as refs
+      // continuavam apontando para eles → o gelo não era recriado (sumia ao re-render/
+      // resize). Reseta para o efeito do gelo poder recriar quando ainda congelado.
+      iceGroupRef.current = null;
+      puddleRef.current = null;
+      iceShatterRef.current = null;
       unifiedMonsterGroupRef.current = null;
       unifiedPlayerGroupRef.current = null;
       unifiedMonsterRootRef.current = null;
@@ -1647,7 +1700,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedPlayerActionsRef.current = {};
       draco.dispose();
     };
-  }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, playerConfig, playerEquippedItems, monsterZoom, monsterRotY]);
+  }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, playerConfigKey, playerEquippedItemsKey, monsterZoom, monsterRotY]);
 
   // Aplica a animação (por nome) e a rotação (repouso = câmera, combate = oponente).
   useEffect(() => {
@@ -1707,14 +1760,24 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       }
     }
     playEntityAnimByName(unifiedMonsterActionsRef.current, unifiedMonsterMixerRef.current, monsterSpecialAnim || monsterAnim);
-    if (nativePlayerRef.current) {
-      // Jogador NATIVO: troca a PlayerAnimation do skinview3d conforme o nome.
-      if (nativePlayerRef.current.currentAnim !== playerAnim) {
-        nativePlayerRef.current.anim = makeNativeAnimation(playerAnim);
-        nativePlayerRef.current.currentAnim = playerAnim;
-      }
-    } else {
-      playEntityAnimByName(unifiedPlayerActionsRef.current, unifiedPlayerMixerRef.current, playerAnim);
+      if (nativePlayerRef.current) {
+        // Jogador NATIVO: troca a PlayerAnimation do skinview3d conforme o nome.
+        if (nativePlayerRef.current.currentAnim !== playerAnim) {
+          // Reseta a pose antes de trocar: animações procedurais só escrevem os ossos que
+          // controlam; sem reset, um braço erguido no ataque ficaria "preso".
+          const pl = nativePlayerRef.current.player;
+          ['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'].forEach((b) => {
+            const node = pl?.skin?.[b];
+            if (node) { node.rotation.set(0, 0, 0); }
+          });
+          // Restaura posições padrão dos braços (o HitAnimation altera leftArm.position).
+          if (pl?.skin?.leftArm) pl.skin.leftArm.position.set(5, -2, 0);
+          if (pl?.skin?.rightArm) pl.skin.rightArm.position.set(-5, -2, 0);
+          nativePlayerRef.current.anim = makeNativeAnimation(playerAnim);
+          nativePlayerRef.current.currentAnim = playerAnim;
+        }
+      } else {
+        playEntityAnimByName(unifiedPlayerActionsRef.current, unifiedPlayerMixerRef.current, playerAnim);
     }
   }, [unified3D, monsterAnim, playerAnim, monsterSpecialAnim, monsterModelUrl, playerModelUrl, monsterRotY]);
 
@@ -1810,7 +1873,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         puddleRef.current = null;
       }
     }
-  }, [unified3D, monsterFrozen, monsterModelUrl]);
+  }, [unified3D, monsterFrozen, monsterModelUrl, monsterEpoch]);
 
   // TRANSFORMAÇÃO: quando vira animal, carrega o GLB do animal na cena e esconde o monstro.
   useEffect(() => {
@@ -1923,10 +1986,16 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     applyEntityTint(unifiedMonsterRootRef.current, monsterEffectTint, monsterEnraged, monsterEffectTintAmount);
   }, [unified3D, monsterEffectTint, monsterEnraged, monsterEffectTintAmount, monsterModelUrl]);
 
+  // Reaplica tint de status no JOGADOR (veneno/fogo/raio/sangramento/gelo/cura).
+  useEffect(() => {
+    if (!unified3D) return;
+    applyEntityTint(unifiedPlayerRootRef.current, playerEffectTint, false, playerEffectTintAmount, playerEffectTintStrength);
+  }, [unified3D, playerAnim, playerEffectTint, playerEffectTintAmount, playerEffectTintStrength, playerModelUrl]);
+
   // Recalcula a projeção da cabeça quando a cena unificada liga/desliga ou o zoom muda.
   useEffect(() => {
     updateOverlayPositionsRef.current?.();
-  }, [unified3D, monsterZoom, playerConfig]);
+  }, [unified3D, monsterZoom, playerConfigKey]);
 
   // Atualiza --attack-dist imediatamente quando o slider mudar (sem esperar resize)
   useEffect(() => {

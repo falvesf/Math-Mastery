@@ -197,8 +197,10 @@ export default function QuestGameplay() {
   const iceHpRef = useRef(0);
   // Sinal para o VoxelArena3D estilhaçar o gelo (quebra por dano ou fatality).
   const [iceBreakTick, setIceBreakTick] = useState(0);
-  // Recuo do jogador ao bater no gelo (como se batesse em algo duro).
+    // Recuo do jogador ao bater no gelo (como se batesse em algo duro).
   const [playerRecoil, setPlayerRecoil] = useState(false);
+  // Flash vermelho quando o jogador leva dano (equivalente ao monsterHitFlash).
+  const [playerHitFlash, setPlayerHitFlash] = useState(false);
   const [drainBlink, setDrainBlink] = useState(false);
   void drainBlink; void setDrainBlink;
 
@@ -614,6 +616,9 @@ export default function QuestGameplay() {
     const gender = (userData?.avatarConfig as any)?.gender;
     const url = gender === 'female' ? playerDamageSoundsRef.current.female : playerDamageSoundsRef.current.male;
     playSound(url, 0.8);
+    // Flash vermelho no boneco do jogador ao levar dano (tint temporário).
+    setPlayerHitFlash(true);
+    setTimeout(() => setPlayerHitFlash(false), 350);
   };
   // Sons do monstro: se estiver TRANSFORMADO, usam o som próprio do animal
   const playMonsterAttackSound = () => {
@@ -835,23 +840,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
   const arena = useMemo(() => scaleArenaDebug(arenaDebug, arenaScale), [arenaDebug, arenaScale]);
 
   // DEBUG TEMPORÁRIO (Fase B) — remover antes do push final
-  useEffect(() => {
-    if (gameState !== 'playing') return;
-    const el = arenaRef.current;
-    let lift = 'n/a';
-    if (el) {
-      lift = getComputedStyle(el).getPropertyValue('--shadow-monster-head-lift').trim();
-    }
-    console.log('[FASEB name]', {
-      unified3D: !!arena.unified3D,
-      modelUrl: !!effectiveMonsterModelUrl,
-      liftVar: lift,
-      renderMode: arenaRenderMode,
-      heightApplied: !!(arena.unified3D && effectiveMonsterModelUrl),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState, arena.unified3D, effectiveMonsterModelUrl, arenaRenderMode, arenaWidth]);
-
   const hasUserModifiedDebugRef = useRef(false);
 
   const handleArenaDebugChange = (newConfig: ArenaDebugConfig) => {
@@ -2054,8 +2042,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
           setPlayerAnim('idle');
         } else {
           // Fuga no golpe final: se sobraram corações, o monstro pode fugir conforme a chance.
+          // EXCEÇÃO: se estiver CONGELADO, ele não consegue fugir — o gelo se despedaça no
+          // fatality (sem levar a água/geleira embora).
           const fleeChance = getMonsterFleeChance(monsterHearts, quest.questions.length);
-          const willFlee = Math.random() * 100 < fleeChance;
+          const willFlee = !frozen && Math.random() * 100 < fleeChance;
           if (willFlee) {
             triggerFlee();
           } else {
@@ -3844,6 +3834,16 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 monsterEnraged={monsterRageActive}
                 monsterEffectTint={frozen ? '#3f9bff' : (monsterHitFlash ? '#ff2222' : (monsterHealPulse ? '#2dd4bf' : (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : undefined) : undefined)))}
                 monsterEffectTintAmount={frozen ? Math.max(0, iceMaxHp > 0 ? iceHp / iceMaxHp : 1) : 1}
+                playerEffectTint={
+                  playerHitFlash ? '#ff2222'
+                  : playerFrozenAt > Date.now() ? '#9fd8ff'
+                  : playerBurnTurns > 0 ? '#ff8833'
+                  : playerPoisonTurns > 0 ? '#44ff66'
+                  : playerElectricTurns > 0 ? '#ffe94a'
+                  : (playerBleeds.length > 0 ? '#ff3333' : (healAuraTurns > 0 ? '#2dd4bf' : undefined))
+                }
+                playerEffectTintAmount={1}
+                playerEffectTintStrength={playerHitFlash ? 0.85 : 0.4}
               />
             ) : (
               <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
@@ -4127,10 +4127,19 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   <span style={{ fontSize: '0.5rem', color: '#3b82f6', fontWeight: 'bold' }}>F</span>
                 </div>
               )}
-              {/* Nome do jogador - pequeno, acima da cabeça */}
-              <div style={{ position: 'absolute', top: `${arena.playerNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap' }}>
-                <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
-              </div>
+              {/* Nome do jogador — no modo 2D usa o offset; no 3D unificado replica a estrutura do
+                  monstro: wrapper externo (não escalado) com altura = head-lift e o nome em top:-36px. */}
+              {playerHasUnifiedModel ? (
+                <div style={{ position: 'relative', width: '130px', height: 'var(--shadow-player-head-lift, 170px)', pointerEvents: 'none' }}>
+                  <div style={{ position: 'absolute', top: '-36px', left: '50%', transform: `translateX(calc(-50% + ${arena.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                    <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ position: 'absolute', top: `${arena.playerNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap' }}>
+                  <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
+                </div>
+              )}
               <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '170px' : '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', height: playerHasUnifiedModel ? 'var(--shadow-player-head-lift, 170px)' : undefined, transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arena.playerScale3D ?? 1) : arena.playerScale})` }}>
                 {/* Sombra dinâmica do personagem */}
                 <div className="avatar-ground-shadow" style={(!playerHasUnifiedModel ? undefined : { opacity: 0 })} />
