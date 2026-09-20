@@ -20,6 +20,7 @@ import {
 import Admin3DModelsManager from './Admin3DModelsManager';
 import CustomModelViewer from './CustomModelViewer';
 import PoseStudioModal from './PoseStudioModal';
+import { exportAvatarToGlb } from '../lib/avatarGlbExporter';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -305,6 +306,9 @@ export default function AvatarCustomizationModal({
     return saved ? JSON.parse(saved) : true;
   });
   const [saving, setSaving] = useState(false);
+  // Geração do GLB do jogador (skin + itens) para uso dentro da cena 3D unificada.
+  const [exporting3d, setExporting3d] = useState(false);
+  const [exportedAt, setExportedAt] = useState<number | null>(null);
   const [monsterName, setMonsterName] = useState('');
   // Quando editando um monstro já salvo na galeria: guarda o id do registro
   // para fazer UPDATE (nunca duplicar) e o nome fica travado.
@@ -657,6 +661,45 @@ export default function AvatarCustomizationModal({
       hasRandomized.current = true;
     }
   }, [inline, presetSkins, initialConfig, initialSkinId, initialMonsterName, customSaveMode]);
+
+  // Gera o GLB do avatar (skin gerada + addons + itens equipados) e sobe para o
+  // Supabase Storage, guardando a URL em config.exportedModelUrl. É esse arquivo
+  // que permite renderizar o jogador DENTRO da cena 3D unificada da arena.
+  const handleExport3D = async () => {
+    if (exporting3d) return;
+    setExporting3d(true);
+    try {
+      const blob = await exportAvatarToGlb(config, equippedItems);
+      if (blob.size > 5 * 1024 * 1024) {
+        showAlert('O modelo gerado ficou maior que 5 MB. Tente remover itens equipados e gerar novamente.');
+        setExporting3d(false);
+        return;
+      }
+      const fileName = `avatar_${userData?.uid || 'anon'}_${Date.now()}.glb`;
+      const filePath = `avatar3d/${fileName}`;
+      const { error } = await supabase.storage.from('uploads').upload(filePath, blob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: 'model/gltf-binary',
+      });
+      if (error) throw error;
+      const { data: pub } = supabase.storage.from('uploads').getPublicUrl(filePath);
+      const url = pub.publicUrl;
+      setConfig(prev => ({ ...prev, exportedModelUrl: url }));
+      setExportedAt(Date.now());
+      if (userData?.uid && !customSaveMode && !inline) {
+        const saved = { ...config, exportedModelUrl: url, firstEditAt: config.firstEditAt || Date.now() };
+        await supabase.from('users').update({ avatar_config: saved }).eq('id', userData.uid);
+        updateUserDataLocally({ avatarConfig: saved });
+      }
+      showToast('Modelo 3D do personagem gerado com sucesso!', 'success');
+    } catch (e: any) {
+      console.error('Falha ao gerar o modelo 3D do avatar:', e);
+      showAlert(`Não foi possível gerar o modelo 3D: ${e?.message || e}`);
+    } finally {
+      setExporting3d(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -1744,6 +1787,27 @@ onClick={() => setConfig(prev => {
                 Resetar (100%)
               </button>
             </div>
+
+            {/* Gerar modelo 3D do personagem (GLB) para uso na arena 3D unificada */}
+            {!customSaveMode && (
+              <div style={{ width: '100%', marginBottom: '0.75rem', background: 'rgba(59, 130, 246, 0.06)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+                  🧊 Personagem na arena 3D (gera um arquivo .glb da sua skin + itens)
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={handleExport3D}
+                    disabled={exporting3d}
+                    style={{ padding: '0.35rem 0.75rem', background: exporting3d ? 'rgba(59,130,246,0.4)' : 'var(--accent-blue, #3b82f6)', color: 'white', border: 'none', borderRadius: '6px', cursor: exporting3d ? 'wait' : 'pointer', fontSize: '0.75rem', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                  >
+                    {exporting3d ? 'Gerando…' : (config.exportedModelUrl ? 'Regerar modelo 3D' : 'Gerar modelo 3D')}
+                  </button>
+                  {config.exportedModelUrl && !exporting3d && (
+                    <span style={{ fontSize: '0.7rem', color: '#22c55e' }}>✓ Modelo gerado{exportedAt ? '' : ''}</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Avatar / Monstro 3D — ocupa de forma ampla todo o espaço vertical e horizontal disponível */}
             <div style={{

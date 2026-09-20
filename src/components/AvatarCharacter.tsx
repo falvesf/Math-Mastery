@@ -43,6 +43,8 @@ export interface AvatarConfig {
   animationState?: 'idle' | 'walk' | 'run' | 'attack' | 'raise-hand';
   customSkinUrl?: string;
   customModelUrl?: string;
+  /** GLB gerado automaticamente a partir da skin+itens (para usar o jogador dentro da cena 3D unificada) */
+  exportedModelUrl?: string;
   /** Escala/zoom do modelo 3D customizado (1 = padrão auto-enquadrado) */
   customZoom?: number;
   /** Rotação extra no eixo Y (graus) para corrigir GLBs que carregam de costas */

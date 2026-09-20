@@ -3640,6 +3640,12 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
   const activePlayerAnim = (playerAnim === 'idle' || playerAnim === 'exhausted') ? baseAnim : playerAnim;
 
+  // O jogador é renderizado DENTRO da cena 3D (e o overlay CSS é escondido) quando há
+  // cena unificada + um modelo GLB para ele: customModelUrl (upload manual) ou
+  // exportedModelUrl (gerado a partir da skin + itens no perfil).
+  const playerHasUnifiedModel = !!(arena.unified3D && (userData?.avatarConfig?.customModelUrl || userData?.avatarConfig?.exportedModelUrl));
+  const playerHasAnyModel = !!(userData?.avatarConfig?.customModelUrl || userData?.avatarConfig?.exportedModelUrl);
+
   return (
     <div className="app-container" style={{ 
       position: 'relative', 
@@ -3814,8 +3820,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 playerConfig={userData?.avatarConfig || null}
                 playerEquippedItems={playerEquippedItems}
                 playerAnim={activePlayerAnim}
-                playerModelUrl={userData?.avatarConfig?.customModelUrl}
-                playerSkinUrl={userData?.avatarConfig?.customSkinUrl}
+                playerModelUrl={userData?.avatarConfig?.customModelUrl || userData?.avatarConfig?.exportedModelUrl}
+                playerSkinUrl={userData?.avatarConfig?.customModelUrl ? userData?.avatarConfig?.customSkinUrl : (userData?.avatarConfig?.exportedModelUrl ? null : userData?.avatarConfig?.customSkinUrl)}
                 monsterModelUrl={effectiveMonsterModelUrl}
                 monsterSkinUrl={effectiveMonsterSkinUrl}
                 monsterConfig={quest?.monsterAvatarConfig}
@@ -4089,7 +4095,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             {/* Player Side */}
             <div 
               ref={playerSideRef}
-              className={`quest-arena-side-player ${(monsterFled && (playerAnim === 'walk' || playerAnim === 'exhausted')) ? 'flee-to-center' : ''} ${(arena.unified3D && userData?.avatarConfig?.customModelUrl) ? '' : (playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : '')} ${(userData?.avatarConfig?.customModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
+              className={`quest-arena-side-player ${(monsterFled && (playerAnim === 'walk' || playerAnim === 'exhausted')) ? 'flee-to-center' : ''} ${playerHasUnifiedModel ? '' : (playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : '')} ${(playerHasAnyModel || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
               style={{
                 position: 'absolute',
                 left: arenaRenderMode === '3d'
@@ -4124,10 +4130,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
               <div style={{ position: 'absolute', top: `${arena.playerNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap' }}>
                 <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
               </div>
-              <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '170px' : '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', height: (arena.unified3D && userData?.avatarConfig?.customModelUrl) ? 'var(--shadow-player-head-lift, 170px)' : undefined, transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arena.playerScale3D ?? 1) : arena.playerScale})` }}>
+              <div className="quest-arena-avatars" style={{ position: 'relative', width: (playerAnim.startsWith('attack-fatal') && arenaRenderMode !== '3d') ? '170px' : '130px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', height: playerHasUnifiedModel ? 'var(--shadow-player-head-lift, 170px)' : undefined, transition: 'width 0.3s ease', outline: ((userData?.role === 'admin' || isSuperAdmin) && arena.showBoxes) ? '2px solid lime' : 'none', outlineOffset: '2px', transform: `scale(${arenaRenderMode === '3d' ? (arena.playerScale3D ?? 1) : arena.playerScale})` }}>
                 {/* Sombra dinâmica do personagem */}
-                <div className="avatar-ground-shadow" style={(!(arena.unified3D && userData?.avatarConfig?.customModelUrl) ? undefined : { opacity: 0 })} />
-                <div style={{ position: 'relative', display: 'inline-block', marginBottom: userData?.avatarConfig?.customModelUrl ? `-${Math.round(170 * 0.2236)}px` : '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
+                <div className="avatar-ground-shadow" style={(!playerHasUnifiedModel ? undefined : { opacity: 0 })} />
+                <div style={{ position: 'relative', display: 'inline-block', marginBottom: playerHasAnyModel ? `-${Math.round(170 * 0.2236)}px` : '-60px', transform: `scale(${userData?.avatarConfig?.customZoom || 1})`, transformOrigin: 'bottom center' }}>
                   {healAuraTurns > 0 && <div className="heal-aura" />}
                   <ConsumableAnimationOverlay anim={activeConsumableAnim} onComplete={() => setActiveConsumableAnim(null)} />
                   <div
@@ -4141,7 +4147,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     title={playerFrozenAt > Date.now() ? 'Congelado!' : playerPoisonTurns > 0 ? `Envenenado por ${playerPoisonTurns} turno(s)` : playerBurnTurns > 0 ? 'Queimando!' : playerElectricTurns > 0 ? 'Eletrocutado!' : undefined}
                     style={{ position: 'relative' }}
                   >
-                    {!(arena.unified3D && userData?.avatarConfig?.customModelUrl) && (
+                    {!playerHasUnifiedModel && (
                       <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={170} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
                     )}
                   </div>
