@@ -1,4 +1,4 @@
-import { SkinViewer, IdleAnimation } from 'skinview3d';
+import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation, HitAnimation, PlayerAnimation } from 'skinview3d';
 // @ts-ignore - Three do skinview3d (0.156): precisa ser o MESMO usado pelos objetos.
 import * as THREE_SKIN from 'skinview3d/node_modules/three/build/three.module.js';
 // @ts-ignore
@@ -61,6 +61,95 @@ function resolveItemUrl(raw: string): string {
   }
   if (safeUrl.startsWith('/')) safeUrl = import.meta.env.BASE_URL + safeUrl.substring(1);
   return safeUrl;
+}
+
+// Ossos do avatar que as animações procedurais do skinview3d movem.
+const ANIM_BONES = ['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
+
+/**
+ * Amostra uma animação procedural do skinview3d (Idle/Walk/Run/Hit/custom) quadro a
+ * quadro e devolve tracks de quaternion para cada osso, prontas para virar um
+ * AnimationClip dentro do GLB (a arena toca via AnimationMixer, como no monstro).
+ */
+function bakeClipFromAnimation(
+  player: any,
+  name: string,
+  duration: number,
+  fps: number,
+  makeAnim: () => PlayerAnimation
+): any {
+  const THREE = THREE_SKIN as any;
+  const times: number[] = [];
+  // Guarda amostras por osso: [x,y,z,w] a cada frame.
+  const samples: Record<string, number[]> = {};
+  ANIM_BONES.forEach((b) => { samples[b] = []; });
+
+  // Reset de pose antes de começar.
+  ANIM_BONES.forEach((b) => {
+    const node = player.skin?.[b];
+    if (node) { node.rotation.set(0, 0, 0); node.updateMatrix(); }
+  });
+
+  const anim = makeAnim();
+  const frames = Math.max(2, Math.round(duration * fps));
+  for (let f = 0; f <= frames; f++) {
+    const t = (f / frames) * duration;
+    try {
+      (anim as any).progress = t;
+      (anim as any).animate?.(player);
+    } catch { /* noop */ }
+    times.push(t);
+    ANIM_BONES.forEach((b) => {
+      const node = player.skin?.[b];
+      if (!node) return;
+      node.updateMatrix();
+      const q = node.quaternion;
+      samples[b].push(q.x, q.y, q.z, q.w);
+    });
+  }
+
+  const tracks: any[] = [];
+  ANIM_BONES.forEach((b) => {
+    if (!player.skin?.[b]) return;
+    tracks.push(new THREE.QuaternionKeyframeTrack(`${b}.quaternion`, times.slice(), samples[b]));
+  });
+
+  // Reset final.
+  ANIM_BONES.forEach((b) => {
+    const node = player.skin?.[b];
+    if (node) { node.rotation.set(0, 0, 0); node.updateMatrix(); }
+  });
+
+  return new THREE.AnimationClip(name, duration, tracks);
+}
+
+function makeAttackAnimation(): PlayerAnimation {
+  // Ataque: levanta o braço direito e dá um golpe rápido para frente.
+  return new (class extends PlayerAnimation {
+    animate(player: any) {
+      const t = this.progress;
+      const swing = Math.sin(t * Math.PI);
+      const arm = player.skin.rightArm;
+      const arm2 = player.skin.leftArm;
+      if (arm) { arm.rotation.x = -Math.PI / 2 * swing; arm.rotation.z = 0; }
+      if (arm2) { arm2.rotation.x = Math.PI * 0.15 * swing; arm2.rotation.z = Math.PI * 0.02; }
+      if (player.skin.body) player.skin.body.rotation.y = Math.sin(t * Math.PI * 2) * 0.1;
+    }
+  })();
+}
+
+function bakeAnimationClips(player: any): any[] {
+  const clips: any[] = [];
+  const add = (name: string, dur: number, fps: number, make: () => PlayerAnimation) => {
+    try { clips.push(bakeClipFromAnimation(player, name, dur, fps, make)); }
+    catch (e) { console.warn('[EXPORT3D] falha ao assar clip', name, e); }
+  };
+  add('idle', 4, 20, () => new IdleAnimation());
+  add('walk', 1, 20, () => new WalkingAnimation());
+  add('run', 0.8, 20, () => new RunningAnimation());
+  add('attack', 0.5, 20, () => makeAttackAnimation());
+  add('hurt', 0.5, 20, () => new HitAnimation());
+  return clips;
 }
 
 /**
@@ -228,6 +317,21 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
   });
   console.log('[EXPORT3D] player meshes:', meshCount, 'with texture:', texturedCount);
 
+  // 4b. Normaliza os materiais para a arena:
+  //   - Texturas da skin são sRGB (senão o boneco fica com cor "lavada"/diferente no Three 0.185).
+  //   - roughness/metalness fixos para casar com o visual "voxel" opaco (sem reflexo metálico).
+  player.traverse((child: any) => {
+    if (!child.isMesh) return;
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    mats.forEach((m: any) => {
+      if (!m) return;
+      if (m.map && 'colorSpace' in m.map) m.map.colorSpace = (THREE_SKIN as any).SRGBColorSpace || m.map.colorSpace;
+      if ('metalness' in m) m.metalness = 0;
+      if ('roughness' in m) m.roughness = 1;
+      m.needsUpdate = true;
+    });
+  });
+
   // 5. Exporta o playerObject para .glb binário dentro de um Group rotacionado.
   //    skinview3d nasce virado para +z (para a câmera); a arena espera modelos
   //    virados para -z (padrão Blockbench) e aplica +Math.PI no repouso. Então
@@ -241,8 +345,11 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
     root.updateMatrixWorld(true);
   }
 
-  const exporter = new GLTFExporter();
-  const exportTarget = root;
+  // 5b. Assa as animações procedurais do skinview3d em AnimationClips reais.
+  const clips = bakeAnimationClips(player);
+  console.log('[EXPORT3D] clipes gerados:', clips.map(c => `${c.name}(${c.tracks.length})`).join(', '));
+
+  const exporter = new GLTFExporter();  const exportTarget = root;
   const result = await new Promise<ArrayBuffer>((resolve, reject) => {
     exporter.parse(
       exportTarget,
@@ -251,7 +358,7 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
         else resolve(new TextEncoder().encode(JSON.stringify(res)).buffer);
       },
       (err: any) => reject(err),
-      { binary: true, embedImages: true, includeCustomExtensions: false }
+      { binary: true, embedImages: true, includeCustomExtensions: false, animations: clips }
     );
   });
 
