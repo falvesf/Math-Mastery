@@ -493,7 +493,7 @@ export function stopForgeGlint() {
 }
 
 // Aplica o brilho no material: 'circles' (armas) ou 'reflect' (armadura).
-function applyForgeGlint(mat: any, tier: number, style: 'circles' | 'reflect' = 'circles') {
+export function applyForgeGlint(mat: any, tier: number, style: 'circles' | 'reflect' = 'circles') {
   if (tier <= 0 || !mat || !('emissiveMap' in mat)) return;
   try {
     if (style === 'reflect') {

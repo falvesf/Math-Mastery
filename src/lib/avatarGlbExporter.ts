@@ -8,7 +8,7 @@ import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/G
 import { GLTFExporter } from 'skinview3d/node_modules/three/examples/jsm/exporters/GLTFExporter.js';
 import { generateMinecraftSkinUrl } from './SkinGenerator';
 import { generateVoxelItemFromImage } from './VoxelItemGenerator';
-import { type EquippedItem, resolveModelTransform } from '../components/AvatarCharacter';
+import { type EquippedItem, resolveModelTransform, applyForgeGlowToModel, applyForgeGlint } from '../components/AvatarCharacter';
 
 // Reaproveita o mesmo padrão do AvatarPrintQueue: um viewer off-screen global,
 // fila sequencial (o SkinViewer não é thread-safe e cada export reusa o contexto).
@@ -138,6 +138,39 @@ function makeAttackAnimation(): PlayerAnimation {
   })();
 }
 
+function makeCelebrationAnimation(intensity: number): PlayerAnimation {
+  // Comemoração: levanta os dois braços e dá pulinhos (intensity 0.6-1).
+  return new (class extends PlayerAnimation {
+    animate(player: any) {
+      const t = this.progress;
+      const raise = Math.min(1, Math.max(0.5, intensity));
+      const la = player.skin.leftArm;
+      const ra = player.skin.rightArm;
+      if (la) { la.rotation.x = -Math.PI * 0.9 * raise; la.rotation.z = 0.25 * raise; }
+      if (ra) { ra.rotation.x = -Math.PI * 0.9 * raise; ra.rotation.z = -0.25 * raise; }
+      if (player.skin.body) {
+        player.skin.body.rotation.x = Math.sin(t * Math.PI * 2) * 0.06;
+      }
+      if (player.skin.head) player.skin.head.rotation.x = -0.12 * raise;
+    }
+  })();
+}
+
+function makeExhaustedAnimation(): PlayerAnimation {
+  // Cansado: cabeça baixa, ombros caídos, respiração pesada.
+  return new (class extends PlayerAnimation {
+    animate(player: any) {
+      const t = this.progress;
+      const breath = Math.sin(t * Math.PI * 1.5);
+      if (player.skin.head) { player.skin.head.rotation.x = 0.35; }
+      if (player.skin.body) { player.skin.body.rotation.x = 0.18 + breath * 0.05; }
+      const la = player.skin.leftArm; const ra = player.skin.rightArm;
+      if (la) { la.rotation.x = 0.1; la.rotation.z = 0.08; }
+      if (ra) { ra.rotation.x = 0.1; ra.rotation.z = -0.08; }
+    }
+  })();
+}
+
 function bakeAnimationClips(player: any): any[] {
   const clips: any[] = [];
   const add = (name: string, dur: number, fps: number, make: () => PlayerAnimation) => {
@@ -149,6 +182,12 @@ function bakeAnimationClips(player: any): any[] {
   add('run', 0.8, 20, () => new RunningAnimation());
   add('attack', 0.5, 20, () => makeAttackAnimation());
   add('hurt', 0.5, 20, () => new HitAnimation());
+  add('exhausted', 1.5, 20, () => makeExhaustedAnimation());
+  // Vitória: o mesmo clip serve para todos os níveis; varia só a intensidade.
+  add('idle-victory', 1.2, 20, () => makeCelebrationAnimation(0.6));
+  add('victory-easy', 2, 20, () => makeCelebrationAnimation(0.7));
+  add('victory-mid', 2, 20, () => makeCelebrationAnimation(0.85));
+  add('victory-hard', 2, 20, () => makeCelebrationAnimation(1));
   return clips;
 }
 
@@ -201,6 +240,28 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
     const attachModel = (model: any, item: EquippedItem) => {
       model.userData.isItem = true;
       model.traverse((child: any) => { if (child.isMesh) child.frustumCulled = false; });
+
+      // Brilho/película de forja (mesma lógica do AvatarCharacter): ajusta
+      // metalness/roughness/emissive/color conforme o nível (+0 película → +9 brilho).
+      try { applyForgeGlowToModel(model, item.forgeLevel || 0); } catch { /* noop */ }
+
+      // Película/brilho deslizante (emissiveMap). No GLB fica ESTÁTICO, mas preserva
+      // o aspecto encantado de +7/+8/+9.
+      try {
+        const _lvl = item.forgeLevel || 0;
+        const _tier = _lvl >= 9 ? 3 : _lvl >= 8 ? 2 : _lvl >= 7 ? 1 : 0;
+        const _isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
+        if (_tier > 0 && _isGear) {
+          const _isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
+          const _isShield = _isWeaponSlot && item.itemCategory === 'defense';
+          const _style: 'circles' | 'reflect' = (_isWeaponSlot && !_isShield) ? 'circles' : 'reflect';
+          model.traverse((child: any) => {
+            if (!child.isMesh) return;
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach((mm: any) => applyForgeGlint(mm, _tier, _style));
+          });
+        }
+      } catch { /* noop */ }
 
       const isDefense = item.itemCategory === 'defense';
       const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
@@ -328,6 +389,14 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
       if (m.map && 'colorSpace' in m.map) m.map.colorSpace = (THREE_SKIN as any).SRGBColorSpace || m.map.colorSpace;
       if ('metalness' in m) m.metalness = 0;
       if ('roughness' in m) m.roughness = 1;
+      // A camada EXTERNA da skin (layer2) vem com transparent/alphaTest minúsculo do
+      // skinview3d; no GLB/Three 0.185 isso causa blending estranho. Usa cutout opaco
+      // (alphaTest 0.5), igual o applySkinTexture da arena.
+      if (m.transparent && !m.userData?.isItem) {
+        m.transparent = false;
+        m.alphaTest = 0.5;
+        m.depthWrite = true;
+      }
       m.needsUpdate = true;
     });
   });
