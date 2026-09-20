@@ -7,6 +7,7 @@ import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/G
 // senão as classes/atributos do objeto não batem com as esperadas pelo exporter.
 import { GLTFExporter } from 'skinview3d/node_modules/three/examples/jsm/exporters/GLTFExporter.js';
 import { generateMinecraftSkinUrl } from './SkinGenerator';
+import { generateVoxelItemFromImage } from './VoxelItemGenerator';
 import { type EquippedItem, resolveModelTransform } from '../components/AvatarCharacter';
 
 // Reaproveita o mesmo padrão do AvatarPrintQueue: um viewer off-screen global,
@@ -94,89 +95,123 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
     part.children.filter((c: any) => c.userData?.isItem).forEach((i: any) => part.remove(i));
   });
 
-  // 3. Carrega itens equipados (mesma lógica do AvatarPrintQueue)
+  // 3. Carrega itens equipados (mesma lógica do AvatarPrintQueue / AvatarCharacter).
+  //    Suporta os DOIS formatos: GLB (.glb/.gltf) e imagem 2.5D/voxel (.png/etc.),
+  //    esta última via generateVoxelItemFromImage (que já usa o Three do skinview3d).
   if (equippedItems && equippedItems.length > 0) {
     const loader = new GLTFLoader();
     const isLeftHanded = config?.handedness === 'left';
     const gender = config?.gender;
     const inv = isLeftHanded ? -1 : 1;
 
-    await Promise.all(equippedItems.map((item) => new Promise<void>((res) => {
-      if (!item.gameModelUrl || item.gameModelUrl.trim() === '') return res();
-      loader.load(resolveItemUrl(item.gameModelUrl), (gltf: any) => {
-        const model = gltf.scene;
-        model.userData.isItem = true;
-        model.traverse((child: any) => { if (child.isMesh) child.frustumCulled = false; });
+    console.log('[EXPORT3D] itens equipados:', equippedItems.map(i => ({ part: i.avatarPart, title: i.itemTitle, model: i.gameModelUrl })));
 
-        const isDefense = item.itemCategory === 'defense' || item.avatarPart === 'leftHand';
-        const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
-        const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
-        const targetArm = isDefense ? nonDominantArm : dominantArm;
-        const transform = resolveModelTransform(item, gender, config?.handedness, false) || item.modelTransforms?.common;
+    const IMG_EXT_RE = /\.(png|gif|jpe?g|webp|avif)$/i;
+    const getExt = (u: string) => (u.split('?')[0].split('#')[0].split('.').pop() || '').toLowerCase();
 
-        if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
-          if (transform) {
-            model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
-            model.position.set(transform.posX * inv, transform.posY, transform.posZ);
-            model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
-            model.position.y = transform.posY;
-            model.translateY(transform.slide);
-          } else if (isDefense) {
-            const isRightArm = targetArm === player.skin.rightArm;
-            model.scale.set(10, 10, 10);
-            model.position.set(isRightArm ? -3.5 : 3.5, -6, 0);
-            model.rotation.set(0, isRightArm ? Math.PI / 2 : -Math.PI / 2, 0);
-          } else {
-            model.scale.set(10, 10, 10);
-            model.position.set(0, -12, 0);
-            model.rotation.set(Math.PI / 2, 0, 0);
-          }
-          targetArm.add(model);
-        } else if (item.avatarPart === 'head' || item.avatarPart === 'face') {
-          const head = player.skin.head;
-          const defaultHeadScale = item.minecraftHeadValue ? 9.2 : 16;
-          if (transform) {
-            model.scale.set(transform.scale ?? defaultHeadScale, transform.scale ?? defaultHeadScale, (transform.scale ?? defaultHeadScale) * (transform.thickness ?? 1));
-            model.position.set(transform.posX, transform.posY, transform.posZ);
-            model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
-            model.position.y = transform.posY;
-            model.translateY(transform.slide);
-          } else {
-            model.scale.set(defaultHeadScale, defaultHeadScale, defaultHeadScale);
-            model.position.set(0, 0, 0);
-            model.rotation.set(0, Math.PI, 0);
-          }
-          head.add(model);
-        } else if (item.avatarPart === 'legs' || item.avatarPart === 'feet') {
-          // Pernas/botas: anexa ao tronco (body), com offset para descer até as pernas.
-          // (Simplificação: sem split por perna; cobre o uso comum de bota/calça.)
-          const body = player.skin.body;
-          if (transform) {
-            model.scale.set(transform.scale ?? 16, transform.scale ?? 16, (transform.scale ?? 16) * (transform.thickness ?? 1));
-            model.position.set(transform.posX ?? 0, transform.posY ?? 0, transform.posZ ?? 0);
-            model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
-            model.translateY(transform.slide ?? 0);
-          } else {
-            model.scale.set(16, 16, 16);
-            model.position.set(0, item.avatarPart === 'feet' ? -22 : -15, 0);
-          }
-          body.add(model);
-        } else if (item.avatarPart === 'body' || item.avatarPart === 'back' || item.avatarPart === 'accessory') {
-          const body = player.skin.body;
-          if (transform) {
-            model.scale.set(transform.scale ?? 16, transform.scale ?? 16, (transform.scale ?? 16) * (transform.thickness ?? 1));
-            model.position.set(transform.posX, transform.posY, transform.posZ);
-            model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
-            model.position.y = transform.posY;
-            model.translateY(transform.slide);
-          } else {
-            model.scale.set(16, 16, 16);
-            model.position.set(0, -6, 0);
-          }
-          body.add(model);
+    const attachModel = (model: any, item: EquippedItem) => {
+      model.userData.isItem = true;
+      model.traverse((child: any) => { if (child.isMesh) child.frustumCulled = false; });
+
+      const isDefense = item.itemCategory === 'defense' || item.avatarPart === 'leftHand';
+      const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
+      const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
+      const targetArm = isDefense ? nonDominantArm : dominantArm;
+      const transform = resolveModelTransform(item, gender, config?.handedness, false) || item.modelTransforms?.common;
+
+      if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
+        if (transform) {
+          model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
+          model.position.set(transform.posX * inv, transform.posY, transform.posZ);
+          model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
+          model.position.y = transform.posY;
+          model.translateY(transform.slide);
+        } else if (isDefense) {
+          const isRightArm = targetArm === player.skin.rightArm;
+          model.scale.set(10, 10, 10);
+          model.position.set(isRightArm ? -3.5 : 3.5, -6, 0);
+          model.rotation.set(0, isRightArm ? Math.PI / 2 : -Math.PI / 2, 0);
+        } else {
+          model.scale.set(10, 10, 10);
+          model.position.set(0, -12, 0);
+          model.rotation.set(Math.PI / 2, 0, 0);
         }
+        targetArm.add(model);
+      } else if (item.avatarPart === 'head' || item.avatarPart === 'face') {
+        const head = player.skin.head;
+        const defaultHeadScale = item.minecraftHeadValue ? 9.2 : 16;
+        if (transform) {
+          model.scale.set(transform.scale ?? defaultHeadScale, transform.scale ?? defaultHeadScale, (transform.scale ?? defaultHeadScale) * (transform.thickness ?? 1));
+          model.position.set(transform.posX, transform.posY, transform.posZ);
+          model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+          model.position.y = transform.posY;
+          model.translateY(transform.slide);
+        } else {
+          model.scale.set(defaultHeadScale, defaultHeadScale, defaultHeadScale);
+          model.position.set(0, 0, 0);
+          model.rotation.set(0, Math.PI, 0);
+        }
+        head.add(model);
+      } else if (item.avatarPart === 'legs' || item.avatarPart === 'feet') {
+        const body = player.skin.body;
+        if (transform) {
+          model.scale.set(transform.scale ?? 16, transform.scale ?? 16, (transform.scale ?? 16) * (transform.thickness ?? 1));
+          model.position.set(transform.posX ?? 0, transform.posY ?? 0, transform.posZ ?? 0);
+          model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+          model.translateY(transform.slide ?? 0);
+        } else {
+          model.scale.set(16, 16, 16);
+          model.position.set(0, item.avatarPart === 'feet' ? -22 : -15, 0);
+        }
+        body.add(model);
+      } else if (item.avatarPart === 'body' || item.avatarPart === 'back' || item.avatarPart === 'accessory' || item.avatarPart === 'pet') {
+        const body = player.skin.body;
+        if (transform) {
+          model.scale.set(transform.scale ?? 16, transform.scale ?? 16, (transform.scale ?? 16) * (transform.thickness ?? 1));
+          model.position.set(transform.posX, transform.posY, transform.posZ);
+          model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+          model.position.y = transform.posY;
+          model.translateY(transform.slide);
+        } else {
+          model.scale.set(16, 16, 16);
+          model.position.set(0, -6, 0);
+        }
+        body.add(model);
+      }
+      console.log('[EXPORT3D] item anexado:', item.avatarPart, item.itemTitle);
+    };
+
+    await Promise.all(equippedItems.map((item) => new Promise<void>((res) => {
+      if (!item.gameModelUrl || item.gameModelUrl.trim() === '') {
+        console.warn('[EXPORT3D] item SEM gameModelUrl (ignorado no GLB):', item.avatarPart, item.itemTitle);
+        return res();
+      }
+      const rawUrl = item.gameModelUrl;
+      const finalUrl = resolveItemUrl(rawUrl);
+
+      // Item 2.5D (imagem) → gera voxel compatível com o Three do skinview3d.
+      if (IMG_EXT_RE.test('.' + getExt(finalUrl))) {
+        const transform = resolveModelTransform(item, gender, config?.handedness, false) || item.modelTransforms?.common;
+        const curveX = transform?.curveX || 0;
+        const curveY = transform?.curveY || 0;
+        const genThickness = 0.12 * (transform?.thickness ?? 1);
+        const part = String(item.avatarPart || '').toLowerCase().trim();
+        const gen = (part === 'legs' || part === 'feet')
+          ? Promise.all([
+              generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, 'left', genThickness),
+              generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, 'right', genThickness),
+            ]).then(([l, r]) => { attachModel(l, item); attachModel(r, item); })
+          : generateVoxelItemFromImage(finalUrl, item.backColor, curveX, curveY, undefined, genThickness)
+              .then((m) => { attachModel(m, item); });
+        gen.then(() => res()).catch((e: any) => { console.warn('[EXPORT3D] falha ao gerar voxel do item:', item.itemTitle, e); res(); });
+        return;
+      }
+
+      // Item GLB
+      loader.load(finalUrl, (gltf: any) => {
+        attachModel(gltf.scene, item);
         res();
-      }, undefined, () => res());
+      }, undefined, (err: any) => { console.warn('[EXPORT3D] falha ao carregar item GLB:', item.itemTitle, err); res(); });
     })));
   }
 
