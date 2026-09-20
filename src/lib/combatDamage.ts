@@ -2,6 +2,13 @@ import { supabase } from './supabase';
 import { RANKS, DEFAULT_RANKS } from './ranks';
 import { safeParseAvatarConfig } from '../components/AvatarCharacter';
 
+/** Degrau da tabela de fuga configurável: a partir de `minHearts` corações restantes, o monstro
+ *  tem `chance`% de fugir no golpe final. */
+export interface FleeChanceStep {
+  minHearts: number;
+  chance: number; // 0-100
+}
+
 export interface MonsterCombatStats {
   level: number;
   attack: number;
@@ -9,6 +16,11 @@ export interface MonsterCombatStats {
   evasion: number;     // %
   critChance: number;  // %
   xp?: number;
+  /**
+   * Tabela configurável de fuga ("corações restantes → chance"). Quando preenchida,
+   * substitui a curva padrão por corações. Undefined/vazia = usar padrão.
+   */
+  fleeChanceTable?: FleeChanceStep[];
 }
 
 export type MonsterStatsConfig = MonsterCombatStats;

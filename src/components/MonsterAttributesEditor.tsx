@@ -169,6 +169,8 @@ export interface MonsterStatsConfig {
   evasion: number;
   critChance: number;
   xp?: number;
+  /** Tabela de fuga configurável ("corações restantes → chance %"). Vazia = curva padrão. */
+  fleeChanceTable?: Array<{ minHearts: number; chance: number }>;
 }
 
 export interface MonsterAttributesConfig {
@@ -260,6 +262,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     evasion: value.stats?.evasion ?? 1,
     critChance: value.stats?.critChance ?? 1,
     xp: value.stats?.xp ?? 0,
+    fleeChanceTable: value.stats?.fleeChanceTable,
   };
 
   const updateStats = (statsPatch: Partial<MonsterStatsConfig>) => {
@@ -530,10 +533,81 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
             </div>
           </div>
 
+          {/* Tabela de Fuga */}
+            <div style={{ maxWidth: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255, 87, 34, 0.25)', borderRadius: '8px', padding: '0.65rem', boxSizing: 'border-box' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#ff8a65', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                🏃 Chance de Fuga (por corações restantes)
+              </label>
+              <p style={{ margin: '0 0 0.5rem', fontSize: '0.66rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                No golpe final (última questão), o monstro foge conforme o número de corações que ainda lhe restam.
+                Deixe a tabela vazia para usar a <strong>curva padrão do jogo</strong>.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              {(currentStats.fleeChanceTable || []).map((row, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-end', gap: '0.4rem', background: 'rgba(255,138,101,0.06)', border: '1px solid rgba(255,138,101,0.2)', borderRadius: '8px', padding: '0.55rem', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                    <label style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Mín. ♥</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={row.minHearts}
+                      onChange={e => updateStats({
+                        fleeChanceTable: (currentStats.fleeChanceTable || []).map((r, j) => j === i ? { ...r, minHearts: Math.max(1, parseInt(e.target.value) || 1) } : r),
+                      })}
+                      title="Mínimo de corações restantes"
+                      style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-secondary)', paddingBottom: '0.3rem' }}>→</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                    <label style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Chance %</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={row.chance}
+                      onChange={e => updateStats({
+                        fleeChanceTable: (currentStats.fleeChanceTable || []).map((r, j) => j === i ? { ...r, chance: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) } : r),
+                      })}
+                      title="Chance de fuga (%)"
+                      style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => updateStats({ fleeChanceTable: (currentStats.fleeChanceTable || []).filter((_, j) => j !== i) })}
+                    title="Remover degrau"
+                    style={{ padding: '0.4rem 0.55rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#f87171', fontSize: '0.8rem', cursor: 'pointer' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '0.5rem', marginTop: '0.15rem' }}>
+                <button
+                  type="button"
+                  onClick={() => updateStats({ fleeChanceTable: [...(currentStats.fleeChanceTable || []), { minHearts: (currentStats.fleeChanceTable?.length || 0) + 2, chance: 20 }] })}
+                  style={{ padding: '0.5rem', background: 'rgba(255,138,101,0.12)', border: '1px dashed rgba(255,138,101,0.5)', borderRadius: '8px', color: '#ff8a65', fontSize: '0.78rem', cursor: 'pointer' }}
+                >
+                  + Adicionar degrau
+                </button>
+                {(currentStats.fleeChanceTable || []).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => updateStats({ fleeChanceTable: undefined })}
+                    style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: 'var(--text-secondary)', fontSize: '0.78rem', cursor: 'pointer' }}
+                  >
+                    Usar padrão do jogo
+                  </button>
+                )}
+              </div>
+            </div>
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.2rem' }}>
             <button
               type="button"
-              onClick={() => updateStats({ level: 1, attack: 1, defense: 1, evasion: 1, critChance: 1, xp: 0 })}
+              onClick={() => updateStats({ level: 1, attack: 1, defense: 1, evasion: 1, critChance: 1, xp: 0, fleeChanceTable: undefined })}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',

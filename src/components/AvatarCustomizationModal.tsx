@@ -721,6 +721,10 @@ export default function AvatarCustomizationModal({
         evasion: (configToSave as any).stats?.evasion ?? 1,
         critChance: (configToSave as any).stats?.critChance ?? 1,
         xp: (configToSave as any).stats?.xp ?? 0,
+        // Preserva a tabela de fuga configurada (undefined quando usa a curva padrão).
+        ...((configToSave as any).stats?.fleeChanceTable && (configToSave as any).stats.fleeChanceTable.length > 0
+          ? { fleeChanceTable: (configToSave as any).stats.fleeChanceTable }
+          : {}),
       };
     }
     setConfig(configToSave);

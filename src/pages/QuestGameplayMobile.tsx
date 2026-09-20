@@ -102,9 +102,18 @@ interface UserItem {
  * - 5 a 10 questões: 2♥→20%, 3♥→40%, 4♥→60%, 5♥→80%, 6+♥→100% (≤1♥→0%).
  * - Mais de 10 questões: limiares proporcionais (Q/6, Q/5, Q/4, Q/3, Q/2) → 20/40/60/80/100%.
  */
-export function getMonsterFleeChance(remainingHearts: number, totalQuestions: number): number {
+export function getMonsterFleeChance(remainingHearts: number, totalQuestions: number, fleeTable?: Array<{ minHearts: number; chance: number }>): number {
   const h = Math.max(0, remainingHearts || 0);
   const q = Math.max(0, totalQuestions || 0);
+  // Tabela configurada por monstro: acha o maior degrau cujo mínimo <= corações restantes.
+  if (fleeTable && fleeTable.length > 0) {
+    const steps = [...fleeTable].sort((a, b) => a.minHearts - b.minHearts);
+    let chance = 0;
+    for (const s of steps) {
+      if (h >= s.minHearts) chance = Math.min(100, Math.max(0, Number(s.chance) || 0));
+    }
+    return chance;
+  }
   if (q < 5) return 0;
   if (q <= 10) {
     if (h >= 6) return 100;
@@ -345,6 +354,7 @@ export default function QuestGameplay() {
             evasion: found.config.stats.evasion ?? DEFAULT_MONSTER_STATS.evasion,
             critChance: found.config.stats.critChance ?? DEFAULT_MONSTER_STATS.critChance,
             xp: found.config.stats.xp ?? DEFAULT_MONSTER_STATS.xp,
+            fleeChanceTable: found.config.stats.fleeChanceTable,
           });
         }
         if (found.config.attacks) {
@@ -2044,7 +2054,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           // Fuga no golpe final: se sobraram corações, o monstro pode fugir conforme a chance.
           // EXCEÇÃO: se estiver CONGELADO, ele não consegue fugir — o gelo se despedaça no
           // fatality (sem levar a água/geleira embora).
-          const fleeChance = getMonsterFleeChance(monsterHearts, quest.questions.length);
+          const fleeChance = getMonsterFleeChance(monsterHearts, quest.questions.length, monsterCombatStats.fleeChanceTable);
           const willFlee = !frozen && Math.random() * 100 < fleeChance;
           if (willFlee) {
             triggerFlee();
