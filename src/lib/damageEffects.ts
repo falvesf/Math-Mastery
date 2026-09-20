@@ -69,8 +69,9 @@ export function getDamageEffectLabel(id?: string): string {
   return e ? e.label : 'Nenhum';
 }
 
-// Nº de acertos para congelar com o efeito de gelo (1-3 = fica azul/lento; 4 = congela)
-export const FREEZE_HITS_TO_FREEZE = 4;
+// Nº de acertos para congelar com o efeito de gelo (2 = mais visível/testável;
+// antes 4, mas raramente acontecia antes da luta acabar).
+export const FREEZE_HITS_TO_FREEZE = 2;
 
 /**
  * Resultado do aprimoramento de efeito via pergaminho.

@@ -447,6 +447,16 @@ h3 {
   transform: translateX(calc(var(--attack-dist) * -1 - 20px));
 }
 
+/* Fuga do monstro: o jogador anda calmamente até o CENTRO da arena (left 50%).
+   Precisa vencer a regra ".is-3d-arena .quest-arena-side-player" (App.css), que
+   força left via var(--shadow-player-x) com !important e transition:none. */
+.quest-arena-side-player.flee-to-center,
+.is-3d-arena .quest-arena-side-player.flee-to-center {
+  left: 50% !important;
+  margin-left: -80px !important;
+  transition: left 2.4s ease-in-out !important;
+}
+
 .teleport-monster-fatal-slow {
   animation: teleport-attack-monster-fatal 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }

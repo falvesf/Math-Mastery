@@ -9,6 +9,7 @@ export interface FloatingDamageData {
   isMiss?: boolean;
   isEvasion?: boolean;
   isHeal?: boolean;
+  isBlocked?: boolean; // dano absorvido pelo gelo (azul, -100)
   x?: number; // % horizontal na arena
   y?: number; // % vertical na arena
 }
@@ -22,6 +23,7 @@ export interface FloatingDamageNumberProps {
   isMiss?: boolean;
   isEvasion?: boolean;
   isHeal?: boolean;
+  isBlocked?: boolean; // dano absorvido pelo gelo (azul, -100)
   x?: number; // % horizontal na arena
   y?: number; // % vertical na arena
   onComplete?: (id: string | number) => void;
@@ -35,6 +37,7 @@ export const FloatingDamageNumber: React.FC<FloatingDamageNumberProps> = (props)
   const target = d.target || 'monster';
   const isMiss = d.isEvasion ?? d.isMiss ?? false;
   const isHeal = d.isHeal ?? false;
+  const isBlocked = d.isBlocked ?? false;
   const x = d.x;
   const y = d.y;
 
@@ -66,6 +69,26 @@ export const FloatingDamageNumber: React.FC<FloatingDamageNumberProps> = (props)
         }}
       >
         <span>💨 ESQUIVOU!</span>
+      </div>
+    );
+  }
+
+  // Dano absorvido pelo gelo: azul, mostrando o dano real infligido ao gelo.
+  if (isBlocked) {
+    return (
+      <div
+        className="floating-damage-pop is-blocked"
+        style={{
+          left: `${posX}%`,
+          top: `${posY}%`,
+          color: '#38bdf8',
+          fontSize: '1.7rem',
+          fontWeight: 'bold',
+          filter: 'drop-shadow(0 0 12px rgba(56, 189, 248, 0.9))',
+          letterSpacing: '1px',
+        }}
+      >
+        <span>-{Math.max(1, Math.round(damage))}</span>
       </div>
     );
   }

@@ -63,16 +63,31 @@ try {
 // ao tamanho de um personagem Minecraft sobre a plataforma (blocos de 1 unidade).
 const UNIFIED_ENTITY_HEIGHT = 1.9;
 
+// Calcula a bounding box em espaço de mundo pelas GEOMETRIAS (robusto para malhas
+// skinned/GLB onde Box3.setFromObject pode falhar e devolver caixa vazia/errada).
+function computeWorldBox(obj: THREE.Object3D): THREE.Box3 {
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  obj.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    const geo = (mesh as any)?.geometry;
+    if (mesh.isMesh && geo) {
+      if (!geo.boundingBox) geo.computeBoundingBox();
+      if (geo.boundingBox) box.union(geo.boundingBox.clone().applyMatrix4(mesh.matrixWorld));
+    }
+  });
+  return box;
+}
+
 // Escala o objeto para a altura-alvo e ancora os pés em y=0 (relativo ao pai).
 function fitEntityToGround(obj: THREE.Object3D, targetHeight: number) {
-  const box = new THREE.Box3().setFromObject(obj);
+  const box = computeWorldBox(obj);
   if (box.isEmpty()) return;
   const h = box.max.y - box.min.y;
   if (h <= 0) return;
   obj.scale.setScalar(targetHeight / h);
-  obj.updateMatrixWorld(true);
-  const b2 = new THREE.Box3().setFromObject(obj);
-  obj.position.y -= b2.min.y;
+  const box2 = computeWorldBox(obj);
+  obj.position.y -= box2.min.y;
 }
 
 // Toca uma animação por nome (com fallback para idle / primeira disponível).
@@ -131,7 +146,8 @@ function applySkinTexture(root: THREE.Object3D, skinUrl: string | null | undefin
 }
 
 // Aplica tint de efeito (dano/veneno/fogo) e fúria nos materiais de uma entidade.
-function applyEntityTint(root: THREE.Object3D | null, tint: string | null, enraged: boolean) {
+// `amount` (0-1) permite tint parcial (ex.: azul do gelo esmaecendo ao descongelar).
+function applyEntityTint(root: THREE.Object3D | null, tint: string | null, enraged: boolean, amount: number = 1) {
   if (!root) return;
   root.traverse((c) => {
     const mesh = c as THREE.Mesh;
@@ -146,10 +162,10 @@ function applyEntityTint(root: THREE.Object3D | null, tint: string | null, enrag
       if (enraged) {
         mat.color.copy(mat._origColor).lerp(new THREE.Color('#ff1111'), 0.7);
         if (mat.emissive) mat.emissive.setRGB(0.6, 0.02, 0.02);
-      } else if (tint) {
+      } else if (tint && amount > 0.001) {
         const c = new THREE.Color(tint);
-        mat.color.copy(mat._origColor).lerp(c, 0.35);
-        if (mat.emissive) mat.emissive.copy(c).multiplyScalar(0.25);
+        mat.color.copy(mat._origColor).lerp(c, 0.35 * amount);
+        if (mat.emissive) mat.emissive.copy(c).multiplyScalar(0.25 * amount);
       } else {
         mat.color.copy(mat._origColor);
         if (mat.emissive) {
@@ -316,6 +332,10 @@ export interface VoxelArena3DProps {
   monsterProceduralAnim?: string;
   /** Nome da animação GLB do golpe especial (prioritária sobre monsterAnim) */
   monsterSpecialAnim?: string;
+  /** URL do GLB do animal da transformação (sapo/rato/porco/coelho). Vazio = forma normal. */
+  monsterTransformModelUrl?: string;
+  /** Rotação (graus) do animal da transformação (corrige modelos virados, ex.: porco 180). */
+  monsterTransformRotY?: number;
   /** Se o monstro está arremessando o projétil (throw) */
   monsterBodyThrow?: boolean;
   /** Efeito de dano ativo no monstro (burn/freeze/poison/bleed/impact/electric) */
@@ -324,6 +344,16 @@ export interface VoxelArena3DProps {
   monsterEffectLevel?: number;
   /** Fator de lentidão do monstro (gelo): 1 = normal, <1 = mais lento */
   monsterSlowFactor?: number;
+  /** Monstro congelado sólido (rocha de gelo ao redor) */
+  monsterFrozen?: boolean;
+  /** Intensidade do tint (0-1) — ex.: azul do gelo esmaecendo ao descongelar */
+  monsterEffectTintAmount?: number;
+  /** Fator de derretimento do gelo (1 = cheio, menor = derretendo) */
+  monsterFreezeMelt?: number;
+  /** Contador que incrementa quando o gelo é quebrado por golpe (estilhaça) */
+  iceBreakTick?: number;
+  /** Recuo do jogador ao bater no gelo (bate em algo duro e volta) */
+  playerRecoil?: boolean;
   /** Se o monstro está no pulso de cura verde água */
   healActive?: boolean;
   /** Terremoto/abalo na arena */
@@ -397,10 +427,17 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   monsterAnim = 'idle',
   monsterProceduralAnim,
   monsterSpecialAnim,
+  monsterTransformModelUrl,
+  monsterTransformRotY = 0,
   monsterBodyThrow = false,
   monsterDamageEffect,
   monsterEffectLevel = 0,
   monsterSlowFactor = 1,
+  monsterFrozen = false,
+  monsterFreezeMelt = 1,
+  monsterEffectTintAmount = 1,
+  iceBreakTick = 0,
+  playerRecoil = false,
   // @ts-ignore
   monsterZoom = 1,
   // @ts-ignore
@@ -466,6 +503,25 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const monsterEffectLevelRef = useRef(monsterEffectLevel);
   monsterEffectLevelRef.current = monsterEffectLevel;
   const unifiedMonsterBaseScaleRef = useRef(1);
+  // Rocha de gelo 3D (quando congelado)
+  const iceGroupRef = useRef<THREE.Group | null>(null);
+  const monsterFrozenRef = useRef(monsterFrozen);
+  monsterFrozenRef.current = monsterFrozen;
+  const monsterFreezeMeltRef = useRef(monsterFreezeMelt);
+  monsterFreezeMeltRef.current = monsterFreezeMelt;
+  // Estilhaçamento do gelo no fatality (quando o monstro morre congelado)
+  const iceShatterRef = useRef<number | null>(null);
+  // Poça de água que cresce conforme o gelo derrete
+  const puddleRef = useRef<THREE.Mesh | null>(null);
+  // Animal da transformação (sapo/rato/porco/coelho) renderizado na cena
+  const transformAnimalRef = useRef<THREE.Object3D | null>(null);
+  // Fuga no golpe final (monstro pula para fora) e caminhada do jogador ao centro
+  const monsterFleeStartRef = useRef<number | null>(null);
+  const playerWalkStartRef = useRef<number | null>(null);
+  const playerWalkStartXRef = useRef(-3.6);
+  // Recuo do jogador ao bater no gelo
+  const playerRecoilStartRef = useRef<number | null>(null);
+  const playerRecoilStartXRef = useRef(0);
   // Métricas do stage (w/h/offsets) para projetar a posição atual das entidades por frame
   const stageMetricsRef = useRef({ w: 0, h: 0, offsetX: 0, offsetBottom: 0 });
 
@@ -1033,8 +1089,10 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     const animate = () => {
       if (isDisposed) return;
       animFrameRef.current = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
+      // IMPORTANTE: getDelta() deve ser chamado UMA vez por frame. getElapsedTime() também
+      // consome o delta internamente, então lemos clock.elapsedTime (já atualizado).
       const delta = clock.getDelta();
+      const elapsedTime = clock.elapsedTime;
 
       // Atualiza os mixers de animação das entidades unificadas (Fase B)
       if (unifiedMonsterMixerRef.current) {
@@ -1055,6 +1113,34 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const playSpecialActive = !!playerSpecialRef.current;
       if (!monSpecialActive) updateMoveTween(monsterMoveRef, unifiedMonsterGroupRef.current, nowMs);
       if (!playSpecialActive) updateMoveTween(playerMoveRef, unifiedPlayerGroupRef.current, nowMs);
+      // Recuo do jogador ao bater no gelo: volta para trás (seno) e retorna (~0.5s).
+      if (unifiedPlayerGroupRef.current && playerRecoilStartRef.current != null) {
+        const rel = (nowMs - playerRecoilStartRef.current) / 1000;
+        if (rel < 0.5) {
+          unifiedPlayerGroupRef.current.position.x = playerRecoilStartXRef.current - Math.sin((rel / 0.5) * Math.PI) * 1.3;
+        } else {
+          playerRecoilStartRef.current = null;
+        }
+      }
+      // Fuga do monstro no golpe final: vira para o lado oposto, pula e some da arena.
+      if (unifiedMonsterGroupRef.current && monsterFleeStartRef.current != null) {
+        const el = (nowMs - monsterFleeStartRef.current) / 1000;
+        const t = clamp01(el / 1.6);
+        const g = unifiedMonsterGroupRef.current;
+        g.rotation.y = -Math.PI / 2; // encara o lado oposto ao jogador
+        g.position.x = 3.6 + easeInOut(t) * 11; // pula para fora da arena
+        g.position.y = 0.51 + Math.sin(clamp01(el / 1.6) * Math.PI) * 2.6; // arco do pulo
+        g.scale.setScalar(Math.max(0.35, 1 - t * 0.45));
+        if (t >= 1) g.visible = false;
+      }
+      // Jogador caminha calmamente até o centro e lamenta (vitória sem baú).
+      if (unifiedPlayerGroupRef.current && playerWalkStartRef.current != null) {
+        const el = (nowMs - playerWalkStartRef.current) / 1000;
+        const g = unifiedPlayerGroupRef.current;
+        const walkT = clamp01(el / 1.8);
+        g.position.x = playerWalkStartXRef.current * (1 - easeInOut(walkT));
+        g.rotation.y = -Math.PI / 2; // olha para onde o monstro fugiu
+      }
       // Fatality (morte) no loop
       applyDeathTween(monsterDeathRef, unifiedMonsterGroupRef.current, nowMs);
       applyDeathTween(playerDeathRef, unifiedPlayerGroupRef.current, nowMs);
@@ -1087,11 +1173,99 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       }
       // Respiração procedural no idle (o GLB pode não ter animação de idle própria):
       // leve escala oscilando (~1.5%) — os pés ficam fixos pois o grupo escala a partir da base.
-      if (unifiedMonsterGroupRef.current && !isCombatAnim(monsterAnimRef.current) && !monSpecialActive) {
+      if (unifiedMonsterGroupRef.current && !isCombatAnim(monsterAnimRef.current) && !monSpecialActive && !monsterFrozenRef.current && monsterFleeStartRef.current == null) {
         unifiedMonsterGroupRef.current.scale.setScalar(1 + Math.sin(elapsedTime * 2.4) * 0.015);
+      }
+      // Congelado: sem respiração e permanece virado para o JOGADOR (última posição antes do golpe).
+      if (unifiedMonsterGroupRef.current && monsterFrozenRef.current) {
+        unifiedMonsterGroupRef.current.rotation.y = Math.PI / 2 + THREE.MathUtils.degToRad(monsterRotYRef.current);
       }
       if (unifiedPlayerGroupRef.current && !isCombatAnim(playerAnimRef.current) && !playSpecialActive) {
         unifiedPlayerGroupRef.current.scale.setScalar(1 + Math.sin(elapsedTime * 2.4 + 0.6) * 0.015);
+      }
+      // Recuo ao levar dano (hurt): inclina para trás; restaura quando não há outro
+      // tween de rotação-X (especial/morte/arremesso) controlando o monstro.
+      if (unifiedMonsterGroupRef.current) {
+        const monBusy = monsterSpecialRef.current || monsterDeathRef.current || monsterThrowStartRef.current;
+        if (monsterAnimRef.current === 'hurt') {
+          unifiedMonsterGroupRef.current.rotation.x = -0.17;
+        } else if (!monBusy) {
+          unifiedMonsterGroupRef.current.rotation.x = 0;
+        }
+      }
+      // Rocha de gelo derretendo: escala e opacidade acompanham o freezeMelt, com
+      // transição SUAVE (damp) para não "perder o topo" de forma brusca.
+      if (iceGroupRef.current) {
+        const target = Math.max(0.15, monsterFreezeMeltRef.current ?? 1);
+        const cur = iceGroupRef.current.scale.x || target;
+        const next = THREE.MathUtils.damp(cur, target, 2.5, delta);
+        iceGroupRef.current.scale.setScalar(next);
+        iceGroupRef.current.traverse((c) => {
+          const mesh = c as THREE.Mesh;
+          if (mesh.isMesh && (mesh.material as any)?.opacity !== undefined) {
+            (mesh.material as any).opacity = 0.55 * next;
+          }
+        });
+      }
+      // Gotas de água escorrendo pelas BORDAS do gelo (caem rápido, visíveis).
+      if (iceGroupRef.current) {
+        const meltVal = iceGroupRef.current.scale.x || 1;
+        const meltIntensity = Math.max(0, Math.min(1, 1 - meltVal));
+        iceGroupRef.current.traverse((c) => {
+          const mesh = c as THREE.Mesh;
+          if (mesh.isMesh && mesh.userData?.isDroplet) {
+            mesh.position.y -= (mesh.userData.speed as number) * delta * (2.2 + meltIntensity * 2.0);
+            if (mesh.position.y < 0.12) mesh.position.y = mesh.userData.baseY as number;
+            // Compensa a escala do gelo: as gotas mantêm o MESMO tamanho (não encolhem).
+            mesh.scale.setScalar(1 / Math.max(0.2, meltVal));
+            if ((mesh.material as any)?.opacity !== undefined) {
+              (mesh.material as any).opacity = 0.6 + meltIntensity * 0.35;
+            }
+          }
+        });
+      }
+      // Poça de água: visível desde o início (além do gelo), cresce conforme derrete.
+      if (puddleRef.current) {
+        const meltVal = iceGroupRef.current?.scale.x || 1;
+        const puddleAmt = Math.max(0, Math.min(1, 1 - meltVal));
+        const cur = puddleRef.current.scale.x || 1.5;
+        const next = THREE.MathUtils.damp(cur, 1.5 + puddleAmt * 2.6, 2, delta);
+        puddleRef.current.scale.setScalar(next);
+        (puddleRef.current.material as any).opacity = 0.28 + puddleAmt * 0.4;
+      }
+
+      // Estilhaçamento do gelo (Three): cada bloco voa para fora e some.
+      if (iceShatterRef.current != null && iceGroupRef.current) {
+        const el = (nowMs - iceShatterRef.current) / 1000;
+        const t = clamp01(el / 0.9);
+        iceGroupRef.current.children.forEach((child, i) => {
+          const mesh = child as THREE.Mesh;
+          if (!mesh.userData.shatterStartX) {
+            mesh.userData.shatterStartX = mesh.position.x;
+            mesh.userData.shatterStartY = mesh.position.y;
+            mesh.userData.shatterStartZ = mesh.position.z;
+          }
+          const dx = (i % 2 === 0 ? 1 : -1) * (1.2 + (i % 3) * 0.9);
+          const dy = 0.7 + (i % 4) * 0.6;
+          const dz = (i % 3 === 0 ? 1 : -1) * 1.1;
+          const ease = easeInOut(t);
+          mesh.position.x = mesh.userData.shatterStartX + dx * ease;
+          mesh.position.y = mesh.userData.shatterStartY + dy * ease;
+          mesh.position.z = mesh.userData.shatterStartZ + dz * ease;
+          mesh.rotation.x = t * 1.8;
+          mesh.rotation.z = t * 1.4;
+          if ((mesh.material as any)?.opacity !== undefined) {
+            (mesh.material as any).opacity = 0.55 * (1 - t);
+          }
+        });
+        if (el >= 0.9) {
+          const g = unifiedMonsterGroupRef.current;
+          if (g && iceGroupRef.current) g.remove(iceGroupRef.current);
+          iceGroupRef.current = null;
+          if (g && puddleRef.current) g.remove(puddleRef.current);
+          puddleRef.current = null;
+          iceShatterRef.current = null;
+        }
       }
 
       // Nuvens se deslocam suavemente pelo céu
@@ -1208,6 +1382,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   monsterRotYRef.current = monsterRotY;
   const monsterEffectTintRef = useRef(monsterEffectTint);
   monsterEffectTintRef.current = monsterEffectTint;
+  const monsterEffectTintAmountRef = useRef(monsterEffectTintAmount);
+  monsterEffectTintAmountRef.current = monsterEffectTintAmount;
   const monsterEnragedRef = useRef(monsterEnraged);
   monsterEnragedRef.current = monsterEnraged;
   // Rotação extra (graus) do modelo GLB do jogador (config.customRotY)
@@ -1271,7 +1447,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedMonsterMixerRef.current = mixer;
       unifiedMonsterActionsRef.current = actions;
       unifiedMonsterBaseScaleRef.current = root.scale.x || 1;
-      applyEntityTint(root, monsterEffectTintRef.current, monsterEnragedRef.current);
+      applyEntityTint(root, monsterEffectTintRef.current, monsterEnragedRef.current, monsterEffectTintAmountRef.current);
       playEntityAnimByName(actions, mixer, monsterAnimRef.current);
     });
 
@@ -1332,7 +1508,10 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     if (monsterAnim.startsWith('death')) {
       if (!monsterDeathRef.current || monsterDeathRef.current.type !== monsterAnim) {
         monsterDeathRef.current = { type: monsterAnim, start: performance.now() };
-        console.log('[FASEB death-set]', monsterAnim, 'group=', !!unifiedMonsterGroupRef.current);
+        // Fatality especial: se morreu congelado, o gelo se despedaça em pedaços.
+        if (monsterFrozenRef.current && iceGroupRef.current) {
+          iceShatterRef.current = performance.now();
+        }
       }
     } else if (monsterDeathRef.current) {
       monsterDeathRef.current = null;
@@ -1404,6 +1583,139 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     }
   }, [unified3D, monsterBodyThrow]);
 
+  // Rocha de gelo 3D ao redor do monstro quando congelado (segue o grupo).
+  useEffect(() => {
+    if (!unified3D) return;
+    const group = unifiedMonsterGroupRef.current;
+    if (monsterFrozen && group && !iceGroupRef.current) {
+      const ice = new THREE.Group();
+      const iceMat = new THREE.MeshStandardMaterial({ color: '#9fd8ff', transparent: true, opacity: 0.55, roughness: 0.25, metalness: 0.1 });
+      // O gelo acompanha a ALTURA real do monstro (escala pelo monsterZoom), para o
+      // cubo não "perder o topo" quando o modelo é maior que o gelo padrão.
+      const z = Math.max(0.2, monsterZoomRef.current || 1);
+      const sizes = [
+        { w: 1.7, h: 2.1, d: 1.7, x: 0, y: 1.0, z: 0 },
+        { w: 1.0, h: 1.2, d: 1.0, x: 0.95, y: 0.6, z: 0.4 },
+        { w: 1.0, h: 1.1, d: 1.0, x: -0.9, y: 0.65, z: -0.3 },
+        { w: 0.9, h: 1.3, d: 0.9, x: 0.3, y: 0.75, z: -1.0 },
+        { w: 0.9, h: 1.2, d: 0.9, x: -0.35, y: 0.8, z: 1.0 },
+      ];
+      sizes.forEach((s) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(s.w * z, s.h * z, s.d * z), iceMat);
+        m.position.set(s.x * z, s.y * z, s.z * z);
+        ice.add(m);
+      });
+      // Gotas de água escorrendo pelas BORDAS do gelo (visíveis de fora).
+      const dropletMat = new THREE.MeshStandardMaterial({ color: '#0ea5e9', transparent: true, opacity: 0.9, roughness: 0.1, metalness: 0.1, emissive: '#0ea5e9', emissiveIntensity: 0.35 });
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2;
+        const rad = 1.05 * z;
+        const dr = new THREE.Mesh(new THREE.BoxGeometry(0.03 * z, 0.13 * z, 0.03 * z), dropletMat);
+        dr.position.set(Math.cos(ang) * rad, 1.95 * z, Math.sin(ang) * rad + 0.2);
+        dr.userData.isDroplet = true;
+        dr.userData.baseY = dr.position.y;
+        dr.userData.speed = 0.9 + Math.random() * 0.9;
+        ice.add(dr);
+      }
+      group.add(ice);
+      iceGroupRef.current = ice;
+      // Poça de água que cresce conforme o gelo derrete (no chão, aparecendo além do gelo).
+      const puddleMat = new THREE.MeshBasicMaterial({ color: '#38bdf8', transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide });
+      const puddle = new THREE.Mesh(new THREE.CircleGeometry(1.0, 32), puddleMat);
+      puddle.rotation.x = -Math.PI / 2;
+      puddle.position.set(0, 0.04, 0.2);
+      puddle.userData.isPuddle = true;
+      group.add(puddle);
+      puddleRef.current = puddle;
+    } else if (!monsterFrozen && (iceGroupRef.current || puddleRef.current) && group) {
+      if (iceGroupRef.current) {
+        group.remove(iceGroupRef.current);
+        iceGroupRef.current = null;
+      }
+      if (puddleRef.current) {
+        group.remove(puddleRef.current);
+        puddleRef.current = null;
+      }
+    }
+  }, [unified3D, monsterFrozen, monsterModelUrl]);
+
+  // TRANSFORMAÇÃO: quando vira animal, carrega o GLB do animal na cena e esconde o monstro.
+  useEffect(() => {
+    if (!unified3D) return;
+    const group = unifiedMonsterGroupRef.current;
+    const root = unifiedMonsterRootRef.current;
+    if (!group) return;
+    const animalUrl = (monsterTransformModelUrl || '').trim();
+    if (animalUrl) {
+      let disposed = false;
+      const loader = new GLTFLoader();
+      loader.load(getSafeUrl(animalUrl), (gltf) => {
+        if (disposed) return;
+        const animal = gltf.scene;
+        fitEntityToGround(animal, UNIFIED_ENTITY_HEIGHT * Math.max(0.2, monsterZoomRef.current || 1) * 0.55);
+        animal.rotation.y = THREE.MathUtils.degToRad(monsterTransformRotY || 0);
+        group.add(animal);
+        transformAnimalRef.current = animal;
+        if (root) root.visible = false;
+      }, undefined, (err) => {
+        console.warn('[VoxelArena3D] Falha ao carregar GLB da transformação:', animalUrl, err);
+      });
+      return () => {
+        disposed = true;
+        if (transformAnimalRef.current) {
+          group.remove(transformAnimalRef.current);
+          transformAnimalRef.current = null;
+        }
+        if (root) root.visible = true;
+      };
+    }
+    // Sem transformação: garante o monstro visível.
+    if (transformAnimalRef.current) {
+      group.remove(transformAnimalRef.current);
+      transformAnimalRef.current = null;
+    }
+    if (root) root.visible = true;
+  }, [unified3D, monsterTransformModelUrl, monsterModelUrl, monsterZoom]);
+
+  // Quebra do gelo por GOLPE: quando iceBreakTick muda, estilhaça o gelo (pedaços voam).
+  useEffect(() => {
+    if (!unified3D || iceBreakTick === 0) return;
+    if (iceGroupRef.current) {
+      iceShatterRef.current = performance.now();
+    }
+  }, [unified3D, iceBreakTick]);
+
+  // Fuga no golpe final: marca o início da fuga (monstro) e da caminhada (jogador).
+  useEffect(() => {
+    if (!unified3D) return;
+    const fleeing = monsterAnim === 'flee' || monsterAnim === 'flee-jump';
+    if (fleeing) {
+      if (monsterFleeStartRef.current == null) monsterFleeStartRef.current = performance.now();
+    } else if (monsterAnim === 'idle' && playerAnim === 'idle') {
+      // Estado normal (nova batalha): restaura monstro/jogador.
+      monsterFleeStartRef.current = null;
+      playerWalkStartRef.current = null;
+      if (unifiedMonsterGroupRef.current) {
+        unifiedMonsterGroupRef.current.visible = true;
+        unifiedMonsterGroupRef.current.position.x = 3.6;
+      }
+    }
+    const walking = playerAnim === 'walk' || playerAnim === 'exhausted';
+    if (walking && playerWalkStartRef.current == null) {
+      playerWalkStartRef.current = performance.now();
+      playerWalkStartXRef.current = unifiedPlayerGroupRef.current?.position.x ?? -3.6;
+    }
+  }, [unified3D, monsterAnim, playerAnim]);
+
+  // Recuo do jogador ao bater no gelo: marca o início (a animação roda no loop).
+  useEffect(() => {
+    if (!unified3D) return;
+    if (playerRecoil) {
+      playerRecoilStartRef.current = performance.now();
+      playerRecoilStartXRef.current = unifiedPlayerGroupRef.current?.position.x ?? -3.6;
+    }
+  }, [unified3D, playerRecoil]);
+
   // Avanço corpo a corpo: quando entra em ataque/fatal/vitória, lança o tween de X.
   useEffect(() => {
     if (!unified3D) return;
@@ -1435,8 +1747,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // Reaplica tint/fúria quando os efeitos mudam.
   useEffect(() => {
     if (!unified3D) return;
-    applyEntityTint(unifiedMonsterRootRef.current, monsterEffectTint, monsterEnraged);
-  }, [unified3D, monsterEffectTint, monsterEnraged, monsterModelUrl]);
+    applyEntityTint(unifiedMonsterRootRef.current, monsterEffectTint, monsterEnraged, monsterEffectTintAmount);
+  }, [unified3D, monsterEffectTint, monsterEnraged, monsterEffectTintAmount, monsterModelUrl]);
 
   // Recalcula a projeção da cabeça quando a cena unificada liga/desliga ou o zoom muda.
   useEffect(() => {

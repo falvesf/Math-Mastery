@@ -2955,14 +2955,16 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       });
     } else if (animation === 'walk') {
       const walk = new WalkingAnimation();
-      if (hasTwoHanded) {
-        viewerRef.current.animation = new FunctionAnimation((player: any, progress: number, delta: number) => {
-          walk.update(player, (typeof delta === 'number' && !isNaN(delta)) ? delta : 0.016);
+      // WalkingAnimation reseta a rotação do player para 0 (de frente para a câmera).
+      // Reforçamos o facing (de lado, encarando o oponente) para o jogador andar na
+      // direção correta (em direção ao centro da arena), não para a câmera.
+      viewerRef.current.animation = new FunctionAnimation((player: any, progress: number, delta: number) => {
+        walk.update(player, (typeof delta === 'number' && !isNaN(delta)) ? delta : 0.016);
+        player.rotation.y = faceCamera ? 0 : targetRotation;
+        if (hasTwoHanded) {
           applyTwoHandedPose(player, progress);
-        });
-      } else {
-        viewerRef.current.animation = walk;
-      }
+        }
+      });
     } else if (animation === 'run') {
       const run = new RunningAnimation();
       viewerRef.current.animation = new FunctionAnimation((player: any, progress: number, delta: number) => {

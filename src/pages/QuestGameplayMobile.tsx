@@ -95,6 +95,33 @@ interface UserItem {
   useSoundUrl?: string;
 }
 
+/**
+ * Chance (%) do monstro FUGIR no golpe final, conforme os corações que sobraram e o
+ * total de questões da missão.
+ * - Missões com menos de 5 questões: nunca foge (fatality garantido).
+ * - 5 a 10 questões: 2♥→20%, 3♥→40%, 4♥→60%, 5♥→80%, 6+♥→100% (≤1♥→0%).
+ * - Mais de 10 questões: limiares proporcionais (Q/6, Q/5, Q/4, Q/3, Q/2) → 20/40/60/80/100%.
+ */
+export function getMonsterFleeChance(remainingHearts: number, totalQuestions: number): number {
+  const h = Math.max(0, remainingHearts || 0);
+  const q = Math.max(0, totalQuestions || 0);
+  if (q < 5) return 0;
+  if (q <= 10) {
+    if (h >= 6) return 100;
+    if (h >= 5) return 80;
+    if (h >= 4) return 60;
+    if (h >= 3) return 40;
+    if (h >= 2) return 20;
+    return 0;
+  }
+  if (h >= q / 2) return 100;
+  if (h >= q / 3) return 80;
+  if (h >= q / 4) return 60;
+  if (h >= q / 5) return 40;
+  if (h >= q / 6) return 20;
+  return 0;
+}
+
 export default function QuestGameplay() {
   const { questId } = useParams();
   const { userData, updateUserDataLocally } = useAuth();
@@ -153,6 +180,9 @@ export default function QuestGameplay() {
   const [monsterBubble, setMonsterBubble] = useState<string>('');
   const [playerAnim, setPlayerAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
+  // O monstro fugiu no golpe final (vitória sem baú; permite repetir a missão).
+  const [monsterFled, setMonsterFled] = useState(false);
+  const monsterFledRef = useRef(false);
   const [effectLevel, setEffectLevel] = useState(0);
   // Turnos restantes do status aplicado no MONSTRO (poison/burn/bleed/electric/etc.).
   // O turno em que o status foi inflingido NÃO conta. Máx. 2 turnos (evita farm infinito).
@@ -160,7 +190,15 @@ export default function QuestGameplay() {
   const [effectFlash, setEffectFlash] = useState(false);
   const [monsterHitFlash, setMonsterHitFlash] = useState(false);
   const [frozen, setFrozen] = useState(false);
-  const [freezeTurns, setFreezeTurns] = useState(0);
+  // HP próprio do gelo: o congelamento termina quando o gelo é quebrado (dano) ou
+  // derretido (drenagem por segundo). Barra azul de HP acima do bloco.
+  const [iceMaxHp, setIceMaxHp] = useState(0);
+  const [iceHp, setIceHp] = useState(0);
+  const iceHpRef = useRef(0);
+  // Sinal para o VoxelArena3D estilhaçar o gelo (quebra por dano ou fatality).
+  const [iceBreakTick, setIceBreakTick] = useState(0);
+  // Recuo do jogador ao bater no gelo (como se batesse em algo duro).
+  const [playerRecoil, setPlayerRecoil] = useState(false);
   const [drainBlink, setDrainBlink] = useState(false);
   void drainBlink; void setDrainBlink;
 
@@ -227,6 +265,7 @@ export default function QuestGameplay() {
     isCritical?: boolean;
     isEvasion?: boolean;
     isHeal?: boolean;
+    isBlocked?: boolean;
     target: 'monster' | 'player';
     x?: number;
     y?: number;
@@ -237,7 +276,8 @@ export default function QuestGameplay() {
     isCritical = false,
     target: 'monster' | 'player' = 'monster',
     isEvasion = false,
-    isHeal = false
+    isHeal = false,
+    isBlocked = false
   ) => {
     const id = Date.now() + Math.random();
     const jitterX = (Math.random() - 0.5) * 8;
@@ -247,7 +287,7 @@ export default function QuestGameplay() {
 
     setActiveFloatingDamages(prev => [
       ...prev,
-      { id, damage, isCritical, isEvasion, target, x, y, isHeal }
+      { id, damage, isCritical, isEvasion, target, x, y, isHeal, isBlocked }
     ]);
   };
 
@@ -704,7 +744,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
       updateUserHearts(newHearts);
     }
   });
-  setBattleMessage(`O PORCO TE ATACOU! Você perdeu ${damage} coração(ões)!`);
   setStressFactors(prev => ({ ...prev, hpLost: Math.max(prev.hpLost, 1 - (newHearts / maxHearts)) }));
 };
 
@@ -1578,6 +1617,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setEffectLevel(0);
       setMonsterStatusTurns(0);
       setFrozen(false);
+      setMonsterFled(false);
+      monsterFledRef.current = false;
+      setIceMaxHp(0);
+      setIceHp(0);
+      iceHpRef.current = 0;
+      setIceBreakTick(0);
+      setPlayerRecoil(false);
       setEffectFlash(false);
       fallenPartsRef.current = [];
       setTorsoAdvantage(false);
@@ -1672,6 +1718,32 @@ const dealTransformDamageToPlayer = (damage: number) => {
     }
   };
 */
+
+  const triggerFlee = () => {
+    monsterFledRef.current = true;
+    setMonsterFled(true);
+    if (fatalityActiveRef.current) return;
+    fatalityActiveRef.current = true;
+    if (timerRef.current) clearInterval(timerRef.current);
+    setMonsterProjectile(null);
+    setMonsterSpecialActive(false);
+    setMonsterSpecialAnim('');
+    setMonsterProceduralAnim('');
+    setMonsterBodyThrow(false);
+    // Monstro vira para o lado oposto do jogador e dá um pulo para fora da arena.
+    setMonsterAnim('flee');
+    setTimeout(() => { setMonsterAnim('flee-jump'); }, 900);
+    // Ritmo: o jogador fica PERPLEXO (parado) vendo o monstro fugir, depois anda calmamente
+    // até o centro da arena e só então se lamenta (vitória sem baú).
+    setTimeout(() => { setPlayerAnim('idle'); }, 300);
+    setTimeout(() => { setPlayerAnim('walk'); }, 2000);
+    setTimeout(() => { setPlayerAnim('exhausted'); }, 4000);
+    setBattleMessage('');
+    setTimeout(() => {
+      setMonsterAnim('idle');
+      finishGame(true, currentXp);
+    }, 6000);
+  };
 
   const triggerFatality = (isPlayerWinning: boolean, defeatHearts?: number) => {
     if (fatalityActiveRef.current) return;
@@ -1771,7 +1843,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
         // independente de ter arma ou não (evita reset para a posição inicial)
         setPlayerAnim(hasAttackWeapon ? 'attack-fatal-slow' : 'attack-fatal');
         setPlayerBubble(msg);
-        setBattleMessage(hasAttackWeapon ? 'Câmera lenta ativada! Golpe final épico!' : 'Golpe final!');
         
         // Espera para o monstro sentir o golpe
         const impactDelay = hasAttackWeapon ? 1125 : 600;
@@ -1955,13 +2026,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
         
         if (fraction === '1/4') {
           setNextQAdvantage('eliminate-2');
-          setBattleMessage('DANO CRÍTICO (1/4)! 2 alternativas falsas cairão na próxima!');
         } else if (fraction === '1/3') {
           setNextQAdvantage('eliminate-1');
-          setBattleMessage('DANO CRÍTICO (1/3)! 1 alternativa falsa cairá na próxima!');
         } else {
           setNextQAdvantage('bonus-crit');
-          setBattleMessage('DANO CRÍTICO (1/2)! Mais chance de crítico na próxima!');
         }
       }
 
@@ -1985,7 +2053,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
           setMonsterAnim('idle');
           setPlayerAnim('idle');
         } else {
-          triggerFatality(true);
+          // Fuga no golpe final: se sobraram corações, o monstro pode fugir conforme a chance.
+          const fleeChance = getMonsterFleeChance(monsterHearts, quest.questions.length);
+          const willFlee = Math.random() * 100 < fleeChance;
+          if (willFlee) {
+            triggerFlee();
+          } else {
+            triggerFatality(true);
+          }
         }
       } else {
         // Porco enfurecido: danos do jogador são SEMPRE críticos
@@ -2007,14 +2082,19 @@ const dealTransformDamageToPlayer = (damage: number) => {
             spawnFloatingDamage(0, false, 'monster', true);
             // Esquiva: o monstro não perde coração, moedas nem itens.
             setMonsterHeartFrac(1);
-            setBattleMessage('O monstro ESQUIVOU do seu ataque!');
           } else {
-            spawnFloatingDamage(hitRoll.damage, hitRoll.isCritical, 'monster');
-            maxHitDamageDealtRef.current = Math.max(maxHitDamageDealtRef.current, hitRoll.damage);
-            totalDamageDealtRef.current += hitRoll.damage;
-            // Flash vermelho de IMPACTO no monstro (funciona também para GLB)
-            setMonsterHitFlash(true);
-            setTimeout(() => setMonsterHitFlash(false), 350);
+            if (frozen) {
+              // Gelo protege: mostra -100 em azul (a camada de gelo absorve).
+              spawnFloatingDamage(0, false, 'monster', false, false, true);
+            } else {
+              spawnFloatingDamage(hitRoll.damage, hitRoll.isCritical, 'monster');
+              maxHitDamageDealtRef.current = Math.max(maxHitDamageDealtRef.current, hitRoll.damage);
+              totalDamageDealtRef.current += hitRoll.damage;
+              // Flash vermelho de IMPACTO no monstro — só quando NÃO está congelado
+              // (o gelo absorve o dano, o monstro não fica vermelho).
+              setMonsterHitFlash(true);
+              setTimeout(() => setMonsterHitFlash(false), 350);
+            }
           }
           if (!evaded) {
             // Efeito especial aplicado ANTES do som de dano para que o golpe que
@@ -2029,7 +2109,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
               setTimeout(() => setEffectFlash(false), 600);
               if (damageEffect === 'freeze' && effectLevel + 1 >= FREEZE_HITS_TO_FREEZE) {
                 setFrozen(true);
-                setFreezeTurns(3);
+                // HP próprio do gelo (25–300): o congelamento termina quando ele é quebrado/derretido.
+                const maxHp = 25 + Math.floor(Math.random() * 276);
+                iceHpRef.current = maxHp;
+                setIceMaxHp(maxHp);
+                setIceHp(maxHp);
+                setIceBreakTick(0);
+                setEffectLevel(0);
               }
               // TRANSFORMAR: só se o monstro estiver na forma NORMAL
               if (damageEffect === 'transform' && !transformRef.current) {
@@ -2053,11 +2139,38 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 }
               }
             }
-            playMonsterDamageSound();
-            dropCoins(effectiveCrit);
-            checkAndDropMonsterItem();
-            // Acerto efetivo: o monstro perde 1 coração.
-            setMonsterHearts(h => Math.max(0, h - 1));
+            if (!frozen) {
+              playMonsterDamageSound();
+              dropCoins(effectiveCrit);
+              checkAndDropMonsterItem();
+            }
+            // Acerto efetivo: se congelado, o GELO absorve o dano (racha) e, após 2 golpes,
+            // se despedaça libertando o monstro; senão, perde 1 coração.
+            if (frozen) {
+              // Recuo: bateu no gelo (duro), a mão volta para trás.
+              setPlayerRecoil(true);
+              setTimeout(() => setPlayerRecoil(false), 500);
+              // O gelo absorve o dano do ataque (poder de ataque do jogador).
+              const dmg = Math.max(1, hitRoll.damage);
+              const cur = iceHpRef.current;
+              const next = cur - dmg;
+              if (next <= 0) {
+                // Gelo quebrado pelo dano: estilhaça (Three) e liberta o monstro.
+                iceHpRef.current = 0;
+                setIceHp(0);
+                setIceMaxHp(0);
+                setIceBreakTick(t => t + 1);
+                setFrozen(false);
+                setEffectLevel(0);
+              } else {
+                iceHpRef.current = next;
+                setIceHp(next);
+              }
+              // Dano azul (real) infligido ao gelo.
+              spawnFloatingDamage(dmg, false, 'monster', false, false, true);
+            } else {
+              setMonsterHearts(h => Math.max(0, h - 1));
+            }
             setMonsterHeartFrac(1);
             // Coelho: cada golpe que ele recebe acelera o tempo (+5%) e dobra o drop
             if (transformRef.current?.animal === 'coelho') {
@@ -2106,9 +2219,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     } else {
       setFeedback('wrong');
       
-      // CONGELADO: o monstro não consegue atacar enquanto está preso no gelo.
+      // CONGELADO: o monstro não consegue atacar enquanto o gelo não for quebrado/derretido.
       if (frozen) {
-        setBattleMessage('🧊 O monstro está CONGELADO e não consegue atacar!');
         setTimeout(() => {
           setFeedback(null);
           setLastSelectedOption(null);
@@ -2208,7 +2320,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
             }
           } else if ((userData?.role === 'admin' || isSuperAdmin) && arena.forceCoinLoss) {
             setLostCoinsDisplay(0);
-            setBattleMessage('Sem moedas para perder!');
           }
         }
       };
@@ -2245,9 +2356,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
         const isFatalForPlayer = (arena.adminImmortal && (userData?.role === 'admin' || isSuperAdmin) ? false : (((userData?.role === 'admin' || isSuperAdmin) && arena.noInstantKill) ? finalHearts === 0 : (isMonsterDamageFatal(appliedDamage, currentHearts) || (isHardcore && tr?.animal !== 'sapo'))));
 
         if (isFatalForPlayer) {
-          if (isMonsterCrit) {
-            setBattleMessage('DANO CRÍTICO LETAL! O monstro te aniquilou!');
-          }
           triggerFatality(false, finalHearts);
           return;
         }
@@ -2271,15 +2379,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
         setTimeout(() => {
           setFeedback(null);
           setLastSelectedOption(null);
-          if (customMsg) {
-            setBattleMessage(customMsg);
-          } else if (isMonsterCrit) {
-            setBattleMessage('DANO CRÍTICO DO INIMIGO! Você perdeu 2 corações!');
-          } else {
-            setBattleMessage(actualPenalty < quest.xpPenaltyPerRetry 
-              ? 'Seu escudo absorveu parte do dano! Respire fundo e tente novamente!' 
-              : 'Respire fundo e tente novamente!');
-          }
         }, 1000);
       };
 
@@ -2293,11 +2392,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
           if (curTr?.animal === 'rato') {
             const w = rollBleedWound('rato');
             setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns: 2, x: w.x, y: w.y }]);
-            setBattleMessage(`O RATO TE MORDEU (${playerBleeds.length + 1}x)! Sangramento acumulado!`);
           }
           if (curTr?.animal === 'sapo') {
             setPlayerPoisonTurns(3);
-            setBattleMessage('O SAPO TE ENVENENOU! Você perderá coração por 3 turnos!');
           }
           dropCoinsIfDamaged();
           executePlayerHit(damage, 'none');
@@ -2589,27 +2686,12 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setHealAuraTurns(healAuraTurns - 1);
     }
 
-    // Tick do CONGELAMENTO (2 turnos após o turno do congelamento; o gelo derrete a cada turno).
-    setFreezeTurns(prev => {
-      if (prev <= 0) return 0;
-      const next = prev - 1;
-      if (next <= 0) {
-        setFrozen(false);
-        setEffectLevel(0);
-        setBattleMessage('O gelo derreteu! O monstro voltou a se mover.');
-      } else {
-        setBattleMessage('O monstro está CONGELADO e não consegue atacar! O gelo está derretendo...');
-      }
-      return next;
-    });
-
     // Tick do status do MONSTRO (poison/burn/bleed/electric): dura no máx. 2 turnos.
     setMonsterStatusTurns(prev => {
       if (prev <= 0) return 0;
       const next = prev - 1;
       if (next <= 0) {
         setEffectLevel(0);
-        setBattleMessage('O efeito no monstro passou!');
       }
       return next;
     });
@@ -2636,7 +2718,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
     // Também ignora tentativas antigas (admin que já foi aluno) para SEMPRE receber o baú no teste.
     const forceRewards = !!arena.forceRewards && (userData?.role === 'admin' || isSuperAdmin);
     const isEligibleForXP = (isStudent || forceRewards) && !isStudyMode;
-    const isEligibleForChest = forceRewards || (isStudent && !alreadyCompletedRef.current); // Baú só na 1ª conclusão (alunos)
+    const isEligibleForChest = (forceRewards || (isStudent && !alreadyCompletedRef.current)) && !monsterFledRef.current; // Sem baú se o monstro fugiu
     
     setSaving(true);
     
@@ -2864,6 +2946,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
   };
 
   const handleAbandon = async () => {
+    // Para toda a música/sons (ex.: música de vitória que começou no golpe final)
+    try { fadeOutAllSounds(200); } catch {}
     if (gameState === 'playing' && !isStudyMode && (userData?.role === 'student' || !!userData?.studentViewActive)) {
       const confirmed = await showConfirm("Tem certeza que deseja abandonar? Você perderá 1 vida e receberá penalidade de XP para as perguntas não respondidas. A missão será encerrada permanentemente!");
       if (!confirmed) {
@@ -3198,13 +3282,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
           updateUserHearts(newHearts);
         }
       });
-      setBattleMessage(
-        bleedCount > 0 && poisonOn ? `SANGRANDO (${bleedCount}x) E ENVENENADO! Perdendo ${total} coração por vez...`
-        : bleedCount > 0 ? `SANGRANDO (${bleedCount}x)! Perdendo ${bleedCount * 0.5} coração por vez...`
-        : poisonOn ? 'ENVENENADO! O veneno drena sua vida...'
-        : burnOn ? 'QUEIMANDO! O fogo consome sua vida...'
-        : electricOn ? 'ELETROCUTADO! O choque drena sua vida...'
-        : '');
       // Perde moedas junto com o sangue (sempre, no sangramento do rato)
       if (userData?.uid && bleedCount > 0) {
         const lostCoins = bleedCount * (1 + Math.floor(Math.random() * 3));
@@ -3218,6 +3295,29 @@ const dealTransformDamageToPlayer = (damage: number) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState, playerBleeds.length > 0, playerPoisonTurns > 0, playerBurnTurns > 0, playerElectricTurns > 0]);
 
+// DEGELO: o HP do gelo drena 1 por SEGUNDO REAL (300 = 300s = 5 min); ao zerar, o
+// gelo derrete (Three) e liberta o monstro (sem despedaçar — derretimento normal).
+  useEffect(() => {
+    if (!frozen || gameState !== 'playing') return;
+    const iv = setInterval(() => {
+      const cur = iceHpRef.current;
+      if (cur <= 0) return;
+      const next = cur - 1;
+      if (next <= 0) {
+        iceHpRef.current = 0;
+        setIceHp(0);
+        setIceMaxHp(0);
+        setFrozen(false);
+        setEffectLevel(0);
+      } else {
+        iceHpRef.current = next;
+        setIceHp(next);
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frozen, iceMaxHp, gameState]);
+
   // VENENO/SANGRAMENTO: drena o coração, pisca em vermelho e dropa moedas extras.
   useEffect(() => {
     if (gameState !== 'playing' || (damageEffect !== 'poison' && damageEffect !== 'bleed') || effectLevel === 0) return;
@@ -3226,7 +3326,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setMonsterHitFlash(true);
       setTimeout(() => setMonsterHitFlash(false), 300);
       setMonsterHeartFrac(f => Math.max(0.06, f - 0.18));
-      playMonsterDamageSound();
+      if (!frozen) playMonsterDamageSound();
       if (economySettings?.coinsDropInCombat) {
         // Dropa dentro da ÁREA de moedas configurada (não em posição fixa).
         const cX = arena.coinAreaX ?? 50;
@@ -3723,13 +3823,20 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 monsterProceduralAnim={monsterProceduralAnim}
                 monsterSpecialAnim={monsterSpecialAnim}
                 monsterBodyThrow={monsterBodyThrow}
+                monsterTransformModelUrl={transformState ? getTransformModelUrl(transformState.animal) : undefined}
+                monsterTransformRotY={transformState?.animal === 'porco' ? 180 : 0}
                 monsterDamageEffect={damageEffect}
                 monsterEffectLevel={effectLevel}
                 monsterSlowFactor={frozen ? 0 : (damageEffect === 'freeze' && effectLevel > 0 ? Math.max(0.22, 1 - effectLevel * 0.27) : 1)}
+                monsterFrozen={frozen}
+                monsterFreezeMelt={frozen ? Math.max(0.15, iceMaxHp > 0 ? iceHp / iceMaxHp : 1) : 1}
+                iceBreakTick={iceBreakTick}
+                playerRecoil={playerRecoil}
                 monsterZoom={effectiveMonsterZoom}
                 monsterRotY={effectiveMonsterRotY}
                 monsterEnraged={monsterRageActive}
-                monsterEffectTint={monsterHitFlash ? '#ff2222' : (monsterHealPulse ? '#2dd4bf' : (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : undefined) : undefined))}
+                monsterEffectTint={frozen ? '#3f9bff' : (monsterHitFlash ? '#ff2222' : (monsterHealPulse ? '#2dd4bf' : (effectLevel > 0 ? (damageEffect === 'burn' ? '#ff8833' : damageEffect === 'poison' ? '#44ff66' : damageEffect === 'bleed' ? '#ff3333' : damageEffect === 'freeze' ? (effectLevel >= 3 ? '#3f9bff' : effectLevel === 2 ? '#7fc0ff' : '#cfe9ff') : undefined) : undefined)))}
+                monsterEffectTintAmount={frozen ? Math.max(0, iceMaxHp > 0 ? iceHp / iceMaxHp : 1) : 1}
               />
             ) : (
               <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
@@ -3760,6 +3867,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     isCritical={dmg.isCritical}
                     isEvasion={dmg.isEvasion}
                     isHeal={dmg.isHeal}
+                    isBlocked={dmg.isBlocked}
                     target={dmg.target}
                     x={dmg.x}
                     y={dmg.y}
@@ -3981,7 +4089,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             {/* Player Side */}
             <div 
               ref={playerSideRef}
-              className={`quest-arena-side-player ${(arena.unified3D && userData?.avatarConfig?.customModelUrl) ? '' : (playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : '')} ${(userData?.avatarConfig?.customModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
+              className={`quest-arena-side-player ${(monsterFled && (playerAnim === 'walk' || playerAnim === 'exhausted')) ? 'flee-to-center' : ''} ${(arena.unified3D && userData?.avatarConfig?.customModelUrl) ? '' : (playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : '')} ${(userData?.avatarConfig?.customModelUrl || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
               style={{
                 position: 'absolute',
                 left: arenaRenderMode === '3d'
@@ -4213,12 +4321,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
                         return hearts;
                       })()}
                     </div>
+                    {frozen && iceMaxHp > 0 && (
+                      <div style={{ width: '90px', height: '7px', background: 'rgba(0,0,0,0.55)', borderRadius: '4px', border: '1px solid #38bdf8', overflow: 'hidden', marginTop: '2px' }}>
+                        <div style={{ width: `${Math.max(0, Math.min(100, (iceHp / iceMaxHp) * 100))}%`, height: '100%', background: 'linear-gradient(to right, #7dd3fc, #38bdf8)', transition: 'width 0.4s' }} />
+                      </div>
+                    )}
                   </div>
                 <div className={`quest-arena-monster-inner ${monsterHealPulse ? 'monster-healing-active' : ''}`} style={{ position: 'relative', display: 'inline-block' }}>
                   {monsterHealPulse && <MonsterHealAura />}
                   {(() => {
                     const healTint = monsterHealPulse ? '#2dd4bf' : null;
-                    if (transformState) {
+                    if (transformState && !(arena.unified3D && effectiveMonsterModelUrl)) {
                       const tr = transformState;
                       const animalUrl = getTransformModelUrl(tr.animal);
                       const isRat = tr.animal === 'rato';
@@ -4282,9 +4395,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     }
                   })()}
                   {/* Rocha de GELO 3D envolvendo o monstro congelado (derrete a cada turno) */}
-                  {frozen && (
+                  {frozen && !(arena.unified3D && effectiveMonsterModelUrl) && (
                     <div style={{ position: 'absolute', left: '50%', bottom: 0, transform: 'translateX(-50%)', zIndex: 4, pointerEvents: 'none' }}>
-                      <IceRockView size={Math.round(200 * Math.max(1, effectiveMonsterZoom))} melt={Math.max(0.12, freezeTurns / 3)} />
+                      <IceRockView size={Math.round(200 * Math.max(1, effectiveMonsterZoom))} melt={Math.max(0.15, iceMaxHp > 0 ? iceHp / iceMaxHp : 1)} />
                     </div>
                   )}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (currentQIndex / Math.max(1, quest?.questions.length || 1)) * (damageEffect === 'impact' ? 2 : 1))) } as any} />
