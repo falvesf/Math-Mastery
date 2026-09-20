@@ -12,6 +12,7 @@ import QuestGameplayMobile from './pages/QuestGameplayMobile';
 import LiveQuestAdmin from './pages/LiveQuestAdmin';
 import LiveQuestStudent from './pages/LiveQuestStudent';
 import PvpPage from './pages/PvpPage';
+import ArenaAvatarPoC from './components/ArenaAvatarPoC';
 import { Loader2 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import './App.css';
@@ -136,6 +137,9 @@ function AppRoutes() {
           </PrivateRoute>
         }
       />
+      {/* PoC temporária: arena Three 0.156 + boneco skinview3d nativo */}
+      <Route path="/poc-arena" element={<ArenaAvatarPoC />} />
+
       {/* Compatibilidade com links antigos do repositório /Math-Mastery */}
       <Route path="/Math-Mastery/admin" element={<Navigate to="/admin" replace />} />
       <Route path="/Math-Mastery/dashboard" element={<Navigate to="/dashboard" replace />} />
