@@ -202,7 +202,7 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
       model.userData.isItem = true;
       model.traverse((child: any) => { if (child.isMesh) child.frustumCulled = false; });
 
-      const isDefense = item.itemCategory === 'defense' || item.avatarPart === 'leftHand';
+      const isDefense = item.itemCategory === 'defense';
       const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
       const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
       const targetArm = isDefense ? nonDominantArm : dominantArm;
