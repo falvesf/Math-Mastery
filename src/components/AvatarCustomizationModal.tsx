@@ -20,7 +20,6 @@ import {
 import Admin3DModelsManager from './Admin3DModelsManager';
 import CustomModelViewer from './CustomModelViewer';
 import PoseStudioModal from './PoseStudioModal';
-import { exportAvatarToGlb } from '../lib/avatarGlbExporter';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from '../lib/sessionCache';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -666,13 +665,17 @@ export default function AvatarCustomizationModal({
   // Supabase Storage, guardando a URL em config.exportedModelUrl. É esse arquivo
   // que permite renderizar o jogador DENTRO da cena 3D unificada da arena.
   const handleExport3D = async () => {
+    console.log('[EXPORT3D] clique recebido');
     if (exporting3d) return;
     setExporting3d(true);
     try {
+      // Import dinâmico: evita que uma falha de resolução do skinview3d/three no dev
+      // server derrube o handler silenciosamente, e surfaça o erro de forma clara.
+      const { exportAvatarToGlb } = await import('../lib/avatarGlbExporter');
       const blob = await exportAvatarToGlb(config, equippedItems);
+      console.log('[EXPORT3D] blob gerado:', blob.size, 'bytes');
       if (blob.size > 5 * 1024 * 1024) {
         showAlert('O modelo gerado ficou maior que 5 MB. Tente remover itens equipados e gerar novamente.');
-        setExporting3d(false);
         return;
       }
       const fileName = `avatar_${userData?.uid || 'anon'}_${Date.now()}.glb`;
@@ -694,7 +697,7 @@ export default function AvatarCustomizationModal({
       }
       showToast('Modelo 3D do personagem gerado com sucesso!', 'success');
     } catch (e: any) {
-      console.error('Falha ao gerar o modelo 3D do avatar:', e);
+      console.error('[EXPORT3D] Falha ao gerar o modelo 3D do avatar:', e);
       showAlert(`Não foi possível gerar o modelo 3D: ${e?.message || e}`);
     } finally {
       setExporting3d(false);
@@ -1769,7 +1772,7 @@ onClick={() => setConfig(prev => {
               const isGlbMonster = customSaveMode && (!!config.customModelUrl || !!activeModel);
               return (<>
             {/* Tamanho em batalha (zoom persistido no config) — controle único de zoom limitado ao quadro 3D */}
-            <div style={{ width: '100%', marginBottom: '0.75rem', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+            <div style={{ width: '100%', marginBottom: '0.75rem', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem', position: 'relative', zIndex: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>⚔️ Tamanho em batalha</span>
                 <span style={{ fontSize: '0.8rem', color: 'var(--gold-primary)', fontWeight: 'bold' }}>{Math.round(Math.min(1.3, Math.max(0.6, config.customZoom ?? 1)) * 100)}%</span>
@@ -1788,27 +1791,6 @@ onClick={() => setConfig(prev => {
               </button>
             </div>
 
-            {/* Gerar modelo 3D do personagem (GLB) para uso na arena 3D unificada */}
-            {!customSaveMode && (
-              <div style={{ width: '100%', marginBottom: '0.75rem', background: 'rgba(59, 130, 246, 0.06)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-                  🧊 Personagem na arena 3D (gera um arquivo .glb da sua skin + itens)
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={handleExport3D}
-                    disabled={exporting3d}
-                    style={{ padding: '0.35rem 0.75rem', background: exporting3d ? 'rgba(59,130,246,0.4)' : 'var(--accent-blue, #3b82f6)', color: 'white', border: 'none', borderRadius: '6px', cursor: exporting3d ? 'wait' : 'pointer', fontSize: '0.75rem', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
-                  >
-                    {exporting3d ? 'Gerando…' : (config.exportedModelUrl ? 'Regerar modelo 3D' : 'Gerar modelo 3D')}
-                  </button>
-                  {config.exportedModelUrl && !exporting3d && (
-                    <span style={{ fontSize: '0.7rem', color: '#22c55e' }}>✓ Modelo gerado{exportedAt ? '' : ''}</span>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* Avatar / Monstro 3D — ocupa de forma ampla todo o espaço vertical e horizontal disponível */}
             <div style={{
               display: 'flex',
@@ -1817,7 +1799,8 @@ onClick={() => setConfig(prev => {
               flex: 1,
               width: '100%',
               minHeight: customSaveMode ? '480px' : '380px',
-              position: 'relative'
+              position: 'relative',
+              overflow: 'hidden'
             }}>
               <div style={{
                 width: '100%',
@@ -1898,6 +1881,19 @@ onClick={() => setConfig(prev => {
                 <button onClick={handleRandomize} className="hover-brightness" style={{ padding: '0.5rem', width: '100%', background: 'var(--bg-card)', color: 'var(--gold-primary)', border: '1px solid var(--gold-primary)', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '0.85rem', marginTop: '0.25rem' }}>
                   <Dices size={16} /> Aleatorizar
                 </button>
+
+                {/* Gerar modelo 3D do personagem (GLB) para a arena 3D unificada */}
+                {!customSaveMode && (
+                  <button
+                    type="button"
+                    onClick={handleExport3D}
+                    disabled={exporting3d}
+                    className="hover-brightness"
+                    style={{ padding: '0.5rem', width: '100%', background: 'rgba(59,130,246,0.18)', color: '#93c5fd', border: '1px solid #3b82f6', borderRadius: '12px', cursor: exporting3d ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '0.85rem', marginTop: '0.25rem' }}
+                  >
+                    {exporting3d ? 'Gerando modelo 3D…' : (config.exportedModelUrl ? '✓ Regerar modelo 3D' : '🧊 Gerar modelo 3D (arena)')}
+                  </button>
+                )}
               </div>
             </DraggableWidget>
           </div>

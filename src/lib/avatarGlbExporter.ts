@@ -1,4 +1,6 @@
 import { SkinViewer, IdleAnimation } from 'skinview3d';
+// @ts-ignore - Three do skinview3d (0.156): precisa ser o MESMO usado pelos objetos.
+import * as THREE_SKIN from 'skinview3d/node_modules/three/build/three.module.js';
 // @ts-ignore
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 // @ts-ignore - O exporter DEVE ser do MESMO Three que o skinview3d usa (0.156),
@@ -145,6 +147,20 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
             model.rotation.set(0, Math.PI, 0);
           }
           head.add(model);
+        } else if (item.avatarPart === 'legs' || item.avatarPart === 'feet') {
+          // Pernas/botas: anexa ao tronco (body), com offset para descer até as pernas.
+          // (Simplificação: sem split por perna; cobre o uso comum de bota/calça.)
+          const body = player.skin.body;
+          if (transform) {
+            model.scale.set(transform.scale ?? 16, transform.scale ?? 16, (transform.scale ?? 16) * (transform.thickness ?? 1));
+            model.position.set(transform.posX ?? 0, transform.posY ?? 0, transform.posZ ?? 0);
+            model.rotation.set(transform.rotX, transform.rotY, transform.rotZ);
+            model.translateY(transform.slide ?? 0);
+          } else {
+            model.scale.set(16, 16, 16);
+            model.position.set(0, item.avatarPart === 'feet' ? -22 : -15, 0);
+          }
+          body.add(model);
         } else if (item.avatarPart === 'body' || item.avatarPart === 'back' || item.avatarPart === 'accessory') {
           const body = player.skin.body;
           if (transform) {
@@ -155,7 +171,7 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
             model.translateY(transform.slide);
           } else {
             model.scale.set(16, 16, 16);
-            model.position.set(0, 0, 0);
+            model.position.set(0, -6, 0);
           }
           body.add(model);
         }
@@ -164,14 +180,37 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
     })));
   }
 
-  // 4. Exporta o playerObject para .glb binário
-  //    Um frame para garantir matrizes/texturas atualizadas.
+  // 4. Garante que TODAS as malhas da skin tenham a textura aplicada (alguns materiais
+  //    "biased" das pernas/braços podem ficar sem map após o loadSkin).
+  let meshCount = 0;
+  let texturedCount = 0;
+  player.traverse((child: any) => {
+    if (child.isMesh) {
+      meshCount++;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach((m: any) => { if (m && m.map) texturedCount++; });
+    }
+  });
+  console.log('[EXPORT3D] player meshes:', meshCount, 'with texture:', texturedCount);
+
+  // 5. Exporta o playerObject para .glb binário dentro de um Group rotacionado.
+  //    skinview3d nasce virado para +z (para a câmera); a arena espera modelos
+  //    virados para -z (padrão Blockbench) e aplica +Math.PI no repouso. Então
+  //    rotacionamos +Math.PI aqui para o boneco ficar de FRENTE na arena.
   player.updateMatrixWorld(true);
+  const GroupCtor: any = (THREE_SKIN as any).Group;
+  const root: any = GroupCtor ? new GroupCtor() : player;
+  if (root !== player) {
+    root.add(player);
+    root.rotation.y = Math.PI;
+    root.updateMatrixWorld(true);
+  }
 
   const exporter = new GLTFExporter();
+  const exportTarget = root;
   const result = await new Promise<ArrayBuffer>((resolve, reject) => {
     exporter.parse(
-      player,
+      exportTarget,
       (res: any) => {
         if (res instanceof ArrayBuffer) resolve(res);
         else resolve(new TextEncoder().encode(JSON.stringify(res)).buffer);
@@ -180,6 +219,9 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
       { binary: true, embedImages: true, includeCustomExtensions: false }
     );
   });
+
+  // Restaura o player para não corromper o viewer global (usado em exports futuros).
+  try { if (exportTarget !== player) exportTarget.remove(player); } catch { /* noop */ }
 
   return new Blob([result], { type: 'model/gltf-binary' });
 }
