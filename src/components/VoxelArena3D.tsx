@@ -1578,7 +1578,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
           const group = new THREE.Group();
           group.add(player);
           group.position.set(-3.6, 0.51, 0.2);
-          group.rotation.y = Math.PI + THREE.MathUtils.degToRad(playerRotYRef.current || 0);
+          // O boneco nativo do skinview3d já nasce virado para +z (câmera) → base 0.
+          group.rotation.y = 0 + THREE.MathUtils.degToRad(playerRotYRef.current || 0);
           scene.add(group);
 
           // Anexa os itens equipados (mesma lógica do AvatarCharacter).
@@ -1672,7 +1673,12 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     const playCombat = isCombatAnim(playerAnim);
     if (unifiedPlayerGroupRef.current && !playerSpecialRef.current) {
       // Jogador (esquerda) vira +x (monstro) em combate; repouso olha para a câmera.
-      unifiedPlayerGroupRef.current.rotation.y = (playCombat ? -Math.PI / 2 : Math.PI) + THREE.MathUtils.degToRad(playerRotYRef.current);
+      // O boneco NATIVO do skinview3d já nasce virado para +z (câmera), então usa base 0;
+      // modelos GLB/Blockbench nascem para -z e precisam da base PI e do lado oposto.
+      const native = !!nativePlayerRef.current;
+      const restBase = native ? 0 : Math.PI;
+      const combatBase = native ? Math.PI / 2 : -Math.PI / 2;
+      unifiedPlayerGroupRef.current.rotation.y = (playCombat ? combatBase : restBase) + THREE.MathUtils.degToRad(playerRotYRef.current);
       if (playChanged && playCombat) unifiedPlayerGroupRef.current.scale.setScalar(1);
     }
     if (playerAnim.startsWith('death')) {
