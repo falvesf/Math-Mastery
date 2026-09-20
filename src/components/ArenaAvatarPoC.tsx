@@ -8,7 +8,9 @@ import { OrbitControls } from 'skinview3d/node_modules/three/examples/jsm/contro
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
-import { applyForgeGlowToModel, resolveModelTransform, type AvatarConfig, type EquippedItem } from './AvatarCharacter';
+import { applyForgeGlowToModel, applyForgeGlint, resolveModelTransform, type AvatarConfig, type EquippedItem } from './AvatarCharacter';
+import { useAuth } from '../contexts/AuthContext';
+import { fetchEquippedItems } from '../lib/equippedItems';
 
 const UNIFIED_ENTITY_HEIGHT = 1.9;
 
@@ -67,14 +69,49 @@ const ACTIONS: { id: string; label: string }[] = [
   { id: 'hurt', label: 'Dano' },
 ];
 
-export default function ArenaAvatarPoC({ config, equippedItems = [] }: { config?: AvatarConfig | null; equippedItems?: EquippedItem[] }) {
+export default function ArenaAvatarPoC({ config: configProp, equippedItems: itemsProp }: { config?: AvatarConfig | null; equippedItems?: EquippedItem[] }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState('Inicializando…');
   const playerRef = useRef<any>(null);
   const animRef = useRef<any>(null);
   const [current, setCurrent] = useState('idle');
+  const [ready, setReady] = useState(false);
+  const [config, setConfig] = useState<AvatarConfig | null>(configProp || null);
+  const [equippedItems, setEquippedItems] = useState<EquippedItem[]>(itemsProp || []);
+  const { userData } = useAuth();
+
+  // Busca os dados reais do usuário quando não vieram por props (rota /poc-arena).
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!configProp && userData?.avatarConfig) setConfig(userData.avatarConfig);
+      if (!itemsProp && userData?.uid) {
+        try {
+          const snap = await fetchEquippedItems(userData.uid);
+          const eq: EquippedItem[] = [];
+          (snap || []).forEach((d: any) => {
+            const data = d.data;
+            if (data && data.avatarPart && (data.itemImageUrl || data.minecraftHeadValue || data.gameModelUrl)) {
+              eq.push({
+                docId: d.id, itemId: d.item_id, imageUrl: data.itemImageUrl,
+                avatarPart: data.avatarPart, itemTitle: data.itemTitle, itemCategory: data.itemCategory,
+                forgeLevel: data.forgeLevel || 0, forgeConfig: data.forgeConfig || null,
+                gameModelUrl: data.gameModelUrl, modelTextureUrl: data.modelTextureUrl,
+                minecraftHeadValue: data.minecraftHeadValue, modelTransforms: data.modelTransforms,
+                backColor: data.backColor || '', customAnimation: data.customAnimation, rarity: data.rarity,
+              } as any);
+            }
+          });
+          if (alive) setEquippedItems(eq);
+        } catch (e) { console.warn('[PoC] fetch itens:', e); }
+      }
+      if (alive) setReady(true);
+    })();
+    return () => { alive = false; };
+  }, [userData?.uid]);
 
   useEffect(() => {
+    if (!ready) return;
     const mount = mountRef.current;
     if (!mount) return;
     let disposed = false;
@@ -143,26 +180,79 @@ export default function ArenaAvatarPoC({ config, equippedItems = [] }: { config?
       scene.add(pg);
       playerRef.current = player;
 
-      // Item equipado de exemplo (arma ou escudo) preso ao braço dominante.
-      const handItem = equippedItems.find(i => ['hand', 'rightHand', 'two_handed'].includes(String(i.avatarPart)));
-      if (handItem && handItem.gameModelUrl) {
-        const raw = handItem.gameModelUrl;
-        const isImg = /\.(png|gif|jpe?g|webp|avif)$/i.test(raw.split('?')[0]);
+      // ---- Anexa TODOS os itens equipados (mesma lógica do AvatarCharacter/exportador) ----
+      const isLeftHanded = config?.handedness === 'left';
+      const inv = isLeftHanded ? -1 : 1;
+      const IMG_EXT_RE = /\.(png|gif|jpe?g|webp|avif)$/i;
+
+      const attach = (model: any, item: EquippedItem) => {
+        model.traverse((c: any) => { if (c.isMesh) c.frustumCulled = false; });
+        try { applyForgeGlowToModel(model, item.forgeLevel || 0); } catch { /* noop */ }
         try {
-          if (isImg) {
-            const m = await generateVoxelItemFromImage(raw, handItem.backColor, 0, 0, undefined, 0.12);
-            applyForgeGlowToModel(m, handItem.forgeLevel || 0);
-            m.scale.set(10, 10, 10);
-            player.skin.rightArm.add(m);
-          } else {
-            loader.load(raw, (gltf: any) => {
-              const m = gltf.scene;
-              applyForgeGlowToModel(m, handItem.forgeLevel || 0);
-              m.scale.set(10, 10, 10);
-              player.skin.rightArm.add(m);
+          const _tier = (item.forgeLevel || 0) >= 9 ? 3 : (item.forgeLevel || 0) >= 8 ? 2 : (item.forgeLevel || 0) >= 7 ? 1 : 0;
+          const _isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
+          if (_tier > 0 && (['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart)))) {
+            const _style = (_isWeaponSlot && item.itemCategory !== 'defense') ? 'circles' : 'reflect';
+            model.traverse((c: any) => {
+              if (!c.isMesh) return;
+              const mats = Array.isArray(c.material) ? c.material : [c.material];
+              mats.forEach((mm: any) => applyForgeGlint(mm, _tier, _style as any));
             });
           }
-        } catch (e) { console.warn('[PoC] item:', e); }
+        } catch { /* noop */ }
+
+        const transform = resolveModelTransform(item, config?.gender, config?.handedness, false) || (item as any).modelTransforms?.common;
+        const p = String(item.avatarPart);
+        if (['rightHand', 'leftHand', 'hand', 'two_handed'].includes(p)) {
+          const isDefense = item.itemCategory === 'defense';
+          const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
+          const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
+          const targetArm = isDefense ? nonDominantArm : dominantArm;
+          if (transform) {
+            model.scale.set(transform.scale ?? 10, transform.scale ?? 10, (transform.scale ?? 10) * (transform.thickness ?? 1));
+            model.position.set(transform.posX * inv, transform.posY, transform.posZ);
+            model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
+            model.translateY(transform.slide);
+          } else {
+            model.scale.set(10, 10, 10);
+            model.position.set(0, -12, 0);
+            model.rotation.set(Math.PI / 2, 0, 0);
+          }
+          targetArm.add(model);
+        } else if (p === 'head' || p === 'face') {
+          const s = item.minecraftHeadValue ? 9.2 : 16;
+          model.scale.set(transform?.scale ?? s, transform?.scale ?? s, (transform?.scale ?? s) * (transform?.thickness ?? 1));
+          if (transform) { model.position.set(transform.posX, transform.posY, transform.posZ); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide); }
+          else { model.position.set(0, 0, 0); model.rotation.set(0, Math.PI, 0); }
+          player.skin.head.add(model);
+        } else if (p === 'legs' || p === 'feet') {
+          model.scale.set(transform?.scale ?? 16, transform?.scale ?? 16, (transform?.scale ?? 16) * (transform?.thickness ?? 1));
+          if (transform) { model.position.set(transform.posX ?? 0, transform.posY ?? 0, transform.posZ ?? 0); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide ?? 0); }
+          else model.position.set(0, p === 'feet' ? -22 : -15, 0);
+          player.skin.body.add(model);
+        } else {
+          model.scale.set(transform?.scale ?? 16, transform?.scale ?? 16, (transform?.scale ?? 16) * (transform?.thickness ?? 1));
+          if (transform) { model.position.set(transform.posX, transform.posY, transform.posZ); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide); }
+          else model.position.set(0, -6, 0);
+          player.skin.body.add(model);
+        }
+        console.log('[PoC] item anexado:', p, item.itemTitle);
+      };
+
+      for (const item of equippedItems) {
+        if (!item.gameModelUrl) continue;
+        const raw = item.gameModelUrl;
+        try {
+          if (IMG_EXT_RE.test(raw.split('?')[0])) {
+            const transform = resolveModelTransform(item, config?.gender, config?.handedness, false) || (item as any).modelTransforms?.common;
+            const m = await generateVoxelItemFromImage(raw, item.backColor, transform?.curveX || 0, transform?.curveY || 0, undefined, 0.12 * (transform?.thickness ?? 1));
+            attach(m, item);
+          } else {
+            await new Promise<void>((res) => {
+              loader.load(raw, (gltf: any) => { attach(gltf.scene, item); res(); }, undefined, () => res());
+            });
+          }
+        } catch (e) { console.warn('[PoC] item:', item.itemTitle, e); }
       }
 
       // ---- Monstro GLB ----
@@ -177,7 +267,7 @@ export default function ArenaAvatarPoC({ config, equippedItems = [] }: { config?
         scene.add(mg);
       }, undefined, (e: any) => console.warn('[PoC] monstro:', e));
 
-      setStatus('✅ arena 0.156: chão em blocos + jogador skinview3d + monstro GLB + item de forja');
+      setStatus(`✅ arena 0.156: chão + jogador skinview3d + ${equippedItems.length} itens + monstro GLB`);
     })();
 
     const loop = () => {
@@ -200,7 +290,7 @@ export default function ArenaAvatarPoC({ config, equippedItems = [] }: { config?
       try { viewer.dispose(); } catch { /* noop */ }
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
     };
-  }, []);
+  }, [ready]);
 
   const setAnim = (id: string) => {
     setCurrent(id);

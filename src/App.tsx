@@ -138,7 +138,7 @@ function AppRoutes() {
         }
       />
       {/* PoC temporária: arena Three 0.156 + boneco skinview3d nativo */}
-      <Route path="/poc-arena" element={<ArenaAvatarPoC />} />
+      <Route path="/poc-arena" element={<PrivateRoute><ArenaAvatarPoC /></PrivateRoute>} />
 
       {/* Compatibilidade com links antigos do repositório /Math-Mastery */}
       <Route path="/Math-Mastery/admin" element={<Navigate to="/admin" replace />} />
