@@ -6,6 +6,8 @@ import * as THREE from 'skinview3d/node_modules/three';
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 // @ts-ignore
 import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/DRACOLoader.js';
+// @ts-ignore - clone preservando esqueleto (itens com SkinnedMesh, ex.: armaduras)
+import { clone as skeletonClone } from 'skinview3d/node_modules/three/examples/jsm/utils/SkeletonUtils.js';
 import { PlayerObject } from 'skinview3d';
 import { IdleAnimation, WalkingAnimation, RunningAnimation, HitAnimation, FunctionAnimation, PlayerAnimation } from 'skinview3d';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
@@ -199,7 +201,17 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
           .then((m: any) => attach(m, item))
           .catch(() => {});
       } else {
-        loader.load(raw, (gltf: any) => attach(gltf.scene, item), undefined, () => {});
+        loader.load(raw, (gltf: any) => {
+          let model = gltf.scene;
+          // Itens com SkinnedMesh (ex.: armaduras/elmo/botas de packs) NÃO renderizam ao
+          // serem reparentados sem clonar o esqueleto. Clona com SkeletonUtils.
+          let hasSkin = false;
+          model.traverse((n: any) => { if (n.isSkinnedMesh) hasSkin = true; });
+          if (hasSkin) {
+            try { model = skeletonClone(model); } catch { /* mantém o original */ }
+          }
+          attach(model, item);
+        }, undefined, () => {});
       }
     } catch (e) { console.warn('[VoxelArena3D] falha ao anexar item nativo:', e); }
   }
