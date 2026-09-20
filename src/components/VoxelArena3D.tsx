@@ -1,7 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+// @ts-ignore - Three do skinview3d (0.156): MESMA versão dos bonecos (skinview3d), então
+// o PlayerObject pode ser inserido direto na cena sem conflito de versões.
+import * as THREE from 'skinview3d/node_modules/three';
+// @ts-ignore
+import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
+// @ts-ignore
+import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/DRACOLoader.js';
 import { PlayerObject } from 'skinview3d';
 import { getSafeUrl } from '../lib/utils';
 import {
@@ -22,38 +26,8 @@ import {
   type VoxelBiomeType,
 } from '../lib/voxelTextures';
 
-// --- Polyfill de compatibilidade entre skinview3d (Three 0.156) e Three.js r170+ ---
-// Three.js r170+ exige o método determinantAffine() em matrixWorld durante o render de meshes.
-// Como o skinview3d utiliza internamente Three 0.156, injetamos determinantAffine
-// no prototype do Matrix4 do skinview3d para que todas as partes dos personagens funcionem perfeitamente.
-const patchAffineDeterminant = (matrixProto: any) => {
-  if (matrixProto && typeof matrixProto.determinantAffine !== 'function') {
-    matrixProto.determinantAffine = function (this: any) {
-      const te = this.elements;
-      if (!te) return 1;
-      const n11 = te[0], n12 = te[4], n13 = te[8];
-      const n21 = te[1], n22 = te[5], n23 = te[9];
-      const n31 = te[2], n32 = te[6], n33 = te[10];
-      return (
-        n11 * (n22 * n33 - n23 * n32) -
-        n12 * (n21 * n33 - n23 * n31) +
-        n13 * (n21 * n32 - n22 * n31)
-      );
-    };
-  }
-};
-
-// Aplica no THREE raiz
-patchAffineDeterminant(THREE.Matrix4.prototype);
-
-// Aplica no prototype de Matrix4 do skinview3d
-try {
-  const dummyPlayer = new PlayerObject();
-  const innerMatrixProto = (dummyPlayer.skin?.matrixWorld as any)?.constructor?.prototype;
-  patchAffineDeterminant(innerMatrixProto);
-} catch (e) {
-  console.warn('[VoxelArena3D] Falha ao pré-aplicar polyfill:', e);
-}
+// A partir de agora a arena e os bonecos usam a MESMA versão do Three (0.156), então o
+// polyfill de determinantAffine (necessário quando haviam 0.185 x 0.156) não é mais preciso.
 
 // =====================================================================
 // FASE B (teste): helpers de renderização UNIFICADA de entidades GLB.

@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+// @ts-ignore - Three do skinview3d (0.156): a arena 3D usa a MESMA versão dos bonecos.
+import * as THREE from 'skinview3d/node_modules/three';
 
 /**
  * voxelTextures.ts
