@@ -39,6 +39,8 @@ import {
   evolveMonsterOnPlayerDefeat,
   saveQuestDamageRecord,
   DEFAULT_MONSTER_STATS,
+  rollStatusDurationMs,
+  rollMonsterStatusDurationMs,
   type MonsterStatsConfig,
 } from '../lib/combatDamage';
 import { getEquippedDamageEffect, getEquippedDamageEffectInfo, getEquippedWeaponFatality, FREEZE_HITS_TO_FREEZE, orderEffectFirst } from '../lib/damageEffects';
@@ -196,6 +198,11 @@ export default function QuestGameplay() {
   // Turnos restantes do status aplicado no MONSTRO (poison/burn/bleed/electric/etc.).
   // O turno em que o status foi inflingido NÃO conta. Máx. 2 turnos (evita farm infinito).
   const [monsterStatusTurns, setMonsterStatusTurns] = useState(0);
+  // Duração em tempo (timestamp) e total do efeito ativo no MONSTRO — alimenta as
+  // barras 3D acima do nome do monstro (esvaziam por segundo).
+  const [monsterStatusUntil, setMonsterStatusUntil] = useState(0);
+  const [monsterStatusTotal, setMonsterStatusTotal] = useState(0);
+  const [monsterStatusType, setMonsterStatusType] = useState<string>('');
   const [effectFlash, setEffectFlash] = useState(false);
   const [monsterHitFlash, setMonsterHitFlash] = useState(false);
   const [frozen, setFrozen] = useState(false);
@@ -227,6 +234,10 @@ export default function QuestGameplay() {
   const [playerBurnTurns, setPlayerBurnTurns] = useState(0);
   const [playerElectricTurns, setPlayerElectricTurns] = useState(0);
   const [playerFrozenAt, setPlayerFrozenAt] = useState(0);
+  // Duração em TIMESTAMP (até quando) e duração total de cada condição negativa —
+  // alimenta as barras 3D acima da cabeça (esvaziam com o tempo).
+  const [playerStatusUntil, setPlayerStatusUntil] = useState<Record<string, number>>({});
+  const [playerStatusTotal, setPlayerStatusTotal] = useState<Record<string, number>>({});
   const [monsterProjectile, setMonsterProjectile] = useState<{
     id: number;
     type?: MonsterProjectileType;
@@ -1583,6 +1594,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setPlayerBurnTurns(0);
     setPlayerElectricTurns(0);
     setPlayerFrozenAt(0);
+    setPlayerStatusUntil({});
+    setPlayerStatusTotal({});
     setMonsterProjectile(null);
     setMonsterSpecialActive(false);
     setMonsterSpecialAnim('');
@@ -1614,6 +1627,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setHasShield(false);
       setEffectLevel(0);
       setMonsterStatusTurns(0);
+      setMonsterStatusUntil(0);
+      setMonsterStatusTotal(0);
+      setMonsterStatusType('');
       setFrozen(false);
       setMonsterFled(false);
       monsterFledRef.current = false;
@@ -1769,6 +1785,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setPlayerBurnTurns(0);
       setPlayerElectricTurns(0);
       setPlayerFrozenAt(0);
+      setPlayerStatusUntil({});
+      setPlayerStatusTotal({});
       bleedsRef.current = [];
       poisonRef.current = 0;
       burnRef.current = 0;
@@ -1901,7 +1919,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
              
              // Espera 8.5 segundos (4.5 de suspense + 4 de comemoração) para abrir a recompensa
              setTimeout(() => finishGame(true, currentXp), 8500);
-          }, 100); // pequeno delay para limpar a bubble e aplicar idle-victory
+          }, 3200); // suspense: o jogador mantém a apreensão olhando o monstro antes de virar
         }, 2500);
       }, 3000);
     } else {
@@ -2104,6 +2122,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
               // Status no monstro dura no MÁXIMO 2 turnos (o turno de aplicação não conta).
               if (damageEffect !== 'impact' && damageEffect !== 'freeze' && damageEffect !== 'transform') {
                 setMonsterStatusTurns(2);
+                // Duração em TEMPO calculada pelos atributos do jogador (barra acima do nome).
+                const durMs = rollMonsterStatusDurationMs(totalEquippedStats);
+                setMonsterStatusUntil(Date.now() + durMs);
+                setMonsterStatusTotal(durMs);
+                setMonsterStatusType(damageEffect);
               }
               setEffectFlash(true);
               setTimeout(() => setEffectFlash(false), 600);
@@ -2162,6 +2185,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 setIceBreakTick(t => t + 1);
                 setFrozen(false);
                 setEffectLevel(0);
+                setMonsterStatusUntil(0);
+                setMonsterStatusTotal(0);
+                setMonsterStatusType('');
               } else {
                 iceHpRef.current = next;
                 setIceHp(next);
@@ -2391,9 +2417,15 @@ const dealTransformDamageToPlayer = (damage: number) => {
           const curTr = transformRef.current;
           if (curTr?.animal === 'rato') {
             const w = rollBleedWound('rato');
+            const durationMs = rollStatusDurationMs(monsterCombatStats);
+            setPlayerStatusUntil(prev => ({ ...prev, bleed: Date.now() + durationMs }));
+            setPlayerStatusTotal(prev => ({ ...prev, bleed: durationMs }));
             setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns: 2, x: w.x, y: w.y }]);
           }
           if (curTr?.animal === 'sapo') {
+            const durationMs = rollStatusDurationMs(monsterCombatStats);
+            setPlayerStatusUntil(prev => ({ ...prev, poison: Date.now() + durationMs }));
+            setPlayerStatusTotal(prev => ({ ...prev, poison: durationMs }));
             setPlayerPoisonTurns(3);
           }
           dropCoinsIfDamaged();
@@ -2483,6 +2515,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
       // CASO B: À DISTÂNCIA / ARREMESSO (Rocha, TNT, Flecha, Bola de Fogo, etc.)
       if (decision.type === 'ranged') {
         setMonsterBodyThrow(true);
+        // Animação nativa do GLB configurada para o arremesso (se houver).
+        setMonsterSpecialAnim(decision.animation || '');
         setMonsterProjectile({
           id: Date.now(),
           type: decision.projectileType || 'rock',
@@ -2505,6 +2539,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         }, 1850);
         setTimeout(() => {
           setMonsterBodyThrow(false);
+          setMonsterSpecialAnim('');
         }, 2200);
         return;
       }
@@ -2692,6 +2727,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
       const next = prev - 1;
       if (next <= 0) {
         setEffectLevel(0);
+        setMonsterStatusUntil(0);
+        setMonsterStatusTotal(0);
+        setMonsterStatusType('');
       }
       return next;
     });
@@ -3180,18 +3218,78 @@ const dealTransformDamageToPlayer = (damage: number) => {
     setPlayerElectricTurns(t => Math.max(0, t - 1));
   };
 
+  // Expira os status NEGATIVOS pelo TEMPO calculado (barra acima da cabeça esvazia).
+  // Quando o tempo acaba, remove o efeito e zera os turns correspondentes.
+  useEffect(() => {
+    if (gameState !== 'playing') return;
+    const id = setInterval(() => {
+      const now = Date.now();
+      setPlayerStatusUntil(prev => {
+        const expired: string[] = [];
+        const next: Record<string, number> = {};
+        for (const k of Object.keys(prev)) {
+          if (now >= prev[k]) expired.push(k);
+          else next[k] = prev[k];
+        }
+        if (expired.length) {
+          if (expired.includes('poison')) setPlayerPoisonTurns(0);
+          if (expired.includes('burn')) setPlayerBurnTurns(0);
+          if (expired.includes('electric')) setPlayerElectricTurns(0);
+          if (expired.includes('bleed')) setPlayerBleeds([]);
+        }
+        return expired.length ? next : prev;
+      });
+    }, 200);
+    return () => clearInterval(id);
+  }, [gameState]);
+
+  // Expira o efeito ativo no MONSTRO pelo tempo calculado (barra acima do nome esvazia).
+  useEffect(() => {
+    if (gameState !== 'playing' || monsterStatusUntil === 0) return;
+    const id = setInterval(() => {
+      if (Date.now() >= monsterStatusUntil) {
+        setMonsterStatusUntil(0);
+        setMonsterStatusTotal(0);
+        setMonsterStatusType('');
+        setMonsterStatusTurns(0);
+        setEffectLevel(0);
+        clearInterval(id);
+      }
+    }, 200);
+    return () => clearInterval(id);
+  }, [gameState, monsterStatusUntil]);
+
   // Aplica um efeito de MONSTRO no jogador (melee/ranged/special configurados).
   const applyMonsterEffectToPlayer = (effect: string, damageInflicted: number = 1) => {
     if (!effect || effect === 'none') return;
+    // Aplica a duração (em tempo) do status com base nos atributos do monstro.
+    const applyStatus = (key: string, turns: number) => {
+      const durationMs = rollStatusDurationMs(monsterCombatStats);
+      const until = Date.now() + durationMs;
+      setPlayerStatusUntil(prev => ({ ...prev, [key]: until }));
+      setPlayerStatusTotal(prev => ({ ...prev, [key]: durationMs }));
+      switch (key) {
+        case 'poison': setPlayerPoisonTurns(turns); break;
+        case 'burn': setPlayerBurnTurns(turns); break;
+        case 'electric': setPlayerElectricTurns(turns); break;
+        case 'bleed':
+          setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns, x: 50, y: 40 }]);
+          break;
+      }
+    };
     switch (effect) {
       case 'bleed': {
         const w = rollBleedWound('monstro');
+        const durationMs = rollStatusDurationMs(monsterCombatStats);
+        const until = Date.now() + durationMs;
+        setPlayerStatusUntil(prev => ({ ...prev, bleed: until }));
+        setPlayerStatusTotal(prev => ({ ...prev, bleed: durationMs }));
         setPlayerBleeds(prev => [...prev, { id: Date.now() + Math.random(), turns: 2, x: w.x, y: w.y }]);
         break;
       }
-      case 'poison': setPlayerPoisonTurns(3); break;
-      case 'burn': setPlayerBurnTurns(3); break;
-      case 'electric': setPlayerElectricTurns(3); break;
+      case 'poison': applyStatus('poison', 3); break;
+      case 'burn': applyStatus('burn', 3); break;
+      case 'electric': applyStatus('electric', 3); break;
       case 'freeze': setPlayerFrozenAt(Date.now() + 1800); break;
       case 'impact':
         setArenaQuake(true);
@@ -3262,6 +3360,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
         setPlayerPoisonTurns(0);
         setPlayerBurnTurns(0);
         setPlayerElectricTurns(0);
+        setPlayerStatusUntil({});
+        setPlayerStatusTotal({});
         triggerFatality(false, 0);
         return;
       }
@@ -3309,6 +3409,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
         setIceMaxHp(0);
         setFrozen(false);
         setEffectLevel(0);
+        setMonsterStatusUntil(0);
+        setMonsterStatusTotal(0);
+        setMonsterStatusType('');
       } else {
         iceHpRef.current = next;
         setIceHp(next);
@@ -3525,6 +3628,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         return;
       }
       setPlayerBleeds([]);
+      setPlayerStatusUntil(prev => { const n = { ...prev }; delete n.bleed; return n; });
       setBattleMessage('🩹 Bandagem aplicada! O sangramento foi estancado!');
     } else if (item.gameEffect === 'cure_poison') {
       if (playerPoisonTurns <= 0) {
@@ -3532,12 +3636,17 @@ const dealTransformDamageToPlayer = (damage: number) => {
         return;
       }
       setPlayerPoisonTurns(0);
+      setPlayerStatusUntil(prev => { const n = { ...prev }; delete n.poison; return n; });
       setBattleMessage('🧪 Antídoto usado! O veneno foi removido!');
     } else if (item.gameEffect === 'cure_freeze') {
       setBattleMessage('☕ Chá quente! Você se descongelou!');
     } else if (item.gameEffect === 'cure_burn') {
+      setPlayerBurnTurns(0);
+      setPlayerStatusUntil(prev => { const n = { ...prev }; delete n.burn; return n; });
       setBattleMessage('🧴 Pomada aplicada! O fogo foi apagado!');
     } else if (item.gameEffect === 'cure_electric') {
+      setPlayerElectricTurns(0);
+      setPlayerStatusUntil(prev => { const n = { ...prev }; delete n.electric; return n; });
       setBattleMessage('🛡️ Isolante! O choque elétrico foi eliminado!');
     }
 
@@ -3639,6 +3748,35 @@ const dealTransformDamageToPlayer = (damage: number) => {
   }
 
   const activePlayerAnim = (playerAnim === 'idle' || playerAnim === 'exhausted') ? baseAnim : playerAnim;
+
+  // Barras de condições negativas ativas no JOGADOR (para o VoxelArena3D).
+  // pct = tempo restante / duração total (0-1); esvazia conforme o tempo passa.
+  const nowMs = Date.now();
+  const playerStatuses: { type: string; pct: number }[] = [];
+  const statusGetters: Record<string, { on: boolean; key: string }> = {
+    poison: { on: playerPoisonTurns > 0, key: 'poison' },
+    burn: { on: playerBurnTurns > 0, key: 'burn' },
+    electric: { on: playerElectricTurns > 0, key: 'electric' },
+    bleed: { on: playerBleeds.length > 0, key: 'bleed' },
+    freeze: { on: playerFrozenAt > nowMs, key: 'freeze' },
+  };
+  for (const [type, st] of Object.entries(statusGetters)) {
+    if (!st.on) continue;
+    const until = playerStatusUntil[st.key];
+    const total = playerStatusTotal[st.key];
+    const pct = (until && total) ? Math.max(0, Math.min(1, (until - nowMs) / total)) : 1;
+    playerStatuses.push({ type, pct });
+  }
+
+  // Hematomas: fração de vida perdida (0 = cheio, 1 = quase morto) + sangrando.
+  const playerBruiseLevel = maxHearts > 0 ? Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) : 0;
+
+  // Barras de efeito ativo no MONSTRO (acima do nome), esvaziando por segundo.
+  const monsterStatuses: { type: string; pct: number }[] = [];
+  if (monsterStatusUntil > 0 && monsterStatusTotal > 0 && monsterStatusType) {
+    const pct = Math.max(0, Math.min(1, (monsterStatusUntil - nowMs) / monsterStatusTotal));
+    if (pct > 0) monsterStatuses.push({ type: monsterStatusType, pct });
+  }
 
   // O jogador é renderizado DENTRO da cena 3D unificada sempre que ela está ativa:
   // - com customModelUrl: usa o GLB enviado manualmente;
@@ -3823,9 +3961,18 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 playerAnim={activePlayerAnim}
                 playerModelUrl={userData?.avatarConfig?.customModelUrl}
                 playerSkinUrl={userData?.avatarConfig?.customSkinUrl}
+                playerName="Você"
+                playerStatuses={playerStatuses}
+                playerBruiseLevel={playerBruiseLevel}
+                playerBleeding={playerBleeds.length > 0}
+                playerStressLevel={stressLevel}
                 monsterModelUrl={effectiveMonsterModelUrl}
                 monsterSkinUrl={effectiveMonsterSkinUrl}
                 monsterConfig={quest?.monsterAvatarConfig}
+                monsterName={quest?.monsterName || 'Inimigo'}
+                monsterHearts={monsterHearts}
+                monsterHeartFrac={monsterHeartFrac}
+                monsterStatuses={monsterStatuses}
                 monsterAnim={monsterAnim}
                 monsterProceduralAnim={monsterProceduralAnim}
                 monsterSpecialAnim={monsterSpecialAnim}
@@ -4141,9 +4288,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   monstro: wrapper externo (não escalado) com altura = head-lift e o nome em top:-36px. */}
               {playerHasUnifiedModel ? (
                 <div style={{ position: 'relative', width: '130px', height: 'var(--shadow-player-head-lift, 170px)', pointerEvents: 'none' }}>
-                  <div style={{ position: 'absolute', top: '-36px', left: '50%', transform: `translateX(calc(-50% + ${arena.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                    <span style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>Você</span>
-                  </div>
+                  {/* Nome do jogador agora é renderizado como sprite 3D dentro da cena
+                      (acompanha o boneco em qualquer resolução). Mantém apenas o espaço. */}
                 </div>
               ) : (
                 <div style={{ position: 'absolute', top: `${arena.playerNameY}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.playerNameX}px))`, zIndex: 5, whiteSpace: 'nowrap' }}>
@@ -4171,14 +4317,16 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       <AvatarCharacter config={userData?.avatarConfig || null} equippedItems={playerEquippedItems} size={170} animation={activePlayerAnim as any} expression={baseExp} interactive={false} hurt={playerAnim === 'hurt'} />
                     )}
                   </div>
-                  {playerBleeds.map(b => (
+                  {!playerHasUnifiedModel && playerBleeds.map(b => (
                     <div key={b.id} className="bleed-wound" style={{ top: `${b.y}%`, left: `${b.x}%` }} title="Sangrando!">
                       <span className="bleed-drip" />
                       <span className="bleed-drip" style={{ animationDelay: '0.45s', left: '65%' }} />
                       <span className="bleed-drip" style={{ animationDelay: '0.9s', left: '32%' }} />
                     </div>
                   ))}
+                  {!playerHasUnifiedModel && (
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (maxHearts - currentHearts) / maxHearts)) } as any} />
+                  )}
                   {(() => {
                     // Suor baseado em estresse real (tempo, vida, erros)
                     const sweatLevel = stressLevel >= 0.75 ? 1 : stressLevel >= 0.5 ? 0.7 : stressLevel >= 0.25 ? 0.4 : 0;
@@ -4323,7 +4471,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     )
                   }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center', height: (arena.unified3D && effectiveMonsterModelUrl) ? 'var(--shadow-monster-head-lift, 190px)' : undefined }}>
                   <div style={{ position: 'absolute', top: `${(arena.unified3D && effectiveMonsterModelUrl) ? -36 : (arena.monsterNameY - (effectiveMonsterZoom - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 150 : 230))}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
+                    {(!(arena.unified3D && effectiveMonsterModelUrl)) && (
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
+                    )}
+                    {(!(arena.unified3D && effectiveMonsterModelUrl)) && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
                       {(() => {
                         const remainingHearts = Math.max(0, monsterHearts - (monsterAnim.startsWith('death-') ? 1 : 0));
@@ -4347,6 +4498,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                         return hearts;
                       })()}
                     </div>
+                    )}
                     {frozen && iceMaxHp > 0 && (
                       <div style={{ width: '90px', height: '7px', background: 'rgba(0,0,0,0.55)', borderRadius: '4px', border: '1px solid #38bdf8', overflow: 'hidden', marginTop: '2px' }}>
                         <div style={{ width: `${Math.max(0, Math.min(100, (iceHp / iceMaxHp) * 100))}%`, height: '100%', background: 'linear-gradient(to right, #7dd3fc, #38bdf8)', transition: 'width 0.4s' }} />

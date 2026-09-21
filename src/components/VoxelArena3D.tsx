@@ -12,7 +12,7 @@ import { PlayerObject } from 'skinview3d';
 import { IdleAnimation, WalkingAnimation, RunningAnimation, HitAnimation, FunctionAnimation, PlayerAnimation } from 'skinview3d';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
-import { resolveModelTransform, applyForgeGlowToModel, applyForgeGlint, type EquippedItem } from './AvatarCharacter';
+import { resolveModelTransform, applyForgeGlowToModel, applyForgeGlint, attachForgeSparkles, type EquippedItem } from './AvatarCharacter';
 import { getSafeUrl } from '../lib/utils';
 import {
   getStoneBricksTexture,
@@ -39,9 +39,9 @@ import {
 // FASE B (teste): helpers de renderização UNIFICADA de entidades GLB.
 // =====================================================================
 
-// Altura-alvo (em unidades de mundo) dos bonecos na cena unificada. ~1.9 equivale
-// ao tamanho de um personagem Minecraft sobre a plataforma (blocos de 1 unidade).
-const UNIFIED_ENTITY_HEIGHT = 1.9;
+// Altura-alvo (em unidades de mundo) dos bonecos na cena unificada. ~2.5 deixa os
+// personagens mais imponentes/chamativos (comparável ao modelo 2D anterior).
+const UNIFIED_ENTITY_HEIGHT = 2.5;
 
 // Calcula a bounding box em espaço de mundo pelas GEOMETRIAS (robusto para malhas
 // skinned/GLB onde Box3.setFromObject pode falhar e devolver caixa vazia/errada).
@@ -68,6 +68,289 @@ function fitEntityToGround(obj: THREE.Object3D, targetHeight: number) {
   obj.scale.setScalar(targetHeight / h);
   const box2 = computeWorldBox(obj);
   obj.position.y -= box2.min.y;
+}
+
+// ===== Sprite 3D de NOME acima da cabeça (billboard que acompanha o boneco) =====
+// Renderizado DENTRO da cena 3D → o nome fica exatamente sobre a cabeça do modelo em
+// qualquer resolução (sem depender de projeção CSS que desalinha conforme o zoom/altura).
+const _nameTextureCache = new Map<string, THREE.CanvasTexture>();
+function makeNameSprite(text: string, opts?: { color?: string; scale?: number }): THREE.Sprite {
+  const color = opts?.color || '#ffffff';
+  const cacheKey = `${text}|${color}`;
+  let tex = _nameTextureCache.get(cacheKey);
+  if (!tex) {
+    const font = '400 40px "Segoe UI", Arial, sans-serif';
+    const c = document.createElement('canvas');
+    const g = c.getContext('2d')!;
+    g.font = font;
+    const tw = g.measureText(text).width;
+    const w = Math.max(80, Math.ceil(tw) + 40);
+    const h = 56;
+    c.width = w; c.height = h;
+    const g2 = c.getContext('2d')!;
+    g2.clearRect(0, 0, w, h);
+    g2.shadowColor = 'rgba(0,0,0,0.9)';
+    g2.shadowBlur = 6;
+    g2.shadowOffsetY = 2;
+    g2.font = font;
+    g2.textAlign = 'center';
+    g2.textBaseline = 'middle';
+    g2.fillStyle = 'rgba(0,0,0,0.55)';
+    const pad = 10;
+    const bw = tw + pad * 2;
+    g2.beginPath();
+    g2.roundRect((w - bw) / 2, h / 2 - 20, bw, 40, 8);
+    g2.fill();
+    g2.shadowBlur = 0;
+    g2.fillStyle = color;
+    g2.fillText(text, w / 2, h / 2 + 2);
+    tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    _nameTextureCache.set(cacheKey, tex);
+  }
+  const scale = opts?.scale ?? 1;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: false, sizeAttenuation: true });
+  const sprite = new THREE.Sprite(mat);
+  const aspect = tex.image.width / tex.image.height;
+  sprite.scale.set(0.38 * aspect * scale, 0.38 * scale, 1);
+  return sprite;
+}
+
+// Cria um "grupo de nome" que fica ACIMA da cabeça do boneco e herda a posição (mas
+// NÃO a rotação Y de combate) do grupo do personagem. Retorna o grupo pai a anexar.
+function makeNameGroup(): THREE.Group {
+  const g = new THREE.Group();
+  g.position.set(0, UNIFIED_ENTITY_HEIGHT + 0.34, 0);
+  return g;
+}
+
+// ===== Sprite 3D de CORAÇÕES (sob o nome, acompanha o boneco) =====
+const _heartsTextureCache = new Map<string, THREE.CanvasTexture>();
+function makeHeartsSprite(hearts: number, frac: number, opts?: { scale?: number }): THREE.Sprite {
+  const n = Math.max(0, Math.min(20, Math.floor(hearts)));
+  const key = `${n}_${Math.round(frac * 100)}`;
+  let tex = _heartsTextureCache.get(key);
+  if (!tex) {
+    const heartSize = 44;
+    const gap = 6;
+    const w = Math.max(52, n * (heartSize + gap) - gap + 28);
+    const h = heartSize + 22;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d')!;
+    g.clearRect(0, 0, w, h);
+    const drawHeart = (x: number, y: number, size: number, fillStyle: string) => {
+      g.save();
+      g.translate(x, y);
+      g.scale(size / 30, size / 30);
+      g.beginPath();
+      g.moveTo(0, 6);
+      g.bezierCurveTo(-10, -6, -8, -12, 0, -6);
+      g.bezierCurveTo(8, -12, 10, -6, 0, 6);
+      g.closePath();
+      g.fillStyle = fillStyle;
+      g.fill();
+      g.restore();
+    };
+    for (let i = 0; i < n; i++) {
+      const x = (heartSize + gap) * i + heartSize / 2 + 12;
+      const y = heartSize / 2 + 6;
+      if (i === n - 1 && frac < 1) {
+        drawHeart(x, y, heartSize, 'rgba(239,68,68,0.15)');
+        g.save();
+        g.beginPath();
+        g.rect(0, 0, w * frac, h);
+        g.clip();
+        drawHeart(x, y, heartSize, '#ef4444');
+        g.restore();
+      } else {
+        drawHeart(x, y, heartSize, '#ef4444');
+      }
+    }
+    g.shadowColor = 'rgba(0,0,0,0.9)';
+    g.shadowBlur = 6;
+    tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    _heartsTextureCache.set(key, tex);
+  }
+  const scale = opts?.scale ?? 1;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: false, sizeAttenuation: true });
+  const sprite = new THREE.Sprite(mat);
+  const aspect = tex.image.width / tex.image.height;
+  // Altura ~0.62 unidades (legível sobre o boneco); largura proporcional ao número de corações.
+  sprite.scale.set(0.62 * aspect * scale, 0.62 * scale, 1);
+  return sprite;
+}
+
+// ===== Sprite 3D das BARRAS de condições negativas do jogador =====
+// Uma barra por condição (veneno/fogo/sangramento/raio), cada uma com ícone próprio,
+// empilhadas acima da cabeça — esvaziam conforme o tempo restante (pct 0-1).
+const _statusTexCache = new Map<string, THREE.CanvasTexture>();
+const STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
+  poison: { label: 'Veneno', color: '#4ade80', icon: '☠' },
+  burn: { label: 'Fogo', color: '#fb923c', icon: '🔥' },
+  bleed: { label: 'Sangramento', color: '#f87171', icon: '🩸' },
+  electric: { label: 'Raio', color: '#fde047', icon: '⚡' },
+  freeze: { label: 'Gelo', color: '#7dd3fc', icon: '❄' },
+};
+function makeStatusBarsSprite(statuses: { type: string; pct: number }[]): THREE.Sprite {
+  const active = (statuses || []).filter(s => s && s.pct > 0 && STATUS_META[s.type]);
+  const n = active.length;
+  const key = n === 0 ? 'none' : active.map(s => `${s.type}:${Math.round((s.pct || 0) * 100)}`).join('|');
+  let tex = _statusTexCache.get(key);
+  if (!tex) {
+    const barW = 120, barH = 12, iconSize = 14, gap = 3, padX = 6;
+    const w = Math.max(30, barW + iconSize + gap + padX * 2);
+    const h = Math.max(16, n * (barH + 2) + 6);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d')!;
+    g.clearRect(0, 0, w, h);
+    active.forEach((s, i) => {
+      const y = 4 + i * (barH + 3);
+      const meta = STATUS_META[s.type];
+      // Ícone
+      g.font = `${iconSize}px sans-serif`;
+      g.textBaseline = 'middle';
+      g.textAlign = 'center';
+      g.fillText(meta.icon, iconSize / 2 + padX, y + barH / 2);
+      // Fundo da barra
+      const bx = padX + iconSize + gap;
+      const bw = barW;
+      g.fillStyle = 'rgba(0,0,0,0.6)';
+      g.fillRect(bx, y, bw, barH);
+      g.strokeStyle = meta.color;
+      g.lineWidth = 1;
+      g.strokeRect(bx - 0.5, y - 0.5, bw + 1, barH + 1);
+      // Preenchimento (esvazia conforme pct)
+      const pct = Math.max(0, Math.min(1, s.pct));
+      g.fillStyle = meta.color;
+      g.fillRect(bx, y, Math.max(2, bw * pct), barH);
+    });
+    tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    _statusTexCache.set(key, tex);
+  }
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: false, sizeAttenuation: true });
+  const sprite = new THREE.Sprite(mat);
+  const aspect = tex.image.width / tex.image.height;
+  const scale = 0.5;
+  sprite.scale.set(scale * aspect * 0.45, scale, 1);
+  return sprite;
+}
+
+// ===== HEMATOMAS e SANGRAMENTO no boneco (jogador nativo) =====
+// Hematomas: pixels roxos/avermelhados anexados AOS OSSOS do corpo (head/body/arms/legs),
+// então acompanham o boneco e ficam sempre "sobre" o corpo (não vazam para fora).
+// Sangramento: pingos finos que caem do corpo enquanto o jogador sangra.
+const _bruiseTex = new Map<string, THREE.CanvasTexture>();
+function makeBruiseTexture(color: string): THREE.CanvasTexture {
+  let t = _bruiseTex.get(color);
+  if (!t) {
+    const S = 32;
+    const c = document.createElement('canvas');
+    c.width = S; c.height = S;
+    const g = c.getContext('2d')!;
+    g.clearRect(0, 0, S, S);
+    const rad = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    rad.addColorStop(0, color);
+    rad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = rad;
+    g.beginPath(); g.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2); g.fill();
+    t = new THREE.CanvasTexture(c);
+    _bruiseTex.set(color, t);
+  }
+  return t;
+}
+
+let _bloodDripTexCache: THREE.CanvasTexture | null = null;
+function getBloodDripTexture(): THREE.CanvasTexture {
+  if (_bloodDripTexCache) return _bloodDripTexCache;
+  const S = 16;
+  const c = document.createElement('canvas');
+  c.width = S; c.height = S;
+  const g = c.getContext('2d')!;
+  g.clearRect(0, 0, S, S);
+  g.fillStyle = 'rgba(220,30,30,0.95)';
+  g.beginPath();
+  g.ellipse(S / 2, S / 2, 2.4, 6, 0, 0, Math.PI * 2);
+  g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  (tex as any).userData = { name: 'bloodDrip' };
+  _bloodDripTexCache = tex;
+  return tex;
+}
+
+// Textura de gota de SUOR (pequena, azul-clara translúcida).
+let _sweatTexCache: THREE.CanvasTexture | null = null;
+function getSweatTexture(): THREE.CanvasTexture {
+  if (_sweatTexCache) return _sweatTexCache;
+  const S = 16;
+  const c = document.createElement('canvas');
+  c.width = S; c.height = S;
+  const g = c.getContext('2d')!;
+  g.clearRect(0, 0, S, S);
+  g.fillStyle = 'rgba(180,220,255,0.9)';
+  g.beginPath();
+  g.ellipse(S / 2, S / 2, 2.6, 3.4, 0, 0, Math.PI * 2);
+  g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  (tex as any).userData = { name: 'sweat' };
+  _sweatTexCache = tex;
+  return tex;
+}
+
+const _bruiseSprites: { grp: THREE.Group; bone: string }[] = [];
+
+// Retorna um dos ossos do playerObject do skinview3d pelo nome.
+function getSkinBone(player: any, name: string): THREE.Object3D | null {
+  return player?.skin?.[name] || null;
+}
+
+// Anexa/atualiza hematomas + pingos de sangue ao boneco nativo.
+// bruiseLevel 0-1: quantidade de hematomas. bleeding: ativa pingos.
+function attachBruisesAndBlood(player: any, bruiseLevel: number, bleeding: boolean) {
+  if (!player) return;
+  const BONES = ['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
+  const targetCount = Math.round(Math.max(0, Math.min(1, bruiseLevel)) * 14);
+  // Atualiza os hematomas existentes (recria se a quantidade mudou).
+  while (_bruiseSprites.length > targetCount) {
+    const s = _bruiseSprites.pop()!;
+    s.grp.parent?.remove(s.grp);
+    s.grp.traverse((c) => { (c as any).material?.dispose?.(); (c as any).material?.map?.dispose?.(); });
+  }
+  for (let i = _bruiseSprites.length; i < targetCount; i++) {
+    const bone = BONES[Math.floor(Math.random() * BONES.length)];
+    const boneObj = getSkinBone(player, bone);
+    if (!boneObj) continue;
+    const color = Math.random() < 0.4 ? 'rgba(120,40,140,0.55)' : 'rgba(160,30,30,0.5)';
+    const tex = makeBruiseTexture(color);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: false, opacity: 0.55 + Math.random() * 0.4 });
+    const spr = new THREE.Sprite(mat);
+    const sz = 0.05 + Math.random() * 0.07;
+    spr.scale.set(sz, sz, 1);
+    // Posição aleatória sobre a superfície do osso (encosta no corpo).
+    spr.position.set(
+      (Math.random() * 2 - 1) * 0.14,
+      (Math.random() * 2 - 1) * 0.25,
+      0.02 + Math.random() * 0.03
+    );
+    const grp = new THREE.Group();
+    grp.add(spr);
+    boneObj.add(grp);
+    _bruiseSprites.push({ grp, bone });
+  }
+  // Sangramento: pingos caindo de pontos do corpo enquanto bleeding.
+  // (Implementação simples: sprites de gota pendurados na frente do corpo com oscilação
+  // de queda — gerenciados no loop de animação global.)
+  (player as any).userData = (player as any).userData || {};
+  (player as any).userData.bleeding = bleeding;
+}
+
+// Limpa os hematomas/sangue anexados (chamado ao recriar o boneco).
+function clearBruisesAndBlood() {
+  _bruiseSprites.forEach(s => { s.grp.parent?.remove(s.grp); s.grp.traverse((c) => { (c as any).material?.dispose?.(); (c as any).material?.map?.dispose?.(); }); });
+  _bruiseSprites.length = 0;
 }
 
 // Toca uma animação por nome (com fallback para idle / primeira disponível).
@@ -104,7 +387,7 @@ function makeNativeAnimation(name: string): PlayerAnimation {
   const n = (name || 'idle').toLowerCase();
   if (n === 'walk') return new WalkingAnimation();
   if (n === 'run') return new RunningAnimation();
-  if (n === 'hurt' || n === 'exhausted') {
+  if (n === 'hurt') {
     // Pose clara de "levar dano": corpo inclina para trás e cabeça joga para trás,
     // braços caem. (O HitAnimation do skinview3d ergue o braço e parece um ataque.)
     return new FunctionAnimation((player: any, progress: number) => {
@@ -117,6 +400,18 @@ function makeNativeAnimation(name: string): PlayerAnimation {
       if (ra) { ra.rotation.x = 0.25 * recoil; ra.rotation.z = -0.1; }
     });
   }
+  if (n === 'exhausted') {
+    // EXAUSTÃO (HP crítico / fadiga): cabeça baixa e braços caídos (respiração pesada
+    // na cabeça). NÃO rotaciona o tronco — os itens equipados são filhos dos ossos e
+    // balançariam saindo do lugar.
+    return new FunctionAnimation((player: any, progress: number) => {
+      const slow = Math.sin(progress * Math.PI * 1.2);
+      if (player.skin.head) { player.skin.head.rotation.x = 0.22 + slow * 0.04; }
+      const la = player.skin.leftArm; const ra = player.skin.rightArm;
+      if (la) { la.rotation.x = 0.45; la.rotation.z = 0.08; }
+      if (ra) { ra.rotation.x = 0.45; ra.rotation.z = -0.08; }
+    });
+  }
   if (n.startsWith('attack')) {
     // Ataque: braço dominante levanta e golpeia para frente.
     return new FunctionAnimation((player: any, progress: number) => {
@@ -126,19 +421,46 @@ function makeNativeAnimation(name: string): PlayerAnimation {
       if (la) { la.rotation.x = Math.PI * 0.15 * swing; la.rotation.z = Math.PI * 0.02; }
     });
   }
-  if (n.startsWith('victory') || n === 'idle-victory' || n === 'cheer') {
-    // Comemoração: braços para cima.
-    return new FunctionAnimation((player: any, progress: number) => {
+  if (n === 'idle-victory') {
+    // Apreensão antes da comemoração: braços baixos, cabeça erguida, leve tremor.
+    // NÃO rotaciona o tronco (body) — os itens equipados são filhos dos ossos e
+    // balançariam para frente/trás, saindo do lugar.
+    return new FunctionAnimation((player: any) => {
       const la = player.skin.leftArm; const ra = player.skin.rightArm;
-      if (la) { la.rotation.x = -Math.PI * 0.9; la.rotation.z = 0.25; }
-      if (ra) { ra.rotation.x = -Math.PI * 0.9; ra.rotation.z = -0.25; }
-      if (player.skin.body) player.skin.body.rotation.x = Math.sin(progress * Math.PI * 2) * 0.06;
+      if (la) { la.rotation.x = 0.12; la.rotation.z = 0.04; }
+      if (ra) { ra.rotation.x = 0.12; ra.rotation.z = -0.04; }
+      if (player.skin.head) player.skin.head.rotation.x = -0.12;
+    });
+  }
+  if (n.startsWith('victory') || n === 'cheer') {
+    // Comemoração: braços para cima, variações por condição.
+    // victory-hard = vitória apertada (HP baixo) → comemoração exausta;
+    // victory-easy = sobrou muita vida → mais animado; victory-mid = moderada.
+    const hard = n.includes('hard');
+    const easy = n.includes('easy');
+    const stressed = hard || n.includes('stressed') || n.includes('lowhp') || n.includes('tired');
+    const amp = easy ? 1 : hard ? 0.6 : 0.85;
+    return new FunctionAnimation((player: any) => {
+      const la = player.skin.leftArm; const ra = player.skin.rightArm;
+      if (la) { la.rotation.x = -Math.PI * (stressed ? 0.5 : 0.9) * amp; la.rotation.z = stressed ? 0.1 : 0.25; }
+      if (ra) { ra.rotation.x = -Math.PI * (stressed ? 0.5 : 0.9) * amp; ra.rotation.z = stressed ? -0.1 : -0.25; }
+      if (player.skin.head && !stressed) player.skin.head.rotation.x = -0.08;
     });
   }
   if (n.startsWith('death')) {
     return new FunctionAnimation(() => { /* queda tratada pelo tween de grupo */ });
   }
-  return new IdleAnimation();
+  // Idle: levanta levemente a cabeça para olhar para a câmera/tela (o idle nativo do
+  // skinview3d tende a deixar o boneco "cabisbaixo"). Aplica só se a cabeça não estiver
+  // sendo animada por outra animação (aqui o nome não é attack/hurt/victory).
+  return new FunctionAnimation((player: any, progress: number) => {
+    if (player.skin?.head) {
+      // Correção suave de "olhar para a câmera": leve rotação negativa em X (chin erguido).
+      const target = -0.06;
+      const current = player.skin.head.rotation.x;
+      player.skin.head.rotation.x = current + (target - current) * 0.1;
+    }
+  });
 }
 
 // Anexa os itens equipados ao boneco nativo (skinview3d) — mesma lógica do AvatarCharacter.
@@ -164,6 +486,21 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
           const mats = Array.isArray(c.material) ? c.material : [c.material];
           mats.forEach((mm: any) => applyForgeGlint(mm, tier, style as any));
         });
+      }
+    } catch { /* noop */ }
+    try {
+      const sparkLvl = item.forgeLevel || 0;
+      const sparkTier = sparkLvl >= 9 ? 3 : sparkLvl >= 8 ? 2 : sparkLvl >= 7 ? 1 : 0;
+      if (sparkTier > 0) {
+        const isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
+        const isShield = isWeaponSlot && item.itemCategory === 'defense';
+        const sparkScale = (isWeaponSlot && !isShield) ? 0.98 : (isShield ? 1.22 : 1.3);
+        const sparkMul = (isWeaponSlot && !isShield) ? 1 : (isShield ? 1.5 : 2);
+        // No boneco nativo o player é escalado para 1.9 (fitEntityToGround) — as sparkles
+        // compensam pelo worldScale e ficariam gigantes (~63% do personagem). Ajusta o
+        // tamanho proporcionalmente à escala do boneco (AvatarCharacter não escala, ~30u).
+        const nativeScale = player?.scale?.x || 1;
+        attachForgeSparkles(model, sparkTier, sparkScale, sparkMul, nativeScale);
       }
     } catch { /* noop */ }
 
@@ -321,7 +658,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 // Atualiza o avanço (tween de posição X) de um boneco no loop de animação.
 // mode 'go': avança 0.6s, segura 0.3s, volta 0.6s. mode 'hold': avança e fica (fatal/vitória).
 function updateMoveTween(
-  moveRef: React.MutableRefObject<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>,
+  moveRef: React.MutableRefObject<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold'; teleport?: boolean } | null>,
   group: THREE.Group | null,
   nowMs: number
 ) {
@@ -330,19 +667,32 @@ function updateMoveTween(
   const elapsed = (nowMs - m.start) / 1000;
   if (m.mode === 'go') {
     let x = m.fromX;
-    if (elapsed < 0.6) {
-      x = lerp(m.fromX, m.toX, easeInOut(clamp01(elapsed / 0.6)));
-    } else if (elapsed < 0.9) {
+    // Dash ágil: avança rápido (0.18s, easeOut = arranque), segura 0.2s e volta (0.42s).
+    if (elapsed < 0.18) {
+      const t = clamp01(elapsed / 0.18);
+      x = lerp(m.fromX, m.toX, 1 - Math.pow(1 - t, 3)); // easeOutCubic (dash)
+    } else if (elapsed < 0.38) {
       x = m.toX;
-    } else if (elapsed < 1.5) {
-      x = lerp(m.toX, m.restX, easeInOut(clamp01((elapsed - 0.9) / 0.6)));
+    } else if (elapsed < 0.8) {
+      x = lerp(m.toX, m.restX, easeInOut(clamp01((elapsed - 0.38) / 0.42)));
     } else {
       x = m.restX;
       moveRef.current = null;
     }
     group.position.x = x;
+    // Teletransporte: no arranque o boneco "some" e reaparece no alvo (flash rápido).
+    if (m.teleport) {
+      const o = elapsed < 0.08 ? 1 - (elapsed / 0.08) : elapsed < 0.16 ? (elapsed - 0.08) / 0.08 : 1;
+      setGroupOpacity(group, clamp01(o) * 0.85 + 0.15);
+    }
   } else {
-    group.position.x = elapsed < 0.6 ? lerp(m.fromX, m.toX, easeInOut(clamp01(elapsed / 0.6))) : m.toX;
+    // Hold (fatal/vitória): avanço com dash e permanece no alvo.
+    const t = clamp01(elapsed / 0.18);
+    group.position.x = elapsed < 0.18 ? lerp(m.fromX, m.toX, 1 - Math.pow(1 - t, 3)) : m.toX;
+    if (m.teleport) {
+      const o = elapsed < 0.08 ? 1 - (elapsed / 0.08) : elapsed < 0.16 ? (elapsed - 0.08) / 0.08 : 1;
+      setGroupOpacity(group, clamp01(o) * 0.85 + 0.15);
+    }
   }
 }
 
@@ -501,11 +851,32 @@ export interface VoxelArena3DProps {
   playerSkinUrl?: string | null;
   playerEquippedItems?: any[];
   playerAnim?: string;
+  /** Nome exibido em sprite 3D acima da cabeça do jogador (acompanha o modelo). */
+  playerName?: string;
 
   // --- Monstro (3D) ---
   monsterModelUrl?: string | null;
   monsterSkinUrl?: string | null;
   monsterConfig?: any;
+  /** Nome exibido em sprite 3D acima da cabeça do monstro (acompanha o modelo). */
+  monsterName?: string;
+  /** Corações restantes do monstro (renderizados em sprite 3D sob o nome). */
+  monsterHearts?: number;
+  /** Fração do coração atual (0-1) — ex.: crítico danificou parcialmente. */
+  monsterHeartFrac?: number;
+  /** Efeitos de dano ativos no monstro (barras 3D acima do nome, esvaziando). */
+  monsterStatuses?: { type: string; pct: number }[];
+  /**
+   * Condições negativas ativas no JOGADOR, para barras 3D acima da cabeça.
+   * type: poison | burn | bleed | electric | freeze. pct = tempo restante (0-1).
+   */
+  playerStatuses?: { type: string; pct: number }[];
+  /** Nível de dano do jogador (0-1) — controla a quantidade de hematomas no corpo. */
+  playerBruiseLevel?: number;
+  /** Se o jogador está sangrando — ativa pingos de sangue no corpo. */
+  playerBleeding?: boolean;
+  /** Nível de estresse do jogador (0-1) — controla postura de cansaço e suor. */
+  playerStressLevel?: number;
   monsterZoom?: number;
   monsterRotY?: number;
   monsterEnraged?: boolean;
@@ -550,12 +921,21 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // @ts-ignore
   playerEquippedItems = [],
   playerAnim = 'idle',
+  playerName,
   // @ts-ignore
   monsterModelUrl,
   // @ts-ignore
   monsterSkinUrl,
   // @ts-ignore
   monsterConfig,
+  monsterName,
+  monsterHearts = 0,
+  monsterHeartFrac = 1,
+  monsterStatuses = [],
+  playerStatuses = [],
+  playerBruiseLevel = 0,
+  playerBleeding = false,
+  playerStressLevel = 0,
   monsterAnim = 'idle',
   monsterProceduralAnim,
   monsterSpecialAnim,
@@ -619,6 +999,17 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const unifiedPlayerRootRef = useRef<THREE.Object3D | null>(null);
   const unifiedMonsterOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
   const unifiedPlayerOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
+  // Sprites 3D dos nomes acima das cabeças (billboard que acompanha o modelo).
+  const playerNameSpriteRef = useRef<THREE.Sprite | null>(null);
+  const monsterNameSpriteRef = useRef<THREE.Sprite | null>(null);
+  const playerNameGroupRef = useRef<THREE.Group | null>(null);
+  const monsterNameGroupRef = useRef<THREE.Group | null>(null);
+  const monsterHeartsSpriteRef = useRef<THREE.Sprite | null>(null);
+  const monsterStatusSpriteRef = useRef<THREE.Sprite | null>(null);
+  const monsterStatusDrawnRef = useRef<string>('');
+  const playerStatusSpriteRef = useRef<THREE.Sprite | null>(null);
+  const playerStatusGroupRef = useRef<THREE.Group | null>(null);
+  const playerStatusDrawnRef = useRef<string>('');
   // Jogador nativo (skinview3d): quando não há GLB customizado, o boneco é o próprio
   // PlayerObject do skinview3d, inserido direto na cena — fidelidade total (expressões,
   // glint, sparkles, animações), já que agora usamos a mesma versão do Three (0.156).
@@ -657,6 +1048,30 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   monsterFrozenRef.current = monsterFrozen;
   const monsterFreezeMeltRef = useRef(monsterFreezeMelt);
   monsterFreezeMeltRef.current = monsterFreezeMelt;
+  const monsterHeartsRef = useRef(monsterHearts);
+  monsterHeartsRef.current = monsterHearts;
+  const monsterHeartFracRef = useRef(monsterHeartFrac);
+  monsterHeartFracRef.current = monsterHeartFrac;
+  const playerStatusesRef = useRef(playerStatuses);
+  playerStatusesRef.current = playerStatuses;
+  const monsterStatusesRef = useRef(monsterStatuses);
+  monsterStatusesRef.current = monsterStatuses;
+  const playerEquippedItemsRef = useRef(playerEquippedItems);
+  playerEquippedItemsRef.current = playerEquippedItems;
+  const playerConfigRef = useRef(playerConfig);
+  playerConfigRef.current = playerConfig;
+  const playerBruiseLevelRef = useRef(playerBruiseLevel);
+  playerBruiseLevelRef.current = playerBruiseLevel;
+  const playerBleedingRef = useRef(playerBleeding);
+  playerBleedingRef.current = playerBleeding;
+  const playerStressLevelRef = useRef(playerStressLevel);
+  playerStressLevelRef.current = playerStressLevel;
+  // Gotas de suor em queda (estresse alto).
+  const sweatDropsRef = useRef<{ spr: THREE.Sprite; start: number; x: number; y: number; dur: number }[]>([]);
+  // Gotas de sangue em queda (sprites anexados ao jogador nativo quando sangra).
+  const bloodDropsRef = useRef<{ spr: THREE.Sprite; start: number; x: number; y: number; dur: number }[]>([]);
+  // Última "chave" dos corações renderizada (para atualizar o sprite sem re-render)
+  const monsterHeartsDrawnRef = useRef<string>('');
   // Estilhaçamento do gelo no fatality (quando o monstro morre congelado)
   const iceShatterRef = useRef<number | null>(null);
   // Poça de água que cresce conforme o gelo derrete
@@ -1294,6 +1709,73 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       // Pose de arremesso do projétil (ranged)
       applyThrowTween(monsterThrowStartRef, unifiedMonsterGroupRef.current, nowMs);
 
+      // Sincroniza os nomes 3D (sprites) com a posição dos bonecos, e os oculta
+      // quando o boneco some da arena (fuga/morte).
+      if (monsterNameGroupRef.current && unifiedMonsterGroupRef.current) {
+        const g = unifiedMonsterGroupRef.current;
+        monsterNameGroupRef.current.position.set(g.position.x, g.position.y + UNIFIED_ENTITY_HEIGHT * Math.max(0.2, monsterZoomRef.current) + 0.34, g.position.z + 0.01);
+        // Some quando o monstro morre (death-*), foge ou está congelado.
+        const monsterDead = String(monsterAnimRef.current || '').startsWith('death-');
+        monsterNameGroupRef.current.visible = g.visible && !monsterFrozenRef.current && !monsterDead;
+      }
+      if (playerNameGroupRef.current && unifiedPlayerGroupRef.current) {
+        const g = unifiedPlayerGroupRef.current;
+        playerNameGroupRef.current.position.set(g.position.x, g.position.y + UNIFIED_ENTITY_HEIGHT + 0.34, g.position.z + 0.01);
+        playerNameGroupRef.current.visible = g.visible;
+      }
+      // Barras de condições do jogador: seguem o boneco e atualizam a textura por frame.
+      if (playerStatusGroupRef.current && unifiedPlayerGroupRef.current) {
+        const g = unifiedPlayerGroupRef.current;
+        playerStatusGroupRef.current.position.set(g.position.x, g.position.y + UNIFIED_ENTITY_HEIGHT + 0.34 + 0.28, g.position.z + 0.02);
+        playerStatusGroupRef.current.visible = g.visible;
+        const statuses = playerStatusesRef.current || [];
+        const key = statuses.length === 0 ? 'none' : statuses.map(s => `${s.type}:${Math.round((s.pct || 0) * 100)}`).join('|');
+        if (key !== playerStatusDrawnRef.current) {
+          playerStatusDrawnRef.current = key;
+          const current = playerStatusSpriteRef.current;
+          if (current) {
+            current.material.map?.dispose?.();
+            const next = makeStatusBarsSprite(statuses);
+            next.visible = statuses.length > 0;
+            current.parent?.add(next);
+            current.parent?.remove(current);
+            playerStatusSpriteRef.current = next;
+          }
+        }
+      }
+      // Atualiza o sprite 3D de corações quando o número/fração muda (sem re-render).
+      if (monsterHeartsSpriteRef.current) {
+        const hearts = Math.max(0, Math.floor(monsterHeartsRef.current));
+        const key = `${hearts}_${Math.round(monsterHeartFracRef.current * 100)}`;
+        if (key !== monsterHeartsDrawnRef.current) {
+          monsterHeartsDrawnRef.current = key;
+          const current = monsterHeartsSpriteRef.current;
+          current.material.map?.dispose?.();
+          const next = makeHeartsSprite(hearts, monsterHeartFracRef.current);
+          next.position.copy(current.position);
+          next.visible = hearts > 0;
+          current.parent?.add(next);
+          current.parent?.remove(current);
+          monsterHeartsSpriteRef.current = next;
+        }
+      }
+      // Barras de efeito do monstro (acima do nome): atualiza a textura por frame.
+      if (monsterStatusSpriteRef.current) {
+        const statuses = monsterStatusesRef.current || [];
+        const key = statuses.length === 0 ? 'none' : statuses.map(s => `${s.type}:${Math.round((s.pct || 0) * 100)}`).join('|');
+        if (key !== monsterStatusDrawnRef.current) {
+          monsterStatusDrawnRef.current = key;
+          const current = monsterStatusSpriteRef.current;
+          current.material.map?.dispose?.();
+          const next = makeStatusBarsSprite(statuses);
+          next.position.copy(current.position);
+          next.visible = statuses.length > 0;
+          current.parent?.add(next);
+          current.parent?.remove(current);
+          monsterStatusSpriteRef.current = next;
+        }
+      }
+
       // Projeta a posição ATUAL do monstro/jogador (para nome/corações seguirem o avanço
       // e os golpes). Só quando há movimento ativo (tween de ataque/especial/morte).
       const cam = cameraRef.current;
@@ -1326,6 +1808,73 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       }
       if (unifiedPlayerGroupRef.current && !isCombatAnim(playerAnimRef.current) && !playSpecialActive) {
         unifiedPlayerGroupRef.current.scale.setScalar(1 + Math.sin(elapsedTime * 2.4 + 0.6) * 0.015);
+      }
+      // Pingos de sangue: criados enquanto o jogador sangra e caem com gravidade.
+      const nativePl = nativePlayerRef.current?.player;
+      if (nativePl && playerBleedingRef.current) {
+        const drops = bloodDropsRef.current;
+        const spawnRate = 0.04;
+        if (Math.random() < spawnRate && drops.length < 14) {
+          const tex = getBloodDripTexture();
+          const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: false, sizeAttenuation: true });
+          const spr = new THREE.Sprite(mat);
+          const sz = 0.02 + Math.random() * 0.025;
+          spr.scale.set(sz, sz * 2.2, 1);
+          // Começa em um ponto aleatório da metade superior do corpo.
+          spr.position.set((Math.random() * 2 - 1) * 0.25, 0.3 + Math.random() * 1.2, 0.05);
+          nativePl.add(spr);
+          drops.push({ spr, start: performance.now(), x: spr.position.x, y: spr.position.y, dur: 0.7 + Math.random() * 0.4 });
+        }
+        for (let i = drops.length - 1; i >= 0; i--) {
+          const d = drops[i];
+          const t = (nowMs - d.start) / 1000;
+          if (t >= d.dur || !d.spr.parent) {
+            d.spr.parent?.remove(d.spr);
+            d.spr.material.dispose();
+            drops.splice(i, 1);
+            continue;
+          }
+          const prog = t / d.dur;
+          d.spr.position.y = d.y - easeInOut(prog) * 1.2;
+          d.spr.position.x = d.x + Math.sin(t * 8) * 0.004;
+          (d.spr.material as THREE.SpriteMaterial).opacity = 1 - prog;
+        }
+      } else if (bloodDropsRef.current.length) {
+        bloodDropsRef.current.forEach(d => { d.spr.parent?.remove(d.spr); d.spr.material.dispose(); });
+        bloodDropsRef.current = [];
+      }
+      // SUOR (estresse): gotas pequenas brotam na cabeça e escorrem conforme o estresse.
+      const stress = Math.max(0, Math.min(1, playerStressLevelRef.current));
+      const sweatDrops = sweatDropsRef.current;
+      if (nativePl && stress > 0.2) {
+        const spawnRate = 0.02 + stress * 0.05;
+        if (Math.random() < spawnRate && sweatDrops.length < 3 + Math.round(stress * 4)) {
+          const tex = getSweatTexture();
+          const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: false, sizeAttenuation: true, opacity: 0.85 });
+          const spr = new THREE.Sprite(mat);
+          const sz = 0.02 + Math.random() * 0.015;
+          spr.scale.set(sz, sz, 1);
+          spr.position.set((Math.random() * 2 - 1) * 0.12, 1.6 + Math.random() * 0.35, 0.3);
+          nativePl.add(spr);
+          sweatDrops.push({ spr, start: performance.now(), x: spr.position.x, y: spr.position.y, dur: 1.2 + Math.random() * 0.8 });
+        }
+        for (let i = sweatDrops.length - 1; i >= 0; i--) {
+          const d = sweatDrops[i];
+          const t = (nowMs - d.start) / 1000;
+          if (t >= d.dur || !d.spr.parent) {
+            d.spr.parent?.remove(d.spr);
+            d.spr.material.dispose();
+            sweatDrops.splice(i, 1);
+            continue;
+          }
+          const prog = t / d.dur;
+          d.spr.position.y = d.y - easeInOut(prog) * 0.6;
+          d.spr.position.x = d.x + Math.sin(t * 3) * 0.008;
+          (d.spr.material as THREE.SpriteMaterial).opacity = 0.85 * (1 - prog * 0.7);
+        }
+      } else if (sweatDrops.length) {
+        sweatDrops.forEach(d => { d.spr.parent?.remove(d.spr); d.spr.material.dispose(); });
+        sweatDropsRef.current = [];
       }
       // Recuo ao levar dano (hurt): inclina para trás; restaura quando não há outro
       // tween de rotação-X (especial/morte/arremesso) controlando o monstro.
@@ -1578,10 +2127,10 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         fitEntityToGround(root, UNIFIED_ENTITY_HEIGHT * Math.max(0.2, zoom || 1));
         group.add(root);
         group.position.set(x, 0.51, 0.2);
-        // Rotação inicial de REPOUSO: olham para a câmera (+z). Modelos Blockbench nascem
+        // Rotação inicial de REPOUSO: olham para a câmera (+z), levemente inclinados na
+        // direção do oponente para parecerem se encarar. Modelos Blockbench nascem
         // virados para -z, então +Math.PI os vira para a câmera (padrão do jogo atual).
-        // O efeito de animação alterna para o oponente durante o combate.
-        group.rotation.y = Math.PI + THREE.MathUtils.degToRad(rotYDeg || 0);
+        group.rotation.y = Math.PI - 0.42 + THREE.MathUtils.degToRad(rotYDeg || 0);
         scene.add(group);
         const mixer = new THREE.AnimationMixer(root);
         const actions: Record<string, THREE.AnimationAction> = {};
@@ -1605,6 +2154,26 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedMonsterBaseScaleRef.current = root.scale.x || 1;
       applyEntityTint(root, monsterEffectTintRef.current, monsterEnragedRef.current, monsterEffectTintAmountRef.current);
       playEntityAnimByName(actions, mixer, monsterAnimRef.current);
+      // Nome acima da cabeça (sprite 3D que acompanha o boneco).
+      if (monsterName) {
+        const nameGroup = makeNameGroup();
+        nameGroup.position.set(0, UNIFIED_ENTITY_HEIGHT * Math.max(0.2, monsterZoomRef.current) + 0.34, 0);
+        nameGroup.add(makeNameSprite(monsterName, { color: '#ff5a5a' }));
+        // Barras de efeito ativo ACIMA do nome (esvaziam por segundo).
+        const statusSprite = makeStatusBarsSprite(monsterStatusesRef.current);
+        statusSprite.position.y = 0.32;
+        statusSprite.visible = monsterStatusesRef.current.length > 0;
+        nameGroup.add(statusSprite);
+        monsterStatusSpriteRef.current = statusSprite;
+        // Corações abaixo do nome (usa as refs — valor atual no load assíncrono).
+        const heartsSprite = makeHeartsSprite(monsterHeartsRef.current, monsterHeartFracRef.current);
+        heartsSprite.position.y = -0.45;
+        heartsSprite.visible = monsterHeartsRef.current > 0;
+        nameGroup.add(heartsSprite);
+        monsterHeartsSpriteRef.current = heartsSprite;
+        scene.add(nameGroup);
+        monsterNameGroupRef.current = nameGroup;
+      }
       // Sinaliza que o grupo do monstro está pronto (recria gelo/poça se congelado).
       setMonsterEpoch((e) => e + 1);
     });
@@ -1618,6 +2187,22 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         unifiedPlayerMixerRef.current = mixer;
         unifiedPlayerActionsRef.current = actions;
         playEntityAnimByName(actions, mixer, playerAnimRef.current);
+        // Nome acima da cabeça (sprite 3D que acompanha o boneco).
+        if (playerName) {
+          const nameGroup = makeNameGroup();
+          nameGroup.add(makeNameSprite(playerName, { color: '#ffffff' }));
+          scene.add(nameGroup);
+          playerNameGroupRef.current = nameGroup;
+        }
+        // Grupo das barras de condições (acima do nome, empilhadas).
+        const statusGroup = new THREE.Group();
+        statusGroup.position.set(0, UNIFIED_ENTITY_HEIGHT + 0.34 + 0.28, 0);
+        const statusSprite = makeStatusBarsSprite(playerStatusesRef.current);
+        statusSprite.visible = playerStatusesRef.current.length > 0;
+        statusGroup.add(statusSprite);
+        playerStatusSpriteRef.current = statusSprite;
+        scene.add(statusGroup);
+        playerStatusGroupRef.current = statusGroup;
       });
     } else {
       // ---- Boneco NATIVO do skinview3d ----
@@ -1635,12 +2220,34 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
           const group = new THREE.Group();
           group.add(player);
           group.position.set(-3.6, 0.51, 0.2);
-          // O boneco nativo do skinview3d já nasce virado para +z (câmera) → base 0.
-          group.rotation.y = 0 + THREE.MathUtils.degToRad(playerRotYRef.current || 0);
+          // O boneco nativo do skinview3d já nasce virado para +z (câmera) → base 0,
+          // levemente girado na direção do monstro (+x) para parecerem se encarar.
+          group.rotation.y = 0.42 + THREE.MathUtils.degToRad(playerRotYRef.current || 0);
           scene.add(group);
+
+          // Nome acima da cabeça (sprite 3D que acompanha o boneco).
+          if (playerName) {
+            const nameGroup = makeNameGroup();
+            nameGroup.add(makeNameSprite(playerName, { color: '#ffffff' }));
+            scene.add(nameGroup);
+            playerNameGroupRef.current = nameGroup;
+          }
+
+          // Grupo das barras de condições (acima do nome, empilhadas).
+          const statusGroup = new THREE.Group();
+          statusGroup.position.set(0, UNIFIED_ENTITY_HEIGHT + 0.34 + 0.28, 0);
+          const statusSprite = makeStatusBarsSprite(playerStatusesRef.current);
+          statusSprite.visible = playerStatusesRef.current.length > 0;
+          statusGroup.add(statusSprite);
+          playerStatusSpriteRef.current = statusSprite;
+          scene.add(statusGroup);
+          playerStatusGroupRef.current = statusGroup;
 
           // Anexa os itens equipados (mesma lógica do AvatarCharacter).
           attachEquippedItemsToPlayer(player, playerConfig, playerEquippedItems, loader);
+
+          // Hematomas no corpo (pixels roxos/vermelhos) conforme o dano sofrido.
+          attachBruisesAndBlood(player, playerBruiseLevelRef.current, playerBleedingRef.current);
 
           nativePlayerRef.current = {
             viewer,
@@ -1684,6 +2291,10 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedPlayerMixerRef.current?.stopAllAction();
       try { nativePlayerRef.current?.viewer?.dispose?.(); } catch { /* noop */ }
       nativePlayerRef.current = null;
+      clearBruisesAndBlood();
+      bloodDropsRef.current = [];
+      sweatDropsRef.current.forEach(d => { d.spr.parent?.remove(d.spr); d.spr.material.dispose(); });
+      sweatDropsRef.current = [];
       // O grupo do monstro é destruído aqui; o gelo e a poça iam junto, mas as refs
       // continuavam apontando para eles → o gelo não era recriado (sumia ao re-render/
       // resize). Reseta para o efeito do gelo poder recriar quando ainda congelado.
@@ -1698,9 +2309,53 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedPlayerMixerRef.current = null;
       unifiedMonsterActionsRef.current = {};
       unifiedPlayerActionsRef.current = {};
+      // Remove os sprites de nome 3D.
+      [playerNameGroupRef, monsterNameGroupRef].forEach((ref) => {
+        if (ref.current) { scene.remove(ref.current); ref.current.traverse((c) => { (c as any).material?.map?.dispose?.(); (c as any).material?.dispose?.(); }); ref.current = null; }
+      });
+      if (playerStatusGroupRef.current) {
+        scene.remove(playerStatusGroupRef.current);
+        playerStatusGroupRef.current.traverse((c) => { (c as any).material?.map?.dispose?.(); (c as any).material?.dispose?.(); });
+        playerStatusGroupRef.current = null;
+        playerStatusSpriteRef.current = null;
+      }
       draco.dispose();
     };
-  }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, playerConfigKey, playerEquippedItemsKey, monsterZoom, monsterRotY]);
+  }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, playerConfigKey, playerEquippedItemsKey, monsterZoom, monsterRotY, playerName, monsterName]);
+
+  // Reaplica hematomas no boneco nativo quando o dano sofrido muda.
+  useEffect(() => {
+    if (!unified3D || !nativePlayerRef.current?.player) return;
+    attachBruisesAndBlood(nativePlayerRef.current.player, playerBruiseLevel, playerBleeding);
+  }, [unified3D, playerBruiseLevel, playerBleeding]);
+
+  // Expressão facial (normal/serious/sad) conforme o estresse: recarrega a skin no
+  // viewer nativo com o mouthStyle correspondente (mesma lógica do AvatarCharacter).
+  const lastNativeExpRef = useRef<string>('');
+  useEffect(() => {
+    if (!unified3D) return;
+    const viewer = nativePlayerRef.current?.viewer;
+    if (!viewer || playerSkinUrl) return; // skin customizada não tem expressões
+    const exp = playerStressLevel >= 0.6 ? 'sad' : playerStressLevel >= 0.3 ? 'serious' : 'normal';
+    if (exp === lastNativeExpRef.current) return;
+    lastNativeExpRef.current = exp;
+    let cancelled = false;
+    (async () => {
+      try {
+        const base = playerConfigRef.current || ({} as any);
+        const cfg = { ...base };
+        if (exp === 'sad') cfg.mouthStyle = 'sad';
+        else if (exp === 'serious') cfg.mouthStyle = 'neutral';
+        const url = await generateMinecraftSkinUrl(cfg as any);
+        if (cancelled || !nativePlayerRef.current?.viewer) return;
+        await nativePlayerRef.current.viewer.loadSkin(url, { model: playerConfig?.gender === 'female' ? 'slim' : 'default' });
+        // Reaplica itens/tint/hematomas (a skin nova recria o corpo).
+        attachEquippedItemsToPlayer(nativePlayerRef.current.player, playerConfigRef.current, playerEquippedItemsRef.current, new GLTFLoader());
+        attachBruisesAndBlood(nativePlayerRef.current.player, playerBruiseLevel, playerBleeding);
+      } catch { /* expressão falhou */ }
+    })();
+    return () => { cancelled = true; };
+  }, [unified3D, playerStressLevel, playerSkinUrl]);
 
   // Aplica a animação (por nome) e a rotação (repouso = câmera, combate = oponente).
   useEffect(() => {
@@ -1712,8 +2367,10 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
 
     const monCombat = isCombatAnim(monsterAnim);
     if (unifiedMonsterGroupRef.current && !monsterSpecialRef.current && !monsterThrowStartRef.current) {
-      // Monstro (direita) vira -x (jogador) em combate; repouso olha para a câmera.
-      unifiedMonsterGroupRef.current.rotation.y = (monCombat ? Math.PI / 2 : Math.PI) + THREE.MathUtils.degToRad(monsterRotYRef.current);
+      // Monstro (direita) vira -x (jogador) em combate; em repouso olha para a câmera
+      // mas levemente inclinado na direção do jogador (parecem se encarar).
+      const monRest = Math.PI - 0.42;
+      unifiedMonsterGroupRef.current.rotation.y = (monCombat ? Math.PI / 2 : monRest) + THREE.MathUtils.degToRad(monsterRotYRef.current);
       // Reset de escala só na TRANSIÇÃO para combate (evita interromper o tween de morte).
       if (monChanged && monCombat) unifiedMonsterGroupRef.current.scale.setScalar(1);
     }
@@ -1743,7 +2400,14 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const native = !!nativePlayerRef.current;
       const restBase = native ? 0 : Math.PI;
       const combatBase = native ? Math.PI / 2 : -Math.PI / 2;
-      unifiedPlayerGroupRef.current.rotation.y = (playCombat ? combatBase : restBase) + THREE.MathUtils.degToRad(playerRotYRef.current);
+      // Em repouso, gira levemente na direção do monstro (+x) para parecerem se encarar.
+      const restFaceOffset = native ? 0.42 : -0.42;
+      const restWithOffset = restBase + restFaceOffset;
+      // O jogador continua olhando para o monstro durante o ataque fatal e a apreensão
+      // (idle-victory); só vira para a CÂMERA na comemoração (victory-*).
+      const faceCamera = playerAnim.startsWith('victory');
+      const stayCombat = playerAnim === 'idle-victory';
+      unifiedPlayerGroupRef.current.rotation.y = ((playCombat || stayCombat) && !faceCamera ? combatBase : restWithOffset) + THREE.MathUtils.degToRad(playerRotYRef.current);
       if (playChanged && playCombat) unifiedPlayerGroupRef.current.scale.setScalar(1);
     }
     if (playerAnim.startsWith('death')) {
@@ -1936,10 +2600,15 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         unifiedMonsterGroupRef.current.position.x = 3.6;
       }
     }
-    const walking = playerAnim === 'walk' || playerAnim === 'exhausted';
+    // Só a caminhada EXPLÍCITA (monstro fugiu / vitória sem baú) leva o jogador ao
+    // centro. 'exhausted' (HP crítico) é apenas uma pose de cansaço — NÃO desloca.
+    const walking = playerAnim === 'walk';
     if (walking && playerWalkStartRef.current == null) {
       playerWalkStartRef.current = performance.now();
       playerWalkStartXRef.current = unifiedPlayerGroupRef.current?.position.x ?? -3.6;
+    } else if (!walking && playerWalkStartRef.current != null) {
+      // Saiu do modo de caminhada (não é mais 'walk'): para o deslocamento ao centro.
+      playerWalkStartRef.current = null;
     }
   }, [unified3D, monsterAnim, playerAnim]);
 
@@ -1962,7 +2631,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const isVictory = monsterAnim?.startsWith('victory');
       if (isAttack || isVictory) {
         const isFatal = monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow';
-        monsterMoveRef.current = { fromX: monGroup.position.x, toX: 3.6 - UNIFIED_LUNGE, restX: 3.6, start: now, mode: (isVictory || isFatal) ? 'hold' : 'go' };
+        monsterMoveRef.current = { fromX: monGroup.position.x, toX: 3.6 - UNIFIED_LUNGE, restX: 3.6, start: now, mode: (isVictory || isFatal) ? 'hold' : 'go', teleport: isAttack };
       } else {
         monsterMoveRef.current = { fromX: monGroup.position.x, toX: 3.6, restX: 3.6, start: now, mode: 'go' };
       }
@@ -1971,9 +2640,14 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     if (playGroup) {
       const isAttack = playerAnim?.startsWith('attack');
       const isVictory = playerAnim?.startsWith('victory');
-      if (isAttack || isVictory) {
+      const isIdleVictory = playerAnim === 'idle-victory';
+      if (isAttack) {
         const isFatal = playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow';
-        playerMoveRef.current = { fromX: playGroup.position.x, toX: -3.6 + UNIFIED_LUNGE, restX: -3.6, start: now, mode: (isVictory || isFatal) ? 'hold' : 'go' };
+        playerMoveRef.current = { fromX: playGroup.position.x, toX: -3.6 + UNIFIED_LUNGE, restX: -3.6, start: now, mode: isFatal ? 'hold' : 'go', teleport: true };
+      } else if (isVictory || isIdleVictory) {
+        // Após derrotar o monstro (apreensão E comemoração): MANTER a posição atual
+        // (onde o golpe final aconteceu). Não volta ao nascimento nem anda ao centro.
+        playerMoveRef.current = { fromX: playGroup.position.x, toX: playGroup.position.x, restX: playGroup.position.x, start: now, mode: 'hold' };
       } else {
         playerMoveRef.current = { fromX: playGroup.position.x, toX: -3.6, restX: -3.6, start: now, mode: 'go' };
       }

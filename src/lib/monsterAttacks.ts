@@ -35,6 +35,8 @@ export interface MonsterMeleeAttack {
   enabled?: boolean;
   /** Nível mínimo do monstro para ativar/desbloquear o golpe (default: 1 = sempre ativo). */
   minLevel?: number;
+  /** Nome da animação nativa do GLB usada neste golpe (se existir; vazio = animação padrão). */
+  animation?: string;
   /** Efeito de dano aplicado no jogador ao acertar (none = sem efeito). */
   effect: MonsterEffectType;
   /** Se o efeito de status está habilitado para ser aplicado (default: true se effect !== 'none'). */
@@ -51,6 +53,8 @@ export interface MonsterRangedAttack {
   enabled: boolean;
   /** Nível mínimo do monstro para ativar/desbloquear o golpe (default: 1 = sempre ativo quando habilitado). */
   minLevel?: number;
+  /** Nome da animação nativa do GLB usada neste golpe (se existir; vazio = animação padrão). */
+  animation?: string;
   /** Efeito aplicado no jogador quando o projétil atinge. */
   effect: MonsterEffectType;
   /** Se o efeito de status está habilitado para ser aplicado (default: true se effect !== 'none'). */
@@ -328,6 +332,7 @@ export function normalizeMonsterAttacks(raw: any): MonsterAttacksConfig {
     melee: {
       enabled: raw.melee?.enabled !== false,
       minLevel: Math.max(1, Number(raw.melee?.minLevel) || 1),
+      animation: (raw.melee?.animation || '').replace(/\\/g, '/'),
       effect: raw.melee?.effect || 'none',
       effectEnabled: raw.melee?.effectEnabled !== false,
       effectMinLevel: Math.max(1, Number(raw.melee?.effectMinLevel) || 1),
@@ -337,6 +342,7 @@ export function normalizeMonsterAttacks(raw: any): MonsterAttacksConfig {
     ranged: {
       enabled: !!raw.ranged?.enabled,
       minLevel: Math.max(1, Number(raw.ranged?.minLevel) || 1),
+      animation: (raw.ranged?.animation || '').replace(/\\/g, '/'),
       effect: raw.ranged?.effect || 'none',
       effectEnabled: raw.ranged?.effectEnabled !== false,
       effectMinLevel: Math.max(1, Number(raw.ranged?.effectMinLevel) || 1),
@@ -438,6 +444,7 @@ export function decideMonsterAttackAction(
         appliedEffect: roll.proc ? (cfg.ranged.effect || 'none') : 'none',
         projectileType: cfg.ranged.projectileType || 'rock',
         projectileUrl: cfg.ranged.projectile,
+        animation: cfg.ranged.animation,
         isRagedHit,
       };
     }
@@ -450,6 +457,7 @@ export function decideMonsterAttackAction(
         effectProc: roll.proc,
         effectiveChance: roll.effectiveChance,
         appliedEffect: roll.proc ? (cfg.melee.effect || 'none') : 'none',
+        animation: cfg.melee.animation,
         isRagedHit,
       };
     }

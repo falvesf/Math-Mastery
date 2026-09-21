@@ -613,7 +613,7 @@ export function stopForgeSparkles() {
   if (_forgeSparkRaf) { cancelAnimationFrame(_forgeSparkRaf); _forgeSparkRaf = 0; }
 }
 
-function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScale: number = 0.98, countMul: number = 1) {
+export function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScale: number = 0.98, countMul: number = 1, sizeScale: number = 1) {
   if (tier <= 0) return;
   try {
     const box = new THREE.Box3().setFromObject(model);
@@ -624,7 +624,7 @@ function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScale: numb
     const tex = getForgeSparkTexture();
     const grp = new THREE.Group();
     grp.userData.forgeModel = model;
-    grp.userData.forgeSparkSize = 0.95 + tier * 0.25; // tamanho MUNDIAL base (compensado no tick)
+    grp.userData.forgeSparkSize = (0.95 + tier * 0.25) * sizeScale; // tamanho MUNDIAL base (compensado no tick)
     grp.userData.forgeCenter = center.clone();
     grp.userData.forgeHalf = half.clone();
     const count = Math.max(3, Math.round((4 + tier * 2) * countMul)); // arma: 6/8/10; armadura: o dobro

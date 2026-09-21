@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import AudioBankPicker from './AudioBankPicker';
 import ItemSelectDropdown, { type ItemSelectOption } from './ItemSelectDropdown';
-import { generateMonsterBiographyWithAI } from '../lib/monsterAiBiography';
+import { generateMonsterBiographyWithAI, generateMonsterQuotesWithAI } from '../lib/monsterAiBiography';
 
 // @ts-ignore
 void Volume2;
@@ -225,6 +225,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     tabMode === 'drops' ? 'drops' : tabMode === 'stats' ? 'stats' : tabMode === 'lore' ? 'lore' : 'sounds'
   );
   const [isGeneratingBio, setIsGeneratingBio] = useState(false);
+  const [isGeneratingQuotes, setIsGeneratingQuotes] = useState(false);
 
   useEffect(() => {
     if (tabMode === 'drops') {
@@ -671,9 +672,50 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
       {/* ABA DE FALAS */}
       {activeSubTab === 'quotes' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-            Separe várias falas com ponto e vírgula (;) para que sejam sorteadas aleatoriamente.
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              Separe várias falas com ponto e vírgula (;) para que sejam sorteadas aleatoriamente.
+            </p>
+            <button
+              type="button"
+              disabled={isGeneratingQuotes}
+              onClick={async () => {
+                setIsGeneratingQuotes(true);
+                try {
+                  const quotes = await generateMonsterQuotesWithAI({
+                    monsterName: monsterName || 'Monstro',
+                    gender: value.gender || 'male',
+                    level: value.stats?.level || 1,
+                    biography: value.biography,
+                    attacks: monsterAttacks,
+                    quotes: value.quotes
+                  });
+                  updateQuotes(quotes);
+                } catch (e) {
+                  console.error('Erro ao gerar falas com IA:', e);
+                } finally {
+                  setIsGeneratingQuotes(false);
+                }
+              }}
+              style={{
+                padding: '0.4rem 0.8rem',
+                borderRadius: '8px',
+                background: isGeneratingQuotes ? 'rgba(245, 158, 11, 0.2)' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                color: 'white',
+                border: 'none',
+                cursor: isGeneratingQuotes ? 'wait' : 'pointer',
+                fontSize: '0.78rem',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)'
+              }}
+            >
+              <Sparkles size={14} />
+              {isGeneratingQuotes ? 'Gerando falas...' : '✨ Gerar falas com IA'}
+            </button>
+          </div>
 
           <div>
             <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--accent-green)', marginBottom: '0.2rem' }}>HP Cheio (80% - 100%)</label>

@@ -2803,7 +2803,7 @@ onClick={() => setConfig(prev => {
             const activeModel = activePreset?.baseModelId && activePreset.baseModelId !== 'default'
               ? models3d.find(m => m.id === activePreset.baseModelId)
               : (editingSkinId ? models3d.find(m => m.id === presetSkins.find(s => s.id === editingSkinId)?.baseModelId) : null);
-            const activeModelUrl = config.customModelUrl || activeModel?.url || undefined;
+            const activeModelUrl = config.customModelUrl || activeModel?.url || (config as any).gameModelUrl || undefined;
             return (
               <MonsterAttacksEditor
                 value={(config as any).attacks}

@@ -35,6 +35,52 @@ export const DEFAULT_MONSTER_STATS: MonsterCombatStats = {
 };
 
 /**
+ * Calcula a DURAÇÃO (em ms) de um efeito de condição negativo aplicado pelo monstro
+ * no jogador. A base é o "poder" total do monstro (ataque + defesa + evasão + chance
+ * de crítico). O tempo máximo é esse poder em segundos; o mínimo é 10% do máximo.
+ * Retorna um valor aleatório entre mínimo e máximo.
+ * Ex.: Golem nível 1 → 86+48+5+5 = 144 → duração entre 14,4s e 144s.
+ */
+export function rollStatusDurationMs(stats?: Partial<MonsterCombatStats> | null): number {
+  const attack = Math.max(0, Number(stats?.attack) || 0);
+  const defense = Math.max(0, Number(stats?.defense) || 0);
+  const evasion = Math.max(0, Number(stats?.evasion) || 0);
+  const critChance = Math.max(0, Number(stats?.critChance) || 0);
+  const maxSec = attack + defense + evasion + critChance;
+  // Fallback caso os stats estejam zerados (ex.: monstro sem config): 8–20s.
+  if (maxSec <= 0) {
+    const min = 8, mx = 20;
+    return Math.round((min + Math.random() * (mx - min)) * 1000);
+  }
+  const minSec = Math.max(1, maxSec * 0.1);
+  const sec = minSec + Math.random() * (maxSec - minSec);
+  return Math.round(sec * 1000);
+}
+
+/**
+ * Duração (ms) de um efeito de dano que o JOGADOR aplica no MONSTRO. Baseada nos
+ * atributos do jogador: ataque + defesa + vitalidade + fortitude + persuasão.
+ * Máximo = soma (em segundos); mínimo = 10% do máximo. Sorteia entre mínimo e máximo.
+ */
+export function rollMonsterStatusDurationMs(stats?: {
+  attack?: number; defense?: number; vitality?: number; fortitude?: number; persuasion?: number;
+} | null): number {
+  const attack = Math.max(0, Number(stats?.attack) || 0);
+  const defense = Math.max(0, Number(stats?.defense) || 0);
+  const vitality = Math.max(0, Number(stats?.vitality) || 0);
+  const fortitude = Math.max(0, Number(stats?.fortitude) || 0);
+  const persuasion = Math.max(0, Number(stats?.persuasion) || 0);
+  const maxSec = attack + defense + vitality + fortitude + persuasion;
+  if (maxSec <= 0) {
+    const min = 6, mx = 18;
+    return Math.round((min + Math.random() * (mx - min)) * 1000);
+  }
+  const minSec = Math.max(1, maxSec * 0.1);
+  const sec = minSec + Math.random() * (maxSec - minSec);
+  return Math.round(sec * 1000);
+}
+
+/**
  * Calcula o dano do ataque do jogador contra o monstro.
  * O poder de ataque do jogador é absorvido pela defesa do monstro.
  * Danos críticos causam o dobro de dano (2x).

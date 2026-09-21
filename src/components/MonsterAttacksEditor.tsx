@@ -24,27 +24,72 @@ interface MonsterAttacksEditorProps {
 const labelStyle = { display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' } as const;
 const inputStyle = { width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' } as const;
 
-/** Extrai rapidamente os nomes das animações contidas no cabeçalho do arquivo GLB via fetch HTTP. */
+/** Extrai os nomes das animações contidas no arquivo GLB (download completo — confiável no Supabase). */
 async function inspectGlbAnimations(url: string): Promise<string[]> {
   if (!url) return [];
   try {
-    const res = await fetch(url, { headers: { Range: 'bytes=0-350000' } });
+    // Baixa o GLB completo: o header JSON (com as animações) fica no início, mas o Range
+    // é ignorado/limitado por alguns provedores (ex.: Supabase Storage), então lemos tudo.
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) {
+      console.warn('[Golpes] GLB não acessível (status', res.status, '):', url);
+      return [];
+    }
     const buf = await res.arrayBuffer();
     const view = new DataView(buf);
     if (view.byteLength < 20) return [];
     const magic = view.getUint32(0, true);
     // 0x46546c67 = 'glTF'
-    if (magic !== 0x46546c67) return [];
+    if (magic !== 0x46546c67) {
+      console.warn('[Golpes] Arquivo não é GLB:', url);
+      return [];
+    }
+    // Estrutura GLB: [magic(4) version(4) length(4)] [chunkLen(4) chunkType(4) JSON...]
     const jsonLen = view.getUint32(12, true);
     const jsonBytes = new Uint8Array(buf, 20, Math.min(jsonLen, buf.byteLength - 20));
     const jsonStr = new TextDecoder('utf-8').decode(jsonBytes);
-    const match = jsonStr.match(/"animations"\s*:\s*\[(.*?)\](?:\s*,\s*"[a-zA-Z]+"\s*:|\s*\})/s);
-    if (match) {
-      const animMatches = [...match[1].matchAll(/"name"\s*:\s*"([^"]+)"/g)];
-      return animMatches.map(m => m[1]);
+
+    // Parse completo do JSON do GLB.
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      parsed = null;
     }
-    const parsed = JSON.parse(jsonStr);
-    return (parsed.animations || []).map((a: any) => a.name).filter(Boolean);
+    if (parsed && Array.isArray(parsed.animations)) {
+      const names = parsed.animations.map((a: any) => a?.name).filter((n: any) => typeof n === 'string' && n.trim());
+      if (names.length > 0) return names;
+    }
+
+    // Fallback tolerante: extrai os "name" que aparecem logo após o campo "animations".
+    const animsStart = jsonStr.indexOf('"animations"');
+    if (animsStart !== -1) {
+      const names: string[] = [];
+      const re = /"name"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(jsonStr.substring(animsStart)))) {
+        names.push(m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
+      }
+      if (names.length > 0) return names.filter(n => n.trim());
+    }
+
+    // Último recurso: usa o GLTFLoader real do three (mesma lib que renderiza o modelo na
+    // arena). Se o modelo carrega, as animações existem e os nomes são lidos com certeza.
+    try {
+      const mod = await import('skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js');
+      const GLTFLoader = (mod as any).GLTFLoader || (mod as any).default;
+      const loader = new GLTFLoader();
+      const gltf = await new Promise<any>((resolve, reject) => {
+        loader.load(url, resolve, undefined, reject);
+      });
+      const names = (gltf?.animations || []).map((a: any) => a?.name).filter(Boolean);
+      if (names.length > 0) return names;
+      console.warn('[Golpes] GLB carregado, mas sem animações:', url);
+    } catch (e) {
+      console.warn('[Golpes] GLTFLoader também não conseguiu ler animações:', e);
+    }
+
+    return [];
   } catch (e) {
     console.warn('Não foi possível ler animações do GLB:', e);
     return [];
@@ -767,6 +812,21 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
         Configure as condições de ativação (por nível do monstro) e a porcentagem de acerto dos efeitos para cada golpe.
       </p>
 
+      {/* Aviso quando o modelo GLB não estiver disponível para listar as animações nativas */}
+      {!modelUrl && (
+        <div style={{ marginBottom: '0.85rem', padding: '0.6rem 0.75rem', borderRadius: '8px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', fontSize: '0.72rem', color: '#fbbf24', lineHeight: 1.4 }}>
+          ⚠️ <strong>Nenhum modelo 3D (GLB) associado a este monstro.</strong> As animações nativas do modelo só aparecem
+          se houver um Molde 3D vinculado (aba <strong>Aparência → Molde 3D</strong>) ou um Modelo 3D customizado
+          (<code>customModelUrl</code>). Enquanto isso, os golpes usam as animações universais do jogo.
+        </div>
+      )}
+      {modelUrl && glbAnimations.length === 0 && !loadingAnims && (
+        <div style={{ marginBottom: '0.85rem', padding: '0.6rem 0.75rem', borderRadius: '8px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', fontSize: '0.72rem', color: '#fbbf24', lineHeight: 1.4 }}>
+          ⚠️ Não foi possível ler animações do arquivo GLB (<code>{modelUrl}</code>). Verifique se o arquivo contém animações
+          e se o servidor permite leitura parcial (CORS/Range). Os golpes continuam funcionando com as animações universais.
+        </div>
+      )}
+
       {/* 1. CORPO A CORPO */}
       {sectionHeader('melee', Swords, '1. Corpo a Corpo', 'Golpe físico próximo', meleeBadge)}
       {open === 'melee' && (
@@ -777,6 +837,33 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
               <p style={{ margin: '0 0 0.6rem 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                 O monstro avança em direção ao oponente para acertá-lo de perto.
               </p>
+              <div style={{ marginBottom: '0.6rem' }}>
+                <label style={labelStyle}>
+                  Animação do golpe {loadingAnims && <span style={{ color: 'var(--gold-primary)' }}>(lendo GLB...)</span>}
+                </label>
+                <select
+                  value={cfg.melee.animation || ''}
+                  onChange={e => onChange({
+                    ...cfg,
+                    melee: { ...cfg.melee, animation: e.target.value },
+                  })}
+                  style={inputStyle}
+                >
+                  <option value="">🌀 Padrão (avanço + golpe do jogo)</option>
+                  {glbAnimations.length > 0 && (
+                    <optgroup label="🎬 Animações Nativas do Arquivo .GLB deste Modelo">
+                      {glbAnimations.map(anim => (
+                        <option key={anim} value={anim}>🎞️ {anim}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                {glbAnimations.length === 0 && (
+                  <span style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                    Nenhuma animação encontrada no modelo atual — usando o golpe padrão do jogo.
+                  </span>
+                )}
+              </div>
               {effectSelect('melee', cfg.melee.effect)}
               {renderEffectActivationControl('melee', cfg.melee.effect, cfg.melee.effectEnabled !== false, cfg.melee.effectMinLevel || 1)}
               {renderEffectChanceControls('melee', cfg.melee.effect, cfg.melee.effectChance ?? 100, cfg.melee.effectChancePerLevel ?? 3, cfg.melee.effectEnabled !== false, cfg.melee.effectMinLevel || 1)}
@@ -829,6 +916,29 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
                 <span style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
                   O monstro permanece no seu lugar, ergue os braços, o objeto sobe sobre sua cabeça e é arremessado em arco contra o jogador.
                 </span>
+              </div>
+
+              <div>
+                <label style={labelStyle}>
+                  Animação do golpe {loadingAnims && <span style={{ color: 'var(--gold-primary)' }}>(lendo GLB...)</span>}
+                </label>
+                <select
+                  value={cfg.ranged?.animation || ''}
+                  onChange={e => onChange({
+                    ...cfg,
+                    ranged: { ...(cfg.ranged as any), animation: e.target.value },
+                  })}
+                  style={inputStyle}
+                >
+                  <option value="">🌀 Padrão (arremesso do jogo)</option>
+                  {glbAnimations.length > 0 && (
+                    <optgroup label="🎬 Animações Nativas do Arquivo .GLB deste Modelo">
+                      {glbAnimations.map(anim => (
+                        <option key={anim} value={anim}>🎞️ {anim}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
               </div>
 
               {/* Visualização ao vivo do projétil */}
