@@ -2895,4 +2895,18 @@ html, body {
 
 .floating-damage-pop.is-critical {
   animation: damage-crit-rise-fade 2.2s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+}
+
+/* Números de dano do Mapa Explorável (POC) */
+@keyframes dmgFloat {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(0.7); }
+  15% { opacity: 1; transform: translate(-50%, -60%) scale(1.12); }
+  100% { opacity: 0; transform: translate(-50%, -165%) scale(1); }
+}
+
+/* "Puff" de fumaça (erro na porta do Mapa Explorável) */
+@keyframes puffPop {
+  0% { opacity: 0; transform: scale(0.2); }
+  20% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 0; transform: scale(2.2); }
 }

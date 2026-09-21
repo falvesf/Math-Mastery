@@ -49,6 +49,9 @@ export interface AvatarConfig {
   customZoom?: number;
   /** Rotação extra no eixo Y (graus) para corrigir GLBs que carregam de costas */
   customRotY?: number;
+  /** Range de visão (em células) do monstro quando usado no cenário de exploração.
+   *  Ao avistar o jogador dentro desse raio, o monstro vai para cima dele. */
+  visionRange?: number;
   ponytailLength?: number;
   ponytailThickness?: number;
   ponytailAngle?: number;

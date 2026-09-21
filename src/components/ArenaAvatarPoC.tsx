@@ -11,6 +11,7 @@ import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
 import { applyForgeGlowToModel, applyForgeGlint, resolveModelTransform, type AvatarConfig, type EquippedItem } from './AvatarCharacter';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchEquippedItems } from '../lib/equippedItems';
+import MapExplorerPoC from './MapExplorerPoC';
 
 const UNIFIED_ENTITY_HEIGHT = 1.9;
 
@@ -76,6 +77,7 @@ export default function ArenaAvatarPoC({ config: configProp, equippedItems: item
   const animRef = useRef<any>(null);
   const [current, setCurrent] = useState('idle');
   const [ready, setReady] = useState(false);
+  const [explorerMode, setExplorerMode] = useState(false);
   const [config, setConfig] = useState<AvatarConfig | null>(configProp || null);
   const [equippedItems, setEquippedItems] = useState<EquippedItem[]>(itemsProp || []);
   const { userData } = useAuth();
@@ -307,14 +309,25 @@ export default function ArenaAvatarPoC({ config: configProp, equippedItems: item
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 999999, display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '0.6rem 1rem', background: '#111', color: '#fff', fontSize: '0.85rem', display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <strong>PoC 2: arena 0.156 completa</strong>
-        <span style={{ color: '#7dd3fc' }}>{status}</span>
-        {ACTIONS.map(a => (
-          <button key={a.id} onClick={() => setAnim(a.id)} style={{ padding: '0.25rem 0.6rem', cursor: 'pointer', background: current === a.id ? '#2563eb' : '#333', color: '#fff', border: '1px solid #555', borderRadius: 4 }}>{a.label}</button>
-        ))}
-        <button onClick={() => location.reload()} style={{ padding: '0.25rem 0.6rem', cursor: 'pointer' }}>Recarregar</button>
+        <strong>PoC: Arena 3D / Mapa Explorável</strong>
+        <button onClick={() => setExplorerMode(m => !m)} style={{ padding: '0.25rem 0.6rem', cursor: 'pointer', background: explorerMode ? '#2563eb' : '#333', color: '#fff', border: '1px solid #555', borderRadius: 4 }}>
+          {explorerMode ? '🗺️ Mapa (modo explorador)' : '🗺️ Ir para o Mapa Explorável (fases antes do chefe)'}
+        </button>
+        {!explorerMode && (
+          <>
+            <span style={{ color: '#7dd3fc' }}>{status}</span>
+            {ACTIONS.map(a => (
+              <button key={a.id} onClick={() => setAnim(a.id)} style={{ padding: '0.25rem 0.6rem', cursor: 'pointer', background: current === a.id ? '#2563eb' : '#333', color: '#fff', border: '1px solid #555', borderRadius: 4 }}>{a.label}</button>
+            ))}
+            <button onClick={() => location.reload()} style={{ padding: '0.25rem 0.6rem', cursor: 'pointer' }}>Recarregar</button>
+          </>
+        )}
       </div>
-      <div ref={mountRef} style={{ flex: 1, position: 'relative' }} />
+      {explorerMode ? (
+        <MapExplorerPoC onExit={() => setExplorerMode(false)} />
+      ) : (
+        <div ref={mountRef} style={{ flex: 1, position: 'relative' }} />
+      )}
     </div>
   );
 }

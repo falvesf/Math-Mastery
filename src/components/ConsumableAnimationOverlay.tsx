@@ -92,7 +92,7 @@ export const ConsumableAnimationOverlay: React.FC<Props> = ({ anim, onComplete }
   } as React.CSSProperties;
 
   return (
-    <div ref={rootRef} className="consumable-fx-root" style={styleVars} aria-hidden="true">
+    <div key={anim.id} ref={rootRef} className="consumable-fx-root" style={styleVars} aria-hidden="true">
       {/* 1. EFEITO DE AURA MÁGICA (Poção Rosada, Elixir Dourado, Escudo, etc.) */}
       {anim.category === 'aura' && (
         <div className="consumable-aura-wrap">

@@ -2282,6 +2282,22 @@ onClick={() => setConfig(prev => {
                     </div>
                   );
                 })()}
+
+                {/* Range de visão — usado no cenário de exploração (o monstro persegue o jogador dentro desse raio). */}
+                {customSaveMode && (
+                  <div style={{ marginBottom: '1.25rem', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', padding: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>👁️ Range de Visão (cenário)</label>
+                      <span style={{ fontSize: '0.85rem', color: '#60a5fa', fontWeight: 'bold', background: 'rgba(59, 130, 246, 0.15)', padding: '2px 8px', borderRadius: '6px' }}>{config.visionRange ?? 6} células</span>
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                      Nos mapas de exploração, o monstro vai para cima do jogador quando ele estiver dentro desse range.
+                    </p>
+                    <input type="range" min="2" max="20" step="1" value={config.visionRange ?? 6}
+                      onChange={e => setConfig(prev => ({ ...prev, visionRange: parseInt(e.target.value) }))}
+                      style={{ width: '100%', accentColor: '#3b82f6' }} />
+                  </div>
+                )}
               </>
             )}
             
