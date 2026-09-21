@@ -178,7 +178,7 @@ export const DEFAULT_ARENA_DEBUG: ArenaDebugConfig = {
   projTargetY: 80,
   projArcHeight: 245,
   showProjRange: false,
-  unified3D: false,
+  unified3D: true,
 };
 
 export type ArenaModeKey = '3d_desktop' | '3d_mobile' | '2d_desktop' | '2d_mobile';
@@ -1061,7 +1061,7 @@ export default function ArenaDebugPanel({
           <>
             <div style={{ fontSize: '0.7rem', color: '#06b6d4', fontWeight: 'bold', marginBottom: '0.2rem' }}>🧱 Cenário 3D Voxel (Minecraft)</div>
             <Toggle label="Ativar Modo 3D" value={!!safeConfig.enable3DArena} onChange={v => update('enable3DArena', v)} />
-            <Toggle label="🧪 Cena 3D unificada (Fase B - teste)" value={!!safeConfig.unified3D} onChange={v => update('unified3D', v)} />
+            <Toggle label="🎮 Cena 3D unificada (padrão)" value={!!safeConfig.unified3D} onChange={v => update('unified3D', v)} />
             {safeConfig.unified3D && (
               <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
                 Renderiza jogador + monstro DENTRO da cena (sem overlays). Teste: posições ficam automáticas.

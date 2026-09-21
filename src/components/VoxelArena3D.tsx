@@ -109,7 +109,7 @@ function makeNameSprite(text: string, opts?: { color?: string; scale?: number })
     _nameTextureCache.set(cacheKey, tex);
   }
   const scale = opts?.scale ?? 1;
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: false, sizeAttenuation: true });
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: true });
   const sprite = new THREE.Sprite(mat);
   const aspect = tex.image.width / tex.image.height;
   sprite.scale.set(0.38 * aspect * scale, 0.38 * scale, 1);
@@ -125,59 +125,92 @@ function makeNameGroup(): THREE.Group {
 }
 
 // ===== Sprite 3D de CORAÇÕES (sob o nome, acompanha o boneco) =====
+// Desenha o MESMO coração do HUD 2D (ícone lucide "Heart"): fundo vermelho-claro com
+// contorno vivo + preenchimento em gradiente. Coração parcial (1/4, 1/3, 1/2) enche de
+// baixo para cima (mantém o formato). Muitos corações quebram em LINHAS (máx. 6/linha).
+// O path do coração tem bbox ~x:[3.16,20.84] y:[4.61,21.23] (não centrado em 12x12) —
+// por isso mapeamos o bbox REAL para o retângulo do coração (evita cortes nas bordas).
+const LUCIDE_HEART_PATH = 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z';
+const HEART_BBOX = { minX: 3.16, minY: 4.61, maxX: 20.84, maxY: 21.23 };
+const HEARTS_PER_ROW = 6;
 const _heartsTextureCache = new Map<string, THREE.CanvasTexture>();
 function makeHeartsSprite(hearts: number, frac: number, opts?: { scale?: number }): THREE.Sprite {
-  const n = Math.max(0, Math.min(20, Math.floor(hearts)));
+  const n = Math.max(0, Math.min(30, Math.floor(hearts)));
   const key = `${n}_${Math.round(frac * 100)}`;
   let tex = _heartsTextureCache.get(key);
   if (!tex) {
-    const heartSize = 44;
-    const gap = 6;
-    const w = Math.max(52, n * (heartSize + gap) - gap + 28);
-    const h = heartSize + 22;
+    const heartSize = 52;      // altura do coração (px no canvas)
+    const heartW = 52;
+    const gap = 12;
+    const pad = 18;
+    const rows = Math.max(1, Math.ceil(n / HEARTS_PER_ROW));
+    const cols = Math.min(HEARTS_PER_ROW, n === 0 ? 1 : n);
+    const w = cols * heartW + (cols - 1) * gap + pad * 2;
+    const h = rows * heartSize + (rows - 1) * gap + pad * 2;
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, w, h);
-    const drawHeart = (x: number, y: number, size: number, fillStyle: string) => {
+    const heartPath = new Path2D(LUCIDE_HEART_PATH);
+    const drawHeart = (px: number, py: number, fillStyle: string | CanvasGradient, strokeStyle: string, strokeW = 1.5, blur = 0) => {
       g.save();
-      g.translate(x, y);
-      g.scale(size / 30, size / 30);
-      g.beginPath();
-      g.moveTo(0, 6);
-      g.bezierCurveTo(-10, -6, -8, -12, 0, -6);
-      g.bezierCurveTo(8, -12, 10, -6, 0, 6);
-      g.closePath();
+      // Mapeia o bbox REAL do path para o retângulo centrado em (px, py)
+      const sx = heartW / (HEART_BBOX.maxX - HEART_BBOX.minX);
+      const sy = heartSize / (HEART_BBOX.maxY - HEART_BBOX.minY);
+      g.translate(px, py);
+      g.scale(sx, sy);
+      g.translate(-(HEART_BBOX.minX + HEART_BBOX.maxX) / 2, -(HEART_BBOX.minY + HEART_BBOX.maxY) / 2);
+      if (blur > 0) {
+        g.shadowColor = 'rgba(255,70,70,0.9)';
+        g.shadowBlur = blur;
+      }
       g.fillStyle = fillStyle;
-      g.fill();
+      g.fill(heartPath);
+      g.shadowBlur = 0;
+      if (strokeStyle !== 'none') {
+        g.strokeStyle = strokeStyle;
+        g.lineWidth = strokeW;
+        g.lineJoin = 'round';
+        g.lineCap = 'round';
+        g.stroke(heartPath);
+      }
       g.restore();
     };
     for (let i = 0; i < n; i++) {
-      const x = (heartSize + gap) * i + heartSize / 2 + 12;
-      const y = heartSize / 2 + 6;
-      if (i === n - 1 && frac < 1) {
-        drawHeart(x, y, heartSize, 'rgba(239,68,68,0.15)');
+      const row = Math.floor(i / HEARTS_PER_ROW);
+      const col = i % HEARTS_PER_ROW;
+      const x = col * (heartW + gap) + heartW / 2 + pad;
+      const y = row * (heartSize + gap) + heartSize / 2 + pad;
+      // Gradiente alinhado a ESTE coração (coordenadas do canvas antes do translate)
+      const grad = g.createLinearGradient(x, y - heartSize / 2, x, y + heartSize / 2);
+      grad.addColorStop(0, '#ff7a7a');
+      grad.addColorStop(0.5, '#ef4444');
+      grad.addColorStop(1, '#dc2626');
+      // 1. Fundo (coração vazio): mesmo do HUD 2D do jogador
+      drawHeart(x, y, 'rgba(239,68,68,0.18)', '#ef4444', 1.5, 2);
+      // 2. Preenchimento — cheio ou PARCIAL (enche de baixo para cima com a fração)
+      const fillPct = i === n - 1 ? Math.max(0.08, Math.min(1, frac)) : 1;
+      if (fillPct < 1) {
         g.save();
         g.beginPath();
-        g.rect(0, 0, w * frac, h);
+        g.rect(x - heartW / 2, y - heartSize / 2 + heartSize * (1 - fillPct), heartW, heartSize * fillPct);
         g.clip();
-        drawHeart(x, y, heartSize, '#ef4444');
+        drawHeart(x, y, grad, 'none', 1.2, 4);
         g.restore();
       } else {
-        drawHeart(x, y, heartSize, '#ef4444');
+        drawHeart(x, y, grad, '#ef4444', 1.2, 4);
       }
     }
-    g.shadowColor = 'rgba(0,0,0,0.9)';
-    g.shadowBlur = 6;
     tex = new THREE.CanvasTexture(c);
     tex.anisotropy = 4;
+    (tex as any).colorSpace = THREE.SRGBColorSpace;
     _heartsTextureCache.set(key, tex);
   }
   const scale = opts?.scale ?? 1;
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: false, sizeAttenuation: true });
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: true });
   const sprite = new THREE.Sprite(mat);
   const aspect = tex.image.width / tex.image.height;
-  // Altura ~0.62 unidades (legível sobre o boneco); largura proporcional ao número de corações.
+  // Altura ~0.62 unidades (dobro do 0.34 anterior); largura proporcional.
   sprite.scale.set(0.62 * aspect * scale, 0.62 * scale, 1);
   return sprite;
 }
@@ -231,7 +264,7 @@ function makeStatusBarsSprite(statuses: { type: string; pct: number }[]): THREE.
     tex.anisotropy = 4;
     _statusTexCache.set(key, tex);
   }
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: false, sizeAttenuation: true });
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: true });
   const sprite = new THREE.Sprite(mat);
   const aspect = tex.image.width / tex.image.height;
   const scale = 0.5;
@@ -1042,6 +1075,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const monsterEffectLevelRef = useRef(monsterEffectLevel);
   monsterEffectLevelRef.current = monsterEffectLevel;
   const unifiedMonsterBaseScaleRef = useRef(1);
+  // Altura REAL do topo do modelo do monstro (medida após fit) — usada para posicionar
+  // nome/corações ACIMA da cabeça em qualquer modelo (golem, etc.).
+  const monsterHeadTopRef = useRef(UNIFIED_ENTITY_HEIGHT);
   // Rocha de gelo 3D (quando congelado)
   const iceGroupRef = useRef<THREE.Group | null>(null);
   const monsterFrozenRef = useRef(monsterFrozen);
@@ -1713,7 +1749,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       // quando o boneco some da arena (fuga/morte).
       if (monsterNameGroupRef.current && unifiedMonsterGroupRef.current) {
         const g = unifiedMonsterGroupRef.current;
-        monsterNameGroupRef.current.position.set(g.position.x, g.position.y + UNIFIED_ENTITY_HEIGHT * Math.max(0.2, monsterZoomRef.current) + 0.34, g.position.z + 0.01);
+        monsterNameGroupRef.current.position.set(g.position.x, g.position.y + monsterHeadTopRef.current + 0.38, g.position.z + 0.01);
         // Some quando o monstro morre (death-*), foge ou está congelado.
         const monsterDead = String(monsterAnimRef.current || '').startsWith('death-');
         monsterNameGroupRef.current.visible = g.visible && !monsterFrozenRef.current && !monsterDead;
@@ -2154,20 +2190,25 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedMonsterBaseScaleRef.current = root.scale.x || 1;
       applyEntityTint(root, monsterEffectTintRef.current, monsterEnragedRef.current, monsterEffectTintAmountRef.current);
       playEntityAnimByName(actions, mixer, monsterAnimRef.current);
+      // Mede a altura REAL do modelo (após fit) para posicionar o HUD acima da cabeça.
+      try {
+        const box = computeWorldBox(root);
+        if (!box.isEmpty()) monsterHeadTopRef.current = box.max.y;
+      } catch { /* usa o fallback */ }
       // Nome acima da cabeça (sprite 3D que acompanha o boneco).
       if (monsterName) {
         const nameGroup = makeNameGroup();
-        nameGroup.position.set(0, UNIFIED_ENTITY_HEIGHT * Math.max(0.2, monsterZoomRef.current) + 0.34, 0);
+        nameGroup.position.set(0, monsterHeadTopRef.current + 0.38, 0);
         nameGroup.add(makeNameSprite(monsterName, { color: '#ff5a5a' }));
         // Barras de efeito ativo ACIMA do nome (esvaziam por segundo).
         const statusSprite = makeStatusBarsSprite(monsterStatusesRef.current);
-        statusSprite.position.y = 0.32;
+        statusSprite.position.y = 0.34;
         statusSprite.visible = monsterStatusesRef.current.length > 0;
         nameGroup.add(statusSprite);
         monsterStatusSpriteRef.current = statusSprite;
         // Corações abaixo do nome (usa as refs — valor atual no load assíncrono).
         const heartsSprite = makeHeartsSprite(monsterHeartsRef.current, monsterHeartFracRef.current);
-        heartsSprite.position.y = -0.45;
+        heartsSprite.position.y = -0.42;
         heartsSprite.visible = monsterHeartsRef.current > 0;
         nameGroup.add(heartsSprite);
         monsterHeartsSpriteRef.current = heartsSprite;
