@@ -1115,10 +1115,14 @@ export default function Dashboard() {
       top10General.forEach(s => studentIds.add(s.uid));
       if (userData?.uid) studentIds.add(userData.uid);
 
-      if (studentIds.size === 0) return;
+      // Não roda/cacheia enquanto a lista de alunos não carregou (senão grava um resultado
+      // parcial e o cache serve isso depois → todos ficam sem itens).
+      if (studentIds.size === 0 || allStudents.length === 0) return;
 
-      // Verifica o cache — itens do ranking mudam raramente (chave inclui a turma selecionada)
-      const cacheKey = `${CACHE_KEYS.rankingItems()}|${effClass || 'all'}`;
+      // A chave do cache inclui os IDs dos alunos: se a lista mudar (carregou), a chave muda
+      // e o cache parcial anterior não é reaproveitado.
+      const idsKey = Array.from(studentIds).sort().join(',');
+      const cacheKey = `${CACHE_KEYS.rankingItems()}|${effClass || 'all'}|${idsKey}`;
       const cached = sessionCache.get<Record<string, EquippedItem[]>>(cacheKey);
       if (cached) {
         setRankingEquippedItems(cached);
