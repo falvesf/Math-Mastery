@@ -171,7 +171,7 @@ export interface MonsterStatsConfig {
   /** Pontos de vida da criatura (usado nos mapas exploráveis). */
   hp?: number;
   xp?: number;
-  /** Tabela de fuga configurável ("corações restantes → chance %"). Vazia = curva padrão. */
+  /** Tabela de fuga configurável ("corações restantes → chance %"). Vazia = NUNCA foge. */
   fleeChanceTable?: Array<{ minHearts: number; chance: number }>;
 }
 
@@ -564,7 +564,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
               </label>
               <p style={{ margin: '0 0 0.5rem', fontSize: '0.66rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
                 No golpe final (última questão), o monstro foge conforme o número de corações que ainda lhe restam.
-                Deixe a tabela vazia para usar a <strong>curva padrão do jogo</strong>.
+                <strong> Sem tabela cadastrada, o monstro NUNCA foge.</strong> Só foge se houver uma chance cadastrada e a condição (corações) for atendida.
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.5rem', marginBottom: '0.5rem' }}>
               {(currentStats.fleeChanceTable || []).map((row, i) => (
@@ -622,7 +622,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
                     onClick={() => updateStats({ fleeChanceTable: undefined })}
                     style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: 'var(--text-secondary)', fontSize: '0.78rem', cursor: 'pointer' }}
                   >
-                    Usar padrão do jogo
+                    Usar padrão do jogo (limpar tabela = nunca foge)
                   </button>
                 )}
               </div>

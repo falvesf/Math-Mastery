@@ -191,6 +191,26 @@ function generateGrid(cols: number, rows: number, opts?: { wallDensity?: number;
   return { wall, start: { x: 1, z: Math.floor(rows / 2) }, end: { x: cols - 2, z: Math.floor(rows / 2) }, doorCells: [] };
 }
 
+// Bal�o de fala 3D (sprite com texto) � usado pelo jogador e pelos monstros no mapa.
+function makeBubbleTexture(text: string): { tex: any; w: number; h: number } {
+  const cv = document.createElement('canvas'); const g = cv.getContext('2d')!;
+  const fs = 22; g.font = `bold ${fs}px sans-serif`;
+  const tw = Math.ceil(g.measureText(text).width);
+  cv.width = Math.min(300, Math.max(110, tw + 26)); cv.height = 64;
+  const c = cv.getContext('2d')!;
+  const rr = (x: number, y: number, w: number, h: number, r: number) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
+  c.fillStyle = 'rgba(255,255,255,0.97)'; rr(3, 3, cv.width - 6, 40, 10); c.fill();
+  c.beginPath(); c.moveTo(cv.width / 2 - 8, 42); c.lineTo(cv.width / 2 + 8, 42); c.lineTo(cv.width / 2, 56); c.closePath(); c.fill();
+  c.fillStyle = '#0b1220'; c.font = `bold ${fs}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(text, cv.width / 2, 23, cv.width - 18);
+  const tex = new THREE.CanvasTexture(cv); (tex as any).colorSpace = (THREE as any).SRGBColorSpace; return { tex, w: cv.width, h: cv.height };
+}
+// Falas gen�ricas dos monstros do mapa (ataque / dano / derrota).
+const MONSTER_LINES = {
+  attack: ['GRRR!', 'RAAA!', 'Te peguei!', 'Vem!', 'Ugh!'],
+  hurt: ['Ai!', 'Grrk!', 'Argh!', 'Ouch!'],
+  defeat: ['Ugh...', 'Grr...', 'Nao...', '...'],
+};
 export default function MapExplorerPoC({ onExit, config: configProp, equippedItems: itemsProp, scenarioConfig, playerMode = false, scenarioTheme, bossOverride, onBossTouched }: { onExit?: () => void; config?: AvatarConfig | null; equippedItems?: EquippedItem[]; scenarioConfig?: any; playerMode?: boolean; scenarioTheme?: ThemeKey; bossOverride?: { name?: string; config?: any }; onBossTouched?: (remainingHp: number) => void }) {
 const { userData } = useAuth();
   const [themeKey, setThemeKey] = useState<ThemeKey>(scenarioTheme || 'plains');
@@ -699,6 +719,8 @@ if (!cancelled) {
     const cfgDoorTypeCells: Record<string, string> = (sc.doorTypeCells && typeof sc.doorTypeCells === 'object') ? sc.doorTypeCells : {};
     // Chaves do cenário (para portas "chave" e loot de chave).
     const cfgKeys: any[] = (Array.isArray(sc.keys) && sc.keys.length) ? sc.keys : [];
+    // Loot configurável dos BAÚS (por cenário). Sem config → moedas 1..10 (comportamento antigo).
+    const cfgChestConfig: any = (sc && typeof sc.chestConfig === 'object') ? sc.chestConfig : {};
     // População de monstros do cenário (catálogo + células pintadas + regiões + boss).
     const cfgMonster: any = sc.monsterConfig || {};
     const cfgMonsterIds: string[] = Array.isArray(cfgMonster.monsters) ? cfgMonster.monsters : [];
@@ -858,12 +880,12 @@ if (!cancelled) {
 
     // ---- Itens aleatórios ----
     const coinsList: { x: number; z: number; mesh: THREE.Object3D; value: number }[] = [];
-    type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; drops?: any[]; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string };
+    type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; drops?: any[]; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number };
     const slimes: Slime[] = [];
     const rocks: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
     const hazards: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
     const chests: { x: number; z: number; mesh: THREE.Object3D }[] = [];
-    const doors: { x: number; z: number; mesh: THREE.Mesh; open: boolean; hp: number; maxHp: number; def: number; typeId: string }[] = [];
+    const doors: { x: number; z: number; mesh: THREE.Object3D; open: boolean; hp: number; maxHp: number; def: number; typeId: string }[] = [];
     const coinGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.08, 16);
     const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd34d, emissive: 0xffaa00, emissiveIntensity: 0.6 });
     const slimeGeo = new THREE.SphereGeometry(0.4, 14, 12);
@@ -1005,7 +1027,11 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       const stFg = new THREE.Mesh(stFgGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
       stFg.position.z = 0.01; stBar.add(stBg); stBar.add(stFg);
       stBar.visible = false; scene.add(stBar);
-      const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg } };
+      // Balão de fala 3D do monstro (sprite na cena, acima da cabeça — independe do zoom).
+      const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
+      bubble.visible = false; bubble.renderOrder = 999; scene.add(bubble);
+      const bubbleY = modelUrl ? 2.3 : 1.95;
+      const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY };
       slimes.push(slime);
       return slime;
     };
@@ -1201,11 +1227,32 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
       const tex = doorTexByType[type.id];
       return new THREE.MeshStandardMaterial({ map: tex || doorTex, roughness: 0.85, color });
     };
+    // Cria a porta: usa o MODELO 3D ativo (categoria 'door'), se houver; senão a caixa procedural.
+    const makeDoorMesh = (type: any): THREE.Object3D => {
+      const tmpl = doorTemplateRef.current;
+      if (tmpl) {
+        try {
+          const clone = tmpl.clone(true);
+          clone.rotation.y = Math.PI / 2; // painel da divisória (fino em X)
+          clone.updateMatrixWorld(true);
+          const bb = new THREE.Box3().setFromObject(clone);
+          const maxDim = Math.max(0.001, Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z));
+          const s = 1.8 / maxDim;
+          clone.scale.setScalar(s);
+          clone.position.y = -bb.min.y * s;
+          const holder = new THREE.Group(); holder.add(clone);
+          return holder;
+        } catch { /* fallback abaixo */ }
+      }
+      const geo = new THREE.BoxGeometry(0.3, 1.8, 0.94); geo.translate(0, 0.9, 0);
+      const m = new THREE.Mesh(geo, makeDoorMaterial(type)); m.castShadow = true;
+      return m;
+    };
     for (const dc of grid.doorCells) {
       const dt = (cfgDoorTypeCells[`${dc.x},${dc.z}`] && cfgDoorTypes.find((t: any) => t.id === cfgDoorTypeCells[`${dc.x},${dc.z}`])) || cfgDefaultDoor;
       const type = dt || cfgDoor;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.8, 0.94), makeDoorMaterial(type));
-      m.position.set(wx(dc.x), 0.9, wz(dc.z)); m.castShadow = true; scene.add(m);
+      const m = makeDoorMesh(type);
+      m.position.set(wx(dc.x), 0, wz(dc.z)); scene.add(m);
       doors.push({ x: dc.x, z: dc.z, mesh: m, open: false, hp: Number(type.hp) || DOOR_HP, maxHp: Number(type.hp) || DOOR_HP, def: Number(type.def) || 0, typeId: type.id });
     }
     // Quando uma textura de porta carrega, reaplica nos objetos já criados desse tipo.
@@ -1214,7 +1261,7 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
         tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
         tex.colorSpace = THREE.SRGBColorSpace;
         doorTexByType[dt.id] = tex;
-        for (const d of doors) if (d.typeId === dt.id) d.mesh.material = makeDoorMaterial(dt);
+        for (const d of doors) if (d.typeId === dt.id && (d.mesh as any).isMesh) (d.mesh as any).material = makeDoorMaterial(dt);
       }, undefined, () => { /* fallback: textura procedural */ });
     }
     // Abre (some) uma porta respondida corretamente.
@@ -1276,8 +1323,8 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
         return null;
       })();
       if (bossDoorCell) {
-        const dm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.8, 0.94), makeDoorMaterial({ id: 'boss_door', color: '#a16207' }));
-        dm.position.set(wx(bossDoorCell.x), 0.9, wz(bossDoorCell.z)); dm.castShadow = true; scene.add(dm);
+        const dm = makeDoorMesh({ id: 'boss_door', color: '#a16207' });
+        dm.position.set(wx(bossDoorCell.x), 0, wz(bossDoorCell.z)); scene.add(dm);
         doors.push({ x: bossDoorCell.x, z: bossDoorCell.z, mesh: dm, open: false, hp: 999999, maxHp: 999999, def: 999999, typeId: 'boss_door' });
       }
     }
@@ -1328,20 +1375,7 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
     playerRoot.position.set(wx(playerPos.x), 0, wz(playerPos.z));
     scene.add(playerRoot);
 
-    // ---- BALÃO DE DIÁLOGO 3D (sprite com texto das falas configuradas) ----
-    const makeBubbleTexture = (text: string) => {
-      const cv = document.createElement('canvas'); const g = cv.getContext('2d')!;
-      const fs = 22; g.font = `bold ${fs}px sans-serif`;
-      const tw = Math.ceil(g.measureText(text).width);
-      cv.width = Math.min(300, Math.max(110, tw + 26)); cv.height = 64;
-      const c = cv.getContext('2d')!;
-      const rr = (x: number, y: number, w: number, h: number, r: number) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
-      c.fillStyle = 'rgba(255,255,255,0.97)'; rr(3, 3, cv.width - 6, 40, 10); c.fill();
-      c.beginPath(); c.moveTo(cv.width / 2 - 8, 42); c.lineTo(cv.width / 2 + 8, 42); c.lineTo(cv.width / 2, 56); c.closePath(); c.fill();
-      c.fillStyle = '#0b1220'; c.font = `bold ${fs}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText(text, cv.width / 2, 23, cv.width - 18);
-      const tex = new THREE.CanvasTexture(cv); (tex as any).colorSpace = (THREE as any).SRGBColorSpace; return { tex, w: cv.width, h: cv.height };
-    };
+    // ---- BALÃO DE DIÁLOGO 3D (usa o makeBubbleTexture do módulo) ----
     const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
     bubble.position.set(0, 3.2, 0); bubble.visible = false; bubble.renderOrder = 999; playerRoot.add(bubble);
     let bubbleUntil = 0;
@@ -1351,6 +1385,19 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
         (bubble.material as any).map = tex; (bubble.material as any).needsUpdate = true;
         bubble.scale.set(w / 150, h / 150, 1);
         bubble.visible = true; bubbleUntil = performance.now() + 2800;
+      } catch { /* noop */ }
+    };
+    // Fala do MONSTRO (balão 3D acima da cabeça dele).
+    const speakMonster = (s: any, kind: 'attack' | 'hurt' | 'defeat') => {
+      if (!s || !s.bubble) return;
+      try {
+        const arr = MONSTER_LINES[kind];
+        const text = arr[Math.floor(Math.random() * arr.length)];
+        const { tex, w, h } = makeBubbleTexture(text);
+        (s.bubble.material as any).map = tex; (s.bubble.material as any).needsUpdate = true;
+        s.bubble.scale.set(w / 150, h / 150, 1);
+        s.bubble.visible = true;
+        s.bubbleUntil = performance.now() + (kind === 'defeat' ? 3500 : 1600);
       } catch { /* noop */ }
     };
     const viewer = new SkinViewer({ width: 200, height: 320, renderPaused: true });
@@ -1374,7 +1421,9 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
       try {
         const cfg = (cfgRef.current || {}) as AvatarConfig;
         const items = playerItems;
-        const skinUrl = (cfg as any).customSkinUrl || await generateMinecraftSkinUrl(cfg as any);
+        // Normaliza a URL do skin (igual ao AvatarCharacter): sem esquema → https://.
+        const rawSkin = (cfg as any).customSkinUrl || await generateMinecraftSkinUrl(cfg as any);
+        const skinUrl = (rawSkin && !/^(https?:|data:|blob:)/i.test(rawSkin)) ? `https://${rawSkin}` : rawSkin;
         await viewer.loadSkin(skinUrl, { model: (cfg as any).gender === 'female' ? 'slim' : 'default' });
         if (disposed) return;
         const player = viewer.playerObject as any;
@@ -1726,21 +1775,38 @@ const hurtPlayer = (hearts: number, message: string) => {
     // Botão/slot de picareta (desktop e mobile) alterna arma ↔ picareta.
     pickaxeToggleRef.current = () => setDebugPickaxe(!debugPickaxe);
 
+    // Abre um BAÚ aplicando o LOOT configurado no cenário (ou moedas 1..10 no padrão).
+    const rollEntry = (table: any[]) => {
+      const total = table.reduce((s, e) => s + Math.max(0, Number(e.weight) || 0), 0) || 1;
+      let r = Math.random() * total; let pick = table[table.length - 1];
+      for (const e of table) { r -= Math.max(0, Number(e.weight) || 0); if (r <= 0) { pick = e; break; } }
+      return pick;
+    };
+    const applyEntry = (entry: any, world: THREE.Vector3): string => {
+      const kind = entry?.kind;
+      if (kind === 'coins') { const min = Number(entry.min) || 1, max = Number(entry.max) || 10; const v = min + Math.floor(Math.random() * (max - min + 1)); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); return `+${v} 🪙`; }
+      if (kind === 'heart') { useConsumableRef.current(1); return '❤️ +1'; }
+      if (kind === 'potion') { callbacks.current.addPotion(); return '🧪 poção de cura'; }
+      if (kind === 'key') { const key = (entry.keyId && cfgKeys.find((k: any) => k.id === entry.keyId)) || cfgKeys[0]; if (key) { heldKeys.add(String(key.id)); setHeldKeysCount(heldKeys.size); return `🔑 ${key.name || 'chave'}`; } return '🔑 chave'; }
+      if (kind === 'item') { const item = itemCatalogRef.current.get(String(entry.itemId)) || Array.from(itemCatalogRef.current.values())[0]; if (item) { spawnLootPickup(Math.round(playerPos.x), Math.round(playerPos.z), 'item', item); return `📦 ${item.title || 'item'}`; } return '📦 item'; }
+      return '';
+    };
+    const openChest = (chest: any) => {
+      chest.mesh.visible = false; scene.remove(chest.mesh);
+      playFx(chestConfigRef.current?.chestAudioUrl || battleSoundsRef.current.punch, 0.85);
+      const world = new THREE.Vector3(wx(chest.x), 1.0, wz(chest.z));
+      const table = (Array.isArray(cfgChestConfig.loot) && cfgChestConfig.loot.length) ? cfgChestConfig.loot : null;
+      if (table) { const got = applyEntry(rollEntry(table), world); callbacks.current.setMsg(`🎁 Baú aberto! ${got}`.trim()); }
+      else { const v = 1 + Math.floor(Math.random() * 10); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); callbacks.current.setMsg(`🎁 Baú aberto! +${v} 🪙`); }
+    };
+
     // Interação por TOQUE/CLIQUE (mobile): porta/baú ou alterna a picareta.
     interactRef.current = () => {
       const gx = Math.round(playerPos.x), gz = Math.round(playerPos.z);
       const door = doors.find(d => d.mesh.visible && Math.abs(d.x - gx) + Math.abs(d.z - gz) <= 1);
       if (door) { handleDoor(door); return; }
       const chest = chests.find(c => c.mesh.visible && Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1);
-      if (chest) {
-        const value = 1 + Math.floor(Math.random() * 10);
-        chest.mesh.visible = false; scene.remove(chest.mesh);
-        playFx(chestConfigRef.current?.chestAudioUrl || battleSoundsRef.current.punch, 0.85);
-        callbacks.current.setCoins(n => n + value);
-        spawnPop(new THREE.Vector3(wx(chest.x), 1.0, wz(chest.z)), `+${value} 🪙`, false, 'coin');
-        callbacks.current.setMsg(`🎁 Baú aberto! +${value} 🪙`);
-        return;
-      }
+      if (chest) { openChest(chest); return; }
       const breakNear = rocks.some(r => r.hp > 0 && r.mesh.visible && Math.hypot(wx(r.x) - wx(gx), wz(r.z) - wz(gz)) <= 1.4)
         || hazards.some(h => h.hp > 0 && h.mesh.visible && Math.hypot(wx(h.x) - wx(gx), wz(h.z) - wz(gz)) <= 1.4)
         || doors.some(d => d.hp > 0 && d.mesh.visible && Math.hypot(wx(d.x) - wx(gx), wz(d.z) - wz(gz)) <= 1.4);
@@ -1780,7 +1846,7 @@ const hurtPlayer = (hearts: number, message: string) => {
           return;
         }
         target.hp -= roll.damage;
-        flashMonster(target); playMonsterHurtSound(target);
+        flashMonster(target); playMonsterHurtSound(target); speakMonster(target, 'hurt');
         { const kdx = target.root.position.x - pwx, kdz = target.root.position.z - pwz; const kd = Math.hypot(kdx, kdz) || 1; target.kb = 0.2; target.kbx = kdx / kd; target.kbz = kdz / kd; }
         if (weaponEffect && !debugPickaxe && Math.random() < weaponEffectChance) {
           if (['poison', 'bleed', 'burn', 'electric', 'freeze'].includes(weaponEffect)) applyStatus(target, weaponEffect as any);
@@ -1816,7 +1882,7 @@ const hurtPlayer = (hearts: number, message: string) => {
           dropLoot(tgt.gx, tgt.gz);
           callbacks.current.setMsg('💥 Bloco quebrado!');
           if (tgt.kind === 'wall' && Math.random() < (Number(tgt.obj.trap) || 0)) {
-            if (Math.random() < 0.5) { useConsumableRef.current(-1); callbacks.current.setMsg('🪨 A parede desabou sobre você! -1 ❤️'); }
+            if (Math.random() < 0.5) { const fb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: parseInt(theme.wall.replace('#', ''), 16) })); fb.position.set(wx(Math.round(playerPos.x)), 6, wz(Math.round(playerPos.z))); debrisGroup.add(fb); debris.push({ mesh: fb, vx: 0, vy: -2, vz: 0, life: 1.1, spin: 0.15 }); hurtPlayer(1, '🪨 A parede desabou sobre você! -1 ❤️'); }
             else { addMonster(tgt.gx, tgt.gz, 10); callbacks.current.setMsg('👾 Um monstro emergiu da parede!'); }
           }
         } else {
@@ -1895,7 +1961,7 @@ if ((target as any).isBoss) {
           spawnPop(new THREE.Vector3(target.root.position.x, target.root.position.y + 1.5, target.root.position.z), `-${roll.damage}`, roll.isCritical);
           maybeSpeak(roll.isCritical ? 'critical' : undefined);
           callbacks.current.setMsg(`${roll.isCritical ? '💥 CRÍTICO! ' : '⚔️ '}Acertou o monstro! -${roll.damage} HP${weaponEffect ? ` (${weaponEffect})` : ''}`);
-          if (target.hp <= 0) { callbacks.current.setMsg('💥 Monstro derrotado!'); callbacks.current.setCoins(n => n + 5); target.root.visible = false; recordMonsterKill(target); rollMonsterDrops(target); if ((target as any).isKeyHolder) spawnBossKey(target); maybeSpeak('victory'); }
+        if (target.hp <= 0) { callbacks.current.setMsg('💥 Monstro derrotado!'); callbacks.current.setCoins(n => n + 5); speakMonster(target, 'defeat'); target.root.visible = false; recordMonsterKill(target); rollMonsterDrops(target); if ((target as any).isKeyHolder) spawnBossKey(target); maybeSpeak('victory'); }
           return;
         }
         // 2) Quebráveis (rocha / cacto / parede / porta) mais próximo COM VISÃO.
@@ -1925,7 +1991,7 @@ if ((target as any).isBoss) {
             callbacks.current.setMsg('💥 Bloco quebrado!');
             // ARMADILHA: chance de a parede "revidar" ao ser quebrada.
             if (tgt.kind === 'wall' && Math.random() < (Number(tgt.obj.trap) || 0)) {
-              if (Math.random() < 0.5) { useConsumableRef.current(-1); callbacks.current.setMsg('🪨 A parede desabou sobre você! -1 ❤️'); }
+              if (Math.random() < 0.5) { const fb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: parseInt(theme.wall.replace('#', ''), 16) })); fb.position.set(wx(Math.round(playerPos.x)), 6, wz(Math.round(playerPos.z))); debrisGroup.add(fb); debris.push({ mesh: fb, vx: 0, vy: -2, vz: 0, life: 1.1, spin: 0.15 }); hurtPlayer(1, '🪨 A parede desabou sobre você! -1 ❤️'); }
               else { addMonster(tgt.gx, tgt.gz, 10); callbacks.current.setMsg('👾 Um monstro emergiu da parede!'); }
             }
           } else {
@@ -2135,6 +2201,11 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
       // Durante o TUTORIAL de 1ª visita, os monstros ficam PASSIVOS (só vagam, não atacam).
       const tutorialBlock = tutorialActiveRef.current;
       for (const s of slimes) {
+        // Balão de fala do monstro (posiciona acima da cabeça e some ao expirar).
+        if (s.bubble) {
+          if (performance.now() < (s.bubbleUntil || 0)) { s.bubble.position.set(s.root.position.x, s.bubbleY || 1.95, s.root.position.z); s.bubble.visible = true; }
+          else if (s.bubble.visible) s.bubble.visible = false;
+        }
         if (s.hp <= 0) { s.root.visible = false; s.bar.visible = false; if (s.statusBar) s.statusBar.g.visible = false; continue; }
         const dxp = wx(playerPos.x) - s.root.position.x;
         const dzp = wz(playerPos.z) - s.root.position.z;
@@ -2195,6 +2266,7 @@ if (!s.lungeHit && pr >= 0.5) {
             s.lungeHit = true;
             s.attackCd = 1.8;
             playFx(s.attackSound || battleSoundsRef.current.punch, 0.8);
+            speakMonster(s, 'attack');
             // CHEFE tocou o jogador → grunido e só depois a batalha (mapa encerra).
             if (s.isBoss) {
               if (!s.grunting) { s.grunting = true; bossGruntThenBattle(s.gruntUrl || ''); }

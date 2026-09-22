@@ -707,7 +707,7 @@ export interface AvatarCharacterProps {
   equippedItems?: EquippedItem[];
   size?: number;
   interactive?: boolean;
-  animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'cheer' | 'raise-hand' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice' | 'victory-easy' | 'victory-mid' | 'victory-hard';
+  animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'lament' | 'cheer' | 'raise-hand' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice' | 'victory-easy' | 'victory-mid' | 'victory-hard';
   expression?: 'normal' | 'serious' | 'sad' | 'happy' | 'smile';
   role?: 'player' | 'monster';
   showSlots?: boolean;
@@ -3199,6 +3199,17 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
         player.skin.leftArm.rotation.z = 0.5;
         player.skin.rightArm.rotation.z = -0.5;
         player.position.z = Math.abs(Math.sin(time * 10)) * -3;
+      });
+    } else if (animation === 'lament') {
+      // LAMENTO (monstro fugiu): ajoelha e balança a cabeça.
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        player.position.y = -5;
+        player.skin.leftLeg.rotation.x = 1.15;
+        player.skin.rightLeg.rotation.x = 1.15;
+        player.skin.head.rotation.y = Math.sin(time * 7) * 0.3;
+        player.skin.head.rotation.x = 0.28;
+        player.skin.leftArm.rotation.x = 0.55; player.skin.leftArm.rotation.z = 0.12;
+        player.skin.rightArm.rotation.x = 0.55; player.skin.rightArm.rotation.z = -0.12;
       });
     } else if (animation === 'death-fall') {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {

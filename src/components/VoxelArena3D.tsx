@@ -118,8 +118,44 @@ function makeNameSprite(text: string, opts?: { color?: string; scale?: number })
 
 // Cria um "grupo de nome" que fica ACIMA da cabeça do boneco e herda a posição (mas
 // NÃO a rotação Y de combate) do grupo do personagem. Retorna o grupo pai a anexar.
-function makeNameGroup(): THREE.Group {
-  const g = new THREE.Group();
+// ===== Sprite 3D de BALÃO DE FALA (bate-papo acima da cabeça, embutido no 3D) =====
+const _speechTextureCache = new Map<string, THREE.CanvasTexture>();
+function makeSpeechSprite(text: string): THREE.Sprite | null {
+  if (!text) return null;
+  let tex = _speechTextureCache.get(text);
+  if (!tex) {
+    const font = '700 34px "Segoe UI", Arial, sans-serif';
+    const c = document.createElement('canvas');
+    const g = c.getContext('2d')!;
+    g.font = font;
+    const tw = g.measureText(text).width;
+    const padX = 16;
+    const w = Math.max(96, Math.ceil(tw) + padX * 2);
+    const h = 78;
+    c.width = w; c.height = h;
+    const g2 = c.getContext('2d')!;
+    g2.clearRect(0, 0, w, h);
+    // Corpo do balão
+    g2.fillStyle = 'rgba(255,255,255,0.97)';
+    g2.strokeStyle = 'rgba(0,0,0,0.35)'; g2.lineWidth = 2;
+    g2.beginPath(); g2.roundRect(padX / 2, 4, w - padX, 50, 12); g2.fill(); g2.stroke();
+    // Rabinho
+    g2.beginPath(); g2.moveTo(w / 2 - 10, 53); g2.lineTo(w / 2 + 10, 53); g2.lineTo(w / 2, 70); g2.closePath(); g2.fill(); g2.stroke();
+    // Texto
+    g2.fillStyle = '#0b1220'; g2.font = font; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+    g2.fillText(text, w / 2, 30, w - padX * 2);
+    tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    _speechTextureCache.set(text, tex);
+  }
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: true });
+  const sprite = new THREE.Sprite(mat);
+  const aspect = tex.image.width / tex.image.height;
+  sprite.scale.set(0.62 * aspect, 0.62, 1);
+  return sprite;
+}
+
+function makeNameGroup(): THREE.Group {  const g = new THREE.Group();
   g.position.set(0, UNIFIED_ENTITY_HEIGHT + 0.34, 0);
   return g;
 }
@@ -443,6 +479,19 @@ function makeNativeAnimation(name: string): PlayerAnimation {
       const la = player.skin.leftArm; const ra = player.skin.rightArm;
       if (la) { la.rotation.x = 0.45; la.rotation.z = 0.08; }
       if (ra) { ra.rotation.x = 0.45; ra.rotation.z = -0.08; }
+    });
+  }
+  if (n === 'lament') {
+    // LAMENTO (o monstro fugiu): ajoelha e balança a cabeça de um lado para o outro.
+    return new FunctionAnimation((player: any, progress: number) => {
+      const shake = Math.sin(progress * 7) * 0.3;
+      player.position.y = -0.34; // ajoelha (afunda até os joelhos)
+      if (player.skin.leftLeg) player.skin.leftLeg.rotation.x = 1.15;
+      if (player.skin.rightLeg) player.skin.rightLeg.rotation.x = 1.15;
+      if (player.skin.head) { player.skin.head.rotation.y = shake; player.skin.head.rotation.x = 0.28; }
+      const la = player.skin.leftArm; const ra = player.skin.rightArm;
+      if (la) { la.rotation.x = 0.55; la.rotation.z = 0.12; }
+      if (ra) { ra.rotation.x = 0.55; ra.rotation.z = -0.12; }
     });
   }
   if (n.startsWith('attack')) {
@@ -886,6 +935,8 @@ export interface VoxelArena3DProps {
   playerAnim?: string;
   /** Nome exibido em sprite 3D acima da cabeça do jogador (acompanha o modelo). */
   playerName?: string;
+  /** Balão de fala 3D do jogador (texto acima da cabeça). Vazio = sem balão. */
+  playerBubble?: string;
 
   // --- Monstro (3D) ---
   monsterModelUrl?: string | null;
@@ -893,6 +944,8 @@ export interface VoxelArena3DProps {
   monsterConfig?: any;
   /** Nome exibido em sprite 3D acima da cabeça do monstro (acompanha o modelo). */
   monsterName?: string;
+  /** Balão de fala 3D do monstro (texto acima da cabeça). Vazio = sem balão. */
+  monsterBubble?: string;
   /** Corações restantes do monstro (renderizados em sprite 3D sob o nome). */
   monsterHearts?: number;
   /** Fração do coração atual (0-1) — ex.: crítico danificou parcialmente. */
@@ -955,6 +1008,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   playerEquippedItems = [],
   playerAnim = 'idle',
   playerName,
+  playerBubble,
   // @ts-ignore
   monsterModelUrl,
   // @ts-ignore
@@ -962,6 +1016,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // @ts-ignore
   monsterConfig,
   monsterName,
+  monsterBubble,
   monsterHearts = 0,
   monsterHeartFrac = 1,
   monsterStatuses = [],
@@ -1037,6 +1092,15 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const monsterNameSpriteRef = useRef<THREE.Sprite | null>(null);
   const playerNameGroupRef = useRef<THREE.Group | null>(null);
   const monsterNameGroupRef = useRef<THREE.Group | null>(null);
+  // Balões de fala 3D (sprites acima dos nomes).
+  const playerBubbleGroupRef = useRef<THREE.Group | null>(null);
+  const monsterBubbleGroupRef = useRef<THREE.Group | null>(null);
+  const playerBubbleSpriteRef = useRef<THREE.Sprite | null>(null);
+  const monsterBubbleSpriteRef = useRef<THREE.Sprite | null>(null);
+  const playerBubbleTextRef = useRef<string>(''); playerBubbleTextRef.current = playerBubble || '';
+  const monsterBubbleTextRef = useRef<string>(''); monsterBubbleTextRef.current = monsterBubble || '';
+  const playerBubbleDrawnRef = useRef<string>('\u0000');
+  const monsterBubbleDrawnRef = useRef<string>('\u0000');
   const monsterHeartsSpriteRef = useRef<THREE.Sprite | null>(null);
   const monsterStatusSpriteRef = useRef<THREE.Sprite | null>(null);
   const monsterStatusDrawnRef = useRef<string>('');
@@ -1759,6 +1823,36 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         playerNameGroupRef.current.position.set(g.position.x, g.position.y + UNIFIED_ENTITY_HEIGHT + 0.34, g.position.z + 0.01);
         playerNameGroupRef.current.visible = g.visible;
       }
+      // ---- Balões de fala 3D (embutidos, acima das cabeças; independem da resolução) ----
+      const setBubbleSprite = (sp: THREE.Sprite, txt: string) => {
+        const made = txt ? makeSpeechSprite(txt) : null;
+        if (made) { (sp.material as any).map = made.material.map; (sp.material as any).needsUpdate = true; sp.scale.copy(made.scale); sp.visible = true; }
+        else { (sp.material as any).map = null; (sp.material as any).needsUpdate = true; sp.visible = false; }
+      };
+      if (unifiedMonsterGroupRef.current) {
+        if (!monsterBubbleGroupRef.current) {
+          const bg = new THREE.Group(); scene.add(bg); monsterBubbleGroupRef.current = bg;
+          const sp = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false })); sp.visible = false; bg.add(sp); monsterBubbleSpriteRef.current = sp;
+        }
+        const g = unifiedMonsterGroupRef.current;
+        const bg = monsterBubbleGroupRef.current!;
+        const txt = monsterBubbleTextRef.current;
+        if (txt !== monsterBubbleDrawnRef.current) { monsterBubbleDrawnRef.current = txt; setBubbleSprite(monsterBubbleSpriteRef.current!, txt); }
+        bg.position.set(g.position.x, g.position.y + monsterHeadTopRef.current + 0.38 + 0.66, g.position.z + 0.03);
+        bg.visible = g.visible;
+      }
+      if (unifiedPlayerGroupRef.current) {
+        if (!playerBubbleGroupRef.current) {
+          const bg = new THREE.Group(); scene.add(bg); playerBubbleGroupRef.current = bg;
+          const sp = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false })); sp.visible = false; bg.add(sp); playerBubbleSpriteRef.current = sp;
+        }
+        const g = unifiedPlayerGroupRef.current;
+        const bg = playerBubbleGroupRef.current!;
+        const txt = playerBubbleTextRef.current;
+        if (txt !== playerBubbleDrawnRef.current) { playerBubbleDrawnRef.current = txt; setBubbleSprite(playerBubbleSpriteRef.current!, txt); }
+        bg.position.set(g.position.x, g.position.y + UNIFIED_ENTITY_HEIGHT + 0.34 + 0.66, g.position.z + 0.03);
+        bg.visible = g.visible;
+      }
       // Barras de condições do jogador: seguem o boneco e atualizam a textura por frame.
       if (playerStatusGroupRef.current && unifiedPlayerGroupRef.current) {
         const g = unifiedPlayerGroupRef.current;
@@ -2250,7 +2344,12 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       const buildNativePlayer = async () => {
         try {
           const { SkinViewer } = await import('skinview3d');
-          const skinUrl = playerSkinUrl || await generateMinecraftSkinUrl(playerConfig || ({} as any));
+          // Normaliza a URL do skin igual ao AvatarCharacter: skins salvos sem esquema (ex.:
+          // "dominio.com/storage/..." ) carregavam na 2D mas falhavam na 3D (boneco branco).
+          const rawSkin = playerSkinUrl || await generateMinecraftSkinUrl(playerConfig || ({} as any));
+          const skinUrl = (rawSkin && !/^(https?:|data:|blob:)/i.test(rawSkin)) ? `https://${rawSkin}` : rawSkin;
+          // DEBUG (temporário): mostra de onde veio o skin (data URL = gerado; senão, custom).
+          console.log('[VoxelArena3D] skin do jogador:', String(skinUrl).slice(0, 90), '| custom:', playerSkinUrl);
           const viewer = new SkinViewer({ width: 150, height: 250, renderPaused: true });
           await viewer.loadSkin(skinUrl, { model: playerConfig?.gender === 'female' ? 'slim' : 'default' });
           if (disposed) { try { viewer.dispose(); } catch { /* noop */ } return; }

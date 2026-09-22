@@ -107,31 +107,15 @@ interface UserItem {
  */
 export function getMonsterFleeChance(remainingHearts: number, totalQuestions: number, fleeTable?: Array<{ minHearts: number; chance: number }>): number {
   const h = Math.max(0, remainingHearts || 0);
-  const q = Math.max(0, totalQuestions || 0);
-  // Tabela configurada por monstro: acha o maior degrau cujo mínimo <= corações restantes.
-  if (fleeTable && fleeTable.length > 0) {
-    const steps = [...fleeTable].sort((a, b) => a.minHearts - b.minHearts);
-    let chance = 0;
-    for (const s of steps) {
-      if (h >= s.minHearts) chance = Math.min(100, Math.max(0, Number(s.chance) || 0));
-    }
-    return chance;
+  // A fuga SEGUE a tabela cadastrada na edição do monstro. SEM tabela → NUNCA foge.
+  if (!fleeTable || fleeTable.length === 0) return 0;
+  // Acha o maior degrau cujo mínimo <= corações restantes.
+  const steps = [...fleeTable].sort((a, b) => a.minHearts - b.minHearts);
+  let chance = 0;
+  for (const s of steps) {
+    if (h >= s.minHearts) chance = Math.min(100, Math.max(0, Number(s.chance) || 0));
   }
-  if (q < 5) return 0;
-  if (q <= 10) {
-    if (h >= 6) return 100;
-    if (h >= 5) return 80;
-    if (h >= 4) return 60;
-    if (h >= 3) return 40;
-    if (h >= 2) return 20;
-    return 0;
-  }
-  if (h >= q / 2) return 100;
-  if (h >= q / 3) return 80;
-  if (h >= q / 4) return 60;
-  if (h >= q / 5) return 40;
-  if (h >= q / 6) return 20;
-  return 0;
+  return chance;
 }
 
 export default function QuestGameplay() {
@@ -199,6 +183,9 @@ export default function QuestGameplay() {
   // O monstro fugiu no golpe final (vitória sem baú; permite repetir a missão).
   const [monsterFled, setMonsterFled] = useState(false);
   const monsterFledRef = useRef(false);
+  // Durante a fuga, mantém o jogador INDO ao centro da arena (classe CSS) até a recompensa —
+  // evita que a classe seja removida/repsta e o boneco volte ao ponto de partida.
+  const [fleeMoveActive, setFleeMoveActive] = useState(false);
   const [effectLevel, setEffectLevel] = useState(0);
   // Turnos restantes do status aplicado no MONSTRO (poison/burn/bleed/electric/etc.).
   // O turno em que o status foi inflingido NÃO conta. Máx. 2 turnos (evita farm infinito).
@@ -535,6 +522,8 @@ export default function QuestGameplay() {
 
   // --- Áudio da batalha ---
   const musicAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Áudio da música de vitória (para abrir a recompensa quando ela terminar).
+  const victoryAudioRef = useRef<HTMLAudioElement | null>(null);
   const musicUrlRef = useRef('');
   const musicStoppedRef = useRef(false);
   const playerDamageSoundsRef = useRef<{ male: string; female: string }>({ male: '', female: '' });
@@ -633,9 +622,22 @@ export default function QuestGameplay() {
     }
   }, [gameState, quest?.battleMusicUrl, quest?.battleMusicVolume]);
 
-  // Para a música ao desmontar (saiu da missão)
+  // Para a música ao desmontar (saiu da missão). A música de VITÓRIA desvanece suave
+  // (via timer, que continua rodando mesmo após o unmount) em vez de cortar de repente.
   useEffect(() => {
-    return () => { if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; } };
+    return () => {
+      if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; }
+      const va = victoryAudioRef.current;
+      if (va) {
+        victoryAudioRef.current = null;
+        const startVol = va.volume; const t0 = performance.now();
+        const iv = window.setInterval(() => {
+          const t = Math.min(1, (performance.now() - t0) / 900);
+          va.volume = Math.max(0, startVol * (1 - t));
+          if (t >= 1) { try { va.pause(); } catch { /* noop */ } window.clearInterval(iv); }
+        }, 50);
+      }
+    };
   }, []);
 
   const playPlayerDamageSound = () => {
@@ -685,6 +687,7 @@ export default function QuestGameplay() {
   const exitToCamp = () => {
     fadeOutMusic(900);
     fadeOutAllSounds(900);
+    fadeOutVictory(900);
     setTransition('exit');
   };
 
@@ -700,6 +703,21 @@ export default function QuestGameplay() {
       audio.volume = Math.max(0, startVol * (1 - t));
       if (t < 1) requestAnimationFrame(step);
       else { audio.pause(); musicAudioRef.current = null; }
+    };
+    requestAnimationFrame(step);
+  };
+
+  // Desvanece a música de VITÓRIA (que toca livre na tela de recompensa) até ficar muda.
+  const fadeOutVictory = (durationMs = 1500) => {
+    const audio = victoryAudioRef.current;
+    if (!audio) return;
+    const startVol = audio.volume;
+    const start = performance.now();
+    const step = () => {
+      const t = Math.min(1, (performance.now() - start) / durationMs);
+      audio.volume = Math.max(0, startVol * (1 - t));
+      if (t < 1) requestAnimationFrame(step);
+      else { try { audio.pause(); } catch { /* noop */ } victoryAudioRef.current = null; }
     };
     requestAnimationFrame(step);
   };
@@ -1673,6 +1691,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       setFrozen(false);
       setMonsterFled(false);
       monsterFledRef.current = false;
+      setFleeMoveActive(false);
       setIceMaxHp(0);
       setIceHp(0);
       iceHpRef.current = 0;
@@ -1790,8 +1809,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
     // Ritmo: o jogador fica PERPLEXO (parado) vendo o monstro fugir, depois anda calmamente
     // até o centro da arena e só então se lamenta (vitória sem baú).
     setTimeout(() => { setPlayerAnim('idle'); }, 300);
-    setTimeout(() => { setPlayerAnim('walk'); }, 2000);
-    setTimeout(() => { setPlayerAnim('exhausted'); }, 4000);
+    setTimeout(() => { setFleeMoveActive(true); setPlayerAnim('walk'); }, 2000);
+    setTimeout(() => { setPlayerAnim('lament'); }, 4600);
     setBattleMessage('');
     setTimeout(() => {
       setMonsterAnim('idle');
@@ -1934,8 +1953,20 @@ const dealTransformDamageToPlayer = (damage: number) => {
           setMonsterBubble(monsterDefeatQuote);
           setBattleMessage(getVictoryMessage());
           playMonsterGruntSound();
-          // A música de vitória entra com um pequeno atraso; antes, abaixa a de batalha
-          setTimeout(() => { fadeOutMusic(1200); playVictorySound(); }, 1200);
+          // Música de vitória + sincroniza a recompensa com o FIM da música (fallback em 8,5s).
+          let victoryDone = false;
+          const finishVictory = () => { if (victoryDone) return; victoryDone = true; finishGame(true, currentXp); };
+          setTimeout(() => {
+            fadeOutMusic(1200);
+            const url = battleSoundsRef.current.victory;
+            try {
+              if (url) {
+                const a = new Audio(resolveAudioUrl(url)); a.volume = 0.9; victoryAudioRef.current = a;
+                a.addEventListener('ended', finishVictory);
+                a.play().catch(() => {});
+              } else { playVictorySound(); }
+            } catch { playVictorySound(); }
+          }, 1200);
           
           // Entra em idle-victory (apreensão) e depois roda a animação de vitória
           setPlayerAnim('idle-victory' as any);
@@ -1948,10 +1979,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
              else if (hpPct >= 0.5) vicAnim = 'victory-easy';
              
              setPlayerAnim(`${vicAnim}_${fatality}` as any);
-             
-             // Espera 8.5 segundos (4.5 de suspense + 4 de comemoração) para abrir a recompensa
-             setTimeout(() => finishGame(true, currentXp), 8500);
-          }, 3200); // suspense: o jogador mantém a apreensão olhando o monstro antes de virar
+             // Fallback: se a música não terminar, abre a recompensa em 6,5s (antes: 8,5s).
+             setTimeout(finishVictory, 6500);
+           }, 2200); // suspense: o jogador mantém a apreensão olhando o monstro antes de virar
         }, 2500);
       }, 3000);
     } else {
@@ -4001,6 +4031,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 playerModelUrl={userData?.avatarConfig?.customModelUrl}
                 playerSkinUrl={userData?.avatarConfig?.customSkinUrl}
                 playerName="Você"
+                playerBubble={playerBubble}
                 playerStatuses={playerStatuses}
                 playerBruiseLevel={playerBruiseLevel}
                 playerBleeding={playerBleeds.length > 0}
@@ -4009,6 +4040,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 monsterSkinUrl={effectiveMonsterSkinUrl}
                 monsterConfig={quest?.monsterAvatarConfig}
                 monsterName={quest?.monsterName || 'Inimigo'}
+                monsterBubble={monsterBubble}
                 monsterHearts={monsterHearts}
                 monsterHeartFrac={monsterHeartFrac}
                 monsterStatuses={monsterStatuses}
@@ -4292,7 +4324,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
             {/* Player Side */}
             <div 
               ref={playerSideRef}
-              className={`quest-arena-side-player ${(monsterFled && (playerAnim === 'walk' || playerAnim === 'exhausted')) ? 'flee-to-center' : ''} ${playerHasUnifiedModel ? '' : (playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : '')} ${(playerHasAnyModel || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
+              className={`quest-arena-side-player ${fleeMoveActive ? 'flee-to-center' : ''} ${playerHasUnifiedModel ? '' : (playerAnim === 'attack' ? 'teleport-player' : (playerAnim === 'attack-fatal' || playerAnim === 'attack-fatal-slow') ? `teleport-player-fatal${playerAnim === 'attack-fatal-slow' ? '-slow' : ''}` : (playerAnim === 'idle-victory' || playerAnim.startsWith('victory-')) ? 'teleport-player-victory' : '')} ${(playerHasAnyModel || arenaRenderMode === '3d') ? 'is-3d' : ''}`}
               style={{
                 position: 'absolute',
                 left: arenaRenderMode === '3d'
@@ -4313,7 +4345,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 pointerEvents: 'none'
               }}
             >
-              {(playerBubble || arena.playerBubbleAlwaysOn) && (
+              {arenaRenderMode !== '3d' && (playerBubble || arena.playerBubbleAlwaysOn) && (
                 <div className="speech-bubble player debug-bubble" style={{ '--bubble-max-w': `${arena.playerBubbleMaxWidth || 200}px`, '--bubble-font': `${arena.playerBubbleFontSize || 14}px`, '--bubble-rotate': `${arena.playerBubbleRotate || 0}deg`, position: 'absolute', left: `calc(50% + ${arena.playerBubbleX}px)`, top: `${arena.playerBubbleY}px`, bottom: 'auto', transform: 'translateX(-50%)', zIndex: 30 } as any}>
                   {playerBubble || 'Olá!'}
                 </div>
@@ -4444,7 +4476,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 pointerEvents: 'none'
               }}
             >
-              {(monsterBubble || arena.monsterBubbleAlwaysOn) && (
+              {arenaRenderMode !== '3d' && (monsterBubble || arena.monsterBubbleAlwaysOn) && (
                 <div className="speech-bubble monster debug-bubble" style={{ '--bubble-max-w': `${arena.monsterBubbleMaxWidth || 200}px`, '--bubble-font': `${arena.playerBubbleFontSize || 14}px`, '--bubble-rotate': `${arena.monsterBubbleRotate || 0}deg`, position: 'absolute', left: `calc(50% + ${arena.monsterBubbleX}px)`, top: `${arena.monsterBubbleY}px`, bottom: 'auto', transform: 'translateX(-50%)', zIndex: 30 } as any}>
                   {monsterBubble || 'Grrr!'}
                 </div>
@@ -4618,7 +4650,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     </div>
                   )}
                   <div className="bruise-overlay" style={{ '--damage-opacity': Math.max(0, Math.min(1, (currentQIndex / Math.max(1, quest?.questions.length || 1)) * (damageEffect === 'impact' ? 2 : 1))) } as any} />
-                  <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} />
+                  {/* No modo 3D o efeito é embutido no próprio modelo (tint 3D) — evita a
+                      camada 2D desalinhada (ex.: bolhas de veneno fora do monstro). */}
+                  {arenaRenderMode !== '3d' && <DamageEffectOverlay effect={damageEffect} level={effectLevel} justHit={effectFlash} frozen={frozen} />}
                   {transformPuff && (
                     <div key={transformPuff.id} className={`transform-puff${transformPuff.kind === 'revert' ? ' puff-revert' : ''}`}>
                       <div className="puff-shockwave-ring" />

@@ -59,6 +59,8 @@ interface ScenarioConfig {
   doorTypeCells?: Record<string, string>;
   /** Células pintadas com um MONSTRO específico ("x,z" → id do monstro do catálogo). */
   monsterCells?: Record<string, string>;
+  /** Loot dos BAÚS (por sorteio ponderado). Sem config → moedas 1..10 (comportamento antigo). */
+  chestConfig?: { loot?: LootEntry[] };
 }
 interface Scenario { id?: string; tenant_id?: string | null; name: string; theme: string; is_active: boolean; config: ScenarioConfig }
 
@@ -68,6 +70,12 @@ const DEFAULT_CONFIG: ScenarioConfig = {
   wallDensity: 0.26, elaboration: 0.5, bossKeyMode: 'none',
   wallHeight: 3.4,
   musicVolume: 0.5,
+  chestConfig: { loot: [
+    { kind: 'coins', weight: 45, min: 5, max: 20 },
+    { kind: 'heart', weight: 10 },
+    { kind: 'potion', weight: 15 },
+    { kind: 'nothing', weight: 30 },
+  ] },
   wallTypes: [
     { id: 'stone', name: 'Pedra', color: '#6b7280', hp: 1000, def: 250, breakable: true, chance: 0.72, trapChance: 0.12 },
     { id: 'bedrock', name: 'Rocha-mãe', color: '#374151', hp: 999999, def: 999999, breakable: false, chance: 0.28, trapChance: 0 },
@@ -197,6 +205,23 @@ export default function AdminScenarioManager() {
   }, [tenantId]);
 
   const patchMonster = (patch: any) => setCurrent(c => c ? { ...c, config: { ...c.config, monsterConfig: { ...(c.config.monsterConfig || {}), ...patch } } } : c);
+  // Regiões de spawn (retângulos com monstros e densidade próprios).
+  const patchRegion = (i: number, patch: Partial<MonsterSpawnRegion>) => setCurrent(c => {
+    if (!c) return c;
+    const mc = { ...(c.config.monsterConfig || {}) };
+    const regions = (Array.isArray(mc.regions) ? mc.regions : []).map((r, j) => j === i ? { ...r, ...patch } : r);
+    return { ...c, config: { ...c.config, monsterConfig: { ...mc, regions } } };
+  });
+  const toggleRegionMonster = (i: number, id: string) => setCurrent(c => {
+    if (!c) return c;
+    const mc = { ...(c.config.monsterConfig || {}) };
+    const regions = (Array.isArray(mc.regions) ? mc.regions : []).map((r, j) => {
+      if (j !== i) return r;
+      const cur = Array.isArray(r.monsters) ? r.monsters : [];
+      return { ...r, monsters: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] };
+    });
+    return { ...c, config: { ...c.config, monsterConfig: { ...mc, regions } } };
+  });
   const toggleMonsterId = (id: string) => setCurrent(c => {
     if (!c) return c;
     const mc = { ...(c.config.monsterConfig || {}) };
@@ -397,6 +422,7 @@ export default function AdminScenarioManager() {
   const patchDoor = (i: number, patch: Partial<DoorType>) => setCurrent(c => { if (!c) return c; const dt = c.config.doorTypes.map((d, j) => j === i ? { ...d, ...patch } : d); return { ...c, config: { ...c.config, doorTypes: dt } }; });
   const patchLoot = (i: number, patch: Partial<LootEntry>) => setCurrent(c => { if (!c) return c; const lt = c.config.lootTable.map((l, j) => j === i ? { ...l, ...patch } : l); return { ...c, config: { ...c.config, lootTable: lt } }; });
   const patchKey = (i: number, patch: Partial<KeyType>) => setCurrent(c => { if (!c) return c; const kt = (c.config.keys || []).map((k, j) => j === i ? { ...k, ...patch } : k); return { ...c, config: { ...c.config, keys: kt } }; });
+  const patchChestLoot = (i: number, patch: Partial<LootEntry>) => setCurrent(c => { if (!c) return c; const lt = (c.config.chestConfig?.loot || []).map((l, j) => j === i ? { ...l, ...patch } : l); return { ...c, config: { ...c.config, chestConfig: { ...(c.config.chestConfig || {}), loot: lt } } }; });
 
   const save = async () => {
     if (!current) return;
@@ -663,6 +689,52 @@ export default function AdminScenarioManager() {
               </div>
             </div>
 
+            {/* Loot dos BAÚS */}
+            <div style={card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <strong style={{ color: 'var(--text-primary)' }}>🎁 Loot dos Baús</strong>
+                <button style={btn('var(--accent-green, #10b981)')} onClick={() => setCurrent({ ...current, config: { ...current.config, chestConfig: { ...(current.config.chestConfig || {}), loot: [...(current.config.chestConfig?.loot || []), { kind: 'coins', weight: 10, min: 5, max: 20 }] } } })}>+ Item</button>
+              </div>
+              {(current.config.chestConfig?.loot || []).map((l, i) => (
+                <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8, padding: '0.55rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                  <div style={{ width: 170 }}><label style={labelStyle}>Tipo</label>
+                    <select style={inputStyle} value={l.kind} onChange={e => patchChestLoot(i, { kind: e.target.value as any })}>
+                      <option value="coins">🪙 Moedas</option>
+                      <option value="item">🎒 Item do Catálogo</option>
+                      <option value="key">🔑 Chave do Cenário</option>
+                      <option value="nothing">— Nada</option>
+                      <option value="heart">❤️ Coração (legado)</option>
+                      <option value="potion">🧪 Poção (legado)</option>
+                    </select>
+                  </div>
+                  <div style={{ width: 100 }}><label style={labelStyle}>Peso</label><input type="number" style={inputStyle} value={l.weight} onChange={e => patchChestLoot(i, { weight: parseInt(e.target.value) || 0 })} /></div>
+                  {l.kind === 'coins' && (
+                    <>
+                      <div style={{ width: 90 }}><label style={labelStyle}>Mín</label><input type="number" style={inputStyle} value={l.min ?? ''} onChange={e => patchChestLoot(i, { min: parseInt(e.target.value) || 0 })} /></div>
+                      <div style={{ width: 90 }}><label style={labelStyle}>Máx</label><input type="number" style={inputStyle} value={l.max ?? ''} onChange={e => patchChestLoot(i, { max: parseInt(e.target.value) || 0 })} /></div>
+                    </>
+                  )}
+                  {l.kind === 'item' && (
+                    <div style={{ flex: '1 1 280px' }}><label style={labelStyle}>Item (catálogo)</label>
+                      <ItemSelectDropdown items={catalogOptions} value={l.itemId || ''} onChange={id => patchChestLoot(i, { itemId: id })} placeholder="Selecione um item do catálogo..." />
+                    </div>
+                  )}
+                  {l.kind === 'key' && (
+                    <div style={{ flex: '1 1 280px' }}><label style={labelStyle}>Chave (cenário)</label>
+                      <select style={inputStyle} value={l.keyId || ''} onChange={e => patchChestLoot(i, { keyId: e.target.value || undefined })}>
+                        <option value="">— (selecionar chave)</option>
+                        {(current.config.keys || []).map(k => <option key={k.id} value={k.id}>🔑 {k.name} ({k.id})</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <button title="Remover" style={{ ...btn('rgba(239,68,68,0.25)'), padding: '0.45rem 0.5rem', marginLeft: 'auto' }} onClick={() => setCurrent({ ...current, config: { ...current.config, chestConfig: { ...(current.config.chestConfig || {}), loot: (current.config.chestConfig?.loot || []).filter((_, j) => j !== i) } } })}>✕</button>
+                </div>
+              ))}
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', marginTop: 4 }}>
+                Cada baú sorteia <b>um</b> resultado pela tabela acima. Sem config → moedas 1..10.
+              </div>
+            </div>
+
             {/* Mapa pintado */}
             <div style={card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
@@ -830,6 +902,31 @@ export default function AdminScenarioManager() {
                 <div style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', marginTop: 3 }}>
                   Em missões, o boss definido na missão assume como boss; aqui é o fallback do mapa explorável.
                 </div>
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>🗺️ Regiões de spawn (retângulos do grid)</label>
+                  <button style={btn('var(--accent-green, #10b981)')} onClick={() => { const mc = current.config.monsterConfig || {}; const regions = [...(mc.regions || []), { x1: 1, z1: 1, x2: Math.min(current.config.cols - 2, 12), z2: Math.min(current.config.rows - 2, 6), monsters: [], density: 0.25 }]; patchMonster({ regions }); }}>+ Região</button>
+                </div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', marginBottom: 8 }}>
+                  Se houver regiões, elas têm prioridade sobre os "monstros padrão". Cada região gera monstros na densidade indicada. Coordenadas (x,z) começam em 0.
+                </div>
+                {(current.config.monsterConfig?.regions || []).length === 0 ? (
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>Nenhuma região — usa os monstros padrão/aleatórios.</div>
+                ) : (current.config.monsterConfig?.regions || []).map((rg, i) => (
+                  <div key={i} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '0.6rem', marginBottom: 8, background: 'rgba(0,0,0,0.15)' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end', marginBottom: 6 }}>
+                      {(['x1', 'z1', 'x2', 'z2'] as const).map(k => (
+                        <div key={k} style={{ width: 70 }}><label style={labelStyle}>{k.toUpperCase()}</label><input type="number" style={inputStyle} value={rg[k]} onChange={e => patchRegion(i, { [k]: parseInt(e.target.value) || 0 } as any)} /></div>
+                      ))}
+                      <div style={{ width: 150 }}><label style={labelStyle}>Densidade ({Math.round((rg.density ?? 0.25) * 100)}%)</label><input type="range" min={0} max={100} value={Math.round((rg.density ?? 0.25) * 100)} onChange={e => patchRegion(i, { density: Math.max(0, Math.min(1, (parseInt(e.target.value) || 0) / 100)) })} style={{ width: '100%', accentColor: '#8b5cf6' }} /></div>
+                      <button style={{ ...btn('rgba(239,68,68,0.25)'), marginLeft: 'auto' }} onClick={() => patchMonster({ regions: (current.config.monsterConfig?.regions || []).filter((_, j) => j !== i) })}>✕ Remover</button>
+                    </div>
+                    <label style={labelStyle}>Monstros desta região</label>
+                    {renderMonsterChips(rg.monsters || [], (id) => toggleRegionMonster(i, id))}
+                  </div>
+                ))}
               </div>
 
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10 }}>

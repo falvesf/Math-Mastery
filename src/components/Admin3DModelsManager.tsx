@@ -36,7 +36,7 @@ export interface Model3D {
   _isGlobal?: boolean;
 }
 
-export type ModelCategory = 'skin' | 'chest' | 'coin';
+export type ModelCategory = 'skin' | 'chest' | 'coin' | 'door';
 
 const RARITIES: { value: string; label: string }[] = [
   { value: 'common', label: 'Comum' },
@@ -51,12 +51,14 @@ const CATEGORY_LABELS: Record<ModelCategory, string> = {
   skin: 'Skins de Monstros e Pets',
   chest: 'Baús de Recompensa',
   coin: 'Moedas',
+  door: 'Portas de Calabouço',
 };
 
 const CATEGORY_COLORS: Record<ModelCategory, string> = {
   skin: '#10b981',
   chest: '#f59e0b',
   coin: '#fbbf24',
+  door: '#8b5a2b',
 };
 
 export default function Admin3DModelsManager() {
@@ -253,6 +255,16 @@ export default function Admin3DModelsManager() {
           }
           await supabase.from('3d_models').update({ is_active: false }).eq('category', 'coin').is('tenant_id', null);
         }
+      } else if (category === 'door') {
+        data.open_url = openUrl.trim() || null;
+        data.is_active = isActive;
+        if (isActive) {
+          if (tenantId) {
+            await supabase.from('3d_models').update({ is_active: false }).eq('category', 'door').eq('tenant_id', tenantId);
+          } else {
+            await supabase.from('3d_models').update({ is_active: false }).eq('category', 'door').is('tenant_id', null);
+          }
+        }
       }
 
       if (editingId) {
@@ -378,10 +390,40 @@ export default function Admin3DModelsManager() {
     }
   };
 
+  const handleActivateDoor = async (model: Model3D) => {
+    if (model._isGlobal && !isSuperAdmin) {
+      showAlert('Modelos globais só podem ser editados pelo superadmin.');
+      return;
+    }
+    try {
+      const { error: e1 } = tenantId
+        ? await supabase.from('3d_models').update({ is_active: false }).eq('category', 'door').eq('tenant_id', tenantId)
+        : await supabase.from('3d_models').update({ is_active: false }).eq('category', 'door').is('tenant_id', null);
+      const { error: e2 } = await supabase.from('3d_models').update({ is_active: true }).eq('id', model.id);
+      const err = e1 || e2;
+      if (err) {
+        console.error('Erro ao definir porta padrão:', err);
+        if ((err.message || '').includes('category') || (err.message || '').includes('does not exist')) {
+          showAlert('Faltam colunas novas na tabela 3d_models. Rode o migration_3d_models_categories.sql no Supabase.');
+        } else {
+          showAlert(`Erro ao definir porta padrão: ${err.message}`);
+        }
+        return;
+      }
+      sessionCache.invalidate(CACHE_KEYS.models3d());
+      fetchModels(false);
+      showAlert(`Porta "${model.name}" definida como padrão!`);
+    } catch (e) {
+      console.error(e);
+      showAlert('Erro ao definir porta padrão.');
+    }
+  };
+
   const renderIcon = (cat: ModelCategory) => {
     switch (cat) {
       case 'chest': return <Package size={24} color="#f59e0b" />;
       case 'coin': return <Coins size={24} color="#fbbf24" />;
+      case 'door': return <Box size={24} color="#8b5a2b" />;
       default: return <Box size={24} color="#10b981" />;
     }
   };
@@ -800,7 +842,7 @@ export default function Admin3DModelsManager() {
           ) : filteredModels.length === 0 ? (
             <div style={{ padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px dashed var(--border-color)' }}>
               <p style={{ color: 'var(--text-secondary)' }}>
-                {activeTab === 'skin' ? 'Nenhum molde 3D de skin cadastrado.' : activeTab === 'chest' ? 'Nenhum baú de recompensa cadastrado.' : 'Nenhuma moeda cadastrada.'}
+                {activeTab === 'skin' ? 'Nenhum molde 3D de skin cadastrado.' : activeTab === 'chest' ? 'Nenhum baú de recompensa cadastrado.' : activeTab === 'door' ? 'Nenhuma porta de calabouço cadastrada.' : 'Nenhuma moeda cadastrada.'}
               </p>
             </div>
           ) : (
@@ -833,6 +875,11 @@ export default function Admin3DModelsManager() {
                           <Check size={11} /> Ativa
                         </span>
                       )}
+                      {model.category === 'door' && model.is_active && (
+                        <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', background: 'rgba(139, 90, 43, 0.25)', color: '#c98a4b', border: '1px solid #8b5a2b', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <Check size={11} /> Padrão
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
@@ -843,6 +890,11 @@ export default function Admin3DModelsManager() {
                     )}
                     {model.category === 'coin' && !model.is_active && (
                       <button onClick={() => handleActivateCoin(model)} disabled={model._isGlobal && !isSuperAdmin} title="Ativar moeda" style={{ padding: '0.5rem', color: '#fbbf24', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
+                        <Check size={16} />
+                      </button>
+                    )}
+                    {model.category === 'door' && !model.is_active && (
+                      <button onClick={() => handleActivateDoor(model)} disabled={model._isGlobal && !isSuperAdmin} title="Definir como porta padrão" style={{ padding: '0.5rem', color: '#c98a4b', background: 'rgba(139, 90, 43, 0.15)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
                         <Check size={16} />
                       </button>
                     )}

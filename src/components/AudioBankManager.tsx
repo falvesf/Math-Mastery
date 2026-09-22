@@ -51,6 +51,11 @@ export default function AudioBankManager() {
   const [fatalExplodeSound, setFatalExplodeSound] = useState('');
   const [battlePickerFor, setBattlePickerFor] = useState<'victory' | 'deathMale' | 'deathFemale' | 'fail' | 'punch' | 'fatalFall' | 'fatalEvaporate' | 'fatalSlice' | 'fatalExplode' | null>(null);
 
+  // Sons das PORTAS de calabouço (cenário explorável)
+  const [doorOpenSound, setDoorOpenSound] = useState('');
+  const [doorLockedSound, setDoorLockedSound] = useState('');
+  const [doorPickerFor, setDoorPickerFor] = useState<'open' | 'locked' | null>(null);
+
   // Sons da Forja & Transmutação
   const [forgeConfig, setForgeConfig] = useState<ForgeSoundsConfig>({});
   const [forgePickerFor, setForgePickerFor] = useState<keyof ForgeSoundsConfig | null>(null);
@@ -78,6 +83,13 @@ export default function AudioBankManager() {
     setFatalEvaporateSound(b.fatalEvaporate || '');
     setFatalSliceSound(b.fatalSlice || '');
     setFatalExplodeSound(b.fatalExplode || '');
+
+    // Sons das portas de calabouço
+    const { data: doorData } = await supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'door_sounds');
+    let ds: any = {};
+    (doorData || []).forEach(r => ds = { ...ds, ...(r.data || {}) });
+    setDoorOpenSound(ds.open || ds.doorOpen || '');
+    setDoorLockedSound(ds.locked || ds.doorLocked || '');
 
     // Sons da Forja
     const fData = await fetchForgeSounds(tenantId);
@@ -176,6 +188,22 @@ export default function AudioBankManager() {
     // Remove duplicatas antigas (do upsert sem conflito)
     await supabase.from('system_collections').delete().eq('collection_name', 'audio').eq('doc_id', 'battle_sounds').neq('id', existing.data && existing.data.length > 0 ? existing.data[0].id : '-1');
     showAlert('Sons de batalha salvos!');
+  };
+
+  const saveDoorSounds = async () => {
+    const existing = await supabase.from('system_collections').select('id').eq('collection_name', 'audio').eq('doc_id', 'door_sounds').limit(1);
+    const payload = {
+      collection_name: 'audio',
+      doc_id: 'door_sounds',
+      data: { open: doorOpenSound || null, locked: doorLockedSound || null },
+      tenant_id: null,
+    };
+    const { error } = existing.data && existing.data.length > 0
+      ? await supabase.from('system_collections').update({ data: payload.data }).eq('id', existing.data[0].id)
+      : await supabase.from('system_collections').insert(payload);
+    if (error) { console.error(error); showAlert('Erro ao salvar: ' + error.message); return; }
+    await supabase.from('system_collections').delete().eq('collection_name', 'audio').eq('doc_id', 'door_sounds').neq('id', existing.data && existing.data.length > 0 ? existing.data[0].id : '-1');
+    showAlert('Sons de porta salvos!');
   };
 
 const togglePlay = (u: string) => {
@@ -318,6 +346,29 @@ const togglePlay = (u: string) => {
         <button onClick={saveBattleSounds} className="login-btn" style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem 1.25rem' }}><Save size={16} /> Salvar Sons de Batalha</button>
       </div>
 
+      {/* Sons das Portas de Calabouço */}
+      <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '1rem', marginTop: '1.5rem' }}>
+        <h4 style={{ margin: '0 0 0.25rem 0', color: '#c98a4b' }}>🚪 Sons das Portas de Calabouço (global)</h4>
+        <p style={{ margin: '0 0 0.75rem 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+          Som ao ABRIR a porta e som quando ela está TRANCADA (antes do desafio). Usado no cenário explorável.
+        </p>
+        {([
+          ['open', '🚪 Porta abrindo', doorOpenSound, setDoorOpenSound],
+          ['locked', '🔒 Porta trancada', doorLockedSound, setDoorLockedSound],
+        ] as const).map(([key, label, val, setVal]) => (
+          <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.65rem' }}>
+            <label style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>{label}</label>
+            <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', width: '100%', minWidth: 0 }}>
+              <input value={val} onChange={e => setVal(e.target.value)} placeholder="URL..." style={{ flex: 1, minWidth: 0, padding: '0.45rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+              <button onClick={() => togglePlay(val)} disabled={!val} style={{ flexShrink: 0, padding: '0.35rem 0.55rem', background: playingUrl === val ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: val ? 'pointer' : 'not-allowed', opacity: val ? 1 : 0.4, color: playingUrl === val ? 'var(--gold-primary)' : 'var(--text-primary)' }}>{playingUrl === val ? '⏹' : '▶'}</button>
+              <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setVal as (v: string) => void} buttonStyle={{ flexShrink: 0, padding: '0.3rem 0.55rem', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}>Upload</DirectUploadButton>
+              <button onClick={() => setDoorPickerFor(key as any)} style={{ flexShrink: 0, padding: '0.35rem 0.65rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco</button>
+            </div>
+          </div>
+        ))}
+        <button onClick={saveDoorSounds} className="login-btn" style={{ background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', padding: '0.5rem 1.25rem' }}><Save size={16} /> Salvar Sons de Porta</button>
+      </div>
+
       {/* Sons da Forja & Transmutação */}
       <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '1rem', marginTop: '1.5rem' }}>
         <h4 style={{ margin: '0 0 0.25rem 0', color: '#f97316', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -420,6 +471,18 @@ const togglePlay = (u: string) => {
         categoryFilter={battlePickerFor === 'victory' || battlePickerFor === 'fail' ? '' : 'voice'}
         genderFilter={battlePickerFor === 'deathMale' ? 'male' : battlePickerFor === 'deathFemale' ? 'female' : ''}
         title="Banco de Áudio — Som de Batalha"
+      />
+
+      <AudioBankPicker
+        open={doorPickerFor !== null}
+        onClose={() => setDoorPickerFor(null)}
+        onSelect={(url) => {
+          if (doorPickerFor === 'open') setDoorOpenSound(url);
+          else if (doorPickerFor === 'locked') setDoorLockedSound(url);
+          setDoorPickerFor(null);
+        }}
+        categoryFilter=""
+        title="Banco de Áudio — Som de Porta"
       />
 
       <AudioBankPicker
