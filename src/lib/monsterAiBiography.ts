@@ -166,6 +166,8 @@ export interface MonsterQuotesResult {
   hp49_25: string;
   hp24_0: string;
   defeat: string;
+  /** Fala do monstro ao derrotar o jogador. */
+  win?: string;
 }
 
 /**
@@ -200,6 +202,10 @@ function generateProceduralMonsterQuotes(ctx: MonsterLoreContext): MonsterQuotes
     'Meu... fim...', 'Aaaaargh...', 'Impossível...', 'Perdi...', 'Grrr...',
   ];
 
+  const win = [
+    'Você é fraco!', `${name} vence!`, 'Não é páreo para mim!', 'Desista!', 'Acabou!',
+  ];
+
   const pick = (arr: string[], extra?: string) => {
     const pool = extra ? [...arr, extra] : arr;
     return pool[Math.floor(Math.random() * pool.length)];
@@ -211,6 +217,7 @@ function generateProceduralMonsterQuotes(ctx: MonsterLoreContext): MonsterQuotes
     hp49_25: pick(wounded, `${name} NÃO DESISTE!`),
     hp24_0: pick(critical, `GRRRR... ${name} ainda luta!`),
     defeat: pick(defeat, `Maldito ${'você'}...`),
+    win: pick(win),
   };
 }
 

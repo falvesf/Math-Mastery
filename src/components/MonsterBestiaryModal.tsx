@@ -939,6 +939,10 @@ export const MonsterBestiaryModal: React.FC<MonsterBestiaryModalProps> = ({
                           <strong style={{ color: '#f87171' }}>⚔ {selectedMonster.avatarConfig?.stats?.attack || '—'}</strong>
                         </div>
                         <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.72rem' }}>Pontos de Vida</span>
+                          <strong style={{ color: '#fca5a5' }}>❤ {selectedMonster.avatarConfig?.stats?.hp ?? Math.max(40, Math.round(40 + ((selectedMonster.avatarConfig?.stats?.level || 1) * 35)))}</strong>
+                        </div>
+                        <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
                           <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.72rem' }}>Defesa Base</span>
                           <strong style={{ color: '#60a5fa' }}>🛡 {selectedMonster.avatarConfig?.stats?.defense || '—'}</strong>
                         </div>

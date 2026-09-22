@@ -15,7 +15,7 @@ export interface Model3D {
   id: string;
   name: string;
   url: string;
-  category?: 'skin' | 'chest' | 'coin';
+  category?: 'skin' | 'chest' | 'coin' | 'door';
   rarity?: string;
   open_url?: string;
   slot_count?: number;
@@ -462,6 +462,7 @@ export default function Admin3DModelsManager() {
                 <option value="skin">Skins de Monstros e Pets</option>
                 <option value="chest">Baús de Recompensa</option>
                 <option value="coin">Moedas</option>
+                  <option value="door">Portas de Calabou?o</option>
               </select>
             </div>
 
@@ -490,7 +491,7 @@ export default function Admin3DModelsManager() {
                 />
                 <DirectUploadButton 
                   onUploadComplete={setUrl} 
-                  folder={category === 'skin' ? '3d_models' : category === 'chest' ? 'chests' : 'coins'} 
+                  folder={category === 'skin' ? '3d_models' : category === 'chest' ? 'chests' : category === 'door' ? 'doors' : 'coins'} 
                   accept={category === 'skin' ? '.glb,.gltf' : '.glb,.gltf,.png,.jpg,.jpeg,.webp'}
                 />
                 <button

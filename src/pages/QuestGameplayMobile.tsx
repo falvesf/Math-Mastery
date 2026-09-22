@@ -14,6 +14,7 @@ import AvatarCharacter, { type EquippedItem, safeParseAvatarConfig } from '../co
 import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
 import BattleTransition from '../components/BattleTransition';
+import MapExplorerPoC from '../components/MapExplorerPoC';
 import MonsterProjectileView from '../components/MonsterProjectileView';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
@@ -142,9 +143,13 @@ export default function QuestGameplay() {
   const { showConfirm, showToast } = useDialog();
 
   const [quest, setQuest] = useState<QuestDef | null>(null);
-  const [gameState, setGameState] = useState<'loading' | 'intro' | 'playing' | 'result'>('loading');
+  const [gameState, setGameState] = useState<'loading' | 'intro' | 'map' | 'playing' | 'result'>('loading');
   // Transição de batalha estilo FF7 (entrada na arena / saída para o acampamento)
   const [transition, setTransition] = useState<'none' | 'enter' | 'exit'>('none');
+  // Fase do CENÁRIO (mapa explorável) antes da batalha, quando a missão tem cenário.
+  const [mapSetup, setMapSetup] = useState<{ config: any; theme: string } | null>(null);
+  const pendingBattleFromMapRef = useRef(false);
+  const mapEndHpRef = useRef<number | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   
   const searchParams = new URLSearchParams(window.location.search);
@@ -1215,6 +1220,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           podiumBgUrl: snap.podium_bg_url || snap.podiumBgUrl || null,
           battleMusicUrl: snap.battle_music_url || snap.battleMusicUrl || '',
           battleMusicVolume: snap.battle_music_volume ?? 0.5,
+          mapConfig: snap.map_config || snap.mapConfig || null,
           monsterGender: snap.monster_gender || snap.monsterGender || '',
           monsterAttackSound: snap.monster_attack_sound || snap.monsterAttackSound || '',
           monsterGruntSound: snap.monster_grunt_sound || snap.monsterGruntSound || '',
@@ -1578,12 +1584,46 @@ const dealTransformDamageToPlayer = (damage: number) => {
     await supabase.from('users').update(updates).eq('id', userData.uid);
   };
 
+  // Inicia a missão: se tiver CENÁRIO configurado, vai para o MAPA primeiro; senão, batalha.
+  const beginQuest = async () => {
+    const mc = (quest as any)?.mapConfig;
+    if (mc && mc.mode !== 'none') {
+      let config: any = {};
+      let theme = 'plains';
+      if (mc.mode === 'scenario' && mc.scenarioId) {
+        try {
+          const { data } = await supabase.from('scenarios').select('config, theme').eq('id', mc.scenarioId).maybeSingle();
+          if (data) { config = data.config || {}; theme = data.theme || 'plains'; }
+        } catch { /* usa padrão */ }
+      } else if (mc.mode === 'procedural') {
+        config = { monsterConfig: { monsters: mc.monsters || [], bossMonsterId: mc.bossId || undefined } };
+      }
+      setMapSetup({ config, theme });
+      setGameState('map');
+      return;
+    }
+    await startGame();
+  };
+  // O boss do MAPA foi encontrado (tocou + rugiu): transição FF e depois a batalha da missão.
+  // Leva o HP restante do cenário para a batalha não começar cheia se perdeu vida.
+  const handleMapBossFound = (remainingHp: number) => {
+    mapEndHpRef.current = Math.max(0, remainingHp);
+    pendingBattleFromMapRef.current = true;
+    setMapSetup(null);
+    setTransition('enter');
+  };
+
   const startGame = async () => {
     // STAFF (admin/teacher/coordinator): sempre inicia com o HP máximo da patente
     const isStaffUser = userData?.role === 'admin' || userData?.role === 'teacher' || userData?.role === 'coordinator';
-    const initialHearts = isStaffUser
-      ? calculatedMaxHearts
-      : Math.min(userData?.hp ?? calculatedMaxHearts, calculatedMaxHearts);
+    // Se veio do CENÁRIO, a batalha começa com o HP que sobrou no mapa (não cheio).
+    const mapHp = mapEndHpRef.current;
+    const initialHearts = mapHp != null
+      ? Math.max(1, Math.min(calculatedMaxHearts, mapHp))
+      : (isStaffUser
+        ? calculatedMaxHearts
+        : Math.min(userData?.hp ?? calculatedMaxHearts, calculatedMaxHearts));
+    mapEndHpRef.current = null;
     // Reset dos efeitos de itens mágicos
     fatalityActiveRef.current = false;
     setTransformState(null);
@@ -1810,16 +1850,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           ? weaponFatality
           : (effectFatality || deaths[Math.floor(Math.random() * deaths.length)]));
     
-    let msg = '';
-    if (hasAttackWeapon) {
-      if (fatality === 'death-explode') msg = damageEffect === 'burn' ? 'Queime em chamas!' : (damageEffect === 'impact' ? 'Não sobrará nada!' : 'Agora EXPLODA!!!');
-      else if (fatality === 'death-slice') msg = 'Cortado ao meio!';
-      else if (fatality === 'death-evaporate') msg = damageEffect === 'poison' ? 'Desintegre-se!' : 'Vou te pulverizar!';
-      else msg = 'Caia perante mim!';
-    } else {
-      if (fatality === 'death-evaporate') msg = 'Desapareça!';
-      else msg = 'Caia perante mim!';
-    }
+    // Fala do golpe final: vem da Central de Falas (events.fatality do personagem).
+    const fatalityQuote = getDynamicQuote((currentHearts / maxHearts) * 100, 'player', 'fatality') || 'Caia perante mim!';
     
     const getVictoryMessage = () => {
       const playerHpPercentage = (currentHearts / maxHearts) * 100;
@@ -1858,7 +1890,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         // Golpe final: usa animação fatal que mantém o player perto do monstro,
         // independente de ter arma ou não (evita reset para a posição inicial)
         setPlayerAnim(hasAttackWeapon ? 'attack-fatal-slow' : 'attack-fatal');
-        setPlayerBubble(msg);
+        setPlayerBubble(fatalityQuote);
         
         // Espera para o monstro sentir o golpe
         const impactDelay = hasAttackWeapon ? 1125 : 600;
@@ -1924,14 +1956,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
       }, 3000);
     } else {
       setMonsterAnim('idle');
-      setMonsterBubble('Você é fraco!');
+      setMonsterBubble(getDynamicQuote(100, 'monster', 'win')!);
       
-      const playerDefeatQuotes = ['NÃO!!!', 'AHHH!', 'ESSA NÃO!!!'];
-      const playerDefeatQuote = playerDefeatQuotes[Math.floor(Math.random() * playerDefeatQuotes.length)];
+      const playerDefeatQuote = getDynamicQuote((currentHearts / maxHearts) * 100, 'player', 'defeat') || 'NÃO!!!';
 
       setTimeout(() => {
         setMonsterAnim('attack-fatal-slow');
-        setMonsterBubble(msg);
+        setMonsterBubble(getDynamicQuote(100, 'monster', 'win')!);
         setBattleMessage('O monstro está preparando um ataque letal!');
         fadeOutMusic(2400);
         
@@ -1964,15 +1995,23 @@ const dealTransformDamageToPlayer = (damage: number) => {
     }
   };
 
-  const getDynamicQuote = (hpPercentage: number, source: 'player' | 'monster', event?: 'critical' | 'hurt' | 'victory') => {
+  const getDynamicQuote = (hpPercentage: number, source: 'player' | 'monster', event?: 'critical' | 'hurt' | 'victory' | 'fatality' | 'defeat' | 'shield' | 'win') => {
     if (source === 'player') {
-      return pickPlayerBattleQuote(battleQuotes, hpPercentage, stressLevel, event);
+      return pickPlayerBattleQuote(battleQuotes, hpPercentage, stressLevel, event as any);
     } else {
       // 25% chance to speak
-      if (Math.random() > 0.25) return null;
+      if (event !== 'win' && Math.random() > 0.25) return null;
 
       let quotesArray: string[] = [];
       const custom = quest?.monsterQuotes;
+      // Fala de vitória do monstro (ao derrotar o jogador) — vinda da edição de monstros.
+      if (event === 'win') {
+        const winRaw = (custom?.win || '').trim();
+        if (winRaw) quotesArray = winRaw.split(';').map(s => s.trim()).filter(s => s);
+        if (quotesArray.length === 0) return 'Você é fraco!';
+        return quotesArray[Math.floor(Math.random() * quotesArray.length)];
+      }
+
       let rawQuotes = '';
       if (hpPercentage >= 80) rawQuotes = custom?.hp100_80 || '';
       else if (hpPercentage >= 50) rawQuotes = custom?.hp79_50 || '';
@@ -2362,7 +2401,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           spawnFloatingDamage(0, false, 'player', true);
           setHasShield(false);
           setEliminatedOptions(prev => [...prev, optIndex]);
-          setPlayerBubble("O escudo aguentou!");
+          setPlayerBubble(getDynamicQuote((currentHearts / maxHearts) * 100, 'player', 'shield') || 'O escudo aguentou!');
           setTimeout(() => {
             setFeedback(null);
             setLastSelectedOption(null);
@@ -4725,8 +4764,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
               </div>
 
               <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                <button className="login-btn" onClick={startGame} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '1rem 2rem', fontSize: '1.25rem', borderRadius: '50px', width: '100%' }}>
-                  Iniciar Batalha
+                <button className="login-btn" onClick={() => beginQuest()} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '1rem 2rem', fontSize: '1.25rem', borderRadius: '50px', width: '100%' }}>
+                  {((quest as any)?.mapConfig && (quest as any).mapConfig.mode !== 'none') ? '🗺️ Explorar Cenário' : 'Iniciar Batalha'}
                 </button>
               </div>
             </div>
@@ -4970,12 +5009,30 @@ chestRotY={selectedChestModel?.chestRotY}
         />
       )}
 
+      {/* FASE DO CENÁRIO (mapa explorável): antes da batalha, quando a missão tem cenário. */}
+      {gameState === 'map' && quest && mapSetup && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 999999, display: 'flex', flexDirection: 'column' }}>
+          <MapExplorerPoC
+            playerMode
+            scenarioConfig={mapSetup.config}
+            scenarioTheme={mapSetup.theme as any}
+            bossOverride={{ name: quest.monsterName, config: quest.monsterAvatarConfig }}
+            onBossTouched={handleMapBossFound}
+            onExit={() => navigate('/dashboard')}
+          />
+        </div>
+      )}
+
       {/* Transição de batalha estilo FF7 */}
       <BattleTransition
         active={transition !== 'none'}
         direction={transition === 'exit' ? 'exit' : 'enter'}
         onComplete={() => {
           if (transition === 'exit') navigate('/dashboard');
+          else if (pendingBattleFromMapRef.current) {
+            pendingBattleFromMapRef.current = false;
+            startGame();
+          }
           setTransition('none');
         }}
       />

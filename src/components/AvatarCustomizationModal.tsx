@@ -720,6 +720,8 @@ export default function AvatarCustomizationModal({
         defense: (configToSave as any).stats?.defense ?? 1,
         evasion: (configToSave as any).stats?.evasion ?? 1,
         critChance: (configToSave as any).stats?.critChance ?? 1,
+        // HP configurado (usado nos mapas exploráveis). Preservado se preenchido.
+        ...((configToSave as any).stats?.hp != null ? { hp: Math.max(1, Math.round(Number((configToSave as any).stats.hp) || 1)) } : {}),
         xp: (configToSave as any).stats?.xp ?? 0,
         // Preserva a tabela de fuga configurada (undefined quando usa a curva padrão).
         ...((configToSave as any).stats?.fleeChanceTable && (configToSave as any).stats.fleeChanceTable.length > 0

@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy, Menu, Volume2, XCircle, Box } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, Save, Swords, Image as ImageIcon, Gift, Search, Plus, Trash2, Move, ChevronDown, Settings, Trophy, Menu, Volume2, XCircle, Box, Map as MapIcon } from 'lucide-react';
 import AvatarCharacter, { type AvatarConfig, safeParseAvatarConfig } from './AvatarCharacter';
 import DirectUploadButton from './DirectUploadButton';
 import AudioBankPicker from './AudioBankPicker';
 import { getSafeUrl } from '../lib/utils';
 // @ts-ignore
 import { VOXEL_BIOMES, type VoxelBiomeType } from '../lib/voxelTextures';
+import { supabase } from '../lib/supabase';
+import MapExplorerPoC from './MapExplorerPoC';
 
 // @ts-ignore
 void Plus;
@@ -251,6 +254,9 @@ export interface QuestConfigModalProps {
   /** Bioma da arena 3D (independente da imagem 2D). */
   questBattleBiome: 'plains' | 'nether' | 'desert' | 'snow' | 'end';
   setQuestBattleBiome: (v: 'plains' | 'nether' | 'desert' | 'snow' | 'end') => void;
+  // Mapa explorável
+  questMapConfig: { mode: 'none' | 'scenario' | 'procedural'; scenarioId: string; monsters: string[]; bossId: string };
+  setQuestMapConfig: (v: any) => void;
   questBattleBgPosX: number;
   setQuestBattleBgPosX: (v: number) => void;
   questBattleBgPosY: number;
@@ -298,7 +304,7 @@ export interface QuestConfigModalProps {
   renderChestConfig: (title: string, desc: string, chestConfig: any, setChestConfig: (c: any) => void, showDropChance: boolean) => React.JSX.Element;
 }
 
-type ConfigTab = 'monster' | 'arena' | 'rewards';
+type ConfigTab = 'monster' | 'arena' | 'map' | 'rewards';
 
 /**
  * Modal de configurações do desafio dividido em dois lados:
@@ -315,6 +321,7 @@ export default function QuestConfigModal(props: QuestConfigModalProps) {
   const tabs: { id: ConfigTab; label: string; icon: any; color: string }[] = [
     { id: 'monster', label: 'Monstro / Oponente', icon: Swords, color: 'var(--accent-red)' },
     { id: 'arena', label: 'Arena', icon: ImageIcon, color: '#8b5cf6' },
+    { id: 'map', label: 'Mapa', icon: MapIcon, color: '#10b981' },
     { id: 'rewards', label: 'Recompensas', icon: Gift, color: 'var(--gold-primary)' },
   ];
 
@@ -374,6 +381,7 @@ export default function QuestConfigModal(props: QuestConfigModalProps) {
           <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
             {activeTab === 'monster' && <MonsterTab {...props} />}
             {activeTab === 'arena' && <ArenaTab {...props} />}
+            {activeTab === 'map' && <MapTab {...props} />}
             {activeTab === 'rewards' && <RewardsTab {...props} />}
           </div>
         </div>
@@ -1025,6 +1033,91 @@ function ArenaTab(p: QuestConfigModalProps) {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+function MapTab(p: QuestConfigModalProps) {
+  const [scenarios, setScenarios] = useState<any[]>([]);
+  const [testOpen, setTestOpen] = useState(false);
+
+  useEffect(() => {
+    let q = supabase.from('scenarios').select('*').order('created_at', { ascending: true });
+    q.then(({ data }) => setScenarios(((data as any[]) || []).map(r => ({ id: r.id, name: r.name || 'Sem nome', config: r.config || {}, theme: r.theme || 'plains' })))).catch(() => {});
+  }, []);
+
+  const mc = p.questMapConfig || { mode: 'none' as const, scenarioId: '', monsters: [], bossId: '' };
+  const setMC = (patch: any) => p.setQuestMapConfig({ ...mc, ...patch });
+
+  const buildPreviewConfig = () => {
+    if (mc.mode === 'scenario') {
+      const sc = scenarios.find(s => s.id === mc.scenarioId);
+      return sc?.config || {};
+    }
+    return { monsterConfig: { monsters: Array.isArray(mc.monsters) ? mc.monsters : [], bossMonsterId: mc.bossId || undefined } };
+  };
+  const previewTheme = mc.mode === 'scenario' ? (scenarios.find(s => s.id === mc.scenarioId)?.theme || 'plains') : 'plains';
+
+  return (
+    <div style={{ background: 'rgba(16, 185, 129, 0.05)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+      <h4 style={{ color: '#10b981', margin: '0 0 0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <MapIcon size={20} /> Mapa Explorável da Missão
+      </h4>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+        Escolha um cenário criado no editor de Cenários OU gere um mapa procedural com os padrões. Use "Testar 3D" para pré-visualizar.
+      </p>
+
+      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        {([{ id: 'none', label: '🚫 Não usar' }, { id: 'scenario', label: '🗺️ Cenário' }, { id: 'procedural', label: '🎲 Procedural (padrão)' }] as const).map(m => {
+          const active = (mc.mode || 'none') === m.id;
+          return (
+            <button key={m.id} type="button" onClick={() => setMC({ mode: m.id })} style={{ padding: '0.5rem 0.9rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', border: active ? '1px solid #10b981' : '1px solid var(--border-glass)', background: active ? 'rgba(16,185,129,0.2)' : 'transparent', color: active ? '#34d399' : 'var(--text-secondary)' }}>
+              {m.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {mc.mode === 'scenario' && (
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Cenário (mapa)</label>
+          <select style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} value={mc.scenarioId} onChange={e => setMC({ scenarioId: e.target.value })}>
+            <option value="">— selecione um cenário —</option>
+            {scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', marginTop: '0.3rem' }}>O mapa usa paredes, portas, loot, chaves, monstros e boss definidos nesse cenário.</div>
+        </div>
+      )}
+
+      {mc.mode === 'procedural' && (
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Monstros do mapa (padrões do jogo se vazio)</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: '0.8rem' }}>
+            {(p.availableMonsters || []).map(m => {
+              const on = (mc.monsters || []).includes(m.id);
+              return <button key={m.id} type="button" onClick={() => { const cur = mc.monsters || []; setMC({ monsters: on ? cur.filter(x => x !== m.id) : [...cur, m.id] }); }} style={{ padding: '0.3rem 0.55rem', borderRadius: 20, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700, border: on ? '1px solid #10b981' : '1px solid var(--border-glass)', background: on ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.04)', color: on ? '#34d399' : 'var(--text-secondary)' }}>{on ? '✓ ' : ''}{m.name}</button>;
+            })}
+          </div>
+          <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Boss (célula Fim)</label>
+          <select style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} value={mc.bossId} onChange={e => setMC({ bossId: e.target.value })}>
+            <option value="">— fallback padrão —</option>
+            {(p.availableMonsters || []).map(m => <option key={m.id} value={m.id}>👑 {m.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      {mc.mode !== 'none' && (
+        <button type="button" onClick={() => setTestOpen(true)} style={{ padding: '0.55rem 1rem', borderRadius: '8px', cursor: 'pointer', background: 'rgba(16,185,129,0.25)', color: '#34d399', border: '1px solid rgba(16,185,129,0.5)', fontWeight: 'bold' }}>
+          ▶️ Testar 3D
+        </button>
+      )}
+
+      {testOpen && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 999999, display: 'flex', flexDirection: 'column' }}>
+          <MapExplorerPoC onExit={() => setTestOpen(false)} playerMode scenarioConfig={buildPreviewConfig()} scenarioTheme={previewTheme as any} bossOverride={{ name: p.questMonsterName, config: p.questMonsterConfig }} />
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

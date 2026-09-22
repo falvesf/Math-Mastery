@@ -7,7 +7,7 @@ import type { Model3D } from '../components/Admin3DModelsManager';
  * Usa o cache de models3d e filtra localmente para evitar chamadas extras.
  */
 export async function fetchModelsByCategory(
-  category: 'skin' | 'chest' | 'coin',
+  category: 'skin' | 'chest' | 'coin' | 'door',
   tenantId?: string | null
 ): Promise<Model3D[]> {
   try {
@@ -72,6 +72,12 @@ export async function fetchActiveCoin(tenantId?: string | null): Promise<Model3D
 export async function fetchActiveChest(tenantId?: string | null): Promise<Model3D | null> {
   const chests = await fetchModelsByCategory('chest', tenantId);
   return chests.find(c => c.is_active) || null;
+}
+
+/** Busca a PORTA de calabouço PADRÃO (marca is_active). */
+export async function fetchActiveDoor(tenantId?: string | null): Promise<Model3D | null> {
+  const doors = await fetchModelsByCategory('door', tenantId);
+  return doors.find(d => d.is_active) || null;
 }
 
 /**

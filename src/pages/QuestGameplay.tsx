@@ -1641,16 +1641,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
           ? weaponFatality
           : (effectFatality || deaths[Math.floor(Math.random() * deaths.length)]));
     
-    let msg = '';
-    if (hasAttackWeapon) {
-      if (fatality === 'death-explode') msg = damageEffect === 'burn' ? 'Queime em chamas!' : (damageEffect === 'impact' ? 'Não sobrará nada!' : 'Agora EXPLODA!!!');
-      else if (fatality === 'death-slice') msg = 'Cortado ao meio!';
-      else if (fatality === 'death-evaporate') msg = damageEffect === 'poison' ? 'Desintegre-se!' : 'Vou te pulverizar!';
-      else msg = 'Caia perante mim!';
-    } else {
-      if (fatality === 'death-evaporate') msg = 'Desapareça!';
-      else msg = 'Caia perante mim!';
-    }
+    // Fala do golpe final: vem da Central de Falas (events.fatality do personagem).
+    const fatalityQuote = getDynamicQuote((currentHearts / maxHearts) * 100, 'player', 'fatality') || 'Caia perante mim!';
     
     const getVictoryMessage = () => {
       const playerHpPercentage = (currentHearts / maxHearts) * 100;
@@ -1687,7 +1679,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
         // Golpe final: usa animação fatal que mantém o player perto do monstro,
         // independente de ter arma ou não (evita reset para a posição inicial)
         setPlayerAnim(hasAttackWeapon ? 'attack-fatal-slow' : 'attack-fatal');
-        setPlayerBubble(msg);
+        setPlayerBubble(fatalityQuote);
         setBattleMessage(hasAttackWeapon ? 'Câmera lenta ativada! Golpe final épico!' : 'Golpe final!');
         
         // Espera para o monstro sentir o golpe
@@ -1753,14 +1745,13 @@ const dealTransformDamageToPlayer = (damage: number) => {
       }, 3000);
     } else {
       setMonsterAnim('idle');
-      setMonsterBubble('Você é fraco!');
+      setMonsterBubble(getDynamicQuote(100, 'monster', 'win')!);
       
-      const playerDefeatQuotes = ['NÃO!!!', 'AHHH!', 'ESSA NÃO!!!'];
-      const playerDefeatQuote = playerDefeatQuotes[Math.floor(Math.random() * playerDefeatQuotes.length)];
+      const playerDefeatQuote = getDynamicQuote((currentHearts / maxHearts) * 100, 'player', 'defeat') || 'NÃO!!!';
 
       setTimeout(() => {
         setMonsterAnim('attack-fatal-slow');
-        setMonsterBubble(msg);
+        setMonsterBubble(getDynamicQuote(100, 'monster', 'win')!);
         setBattleMessage('O monstro está preparando um ataque letal!');
         
         // Espera 1.125s para o jogador sentir o golpe
@@ -1792,15 +1783,23 @@ const dealTransformDamageToPlayer = (damage: number) => {
     }
   };
 
-  const getDynamicQuote = (hpPercentage: number, source: 'player' | 'monster', event?: 'critical' | 'hurt' | 'victory') => {
+  const getDynamicQuote = (hpPercentage: number, source: 'player' | 'monster', event?: 'critical' | 'hurt' | 'victory' | 'fatality' | 'defeat' | 'shield' | 'win') => {
     if (source === 'player') {
-      return pickPlayerBattleQuote(battleQuotes, hpPercentage, stressLevel, event);
+      return pickPlayerBattleQuote(battleQuotes, hpPercentage, stressLevel, event as any);
     } else {
       // 25% chance to speak
-      if (Math.random() > 0.25) return null;
+      if (event !== 'win' && Math.random() > 0.25) return null;
 
       let quotesArray: string[] = [];
       const custom = quest?.monsterQuotes;
+      // Fala de vitória do monstro (ao derrotar o jogador) — vinda da edição de monstros.
+      if (event === 'win') {
+        const winRaw = (custom?.win || '').trim();
+        if (winRaw) quotesArray = winRaw.split(';').map(s => s.trim()).filter(s => s);
+        if (quotesArray.length === 0) return 'Você é fraco!';
+        return quotesArray[Math.floor(Math.random() * quotesArray.length)];
+      }
+
       let rawQuotes = '';
       if (hpPercentage >= 80) rawQuotes = custom?.hp100_80 || '';
       else if (hpPercentage >= 50) rawQuotes = custom?.hp79_50 || '';
@@ -2108,7 +2107,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
           spawnFloatingDamage(0, false, 'player', true);
           setHasShield(false);
           setEliminatedOptions(prev => [...prev, optIndex]);
-          setPlayerBubble("O escudo aguentou!");
+          setPlayerBubble(getDynamicQuote((currentHearts / maxHearts) * 100, 'player', 'shield') || 'O escudo aguentou!');
           setTimeout(() => {
             setFeedback(null);
             setLastSelectedOption(null);

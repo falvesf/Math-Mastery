@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, UserPlus, Copy, RefreshCcw, Volume2, Database, FileSpreadsheet } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, UserPlus, Copy, RefreshCcw, Volume2, Database, FileSpreadsheet, Map as MapIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -11,6 +11,7 @@ import DirectUploadButton from '../components/DirectUploadButton';
 import AdminStoreManager from '../components/AdminStoreManager';
 import AdminRankManager from '../components/AdminRankManager';
 import AdminEntitiesManager from '../components/AdminEntitiesManager';
+import AdminScenarioManager from '../components/AdminScenarioManager';
 import AdminRolesManager from '../components/AdminRolesManager';
 import { usePermissions, fetchRoles, fetchUserRoles, assignRoleToUser, removeRoleFromUser, getPanelRoleName, panelLabel, baseRolePanelLabel, STANDARD_ROLE_NAMES_SET, type RoleDef } from '../lib/permissions';
 import AdminSpeechesManager from '../components/AdminSpeechesManager';
@@ -99,6 +100,8 @@ export interface QuestDef {
   arena3D?: boolean;
   /** Bioma da arena 3D (independente da imagem 2D). 'plains' = padrão. */
   battleBiome?: 'plains' | 'nether' | 'desert' | 'snow' | 'end';
+  /** Mapa explorável da missão ({ mode, scenarioId, monsters, bossId }). */
+  mapConfig?: any;
   battleBgPosX?: number;
   battleBgPosY?: number;
   battleBgScale?: number;
@@ -776,6 +779,8 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
   const [questBattleBgUrl, setQuestBattleBgUrl] = useState('');
   const [questArena3D, setQuestArena3D] = useState(false);
   const [questBattleBiome, setQuestBattleBiome] = useState<'plains' | 'nether' | 'desert' | 'snow' | 'end'>('plains');
+  // Mapa explorável da missão: { mode, scenarioId, monsters, bossId }.
+  const [questMapConfig, setQuestMapConfig] = useState<{ mode: 'none' | 'scenario' | 'procedural'; scenarioId: string; monsters: string[]; bossId: string }>({ mode: 'none', scenarioId: '', monsters: [], bossId: '' });
   const [questBattleBgPosX, setQuestBattleBgPosX] = useState(50);
   const [questBattleBgPosY, setQuestBattleBgPosY] = useState(50);
   const [questBattleBgScale, setQuestBattleBgScale] = useState(1.2);
@@ -866,6 +871,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       battleBgUrl: d.battleBgUrl || d.battle_bg_url || null,
       arena3D: d.arena3D ?? d.arena_3d ?? (typeof (d.battleBgUrl || d.battle_bg_url) === 'string' && (d.battleBgUrl || d.battle_bg_url || '').startsWith('voxel:')),
       battleBiome: (d.battleBiome || d.battle_biome || (((d.battleBgUrl || d.battle_bg_url || '').startsWith('voxel:')) ? (d.battleBgUrl || d.battle_bg_url).replace('voxel:', '') : 'plains')),
+      mapConfig: d.map_config || d.mapConfig || null,
       battleBgPosX: d.battleBgPosX ?? d.battle_bg_pos_x ?? 50,
       battleBgPosY: d.battleBgPosY ?? d.battle_bg_pos_y ?? 50,
       battleBgScale: d.battleBgScale ?? d.battle_bg_scale ?? 1.2,
@@ -1731,6 +1737,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       battleBgUrl: questBattleBgUrl,
       arena3D: questArena3D,
       battleBiome: questBattleBiome,
+      map_config: questMapConfig,
       battleBgPosX: questBattleBgPosX,
       battleBgPosY: questBattleBgPosY,
       battleBgScale: questBattleBgScale,
@@ -1860,6 +1867,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     setQuestBattleBgUrl(quest.battleBgUrl || '');
     setQuestArena3D(!!quest.arena3D);
     setQuestBattleBiome((quest.battleBiome || 'plains') as any);
+    setQuestMapConfig((quest as any).mapConfig || { mode: 'none', scenarioId: '', monsters: [], bossId: '' });
     setQuestBattleBgPosX(quest.battleBgPosX ?? 50);
     setQuestBattleBgPosY(quest.battleBgPosY ?? 50);
     setQuestBattleBgScale(quest.battleBgScale ?? 1.2);
@@ -2231,6 +2239,11 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
               <Box size={20} /> Entidades (3D)
             </button>
           )}
+          {canView('scenarios', 'view') && (
+            <button className={`login-btn ${activeTab === 'scenarios' ? 'active' : ''}`} onClick={() => setActiveTab('scenarios')} style={{ width: '100%', justifyContent: 'flex-start', border: activeTab === 'scenarios' ? '1px solid var(--accent-red)' : '1px solid transparent', background: activeTab === 'scenarios' ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+              <MapIcon size={20} /> <span className="sidebar-btn-text">Cenários</span>
+            </button>
+          )}
         </div>
 
         {/* Content */}
@@ -2368,6 +2381,13 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
         {activeTab === 'entities' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             <AdminEntitiesManager />
+          </div>
+        )}
+
+        {/* Aba de Cenários (mapas de exploração) — só com permissão de Cenários. */}
+        {activeTab === 'scenarios' && canView('scenarios', 'view') && (
+          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+            <AdminScenarioManager />
           </div>
         )}
 
@@ -4269,6 +4289,8 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
           setQuestArena3D={setQuestArena3D}
           questBattleBiome={questBattleBiome}
           setQuestBattleBiome={setQuestBattleBiome}
+          questMapConfig={questMapConfig}
+          setQuestMapConfig={setQuestMapConfig}
           questBattleBgPosX={questBattleBgPosX}
           setQuestBattleBgPosX={setQuestBattleBgPosX}
           questBattleBgPosY={questBattleBgPosY}

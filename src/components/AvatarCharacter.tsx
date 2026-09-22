@@ -124,7 +124,7 @@ export interface EquippedItem {
   modelUrl?: string;
   description?: string;
   type?: string;
-  avatarPart: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'two_handed' | 'rightHand' | 'leftHand' | 'accessory' | 'back' | 'background' | 'pet';
+  avatarPart: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'two_handed' | 'pickaxe' | 'rightHand' | 'leftHand' | 'accessory' | 'back' | 'background' | 'pet';
   itemTitle?: string;
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
@@ -1209,9 +1209,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             {
               const _lvl = item.forgeLevel || 0;
               const _tier = _lvl >= 9 ? 3 : _lvl >= 8 ? 2 : _lvl >= 7 ? 1 : 0;
-              const _isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
+              const _isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
               if (_tier > 0 && _isGear) {
-                const _isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
+                const _isWeaponSlot = ['hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
                 const _isShield = _isWeaponSlot && item.itemCategory === 'defense';
                 // Círculos só em ARMA de ataque. Armadura e ESCUDO usam o reflexo deslizante.
                 const _style: 'circles' | 'reflect' = (_isWeaponSlot && !_isShield) ? 'circles' : 'reflect';
@@ -1228,7 +1228,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                 attachForgeSparkles(model, _tier, _sparkScale, _sparkMul);
               }
             }
-            if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed') {
+            if (item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand' || item.avatarPart === 'hand' || item.avatarPart === 'two_handed' || item.avatarPart === 'pickaxe') {
               const isDefense = item.itemCategory === 'defense';
               const isLeftHanded = config?.handedness === 'left';
               const dominantArm = isLeftHanded ? viewer.playerObject.skin.leftArm : viewer.playerObject.skin.rightArm;
@@ -1236,7 +1236,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
               
               const targetArm = isDefense ? nonDominantArm : dominantArm;
               
-              if (item.avatarPart === 'two_handed' || item.avatarPart === 'hand' || item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand') {
+              if (item.avatarPart === 'two_handed' || item.avatarPart === 'pickaxe' || item.avatarPart === 'hand' || item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand') {
                 model.scale.set(10, 10, 10);
                 let appliedTransform = false;
                 

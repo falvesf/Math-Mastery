@@ -158,6 +158,32 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
       defeatedMonstersMap.set(monsterName, existing);
     });
 
+    // Encontros do MAPA EXPLORÁVEL (tabela monster_encounters): soma derrotas/vitórias
+    // de monstros derrotados nos cenários 3D (mesmo efeito das missões no Bestiário).
+    try {
+      const { data: mapEncounters } = await supabase.from('monster_encounters').select('*').eq('student_id', studentUid);
+      (mapEncounters || []).forEach((e: any) => {
+        const monsterName = String(e.monster_name || '').trim();
+        if (!monsterName) return;
+        const existing = defeatedMonstersMap.get(monsterName) || {
+          firstTimeMs: 0, firstDateStr: '', questTitle: 'Mapa Explorável', questObj: null, wins: 0, defeats: 0,
+        };
+        if (e.status === 'completed') {
+          existing.wins++;
+          const timeMs = new Date(e.created_at || Date.now()).getTime();
+          if (existing.firstTimeMs === 0 || timeMs < existing.firstTimeMs) {
+            existing.firstTimeMs = timeMs;
+            existing.firstDateStr = e.created_at || new Date().toISOString();
+            existing.questTitle = 'Mapa Explorável';
+            existing.questObj = null;
+          }
+        } else if (e.status === 'failed') {
+          existing.defeats++;
+        }
+        defeatedMonstersMap.set(monsterName, existing);
+      });
+    } catch (_) {}
+
     // Busca presets de monstros para enriquecer biografia e drops no Bestiário
     let monsterPresets: any[] = [];
     try {
@@ -921,6 +947,34 @@ export async function fetchStudentBestiaryCompendium(studentUid: string, _tenant
 
       encountersMap.set(normKey, existing);
     });
+
+    // Encontros do MAPA EXPLORÁVEL: derrotas de monstros nos cenários 3D também
+    // desbloqueiam o Bestiário (mesma lógica das missões).
+    try {
+      const { data: mapEncounters } = await supabase.from('monster_encounters').select('*').eq('student_id', studentUid);
+      (mapEncounters || []).forEach((e: any) => {
+        const monsterName = String(e.monster_name || '').trim();
+        if (!monsterName) return;
+        const normKey = monsterName.toLowerCase();
+        const existing = encountersMap.get(normKey) || {
+          wins: 0, defeats: 0, firstDateStr: '', firstTimeMs: 0, questTitle: 'Mapa Explorável', questObj: null,
+        };
+        if (e.status === 'completed') {
+          existing.wins++;
+          const dateStr = e.created_at || new Date().toISOString();
+          const timeMs = new Date(dateStr).getTime();
+          if (existing.firstTimeMs === 0 || timeMs < existing.firstTimeMs) {
+            existing.firstTimeMs = timeMs;
+            existing.firstDateStr = dateStr;
+            existing.questTitle = 'Mapa Explorável';
+            existing.questObj = null;
+          }
+        } else if (e.status === 'failed') {
+          existing.defeats++;
+        }
+        encountersMap.set(normKey, existing);
+      });
+    } catch (_) {}
 
     const entries: BestiaryCompendiumEntry[] = [];
     const processedKeys = new Set<string>();

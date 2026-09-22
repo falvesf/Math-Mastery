@@ -49,6 +49,7 @@ export const AREAS: AreaDef[] = [
   { key: 'arena_debug', label: 'Arena Debug' },
   { key: 'banks', label: 'Bancos' },
   { key: 'gradebook', label: 'Planilha de Notas' },
+  { key: 'scenarios', label: 'Cenários (Mapas)' },
 ];
 
 const FULL = (): PermAction => ({ view: true, create: true, update: true, delete: true });
@@ -62,7 +63,7 @@ const STANDARD_ROLE_PERMS: Record<string, Record<string, PermAction>> = {
     users: FULL(), quests_admin: FULL(), items: FULL(), economy: FULL(), classes: FULL(),
     approvals: FULL(), config: FULL(), ranks: FULL(), entities: FULL(), models: FULL(),
     skins: FULL(), debug3d: FULL(), pre_authorized: FULL(), tenants: FULL(), companion: FULL(),
-    themes: FULL(), arena_debug: FULL(), banks: FULL(), gradebook: FULL(),
+    themes: FULL(), arena_debug: FULL(), banks: FULL(), gradebook: FULL(), scenarios: FULL(),
   },
   coordinator: {
     quests: FULL(), profile: FULL(), ranking: FULL(), store: FULL(), inventory: FULL(),

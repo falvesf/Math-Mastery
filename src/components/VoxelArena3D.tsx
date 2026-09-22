@@ -1882,7 +1882,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       // SUOR (estresse): gotas pequenas brotam na cabeça e escorrem conforme o estresse.
       const stress = Math.max(0, Math.min(1, playerStressLevelRef.current));
       const sweatDrops = sweatDropsRef.current;
-      if (nativePl && stress > 0.2) {
+      if (nativePl && stress >= 0.25) {
         const spawnRate = 0.02 + stress * 0.05;
         if (Math.random() < spawnRate && sweatDrops.length < 3 + Math.round(stress * 4)) {
           const tex = getSweatTexture();
@@ -2370,14 +2370,21 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     attachBruisesAndBlood(nativePlayerRef.current.player, playerBruiseLevel, playerBleeding);
   }, [unified3D, playerBruiseLevel, playerBleeding]);
 
-  // Expressão facial (normal/serious/sad) conforme o estresse: recarrega a skin no
-  // viewer nativo com o mouthStyle correspondente (mesma lógica do AvatarCharacter).
+  // Expressão facial (normal/serious/sad): MESMA lógica do 2D (QuestGameplayMobile),
+  // dirigida por HP% com o estresse como modulador. Recarrega a skin no viewer nativo
+  // com o mouthStyle correspondente (mesma lógica do AvatarCharacter).
   const lastNativeExpRef = useRef<string>('');
   useEffect(() => {
     if (!unified3D) return;
     const viewer = nativePlayerRef.current?.viewer;
     if (!viewer || playerSkinUrl) return; // skin customizada não tem expressões
-    const exp = playerStressLevel >= 0.6 ? 'sad' : playerStressLevel >= 0.3 ? 'serious' : 'normal';
+    // playerBruiseLevel = fração de vida perdida (0 = cheio, 1 = quase morto) → HP%.
+    const hpPct = (1 - Math.max(0, Math.min(1, playerBruiseLevel))) * 100;
+    let exp: 'normal' | 'serious' | 'sad';
+    if (hpPct >= 75) exp = playerStressLevel >= 0.5 ? 'serious' : 'normal';
+    else if (hpPct >= 50) exp = playerStressLevel >= 0.6 ? 'sad' : 'serious';
+    else if (hpPct >= 25) exp = 'serious';
+    else exp = 'sad';
     if (exp === lastNativeExpRef.current) return;
     lastNativeExpRef.current = exp;
     let cancelled = false;
@@ -2396,7 +2403,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       } catch { /* expressão falhou */ }
     })();
     return () => { cancelled = true; };
-  }, [unified3D, playerStressLevel, playerSkinUrl]);
+  }, [unified3D, playerStressLevel, playerBruiseLevel, playerSkinUrl]);
 
   // Aplica a animação (por nome) e a rotação (repouso = câmera, combate = oponente).
   useEffect(() => {

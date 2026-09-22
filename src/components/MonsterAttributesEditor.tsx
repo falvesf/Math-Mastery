@@ -168,6 +168,8 @@ export interface MonsterStatsConfig {
   defense: number;
   evasion: number;
   critChance: number;
+  /** Pontos de vida da criatura (usado nos mapas exploráveis). */
+  hp?: number;
   xp?: number;
   /** Tabela de fuga configurável ("corações restantes → chance %"). Vazia = curva padrão. */
   fleeChanceTable?: Array<{ minHearts: number; chance: number }>;
@@ -184,6 +186,8 @@ export interface MonsterAttributesConfig {
     hp49_25?: string;
     hp24_0?: string;
     defeat?: string;
+    /** Fala do monstro ao derrotar o jogador (golpe final contra o herói). */
+    win?: string;
   };
   drops?: Array<{ itemId: string; dropChance: number }>;
   stats?: MonsterStatsConfig;
@@ -262,6 +266,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     defense: value.stats?.defense ?? 1,
     evasion: value.stats?.evasion ?? 1,
     critChance: value.stats?.critChance ?? 1,
+    hp: value.stats?.hp,
     xp: value.stats?.xp ?? 0,
     fleeChanceTable: value.stats?.fleeChanceTable,
   };
@@ -475,6 +480,24 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
               />
             </div>
 
+            {/* HP */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(239, 68, 68, 0.45)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#fca5a5', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                ❤️ Pontos de Vida (HP)
+              </label>
+              <input
+                type="number"
+                min="1"
+                placeholder={currentStats.hp === undefined ? `auto (${Math.max(40, Math.round(40 + (currentStats.level || 1) * 35))})` : undefined}
+                value={currentStats.hp ?? ''}
+                onChange={e => updateStats({ hp: e.target.value === '' ? undefined : Math.max(1, parseInt(e.target.value) || 1) })}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              />
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                Usado nos mapas exploráveis. Vazio = automático pelo nível.
+              </div>
+            </div>
+
             {/* Defesa */}
             <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', padding: '0.65rem' }}>
               <label style={{ display: 'block', fontSize: '0.72rem', color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.3rem' }}>
@@ -608,7 +631,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.2rem' }}>
             <button
               type="button"
-              onClick={() => updateStats({ level: 1, attack: 1, defense: 1, evasion: 1, critChance: 1, xp: 0, fleeChanceTable: undefined })}
+              onClick={() => updateStats({ level: 1, attack: 1, defense: 1, evasion: 1, critChance: 1, hp: undefined, xp: 0, fleeChanceTable: undefined })}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -769,6 +792,17 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
               onChange={e => updateQuotes({ defeat: e.target.value })}
               placeholder="Ex: NÃO PODE SER!; Fui derrotado...; AHHH!"
               style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(239, 68, 68, 0.4)', color: 'white', fontSize: '0.82rem' }}
+            />
+          </div>
+
+          <div style={{ marginTop: '0.3rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', color: '#fbbf24', fontWeight: 'bold', marginBottom: '0.2rem' }}>🏆 Fala de Vitória (Ao Derrotar o Jogador)</label>
+            <input
+              type="text"
+              value={value.quotes?.win || ''}
+              onChange={e => updateQuotes({ win: e.target.value })}
+              placeholder="Ex: Você é fraco!; Eu venci!; Não é páreo para mim!"
+              style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(251, 191, 36, 0.4)', color: 'white', fontSize: '0.82rem' }}
             />
           </div>
         </div>

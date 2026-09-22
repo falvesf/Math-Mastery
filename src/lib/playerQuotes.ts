@@ -24,6 +24,12 @@ export interface PlayerBattleQuotes {
     criticalHit: string[];
     hurt: string[];
     victory: string[];
+    /** Falas do herói no momento do golpe final (fatalidade). */
+    fatality: string[];
+    /** Falas do herói ao ser derrotado. */
+    defeat: string[];
+    /** Falas do herói ao bloquear um ataque com o escudo. */
+    shield: string[];
   };
 }
 
@@ -105,6 +111,24 @@ export const DEFAULT_PLAYER_BATTLE_QUOTES: PlayerBattleQuotes = {
       'Incrível! Venci!',
       'Missão cumprida com sucesso!',
     ],
+    fatality: [
+      'Queime em chamas!',
+      'Não sobrará nada!',
+      'Agora EXPLODA!!!',
+      'Cortado ao meio!',
+      'Desintegre-se!',
+      'Vou te pulverizar!',
+      'Desapareça!',
+      'Caia perante mim!',
+    ],
+    defeat: [
+      'NÃO!!!',
+      'AHHH!',
+      'ESSA NÃO!!!',
+    ],
+    shield: [
+      'O escudo aguentou!',
+    ],
   },
 };
 
@@ -164,6 +188,9 @@ export async function fetchPlayerBattleQuotes(tenantId?: string | null): Promise
           criticalHit: rawData.events?.criticalHit || DEFAULT_PLAYER_BATTLE_QUOTES.events.criticalHit,
           hurt: rawData.events?.hurt || DEFAULT_PLAYER_BATTLE_QUOTES.events.hurt,
           victory: rawData.events?.victory || DEFAULT_PLAYER_BATTLE_QUOTES.events.victory,
+          fatality: rawData.events?.fatality || DEFAULT_PLAYER_BATTLE_QUOTES.events.fatality,
+          defeat: rawData.events?.defeat || DEFAULT_PLAYER_BATTLE_QUOTES.events.defeat,
+          shield: rawData.events?.shield || DEFAULT_PLAYER_BATTLE_QUOTES.events.shield,
         },
       };
       sessionCache.set(cacheKey, merged, 60 * 1000);
@@ -229,18 +256,18 @@ export function pickPlayerBattleQuote(
   quotes: PlayerBattleQuotes,
   hpPercentage: number,
   stressLevel: number,
-  event?: 'critical' | 'hurt' | 'victory' | null
+  event?: 'critical' | 'hurt' | 'victory' | 'fatality' | 'defeat' | 'shield' | null
 ): string | null {
-  if (event === 'critical') {
-    const arr = quotes.events?.criticalHit || [];
-    return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
-  }
-  if (event === 'victory') {
-    const arr = quotes.events?.victory || [];
-    return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
-  }
-  if (event === 'hurt') {
-    const arr = quotes.events?.hurt || [];
+  const eventMap: Record<string, string[]> = {
+    critical: quotes.events?.criticalHit || [],
+    victory: quotes.events?.victory || [],
+    hurt: quotes.events?.hurt || [],
+    fatality: quotes.events?.fatality || [],
+    defeat: quotes.events?.defeat || [],
+    shield: quotes.events?.shield || [],
+  };
+  if (event && eventMap[event]) {
+    const arr = eventMap[event];
     return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
   }
 

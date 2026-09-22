@@ -15,6 +15,8 @@ export interface MonsterCombatStats {
   defense: number;
   evasion: number;     // %
   critChance: number;  // %
+  /** Pontos de vida do monstro (usado nos mapas exploráveis e bestiário). */
+  hp?: number;
   xp?: number;
   /**
    * Tabela configurável de fuga ("corações restantes → chance"). Quando preenchida,

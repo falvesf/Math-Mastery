@@ -80,7 +80,7 @@ export interface StoreItem {
   modelTextureUrl?: string; // URL da skin (textura) aplicada ao modelo .glb
   minecraftHeadValue?: string; // Base64 ou URL da textura do capacete Minecraft
   gameImage2dUrl?: string; // Imagem em lona completa (ex: 512x512) para o paper doll 2D
-  avatarPart?: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'two_handed' | 'accessory' | 'background' | 'pet';
+  avatarPart?: 'head' | 'face' | 'body' | 'legs' | 'feet' | 'hand' | 'two_handed' | 'pickaxe' | 'accessory' | 'background' | 'pet';
   itemCategory?: ItemCategory;
   baseAttributeType?: AttributeType;
   baseAttributeValue?: number;
@@ -2185,6 +2185,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
                     <option value="feet">Pés (Botas/Sapatos)</option>
                     <option value="hand">Mãos (Armas Simples/Escudos)</option>
                     <option value="two_handed">Arma de Duas Mãos (Lanças/Machados Grandes)</option>
+                    <option value="pickaxe">Picareta (Ferramenta de Mineração)</option>
                     <option value="accessory">Acessórios (Luvas/Cintos/Amuletos)</option>
                     <option value="pet">Mascote (Acompanhante)</option>
                   </select>

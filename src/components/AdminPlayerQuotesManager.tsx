@@ -110,6 +110,9 @@ export const AdminPlayerQuotesManager: React.FC = () => {
           criticalHit: cleanList(quotes.events?.criticalHit),
           hurt: cleanList(quotes.events?.hurt),
           victory: cleanList(quotes.events?.victory),
+          fatality: cleanList(quotes.events?.fatality),
+          defeat: cleanList(quotes.events?.defeat),
+          shield: cleanList(quotes.events?.shield),
         },
       };
 
@@ -526,6 +529,9 @@ export const AdminPlayerQuotesManager: React.FC = () => {
           {renderQuoteList('Ao Acertar Crítico', ['events', 'criticalHit'], 'Disparado ao acertar um golpe devastador.', '#eab308')}
           {renderQuoteList('Ao Sofrer Dano', ['events', 'hurt'], 'Reação imediata ao receber um ataque.', '#f43f5e')}
           {renderQuoteList('Vitória na Missão', ['events', 'victory'], 'Comemoração final ao derrotar o monstro.', '#6366f1')}
+          {renderQuoteList('Golpe Final (Fatalidade)', ['events', 'fatality'], 'Fala do herói no instante do golpe final contra o monstro.', '#ef4444')}
+          {renderQuoteList('Derrota do Herói', ['events', 'defeat'], 'Reação ao ser derrotado pelo monstro.', '#7f1d1d')}
+          {renderQuoteList('Escudo', ['events', 'shield'], 'Fala ao bloquear um ataque do monstro com o escudo.', '#3b82f6')}
         </div>
       )}
 
