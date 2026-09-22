@@ -479,10 +479,11 @@ if (!cancelled) {
     }).catch(() => {});
 
     // Moeda/baú PADRÃO ativos do tenant (arte do cenário).
-    const loadModels = Promise.all([fetchActiveCoin(tenantId), fetchActiveChest(tenantId)]).then(async ([coinM, chestM]) => {
+    const loadModels = Promise.all([fetchActiveCoin(tenantId), fetchActiveChest(tenantId), fetchActiveDoor(tenantId)]).then(async ([coinM, chestM, doorM]) => {
       const c = await buildTemplate(coinM, 'coin');
       const ch = await buildTemplate(chestM, 'chest');
-      if (!cancelled) { coinTemplateRef.current = c; chestTemplateRef.current = ch; coinConfigRef.current = coinM; chestConfigRef.current = chestM; }
+      const dr = await buildTemplate(doorM, 'door');
+      if (!cancelled) { coinTemplateRef.current = c; chestTemplateRef.current = ch; doorTemplateRef.current = dr; coinConfigRef.current = coinM; chestConfigRef.current = chestM; }
       // Pré-carrega os SONS de moeda/baú configurados na edição.
       if (coinM?.coinSoundUrl) sfx.preload(coinM.coinSoundUrl);
       if (chestM?.chestAudioUrl) sfx.preload(chestM.chestAudioUrl);

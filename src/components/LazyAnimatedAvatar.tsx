@@ -50,7 +50,11 @@ export default function LazyAnimatedAvatar({ id, config, equippedItems, size, an
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasCaptureRef = useRef<HTMLDivElement>(null);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [snapshot, setSnapshot] = useState<string | null>(snapshotCache.get(id) || null);
+  // A chave do snapshot inclui os ITENS equipados: senão o snapshot era capturado antes
+  // de os itens carregarem (ranking) e ficava cacheado SEM os itens para sempre.
+  const itemsKey = (equippedItems || []).map((i: any) => i.itemId || i.docId || i.imageUrl || i.gameModelUrl || '').join(',');
+  const cacheKey = `${id}|${itemsKey}`;
+  const [snapshot, setSnapshot] = useState<string | null>(() => snapshotCache.get(cacheKey) || null);
   const visibleRef = useRef(false);
   // Espelha o snapshot para o IntersectionObserver (evita closure com valor velho).
   const snapshotRef = useRef(snapshot);
@@ -77,13 +81,22 @@ export default function LazyAnimatedAvatar({ id, config, equippedItems, size, an
       }
       if (!hasContent) return false;
       const url = canvas.toDataURL('image/png');
-      snapshotCache.set(id, url);
+      snapshotCache.set(cacheKey, url);
       setSnapshot(url);
       return true;
     } catch {
       return false;
     }
-  }, [id]);
+  }, [cacheKey]);
+
+  // Quando a CHAVE muda (itens carregaram/diferentes), revalida o snapshot e re-anima
+  // para (re)capturar COM os itens corretos.
+  useEffect(() => {
+    const cached = snapshotCache.get(cacheKey) || null;
+    setSnapshot(cached);
+    snapshotRef.current = cached;
+    if (!cached && visibleRef.current) setIsAnimating(true);
+  }, [cacheKey]);
 
   useEffect(() => {
     const el = containerRef.current;

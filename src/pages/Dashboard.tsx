@@ -1105,7 +1105,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchRankingItems = async () => {
-      const classStudents = allStudents.filter(s => s.classId === userData?.classId).slice(0, 10);
+      // Turma EFETIVA do ranking (a selecionada no seletor), não apenas a do usuário logado.
+      const effClass = selectedClassForRanking || userData?.classId;
+      const classStudents = allStudents.filter(s => s.classId === effClass).slice(0, 10);
       const top10General = allStudents.slice(0, 10);
       const studentIds = new Set<string>();
 
@@ -1115,8 +1117,8 @@ export default function Dashboard() {
 
       if (studentIds.size === 0) return;
 
-      // Verifica o cache — itens do ranking mudam raramente
-      const cacheKey = CACHE_KEYS.rankingItems();
+      // Verifica o cache — itens do ranking mudam raramente (chave inclui a turma selecionada)
+      const cacheKey = `${CACHE_KEYS.rankingItems()}|${effClass || 'all'}`;
       const cached = sessionCache.get<Record<string, EquippedItem[]>>(cacheKey);
       if (cached) {
         setRankingEquippedItems(cached);
@@ -1166,11 +1168,11 @@ export default function Dashboard() {
     };
 
     fetchRankingItems();
-  }, [allStudents, userData?.classId, userData?.studentViewActive]);
+  }, [allStudents, userData?.classId, userData?.studentViewActive, selectedClassForRanking]);
 
   // Invalidate ranking cache when student mode changes (admin items are archived to backup)
   useEffect(() => {
-    sessionCache.invalidate(CACHE_KEYS.rankingItems());
+    sessionCache.invalidateByPrefix(CACHE_KEYS.rankingItems());
     setRankingEquippedItems({});
   }, [userData?.studentViewActive]);
 
