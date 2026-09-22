@@ -129,25 +129,23 @@ export default function LazyAnimatedAvatar({ id, config, equippedItems, size, an
     };
   }, [id, alwaysAnimate]);
 
-  // Captura o snapshot com tentativas: o skin/itens carregam de forma assíncrona, então a
-// captura pode vir em branco no início. Tenta várias vezes; só troca para o snapshot (e
-// libera o slot para o próximo, rotação justa) quando a captura tiver conteúdo real.
-useEffect(() => {
-  if (!isAnimating) return;
-  let attempts = 0;
-  const iv = setInterval(() => {
-    attempts++;
-    if (captureSnapshot()) {
-      clearInterval(iv);
-      if (!alwaysAnimate && pendingCallbacks.length > 0) {
-        releaseSlot(id, () => setIsAnimating(false));
+  // Captura o snapshot em VÁRIAS tentativas e mantém ATUALIZANDO por alguns segundos:
+  // o skin/itens (GLB) carregam de forma assíncrona — se capturássemos só uma vez, sairia
+  // SEM os itens (o canvas já tem conteúdo só com a skin). A versão final já inclui os itens.
+  useEffect(() => {
+    if (!isAnimating) return;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 10; // ~7s (700ms * 10) para os itens GLB carregarem
+    const iv = setInterval(() => {
+      attempts++;
+      captureSnapshot(); // atualiza o cache/snapshot; mantém a última boa
+      if (attempts >= MAX_ATTEMPTS) {
+        clearInterval(iv);
+        if (!alwaysAnimate && pendingCallbacks.length > 0) releaseSlot(id, () => setIsAnimating(false));
       }
-    } else if (attempts >= 10) {
-      clearInterval(iv); // desiste; mantém o avatar AO VIVO (melhor que ficar apagado)
-    }
-  }, 800);
-  return () => clearInterval(iv);
-}, [isAnimating, captureSnapshot, alwaysAnimate, id]);
+    }, 700);
+    return () => clearInterval(iv);
+  }, [isAnimating, captureSnapshot, alwaysAnimate, id, cacheKey]);
 
   return (
     <div ref={containerRef} style={{ width: size, height: size, position: 'relative' }}>
