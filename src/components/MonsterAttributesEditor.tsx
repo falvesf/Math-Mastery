@@ -170,6 +170,10 @@ export interface MonsterStatsConfig {
   critChance: number;
   /** Pontos de vida da criatura (usado nos mapas exploráveis). */
   hp?: number;
+  /** Agressividade em relação a ANIMAIS: pacífico (só revida), neutro (revida/reage) ou agressivo (ataca qualquer animal no raio). */
+  aggression?: 'peaceful' | 'neutral' | 'aggressive';
+  /** Agendamento de agressividade por nível: { level, aggression } — muda conforme o monstro evolui (vence batalhas). */
+  aggressionByLevel?: Array<{ level: number; aggression: 'peaceful' | 'neutral' | 'aggressive' }>;
   xp?: number;
   /** Tabela de fuga configurável ("corações restantes → chance %"). Vazia = NUNCA foge. */
   fleeChanceTable?: Array<{ minHearts: number; chance: number }>;
@@ -271,6 +275,8 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     evasion: value.stats?.evasion ?? 1,
     critChance: value.stats?.critChance ?? 1,
     hp: value.stats?.hp,
+    aggression: value.stats?.aggression || 'aggressive',
+    aggressionByLevel: value.stats?.aggressionByLevel,
     xp: value.stats?.xp ?? 0,
     fleeChanceTable: value.stats?.fleeChanceTable,
   };
@@ -636,6 +642,31 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
             <div>
               <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Chance de ficar HOSTIL ao ser atacado (%)</label>
               <input type="number" min={0} max={100} value={Math.round((currentStats.hostileChance ?? 0) * 100)} onChange={e => updateStats({ hostileChance: Math.min(1, Math.max(0, (parseInt(e.target.value) || 0) / 100)) })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Agressividade (contra animais)</label>
+              <select value={currentStats.aggression || 'aggressive'} onChange={e => updateStats({ aggression: e.target.value as any })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}>
+                <option value="peaceful">🕊️ Pacífico — só revida se for atacado por um animal</option>
+                <option value="neutral">⚖️ Neutro — ataca animais se for atacado (por animal ou jogador)</option>
+                <option value="aggressive">⚔️ Agressivo — ataca qualquer animal no seu raio</option>
+              </select>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Muda a agressividade a partir do nível (evolução)</label>
+              {(currentStats.aggressionByLevel || []).map((e, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Nv.</span>
+                  <input type="number" min={1} value={e.level} onChange={ev => updateStats({ aggressionByLevel: (currentStats.aggressionByLevel || []).map((x, j) => j === idx ? { ...x, level: Math.max(1, parseInt(ev.target.value) || 1) } : x) })} style={{ width: 60, padding: '0.35rem', borderRadius: 6, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                  <select value={e.aggression} onChange={ev => updateStats({ aggressionByLevel: (currentStats.aggressionByLevel || []).map((x, j) => j === idx ? { ...x, aggression: ev.target.value as any } : x) })} style={{ flex: 1, padding: '0.35rem', borderRadius: 6, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }}>
+                    <option value="peaceful">🕊️ Pacífico</option>
+                    <option value="neutral">⚖️ Neutro</option>
+                    <option value="aggressive">⚔️ Agressivo</option>
+                  </select>
+                  <button onClick={() => updateStats({ aggressionByLevel: (currentStats.aggressionByLevel || []).filter((_, j) => j !== idx) })} style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                </div>
+              ))}
+              <button onClick={() => updateStats({ aggressionByLevel: [...(currentStats.aggressionByLevel || []), { level: (currentStats.level || 1) + 1, aggression: 'aggressive' as any }] })} style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: 'rgba(245,158,11,0.15)', border: '1px dashed rgba(245,158,11,0.5)', color: 'var(--gold-primary)', cursor: 'pointer', fontSize: '0.75rem' }}>+ Faixa de nível</button>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 4 }}>Ex.: pacífico até nv3, neutro do nv4 ao nv7, agressivo do nv8. Vale por MONSTRO (cada um sobe de nível vencendo batalhas).</div>
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Dano de efeito do golpe</label>

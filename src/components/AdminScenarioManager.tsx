@@ -47,6 +47,16 @@ interface ScenarioConfig {
   genChests?: number;
   /** Chance de monstro por célula livre (0-1). */
   genMonsterChance?: number;
+  /** Quantidade EXATA de monstros a gerar (0=auto). Tem prioridade sobre genMonsterChance. */
+  genMonsterCount?: number;
+  /** Cristais de geração por elemento: -1 = nenhum, 0/undefined = auto, >0 = quantidade exata. */
+  genRocks?: number;
+  genTrees?: number;
+  genFlowers?: number;
+  genAnimals?: number;
+  /** Animais: 'varied' = sorteia do catálogo; 'specific' = só os de animalIds. */
+  animalMode?: 'varied' | 'specific';
+  animalIds?: string[];
   /** Como a porta do BOSS é aberta: 'none' (sem chave) ou 'monster_drop' (chave cai de um monstro). */
   bossKeyMode?: 'none' | 'monster_drop';
   keys?: KeyType[];
@@ -306,10 +316,11 @@ export default function AdminScenarioManager() {
     const { cols, rows } = c.config;
     const mapType: 'closed' | 'open' = c.config.mapType === 'open' ? 'open' : 'closed';
     const elab = Math.max(0, Math.min(1, Number(c.config.elaboration) ?? 0.5));
-    const wantDoors = Math.max(0, Math.round(Number(c.config.genDoors) || 0));
-    const doors = wantDoors > 0 ? wantDoors : (mapType === 'closed' ? (2 + Math.round(elab * 2)) : 0);
+    const genDoorsRaw = Number(c.config.genDoors);
+    const wantDoors = (Number.isFinite(genDoorsRaw) && c.config.genDoors !== undefined && c.config.genDoors !== null && c.config.genDoors !== '') ? Math.round(genDoorsRaw) : 0;
+    // -1 = nenhuma porta (labirinto totalmente conectado); 0 = auto; >0 = quantidade.
+    const doors = wantDoors === -1 ? 0 : (wantDoors > 0 ? wantDoors : (mapType === 'closed' ? (2 + Math.round(elab * 2)) : 0));
     const monList: string[] = Array.isArray(c.config.monsterConfig?.monsters) ? (c.config.monsterConfig!.monsters as string[]) : [];
-    const monChance = Number(c.config.genMonsterChance) > 0 ? Math.min(1, Number(c.config.genMonsterChance)) : (0.03 + elab * 0.06);
     const chestTarget = Math.max(0, Math.round(Number(c.config.genChests) || 0)) || Math.max(1, Math.round(1 + elab * 3));
     const doorTypeId = () => c.config.doorTypes?.[0]?.id || c.config.defaultDoorType || 'wood';
 
@@ -431,14 +442,44 @@ export default function AdminScenarioManager() {
     const [ex, ez] = best;
     g[sz][sx] = 'S'; g[ez][ex] = 'E';
 
-    // Monstros (fora da zona inicial).
-    const monsterCells: Record<string, string> = {};
-    if (monChance > 0) {
-      for (let z = 1; z < rows - 1; z++) for (let x = 1; x < cols - 1; x++) {
-        if (g[z][x] !== '.') continue;
-        if (dist[z][x] >= 0 && dist[z][x] < 5) continue;
-        if (Math.random() < monChance) monsterCells[`${x},${z}`] = monList.length ? monList[Math.floor(Math.random() * monList.length)] : 'default';
+    // GARANTIA DE CONECTIVIDADE: nenhuma área sem acesso (a não ser por PORTA).
+    // Flood fill do início tratando '.' e 'D' (porta) como atravessáveis; células
+    // livres não alcançadas viram PAREDE (evita "beco selado" que exige quebrar parede).
+    {
+      const seen = new Set<string>([`${sx},${sz}`]);
+      const q: [number, number][] = [[sx, sz]];
+      while (q.length) {
+        const [cx, cz] = q.shift()!;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nx = cx + dx, nz = cz + dz;
+          if (!freeFor(nx, nz)) continue;
+          if (g[nz][nx] === '#') continue;
+          const k = `${nx},${nz}`;
+          if (seen.has(k)) continue;
+          seen.add(k); q.push([nx, nz]);
+        }
       }
+      for (let z = 1; z < rows - 1; z++) for (let x = 1; x < cols - 1; x++) {
+        const ch = g[z][x];
+        if (ch === '.' || ch === 'D' || ch === 'S' || ch === 'E') {
+          if (!seen.has(`${x},${z}`)) g[z][x] = '#';
+        }
+      }
+    }
+
+    // Monstros: QUANTIDADE EXATA (genMonsterCount) ou automática. Fora da zona inicial.
+    const monsterCells: Record<string, string> = {};
+    const eligibleMon: [number, number][] = [];
+    for (let z = 1; z < rows - 1; z++) for (let x = 1; x < cols - 1; x++) {
+      if (g[z][x] !== '.') continue;
+      if (dist[z][x] >= 0 && dist[z][x] < 5) continue;
+      eligibleMon.push([x, z]);
+    }
+    shuffleArr(eligibleMon);
+    const autoMon = Math.max(3, Math.round(eligibleMon.length * (0.008 + elab * 0.012)));
+    const monCount = Math.max(0, Math.round(Number(c.config.genMonsterCount) || 0)) || autoMon;
+    for (const [x, z] of eligibleMon.slice(0, monCount)) {
+      monsterCells[`${x},${z}`] = monList.length ? monList[Math.floor(Math.random() * monList.length)] : 'default';
     }
     // Baús: becos primeiro, depois células livres.
     const chestCells: Record<string, string> = {};
@@ -513,9 +554,10 @@ export default function AdminScenarioManager() {
       deadEnds = Math.round(free * 0.06);
     }
     const paintedMonsters = Object.keys(c.config.monsterCells || {}).length;
-    let monsters = paintedMonsters;
+    const genCount = Math.max(0, Math.round(Number(c.config.genMonsterCount) || 0));
+    let monsters = paintedMonsters || genCount;
     const cfg = c.config.monsterConfig || {};
-    if (monsters === 0 && Array.isArray(cfg.monsters) && cfg.monsters.length > 0) monsters = Math.round(free * (0.03 + elab * 0.06));
+    if (monsters === 0 && Array.isArray(cfg.monsters) && cfg.monsters.length > 0) monsters = Math.round(free * (0.008 + elab * 0.012));
     else if (monsters === 0 && Array.isArray(cfg.regions) && cfg.regions.length > 0) {
       monsters = cfg.regions.reduce((s, rg) => {
         const x1 = Math.max(1, Math.min(rg.x1, rg.x2)), x2 = Math.min(cols - 2, Math.max(rg.x1, rg.x2));
@@ -982,9 +1024,24 @@ export default function AdminScenarioManager() {
                       <option value="open">🌾 Aberto (campo)</option>
                     </select>
                   </div>
-                  <div style={{ width: 110 }}><label style={labelStyle}>Portas (0=auto)</label><input type="number" min={0} style={inputStyle} value={current.config.genDoors ?? 0} onChange={e => patchConfig({ genDoors: parseInt(e.target.value) || 0 })} /></div>
+                  <div style={{ width: 130 }}><label style={labelStyle}>Portas (-1=sem, 0=auto)</label><input type="number" min={-1} style={inputStyle} value={current.config.genDoors ?? 0} onChange={e => patchConfig({ genDoors: Math.max(-1, parseInt(e.target.value) || 0) })} /></div>
                   <div style={{ width: 110 }}><label style={labelStyle}>Baús (0=auto)</label><input type="number" min={0} style={inputStyle} value={current.config.genChests ?? 0} onChange={e => patchConfig({ genChests: parseInt(e.target.value) || 0 })} /></div>
-                  <div style={{ width: 150 }}><label style={labelStyle}>Monstros % (0=auto)</label><input type="number" min={0} max={100} style={inputStyle} value={Math.round((current.config.genMonsterChance ?? 0) * 100)} onChange={e => patchConfig({ genMonsterChance: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) / 100 })} /></div>
+                  <div style={{ width: 130 }}><label style={labelStyle}>Monstros (0=auto)</label><input type="number" min={0} style={inputStyle} value={current.config.genMonsterCount ?? 0} onChange={e => patchConfig({ genMonsterCount: Math.max(0, parseInt(e.target.value) || 0) })} /></div>
+                  <div style={{ width: 150 }}><label style={labelStyle}>Rochas (-1=sem, 0=auto)</label><input type="number" min={-1} style={inputStyle} value={current.config.genRocks ?? 0} onChange={e => patchConfig({ genRocks: Math.max(-1, parseInt(e.target.value) || 0) })} /></div>
+                  <div style={{ width: 150 }}><label style={labelStyle}>Árvores (-1=sem, 0=auto)</label><input type="number" min={-1} style={inputStyle} value={current.config.genTrees ?? 0} onChange={e => patchConfig({ genTrees: Math.max(-1, parseInt(e.target.value) || 0) })} /></div>
+                  <div style={{ width: 150 }}><label style={labelStyle}>Flores (-1=sem, 0=auto)</label><input type="number" min={-1} style={inputStyle} value={current.config.genFlowers ?? 0} onChange={e => patchConfig({ genFlowers: Math.max(-1, parseInt(e.target.value) || 0) })} /></div>
+                  <div style={{ width: 150 }}><label style={labelStyle}>Animais (-1=sem, 0=auto)</label><input type="number" min={-1} style={inputStyle} value={current.config.genAnimals ?? 0} onChange={e => patchConfig({ genAnimals: Math.max(-1, parseInt(e.target.value) || 0) })} /></div>
+                  <div style={{ width: 170 }}><label style={labelStyle}>Animais</label>
+                    <select style={inputStyle} value={current.config.animalMode || 'varied'} onChange={e => patchConfig({ animalMode: e.target.value as any })}>
+                      <option value="varied">🎲 Variados (catálogo)</option>
+                      <option value="specific">🎯 Específicos (por id)</option>
+                    </select>
+                  </div>
+                  {current.config.animalMode === 'specific' && (
+                    <div style={{ minWidth: 260, flex: '1 1 260px' }}><label style={labelStyle}>Ids dos animais (separe por vírgula)</label>
+                      <input style={inputStyle} placeholder="ex: animal-id-1, animal-id-2" value={(current.config.animalIds || []).join(', ')} onChange={e => patchConfig({ animalIds: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} />
+                    </div>
+                  )}
                 </div>
               </div>
               {tool === 'wall' && current.config.wallTypes.length > 0 && (
