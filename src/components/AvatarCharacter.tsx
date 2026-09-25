@@ -369,22 +369,34 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
       if (mat._forgeBaseMetalness === undefined && 'metalness' in mat) mat._forgeBaseMetalness = Number(mat.metalness) || 0;
       if (mat._forgeBaseRoughness === undefined && 'roughness' in mat) mat._forgeBaseRoughness = Number(mat.roughness) || 1;
 
-      const isPbr = ('metalness' in mat || 'roughness' in mat || 'envMap' in mat);
+      // PBR de verdade (Standard/Physical). NÃO usar `'envMap' in mat`: MeshBasicMaterial
+      // (unlit, ex.: glb com KHR_materials_unlit) também tem envMap — e aplicar envMap num
+      // unlit MULTIPLICA a textura pelo ambiente e deixa o item preto.
+      const isPbr = !!(mat as any).isMeshStandardMaterial || !!(mat as any).isMeshPhysicalMaterial;
       if (isPbr) {
         if (env) mat.envMap = env;
-        // +9: metálico polido refletindo; +0: bem fosco (película que tira o brilho)
-        if ('metalness' in mat) mat.metalness = _forgeLerp(Math.min(1, mat._forgeBaseMetalness + 0.75), 0, film);
-        if ('roughness' in mat) mat.roughness = _forgeLerp(Math.max(0.08, mat._forgeBaseRoughness * 0.15), 1.0, film);
-        if ('envMapIntensity' in mat) mat.envMapIntensity = _forgeLerp(2.0, 0.02, film);
+        // +9: polido/reflexivo — mas SEM virar "preto". Metalness alto mata a cor difusa
+        // (o item reflete só o ambiente e escurece). Mantemos o metalness BAIXO para a
+        // cor do modelo aparecer; o brilho vem do emissivo/reflexo e das sparkles.
+        if ('metalness' in mat) mat.metalness = _forgeLerp(Math.min(0.2, mat._forgeBaseMetalness * 0.2 + 0.05), 0, film);
+        if ('roughness' in mat) mat.roughness = _forgeLerp(Math.max(0.1, mat._forgeBaseRoughness * 0.3), 1.0, film);
+        if ('envMapIntensity' in mat) mat.envMapIntensity = _forgeLerp(1.6, 0.02, film);
         // Um leve tom ciano "encantado" só nos níveis altos
-        if ('emissive' in mat) mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.06);
+        if ('emissive' in mat) mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.10);
       }
       if (mat.color) {
         const c = mat._forgeBaseColor.clone();
-        if (!isPbr) c.lerp(white, intensity * 0.22); // sprite 2.5D: clareia conforme o nível
-        c.multiplyScalar(1 - film * 0.38);           // película escurece bem no nível baixo
+        if (!isPbr) {
+          // Unlit (ex.: glb KHR_materials_unlit): a cor MULTIPLICA a textura, e o lerp p/
+          // branco não faz efeito quando a cor-base já é branca. Em níveis altos,
+          // multiplicar ACIMA de 1 clareia a textura de verdade (+6 ~ original; +9 vistoso).
+          c.multiplyScalar(1 + intensity * 0.7);
+        } else {
+          c.lerp(white, intensity * 0.2);
+        }
+        c.multiplyScalar(1 - film * 0.22);                 // película leve (opaco só nos níveis baixos)
         const lum = c.r * 0.299 + c.g * 0.587 + c.b * 0.114; // dessatura (aspecto opaco)
-        c.lerp(new THREE.Color(lum, lum, lum), film * 0.4);
+        c.lerp(new THREE.Color(lum, lum, lum), film * 0.3);
         mat.color.copy(c);
       }
       mat.needsUpdate = true;
@@ -1169,7 +1181,10 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       rightScreenHandLocal = handItemsLocal[1];
     }
 
+    // Picareta / item de DUAS MÃOS ocupa arma E escudo → não renderiza o escudo (defense) junto.
+    const hasTwoHandEquipped = equippedItems.some(i => i.avatarPart === 'two_handed' || i.avatarPart === 'pickaxe');
     equippedItems.forEach(item => {
+      if (hasTwoHandEquipped && item.itemCategory === 'defense' && (item.avatarPart === 'leftHand' || item.avatarPart === 'hand')) return;
       let slotId = item.avatarPart as string;
       if (item.avatarPart === 'two_handed') slotId = 'hand2';
       else if (item.avatarPart === 'hand' || item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand') {
@@ -1908,7 +1923,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     }
 
     const weapons = (equippedItems || []).filter(i =>
-      ['rightHand', 'leftHand', 'hand', 'two_handed'].includes((i.avatarPart || '') as string)
+      ['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes((i.avatarPart || '') as string)
     );
     const maxWeaponScale = Math.max(0, ...weapons.map(i =>
       (i.modelTransforms?.common?.scale) || (i.modelTransforms?.battle?.scale) || 10
@@ -1958,7 +1973,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
       // Find the latest item data in case it was updated in the DB
       const item = parsedItems.find((i: any) => (i.itemId || i.docId) === itemId) || cachedItem;
       
-      if (avatarPart === 'two_handed' || avatarPart === 'hand' || avatarPart === 'rightHand' || avatarPart === 'leftHand') {
+      if (avatarPart === 'two_handed' || avatarPart === 'hand' || avatarPart === 'rightHand' || avatarPart === 'leftHand' || avatarPart === 'pickaxe') {
         const isDefense = item.itemCategory === 'defense';
         const isLeftHanded = config?.handedness === 'left';
         const dominantArm = isLeftHanded ? viewer.playerObject.skin.leftArm : viewer.playerObject.skin.rightArm;
@@ -2005,7 +2020,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             const isRightArm = targetArm === viewer.playerObject.skin.rightArm;
             model.position.set(isRightArm ? -3.5 : 3.5, -6, 0); 
             model.rotation.set(0, isRightArm ? Math.PI / 2 : -Math.PI / 2, 0); 
-          } else if (avatarPart === 'two_handed') {
+          } else if (avatarPart === 'two_handed' || avatarPart === 'pickaxe') {
             model.position.set(0, -11, 0); 
             model.rotation.set(Math.PI / 2.2, 0, isLeftHanded ? Math.PI / 20 : -Math.PI / 20);
             model.translateY(-18);
@@ -2816,7 +2831,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     resetBones();
 
     const targetRotation = role === 'player' ? Math.PI / 2 : -Math.PI / 2;
-    const hasTwoHanded = equippedItems.some(i => i.avatarPart === 'two_handed');
+    const hasTwoHanded = equippedItems.some(i => i.avatarPart === 'two_handed' || i.avatarPart === 'pickaxe');
 
     const applyTwoHandedPose = (player: any, time: number) => {
       const safeTime = (typeof time === 'number' && !isNaN(time)) ? time : 0;
@@ -3260,7 +3275,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   const handItems = equippedItems.filter(i => i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'hand');
 
 
-  const twoHandedItem = equippedItems.find(i => i.avatarPart === 'two_handed');
+  // Picareta é item de DUAS MÃOS: aparece no slot de arma e some do escudo (como two_handed).
+  const twoHandedItem = equippedItems.find(i => i.avatarPart === 'two_handed' || i.avatarPart === 'pickaxe');
   let leftScreenHandItem = null; // Character's right hand
   let rightScreenHandItem = null; // Character's left hand
 

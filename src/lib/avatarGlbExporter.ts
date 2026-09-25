@@ -250,9 +250,9 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
       try {
         const _lvl = item.forgeLevel || 0;
         const _tier = _lvl >= 9 ? 3 : _lvl >= 8 ? 2 : _lvl >= 7 ? 1 : 0;
-        const _isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
+        const _isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
         if (_tier > 0 && _isGear) {
-          const _isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
+          const _isWeaponSlot = ['hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(item.avatarPart as string);
           const _isShield = _isWeaponSlot && item.itemCategory === 'defense';
           const _style: 'circles' | 'reflect' = (_isWeaponSlot && !_isShield) ? 'circles' : 'reflect';
           model.traverse((child: any) => {

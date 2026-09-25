@@ -23,8 +23,8 @@ const THEME_OPTIONS = [
   { value: 'end', label: '🟣 O Fim' },
 ];
 
-interface WallType { id: string; name: string; color: string; textureUrl?: string; hp: number; def: number; breakable: boolean; chance: number; trapChance: number }
-interface DoorType { id: string; name: string; color: string; textureUrl?: string; modelId?: string; hp: number; def: number; openMode: 'challenge' | 'free' | 'key'; challengeChance: number; keyItemId?: string }
+interface WallType { id: string; name: string; color: string; textureUrl?: string; hp: number; def: number; breakable: boolean; chance: number; trapChance: number; drops?: LootEntry[]; spawnMonsterIds?: string[] }
+interface DoorType { id: string; name: string; color: string; textureUrl?: string; modelId?: string; hp: number; def: number; openMode: 'challenge' | 'free' | 'key'; challengeChance: number; keyItemId?: string; wrongMonsterIds?: string[] }
 interface KeyType { id: string; name: string; imageUrl?: string }
 interface LootEntry { kind: 'coins' | 'item' | 'key' | 'heart' | 'potion' | 'nothing'; weight: number; min?: number; max?: number; itemId?: string; keyId?: string }
 interface MonsterSpawnRegion { x1: number; z1: number; x2: number; z2: number; monsters: string[]; density: number }
@@ -36,10 +36,17 @@ interface ScenarioConfig {
   musicVolume?: number;
   /** Densidade de paredes na geração aleatória (0-1; 0.26 = padrão). */
   wallDensity?: number;
+  /** Tipo de mapa: 'closed' = labirinto murado; 'open' = campo aberto com obstáculos. */
+  mapType?: 'closed' | 'open';
   /** Altura das paredes do mapa em unidades de mundo (padrão 3.4). */
   wallHeight?: number;
   /** Elaboração estratégica da geração (0-1): mais baús/monstros/portas/rochas/perigos. */
   elaboration?: number;
+  /** Critérios explícitos da geração (opcionais; se 0/undefined usa a elaboração). */
+  genDoors?: number;
+  genChests?: number;
+  /** Chance de monstro por célula livre (0-1). */
+  genMonsterChance?: number;
   /** Como a porta do BOSS é aberta: 'none' (sem chave) ou 'monster_drop' (chave cai de um monstro). */
   bossKeyMode?: 'none' | 'monster_drop';
   keys?: KeyType[];
@@ -59,6 +66,8 @@ interface ScenarioConfig {
   doorTypeCells?: Record<string, string>;
   /** Células pintadas com um MONSTRO específico ("x,z" → id do monstro do catálogo). */
   monsterCells?: Record<string, string>;
+  /** Células com BAÚ ("x,z" → '1'). Geradas pelo "Gerar mapa" e usadas pelo runtime. */
+  chestCells?: Record<string, string>;
   /** Loot dos BAÚS (por sorteio ponderado). Sem config → moedas 1..10 (comportamento antigo). */
   chestConfig?: { loot?: LootEntry[] };
 }
@@ -67,7 +76,7 @@ interface Scenario { id?: string; tenant_id?: string | null; name: string; theme
 const DEFAULT_CONFIG: ScenarioConfig = {
   cols: 48, rows: 18, revealRadius: 7, wallTrapChance: 0.12,
   defaultWallType: 'stone', defaultDoorType: 'wood',
-  wallDensity: 0.26, elaboration: 0.5, bossKeyMode: 'none',
+    wallDensity: 0.26, elaboration: 0.5, bossKeyMode: 'none', mapType: 'closed',
   wallHeight: 3.4,
   musicVolume: 0.5,
   chestConfig: { loot: [
@@ -150,6 +159,8 @@ export default function AdminScenarioManager() {
   const [current, setCurrent] = useState<Scenario | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Abas do editor (organização): Mapa / Paredes / Portas & Chaves / Loot & Baús / Monstros.
+  const [editorTab, setEditorTab] = useState<'map' | 'walls' | 'doors' | 'loot' | 'monsters'>('map');
   const [tool, setTool] = useState<'wall' | 'door' | 'monster' | 'start' | 'end' | 'erase'>('wall');
   const [painting, setPainting] = useState(false);
   // Tipo de parede/porta selecionado para PINTAR (por célula).
@@ -287,7 +298,169 @@ export default function AdminScenarioManager() {
   };
   const setLayout = (layout: string[]) => setCurrent(c => c ? { ...c, config: { ...c.config, layout } } : c);
   const applyDims = () => setCurrent(c => { if (!c) return c; return { ...c, config: { ...c.config, layout: blankLayout(c.config.cols, c.config.rows), wallTypeCells: {}, doorTypeCells: {} } }; });
-  const randomMap = () => setCurrent(c => { if (!c) return c; const { cols, rows } = c.config; const dens = Math.max(0, Math.min(1, Number(c.config.wallDensity) ?? 0.26)); const l = blankLayout(cols, rows); for (let z = 1; z < rows - 1; z++) { let line = l[z]; for (let x = 1; x < cols - 1; x++) { const ch = line[x]; if (ch === 'S' || ch === 'E') continue; line = line.substring(0, x) + (Math.random() < dens ? '#' : '.') + line.substring(x + 1); } l[z] = line; } return { ...c, config: { ...c.config, layout: l, wallTypeCells: {}, doorTypeCells: {} } }; });
+  // Geração por CRITÉRIOS (tipo fechado/aberto, nº de portas, monstros e baús).
+  // Preenche layout + doorTypeCells/monsterCells/chestCells para que a PRÉVIA do mapa
+  // pintado reflita o que a simulação vai criar.
+  const generateScenarioLayout = () => setCurrent(c => {
+    if (!c) return c;
+    const { cols, rows } = c.config;
+    const mapType: 'closed' | 'open' = c.config.mapType === 'open' ? 'open' : 'closed';
+    const elab = Math.max(0, Math.min(1, Number(c.config.elaboration) ?? 0.5));
+    const wantDoors = Math.max(0, Math.round(Number(c.config.genDoors) || 0));
+    const doors = wantDoors > 0 ? wantDoors : (mapType === 'closed' ? (2 + Math.round(elab * 2)) : 0);
+    const monList: string[] = Array.isArray(c.config.monsterConfig?.monsters) ? (c.config.monsterConfig!.monsters as string[]) : [];
+    const monChance = Number(c.config.genMonsterChance) > 0 ? Math.min(1, Number(c.config.genMonsterChance)) : (0.03 + elab * 0.06);
+    const chestTarget = Math.max(0, Math.round(Number(c.config.genChests) || 0)) || Math.max(1, Math.round(1 + elab * 3));
+    const doorTypeId = () => c.config.doorTypes?.[0]?.id || c.config.defaultDoorType || 'wood';
+
+    function shuffleArr<T>(a: T[]): T[] { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+    const g: string[][] = Array.from({ length: rows }, () => Array(cols).fill('.'));
+    if (mapType === 'closed') {
+      // Labirinto REAL (recursive backtracker) — conectado e fechado pela borda.
+      for (let z = 0; z < rows; z++) for (let x = 0; x < cols; x++) g[z][x] = '#';
+      const stack: [number, number][] = [[1, 1]]; g[1][1] = '.';
+      const dirs: [number, number][] = [[2, 0], [-2, 0], [0, 2], [0, -2]];
+      while (stack.length) {
+        const [cx, cz] = stack[stack.length - 1];
+        const opts: [number, number, number, number][] = [];
+        for (const [dx, dz] of dirs) {
+          const nx = cx + dx, nz = cz + dz;
+          if (nx > 0 && nz > 0 && nx < cols - 1 && nz < rows - 1 && g[nz][nx] === '#') opts.push([nx, nz, cx + dx / 2, cz + dz / 2]);
+        }
+        if (!opts.length) { stack.pop(); continue; }
+        const [nx, nz, wx, wz] = opts[Math.floor(Math.random() * opts.length)];
+        g[wz][wx] = '.'; g[nz][nx] = '.'; stack.push([nx, nz]);
+      }
+    }
+    // Borda SEMPRE fechada (contenção).
+    for (let x = 0; x < cols; x++) { g[0][x] = '#'; g[rows - 1][x] = '#'; }
+    for (let z = 0; z < rows; z++) { g[z][0] = '#'; g[z][cols - 1] = '#'; }
+
+    const doorTypeCells: Record<string, string> = {};
+    const freeFor = (x: number, z: number) => x > 0 && z > 0 && x < cols - 1 && z < rows - 1;
+
+    // --- Setores / sala do boss (definidos ANTES de escolher S/E, para variar as posições) ---
+    let room: { x1: number; z1: number; x2: number; z2: number } | null = null;
+    let cuts: { axis: 'v' | 'h'; pos: number }[] = [];
+
+    if (doors > 0 && mapType === 'open') {
+      if (doors === 1) {
+        // Sala do BOSS num CANTO ALEATÓRIO do mapa.
+        const rw = Math.min(12, cols - 2), rh = Math.min(12, rows - 2);
+        const corner = Math.floor(Math.random() * 4);
+        const x1 = (corner === 1 || corner === 3) ? cols - 1 - rw : 1;
+        const z1 = (corner >= 2) ? rows - 1 - rh : 1;
+        const x2 = Math.min(cols - 2, x1 + rw - 1), z2 = Math.min(rows - 2, z1 + rh - 1);
+        const rx1 = Math.max(1, Math.min(x1, x2)), rz1 = Math.max(1, Math.min(z1, z2));
+        for (let x = rx1; x <= x2; x++) { g[rz1][x] = '#'; g[z2][x] = '#'; }
+        for (let z = rz1; z <= z2; z++) { g[z][rx1] = '#'; g[z][x2] = '#'; }
+        // Porta no lado da sala mais próximo do CENTRO do mapa (fácil de achar, mas gated).
+        const cxm = Math.round(cols / 2), czm = Math.round(rows / 2);
+        const sides = [
+          { x: rx1, z: Math.round((rz1 + z2) / 2) },
+          { x: x2, z: Math.round((rz1 + z2) / 2) },
+          { x: Math.round((rx1 + x2) / 2), z: rz1 },
+          { x: Math.round((rx1 + x2) / 2), z: z2 },
+        ];
+        sides.sort((a, b) => (Math.abs(a.x - cxm) + Math.abs(a.z - czm)) - (Math.abs(b.x - cxm) + Math.abs(b.z - czm)));
+        const d = sides[0]; g[d.z][d.x] = 'D'; doorTypeCells[`${d.x},${d.z}`] = doorTypeId();
+        room = { x1: rx1, z1: rz1, x2, z2 };
+      } else {
+        const axis: 'v' | 'h' = Math.random() < 0.5 ? 'v' : 'h';
+        for (let b = 1; b <= doors; b++) {
+          const total = (axis === 'v' ? cols : rows) - 1;
+          const pos = Math.max(1, Math.min((axis === 'v' ? cols : rows) - 2, Math.round(total * b / (doors + 1))));
+          if (axis === 'v') { for (let z = 1; z < rows - 1; z++) g[z][pos] = '#'; const dz = 1 + Math.floor(Math.random() * (rows - 2)); g[dz][pos] = 'D'; doorTypeCells[`${pos},${dz}`] = doorTypeId(); }
+          else { for (let x = 1; x < cols - 1; x++) g[pos][x] = '#'; const dx = 1 + Math.floor(Math.random() * (cols - 2)); g[pos][dx] = 'D'; doorTypeCells[`${dx},${pos}`] = doorTypeId(); }
+          cuts.push({ axis, pos });
+        }
+      }
+    } else if (doors > 0 && mapType === 'closed') {
+      // Setores no labirinto: cortes (V ou H) com uma passagem virada em porta.
+      const axis: 'v' | 'h' = Math.random() < 0.5 ? 'v' : 'h';
+      for (let b = 1; b <= doors; b++) {
+        const total = (axis === 'v' ? cols : rows) - 1;
+        const pos = Math.max(1, Math.min((axis === 'v' ? cols : rows) - 2, Math.round(total * b / (doors + 1))));
+        if (axis === 'v') {
+          const openings: number[] = []; for (let z = 1; z < rows - 1; z++) if (g[z][pos] === '.') openings.push(z);
+          for (let z = 1; z < rows - 1; z++) g[z][pos] = '#';
+          const dz = openings.length ? openings[Math.floor(Math.random() * openings.length)] : 1 + Math.floor(Math.random() * (rows - 2));
+          g[dz][pos] = 'D'; doorTypeCells[`${pos},${dz}`] = doorTypeId();
+        } else {
+          const openings: number[] = []; for (let x = 1; x < cols - 1; x++) if (g[pos][x] === '.') openings.push(x);
+          for (let x = 1; x < cols - 1; x++) g[pos][x] = '#';
+          const dx = openings.length ? openings[Math.floor(Math.random() * openings.length)] : 1 + Math.floor(Math.random() * (cols - 2));
+          g[pos][dx] = 'D'; doorTypeCells[`${dx},${pos}`] = doorTypeId();
+        }
+        cuts.push({ axis, pos });
+      }
+    }
+
+    // --- INÍCIO aleatório (fora da sala do boss / no primeiro setor) e FIM no ponto MAIS DISTANTE ---
+    const isOpen = (x: number, z: number) => freeFor(x, z) && g[z][x] !== '#';
+    const inRoom = (x: number, z: number) => !!room && x >= room.x1 && x <= room.x2 && z >= room.z1 && z <= room.z2;
+    const inFirstBand = (x: number, z: number) => { if (!cuts.length) return true; const f = cuts[0]; return f.axis === 'v' ? x < f.pos : z < f.pos; };
+    const inLastBand = (x: number, z: number) => { if (!cuts.length) return true; const last = cuts[cuts.length - 1]; return last.axis === 'v' ? x > last.pos : z > last.pos; };
+
+    const allOpen: [number, number][] = [];
+    for (let z = 1; z < rows - 1; z++) for (let x = 1; x < cols - 1; x++) if (isOpen(x, z)) allOpen.push([x, z]);
+    const startPool = allOpen.filter(([x, z]) => (!room || !inRoom(x, z)) && inFirstBand(x, z));
+    const poolS = startPool.length ? startPool : allOpen.filter(([x, z]) => !room || !inRoom(x, z));
+    const sPick = poolS.length ? poolS[Math.floor(Math.random() * poolS.length)] : (allOpen[0] || [1, 1]);
+    const [sx, sz] = sPick;
+
+    const dist = Array.from({ length: rows }, () => Array(cols).fill(-1));
+    const queue: [number, number][] = [[sx, sz]]; dist[sz][sx] = 0;
+    for (let qi = 0; qi < queue.length; qi++) {
+      const [x, z] = queue[qi];
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nx = x + dx, nz = z + dz;
+        if (nx < 0 || nz < 0 || nx >= cols || nz >= rows || g[nz][nx] === '#' || dist[nz][nx] >= 0) continue;
+        dist[nz][nx] = dist[z][x] + 1; queue.push([nx, nz]);
+      }
+    }
+    // FIM: o mais distante, com preferência pela sala do boss / último setor.
+    let best: [number, number] = [sx, sz]; let bestD = -1;
+    for (const [x, z] of allOpen) {
+      if (dist[z][x] < 0) continue;
+      const pref = room ? inRoom(x, z) : (cuts.length ? inLastBand(x, z) : true);
+      const d = dist[z][x] + (pref ? 1e6 : 0);
+      if (d > bestD) { bestD = d; best = [x, z]; }
+    }
+    const [ex, ez] = best;
+    g[sz][sx] = 'S'; g[ez][ex] = 'E';
+
+    // Monstros (fora da zona inicial).
+    const monsterCells: Record<string, string> = {};
+    if (monChance > 0) {
+      for (let z = 1; z < rows - 1; z++) for (let x = 1; x < cols - 1; x++) {
+        if (g[z][x] !== '.') continue;
+        if (dist[z][x] >= 0 && dist[z][x] < 5) continue;
+        if (Math.random() < monChance) monsterCells[`${x},${z}`] = monList.length ? monList[Math.floor(Math.random() * monList.length)] : 'default';
+      }
+    }
+    // Baús: becos primeiro, depois células livres.
+    const chestCells: Record<string, string> = {};
+    const freeAt = (x: number, z: number) => x > 0 && z > 0 && x < cols - 1 && z < rows - 1 && g[z][x] === '.';
+    const deadEnds: [number, number][] = []; const openC: [number, number][] = [];
+    for (let z = 1; z < rows - 1; z++) for (let x = 1; x < cols - 1; x++) {
+      if (g[z][x] !== '.') continue;
+      let n = 0; for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (freeAt(x + dx, z + dz)) n++;
+      openC.push([x, z]); if (n === 1) deadEnds.push([x, z]);
+    }
+    shuffleArr(deadEnds); shuffleArr(openC);
+    const deadSet = new Set(deadEnds.map(d => `${d[0]},${d[1]}`));
+    const spots = deadEnds.concat(openC.filter(oc => !deadSet.has(`${oc[0]},${oc[1]}`)));
+    for (const [x, z] of spots) {
+      if (Object.keys(chestCells).length >= chestTarget) break;
+      const key = `${x},${z}`;
+      if (monsterCells[key]) continue;
+      chestCells[key] = '1';
+    }
+
+    return { ...c, config: { ...c.config, layout: g.map(r => r.join('')), wallTypeCells: {}, doorTypeCells, monsterCells, chestCells } };
+  });
   const paintAt = (x: number, z: number) => setCurrent(c => {
     if (!c) return c;
     const { cols, rows } = c.config;
@@ -403,6 +576,14 @@ export default function AdminScenarioManager() {
       if (mId) marks.push('monster');
       if (marks.length) plan.set(key, marks);
     }
+    // Baús gerados pelo "Gerar mapa" (chestCells) têm prioridade sobre a heurística de becos.
+    if (c.config.chestCells) {
+      for (const key of Object.keys(c.config.chestCells)) {
+        const marks = plan.get(key) || [];
+        if (!marks.includes('chest')) marks.unshift('chest');
+        plan.set(key, marks);
+      }
+    }
     return plan;
   };
 
@@ -428,6 +609,8 @@ export default function AdminScenarioManager() {
 
   const patchConfig = (patch: Partial<ScenarioConfig>) => setCurrent(c => c ? { ...c, config: { ...c.config, ...patch } } : c);
   const patchWall = (i: number, patch: Partial<WallType>) => setCurrent(c => { if (!c) return c; const wt = c.config.wallTypes.map((w, j) => j === i ? { ...w, ...patch } : w); return { ...c, config: { ...c.config, wallTypes: wt } }; });
+  const patchWallDrops = (i: number, drops: LootEntry[]) => patchWall(i, { drops });
+  const patchWallDrop = (i: number, j: number, patch: Partial<LootEntry>) => setCurrent(c => { if (!c) return c; const wt = c.config.wallTypes.map((w, wi) => wi === i ? { ...w, drops: (w.drops || []).map((l, li) => li === j ? { ...l, ...patch } : l) } : w); return { ...c, config: { ...c.config, wallTypes: wt } }; });
   const patchDoor = (i: number, patch: Partial<DoorType>) => setCurrent(c => { if (!c) return c; const dt = c.config.doorTypes.map((d, j) => j === i ? { ...d, ...patch } : d); return { ...c, config: { ...c.config, doorTypes: dt } }; });
   const patchLoot = (i: number, patch: Partial<LootEntry>) => setCurrent(c => { if (!c) return c; const lt = c.config.lootTable.map((l, j) => j === i ? { ...l, ...patch } : l); return { ...c, config: { ...c.config, lootTable: lt } }; });
   const patchKey = (i: number, patch: Partial<KeyType>) => setCurrent(c => { if (!c) return c; const kt = (c.config.keys || []).map((k, j) => j === i ? { ...k, ...patch } : k); return { ...c, config: { ...c.config, keys: kt } }; });
@@ -500,16 +683,22 @@ export default function AdminScenarioManager() {
         {!current && <div style={{ ...card, color: 'var(--text-secondary)' }}>Selecione um cenário à esquerda ou crie um novo.</div>}
         {current && (
           <>
-            <div style={card}>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <strong style={{ color: 'var(--text-primary)' }}>{current.id ? 'Editar cenário' : 'Novo cenário'}</strong>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {current.id && <button style={btn('rgba(255,255,255,0.08)')} onClick={() => setCurrent({ ...JSON.parse(JSON.stringify(current)), id: undefined, name: current.name + ' (cópia)', is_active: false })}>Duplicar</button>}
-                  {current.id && <button style={btn('rgba(239,68,68,0.25)')} onClick={removeScenario}>Excluir</button>}
-                  <button style={btn('rgba(16,185,129,0.35)')} onClick={() => setTestOpen(true)} title="Abre o Mapa Explorável 3D com esta configuração (mesmo sem salvar)">▶️ Testar 3D</button>
-                  <button style={btn('var(--accent-blue, #3b82f6)')} disabled={saving} onClick={save}>{saving ? 'Salvando…' : 'Salvar'}</button>
-                </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>{current.id ? 'Editar cenário' : 'Novo cenário'}</strong>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {current.id && <button style={btn('rgba(255,255,255,0.08)')} onClick={() => setCurrent({ ...JSON.parse(JSON.stringify(current)), id: undefined, name: current.name + ' (cópia)', is_active: false })}>Duplicar</button>}
+                {current.id && <button style={btn('rgba(239,68,68,0.25)')} onClick={removeScenario}>Excluir</button>}
+                <button style={btn('rgba(16,185,129,0.35)')} onClick={() => setTestOpen(true)} title="Abre o Mapa Explorável 3D com esta configuração (mesmo sem salvar)">▶️ Testar 3D</button>
+                <button style={btn('var(--accent-blue, #3b82f6)')} disabled={saving} onClick={save}>{saving ? 'Salvando…' : 'Salvar'}</button>
               </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+              {([['map', '🗺️ Mapa'], ['walls', '🧱 Paredes'], ['doors', '🚪 Portas & Chaves'], ['loot', '🎁 Loot & Baús'], ['monsters', '🐉 Monstros']] as const).map(([id, lbl]) => (
+                <button key={id} onClick={() => setEditorTab(id)} style={{ ...btn(editorTab === id ? 'var(--accent-blue, #3b82f6)' : 'rgba(255,255,255,0.06)'), fontWeight: editorTab === id ? 800 : 600 }}>{lbl}</button>
+              ))}
+            </div>
+            <div style={{ ...card, display: editorTab === 'map' ? undefined : 'none' }}>
+              <strong style={{ display: 'block', color: 'var(--text-primary)', marginBottom: 10 }}>🗺️ Mapa & Geral</strong>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
                 <div><label style={labelStyle}>Nome</label><input style={inputStyle} value={current.name} onChange={e => setCurrent({ ...current, name: e.target.value })} /></div>
                 <div><label style={labelStyle}>Tema</label>
@@ -543,7 +732,7 @@ export default function AdminScenarioManager() {
             </div>
 
             {/* Tipos de parede */}
-            <div style={card}>
+            <div style={{ ...card, display: editorTab === 'walls' ? undefined : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>🧱 Tipos de Parede</strong>
                 <button style={btn('var(--accent-green, #10b981)')} onClick={() => setCurrent({ ...current, config: { ...current.config, wallTypes: [...current.config.wallTypes, { id: 'tipo' + (current.config.wallTypes.length + 1), name: 'Nova Parede', color: '#8b5a2b', hp: 1000, def: 250, breakable: true, chance: 0.2, trapChance: 0.1 }] } })}>+ Tipo</button>
@@ -569,18 +758,43 @@ export default function AdminScenarioManager() {
                       <input type="checkbox" checked={w.breakable} onChange={e => patchWall(i, { breakable: e.target.checked })} /> Sim
                     </label>
                   </div>
-                  <div style={{ width: 120 }}><label style={labelStyle}>Padrão</label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-primary)', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: 8, padding: '0.5rem' }}>
-                      <input type="radio" name={`defWall-${current.id || 'new'}`} checked={current.config.defaultWallType === w.id} onChange={() => patchConfig({ defaultWallType: w.id })} /> Usar
-                    </label>
-                  </div>
                   <button title="Remover" style={{ ...btn('rgba(239,68,68,0.25)'), padding: '0.45rem 0.5rem', marginLeft: 'auto' }} onClick={() => setCurrent({ ...current, config: { ...current.config, wallTypes: current.config.wallTypes.filter((_, j) => j !== i) } })}>✕</button>
+                  <div style={{ flexBasis: '100%', marginTop: 2 }}>
+                    <details>
+                      <summary style={{ cursor: 'pointer', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>🎁 Solta ao quebrar ({(w.drops || []).length} loot{(w.spawnMonsterIds || []).length ? ` · ${(w.spawnMonsterIds || []).length} monstro(s)` : ''})</summary>
+                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {(w.drops || []).map((l, j) => (
+                          <div key={j} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                            <select style={{ ...inputStyle, width: 120 }} value={l.kind} onChange={e => patchWallDrop(i, j, { kind: e.target.value as any })}>
+                              <option value="coins">🪙 Moedas</option>
+                              <option value="item">📦 Item</option>
+                              <option value="nothing">— Nada</option>
+                            </select>
+                            <input type="number" title="Peso" style={{ ...inputStyle, width: 70 }} value={l.weight} onChange={e => patchWallDrop(i, j, { weight: parseInt(e.target.value) || 0 })} />
+                            {l.kind === 'coins' && <>
+                              <input type="number" title="Mín" style={{ ...inputStyle, width: 64 }} value={l.min ?? 1} onChange={e => patchWallDrop(i, j, { min: parseInt(e.target.value) || 0 })} />
+                              <input type="number" title="Máx" style={{ ...inputStyle, width: 64 }} value={l.max ?? 10} onChange={e => patchWallDrop(i, j, { max: parseInt(e.target.value) || 0 })} />
+                            </>}
+                            {l.kind === 'item' && <div style={{ flex: '1 1 220px' }}><ItemSelectDropdown items={catalogOptions} value={l.itemId || ''} onChange={id => patchWallDrop(i, j, { itemId: id })} placeholder="Item do catálogo..." /></div>}
+                            <button title="Remover" style={{ ...btn('rgba(239,68,68,0.25)'), padding: '0.4rem 0.5rem' }} onClick={() => patchWallDrops(i, (w.drops || []).filter((_, k) => k !== j))}>✕</button>
+                          </div>
+                        ))}
+                        <div><button style={btn('rgba(16,185,129,0.3)')} onClick={() => patchWallDrops(i, [...(w.drops || []), { kind: 'coins', weight: 10, min: 1, max: 5 }])}>+ Loot</button></div>
+                        <div>
+                          <label style={labelStyle}>Monstros que solta (Ctrl p/ vários)</label>
+                          <select multiple size={3} style={{ ...inputStyle, height: 'auto', padding: 4 }} value={w.spawnMonsterIds || []} onChange={e => patchWall(i, { spawnMonsterIds: Array.from(e.target.selectedOptions).map(o => (o as HTMLOptionElement).value) })}>
+                            {monsterCatalog.map((m: any) => <option key={m.id} value={m.id}>{m.name || m.id}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
                 </div>
               ))}
             </div>
 
             {/* Chaves do cenário */}
-            <div style={card}>
+            <div style={{ ...card, display: editorTab === 'doors' ? undefined : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>🔑 Chaves do Cenário</strong>
                 <button style={btn('var(--accent-green, #10b981)')} onClick={() => setCurrent({ ...current, config: { ...current.config, keys: [...(current.config.keys || []), { id: 'chave' + ((current.config.keys || []).length + 1), name: 'Nova Chave', imageUrl: '' }] } })}>+ Chave</button>
@@ -605,7 +819,7 @@ export default function AdminScenarioManager() {
             </div>
 
             {/* Tipos de porta */}
-            <div style={card}>
+            <div style={{ ...card, display: editorTab === 'doors' ? undefined : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>🚪 Tipos de Porta</strong>
                 <button style={btn('var(--accent-green, #10b981)')} onClick={() => setCurrent({ ...current, config: { ...current.config, doorTypes: [...current.config.doorTypes, { id: 'porta' + (current.config.doorTypes.length + 1), name: 'Nova Porta', color: '#8b5a2b', hp: 600, def: 120, openMode: 'challenge', challengeChance: 0.7 }] } })}>+ Tipo</button>
@@ -639,6 +853,12 @@ export default function AdminScenarioManager() {
                     </select>
                   </div>
                   <div style={{ width: 120 }}><label style={labelStyle}>Chance desafio %</label><input type="number" style={inputStyle} value={Math.round((d.challengeChance || 0) * 100)} onChange={e => patchDoor(i, { challengeChance: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) / 100 })} /></div>
+                  <div style={{ minWidth: 200, flex: '0 1 220px' }}>
+                    <label style={labelStyle}>Monstros ao errar (Ctrl p/ vários)</label>
+                    <select multiple size={2} style={{ ...inputStyle, height: 'auto', padding: 4 }} value={d.wrongMonsterIds || []} onChange={e => patchDoor(i, { wrongMonsterIds: Array.from(e.target.selectedOptions).map(o => (o as HTMLOptionElement).value) })}>
+                      {monsterCatalog.map((m: any) => <option key={m.id} value={m.id}>{m.name || m.id}</option>)}
+                    </select>
+                  </div>
                   <div style={{ minWidth: 200, flex: '1 1 200px' }}><label style={labelStyle}>Chave necessária</label>
                     <select style={inputStyle} value={d.keyItemId || ''} onChange={e => patchDoor(i, { keyItemId: e.target.value || undefined })}>
                       <option value="">— (nenhuma)</option>
@@ -649,18 +869,13 @@ export default function AdminScenarioManager() {
                     {(current.config.keys || []).length === 0 && current.config.bossKeyMode !== 'monster_drop' && <div style={{ color: 'var(--text-secondary)', fontSize: '0.68rem', marginTop: 2 }}>Cadastre chaves na seção acima.</div>}
                     {current.config.bossKeyMode === 'monster_drop' && <div style={{ color: 'var(--text-secondary)', fontSize: '0.68rem', marginTop: 2 }}>A "Chave do BOSS" cai de um monstro — escolha-a nas portas que quiser trancar.</div>}
                   </div>
-                  <div style={{ width: 120 }}><label style={labelStyle}>Padrão</label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-primary)', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: 8, padding: '0.5rem' }}>
-                      <input type="radio" name={`defDoor-${current.id || 'new'}`} checked={(current.config.defaultDoorType || '') === d.id} onChange={() => patchConfig({ defaultDoorType: d.id })} /> Usar
-                    </label>
-                  </div>
                   <button title="Remover" style={{ ...btn('rgba(239,68,68,0.25)'), padding: '0.45rem 0.5rem', marginLeft: 'auto' }} onClick={() => setCurrent({ ...current, config: { ...current.config, doorTypes: current.config.doorTypes.filter((_, j) => j !== i) } })}>✕</button>
                 </div>
               ))}
             </div>
 
             {/* Loot */}
-            <div style={card}>
+            <div style={{ ...card, display: editorTab === 'loot' ? undefined : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>🎁 Loot ao quebrar blocos</strong>
                 <button style={btn('var(--accent-green, #10b981)')} onClick={() => setCurrent({ ...current, config: { ...current.config, lootTable: [...current.config.lootTable, { kind: 'item', weight: 10, itemId: '' }] } })}>+ Item</button>
@@ -703,7 +918,7 @@ export default function AdminScenarioManager() {
             </div>
 
             {/* Loot dos BAÚS */}
-            <div style={card}>
+            <div style={{ ...card, display: editorTab === 'loot' ? undefined : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>🎁 Loot dos Baús</strong>
                 <button style={btn('var(--accent-green, #10b981)')} onClick={() => setCurrent({ ...current, config: { ...current.config, chestConfig: { ...(current.config.chestConfig || {}), loot: [...(current.config.chestConfig?.loot || []), { kind: 'coins', weight: 10, min: 5, max: 20 }] } } })}>+ Item</button>
@@ -746,7 +961,7 @@ export default function AdminScenarioManager() {
             </div>
 
             {/* Mapa pintado */}
-            <div style={card}>
+            <div style={{ ...card, display: editorTab === 'map' ? undefined : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>🗺️ Mapa (pintar)</strong>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -756,8 +971,20 @@ export default function AdminScenarioManager() {
                     </button>
                   ))}
                   <button style={btn('rgba(255,255,255,0.06)')} onClick={applyDims}>Aplicar dimensões</button>
-                  <button style={btn('rgba(255,255,255,0.06)')} onClick={randomMap}>Gerar aleatório</button>
+                  <button style={btn('rgba(255,255,255,0.06)')} onClick={generateScenarioLayout}>Gerar aleatório</button>
                   <button style={btn('rgba(239,68,68,0.2)')} onClick={() => setCurrent(c => c ? { ...c, config: { ...c.config, layout: undefined } } : c)}>Voltar ao procedural</button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', marginTop: 8, padding: '0.5rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8 }}>
+                  <strong style={{ fontSize: '0.78rem', color: 'var(--text-primary)', alignSelf: 'center' }}>⚙️ Critérios da geração</strong>
+                  <div style={{ width: 150 }}><label style={labelStyle}>Tipo de mapa</label>
+                    <select style={inputStyle} value={current.config.mapType || 'closed'} onChange={e => patchConfig({ mapType: e.target.value as any })}>
+                      <option value="closed">🧱 Fechado (labirinto)</option>
+                      <option value="open">🌾 Aberto (campo)</option>
+                    </select>
+                  </div>
+                  <div style={{ width: 110 }}><label style={labelStyle}>Portas (0=auto)</label><input type="number" min={0} style={inputStyle} value={current.config.genDoors ?? 0} onChange={e => patchConfig({ genDoors: parseInt(e.target.value) || 0 })} /></div>
+                  <div style={{ width: 110 }}><label style={labelStyle}>Baús (0=auto)</label><input type="number" min={0} style={inputStyle} value={current.config.genChests ?? 0} onChange={e => patchConfig({ genChests: parseInt(e.target.value) || 0 })} /></div>
+                  <div style={{ width: 150 }}><label style={labelStyle}>Monstros % (0=auto)</label><input type="number" min={0} max={100} style={inputStyle} value={Math.round((current.config.genMonsterChance ?? 0) * 100)} onChange={e => patchConfig({ genMonsterChance: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) / 100 })} /></div>
                 </div>
               </div>
               {tool === 'wall' && current.config.wallTypes.length > 0 && (
@@ -827,7 +1054,7 @@ export default function AdminScenarioManager() {
             </div>
 
             {/* Resumo & Legenda */}
-            <div style={card}>
+            <div style={{ ...card, display: editorTab === 'map' ? undefined : 'none' }}>
               <strong style={{ color: 'var(--text-primary)' }}>📊 Resumo do Mapa & Legenda</strong>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', margin: '4px 0 10px' }}>
                 Contagens exatas do que você pintou + estimativa do que é gerado aleatoriamente (moedas, rochas, perigos, baús). Os pontos coloridos aparecem no mapa acima.
@@ -867,7 +1094,7 @@ export default function AdminScenarioManager() {
             </div>
 
             {/* Monstros & Boss */}
-            <div style={card}>
+            <div style={{ ...card, display: editorTab === 'monsters' ? undefined : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>👹 Monstros & Boss</strong>
               </div>

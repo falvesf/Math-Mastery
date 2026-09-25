@@ -12,7 +12,7 @@ import { fetchEquippedItems } from '../lib/equippedItems';
 import { supabase } from '../lib/supabase';
 import { calculateTotalStats } from '../lib/gacha';
 import { RANKS, getRankForXp } from '../lib/ranks';
-import { fetchActiveCoin, fetchActiveChest, fetchActiveDoor, fetchModelsByCategory, isImageUrl } from '../lib/model3d';
+import { fetchActiveCoin, fetchActiveChest, fetchActiveDoor, fetchModelsByCategory, fetchSceneryModels, fetchAnimalModels, isImageUrl } from '../lib/model3d';
 import { calculatePlayerHitDamage } from '../lib/combatDamage';
 import { getEquippedDamageEffectInfo } from '../lib/damageEffects';
 import { resolveConsumableEffect } from '../lib/consumableEffects';
@@ -424,7 +424,7 @@ const [sfxOn, setSfxOn] = useState(false);
     const tenantId = (userData as any)?.tenantId || null;
 
     // Molde da moeda/baú: PNG (plano) ou GLB. Guardado para clonar no mapa.
-    const buildTemplate = async (model: any, kind: 'coin' | 'chest' | 'door'): Promise<any> => {
+    const buildTemplate = async (model: any, kind: 'coin' | 'chest' | 'door' | 'scenery' | 'animal'): Promise<any> => {
       if (!model) return null;
       const url = model.url || model.open_url || '';
       if (!url) return null;
@@ -432,6 +432,12 @@ const [sfxOn, setSfxOn] = useState(false);
         if (isImageUrl(url)) {
           const tex = await new THREE.TextureLoader().loadAsync(url);
           (tex as any).colorSpace = (THREE as any).SRGBColorSpace;
+          if (kind === 'scenery' || kind === 'animal') {
+            // Imagem 2D → billboard (sempre de frente para a câmera).
+            const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+            spr.scale.set(1, 1, 1);
+            return spr;
+          }
           if (kind === 'coin') {
             // Moeda com ESPESSURA (profundidade 3D; não "some" ao girar de lado).
             const g = new THREE.Group();
@@ -521,6 +527,26 @@ if (!cancelled) {
       const doorMap = new Map<string, any>();
       for (const dm of (allDoorModels || [])) { const t = await buildTemplate(dm, 'door'); if (t) doorMap.set((dm as any).id, t); }
       if (!cancelled) doorTemplatesRef.current = doorMap;
+      // CENÁRIO configurável (árvores/arbustos/flores/pedras/água/chão) por tipo.
+      const sceneryModels = await fetchSceneryModels(tenantId).catch(() => []);
+      const sceneryMap = new Map<string, any[]>();
+      for (const sm of (sceneryModels || [])) {
+        const t = await buildTemplate(sm, 'scenery'); if (!t) continue;
+        const kind = String((sm as any).kind || 'tree');
+        const arr = sceneryMap.get(kind) || [];
+        arr.push({ id: (sm as any).id, template: t, scale: Number((sm as any).renderScale) || 1, height: Number((sm as any).renderHeight) || 1, soundUrl: (sm as any).soundUrl || '' });
+        sceneryMap.set(kind, arr);
+      }
+      if (!cancelled) sceneryByKindRef.current = sceneryMap;
+      // ANIMAIS configuráveis (modelo + som + falas em balão).
+      const animalModels = await fetchAnimalModels(tenantId).catch(() => []);
+      const animalList: any[] = [];
+      for (const am of (animalModels || [])) {
+        const t = await buildTemplate(am, 'animal'); if (!t) continue;
+        animalList.push({ id: (am as any).id, template: t, url: (am as any).url || '', name: (am as any).name || 'Animal', config: (am as any).config || {}, scale: Number((am as any).renderScale) || 1, soundUrl: (am as any).soundUrl || '', lines: String((am as any).lines || '').split(';').map((s: string) => s.trim()).filter(Boolean) });
+        if ((am as any).soundUrl) sfx.preload((am as any).soundUrl);
+      }
+      if (!cancelled) animalsRef.current = animalList;
       // Pré-carrega os SONS de moeda/baú configurados na edição.
       if (coinM?.coinSoundUrl) sfx.preload(coinM.coinSoundUrl);
       if (chestM?.chestAudioUrl) sfx.preload(chestM.chestAudioUrl);
@@ -579,6 +605,10 @@ if (!cancelled) {
   const doorTemplateRef = useRef<any>(null);
   // Modelos 3D de porta POR ID (associados a cada tipo de porta no cenário).
   const doorTemplatesRef = useRef<Map<string, any>>(new Map());
+  // Cenário configurável: modelos por TIPO (tree/bush/flower/rock/water/floor).
+  const sceneryByKindRef = useRef<Map<string, any[]>>(new Map());
+  // Animais configuráveis (modelo + som + falas).
+  const animalsRef = useRef<any[]>([]);
   const scenarioRef = useRef<any>(scenarioConfig || null);
   // Catálogo de itens (store_items) por id — usado no loot ao quebrar blocos.
   const itemCatalogRef = useRef<Map<string, any>>(new Map());
@@ -641,8 +671,14 @@ if (!cancelled) {
     // Parâmetros de geração (densidade de paredes, elaboração estratégica, chave do boss).
     const cfgWallDensity = Math.max(0.05, Math.min(0.7, Number(sc0.wallDensity) ?? 0.26));
     const cfgElaboration = Math.max(0, Math.min(1, Number(sc0.elaboration) ?? 0.5));
+    const cfgGenDoors = Math.max(0, Number(sc0.genDoors) || 0);
+    const cfgGenChests = Math.max(0, Number(sc0.genChests) || 0);
+    const cfgMonsterChance = Number(sc0.genMonsterChance) > 0 ? Math.min(1, Number(sc0.genMonsterChance)) : (0.03 + cfgElaboration * 0.06);
     const cfgBossKeyMode = sc0.bossKeyMode || 'none';
-    const grid = (layout ? gridFromLayout(layout) : null) || generateGrid(COLS, ROWS, { wallDensity: cfgWallDensity, doorCount: 2 + Math.round(cfgElaboration * 2) });
+    const cfgMapType: 'closed' | 'open' = sc0.mapType === 'open' ? 'open' : 'closed';
+    // Mapa ABERTO: menos paredes e sem anel de borda (vira campo com obstáculos).
+    const genWallDensity = cfgMapType === 'open' ? cfgWallDensity * 0.5 : cfgWallDensity;
+    const grid = (layout ? gridFromLayout(layout) : null) || generateGrid(COLS, ROWS, { wallDensity: genWallDensity, doorCount: cfgGenDoors > 0 ? Math.round(cfgGenDoors) : (2 + Math.round(cfgElaboration * 2)) });
     let disposed = false;
     const cleanups: Array<() => void> = [];
 
@@ -856,8 +892,8 @@ if (!cancelled) {
     const wallCells = new Map<string, WallCell>();
     for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
       if (!grid.wall[z][x]) continue;
-      // Borda = tipo INDESTRUTÍVEL (não deixa o jogador cavar para fora do mapa).
-      const isBorder = x === 0 || x === COLS - 1 || z === 0 || z === ROWS - 1;
+      // Borda = tipo INDESTRUTÍVEL (não deixa o jogador cavar para fora do mapa). No mapa ABERTO não há anel de borda.
+      const isBorder = cfgMapType === 'closed' && (x === 0 || x === COLS - 1 || z === 0 || z === ROWS - 1);
       const cellKey = `${x},${z}`;
       let wt = isBorder ? unbreakableWall : pickWallType();
       if (!isBorder && cfgWallTypeCells[cellKey]) wt = wallTypeById(cfgWallTypeCells[cellKey]) || wt;
@@ -905,9 +941,9 @@ if (!cancelled) {
 
     // ---- Itens aleatórios ----
     const coinsList: { x: number; z: number; mesh: THREE.Object3D; value: number }[] = [];
-    type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; drops?: any[]; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number };
+    type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number };
     const slimes: Slime[] = [];
-    const rocks: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
+    const rocks: { x: number; z: number; mesh: THREE.Object3D; hp: number; maxHp: number; def: number }[] = [];
     const hazards: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
     const chests: { x: number; z: number; mesh: THREE.Object3D }[] = [];
     const doors: { x: number; z: number; mesh: THREE.Object3D; open: boolean; hp: number; maxHp: number; def: number; typeId: string }[] = [];
@@ -915,6 +951,28 @@ if (!cancelled) {
     const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd34d, emissive: 0xffaa00, emissiveIntensity: 0.6 });
     const slimeGeo = new THREE.SphereGeometry(0.4, 14, 12);
     const rockGeo = new THREE.DodecahedronGeometry(0.4, 0); const rockMat = new THREE.MeshStandardMaterial({ color: 0x9c8a7a, roughness: 0.9 });
+    // Rocha: usa o .glb do cenário (tipo 'rock') se houver; senão fallback VARIADO (formas/tamanhos).
+    const mkRock = (x: number, z: number): THREE.Object3D => {
+      const tmpls = sceneryByKindRef.current.get('rock') || [];
+      let obj: THREE.Object3D;
+      if (tmpls.length) {
+        const pick = tmpls[Math.floor(Math.random() * tmpls.length)];
+        obj = pick.template.clone(true);
+        obj.scale.setScalar((pick.scale || 1) * (0.85 + Math.random() * 0.5));
+        obj.rotation.y = Math.random() * Math.PI * 2;
+        obj.position.set(wx(x), 0, wz(z));
+      } else {
+        const geos = [new THREE.DodecahedronGeometry(0.42, 0), new THREE.IcosahedronGeometry(0.44, 0), new THREE.DodecahedronGeometry(0.5, 0), new THREE.IcosahedronGeometry(0.34, 0)];
+        const geo = geos[Math.floor(Math.random() * geos.length)];
+        const m = new THREE.Mesh(geo, rockMat);
+        m.scale.set(0.8 + Math.random() * 0.8, 0.7 + Math.random() * 1.0, 0.8 + Math.random() * 0.8);
+        m.rotation.set(Math.random() * 0.6, Math.random() * Math.PI * 2, Math.random() * 0.6);
+        m.position.set(wx(x), 0.42, wz(z)); m.castShadow = true;
+        obj = m;
+      }
+      scene.add(obj);
+      return obj;
+    };
     const hzGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.22, 12); const hzMat = new THREE.MeshStandardMaterial({ color: theme.hazardColor, emissive: theme.hazardColor, emissiveIntensity: 0.6 });
     const chestGeo = new THREE.BoxGeometry(0.5, 0.44, 0.4); const chestMat = new THREE.MeshStandardMaterial({ color: 0xb07d3a });
 const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
@@ -985,6 +1043,24 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       return g;
     };
 
+    // Rótulo 3D "Nv.X Nome" (sprite com texto) exibido acima da barra de HP.
+    const makeLabelSprite = (text: string): THREE.Sprite => {
+      const c = document.createElement('canvas');
+      const font = 34; const pad = 10;
+      const g0 = c.getContext('2d')!;
+      g0.font = `bold ${font}px sans-serif`;
+      c.width = Math.max(64, Math.ceil(g0.measureText(text).width) + pad * 2); c.height = font + pad * 2;
+      const g = c.getContext('2d')!;
+      g.font = `bold ${font}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,0.85)'; g.strokeText(text, c.width / 2, c.height / 2);
+      g.fillStyle = '#ffffff'; g.fillText(text, c.width / 2, c.height / 2);
+      const tex = new THREE.CanvasTexture(c);
+      (tex as any).colorSpace = (THREE as any).SRGBColorSpace;
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+      spr.renderOrder = 998;
+      spr.scale.set(c.width * 0.006, c.height * 0.006, 1);
+      return spr;
+    };
 // Cria um monstro numa célula. Se `monsterId` (catálogo preset_skins) for dado,
     // usa stats/visual do monstro cadastrado; senão cai no slime genérico.
     const addMonster = (gx: number, gz: number, visionOverride?: number, monsterId?: string, monsterOverride?: { name?: string; config?: any }) => {
@@ -1044,8 +1120,14 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       }
       const bar = new THREE.Group();
       const bg = new THREE.Mesh(barBgGeo, new THREE.MeshBasicMaterial({ color: 0x1a0505 }));
-      const fg = new THREE.Mesh(barFgGeo, new THREE.MeshBasicMaterial({ color: 0x33dd55 }));
+      // Monstro/hostil = VERMELHO; animal pacífico = VERDE.
+      const isAnimal = !!(monster as any)?.isAnimal;
+      const fg = new THREE.Mesh(barFgGeo, new THREE.MeshBasicMaterial({ color: isAnimal ? 0x44dd55 : 0xdd3333 }));
       fg.position.z = 0.01; bar.add(bg); bar.add(fg); bar.position.set(wx(gx), 1.15, wz(gz)); scene.add(bar);
+      // Rótulo "Nv.X Nome" acima da barra de HP.
+      const label = makeLabelSprite(`Nv.${level} ${monster?.name || (isAnimal ? 'Animal' : 'Monstro')}`);
+      label.position.set(wx(gx), modelUrl ? 2.62 : 2.25, wz(gz)); scene.add(label);
+      const labelY = modelUrl ? 2.62 : 2.25;
       // Barra de DURAÇÃO de status negativo (acima do HP), igual à batalha.
       const stBar = new THREE.Group();
       const stBg = new THREE.Mesh(stBgGeo, new THREE.MeshBasicMaterial({ color: 0x1a0505 }));
@@ -1056,12 +1138,13 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
       bubble.visible = false; bubble.renderOrder = 999; scene.add(bubble);
       const bubbleY = modelUrl ? 2.3 : 1.95;
-      const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY };
+      const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', label, labelY };
       slimes.push(slime);
       return slime;
     };
     // Registra a derrota de um monstro do catálogo no Mapa Explorável → Bestiário/Conquistas.
     const recordMonsterKill = (s: { name?: string; monsterId?: string }) => {
+      if ((s as any)?.isAnimal) return; // animais não entram no bestiário de monstros
       const studentId = userData?.uid;
       if (!studentId || !s?.name) return;
       supabase.from('monster_encounters').insert({
@@ -1075,15 +1158,22 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
     // ROLLA os DROPS configurados do monstro quando ele morre no mapa.
     const rollMonsterDrops = (s: Slime) => {
       const drops = s.drops || [];
+      // O NÍVEL do monstro aumenta a chance de cada drop (até o teto de 100%).
+      const lvl = Math.max(1, Number(s.level) || 1);
+      const levelMult = 1 + (lvl - 1) * 0.12;
       for (const d of drops) {
-        const chance = Math.min(100, Math.max(0, Number(d.dropChance) || 0)) / 100;
+        const base = Math.min(100, Math.max(0, Number(d.dropChance) || 0)) / 100;
+        const chance = Math.min(1, base * levelMult);
         if (Math.random() >= chance) continue;
         const item = itemCatalogRef.current.get(String(d.itemId));
         if (!item) continue;
-        // Cai onde o monstro morreu (posição atual em células).
+        // Cai onde o monstro/animal morreu (posição atual em células). Qtde min..max.
         const gx = Math.round(s.root.position.x + (COLS - 1) / 2);
         const gz = Math.round(s.root.position.z + (ROWS - 1) / 2);
-        spawnLootPickup(gx, gz, 'item', item);
+        const min = Math.max(1, Number((d as any).min) || 1);
+        const max = Math.max(min, Number((d as any).max) || min);
+        const qty = min + Math.floor(Math.random() * (max - min + 1));
+        for (let i = 0; i < qty; i++) spawnLootPickup(gx, gz, 'item', item);
       }
     };
     // Aplica o TINT do status no visual (modelo GLB ou slime), como na batalha.
@@ -1173,7 +1263,7 @@ for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
         if (grid.wall[z][x]) continue;
         if (x === grid.start.x && z === grid.start.z) continue;
         if (x === grid.end.x && z === grid.end.z) continue;
-        if (!safeFromStart(x, z) || Math.random() >= (0.03 + cfgElaboration * 0.06)) continue;
+        if (!safeFromStart(x, z) || Math.random() >= cfgMonsterChance) continue;
         addMonster(x, z, undefined, cfgMonsterIds[Math.floor(Math.random() * cfgMonsterIds.length)]);
       }
     } else {
@@ -1182,7 +1272,7 @@ for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
         if (grid.wall[z][x]) continue;
         if (x === grid.start.x && z === grid.start.z) continue;
         if (x === grid.end.x && z === grid.end.z) continue;
-        if (!safeFromStart(x, z) || Math.random() >= (0.03 + cfgElaboration * 0.06)) continue;
+        if (!safeFromStart(x, z) || Math.random() >= cfgMonsterChance) continue;
         addMonster(x, z);
       }
     }
@@ -1211,10 +1301,24 @@ const l = wallAt(x - 1, z), rr = wallAt(x + 1, z), u = wallAt(x, z - 1), d = wal
       const corridor = (l && rr && !u && !d) || (u && d && !l && !rr);
       if (!corridor || Math.random() > (0.35 + cfgElaboration * 0.45)) continue;
       const hp = 40 + Math.floor(Math.random() * 60);
-      const m = new THREE.Mesh(rockGeo, rockMat); m.position.set(wx(x), 0.42, wz(z)); m.castShadow = true; scene.add(m);
+      const m = mkRock(x, z);
       rocks.push({ x, z, mesh: m, hp, maxHp: hp, def: ROCK_DEF });
     }
 
+    // ---- Baús: se o cenário tem chestCells (Gerar mapa), usa EXATAMENTE essas células ----
+    const cfgChestCellsMap: Record<string, string> = (sc0.chestCells && typeof sc0.chestCells === 'object') ? sc0.chestCells : {};
+    const chestCellKeys = Object.keys(cfgChestCellsMap);
+    if (chestCellKeys.length) {
+      for (const key of chestCellKeys) {
+        const [xs, zs] = key.split(',').map(Number);
+        if (!Number.isFinite(xs) || !Number.isFinite(zs)) continue;
+        if (wallAt(xs, zs)) continue;
+        if (xs === grid.start.x && zs === grid.start.z) continue;
+        if (xs === grid.end.x && zs === grid.end.z) continue;
+        const m = makeChestVisual(); m.position.set(wx(xs), 0.38, wz(zs)); m.castShadow = true; scene.add(m);
+        chests.push({ x: xs, z: zs, mesh: m });
+      }
+    } else {
     // ---- Baús RAROS e ESTRATÉGICOS (em becos TRANCADOS por uma rocha na entrada) ----
     const chestCandidates: { x: number; z: number; entrance: { x: number; z: number } }[] = [];
     for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
@@ -1231,16 +1335,17 @@ const l = wallAt(x - 1, z), rr = wallAt(x + 1, z), u = wallAt(x, z - 1), d = wal
       if (x === grid.start.x || x === grid.end.x) continue;
       chestCandidates.push({ x, z, entrance: { x: ex, z: ez } });
     }
-const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
+const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.round(1 + cfgElaboration * 3));
     chestCandidates.sort(() => Math.random() - 0.5);
     for (const cc of chestCandidates.slice(0, chestCap)) {
       if (!rocks.some(rk => rk.x === cc.entrance.x && rk.z === cc.entrance.z)) {
         const hp = 50 + Math.floor(Math.random() * 70);
-        const rm = new THREE.Mesh(rockGeo, rockMat); rm.position.set(wx(cc.entrance.x), 0.42, wz(cc.entrance.z)); rm.castShadow = true; scene.add(rm);
+        const rm = mkRock(cc.entrance.x, cc.entrance.z);
         rocks.push({ x: cc.entrance.x, z: cc.entrance.z, mesh: rm, hp, maxHp: hp, def: ROCK_DEF });
       }
       const m = makeChestVisual(); m.position.set(wx(cc.x), 0.38, wz(cc.z)); m.castShadow = true; scene.add(m);
       chests.push({ x: cc.x, z: cc.z, mesh: m });
+    }
     }
 
 // ---- PORTAS (divisórias): é preciso responder uma PERGUNTA para abrir ----
@@ -1315,8 +1420,25 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
       const id = Math.random().toString(36).slice(2);
       setPuffs(prev => [...prev, { id, left: (v.x * 0.5 + 0.5) * 100, top: (-v.y * 0.5 + 0.5) * 100 }]);
       playFx(battleSoundsRef.current.fatalEvaporate || battleSoundsRef.current.punch, 0.85);
+      // Monstros próprios do TIPO de porta (se configurado); senão 3 aleatórios.
+      const doorType: any = cfgDoorTypes.find((t: any) => t.id === doors.find((dd: any) => dd.x === gx && dd.z === gz)?.typeId);
+      const mids: string[] = Array.isArray(doorType?.wrongMonsterIds) ? doorType.wrongMonsterIds.filter(Boolean) : [];
       window.setTimeout(() => {
-        spawnMonstersRef.current(gx, gz, 3);
+        if (mids.length) {
+          let placed = 0;
+          for (let rad = 1; rad <= 3 && placed < mids.length; rad++) {
+            for (let dz = -rad; dz <= rad && placed < mids.length; dz++) for (let dx = -rad; dx <= rad && placed < mids.length; dx++) {
+              if (Math.abs(dx) !== rad && Math.abs(dz) !== rad) continue;
+              const cx = gx + dx, cz = gz + dz;
+              if (wallAt(cx, cz)) continue;
+              if (rocks.some(rr => rr.x === cx && rr.z === cz)) continue;
+              if (doors.some(dd => dd.x === cx && dd.z === cz && dd.mesh.visible)) continue;
+              addMonster(cx, cz, undefined, mids[placed]); placed++;
+            }
+          }
+        } else {
+          spawnMonstersRef.current(gx, gz, 3);
+        }
         setPuffs(prev => prev.filter(p => p.id !== id));
       }, 900);
     };
@@ -1362,37 +1484,156 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
     for (let x = -COLS / 2 - 2; x <= COLS / 2 + 2; x++) { addRing(x, -ROWS / 2 - 2); addRing(x, ROWS / 2 + 2); }
     for (let z = -ROWS / 2 - 1; z <= ROWS / 2 + 1; z++) { addRing(-COLS / 2 - 2, z); addRing(COLS / 2 + 2, z); }
 
-    // ---- CENÁRIO TEMÁTICO ao redor (fora do labirinto): planaltos, pirâmides, vulcões, etc. ----
+    // ---- CENÁRIO TEMÁTICO ao redor (fora do labirinto): florestas, pirâmides, vulcões, vilarejos... ----
     const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+    const propMat = (color: number, flat = true) => new THREE.MeshStandardMaterial({ color, flatShading: flat });
+    const mkTree = (x: number, z: number, leafColor: number, snowy = false) => {
+      const g = new THREE.Group();
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.6, 6), propMat(0x6b4423, false));
+      trunk.position.y = 0.8; g.add(trunk);
+      const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.0, 2.2, 7), propMat(leafColor));
+      leaves.position.y = 2.2; g.add(leaves);
+      if (snowy) { const cap = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.1, 7), propMat(0xf4faff)); cap.position.y = 2.6; g.add(cap); }
+      g.position.set(x, 0, z); g.rotation.y = Math.random() * Math.PI; scene.add(g); return g;
+    };
+    // Cenário configurável: usa o .glb/imagem do tipo cadastrado em Moldes 3D → Cenário; senão o fallback.
+    const placeScenery = (kind: string, x: number, z: number, fallback: () => THREE.Object3D): THREE.Object3D => {
+      const tmpls = sceneryByKindRef.current.get(kind) || [];
+      if (tmpls.length) {
+        const pick = tmpls[Math.floor(Math.random() * tmpls.length)];
+        const obj = pick.template.clone(true) as THREE.Object3D;
+        obj.position.set(x, 0, z);
+        obj.rotation.y = Math.random() * Math.PI * 2;
+        const s = (pick.scale || 1) * (0.9 + Math.random() * 0.25);
+        if ((obj as any).isSprite) obj.scale.set(s, s, 1); else obj.scale.setScalar(s);
+        scene.add(obj);
+        return obj;
+      }
+      return fallback();
+    };
+    const mkPillar = (x: number, z: number, color: number, h: number, w: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), propMat(color));
+      m.position.set(x, h / 2, z); scene.add(m); return m;
+    };
+    const mkPyramid = (cx: number, cz: number) => {
+      const h = rnd(6, 10); const m = new THREE.Mesh(new THREE.ConeGeometry(rnd(5, 7), h, 4), propMat(0xd9b26a));
+      m.position.set(cx, h / 2, cz); m.rotation.y = Math.PI / 4; scene.add(m); return m;
+    };
+    const mkVillage = (cx: number, cz: number) => {
+      const g = new THREE.Group();
+      for (let i = 0; i < 4; i++) {
+        const hx = cx + rnd(-5, 5), hz = cz + rnd(-5, 5), w = rnd(2.4, 3.6), hh = rnd(2, 3);
+        const body = new THREE.Mesh(new THREE.BoxGeometry(w, hh, w), propMat(0xcaa472, false)); body.position.set(hx, hh / 2, hz); g.add(body);
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(w * 0.85, 1.4, 4), propMat(0x8b3a2b)); roof.position.set(hx, hh + 0.7, hz); roof.rotation.y = Math.PI / 4; g.add(roof);
+      }
+      scene.add(g); return g;
+    };
     const mkScenery = (x: number, z: number) => {
       if (themeKey === 'desert') {
-        const h = rnd(2, 6), r = rnd(1.6, 3.2);
-        const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 4), new THREE.MeshStandardMaterial({ color: 0xd9b26a, flatShading: true }));
-        m.position.set(x, h / 2, z); m.rotation.y = Math.random() * Math.PI; scene.add(m);
+        if (Math.random() < 0.22) mkPillar(x, z, 0xd9b26a, rnd(2, 6), rnd(1.6, 3.2));
+        else { const h = rnd(1.2, 2.6); const cactus = new THREE.Group(); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, h, 6), propMat(0x3f8f3a)); b.position.y = h / 2; cactus.add(b); for (let a = 0; a < 2; a++) { const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, h * 0.5, 6), propMat(0x3f8f3a)); arm.position.set((a ? 1 : -1) * 0.34, h * 0.6, 0); arm.rotation.z = (a ? -1 : 1) * Math.PI / 3; cactus.add(arm); } cactus.position.set(x, 0, z); scene.add(cactus); }
       } else if (themeKey === 'nether') {
         const h = rnd(4, 9), r = rnd(1.4, 3);
-        const v = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), new THREE.MeshStandardMaterial({ color: 0x3b2323, flatShading: true }));
-        v.position.set(x, h / 2, z); scene.add(v);
-        const lava = new THREE.Mesh(new THREE.ConeGeometry(r * 0.4, h * 0.22, 8), new THREE.MeshStandardMaterial({ color: 0xff6a00, emissive: 0xff3b00, emissiveIntensity: 1.2 }));
-        lava.position.set(x, h - h * 0.08, z); scene.add(lava);
+        const v = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), propMat(0x3b2323)); v.position.set(x, h / 2, z); scene.add(v);
+        const lava = new THREE.Mesh(new THREE.ConeGeometry(r * 0.4, h * 0.22, 8), new THREE.MeshStandardMaterial({ color: 0xff6a00, emissive: 0xff3b00, emissiveIntensity: 1.2 })); lava.position.set(x, h - h * 0.08, z); scene.add(lava);
       } else if (themeKey === 'tundra') {
-        const h = rnd(3, 8), r = rnd(1.3, 3);
-        const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 5), new THREE.MeshStandardMaterial({ color: 0xeaf4ff, flatShading: true }));
-        m.position.set(x, h / 2, z); scene.add(m);
+        if (Math.random() < 0.65) placeScenery('tree', x, z, () => mkTree(x, z, 0x2f5d3a, true));
+        else { const h = rnd(3, 8); const m = new THREE.Mesh(new THREE.ConeGeometry(rnd(1.3, 3), h, 5), propMat(0xeaf4ff)); m.position.set(x, h / 2, z); scene.add(m); }
       } else if (themeKey === 'end') {
-        const h = rnd(5, 12), w = rnd(0.8, 1.8);
-        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshStandardMaterial({ color: 0x2a2530 }));
-        m.position.set(x, h / 2, z); scene.add(m);
+        mkPillar(x, z, 0x2a2530, rnd(5, 12), rnd(0.8, 1.8));
       } else {
-        const h = rnd(0.8, 3.4), w = rnd(2, 6);
-        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshStandardMaterial({ color: 0x4f9c3a }));
-        m.position.set(x, h / 2, z); scene.add(m);
+        if (Math.random() < 0.7) placeScenery('tree', x, z, () => mkTree(x, z, Math.random() < 0.5 ? 0x3e8f34 : 0x2f7a2a, false));
+        else { const h = rnd(0.8, 2.0), w = rnd(1.4, 3); const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), propMat(0x4f9c3a)); m.position.set(x, h / 2, z); scene.add(m); }
       }
     };
-    for (let i = 0; i < 90; i++) {
-      const x = rnd(-64, 64), z = rnd(-64, 64);
+    for (let i = 0; i < 140; i++) {
+      const x = rnd(-70, 70), z = rnd(-70, 70);
       if (Math.abs(x) < COLS / 2 + 3 && Math.abs(z) < ROWS / 2 + 3) continue; // dentro do labirinto
       mkScenery(x, z);
+    }
+    // Estruturas marcantes por tema (pirâmides / vulcões / vilarejos / floresta densa / pilares).
+    const ringR = Math.max(COLS, ROWS) / 2 + 13;
+    if (themeKey === 'desert') { mkPyramid(-ringR, 0); mkPyramid(0, ringR); mkPyramid(ringR, -ringR * 0.5); }
+    else if (themeKey === 'nether') { for (let k = 0; k < 4; k++) mkScenery(-60 + k * 40, ringR); }
+    else if (themeKey === 'plains') { mkVillage(-(COLS / 2 + 15), -(ROWS / 2 + 15)); mkVillage(COLS / 2 + 17, ROWS / 2 + 11); }
+    else if (themeKey === 'tundra') { for (let k = 0; k < 28; k++) mkTree(rnd(-72, 72), rnd(-72, 72), 0x2f5d3a, true); }
+    else if (themeKey === 'end') { for (let k = 0; k < 16; k++) mkPillar(rnd(-72, 72), rnd(-72, 72), 0x2a2530, rnd(6, 14), rnd(1, 2.2)); }
+
+    // ---- FLORA & PROPS INTERNOS (não bloqueiam; só em células livres) ----
+    const occupiedCell = (gx: number, gz: number) => {
+      if (gx < 1 || gz < 1 || gx >= COLS - 1 || gz >= ROWS - 1) return true;
+      if (grid.wall[gz]?.[gx]) return true;
+      if (gx === grid.start.x && gz === grid.start.z) return true;
+      if (gx === grid.end.x && gz === grid.end.z) return true;
+      if (rocks.some(r => r.x === gx && r.z === gz)) return true;
+      if (chests.some((c: any) => c.x === gx && c.z === gz)) return true;
+      if (slimes.some(s => s.x === gx && s.z === gz)) return true;
+      if (doors.some((d: any) => d.x === gx && d.z === gz)) return true;
+      return false;
+    };
+    const leafForTheme = themeKey === 'desert' ? 0x3f8f3a : themeKey === 'nether' ? 0x7a3b2a : themeKey === 'tundra' ? 0x2f5d3a : themeKey === 'end' ? 0x2a2530 : 0x3e8f34;
+    const innerDensity = Math.min(0.22, 0.06 + cfgElaboration * 0.16);
+    // Água (rio/lago): BLOCO inteiro (não é pintura no chão). Usa o .glb 'water' se houver.
+    const waterTmpls = sceneryByKindRef.current.get('water') || [];
+    const floorTmpls = sceneryByKindRef.current.get('floor') || [];
+    const waterBlockH = waterTmpls[0]?.height || 1;
+    const fillCellWith = (tmpl: any, gx: number, gz: number, hBlocks: number) => {
+      const obj = tmpl.template.clone(true) as THREE.Object3D;
+      const box = new THREE.Box3().setFromObject(obj); const size = new THREE.Vector3(); box.getSize(size);
+      obj.scale.set(0.98 / Math.max(0.001, size.x), (hBlocks * 0.98) / Math.max(0.001, size.y), 0.98 / Math.max(0.001, size.z));
+      obj.position.set(wx(gx), 0, wz(gz)); scene.add(obj);
+    };
+    const placeWaterBlock = (gx: number, gz: number) => {
+      // Leito (modelo 'floor' cadastrado, se houver).
+      if (floorTmpls.length) fillCellWith(floorTmpls[0], gx, gz, waterBlockH || 1);
+      if (waterTmpls.length) { fillCellWith(waterTmpls[0], gx, gz, waterBlockH); return; }
+      const w = new THREE.Mesh(new THREE.BoxGeometry(0.98, waterBlockH, 0.98), new THREE.MeshStandardMaterial({ color: 0x2b6cff, transparent: true, opacity: 0.6, emissive: 0x123a80, emissiveIntensity: 0.25, depthWrite: false }));
+      w.position.set(wx(gx), (waterBlockH * 0.98) / 2, wz(gz)); scene.add(w);
+    };
+    if (themeKey === 'plains' || themeKey === 'tundra') {
+      for (let z = 2; z < ROWS - 2; z += 1) {
+        const riverX = Math.round(COLS / 2 + Math.sin(z * 0.6) * 3);
+        for (let dx = -1; dx <= 1; dx++) {
+          const gx = riverX + dx; if (gx < 1 || gx >= COLS - 1) continue;
+          if (grid.wall[z]?.[gx]) continue;
+          placeWaterBlock(gx, z);
+        }
+      }
+    }
+    // FLORA interna (árvore/arbusto/flor) — usa o .glb do tipo se cadastrado; senão fallback.
+    const mkBushFallback = (cxw: number, czw: number, leafColor: number) => { const b = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), propMat(leafColor)); b.position.set(cxw, 0.28, czw); scene.add(b); return b; };
+    const mkFlowerFallback = (cxw: number, czw: number) => { const fl = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 5), new THREE.MeshStandardMaterial({ color: [0xffd166, 0xff6b6b, 0x9b6bff, 0xffffff][Math.floor(Math.random() * 4)] })); fl.position.set(cxw + rnd(-0.3, 0.3), 0.12, czw + rnd(-0.3, 0.3)); scene.add(fl); return fl; };
+    for (let z = 1; z < ROWS - 1; z++) for (let x = 1; x < COLS - 1; x++) {
+      if (occupiedCell(x, z)) continue;
+      if (Math.random() > innerDensity) continue;
+      const cxw = wx(x), czw = wz(z), pick = Math.random();
+      if (pick < 0.35) placeScenery('tree', cxw, czw, () => mkTree(cxw, czw, leafForTheme, themeKey === 'tundra'));
+      else if (pick < 0.72) placeScenery('bush', cxw, czw, () => mkBushFallback(cxw, czw, leafForTheme));
+      else placeScenery('flower', cxw, czw, () => mkFlowerFallback(cxw, czw));
+    }
+
+    // ---- FAUNA / ANIMAIS (entidades VIVAS: HP, hostilidade, fuga, drops) ----
+    const animalTmpls = animalsRef.current || [];
+    const critters: any[] = []; // (legado visual — agora os animais são entidades com IA)
+    const spawnOneAnimal = (x: number, z: number) => {
+      const a = animalTmpls.length ? animalTmpls[Math.floor(Math.random() * animalTmpls.length)] : null;
+      const pseudo = {
+        name: a?.name || 'Animal',
+        isAnimal: true,
+        config: {
+          ...(a?.config || {}),
+          customModelUrl: a?.url || '',
+          customZoom: a?.scale || 1,
+          gruntSound: a?.soundUrl || '',
+          quotes: (a?.lines && a.lines.length) ? { hp100_80: a.lines[0], defeat: a.lines[a.lines.length - 1] } : undefined,
+        },
+      };
+      addMonster(x, z, 6, undefined, pseudo);
+    };
+    let critPlaced = 0;
+    for (let tries = 0; tries < 500 && critPlaced < 10; tries++) {
+      const x = Math.floor(rnd(1, COLS - 1)), z = Math.floor(rnd(1, ROWS - 1));
+      if (occupiedCell(x, z)) continue; spawnOneAnimal(x, z); critPlaced++;
     }
 
     // ---- Personagem 3D REAL (skinview3d) ----
@@ -1433,7 +1674,7 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
     // PICARETA DE DEBUG (tecla P): alterna espada/escudo ↔ picareta (25 de dano).
     let debugPickaxe = false;
     let debugPickaxeObj: any = null;
-    const handModels: { model: any; part: string }[] = [];
+    const handModels: { model: any; part: string; isPickaxe: boolean }[] = [];
     let attackUntil = 0;
     const setPlayerAnim = (name: 'idle' | 'walk' | 'attack' | 'hurt') => {
       if (playerAnim.name === name) return;
@@ -1474,7 +1715,7 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
         };
         // Mapa id do item → modelo anexado à mão (para os slots trocarem corretamente).
         const handModelById = new Map<string, any>();
-        const attach = (model: any, item: EquippedItem) => {
+        const attach = (model: any, item: EquippedItem, record = true) => {
           model.traverse((c: any) => { if (c.isMesh) c.frustumCulled = false; });
           try { applyForgeGlowToModel(model, (item as any).forgeLevel || 0); } catch { /* noop */ }
           try {
@@ -1491,8 +1732,10 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
             parent.add(model);
           };
           if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(p)) {
-            handModels.push({ model, part: p });
-            handModelById.set(String((item as any).itemId || (item as any).docId || ''), model);
+            if (record) {
+              const _isPick = String(item.avatarPart) === 'pickaxe' || /picareta|pickaxe/i.test(String((item as any).itemTitle || '')) || ['tool', 'pickaxe'].includes(String((item as any).itemCategory));
+              handModels.push({ model, part: p, isPickaxe: _isPick }); handModelById.set(String((item as any).itemId || (item as any).docId || ''), model);
+            }
           }
           if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(p)) {
             const arm = item.itemCategory === 'defense' ? (isLeftHanded ? player.skin.rightArm : player.skin.leftArm) : (isLeftHanded ? player.skin.leftArm : player.skin.rightArm);
@@ -1515,16 +1758,34 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
           const isPick = (i: any) => String(i.avatarPart) === 'pickaxe' || /picareta|pickaxe/i.test(String(i.itemTitle || '')) || ['tool', 'pickaxe'].includes(String(i.itemCategory));
           const itemKey = (i: any) => String(i.itemId || i.docId || i.itemTitle || '');
           const profilePickaxe = items.find(isPick) || null;
-          const profilePickaxeId = profilePickaxe ? itemKey(profilePickaxe) : '';
-          const profilePickaxeModel = profilePickaxeId ? (handModelById.get(profilePickaxeId) || null) : null;
+          let profilePickaxeId = profilePickaxe ? itemKey(profilePickaxe) : '';
+          let profilePickaxeModel = profilePickaxeId ? (handModelById.get(profilePickaxeId) || null) : null;
+          // Se o perfil tem picareta mas o modelo não foi anexado (ex.: só imagem), anexa agora.
+          if (profilePickaxe && !profilePickaxeModel) {
+            const src = (profilePickaxe as any).gameModelUrl || profilePickaxe.imageUrl || '';
+            const raw = src ? resolveItemUrl(src) : '';
+            if (raw) {
+              try {
+                if (IMG_EXT_RE.test(raw.split('?')[0])) {
+                  const t = resolveModelTransform(profilePickaxe, (cfg as any).gender, (cfg as any).handedness, false);
+                  const m = await generateVoxelItemFromImage(raw, profilePickaxe.backColor, t?.curveX || 0, t?.curveY || 0, undefined, 0.12 * (t?.thickness ?? 1));
+                  attach(m, profilePickaxe, true); profilePickaxeModel = m;
+                } else {
+                  await new Promise<void>((res) => loader.load(raw, (g: any) => { attach(g.scene, profilePickaxe, true); profilePickaxeModel = g.scene; res(); }, undefined, () => res()));
+                }
+              } catch { /* noop */ }
+            }
+          }
+          // Sem modelo real do perfil, não oferece a picareta do perfil no slot.
+          if (profilePickaxe && !profilePickaxeModel) profilePickaxeId = '';
           const bagPickaxes = handInventoryRef.current.filter(i => isPick(i) && itemKey(i) !== profilePickaxeId);
           const bagModels = new Map<string, any>();
           const opts: any[] = [];
           const pushOpt = (item: any) => opts.push({ id: itemKey(item), title: item.itemTitle || 'Picareta', imageUrl: item.imageUrl, isPickaxe: true, value: Math.max(1, Number(item.baseAttributeValue) || statsRef.current.attack) });
-          if (profilePickaxe) pushOpt(profilePickaxe);
+          if (profilePickaxe && profilePickaxeModel) pushOpt(profilePickaxe);
           for (const item of bagPickaxes) {
             const id = itemKey(item);
-            pushOpt(item);
+            if (!opts.some(o => o.id === id)) pushOpt(item);
             const src = item.gameModelUrl || item.imageUrl || '';
             const raw = src ? resolveItemUrl(src) : '';
             if (!raw) continue;
@@ -1532,23 +1793,31 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
               if (IMG_EXT_RE.test(raw.split('?')[0])) {
                 const t = resolveModelTransform(item, (cfg as any).gender, (cfg as any).handedness, false);
                 const m = await generateVoxelItemFromImage(raw, item.backColor, t?.curveX || 0, t?.curveY || 0, undefined, 0.12 * (t?.thickness ?? 1));
-                attach(m, item); const mm = handModels[handModels.length - 1]?.model; if (mm) { mm.visible = false; bagModels.set(id, mm); }
+                attach(m, item, false); m.visible = false; bagModels.set(id, m);
               } else {
-                await new Promise<void>((res) => loader.load(raw, (g: any) => { attach(g.scene, item); const mm = handModels[handModels.length - 1]?.model; if (mm) { mm.visible = false; bagModels.set(id, mm); } res(); }, undefined, () => res()));
+                await new Promise<void>((res) => loader.load(raw, (g: any) => { const m = g.scene; attach(m, item, false); m.visible = false; bagModels.set(id, m); res(); }, undefined, () => res()));
               }
             } catch { /* noop */ }
           }
           handPickaxeOptions = opts;
           setHandOptions(opts);
-          // Se o perfil já veio com picareta equipada, ela começa ativa (força + visual já anexados).
-          if (profilePickaxe) { activePickaxeId = profilePickaxeId; activePickaxeValue = Math.max(1, Number((profilePickaxe as any).baseAttributeValue) || statsRef.current.attack); setHandActiveId(profilePickaxeId); }
+          // Estado inicial COERENTE: se o perfil veio com picareta equipada, mostra a picareta e esconde a arma.
+          if (profilePickaxe && profilePickaxeModel) {
+            activePickaxeId = profilePickaxeId;
+            activePickaxeValue = Math.max(1, Number((profilePickaxe as any).baseAttributeValue) || statsRef.current.attack);
+            activePickaxeModel = profilePickaxeModel;
+            setHandActiveId(profilePickaxeId);
+            for (const h of handModels) h.model.visible = (h.model === profilePickaxeModel);
+          }
           equipHandRef.current = (id: string | null) => {
             const picking = !!id;
-            for (const h of handModels) h.model.visible = !picking;
+            // Picareta é item de DUAS MÃOS: no modo picareta esconde arma E escudo do perfil.
+            for (const h of handModels) h.model.visible = picking ? (h.isPickaxe && h.model === profilePickaxeModel) : !h.isPickaxe;
+            if (picking && profilePickaxeModel && id === profilePickaxeId) profilePickaxeModel.visible = true;
             bagModels.forEach((m, mid) => { m.visible = picking && mid === id; });
-            if (profilePickaxeModel && id === profilePickaxeId) profilePickaxeModel.visible = true;
             activePickaxeId = picking ? id : null;
             activePickaxeValue = picking ? (opts.find(o => o.id === id)?.value || 0) : 0;
+            activePickaxeModel = picking ? ((id === profilePickaxeId ? profilePickaxeModel : bagModels.get(id as string)) || null) : null;
             debugPickaxe = false;
             setHandActiveId(id);
             callbacks.current.setMsg(picking ? `⛏️ Equipou: ${opts.find(o => o.id === id)?.title || 'picareta'}` : '⚔️ Voltou para a arma.');
@@ -1594,6 +1863,7 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
       const playerObj = viewer.playerObject as any;
       if (on) {
         if (!debugPickaxeObj) debugPickaxeObj = makeDebugPickaxe();
+        activePickaxeModel = debugPickaxeObj;
         const arm = playerObj?.skin?.rightArm; if (!arm) return;
         // Na MÃO (fim do braço) e apontando para frente, como a arma equipada.
         debugPickaxeObj.position.set(0, -12, 0); debugPickaxeObj.rotation.set(Math.PI / 2, 0, 0); debugPickaxeObj.scale.setScalar(1);
@@ -1601,6 +1871,7 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
         callbacks.current.setMsg('⛏️ Picareta de DEBUG equipada (fallback — você não tem picareta no inventário).');
       } else {
         if (debugPickaxeObj && debugPickaxeObj.parent) debugPickaxeObj.parent.remove(debugPickaxeObj);
+        if (!activePickaxeId) activePickaxeModel = null;
         callbacks.current.setMsg(hasRealPickaxe ? '⛏️ Picareta do inventário equipada.' : '⚔️ Voltou para a espada e o escudo.');
       }
       // Reconstroi o item da 1ª pessoa (espada ↔ picareta).
@@ -1609,6 +1880,7 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
     // Força efetiva: PICARETA real ATIVA (perfil/mochila) tem prioridade; debug só p/ staff sem picareta.
     let activePickaxeValue = hasRealPickaxe ? pickaxePower : 0;
     let activePickaxeId: string | null = null;
+    let activePickaxeModel: any = null;
     let handPickaxeOptions: any[] = [];
     const pickaxeActivePower = () => (activePickaxeValue > 0 ? activePickaxeValue : ((canDebugPickaxe && debugPickaxe) ? DEBUG_PICKAXE_DMG : 0));
     const pickDamage = () => pickaxeActivePower();
@@ -1619,11 +1891,19 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
       return (pd - def) + statsRef.current.attack;
     };
     // Pickups de ITEM do catálogo / CHAVE do cenário (passar por cima coleta).
-    type LootPickup = { x: number; z: number; spr: THREE.Sprite; kind: 'item' | 'key'; data: any; taken: boolean };
+    type LootPickup = { x: number; z: number; spr: THREE.Sprite; kind: 'item' | 'key'; data: any; taken: boolean; born: number; highlight: boolean };
     const lootPickups: LootPickup[] = [];
+    // Anéis de destaque (loot que sai do baú) — pulsam no chão e desaparecem.
+    const lootRings: { mesh: THREE.Mesh; born: number }[] = [];
+    const spawnHighlightRing = (wpos: THREE.Vector3) => {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.72, 28), mat);
+      ring.rotation.x = -Math.PI / 2; ring.position.set(wpos.x, 0.06, wpos.z); scene.add(ring);
+      lootRings.push({ mesh: ring, born: performance.now() });
+    };
     // Chaves coletadas nesta exploração (abrem portas "chave").
     const heldKeys = new Set<string>();
-    const spawnLootPickup = (gx: number, gz: number, kind: 'item' | 'key', data: any, fallbackColor = 0xffd34d) => {
+    const spawnLootPickup = (gx: number, gz: number, kind: 'item' | 'key', data: any, fallbackColor = 0xffd34d, highlight = false) => {
       const mat = new THREE.SpriteMaterial({ color: 0xffffff, transparent: true });
       if (data.imageUrl) {
         new THREE.TextureLoader().load(data.imageUrl, (t) => {
@@ -1635,7 +1915,8 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
       spr.scale.set(0.65, 0.65, 1);
       spr.position.set(wx(gx), 0.75, wz(gz));
       scene.add(spr);
-      lootPickups.push({ x: gx, z: gz, spr, kind, data, taken: false });
+      lootPickups.push({ x: gx, z: gz, spr, kind, data, taken: false, born: performance.now(), highlight });
+      if (highlight) spawnHighlightRing(spr.position);
     };
     const collectPickup = (p: LootPickup) => {
       const world = new THREE.Vector3(wx(p.x), 0.8, wz(p.z));
@@ -1663,12 +1944,15 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
       }
     };
     // LOOT ao quebrar (linkado ao catálogo + moeda ativa + chaves do cenário).
-    const dropLoot = (gx: number, gz: number) => {
+    const dropLoot = (gx: number, gz: number, typeId?: string) => {
       const world = new THREE.Vector3(wx(gx), 1.2, wz(gz));
-      const total = cfgLoot.reduce((s, e) => s + Math.max(0, Number(e.weight) || 0), 0);
+      // Drops próprios do TIPO de parede (se configurado); senão a tabela do cenário.
+      const wt: any = typeId ? cfgWallTypes.find((w: any) => w.id === typeId) : null;
+      const table: any[] = (wt?.drops && wt.drops.length) ? wt.drops : cfgLoot;
+      const total = table.reduce((s, e) => s + Math.max(0, Number(e.weight) || 0), 0);
       let r = Math.random() * (total || 1);
-      let drop = cfgLoot[cfgLoot.length - 1];
-      for (const e of cfgLoot) { r -= Math.max(0, Number(e.weight) || 0); if (r <= 0) { drop = e; break; } }
+      let drop = table[table.length - 1];
+      for (const e of table) { r -= Math.max(0, Number(e.weight) || 0); if (r <= 0) { drop = e; break; } }
       if (drop.kind === 'coins') { const min = Number(drop.min) || 1, max = Number(drop.max) || 10; const v = min + Math.floor(Math.random() * (max - min + 1)); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); }
       else if (drop.kind === 'item') {
         const item = itemCatalogRef.current.get(String(drop.itemId || ''));
@@ -1682,9 +1966,23 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
         spawnLootPickup(gx, gz, 'key', key, 0xfbbf24);
         callbacks.current.setMsg(`💥 O bloco soltou uma chave: ${key.name}!`);
       }
-      else if (drop.kind === 'heart') { callbacks.current.setMsg('… o bloco não guardava nada.'); }
-      else if (drop.kind === 'potion') { callbacks.current.setMsg('… o bloco não guardava nada.'); }
       else callbacks.current.setMsg('… o bloco não guardava nada.');
+      // Monstros que ESTE tipo de parede solta ao ser quebrada.
+      const mids: string[] = Array.isArray(wt?.spawnMonsterIds) ? wt.spawnMonsterIds.filter(Boolean) : [];
+      if (mids.length) {
+        let placed = 0;
+        for (let rad = 1; rad <= 3 && placed < mids.length; rad++) {
+          for (let dz = -rad; dz <= rad && placed < mids.length; dz++) for (let dx = -rad; dx <= rad && placed < mids.length; dx++) {
+            if (Math.abs(dx) !== rad && Math.abs(dz) !== rad) continue;
+            const cx = gx + dx, cz = gz + dz;
+            if (wallAt(cx, cz)) continue;
+            if (rocks.some(rr => rr.x === cx && rr.z === cz)) continue;
+            if (doors.some(dd => dd.x === cx && dd.z === cz && dd.mesh.visible)) continue;
+            addMonster(cx, cz, undefined, mids[placed]); placed++;
+          }
+        }
+        callbacks.current.setMsg('💥 O bloco estava oco… e soltou monstros!');
+      }
     };
     // Solta a CHAVE DO BOSS quando o monstro portador morre.
     const spawnBossKey = (s: { x: number; z: number }) => {
@@ -1842,10 +2140,10 @@ const hurtPlayer = (hearts: number, message: string) => {
       if (fpBuilt && !force) return; fpBuilt = true;
       while (viewModel.children.length) viewModel.remove(viewModel.children[0]);
       if (debugPickaxe && debugPickaxeObj) { addFpModel(debugPickaxeObj); return; }
-      // Com picareta REAL, mostra o modelo dela; senão a arma da mão.
-      const wm = hasRealPickaxe
-        ? (handModels.find(h => h.part === 'pickaxe') || handModels.find(h => ['rightHand', 'hand', 'two_handed'].includes(h.part)) || handModels[0])
-        : (handModels.find(h => ['rightHand', 'hand', 'two_handed'].includes(h.part)) || handModels[0]);
+      // Picareta ATIVA (perfil/mochila) tem prioridade na 1ª pessoa.
+      if (activePickaxeModel) { try { addFpModel(activePickaxeModel); return; } catch { /* noop */ } }
+      // Senão, a arma da mão (excluindo picaretas).
+      const wm = handModels.find(h => !h.isPickaxe && ['rightHand', 'leftHand', 'hand', 'two_handed'].includes(h.part)) || handModels.find(h => !h.isPickaxe) || null;
       if (wm?.model) { try { addFpModel(wm.model); return; } catch { /* noop */ } }
       const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), new THREE.MeshStandardMaterial({ color: 0xcfd8e3, metalness: 0.8, roughness: 0.25 }));
       blade.position.y = 0.35; viewModel.add(blade);
@@ -1865,10 +2163,10 @@ const hurtPlayer = (hearts: number, message: string) => {
       for (const e of table) { r -= Math.max(0, Number(e.weight) || 0); if (r <= 0) { pick = e; break; } }
       return pick;
     };
-    const applyEntry = (entry: any, world: THREE.Vector3): string => {
+    const applyEntry = (entry: any, world: THREE.Vector3, highlight = false): string => {
       const kind = entry?.kind;
-      if (kind === 'coins') { const min = Number(entry.min) || 1, max = Number(entry.max) || 10; const v = min + Math.floor(Math.random() * (max - min + 1)); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); return `+${v} 🪙`; }
-      if (kind === 'item') { const item = itemCatalogRef.current.get(String(entry.itemId)) || Array.from(itemCatalogRef.current.values())[0]; if (item) { spawnLootPickup(Math.round(playerPos.x), Math.round(playerPos.z), 'item', item); return `📦 ${item.title || 'item'}`; } return '📦 item'; }
+      if (kind === 'coins') { const min = Number(entry.min) || 1, max = Number(entry.max) || 10; const v = min + Math.floor(Math.random() * (max - min + 1)); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); if (highlight) spawnHighlightRing(world); return `+${v} 🪙`; }
+      if (kind === 'item') { const item = itemCatalogRef.current.get(String(entry.itemId)) || Array.from(itemCatalogRef.current.values())[0]; if (item) { spawnLootPickup(Math.round(playerPos.x), Math.round(playerPos.z), 'item', item, 0xffd34d, highlight); return `📦 ${item.title || 'item'}`; } return '📦 item'; }
       return '';
     };
     const openChest = (chest: any) => {
@@ -1876,8 +2174,8 @@ const hurtPlayer = (hearts: number, message: string) => {
       playFx(chestConfigRef.current?.chestAudioUrl || battleSoundsRef.current.punch, 0.85);
       const world = new THREE.Vector3(wx(chest.x), 1.0, wz(chest.z));
       const table = (Array.isArray(cfgChestConfig.loot) && cfgChestConfig.loot.length) ? cfgChestConfig.loot : null;
-      if (table) { const got = applyEntry(rollEntry(table), world); callbacks.current.setMsg(`🎁 Baú aberto! ${got}`.trim()); }
-      else { const v = 1 + Math.floor(Math.random() * 10); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); callbacks.current.setMsg(`🎁 Baú aberto! +${v} 🪙`); }
+      if (table) { const got = applyEntry(rollEntry(table), world, true); callbacks.current.setMsg(`🎁 Baú aberto! ${got}`.trim()); }
+      else { const v = 1 + Math.floor(Math.random() * 10); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); spawnHighlightRing(world); callbacks.current.setMsg(`🎁 Baú aberto! +${v} 🪙`); }
     };
 
     // Interação por TOQUE/CLIQUE (mobile): porta/baú ou alterna a picareta.
@@ -1934,7 +2232,7 @@ const hurtPlayer = (hearts: number, message: string) => {
         spawnPop(new THREE.Vector3(target.root.position.x, target.root.position.y + 1.5, target.root.position.z), `-${roll.damage}`, roll.isCritical);
         maybeSpeak(roll.isCritical ? 'critical' : undefined);
         callbacks.current.setMsg(`${roll.isCritical ? '💥 CRÍTICO! ' : '⚔️ '}Acertou o monstro! -${roll.damage} HP${weaponEffect ? ` (${weaponEffect})` : ''}`);
-        if (target.hp <= 0) { callbacks.current.setMsg('💥 Monstro derrotado!'); callbacks.current.setCoins(n => n + 5); target.root.visible = false; recordMonsterKill(target); rollMonsterDrops(target); if ((target as any).isKeyHolder) spawnBossKey(target); maybeSpeak('victory'); }
+        if (target.hp <= 0) { callbacks.current.setMsg(target.isAnimal ? '💥 Animal abatido!' : '💥 Monstro derrotado!'); callbacks.current.setCoins(n => n + 5); target.root.visible = false; if (target.label) target.label.visible = false; recordMonsterKill(target); rollMonsterDrops(target); if ((target as any).isKeyHolder) spawnBossKey(target); maybeSpeak('victory'); }
         return;
       }
       const pgx2 = Math.round(playerPos.x), pgz2 = Math.round(playerPos.z);
@@ -1959,7 +2257,7 @@ const hurtPlayer = (hearts: number, message: string) => {
           else if (tgt.kind === 'door') { tgt.obj.mesh.visible = false; scene.remove(tgt.obj.mesh); }
           else if (tgt.kind === 'hazard' || tgt.kind === 'rock') { tgt.obj.mesh.visible = false; }
           spawnShatter(tgt.gx, tgt.gz, tgt.color);
-          dropLoot(tgt.gx, tgt.gz);
+          dropLoot(tgt.gx, tgt.gz, (tgt.obj as any)?.typeId);
           callbacks.current.setMsg('💥 Bloco quebrado!');
           if (tgt.kind === 'wall' && Math.random() < (Number(tgt.obj.trap) || 0)) {
             if (Math.random() < 0.5) { const fb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: parseInt(theme.wall.replace('#', ''), 16) })); fb.position.set(wx(Math.round(playerPos.x)), 6, wz(Math.round(playerPos.z))); debrisGroup.add(fb); debris.push({ mesh: fb, vx: 0, vy: -2, vz: 0, life: 1.1, spin: 0.15 }); hurtPlayer(1, '🪨 A parede desabou sobre você! -1 ❤️'); }
@@ -2038,7 +2336,16 @@ if ((target as any).isBoss) {
           if (weaponEffect && !debugPickaxe && Math.random() < weaponEffectChance) {
             if (['poison', 'bleed', 'burn', 'electric', 'freeze'].includes(weaponEffect)) applyStatus(target, weaponEffect as any);
           }
-          spawnPop(new THREE.Vector3(target.root.position.x, target.root.position.y + 1.5, target.root.position.z), `-${roll.damage}`, roll.isCritical);
+        // Animal atacado: chance de FICAR HOSTIL (a barra vira vermelha e ele revida).
+        if (target.isAnimal && !target.hostile) {
+          const hc = Number(target.hostileChance) || 0;
+          if (Math.random() < hc) {
+            target.hostile = true;
+            (target.fg.material as THREE.MeshBasicMaterial).color.set(0xdd3333);
+            callbacks.current.setMsg(`😠 O ${target.name || 'animal'} ficou HOSTIL!`);
+          }
+        }
+        spawnPop(new THREE.Vector3(target.root.position.x, target.root.position.y + 1.5, target.root.position.z), `-${roll.damage}`, roll.isCritical);
           maybeSpeak(roll.isCritical ? 'critical' : undefined);
           callbacks.current.setMsg(`${roll.isCritical ? '💥 CRÍTICO! ' : '⚔️ '}Acertou o monstro! -${roll.damage} HP${weaponEffect ? ` (${weaponEffect})` : ''}`);
         if (target.hp <= 0) { callbacks.current.setMsg('💥 Monstro derrotado!'); callbacks.current.setCoins(n => n + 5); speakMonster(target, 'defeat'); target.root.visible = false; recordMonsterKill(target); rollMonsterDrops(target); if ((target as any).isKeyHolder) spawnBossKey(target); maybeSpeak('victory'); }
@@ -2067,7 +2374,7 @@ if ((target as any).isBoss) {
             else if (tgt.kind === 'door') { tgt.obj.mesh.visible = false; scene.remove(tgt.obj.mesh); }
             else if (tgt.kind === 'hazard' || tgt.kind === 'rock') { tgt.obj.mesh.visible = false; }
             spawnShatter(tgt.gx, tgt.gz, tgt.color);
-            dropLoot(tgt.gx, tgt.gz);
+            dropLoot(tgt.gx, tgt.gz, (tgt.obj as any)?.typeId);
             callbacks.current.setMsg('💥 Bloco quebrado!');
             // ARMADILHA: chance de a parede "revidar" ao ser quebrada.
             if (tgt.kind === 'wall' && Math.random() < (Number(tgt.obj.trap) || 0)) {
@@ -2286,7 +2593,10 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
           if (performance.now() < (s.bubbleUntil || 0)) { s.bubble.position.set(s.root.position.x, s.bubbleY || 1.95, s.root.position.z); s.bubble.visible = true; }
           else if (s.bubble.visible) s.bubble.visible = false;
         }
-        if (s.hp <= 0) { s.root.visible = false; s.bar.visible = false; if (s.statusBar) s.statusBar.g.visible = false; continue; }
+        if (s.hp <= 0) { s.root.visible = false; s.bar.visible = false; if (s.statusBar) s.statusBar.g.visible = false; if (s.label) s.label.visible = false; continue; }
+        if (s.label) s.label.position.set(s.root.position.x, s.labelY || 2.25, s.root.position.z);
+        // Animal pacífico NÃO ataca: vagueia e foge do perto; só fica hostil se for atacado.
+        const isPeacefulAnimal = !!s.isAnimal && !s.hostile;
         const dxp = wx(playerPos.x) - s.root.position.x;
         const dzp = wz(playerPos.z) - s.root.position.z;
         const dist = Math.hypot(dxp, dzp);
@@ -2295,7 +2605,7 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
         // O monstro só AGGRO o jogador com LINHA DE VISÃO (nada de ver através de portas/muros).
         const sg0x = Math.round(s.root.position.x + (COLS - 1) / 2), sg0z = Math.round(s.root.position.z + (ROWS - 1) / 2);
 const canSee = dist < s.vision && losClear(sg0x, sg0z, Math.round(playerPos.x), Math.round(playerPos.z));
-        if (!tutorialBlock && canSee) {
+        if (!tutorialBlock && canSee && !isPeacefulAnimal) {
           // GRUNIDO: toca o som configurado do monstro na 1ª vez que ele vê o jogador.
           if (!s.hasGruntted && s.gruntUrl) { s.hasGruntted = true; playFx(s.gruntUrl, 0.8); }
           // Guarda uma DISTÂNCIA (~1,9) para dar o bote — não cola no jogador.
@@ -2326,6 +2636,14 @@ const dd = Math.hypot(ddx, ddz) || 1;
             const sgx = Math.round(s.root.position.x + (COLS - 1) / 2), sgz = Math.round(s.root.position.z + (ROWS - 1) / 2);
             if (losClear(sgx, sgz, Math.round(playerPos.x), Math.round(playerPos.z))) { s.lunge = 0.42; s.lungeHit = false; }
           }
+        } else if (isPeacefulAnimal && dist < 3.4) {
+          // Animal pacífico FOGE quando o jogador chega perto.
+          const dirX = -dxp / (dist || 1), dirZ = -dzp / (dist || 1);
+          const sp = 2.4 * (frozenNow ? 0.25 : 1);
+          const mx = s.root.position.x + dirX * sp * dt;
+          if (!mBlocked(s, mx, s.root.position.z)) s.root.position.x = mx;
+          const mz = s.root.position.z + dirZ * sp * dt;
+          if (!mBlocked(s, s.root.position.x, mz)) s.root.position.z = mz;
         } else {
           s.t -= dt;
           if (s.t <= 0) { s.t = 1.5 + Math.random() * 2.5; s.tx = wx(s.x) + (Math.random() - 0.5) * 4; s.tz = wz(s.z) + (Math.random() - 0.5) * 4; }
@@ -2350,8 +2668,19 @@ if (!s.lungeHit && pr >= 0.5) {
             // CHEFE tocou o jogador → grunido e só depois a batalha (mapa encerra).
             if (s.isBoss) {
               if (!s.grunting) { s.grunting = true; bossGruntThenBattle(s.gruntUrl || ''); }
-            } else if (Math.random() < 0.3) { playerBleedUntil = performance.now() + 4000; hurtPlayer(1, '🩸 O monstro te feriu! -1 ❤️ e você está SANGRANDO!'); }
-            else hurtPlayer(1, '👾 O monstro te atacou! -1 ❤️');
+            } else {
+              const who = s.isAnimal ? 'O animal' : 'O monstro';
+              const eff = s.damageEffect && s.damageEffect !== 'none' ? s.damageEffect : null;
+              if (eff && Math.random() < 0.4) {
+                if (eff === 'bleed' || eff === 'poison') playerBleedUntil = performance.now() + 4000;
+                hurtPlayer(1, `☠️ ${who} te atacou com ${eff}! -1 ❤️`);
+              } else if (!eff && Math.random() < 0.3) {
+                playerBleedUntil = performance.now() + 4000;
+                hurtPlayer(1, `🩸 ${who} te feriu! -1 ❤️ e você está SANGRANDO!`);
+              } else {
+                hurtPlayer(1, `👾 ${who} te atacou! -1 ❤️`);
+              }
+            }
           }
         }
 if (s.kb > 0) { s.kb = Math.max(0, s.kb - dt); const kk = s.kb / 0.2; oX += s.kbx * kk * 0.55; oZ += s.kbz * kk * 0.55; }
@@ -2469,6 +2798,41 @@ if (s.kb > 0) { s.kb = Math.max(0, s.kb - dt); const kk = s.kb / 0.2; oX += s.kb
       }
       playerScreenRef.current = { x: fx, y: fy };
       if (animWrapRef.current) animWrapRef.current.style.transform = `translate(${fx}px, ${fy}px)`;
+      // Destaque do loot: o sprite flutua/pulsa e o anel no chão expande e some.
+      const nowMs = performance.now();
+      for (const p of lootPickups) {
+        if (p.taken || !p.highlight) continue;
+        const age = nowMs - p.born;
+        if (age < 6000) { const bob = Math.abs(Math.sin(age / 200)); p.spr.position.y = 0.75 + bob * 0.35; const sc = 0.65 + Math.abs(Math.sin(age / 150)) * 0.14; p.spr.scale.set(sc, sc, 1); }
+      }
+      for (let i = lootRings.length - 1; i >= 0; i--) {
+        const r = lootRings[i]; const age = nowMs - r.born;
+        if (age > 6000) { scene.remove(r.mesh); (r.mesh.material as any)?.dispose?.(); r.mesh.geometry.dispose?.(); lootRings.splice(i, 1); continue; }
+        const ph = (age % 900) / 900;
+        r.mesh.scale.setScalar(0.6 + ph * 1.7);
+        (r.mesh.material as any).opacity = 0.9 * (1 - ph);
+        r.mesh.position.y = 0.06 + ph * 0.12;
+      }
+      // Fauna: bichinhos vagam devagar (visual) + som/fala em balão.
+      for (const cr of critters) {
+        cr.t -= 0.016;
+        if (cr.t <= 0) { cr.t = 1.5 + Math.random() * 2.5; cr.vx = (Math.random() - 0.5) * 1.2; cr.vz = (Math.random() - 0.5) * 1.2; }
+        cr.root.position.x += cr.vx * 0.016; cr.root.position.z += cr.vz * 0.016;
+        cr.root.position.y = Math.abs(Math.sin(nowMs / 250)) * 0.06;
+        if (Math.abs(cr.vx) + Math.abs(cr.vz) > 0.05) cr.root.rotation.y = Math.atan2(cr.vx, cr.vz);
+        if (nowMs > cr.nextVoice) {
+          cr.nextVoice = nowMs + 6000 + Math.random() * 12000;
+          if (cr.soundUrl) sfx.play(cr.soundUrl, 0.6);
+          if (cr.lines && cr.lines.length && cr.bubble) {
+            try {
+              const { tex, w, h } = makeBubbleTexture(cr.lines[Math.floor(Math.random() * cr.lines.length)]);
+              (cr.bubble.material as any).map = tex; (cr.bubble.material as any).needsUpdate = true;
+              cr.bubble.scale.set(w / 150, h / 150, 1); cr.bubble.visible = true; cr.bubbleUntil = nowMs + 2200;
+            } catch { /* noop */ }
+          }
+        }
+        if (cr.bubble && cr.bubble.visible && nowMs > cr.bubbleUntil) cr.bubble.visible = false;
+      }
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
     };

@@ -6,6 +6,8 @@ import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import DirectUploadButton from './DirectUploadButton';
 import ImageGalleryModal from './ImageGalleryModal';
+import AudioBankPicker from './AudioBankPicker';
+import { MonsterAttributesEditor, type MonsterAttributesConfig } from './MonsterAttributesEditor';
 import InteractiveModelPreview from './InteractiveModelPreview';
 import { playChestAudio } from '../lib/audio';
 import { playSound } from '../lib/audioBank';
@@ -15,7 +17,7 @@ export interface Model3D {
   id: string;
   name: string;
   url: string;
-  category?: 'skin' | 'chest' | 'coin' | 'door';
+  category?: 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | 'animal';
   rarity?: string;
   open_url?: string;
   slot_count?: number;
@@ -33,10 +35,22 @@ export interface Model3D {
   chestAudioStart?: number;
   chestAudioDuration?: number;
   coinSoundUrl?: string;
+  /** Cenário: subtipo (tree|bush|flower|rock|water|floor). */
+  kind?: string;
+  /** Animais/cenário: som. */
+  soundUrl?: string;
+  /** Animais: falas do balão separadas por ';'. */
+  lines?: string;
+  /** Escala no mapa (1 = padrão). */
+  renderScale?: number;
+  /** Altura em blocos (água/chão). */
+  renderHeight?: number;
+  /** Config dos ANIMAIS (stats, drops, efeitos) — mesmo formato dos monstros. */
+  config?: any;
   _isGlobal?: boolean;
 }
 
-export type ModelCategory = 'skin' | 'chest' | 'coin' | 'door';
+export type ModelCategory = 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | 'animal';
 
 const RARITIES: { value: string; label: string }[] = [
   { value: 'common', label: 'Comum' },
@@ -52,6 +66,8 @@ const CATEGORY_LABELS: Record<ModelCategory, string> = {
   chest: 'Baús de Recompensa',
   coin: 'Moedas',
   door: 'Portas de Calabouço',
+  scenery: 'Cenário (árvores, pedras, água, chão)',
+  animal: 'Animais (som + falas)',
 };
 
 const CATEGORY_COLORS: Record<ModelCategory, string> = {
@@ -59,7 +75,18 @@ const CATEGORY_COLORS: Record<ModelCategory, string> = {
   chest: '#f59e0b',
   coin: '#fbbf24',
   door: '#8b5a2b',
+  scenery: '#22c55e',
+  animal: '#38bdf8',
 };
+
+const SCENERY_KINDS: { value: string; label: string }[] = [
+  { value: 'tree', label: '🌳 Árvore' },
+  { value: 'bush', label: '🌿 Arbusto' },
+  { value: 'flower', label: '🌸 Flor' },
+  { value: 'rock', label: '🪨 Pedra/Rocha' },
+  { value: 'water', label: '💧 Água (bloco inteiro)' },
+  { value: 'floor', label: '🧱 Chão (bloco)' },
+];
 
 export default function Admin3DModelsManager() {
   const { showAlert, showConfirm } = useDialog();
@@ -92,6 +119,18 @@ export default function Admin3DModelsManager() {
   const [chestAudioStart, setChestAudioStart] = useState(0);
   const [chestAudioDuration, setChestAudioDuration] = useState(0);
   const [coinSoundUrl, setCoinSoundUrl] = useState('');
+  // Cenário / Animais
+  const [sceneryKind, setSceneryKind] = useState('tree');
+  const [scenerySoundUrl, setScenerySoundUrl] = useState('');
+  const [animalLines, setAnimalLines] = useState('');
+  const [renderScale, setRenderScale] = useState(1);
+  const [renderHeight, setRenderHeight] = useState(1);
+  // Seletor do BANCO DE SONS (som de cenário/animal).
+  const [soundPickerOpen, setSoundPickerOpen] = useState(false);
+  const [soundPickerTarget, setSoundPickerTarget] = useState<'scenery' | 'animal' | 'chest' | 'coin' | null>(null);
+  // Atributos/drops dos ANIMAIS (reusa o editor de atributos dos monstros).
+  const [animalConfig, setAnimalConfig] = useState<MonsterAttributesConfig>({});
+  const [storeItems, setStoreItems] = useState<any[]>([]);
   const [galleryTarget, setGalleryTarget] = useState<'url' | 'openUrl' | null>(null);
 
   const fetchModels = async (showLoading = true) => {
@@ -126,6 +165,12 @@ export default function Admin3DModelsManager() {
           chestAudioStart: m.chest_audio_start ?? 0,
           chestAudioDuration: m.chest_audio_duration ?? 0,
           coinSoundUrl: m.coin_sound_url || '',
+          kind: m.kind || undefined,
+          soundUrl: m.sound_url || '',
+          lines: m.lines || '',
+          renderScale: m.render_scale ?? 1,
+          renderHeight: m.render_height ?? 1,
+          config: m.config || undefined,
           _isGlobal: m.is_global ?? false,
         })));
       }
@@ -140,6 +185,19 @@ export default function Admin3DModelsManager() {
     fetchModels();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
+
+  // Catálogo de itens (store_items) para o editor de DROPS dos animais.
+  useEffect(() => {
+    supabase.from('store_items').select('id, name, data').then(({ data }) => {
+      setStoreItems(((data as any[]) || []).map(r => ({
+        id: r.id,
+        itemTitle: r.name || r.data?.title || r.id,
+        avatarPart: r.data?.avatarPart,
+        type: r.data?.type,
+        rarity: r.data?.rarity,
+      })));
+    }).catch(() => {});
+  }, []);
 
   const filteredModels = models.filter(m => (m.category || 'skin') === activeTab);
 
@@ -166,6 +224,12 @@ export default function Admin3DModelsManager() {
       setChestAudioStart(model.chestAudioStart ?? 0);
       setChestAudioDuration(model.chestAudioDuration ?? 0);
       setCoinSoundUrl(model.coinSoundUrl || '');
+      setSceneryKind(model.kind || 'tree');
+      setScenerySoundUrl(model.soundUrl || '');
+      setAnimalLines(model.lines || '');
+      setRenderScale(model.renderScale ?? 1);
+      setRenderHeight(model.renderHeight ?? 1);
+      setAnimalConfig((model as any).config || {});
     } else {
       setEditingId(null);
       setName('');
@@ -188,6 +252,12 @@ export default function Admin3DModelsManager() {
       setChestAudioStart(0);
       setChestAudioDuration(0);
       setCoinSoundUrl('');
+      setSceneryKind('tree');
+      setScenerySoundUrl('');
+      setAnimalLines('');
+      setRenderScale(1);
+      setRenderHeight(1);
+      setAnimalConfig({});
     }
     setIsModalOpen(true);
   };
@@ -265,6 +335,18 @@ export default function Admin3DModelsManager() {
             await supabase.from('3d_models').update({ is_active: false }).eq('category', 'door').is('tenant_id', null);
           }
         }
+      } else if (category === 'scenery') {
+        data.kind = sceneryKind || 'tree';
+        data.render_scale = Math.max(0.1, Math.min(10, renderScale || 1));
+        data.render_height = Math.max(0.1, Math.min(8, renderHeight || 1));
+        data.sound_url = scenerySoundUrl.trim() || null;
+        data.is_active = false;
+      } else if (category === 'animal') {
+        data.sound_url = scenerySoundUrl.trim() || null;
+        data.lines = animalLines.trim() || null;
+        data.render_scale = Math.max(0.1, Math.min(10, renderScale || 1));
+        data.config = animalConfig || {};
+        data.is_active = false;
       }
 
       if (editingId) {
@@ -477,7 +559,7 @@ export default function Admin3DModelsManager() {
                 transition: 'all 0.2s'
               }}
             >
-              {cat === 'skin' ? <Swords size={16} /> : cat === 'chest' ? <Package size={16} /> : <Coins size={16} />}
+              {cat === 'skin' ? <Swords size={16} /> : cat === 'chest' ? <Package size={16} /> : cat === 'coin' ? <Coins size={16} /> : <Box size={16} />}
               {CATEGORY_LABELS[cat]}
             </button>
           );
@@ -533,7 +615,7 @@ export default function Admin3DModelsManager() {
                 />
                 <DirectUploadButton 
                   onUploadComplete={setUrl} 
-                  folder={category === 'skin' ? '3d_models' : category === 'chest' ? 'chests' : category === 'door' ? 'doors' : 'coins'} 
+                  folder={category === 'skin' ? '3d_models' : category === 'chest' ? 'chests' : category === 'door' ? 'doors' : category === 'scenery' ? 'scenery' : category === 'animal' ? 'animals' : 'coins'} 
                   accept={category === 'skin' ? '.glb,.gltf' : '.glb,.gltf,.png,.jpg,.jpeg,.webp'}
                 />
                 <button
@@ -601,6 +683,59 @@ export default function Admin3DModelsManager() {
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', display: 'block', marginTop: '0.35rem' }}>
                   Para PNG: use a URL fechado no campo acima e o aberto aqui — a animação simula o baú/moeda abrindo.
                 </span>
+              </div>
+            )}
+
+            {(category === 'scenery' || category === 'animal') && (
+              <div style={{ marginBottom: '1rem', padding: '0.75rem', borderRadius: 8, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                {category === 'scenery' && (
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo de cenário</label>
+                    <select value={sceneryKind} onChange={e => setSceneryKind(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+                      {SCENERY_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                    </select>
+                    <span style={{ display: 'block', marginTop: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                      💧 Água e 🧱 Chão preenchem o BLOCO inteiro (não são pintura): a altura vem do campo "Altura (blocos)".
+                    </span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ width: 150 }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Escala no mapa</label>
+                    <input type="number" step={0.1} min={0.1} value={renderScale} onChange={e => setRenderScale(parseFloat(e.target.value) || 1)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                  </div>
+                  {category === 'scenery' && (
+                    <div style={{ width: 150 }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Altura (blocos)</label>
+                      <input type="number" step={0.5} min={0.1} value={renderHeight} onChange={e => setRenderHeight(parseFloat(e.target.value) || 1)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    </div>
+                  )}
+                </div>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Som (banco de sons — opcional)</label>
+                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input type="text" value={scenerySoundUrl} onChange={e => setScenerySoundUrl(e.target.value)} placeholder="https://.../som.mp3" style={{ flex: '1 1 240px', padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    <button type="button" onClick={() => playSound(scenerySoundUrl || '')} disabled={!scenerySoundUrl} title="Ouvir" style={{ padding: '0.5rem 0.7rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: scenerySoundUrl ? 'pointer' : 'not-allowed', opacity: scenerySoundUrl ? 1 : 0.4 }}>🔊</button>
+                    <button type="button" onClick={() => { setSoundPickerTarget('scenery'); setSoundPickerOpen(true); }} style={{ padding: '0.5rem 0.8rem', background: 'rgba(139,92,246,0.2)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco de Áudio</button>
+                  </div>
+                </div>
+                {category === 'animal' && (
+                  <>
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Falas do balão (separe por ';')</label>
+                      <textarea value={animalLines} onChange={e => setAnimalLines(e.target.value)} rows={2} placeholder="Muuu!; Moo..." style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white', resize: 'vertical' }} />
+                    </div>
+                    <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-glass)', paddingTop: '0.9rem' }}>
+                      <MonsterAttributesEditor
+                        value={animalConfig}
+                        onChange={setAnimalConfig}
+                        availableStoreItems={storeItems}
+                        tabMode="all"
+                        monsterName={name || 'Animal'}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -741,6 +876,7 @@ export default function Admin3DModelsManager() {
                             style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
                           />
                           <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setChestAudioUrl} buttonStyle={{ minHeight: '100%', padding: '0 0.75rem' }} />
+                          <button type="button" onClick={() => { setSoundPickerTarget('chest'); setSoundPickerOpen(true); }} style={{ padding: '0.5rem 0.8rem', background: 'rgba(139,92,246,0.2)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco de Áudio</button>
                         </div>
                         {chestAudioUrl && (
                           <>
@@ -821,6 +957,7 @@ export default function Admin3DModelsManager() {
                     />
                     <button onClick={() => playSound(coinSoundUrl)} disabled={!coinSoundUrl} style={{ padding: '0.5rem 0.7rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: coinSoundUrl ? 'pointer' : 'not-allowed', opacity: coinSoundUrl ? 1 : 0.4 }}>▶</button>
                     <DirectUploadButton folder="audio" accept="audio/*" onUploadComplete={setCoinSoundUrl} buttonStyle={{ minHeight: '100%', padding: '0 0.75rem' }} />
+                    <button type="button" onClick={() => { setSoundPickerTarget('coin'); setSoundPickerOpen(true); }} style={{ padding: '0.5rem 0.8rem', background: 'rgba(139,92,246,0.2)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Banco de Áudio</button>
                   </div>
                 </div>
               </>
@@ -921,6 +1058,18 @@ export default function Admin3DModelsManager() {
           onClose={() => setGalleryTarget(null)}
         />
       )}
+
+      <AudioBankPicker
+        open={soundPickerOpen}
+        onClose={() => { setSoundPickerOpen(false); setSoundPickerTarget(null); }}
+        onSelect={(soundUrl) => {
+          if (soundPickerTarget === 'chest') setChestAudioUrl(soundUrl);
+          else if (soundPickerTarget === 'coin') setCoinSoundUrl(soundUrl);
+          else setScenerySoundUrl(soundUrl);
+          setSoundPickerOpen(false); setSoundPickerTarget(null);
+        }}
+        title="Banco de Sons — Som do Cenário/Animal"
+      />
     </div>
   );
 }

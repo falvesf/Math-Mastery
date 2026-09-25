@@ -173,6 +173,10 @@ export interface MonsterStatsConfig {
   xp?: number;
   /** Tabela de fuga configurável ("corações restantes → chance %"). Vazia = NUNCA foge. */
   fleeChanceTable?: Array<{ minHearts: number; chance: number }>;
+  /** Animais: chance (0-1) de ficar HOSTIL quando atacado. */
+  hostileChance?: number;
+  /** Dano de efeito aplicado pelos golpes (poison/bleed/burn/electric/freeze/none). */
+  damageEffect?: string;
 }
 
 export interface MonsterAttributesConfig {
@@ -189,7 +193,7 @@ export interface MonsterAttributesConfig {
     /** Fala do monstro ao derrotar o jogador (golpe final contra o herói). */
     win?: string;
   };
-  drops?: Array<{ itemId: string; dropChance: number }>;
+  drops?: Array<{ itemId: string; dropChance: number; min?: number; max?: number }>;
   stats?: MonsterStatsConfig;
   biography?: string;
 }
@@ -628,6 +632,24 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
               </div>
             </div>
 
+          <div style={{ marginTop: '0.6rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.6rem' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Chance de ficar HOSTIL ao ser atacado (%)</label>
+              <input type="number" min={0} max={100} value={Math.round((currentStats.hostileChance ?? 0) * 100)} onChange={e => updateStats({ hostileChance: Math.min(1, Math.max(0, (parseInt(e.target.value) || 0) / 100)) })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Dano de efeito do golpe</label>
+              <select value={currentStats.damageEffect || 'none'} onChange={e => updateStats({ damageEffect: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}>
+                <option value="none">Nenhum</option>
+                <option value="poison">Veneno</option>
+                <option value="bleed">Sangramento</option>
+                <option value="burn">Queimadura</option>
+                <option value="electric">Elétrico</option>
+                <option value="freeze">Congelamento</option>
+              </select>
+            </div>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.2rem' }}>
             <button
               type="button"
@@ -861,6 +883,13 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
                     style={{ width: '75px', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
                   />
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>%</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Qtde</span>
+                  <input type="number" min={1} value={drop.min ?? 1} onChange={e => { const nd = [...drops]; nd[idx] = { ...nd[idx], min: Math.max(1, parseInt(e.target.value) || 1) }; updateField({ drops: nd }); }} style={{ width: '54px', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>–</span>
+                  <input type="number" min={1} value={drop.max ?? 1} onChange={e => { const nd = [...drops]; nd[idx] = { ...nd[idx], max: Math.max(1, parseInt(e.target.value) || 1) }; updateField({ drops: nd }); }} style={{ width: '54px', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
                 </div>
 
                 <button

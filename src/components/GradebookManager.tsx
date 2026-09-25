@@ -92,6 +92,9 @@ export default function GradebookManager({
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [activeBimestre, setActiveBimestre] = useState<BimestreTab>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  // Mobile: colapsa os nomes longos (toque para expandir).
+  const [isNarrow, setIsNarrow] = useState<boolean>(typeof window !== 'undefined' && window.innerWidth <= 640);
+  const [expandedNameUid, setExpandedNameUid] = useState<string | null>(null);
 
   // Estado da planilha da turma atual
   const [gradebook, setGradebook] = useState<ClassGradebook | null>(null);
@@ -248,12 +251,20 @@ export default function GradebookManager({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [students, selectedClass]);
 
-  // Alunos filtrados por busca
+  // Alunos filtrados por busca — aceita VÁRIAS palavras (todas precisam bater), sem acento.
   const filteredStudents = useMemo(() => {
-    if (!searchQuery) return classStudents;
-    const q = searchQuery.toLowerCase();
-    return classStudents.filter(s => s.name.toLowerCase().includes(q));
+    const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const words = norm(searchQuery).split(/\s+/).filter(Boolean);
+    if (!words.length) return classStudents;
+    return classStudents.filter(s => { const n = norm(s.name); return words.every(w => n.includes(w)); });
   }, [classStudents, searchQuery]);
+
+  // Reavalia o modo mobile ao redimensionar.
+  useEffect(() => {
+    const onResize = () => setIsNarrow(window.innerWidth <= 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // Carrega a planilha quando troca a turma
   const loadCurrentClassGradebook = useCallback(async () => {
@@ -704,7 +715,7 @@ export default function GradebookManager({
           <Search size={13} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
           <input
             type="text"
-            placeholder="Buscar aluno na turma..."
+            placeholder="Filtrar aluno (uma ou mais palavras)..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             style={{
@@ -1482,7 +1493,11 @@ export default function GradebookManager({
                     <td style={{ padding: '0.3rem 0.6rem', borderBottom: '1px solid rgba(255,255,255,0.05)', borderRight: '1px solid rgba(255,255,255,0.08)', position: 'sticky', left: '36px', background: '#11151f', zIndex: 5 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                         <StudentRankBadge rankDef={rankDef} />
-                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px', fontSize: '0.82rem', fontWeight: '500' }} title={student.name}>
+                        <span
+                          onClick={() => setExpandedNameUid(expandedNameUid === student.uid ? null : student.uid)}
+                          style={{ whiteSpace: expandedNameUid === student.uid ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: expandedNameUid === student.uid ? 220 : (isNarrow ? 92 : 160), fontSize: '0.82rem', fontWeight: '500', cursor: 'pointer' }}
+                          title={student.name}
+                        >
                           {student.name}
                         </span>
                       </div>

@@ -192,8 +192,8 @@ export default function ArenaAvatarPoC({ config: configProp, equippedItems: item
         try { applyForgeGlowToModel(model, item.forgeLevel || 0); } catch { /* noop */ }
         try {
           const _tier = (item.forgeLevel || 0) >= 9 ? 3 : (item.forgeLevel || 0) >= 8 ? 2 : (item.forgeLevel || 0) >= 7 ? 1 : 0;
-          const _isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
-          if (_tier > 0 && (['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart)))) {
+          const _isWeaponSlot = ['hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
+          if (_tier > 0 && (['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(String(item.avatarPart)))) {
             const _style = (_isWeaponSlot && item.itemCategory !== 'defense') ? 'circles' : 'reflect';
             model.traverse((c: any) => {
               if (!c.isMesh) return;
@@ -205,7 +205,7 @@ export default function ArenaAvatarPoC({ config: configProp, equippedItems: item
 
         const transform = resolveModelTransform(item, config?.gender, config?.handedness, false) || (item as any).modelTransforms?.common;
         const p = String(item.avatarPart);
-        if (['rightHand', 'leftHand', 'hand', 'two_handed'].includes(p)) {
+        if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(p)) {
           const isDefense = item.itemCategory === 'defense';
           const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
           const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
@@ -215,6 +215,11 @@ export default function ArenaAvatarPoC({ config: configProp, equippedItems: item
             model.position.set(transform.posX * inv, transform.posY, transform.posZ);
             model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
             model.translateY(transform.slide);
+          } else if (p === 'two_handed' || p === 'pickaxe') {
+            model.scale.set(10, 10, 10);
+            model.position.set(0, -11, 0);
+            model.rotation.set(Math.PI / 2.2, 0, isLeftHanded ? Math.PI / 20 : -Math.PI / 20);
+            model.translateY(-18);
           } else {
             model.scale.set(10, 10, 10);
             model.position.set(0, -12, 0);

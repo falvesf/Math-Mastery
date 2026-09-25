@@ -2,12 +2,14 @@ import { supabase } from './supabase';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from './sessionCache';
 import type { Model3D } from '../components/Admin3DModelsManager';
 
+export type Model3DCategory = 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | 'animal';
+
 /**
- * Busca os modelos 3D de uma categoria específica (skin/chest/coin).
+ * Busca os modelos 3D de uma categoria específica (skin/chest/coin/scenery/animal).
  * Usa o cache de models3d e filtra localmente para evitar chamadas extras.
  */
 export async function fetchModelsByCategory(
-  category: 'skin' | 'chest' | 'coin' | 'door',
+  category: Model3DCategory,
   tenantId?: string | null
 ): Promise<Model3D[]> {
   try {
@@ -44,6 +46,12 @@ export async function fetchModelsByCategory(
         chestAudioStart: m.chest_audio_start ?? 0,
         chestAudioDuration: m.chest_audio_duration ?? 0,
         coinSoundUrl: m.coin_sound_url || '',
+        kind: m.kind || undefined,
+        soundUrl: m.sound_url || '',
+        lines: m.lines || '',
+        renderScale: m.render_scale ?? 1,
+        renderHeight: m.render_height ?? 1,
+        config: m.config || undefined,
         _isGlobal: m.is_global ?? false,
       }));
       sessionCache.set(cacheKey, models, CACHE_TTL.MODELS_3D);
@@ -116,6 +124,12 @@ export async function fetchModel3DById(id: string, tenantId?: string | null): Pr
       chestAudioStart: m.chest_audio_start ?? 0,
       chestAudioDuration: m.chest_audio_duration ?? 0,
       coinSoundUrl: m.coin_sound_url || '',
+      kind: m.kind || undefined,
+      soundUrl: m.sound_url || '',
+      lines: m.lines || '',
+      renderScale: m.render_scale ?? 1,
+      renderHeight: m.render_height ?? 1,
+      config: m.config || undefined,
       _isGlobal: m.is_global ?? false,
     };
   } catch (e) {
@@ -130,4 +144,14 @@ export async function fetchModel3DById(id: string, tenantId?: string | null): Pr
 export function isImageUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return lower.includes('.png') || lower.includes('.jpg') || lower.includes('.jpeg') || lower.includes('.webp') || lower.includes('.gif') || lower.startsWith('data:image/');
+}
+
+/** Modelos de CENÁRIO (árvores, arbustos, flores, pedras, água, chão). */
+export async function fetchSceneryModels(tenantId?: string | null): Promise<Model3D[]> {
+  return fetchModelsByCategory('scenery', tenantId);
+}
+
+/** Modelos de ANIMAIS (bichinhos com som e falas em balão). */
+export async function fetchAnimalModels(tenantId?: string | null): Promise<Model3D[]> {
+  return fetchModelsByCategory('animal', tenantId);
 }

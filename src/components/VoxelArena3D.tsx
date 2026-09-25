@@ -559,8 +559,8 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
     try {
       const lvl = item.forgeLevel || 0;
       const tier = lvl >= 9 ? 3 : lvl >= 8 ? 2 : lvl >= 7 ? 1 : 0;
-      const isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
-      const isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
+      const isWeaponSlot = ['hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
+      const isGear = ['head', 'body', 'legs', 'feet', 'hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
       if (tier > 0 && isGear) {
         const style = (isWeaponSlot && item.itemCategory !== 'defense') ? 'circles' : 'reflect';
         model.traverse((c: any) => {
@@ -574,7 +574,7 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
       const sparkLvl = item.forgeLevel || 0;
       const sparkTier = sparkLvl >= 9 ? 3 : sparkLvl >= 8 ? 2 : sparkLvl >= 7 ? 1 : 0;
       if (sparkTier > 0) {
-        const isWeaponSlot = ['hand', 'two_handed', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
+        const isWeaponSlot = ['hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
         const isShield = isWeaponSlot && item.itemCategory === 'defense';
         const sparkScale = (isWeaponSlot && !isShield) ? 0.98 : (isShield ? 1.22 : 1.3);
         const sparkMul = (isWeaponSlot && !isShield) ? 1 : (isShield ? 1.5 : 2);
@@ -588,7 +588,7 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
 
     const transform = resolveModelTransform(item, config?.gender, config?.handedness, false) || item.modelTransforms?.common;
     const p = String(item.avatarPart);
-    if (['rightHand', 'leftHand', 'hand', 'two_handed'].includes(p)) {
+    if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(p)) {
       const isDefense = item.itemCategory === 'defense';
       const dominantArm = isLeftHanded ? player.skin.leftArm : player.skin.rightArm;
       const nonDominantArm = isLeftHanded ? player.skin.rightArm : player.skin.leftArm;
@@ -598,6 +598,11 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
         model.position.set(transform.posX * inv, transform.posY, transform.posZ);
         model.rotation.set(transform.rotX, transform.rotY * inv, transform.rotZ * inv);
         model.translateY(transform.slide);
+      } else if (p === 'two_handed' || p === 'pickaxe') {
+        model.scale.set(10, 10, 10);
+        model.position.set(0, -11, 0);
+        model.rotation.set(Math.PI / 2.2, 0, isLeftHanded ? Math.PI / 20 : -Math.PI / 20);
+        model.translateY(-18);
       } else {
         model.scale.set(10, 10, 10);
         model.position.set(0, -12, 0);

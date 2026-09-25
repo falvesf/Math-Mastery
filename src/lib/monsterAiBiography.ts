@@ -20,10 +20,6 @@ export interface MonsterLoreContext {
  */
 function generateProceduralMonsterBio(ctx: MonsterLoreContext): string {
   const name = ctx.monsterName || 'A Criatura';
-  const hasSpecial = ctx.attacks?.special?.enabled;
-  const hasRanged = ctx.attacks?.ranged?.enabled;
-  const hasRage = ctx.attacks?.support?.enabled || ctx.attacks?.heal?.enabled;
-  const dropCount = ctx.drops?.length || 0;
 
   const intros = [
     `Uma lenda ancestral ecoa pelos corredores das masmorras sobre ${name}, uma entidade temida até mesmo pelos guerreiros mais experientes.`,
@@ -32,32 +28,16 @@ function generateProceduralMonsterBio(ctx: MonsterLoreContext): string {
   ];
 
   const tactics = [
-    `Em combate, avança sem hesitar, desferindo investidas brutais que desafiam qualquer defesa convencional.`,
-    `Seus instintos predatórios o tornam imprevisível na arena, esperando o momento exato para contra-atacar seus adversários.`,
+    `Em combate, avança sem hesitar, desferindo investidas brutais que desafiam qualquer defesa convencional — mas seus golpes exatos são um mistério que só se revela a quem resiste tempo suficiente.`,
+    `Seus instintos predatórios o tornam imprevisível na arena, e cada ataque guarda um segredo que poucos aventureiros viveram para descrever.`,
   ];
 
-  let specialTactic = '';
-  if (hasSpecial) {
-    specialTactic = ` Quando pressionado, canaliza uma energia oculta para desferir golpes especiais devastadores capazes de mudar o rumo da batalha.`;
-  }
-  if (hasRanged) {
-    specialTactic += ` Não hesite em manter distância cautelosa, pois é capaz de atacar de longe com projéteis mortais.`;
-  }
-  if (hasRage) {
-    specialTactic += ` Ao sentir o peso dos ferimentos, sua determinação entra em frenesi, amplificando seu poder com vigor renovado.`;
-  }
-
-  let spoils = '';
-  if (dropCount > 0) {
-    spoils = ` Relatos de aventureiros sugerem que ${name} resguarda até ${dropCount} relíquias raras e tesouros ocultos em seus domínios, ansiando por guerreiros dignos de reivindicá-los.`;
-  } else {
-    spoils = ` Dizem que derrotá-lo concede honra suprema e o respeito inabalável de toda a guilda.`;
-  }
+  const spoils = `Dizem que, em seus domínios, repousam relíquias cobiçadas por toda a guilda — porém o verdadeiro tesouro que ${name} guarda permanece oculto, à espera de quem o derrote para descobri-lo.`;
 
   const intro = intros[Math.floor(Math.random() * intros.length)];
   const tactic = tactics[Math.floor(Math.random() * tactics.length)];
 
-  return `${intro}\n\n${tactic}${specialTactic}\n\n${spoils}`;
+  return `${intro}\n\n${tactic}\n\n${spoils}`;
 }
 
 /**
@@ -68,26 +48,16 @@ export async function generateMonsterBiographyWithAI(ctx: MonsterLoreContext): P
 
   if (cfg?.apiKey) {
     try {
-      const attackDetails: string[] = [];
-      if (ctx.attacks?.primaryAttack) attackDetails.push(`Ataque primário: ${ctx.attacks.primaryAttack}`);
-      if (ctx.attacks?.ranged?.enabled) attackDetails.push(`Projéteis de longo alcance: ${ctx.attacks.ranged.projectileType || 'pedra'}`);
-      if (ctx.attacks?.special?.enabled) attackDetails.push(`Golpe especial devastador: ${ctx.attacks.special.proceduralType || 'impacto'}`);
-      if (ctx.attacks?.support?.enabled || ctx.attacks?.heal?.enabled) attackDetails.push('Habilidade de fúria/regeneração');
-
-      const dropsDetails = (ctx.drops || []).map(d => d.itemTitle || 'Item misterioso').join(', ');
-
       const systemPrompt = `Você é um sábio cronista e mestre de RPG medieval clássico. Escreva a biografia oficial de uma criatura para o Bestiário Oficial do jogo.
 O texto deve ser atmosférico, épico e dividido em 3 parágrafos curtos:
 1. Origem e lenda da criatura.
-2. Comportamento e perigos em combate (mencionando suas táticas e ataques).
-3. Mistério sobre as relíquias e tesouros raros que ela guarda.
-Mantenha o texto imersivo, direto, em português do Brasil e sem formatações estranhas ou emojis excessivos.`;
+2. Comportamento e perigos em combate (perigo GERAL, sem citar nomes de golpes/ataques específicos).
+3. Mistério sobre as relíquias e tesouros que ela guarda (sem revelar quais itens são nem quantos exatamente).
+REGRA IMPORTANTE: NÃO revele os golpes/ataques exatos nem os drops/espólios exatos — apenas insinue mistério, pois o aluno deve descobri-los enfrentando a criatura. Mantenha o texto imersivo, direto, em português do Brasil e sem formatações estranhas ou emojis excessivos.`;
 
       const userPrompt = `Nome do Monstro: "${ctx.monsterName}"
 Gênero: ${ctx.gender || 'indefinido'}
 Nível Estimado: ${ctx.level || 1}
-Táticas de Ataque: ${attackDetails.join('; ') || 'Combate corpo a corpo voraz'}
-Possíveis Espólios/Drops: ${dropsDetails || 'Relíquias raras desconhecidas'}
 Falas do Monstro: "${ctx.quotes?.defeat || '...'}"`;
 
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -148,10 +118,9 @@ export function buildDynamicStudentBiography(baseBiography: string, ctx: Monster
 
   if (totalDrops > 0) {
     if (discoveredCount === 0) {
-      p3 = `🔍 Espólios Secretos: Rumores indicam que esta criatura guarda ${totalDrops} item(ns) especial(is), mas você ainda não conseguiu extrair nenhum drop de suas garras.`;
+      p3 = `🔍 Espólios Secretos: Rumores indicam que esta criatura guarda relíquias raras, mas você ainda não conseguiu extrair nenhum drop de suas garras.`;
     } else if (discoveredCount < totalDrops) {
-      const remaining = totalDrops - discoveredCount;
-      p3 = `🎁 Espólios Descobertos: Você já obteve ${encounters.discoveredDropTitles.join(', ')}. No entanto, seus arquivos indicam que ainda existem ${remaining} drop(s) misterioso(s) a serem conquistados!`;
+      p3 = `🎁 Espólios Descobertos: Você já obteve ${encounters.discoveredDropTitles.join(', ')}. No entanto, seus arquivos indicam que ainda há drops misteriosos a serem conquistados!`;
     } else {
       p3 = `👑 Mestre do Bestiário: Você decifrou todos os ${totalDrops} espólios possíveis de ${ctx.monsterName}! Não restam mais segredos nesta criatura.`;
     }

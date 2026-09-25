@@ -194,6 +194,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       if (itemToEquip.avatarPart === targetSlot) compatible = true;
       if (itemToEquip.avatarPart === 'hand' && (targetSlot === 'hand1' || targetSlot === 'hand2')) compatible = true;
       if (itemToEquip.avatarPart === 'two_handed' && (targetSlot === 'hand1' || targetSlot === 'hand2')) compatible = true;
+      if (itemToEquip.avatarPart === 'pickaxe' && (targetSlot === 'hand1' || targetSlot === 'hand2')) compatible = true;
       if (itemToEquip.avatarPart === 'rightHand' && targetSlot === 'hand1') compatible = true;
       if (itemToEquip.avatarPart === 'leftHand' && targetSlot === 'hand2') compatible = true;
 
@@ -437,24 +438,19 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         await _updateEq(did, false);
       };
       // Arma (tudo que não é escudo) x escudo ('defense'): não podem coexistir dois do mesmo tipo na mão.
+      // PICARETA conta como DUAS MÃOS → ocupa arma E escudo.
       const isWeapon = item.itemCategory !== 'defense';
-      if (item.avatarPart === 'hand' || item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand') {
-        // Equipar item de mão SUBSTITUI a arma/escudo do mesmo tipo no slot (e remove duas mãos).
-        const otherHands = items.filter(i => i.equipped && i.id !== item.id &&
-          (i.avatarPart === 'hand' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'two_handed'));
-        for (const o of otherHands) {
-          if (o.avatarPart === 'two_handed') {
-            await unequip(o);
-          } else {
-            const otherIsWeapon = o.itemCategory !== 'defense';
-            if (otherIsWeapon === isWeapon) await unequip(o);
-          }
-        }
-      } else if (item.avatarPart === 'two_handed') {
-        const equippedWeapons = items.filter(i => i.equipped && i.id !== item.id &&
-          (i.avatarPart === 'hand' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand' || i.avatarPart === 'two_handed'));
-        for (const w of equippedWeapons) {
-          await unequip(w);
+      const HAND_PARTS = ['hand', 'rightHand', 'leftHand', 'two_handed', 'pickaxe'];
+      const handsEquipped = items.filter(i => i.equipped && i.id !== item.id && HAND_PARTS.includes(i.avatarPart as string));
+      if (item.avatarPart === 'pickaxe' || item.avatarPart === 'two_handed') {
+        // Duas mãos (inclui picareta): desequipa TODA arma e escudo.
+        for (const o of handsEquipped) await unequip(o);
+      } else if (item.avatarPart === 'hand' || item.avatarPart === 'rightHand' || item.avatarPart === 'leftHand') {
+        // Equipar item de mão SUBSTITUI a arma/escudo do mesmo tipo no slot (e remove duas mãos/picareta).
+        for (const o of handsEquipped) {
+          const oTwoHand = o.avatarPart === 'two_handed' || o.avatarPart === 'pickaxe';
+          const otherIsWeapon = o.itemCategory !== 'defense';
+          if (oTwoHand || otherIsWeapon === isWeapon) await unequip(o);
         }
       } else {
         const alreadyEquipped = items.find(i => i.equipped && i.avatarPart === item.avatarPart && i.id !== item.id);
