@@ -941,7 +941,7 @@ if (!cancelled) {
 
     // ---- Itens aleatórios ----
     const coinsList: { x: number; z: number; mesh: THREE.Object3D; value: number }[] = [];
-    type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number };
+    type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number };
     const slimes: Slime[] = [];
     const rocks: { x: number; z: number; mesh: THREE.Object3D; hp: number; maxHp: number; def: number }[] = [];
     const hazards: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
@@ -1138,7 +1138,7 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
       bubble.visible = false; bubble.renderOrder = 999; scene.add(bubble);
       const bubbleY = modelUrl ? 2.3 : 1.95;
-      const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', label, labelY };
+      const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', label, labelY, xp: 0, atkPower: Number(st.attack) || (8 + level * 4), rewardXp: Number(st.xp) || Math.round(40 * level), lines: (monster as any)?.config?.lines || [], nextVoice: 0, fleeTable: (monster as any)?.config?.stats?.fleeChanceTable || [], fleeMode: false, fleeTimer: 0 };
       slimes.push(slime);
       return slime;
     };
@@ -1174,6 +1174,53 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
         const max = Math.max(min, Number((d as any).max) || min);
         const qty = min + Math.floor(Math.random() * (max - min + 1));
         for (let i = 0; i < qty; i++) spawnLootPickup(gx, gz, 'item', item);
+      }
+    };
+    // ---- XP/NÍVEL das criaturas: animal sobe com METADE da curva do monstro ----
+    const xpToNext = (level: number, isAnimal: boolean) => Math.round((isAnimal ? 300 : 600) * Math.max(1, level));
+    const relabelSlime = (s: Slime) => {
+      try { if (s.label) scene.remove(s.label); } catch { /* noop */ }
+      const lbl = makeLabelSprite(`Nv.${s.level || 1} ${s.name || (s.isAnimal ? 'Animal' : 'Monstro')}`);
+      lbl.position.set(s.root.position.x, s.labelY || 2.25, s.root.position.z); scene.add(lbl);
+      s.label = lbl;
+    };
+    const gainXp = (killer: Slime, victim: Slime) => {
+      if (!killer || killer.hp <= 0) return;
+      const reward = Number((victim as any).rewardXp) || Math.round(40 * (victim.level || 1));
+      killer.xp = (killer.xp || 0) + reward;
+      const isA = !!killer.isAnimal;
+      let lvl = killer.level || 1;
+      while (killer.xp >= xpToNext(lvl, isA) && lvl < 99) {
+        killer.xp -= xpToNext(lvl, isA); lvl++;
+        killer.maxHp = Math.round(killer.maxHp * 1.08); killer.hp = killer.maxHp;
+        killer.atkPower = Math.round((killer.atkPower || 10) * 1.08);
+        killer.defense = Math.round((killer.defense || 0) * 1.05 + 1);
+        killer.rewardXp = Math.round((killer.rewardXp || 40) * 1.1);
+      }
+      if (lvl !== (killer.level || 1)) {
+        killer.level = lvl; relabelSlime(killer);
+        callbacks.current.setMsg(`⬆️ ${killer.name || 'Criatura'} subiu para o nível ${lvl}!`);
+      }
+    };
+    // Dano de uma criatura em OUTRA criatura (combate monstro ↔ animal).
+    const damageSlime = (victim: Slime, attacker: Slime) => {
+      if (!victim || victim.hp <= 0) return;
+      const raw = attacker.atkPower || (10 + (attacker.level || 1) * 5);
+      const real = Math.max(1, Math.round(raw - (victim.defense || 0) * 0.3));
+      victim.hp -= real;
+      // Animal atacado por um monstro REVIDA (fica hostil → barra vermelha).
+      if (victim.isAnimal && !victim.hostile) {
+        victim.hostile = true;
+        try { (victim.fg.material as THREE.MeshBasicMaterial).color.set(0xdd3333); } catch { /* noop */ }
+      }
+      flashMonster(victim); playMonsterHurtSound(victim); speakMonster(victim, 'hurt');
+      if (attacker.damageEffect && attacker.damageEffect !== 'none' && Math.random() < 0.4) applyStatus(victim, attacker.damageEffect as any);
+      spawnPop(new THREE.Vector3(victim.root.position.x, victim.root.position.y + 1.5, victim.root.position.z), `-${real}`, false);
+      if (victim.hp <= 0) {
+        callbacks.current.setMsg(`💥 ${attacker.isAnimal ? 'O animal' : 'O monstro'} abateu ${victim.isAnimal ? 'um animal' : 'um monstro'}!`);
+        victim.root.visible = false; victim.bar.visible = false; if (victim.label) victim.label.visible = false;
+        recordMonsterKill(victim); rollMonsterDrops(victim);
+        gainXp(attacker, victim);
       }
     };
     // Aplica o TINT do status no visual (modelo GLB ou slime), como na batalha.
@@ -1625,10 +1672,23 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
           customModelUrl: a?.url || '',
           customZoom: a?.scale || 1,
           gruntSound: a?.soundUrl || '',
+          lines: a?.lines || [],
           quotes: (a?.lines && a.lines.length) ? { hp100_80: a.lines[0], defeat: a.lines[a.lines.length - 1] } : undefined,
         },
       };
-      addMonster(x, z, 6, undefined, pseudo);
+      const s = addMonster(x, z, 6, undefined, pseudo);
+      // Animal com modelo de IMAGEM (2.5D/sprite): usa o template como visual (barra/rótulo ficam).
+      if (a && a.url && isImageUrl(a.url) && a.template) {
+        try {
+          const c = a.template.clone(true) as any;
+          if ((c as any).isSprite) c.scale.setScalar(a.scale || 1); else c.scale.setScalar(a.scale || 1);
+          c.position.set(0, 0, 0);
+          try { s.root.remove(s.mesh); } catch { /* noop */ }
+          s.root.add(c);
+          s.visual = c; s.visualRestY = 0;
+        } catch { /* noop */ }
+      }
+      return s;
     };
     let critPlaced = 0;
     for (let tries = 0; tries < 500 && critPlaced < 10; tries++) {
@@ -2597,46 +2657,86 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
         if (s.label) s.label.position.set(s.root.position.x, s.labelY || 2.25, s.root.position.z);
         // Animal pacífico NÃO ataca: vagueia e foge do perto; só fica hostil se for atacado.
         const isPeacefulAnimal = !!s.isAnimal && !s.hostile;
-        const dxp = wx(playerPos.x) - s.root.position.x;
-        const dzp = wz(playerPos.z) - s.root.position.z;
-        const dist = Math.hypot(dxp, dzp);
         const nowMs = performance.now();
         const frozenNow = s.status?.type === 'freeze' && nowMs < s.status.until;
-        // O monstro só AGGRO o jogador com LINHA DE VISÃO (nada de ver através de portas/muros).
         const sg0x = Math.round(s.root.position.x + (COLS - 1) / 2), sg0z = Math.round(s.root.position.z + (ROWS - 1) / 2);
-const canSee = dist < s.vision && losClear(sg0x, sg0z, Math.round(playerPos.x), Math.round(playerPos.z));
-        if (!tutorialBlock && canSee && !isPeacefulAnimal) {
-          // GRUNIDO: toca o som configurado do monstro na 1ª vez que ele vê o jogador.
-          if (!s.hasGruntted && s.gruntUrl) { s.hasGruntted = true; playFx(s.gruntUrl, 0.8); }
-          // Guarda uma DISTÂNCIA (~1,9) para dar o bote — não cola no jogador.
+        const distPlayer = Math.hypot(wx(playerPos.x) - s.root.position.x, wz(playerPos.z) - s.root.position.z);
+        // Animal pacífico fala de vez em quando (balão), quando o jogador não está colado nele.
+        if (s.isAnimal && !s.hostile && s.lines && s.lines.length && s.bubble && distPlayer > 4 && nowMs > (s.nextVoice || 0)) {
+          s.nextVoice = nowMs + 6000 + Math.random() * 10000;
+          try {
+            const txt = s.lines[Math.floor(Math.random() * s.lines.length)];
+            const bt = makeBubbleTexture(txt);
+            (s.bubble.material as any).map = bt.tex; (s.bubble.material as any).needsUpdate = true;
+            s.bubble.scale.set(bt.w / 150, bt.h / 150, 1); s.bubble.visible = true; s.bubbleUntil = nowMs + 2200;
+          } catch { /* noop */ }
+        }
+        // ---- Escolha de ALVO: jogador e/ou criaturas ADVERSÁRIAS (monstro ↔ animal) ----
+        let tgt: { x: number; z: number; s?: Slime; player?: boolean; dist: number } | null = null;
+        if (!tutorialBlock && !isPeacefulAnimal) {
+          if (distPlayer < (s.vision + 3) && losClear(sg0x, sg0z, Math.round(playerPos.x), Math.round(playerPos.z))) {
+            tgt = { x: wx(playerPos.x), z: wz(playerPos.z), player: true, dist: distPlayer };
+          }
+          for (const o of slimes) {
+            if (o === s || o.hp <= 0) continue;
+            const adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal);
+            if (!adversarial) continue;
+            const d = Math.hypot(o.root.position.x - s.root.position.x, o.root.position.z - s.root.position.z);
+            if (d > s.vision + 2) continue;
+            const ogx = Math.round(o.root.position.x + (COLS - 1) / 2), ogz = Math.round(o.root.position.z + (ROWS - 1) / 2);
+            if (!losClear(sg0x, sg0z, ogx, ogz)) continue;
+            if (!tgt || d < tgt.dist) tgt = { x: o.root.position.x, z: o.root.position.z, s: o, dist: d };
+          }
+        }
+        // Animal HOSTIL: pode preferir FUGIR (principalmente com HP baixo) em vez de atacar.
+        if (s.isAnimal && s.hostile) {
+          s.fleeTimer = (s.fleeTimer || 0) - dt;
+          if ((s.fleeTimer || 0) <= 0) {
+            s.fleeTimer = 1.2;
+            const hearts = Math.max(1, Math.ceil((s.hp / s.maxHp) * 5));
+            let fc = 0;
+            for (const row of (s.fleeTable || [])) if (hearts <= (Number(row.minHearts) || 0)) fc = Math.max(fc, (Number(row.chance) || 0) / 100);
+            s.fleeMode = Math.random() < fc;
+          }
+        }
+        const dxp = tgt ? (tgt.x - s.root.position.x) : (wx(playerPos.x) - s.root.position.x);
+        const dzp = tgt ? (tgt.z - s.root.position.z) : (wz(playerPos.z) - s.root.position.z);
+        const dist = Math.hypot(dxp, dzp);
+        if (s.isAnimal && s.hostile && s.fleeMode) {
+          // Foge do JOGADOR (HP baixo / tabela de fuga).
+          const ffx = s.root.position.x - wx(playerPos.x), ffz = s.root.position.z - wz(playerPos.z);
+          const ff = Math.hypot(ffx, ffz) || 1;
+          const sp = 3.0 * (frozenNow ? 0.25 : 1);
+          const mx = s.root.position.x + (ffx / ff) * sp * dt;
+          if (!mBlocked(s, mx, s.root.position.z)) s.root.position.x = mx;
+          const mz = s.root.position.z + (ffz / ff) * sp * dt;
+          if (!mBlocked(s, s.root.position.x, mz)) s.root.position.z = mz;
+        } else if (tgt) {
+          if (!s.hasGruntted && s.gruntUrl && tgt.player) { s.hasGruntted = true; playFx(s.gruntUrl, 0.8); }
           if (dist > 1.9) {
             s.pathT -= dt;
             if (s.pathT <= 0) {
               s.pathT = 0.35;
-              const step = bfsStep(
-                Math.round(s.root.position.x + (COLS - 1) / 2), Math.round(s.root.position.z + (ROWS - 1) / 2),
-                Math.round(playerPos.x), Math.round(playerPos.z)
-              );
-              s.pnx = step ? wx(step.x) : wx(playerPos.x);
-              s.pnz = step ? wz(step.z) : wz(playerPos.z);
+              const step = bfsStep(sg0x, sg0z, Math.round(tgt.x + (COLS - 1) / 2), Math.round(tgt.z + (ROWS - 1) / 2));
+              s.pnx = step ? wx(step.x) : tgt.x;
+              s.pnz = step ? wz(step.z) : tgt.z;
             }
-            const tgtX = isNaN(s.pnx) ? wx(playerPos.x) : s.pnx;
-            const tgtZ = isNaN(s.pnz) ? wz(playerPos.z) : s.pnz;
-            const ddx = tgtX - s.root.position.x, ddz = tgtZ - s.root.position.z;
-const dd = Math.hypot(ddx, ddz) || 1;
+            const ncX = isNaN(s.pnx) ? tgt.x : s.pnx;
+            const ncZ = isNaN(s.pnz) ? tgt.z : s.pnz;
+            const ddx = ncX - s.root.position.x, ddz = ncZ - s.root.position.z;
+            const dd = Math.hypot(ddx, ddz) || 1;
             const sp = 3.0 * (frozenNow ? 0.25 : 1); // congelado → muito mais lento
             const mx = s.root.position.x + (ddx / dd) * sp * dt;
             if (!mBlocked(s, mx, s.root.position.z)) s.root.position.x = mx;
             const mz = s.root.position.z + (ddz / dd) * sp * dt;
             if (!mBlocked(s, s.root.position.x, mz)) s.root.position.z = mz;
           }
-// BOTE (pulo): ataca SALtando em direção ao jogador (não por contato).
+          // BOTE (pulo) em direção ao ALVO (jogador ou criatura adversária).
           s.attackCd -= dt;
           if (!frozenNow && dist >= 0.6 && dist <= 2.6 && s.attackCd <= 0 && s.lunge <= 0) {
-            const sgx = Math.round(s.root.position.x + (COLS - 1) / 2), sgz = Math.round(s.root.position.z + (ROWS - 1) / 2);
-            if (losClear(sgx, sgz, Math.round(playerPos.x), Math.round(playerPos.z))) { s.lunge = 0.42; s.lungeHit = false; }
+            if (losClear(sg0x, sg0z, Math.round(tgt.x + (COLS - 1) / 2), Math.round(tgt.z + (ROWS - 1) / 2))) { s.lunge = 0.42; s.lungeHit = false; }
           }
-        } else if (isPeacefulAnimal && dist < 3.4) {
+        } else if (isPeacefulAnimal && distPlayer < 3.4) {
           // Animal pacífico FOGE quando o jogador chega perto.
           const dirX = -dxp / (dist || 1), dirZ = -dzp / (dist || 1);
           const sp = 2.4 * (frozenNow ? 0.25 : 1);
@@ -2668,6 +2768,9 @@ if (!s.lungeHit && pr >= 0.5) {
             // CHEFE tocou o jogador → grunido e só depois a batalha (mapa encerra).
             if (s.isBoss) {
               if (!s.grunting) { s.grunting = true; bossGruntThenBattle(s.gruntUrl || ''); }
+            } else if (tgt && tgt.s) {
+              // Acertou OUTRA criatura (combate monstro ↔ animal).
+              damageSlime(tgt.s, s);
             } else {
               const who = s.isAnimal ? 'O animal' : 'O monstro';
               const eff = s.damageEffect && s.damageEffect !== 'none' ? s.damageEffect : null;
