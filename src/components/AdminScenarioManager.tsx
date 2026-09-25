@@ -24,7 +24,7 @@ const THEME_OPTIONS = [
 ];
 
 interface WallType { id: string; name: string; color: string; textureUrl?: string; hp: number; def: number; breakable: boolean; chance: number; trapChance: number }
-interface DoorType { id: string; name: string; color: string; textureUrl?: string; hp: number; def: number; openMode: 'challenge' | 'free' | 'key'; challengeChance: number; keyItemId?: string }
+interface DoorType { id: string; name: string; color: string; textureUrl?: string; modelId?: string; hp: number; def: number; openMode: 'challenge' | 'free' | 'key'; challengeChance: number; keyItemId?: string }
 interface KeyType { id: string; name: string; imageUrl?: string }
 interface LootEntry { kind: 'coins' | 'item' | 'key' | 'heart' | 'potion' | 'nothing'; weight: number; min?: number; max?: number; itemId?: string; keyId?: string }
 interface MonsterSpawnRegion { x1: number; z1: number; x2: number; z2: number; monsters: string[]; density: number }
@@ -191,6 +191,15 @@ export default function AdminScenarioManager() {
 
   // Catálogo de monstros (preset_skins type=monster) para povoar o mapa e escolher o boss.
   const [monsterCatalog, setMonsterCatalog] = useState<any[]>([]);
+  // Modelos 3D de PORTA (categoria 'door') para associar a cada tipo de porta.
+  const [doorModels, setDoorModels] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    let active = true;
+    let q = supabase.from('3d_models').select('id,name').eq('category', 'door');
+    if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    q.then(({ data }) => { if (active && data) setDoorModels((data as any[]).map(m => ({ id: m.id, name: m.name || m.id }))); }).catch(() => {});
+    return () => { active = false; };
+  }, [tenantId]);
   useEffect(() => {
     let q = supabase.from('preset_skins').select('*').eq('type', 'monster');
     if (tenantId) q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
@@ -613,6 +622,13 @@ export default function AdminScenarioManager() {
                       <button type="button" title="Remover textura" style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.7rem' }} onClick={() => patchDoor(i, { textureUrl: undefined })}>✕</button>
                     </div>}
                   </div>
+                  <div style={{ minWidth: 170, flex: '2 1 170px' }}><label style={labelStyle}>Modelo 3D (Portas)</label>
+                    <select style={inputStyle} value={d.modelId || ''} onChange={e => patchDoor(i, { modelId: e.target.value || undefined })}>
+                      <option value="">— (usar cor/textura acima)</option>
+                      {doorModels.map(m => <option key={m.id} value={m.id}>🚪 {m.name}</option>)}
+                      {d.modelId && !doorModels.some(m => m.id === d.modelId) && <option value={d.modelId}>(modelo atual)</option>}
+                    </select>
+                  </div>
                   <div style={{ width: 92 }}><label style={labelStyle}>HP</label><input type="number" style={inputStyle} value={d.hp} onChange={e => patchDoor(i, { hp: parseInt(e.target.value) || 0 })} /></div>
                   <div style={{ width: 92 }}><label style={labelStyle}>Defesa</label><input type="number" style={inputStyle} value={d.def} onChange={e => patchDoor(i, { def: parseInt(e.target.value) || 0 })} /></div>
                   <div style={{ width: 190 }}><label style={labelStyle}>Abertura</label>
@@ -655,10 +671,7 @@ export default function AdminScenarioManager() {
                     <select style={inputStyle} value={l.kind} onChange={e => patchLoot(i, { kind: e.target.value as any })}>
                       <option value="coins">🪙 Moedas</option>
                       <option value="item">🎒 Item do Catálogo</option>
-                      <option value="key">🔑 Chave do Cenário</option>
                       <option value="nothing">— Nada</option>
-                      <option value="heart">❤️ Coração (legado)</option>
-                      <option value="potion">🧪 Poção (legado)</option>
                     </select>
                   </div>
                   <div style={{ width: 100 }}><label style={labelStyle}>Peso</label><input type="number" style={inputStyle} value={l.weight} onChange={e => patchLoot(i, { weight: parseInt(e.target.value) || 0 })} /></div>
@@ -701,10 +714,7 @@ export default function AdminScenarioManager() {
                     <select style={inputStyle} value={l.kind} onChange={e => patchChestLoot(i, { kind: e.target.value as any })}>
                       <option value="coins">🪙 Moedas</option>
                       <option value="item">🎒 Item do Catálogo</option>
-                      <option value="key">🔑 Chave do Cenário</option>
                       <option value="nothing">— Nada</option>
-                      <option value="heart">❤️ Coração (legado)</option>
-                      <option value="potion">🧪 Poção (legado)</option>
                     </select>
                   </div>
                   <div style={{ width: 100 }}><label style={labelStyle}>Peso</label><input type="number" style={inputStyle} value={l.weight} onChange={e => patchChestLoot(i, { weight: parseInt(e.target.value) || 0 })} /></div>

@@ -12,7 +12,7 @@ import { fetchEquippedItems } from '../lib/equippedItems';
 import { supabase } from '../lib/supabase';
 import { calculateTotalStats } from '../lib/gacha';
 import { RANKS, getRankForXp } from '../lib/ranks';
-import { fetchActiveCoin, fetchActiveChest, fetchActiveDoor, isImageUrl } from '../lib/model3d';
+import { fetchActiveCoin, fetchActiveChest, fetchActiveDoor, fetchModelsByCategory, isImageUrl } from '../lib/model3d';
 import { calculatePlayerHitDamage } from '../lib/combatDamage';
 import { getEquippedDamageEffectInfo } from '../lib/damageEffects';
 import { resolveConsumableEffect } from '../lib/consumableEffects';
@@ -473,6 +473,18 @@ const [sfxOn, setSfxOn] = useState(false);
         const da = d.data || {};
         if (d.item_id) ownedItemIdsRef.current.add(String(d.item_id));
         if (da.itemId) ownedItemIdsRef.current.add(String(da.itemId));
+        // Coleta itens de MÃO (armas, escudos e picaretas) para os slots de equipamento do cenário.
+        const part = String(da.avatarPart || '');
+        if (['hand', 'rightHand', 'leftHand', 'two_handed', 'pickaxe'].includes(part) && (da.gameModelUrl || da.itemImageUrl || da.minecraftHeadValue)) {
+          handInventoryRef.current.push({
+            docId: d.id, itemId: d.item_id || da.itemId || d.id, imageUrl: da.itemImageUrl, avatarPart: da.avatarPart,
+            itemTitle: da.itemTitle, itemCategory: da.itemCategory, baseAttributeType: da.baseAttributeType,
+            baseAttributeValue: da.baseAttributeValue, adds: da.adds, fixedAttributes: da.fixedAttributes, forgeConfig: da.forgeConfig,
+            damageEffect: da.damageEffect, battleSoundUrl: da.battleSoundUrl, criticalSoundUrl: da.criticalSoundUrl,
+            gameModelUrl: da.gameModelUrl, modelTextureUrl: da.modelTextureUrl, minecraftHeadValue: da.minecraftHeadValue,
+            modelTransforms: da.modelTransforms, backColor: da.backColor || '', forgeLevel: da.forgeLevel || 0,
+          } as EquippedItem);
+        }
         if (da.itemType !== 'consumable' || d.equipped || !USEFUL_CONSUMABLE_EFFECTS.has(da.gameEffect)) return;
         const key = d.item_id || da.itemId || da.itemTitle || d.id;
         const heal = da.gameEffect === 'restore_hp' ? 5 : da.gameEffect === 'heal_1_hp' ? 1 : 0;
@@ -504,6 +516,11 @@ if (!cancelled) {
       const ch = await buildTemplate(chestM, 'chest');
       const dr = await buildTemplate(doorM, 'door');
       if (!cancelled) { coinTemplateRef.current = c; chestTemplateRef.current = ch; doorTemplateRef.current = dr; coinConfigRef.current = coinM; chestConfigRef.current = chestM; }
+      // Modelos de PORTA por ID (categoria 'door') — cada tipo de porta usa o SEU modelo.
+      const allDoorModels = await fetchModelsByCategory('door', tenantId).catch(() => []);
+      const doorMap = new Map<string, any>();
+      for (const dm of (allDoorModels || [])) { const t = await buildTemplate(dm, 'door'); if (t) doorMap.set((dm as any).id, t); }
+      if (!cancelled) doorTemplatesRef.current = doorMap;
       // Pré-carrega os SONS de moeda/baú configurados na edição.
       if (coinM?.coinSoundUrl) sfx.preload(coinM.coinSoundUrl);
       if (chestM?.chestAudioUrl) sfx.preload(chestM.chestAudioUrl);
@@ -560,12 +577,20 @@ if (!cancelled) {
   const coinConfigRef = useRef<any>(null);
   const chestConfigRef = useRef<any>(null);
   const doorTemplateRef = useRef<any>(null);
+  // Modelos 3D de porta POR ID (associados a cada tipo de porta no cenário).
+  const doorTemplatesRef = useRef<Map<string, any>>(new Map());
   const scenarioRef = useRef<any>(scenarioConfig || null);
   // Catálogo de itens (store_items) por id — usado no loot ao quebrar blocos.
   const itemCatalogRef = useRef<Map<string, any>>(new Map());
   // Catálogo de monstros (preset_skins type=monster) por id — povoam o mapa e o boss.
   const monsterCatalogRef = useRef<Map<string, any>>(new Map());
   const ownedItemIdsRef = useRef<Set<string>>(new Set());
+  // Itens de MÃO do jogador (armas, escudos e PICARETAS) — para os slots de equipamento.
+  const handInventoryRef = useRef<EquippedItem[]>([]);
+  const equipHandRef = useRef<(itemId: string | null) => void>(() => {});
+  const [handOptions, setHandOptions] = useState<{ id: string; title: string; imageUrl?: string; isPickaxe: boolean }[]>([]);
+  const [handActiveId, setHandActiveId] = useState<string | null>(null);
+  const [handViewPickaxes, setHandViewPickaxes] = useState(false);
 
   // Áudio: sons de batalha (espada/soco) e de dano do personagem (por gênero).
   const battleSoundsRef = useRef<{ punch: string; fatalEvaporate: string }>({ punch: '', fatalEvaporate: '' });
@@ -1229,7 +1254,8 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
     };
     // Cria a porta: usa o MODELO 3D ativo (categoria 'door'), se houver; senão a caixa procedural.
     const makeDoorMesh = (type: any): THREE.Object3D => {
-      const tmpl = doorTemplateRef.current;
+      // Prioridade: MODELO do TIPO escolhido → modelo de porta ativo (global) → procedural.
+      const tmpl = (type?.modelId && doorTemplatesRef.current.get(String(type.modelId))) || doorTemplateRef.current;
       if (tmpl) {
         try {
           const clone = tmpl.clone(true);
@@ -1446,6 +1472,8 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
           if (/^(https?:|data:|\/)/i.test(s)) return s;
           return `${import.meta.env.BASE_URL}models/${s.replace(/^\.?\//, '')}`;
         };
+        // Mapa id do item → modelo anexado à mão (para os slots trocarem corretamente).
+        const handModelById = new Map<string, any>();
         const attach = (model: any, item: EquippedItem) => {
           model.traverse((c: any) => { if (c.isMesh) c.frustumCulled = false; });
           try { applyForgeGlowToModel(model, (item as any).forgeLevel || 0); } catch { /* noop */ }
@@ -1462,7 +1490,10 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
             else { model.position.set(...defPos); model.rotation.set(...defRot); }
             parent.add(model);
           };
-          if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(String(item.avatarPart))) handModels.push({ model, part: String(item.avatarPart) });
+          if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(p)) {
+            handModels.push({ model, part: p });
+            handModelById.set(String((item as any).itemId || (item as any).docId || ''), model);
+          }
           if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(p)) {
             const arm = item.itemCategory === 'defense' ? (isLeftHanded ? player.skin.rightArm : player.skin.leftArm) : (isLeftHanded ? player.skin.leftArm : player.skin.rightArm);
             addTo(arm, [0, -12, 0], [Math.PI / 2, 0, 0], 10);
@@ -1477,6 +1508,52 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
             if (IMG_EXT_RE.test(raw.split('?')[0])) { const t = resolveModelTransform(item, (cfg as any).gender, (cfg as any).handedness, false); const m = await generateVoxelItemFromImage(raw, item.backColor, t?.curveX || 0, t?.curveY || 0, undefined, 0.12 * (t?.thickness ?? 1)); attach(m, item); }
             else await new Promise<void>(res => loader.load(raw, (g: any) => { attach(g.scene, item); res(); }, undefined, () => res()));
           } catch { /* noop */ }
+        }
+        // ---- SLOTS DE MÃO: picaretas disponíveis (do PERFIL e da MOCHILA) ----
+        {
+          // Detecção AMPLA (igual ao resto do POC): avatarPart OU título/categoria.
+          const isPick = (i: any) => String(i.avatarPart) === 'pickaxe' || /picareta|pickaxe/i.test(String(i.itemTitle || '')) || ['tool', 'pickaxe'].includes(String(i.itemCategory));
+          const itemKey = (i: any) => String(i.itemId || i.docId || i.itemTitle || '');
+          const profilePickaxe = items.find(isPick) || null;
+          const profilePickaxeId = profilePickaxe ? itemKey(profilePickaxe) : '';
+          const profilePickaxeModel = profilePickaxeId ? (handModelById.get(profilePickaxeId) || null) : null;
+          const bagPickaxes = handInventoryRef.current.filter(i => isPick(i) && itemKey(i) !== profilePickaxeId);
+          const bagModels = new Map<string, any>();
+          const opts: any[] = [];
+          const pushOpt = (item: any) => opts.push({ id: itemKey(item), title: item.itemTitle || 'Picareta', imageUrl: item.imageUrl, isPickaxe: true, value: Math.max(1, Number(item.baseAttributeValue) || statsRef.current.attack) });
+          if (profilePickaxe) pushOpt(profilePickaxe);
+          for (const item of bagPickaxes) {
+            const id = itemKey(item);
+            pushOpt(item);
+            const src = item.gameModelUrl || item.imageUrl || '';
+            const raw = src ? resolveItemUrl(src) : '';
+            if (!raw) continue;
+            try {
+              if (IMG_EXT_RE.test(raw.split('?')[0])) {
+                const t = resolveModelTransform(item, (cfg as any).gender, (cfg as any).handedness, false);
+                const m = await generateVoxelItemFromImage(raw, item.backColor, t?.curveX || 0, t?.curveY || 0, undefined, 0.12 * (t?.thickness ?? 1));
+                attach(m, item); const mm = handModels[handModels.length - 1]?.model; if (mm) { mm.visible = false; bagModels.set(id, mm); }
+              } else {
+                await new Promise<void>((res) => loader.load(raw, (g: any) => { attach(g.scene, item); const mm = handModels[handModels.length - 1]?.model; if (mm) { mm.visible = false; bagModels.set(id, mm); } res(); }, undefined, () => res()));
+              }
+            } catch { /* noop */ }
+          }
+          handPickaxeOptions = opts;
+          setHandOptions(opts);
+          // Se o perfil já veio com picareta equipada, ela começa ativa (força + visual já anexados).
+          if (profilePickaxe) { activePickaxeId = profilePickaxeId; activePickaxeValue = Math.max(1, Number((profilePickaxe as any).baseAttributeValue) || statsRef.current.attack); setHandActiveId(profilePickaxeId); }
+          equipHandRef.current = (id: string | null) => {
+            const picking = !!id;
+            for (const h of handModels) h.model.visible = !picking;
+            bagModels.forEach((m, mid) => { m.visible = picking && mid === id; });
+            if (profilePickaxeModel && id === profilePickaxeId) profilePickaxeModel.visible = true;
+            activePickaxeId = picking ? id : null;
+            activePickaxeValue = picking ? (opts.find(o => o.id === id)?.value || 0) : 0;
+            debugPickaxe = false;
+            setHandActiveId(id);
+            callbacks.current.setMsg(picking ? `⛏️ Equipou: ${opts.find(o => o.id === id)?.title || 'picareta'}` : '⚔️ Voltou para a arma.');
+            if (firstPerson) buildFpWeapon(true);
+          };
         }
         callbacks.current.setMsg('✅ Personagem 3D carregado! Explore o mapa até o BOSS.');
       } catch (e) { console.warn('[MapPoC] player:', e); }
@@ -1529,10 +1606,12 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
       // Reconstroi o item da 1ª pessoa (espada ↔ picareta).
       if (firstPerson) buildFpWeapon(true);
     };
-    // Força efetiva da picareta: ITEM real tem prioridade; debug só para STAFF e sem item.
-    const pickaxeActivePower = () => (hasRealPickaxe ? pickaxePower : ((canDebugPickaxe && debugPickaxe) ? DEBUG_PICKAXE_DMG : 0));
-    // Dano da picareta equipada (0 = sem picareta).
-    const pickDamage = () => (hasRealPickaxe ? pickaxePower : ((canDebugPickaxe && debugPickaxe) ? DEBUG_PICKAXE_DMG : 0));
+    // Força efetiva: PICARETA real ATIVA (perfil/mochila) tem prioridade; debug só p/ staff sem picareta.
+    let activePickaxeValue = hasRealPickaxe ? pickaxePower : 0;
+    let activePickaxeId: string | null = null;
+    let handPickaxeOptions: any[] = [];
+    const pickaxeActivePower = () => (activePickaxeValue > 0 ? activePickaxeValue : ((canDebugPickaxe && debugPickaxe) ? DEBUG_PICKAXE_DMG : 0));
+    const pickDamage = () => pickaxeActivePower();
     // Dano a um QUEBRÁVEL: precisa vencer a defesa; o excedente + poder de ataque vira dano.
     const breakDamage = (def: number): number => {
       const pd = pickDamage();
@@ -1603,8 +1682,8 @@ const chestCap = Math.max(1, Math.round(1 + cfgElaboration * 3));
         spawnLootPickup(gx, gz, 'key', key, 0xfbbf24);
         callbacks.current.setMsg(`💥 O bloco soltou uma chave: ${key.name}!`);
       }
-      else if (drop.kind === 'heart') { useConsumableRef.current(1); callbacks.current.setMsg('❤️ O bloco guardava um coração!'); }
-      else if (drop.kind === 'potion') { callbacks.current.addPotion(); callbacks.current.setMsg('🧪 O bloco guardava uma poção de cura!'); }
+      else if (drop.kind === 'heart') { callbacks.current.setMsg('… o bloco não guardava nada.'); }
+      else if (drop.kind === 'potion') { callbacks.current.setMsg('… o bloco não guardava nada.'); }
       else callbacks.current.setMsg('… o bloco não guardava nada.');
     };
     // Solta a CHAVE DO BOSS quando o monstro portador morre.
@@ -1773,7 +1852,11 @@ const hurtPlayer = (hearts: number, message: string) => {
     };
 
     // Botão/slot de picareta (desktop e mobile) alterna arma ↔ picareta.
-    pickaxeToggleRef.current = () => setDebugPickaxe(!debugPickaxe);
+    pickaxeToggleRef.current = () => {
+      // Preferência: PICARETA real (perfil/mochila). Sem nenhuma → fallback de debug (só staff).
+      if (handPickaxeOptions.length > 0) { equipHandRef.current(activePickaxeId ? null : handPickaxeOptions[0].id); return; }
+      setDebugPickaxe(!debugPickaxe);
+    };
 
     // Abre um BAÚ aplicando o LOOT configurado no cenário (ou moedas 1..10 no padrão).
     const rollEntry = (table: any[]) => {
@@ -1785,9 +1868,6 @@ const hurtPlayer = (hearts: number, message: string) => {
     const applyEntry = (entry: any, world: THREE.Vector3): string => {
       const kind = entry?.kind;
       if (kind === 'coins') { const min = Number(entry.min) || 1, max = Number(entry.max) || 10; const v = min + Math.floor(Math.random() * (max - min + 1)); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); return `+${v} 🪙`; }
-      if (kind === 'heart') { useConsumableRef.current(1); return '❤️ +1'; }
-      if (kind === 'potion') { callbacks.current.addPotion(); return '🧪 poção de cura'; }
-      if (kind === 'key') { const key = (entry.keyId && cfgKeys.find((k: any) => k.id === entry.keyId)) || cfgKeys[0]; if (key) { heldKeys.add(String(key.id)); setHeldKeysCount(heldKeys.size); return `🔑 ${key.name || 'chave'}`; } return '🔑 chave'; }
       if (kind === 'item') { const item = itemCatalogRef.current.get(String(entry.itemId)) || Array.from(itemCatalogRef.current.values())[0]; if (item) { spawnLootPickup(Math.round(playerPos.x), Math.round(playerPos.z), 'item', item); return `📦 ${item.title || 'item'}`; } return '📦 item'; }
       return '';
     };
@@ -1810,7 +1890,7 @@ const hurtPlayer = (hearts: number, message: string) => {
       const breakNear = rocks.some(r => r.hp > 0 && r.mesh.visible && Math.hypot(wx(r.x) - wx(gx), wz(r.z) - wz(gz)) <= 1.4)
         || hazards.some(h => h.hp > 0 && h.mesh.visible && Math.hypot(wx(h.x) - wx(gx), wz(h.z) - wz(gz)) <= 1.4)
         || doors.some(d => d.hp > 0 && d.mesh.visible && Math.hypot(wx(d.x) - wx(gx), wz(d.z) - wz(gz)) <= 1.4);
-      if (breakNear || IS_TOUCH) setDebugPickaxe(!debugPickaxe);
+        if (breakNear || IS_TOUCH) pickaxeToggleRef.current();
     };
 
     // Ataque (Espaço no desktop, botão ⚔️ no mobile). Um ataque por ciclo.
@@ -1910,7 +1990,7 @@ const hurtPlayer = (hearts: number, message: string) => {
       if (k === ',') { camYaw += 0.22; return; }
       if (k === '.') { camYaw -= 0.22; return; }
       // P: alterna espada/escudo ↔ picareta de debug.
-      if (k === 'p') { setDebugPickaxe(!debugPickaxe); return; }
+      if (k === 'p') { pickaxeToggleRef.current(); return; }
       // V: alterna 3ª ↔ 1ª pessoa.
       if (k === 'v') { firstPerson = !firstPerson; if (firstPerson) buildFpWeapon(); callbacks.current.setMsg(firstPerson ? '👁️ Visão em 1ª pessoa (V para voltar).' : '🎥 Visão em 3ª pessoa.'); return; }
 if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
@@ -2342,15 +2422,13 @@ if (s.kb > 0) { s.kb = Math.max(0, s.kb - dt); const kk = s.kb / 0.2; oX += s.kb
         else if (breakNear) h = IS_TOUCH ? '⛏️ Toque no slot para equipar a picareta.' : '⛏️ Pressione P para equipar a picareta.';
         callbacks.current.setHint(h);
       }
-      // névoa: revela (de forma PERMANENTE) só o que tem LINHA DE VISÃO — paredes bloqueiam,
-      // então não dá para bisbilhotar o cômodo do outro lado antes de conseguir enxergá-lo.
+      // névoa: limpa a área VISITADA e deixa-a visível PERMANENTEMENTE (não "re-acende").
       const pgx = Math.round(playerPos.x), pgz = Math.round(playerPos.z);
       for (let z = pgz - REVEAL_RADIUS; z <= pgz + REVEAL_RADIUS; z++) for (let x = pgx - REVEAL_RADIUS; x <= pgx + REVEAL_RADIUS; x++) {
         if (x < 0 || x >= COLS || z < 0 || z >= ROWS) continue;
         if ((x - pgx) ** 2 + (z - pgz) ** 2 > REVEAL_RADIUS * REVEAL_RADIUS) continue;
         const k = `${x},${z}`;
         if (revealedKeys.has(k)) continue;
-        if (!losClear(pgx, pgz, x, z)) continue;
         revealedKeys.add(k); explored.add(k);
         const f = fogCells.get(k); if (f) f.visible = false;
       }
@@ -2507,6 +2585,18 @@ return () => {
             </span>
           ))}
         </div>
+        {/* SLOTS DE MÃO: picaretas disponíveis (perfil/mochila). Tecla P alterna/equipa. */}
+        {handOptions.length > 0 && (
+          <div style={{ position: 'absolute', left: '50%', bottom: 70, transform: 'translateX(-50%)', zIndex: 10, display: 'flex', gap: 8, background: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)' }}>
+            <span style={{ color: '#fff', fontSize: '0.7rem', alignSelf: 'center', marginRight: 4 }}>⛏️ Mão (P):</span>
+            {handOptions.map((o, i) => (
+              <button key={i} title={`${o.title} — clique para equipar/guardar`} onClick={() => equipHandRef.current(handActiveId === o.id ? null : o.id)}
+                style={{ width: 48, height: 48, borderRadius: 8, border: handActiveId === o.id ? '2px solid #fbbf24' : '1px solid rgba(255,255,255,0.3)', background: handActiveId === o.id ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.08)', padding: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                {o.imageUrl ? <img src={o.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : '⛏️'}
+              </button>
+            ))}
+          </div>
+        )}
         {/* Inventário de consumíveis ÚTEIS (cura HP / cura de efeitos) */}
         {consumables.length > 0 && (
           <div style={{ position: 'absolute', left: '50%', bottom: 10, transform: 'translateX(-50%)', zIndex: 10, display: 'flex', gap: 8, background: 'rgba(0,0,0,0.55)', padding: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)' }}>

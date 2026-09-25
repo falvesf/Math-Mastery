@@ -740,6 +740,10 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
             </button>
           </div>
 
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.6rem', lineHeight: 1.4 }}>
+            Escreva <b>várias falas separadas por ponto e vírgula ( ; )</b> — o jogo sorteia uma aleatoriamente. Sem fala cadastrada, o monstro <b>não fala</b> (não há fala padrão).
+          </div>
+
           <div>
             <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--accent-green)', marginBottom: '0.2rem' }}>HP Cheio (80% - 100%)</label>
             <input

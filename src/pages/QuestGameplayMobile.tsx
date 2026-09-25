@@ -2038,7 +2038,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
       if (event === 'win') {
         const winRaw = (custom?.win || '').trim();
         if (winRaw) quotesArray = winRaw.split(';').map(s => s.trim()).filter(s => s);
-        if (quotesArray.length === 0) return 'Você é fraco!';
+        // Sem fala configurada → o monstro NÃO fala (sem fallback).
+        if (quotesArray.length === 0) return null;
         return quotesArray[Math.floor(Math.random() * quotesArray.length)];
       }
 
@@ -2048,12 +2049,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
       else if (hpPercentage >= 25) rawQuotes = custom?.hp49_25 || '';
       else rawQuotes = custom?.hp24_0 || '';
 
-      if (rawQuotes.trim()) {
-        quotesArray = rawQuotes.split(';').map(s => s.trim()).filter(s => s);
-      } else {
-        quotesArray = ["Grrrr!", "Roar!!!"];
-      }
-
+      // Sem fala configurada → o monstro NÃO fala (sem fallback). Várias falas → separadas por ';'.
+      if (!rawQuotes.trim()) return null;
+      quotesArray = rawQuotes.split(';').map(s => s.trim()).filter(s => s);
       if (quotesArray.length === 0) return null;
       return quotesArray[Math.floor(Math.random() * quotesArray.length)];
     }
