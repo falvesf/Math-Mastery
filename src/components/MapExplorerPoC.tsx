@@ -224,6 +224,7 @@ const { userData } = useAuth();
   const [consumables, setConsumables] = useState<any[]>([]);
   const [itemsReady, setItemsReady] = useState(!!itemsProp);
   const [stamina, setStamina] = useState(100);
+  const [oxygen, setOxygen] = useState(100);
   const [heldKeysCount, setHeldKeysCount] = useState(0);
   const [damagePops, setDamagePops] = useState<any[]>([]);
   const [critFx, setCritFx] = useState<{ id: number; side: 'out' | 'in'; msg?: string } | null>(null);
@@ -1716,15 +1717,20 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     else if (themeKey === 'end') { for (let k = 0; k < 16; k++) mkPillar(rnd(-72, 72), rnd(-72, 72), 0x2a2530, rnd(6, 14), rnd(1, 2.2)); }
 
     // ---- FLORA & PROPS INTERNOS (não bloqueiam; só em células livres) ----
-    // Água (rio/lago): células que recebem água — substituem BLOCOS SÓLIDOS no caminho.
-    const waterCells = new Set<string>();
+    // Água (rio/lago): SÓ em células livres — NUNCA sobre paredes. Cada célula tem PROFUNDIDADE:
+    // 1 = raso (azul claro), 2 = médio, 3 = fundo/submerso (azul intenso).
+    const waterCells = new Map<string, number>();
     if (themeKey === 'plains' || themeKey === 'tundra') {
       for (let z = 2; z < ROWS - 2; z += 1) {
         const riverX = Math.round(COLS / 2 + Math.sin(z * 0.6) * 3);
         for (let dx = -1; dx <= 1; dx++) {
           const gx = riverX + dx; if (gx < 1 || gx >= COLS - 1) continue;
+          if (grid.wall[z]?.[gx]) continue;
           if (grid.doorCells.some(dd => dd.x === gx && dd.z === z)) continue;
-          waterCells.add(`${gx},${z}`);
+          const center = dx === 0 ? 1 : 0;
+          let depth = 1 + center + (Math.random() < 0.32 ? 1 : 0) + (Math.random() < 0.10 ? 1 : 0);
+          depth = Math.max(1, Math.min(3, depth));
+          waterCells.set(`${gx},${z}`, depth);
         }
       }
     }
@@ -1742,26 +1748,63 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     };
     const leafForTheme = themeKey === 'desert' ? 0x3f8f3a : themeKey === 'nether' ? 0x7a3b2a : themeKey === 'tundra' ? 0x2f5d3a : themeKey === 'end' ? 0x2a2530 : 0x3e8f34;
     const innerDensity = Math.min(0.22, 0.06 + cfgElaboration * 0.16);
-    // Água (rio/lago): BLOCO contínuo ASSENTADO NO CHÃO (base em y=0), no lugar de blocos sólidos.
-    // O chão do terreno fica embaixo (nada de limbo). Um MESH único por material (sem divisórias).
+    // Água (rio/lago): abre um BURACO no chão em cada célula e preenche com água por PROFUNDIDADE.
+    // 1 = raso, 2 = médio, 3 = fundo (submerso). A cor do azul indica a profundidade.
     if (waterCells.size) {
-      const waterH = 0.9;
-      const waterMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, waterH, 1), new THREE.MeshStandardMaterial({ color: 0x2b6cff, emissive: 0x123a80, emissiveIntensity: 0.18, roughness: 0.15, metalness: 0.1 }), waterCells.size);
-      const m4 = new THREE.Matrix4(); let wi = 0;
-      for (const key of waterCells) {
-        const [gx, gz] = key.split(',').map(Number);
-        // Substitui o BLOCO SÓLIDO (parede) pela água: remove a parede → célula caminhável.
-        if (grid.wall[gz]?.[gx]) {
-          grid.wall[gz][gx] = false;
-          const wc = wallCells.get(key); if (wc) { scene.remove(wc.mesh); wallCells.delete(key); }
+      // 1) Fura o chão exatamente nas células de água.
+      try {
+        const shape = new THREE.Shape();
+        shape.moveTo(-120, -120); shape.lineTo(120, -120); shape.lineTo(120, 120); shape.lineTo(-120, 120); shape.closePath();
+        for (const key of waterCells.keys()) {
+          const [gx, gz] = key.split(',').map(Number);
+          const hx = wx(gx), hy = -wz(gz);
+          const hole = new THREE.Path();
+          hole.moveTo(hx - 0.5, hy - 0.5); hole.lineTo(hx + 0.5, hy - 0.5); hole.lineTo(hx + 0.5, hy + 0.5); hole.lineTo(hx - 0.5, hy + 0.5); hole.closePath();
+          shape.holes.push(hole);
         }
-        m4.makeTranslation(wx(gx), waterH / 2 - 0.65, wz(gz)); waterMesh.setMatrixAt(wi, m4);
-        wi++;
+        const g2 = new THREE.ShapeGeometry(shape);
+        ground.geometry.dispose();
+        ground.geometry = g2;
+      } catch { /* mantém o chão plano */ }
+      // 2) Água em CAMADAS empilhadas (mostra a profundidade). Uma InstancedMesh por profundidade.
+      const layerH = 0.85, spacing = 0.9; // pequena folga → dá pra ver as camadas
+      for (const depth of [1, 2, 3]) {
+        const cells = [...waterCells.entries()].filter(([, d]) => d === depth);
+        if (!cells.length) continue;
+        const layers = depth; // 1/2/3 camadas conforme a profundidade
+        const col = depth === 1 ? 0x6fa8dc : depth === 2 ? 0x2b6cff : 0x0a2f7a;
+        const inst = new THREE.InstancedMesh(
+          new THREE.BoxGeometry(1, layerH, 1),
+          new THREE.MeshStandardMaterial({ color: col, emissive: 0x0a1a3a, emissiveIntensity: 0.22, roughness: 0.15, metalness: 0.1 }),
+          cells.length * layers,
+        );
+        const m4 = new THREE.Matrix4(); let idx = 0;
+        for (const [key] of cells) {
+          const [gx, gz] = key.split(',').map(Number);
+          for (let l = 0; l < layers; l++) {
+            // topo de cada camada logo abaixo da superfície (0.02)
+            const yCenter = 0.02 - l * spacing - layerH / 2;
+            m4.makeTranslation(wx(gx), yCenter, wz(gz)); inst.setMatrixAt(idx++, m4);
+          }
+        }
+        inst.instanceMatrix.needsUpdate = true; scene.add(inst);
       }
-      waterMesh.instanceMatrix.needsUpdate = true; scene.add(waterMesh);
     }
     // FLORA interna (árvore/arbusto/flor) — usa o .glb do tipo se cadastrado; senão fallback.
+    // ---- Natação / OXIGÊNIO ----
     const mkBushFallback = (cxw: number, czw: number, leafColor: number) => { const b = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), propMat(leafColor)); b.position.set(cxw, 0.28, czw); scene.add(b); return b; };
+    let swimRise = 0;          // subida acumulada ao apertar Q (nadar/ bater os pés)
+    let oxygenVal = 100;      // 0..100
+    let oxygenHurtT = 0;      // timer do dano por falta de ar
+    let lastOxygenSent = 100;
+    let lastOxygenChange = 0;  // controla o dano por segundo submerso
+    const W_SURFACE = 0.02;
+    const W_UNITS: Record<number, number> = { 1: 0.2, 2: 1.2, 3: 2.6 };
+    const waterDepthAt = (x: number, z: number) => waterCells.get(`${Math.round(x)},${Math.round(z)}`) || 0;
+    const waterFloorY = (d: number) => W_SURFACE - (W_UNITS[d] || 0);
+    // Submerso agora? (usado pelo HUD/oxigênio)
+    let submergedNow = false;
+    // FLORA interna (árvore/arbusto/flor) — usa o .glb do tipo se cadastrado; senão fallback.
     const mkFlowerFallback = (cxw: number, czw: number) => { const fl = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 5), new THREE.MeshStandardMaterial({ color: [0xffd166, 0xff6b6b, 0x9b6bff, 0xffffff][Math.floor(Math.random() * 4)] })); fl.position.set(cxw + rnd(-0.3, 0.3), 0.12, czw + rnd(-0.3, 0.3)); scene.add(fl); return fl; };
     // Quantidades: -1 = nenhuma; >0 = exata; 0 = auto (densidade interna).
     {
@@ -2439,15 +2482,19 @@ const hurtPlayer = (hearts: number, message: string) => {
 
     // Item da 1ª pessoa: usa a MESMA arte (.glb/.png) da arma equipada (ou a picareta de debug).
     let fpBuilt = false;
-    const addFpModel = (src: any) => {
+    const addFpModel = (src: any, isPickaxe = false) => {
       const c = src.clone(true);
       c.position.set(0, 0, 0); c.rotation.set(0, 0, 0); c.scale.setScalar(1);
       c.traverse((ch: any) => { ch.visible = true; });
       c.updateMatrixWorld(true);
       let b = new THREE.Box3().setFromObject(c);
       const dx = b.max.x - b.min.x, dy = b.max.y - b.min.y, dz = b.max.z - b.min.z;
-      // Alinha o EIXO MAIS LONGO da arma com +Y (lâmina/picareta "para cima"), como na mão.
-      if (dx >= dy && dx >= dz) c.rotation.z = Math.PI / 2;
+      if (isPickaxe) {
+        // PICARETA: o cabo já vem no eixo Y e a cabeça no topo (modelo "chapado" no plano XY).
+        // NÃO usar o alinhamento por eixo mais longo (o eixo empata e ela vira "de lado").
+        // Gira 90° em torno do CABO: a cabeça fica de PERFIL (vê-se uma ponta por vez no golpe).
+        c.rotation.set(0, Math.PI / 2, 0);
+      } else if (dx >= dy && dx >= dz) c.rotation.z = Math.PI / 2;
       else if (dz >= dy && dz >= dx) c.rotation.x = -Math.PI / 2;
       c.updateMatrixWorld(true);
       b = new THREE.Box3().setFromObject(c);
@@ -2462,9 +2509,9 @@ const hurtPlayer = (hearts: number, message: string) => {
     const buildFpWeapon = (force = false) => {
       if (fpBuilt && !force) return; fpBuilt = true;
       while (viewModel.children.length) viewModel.remove(viewModel.children[0]);
-      if (debugPickaxe && debugPickaxeObj) { addFpModel(debugPickaxeObj); return; }
+      if (debugPickaxe && debugPickaxeObj) { addFpModel(debugPickaxeObj, true); return; }
       // Picareta ATIVA (perfil/mochila) tem prioridade na 1ª pessoa.
-      if (activePickaxeModel) { try { addFpModel(activePickaxeModel); return; } catch { /* noop */ } }
+      if (activePickaxeModel) { try { addFpModel(activePickaxeModel, true); return; } catch { /* noop */ } }
       // Senão, a arma da mão (excluindo picaretas).
       const wm = handModels.find(h => !h.isPickaxe && ['rightHand', 'leftHand', 'hand', 'two_handed'].includes(h.part)) || handModels.find(h => !h.isPickaxe) || null;
       if (wm?.model) { try { addFpModel(wm.model); return; } catch { /* noop */ } }
@@ -2616,6 +2663,11 @@ const hurtPlayer = (hearts: number, message: string) => {
       if (k === 'p') { pickaxeToggleRef.current(); return; }
       // V: alterna 3ª ↔ 1ª pessoa.
       if (k === 'v') { firstPerson = !firstPerson; if (firstPerson) buildFpWeapon(); callbacks.current.setMsg(firstPerson ? '👁️ Visão em 1ª pessoa (V para voltar).' : '🎥 Visão em 3ª pessoa.'); return; }
+      // Q: nada (bate os pés) para SUBIR quando estiver na água/submerso.
+      if (k === 'q') {
+        if (waterDepthAt(playerPos.x, playerPos.z) > 0) { swimRise += 0.5; callbacks.current.setMsg('🦶 Você bate os pés para subir! (Q)'); }
+        return;
+      }
 if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
       // O ataque agora vive em `doAttack` (compartilhado com o botão mobile).
       if (k === ' ') { doAttack(); }
@@ -2868,8 +2920,12 @@ if ((target as any).isBoss) {
           if (doors.some(d => d.x === x && d.z === z && d.mesh.visible)) return true;
           return false;
         };
-        if (!cellBlocked(Math.round(nx), Math.round(playerPos.z))) playerPos.x = nx;
-        if (!cellBlocked(Math.round(playerPos.x), Math.round(nz))) playerPos.z = nz;
+        // Água: se estiver SUBMERSO (cabeça debaixo da água), não dá para sair andando para
+        // água mais rasa / solo — precisa NADAR (Q) até a cabeça aparecer.
+        const curDepthMove = waterDepthAt(playerPos.x, playerPos.z);
+        const waterBlocked = (x: number, z: number) => waterDepthAt(x, z) < curDepthMove && submergedNow;
+        if (!cellBlocked(Math.round(nx), Math.round(playerPos.z)) && !waterBlocked(Math.round(nx), Math.round(playerPos.z))) playerPos.x = nx;
+        if (!cellBlocked(Math.round(playerPos.x), Math.round(nz)) && !waterBlocked(Math.round(playerPos.x), Math.round(nz))) playerPos.z = nz;
         // gira o CORPO para o sentido do movimento
         playerRoot.rotation.y = Math.atan2(dx, dz);
         // coleta / eventos de célula
@@ -2897,7 +2953,26 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
       else if (performance.now() < playerHurtUntil) setPlayerAnim('hurt');
       else if (moving) setPlayerAnim('walk');
       else setPlayerAnim('idle');
-      playerRoot.position.set(wx(playerPos.x), 0, wz(playerPos.z));
+      // ---- Água: profundidade, natação (Q) e oxigênio ----
+      const wDepth = waterDepthAt(playerPos.x, playerPos.z);
+      swimRise = Math.max(0, swimRise - dt * 1.1); // sem nadar, afunda de volta
+      let waterSinkY = 0;
+      if (wDepth > 0) {
+        const floorYw = waterFloorY(wDepth);
+        // Pés no fundo; nadando (Q) sobe até o nível do chão (0). Nunca acima disso.
+        waterSinkY = Math.min(0, Math.max(floorYw, floorYw + swimRise));
+      }
+      const headY = waterSinkY + 1.7;
+      submergedNow = wDepth > 0 && headY < W_SURFACE - 0.06;
+      if (submergedNow) oxygenVal = Math.max(0, oxygenVal - dt * 6);
+      else oxygenVal = Math.min(100, oxygenVal + dt * 45);
+      const oRounded = Math.round(oxygenVal);
+      if (oRounded !== lastOxygenSent) { lastOxygenSent = oRounded; setOxygen(oRounded); }
+      if (oxygenVal <= 0) {
+        oxygenHurtT -= dt;
+        if (oxygenHurtT <= 0) { oxygenHurtT = 1.6; hurtPlayer(1, '🫁 Ficou sem oxigênio debaixo da água! -1 ❤️'); }
+      }
+      playerRoot.position.set(wx(playerPos.x), waterSinkY, wz(playerPos.z));
       // Balão de diálogo: esconde ao expirar. SEM fala ociosa aleatória (evita balões sem
       // nexo com o personagem parado). O estresse decai com o tempo fora de ação.
       if (bubble.visible && performance.now() > bubbleUntil) bubble.visible = false;
@@ -3177,15 +3252,17 @@ revealedKeys.add(k); explored.add(k);
       if (firstPerson) {
         if (player) player.visible = false;
         const hx = wx(playerPos.x), hz = wz(playerPos.z);
-        camera.position.set(hx, 1.55, hz);
+        const camBaseY = 1.55 + waterSinkY;
+        camera.position.set(hx, camBaseY, hz);
         const cp = Math.cos(camPitch), sp = Math.sin(camPitch);
-        camera.lookAt(hx - Math.sin(camYaw) * cp, 1.55 + sp, hz - Math.cos(camYaw) * cp);
+        camera.lookAt(hx - Math.sin(camYaw) * cp, camBaseY + sp, hz - Math.cos(camYaw) * cp);
         // Item na mão: só aparece ao ATACAR (golpe de CIMA para BAIXO).
         const attacking = performance.now() < attackUntil;
         viewModel.visible = attacking;
         if (attacking) {
           const p = 1 - Math.max(0, (attackUntil - performance.now()) / ATTACK_MS);
-          const chop = p < 0.35 ? -1.1 + (p / 0.35) * 0.4 : -0.7 + ((p - 0.35) / 0.65) * 1.95;
+          // Começa com a arma ERGUIDA (+1.1) e desce até o golpe (-1.25) — lâmina de CIMA para BAIXO.
+          const chop = p < 0.35 ? (1.1 - (p / 0.35) * 0.4) : (0.7 - ((p - 0.35) / 0.65) * 1.95);
           viewModel.rotation.set(chop, -0.15, 0.12);
           viewModel.position.set(0.32, -0.52, -0.5);
         }
@@ -3193,8 +3270,8 @@ revealedKeys.add(k); explored.add(k);
         if (player) player.visible = true;
         viewModel.visible = false;
         const camOff = new THREE.Vector3(0, 7.2, 8.5).applyAxisAngle(new THREE.Vector3(0, 1, 0), camYaw);
-        camera.position.set(wx(playerPos.x) + camOff.x, camOff.y, wz(playerPos.z) + camOff.z);
-        camera.lookAt(wx(playerPos.x), 1.2, wz(playerPos.z));
+        camera.position.set(wx(playerPos.x) + camOff.x, camOff.y + waterSinkY, wz(playerPos.z) + camOff.z);
+        camera.lookAt(wx(playerPos.x), 1.2 + waterSinkY, wz(playerPos.z));
       }
       camera.updateMatrixWorld();
       // Ancora a animação de uso: nos PÉS (aura) ou na BOCA (comida); na 1ª pessoa, na tela.
@@ -3319,6 +3396,15 @@ return () => {
           </span>
           <b style={{ color: stamina < 20 ? '#f87171' : '#e2e8f0' }}>⚡ {Math.round(stamina)}%</b>
         </span>
+        {/* Barra de OXIGÊNIO: aparece quando submerso; esvazia com o tempo debaixo da água. */}
+        {oxygen < 100 && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Oxigênio: esvazia submerso — aperte Q para bater os pés e subir">
+            <span style={{ width: 130, height: 12, background: '#0b2036', borderRadius: 7, overflow: 'hidden', display: 'inline-block', border: '1px solid rgba(96,165,250,0.5)' }}>
+              <span style={{ display: 'block', width: `${Math.max(0, oxygen)}%`, height: '100%', background: oxygen > 40 ? '#38bdf8' : oxygen > 15 ? '#fbbf24' : '#ef4444', transition: 'width 0.1s' }} />
+            </span>
+            <b style={{ color: oxygen < 25 ? '#f87171' : '#93c5fd' }}>🫁 {Math.round(oxygen)}%</b>
+          </span>
+        )}
 <span>· 🪙 {coins}{heldKeysCount > 0 && <> · 🔑 {heldKeysCount}</>} · Perigo: {theme.hazardLabel}</span>
         {!playerMode && (
           <button onClick={() => { sfx.unlock(); sfx.beep(); sfx.play(battleSoundsRef.current.punch, 0.8); setSfxOn(true); window.setTimeout(() => setSfxOn(false), 400); const st = sfx.status(); setSfxDiag(`audio:${st.state}/buf${st.buffers}${st.error ? '/' + st.error : ''}`); }}
