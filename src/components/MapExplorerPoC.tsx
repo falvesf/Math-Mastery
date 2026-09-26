@@ -226,6 +226,7 @@ const { userData } = useAuth();
   const [stamina, setStamina] = useState(100);
   const [heldKeysCount, setHeldKeysCount] = useState(0);
   const [damagePops, setDamagePops] = useState<any[]>([]);
+  const [critFx, setCritFx] = useState<{ id: number; side: 'out' | 'in'; msg?: string } | null>(null);
   const [activeConsumableAnim, setActiveConsumableAnim] = useState<any>(null);
 const [sfxOn, setSfxOn] = useState(false);
   const [sfxDiag, setSfxDiag] = useState('');
@@ -924,17 +925,27 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
     // ---- Névoa de exploração (BLOCOS pretos altos — cobrem também as laterais) ----
     const explored = new Set<string>();
     const fogGroup = new THREE.Group();
-    const fogMat = new THREE.MeshBasicMaterial({ color: 0x02040a, transparent: true, opacity: 0.98, depthWrite: false, side: THREE.DoubleSide });
+    const fogMat = new THREE.MeshBasicMaterial({ color: 0x02040a, side: THREE.DoubleSide, depthWrite: true });
     // Bloco ALTO (mín. 3,8) para não deixar ver o terreno atrás/lateralmente.
     const fogHeight = Math.max(3.8, cfgWallHeight + 0.4);
     const fogGeo = new THREE.BoxGeometry(1.04, fogHeight, 1.04);
-    const fogCells = new Map<string, THREE.Mesh>();
+    // UM ÚNICO InstancedMesh (desempenho em mapas grandes): célula não explorada = escala 0 (invisível).
+    const fogCells = new Map<string, number>();
+    const fogMesh = new THREE.InstancedMesh(fogGeo, fogMat, ROWS * COLS);
+    const hideM4 = new THREE.Matrix4().makeScale(0, 0, 0);
+    const m4f = new THREE.Matrix4();
+    let fi = 0;
     for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
-      const f = new THREE.Mesh(fogGeo, fogMat);
-      f.position.set(wx(x), fogHeight / 2, wz(z));
-      fogGroup.add(f); fogCells.set(`${x},${z}`, f);
+      m4f.makeTranslation(wx(x), fogHeight / 2, wz(z));
+      fogMesh.setMatrixAt(fi, m4f);
+      fogCells.set(`${x},${z}`, fi);
+      fi++;
     }
+    fogMesh.instanceMatrix.needsUpdate = true;
+    fogGroup.add(fogMesh);
     scene.add(fogGroup);
+    // Célula da criatura ainda está sob a NÉVOA (não explorada) → esconde HUD e silencia sons.
+    const cellFogged = (s: { root: any }) => !explored.has(`${Math.round(s.root.position.x + (COLS - 1) / 2)},${Math.round(s.root.position.z + (ROWS - 1) / 2)}`);
 
     // ---- Estilhaços (quebra de blocos) ----
     const debrisGroup = new THREE.Group(); scene.add(debrisGroup);
@@ -951,7 +962,7 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
 
     // ---- Itens aleatórios ----
     const coinsList: { x: number; z: number; mesh: THREE.Object3D; value: number }[] = [];
-type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number };
+type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number; critChance?: number };
     const slimes: Slime[] = [];
     const rocks: { x: number; z: number; mesh: THREE.Object3D; hp: number; maxHp: number; def: number }[] = [];
     const hazards: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
@@ -1125,12 +1136,15 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
           root.add(model);
           // O modelo passa a ser o VISUAL que recebe o bote (lunge) na IA.
           slime.visual = model;
-          slime.visualRestY = 0;
-          // Posiciona a barra de HP, rótulo e balão ACIMA DA CABEÇA do modelo
-          // (cada GLB tem altura/ponto de origem próprio — senão a barra some no corpo).
+          // Assenta os PÉS no chão (cada GLB tem origem própria: pés/centro/etc.). O loop de
+          // animação controla a posição Y do visual via visualRestY, então compensamos aqui.
           try {
-            const top = new THREE.Box3().setFromObject(model).max.y;
-            slime.barY = Math.max(1.15, top + 0.35);
+            model.position.y = 0;
+            model.updateMatrixWorld(true);
+            const bb = new THREE.Box3().setFromObject(model);
+            slime.visualRestY = -bb.min.y;
+            const modelTop = bb.max.y - bb.min.y;
+            slime.barY = Math.max(1.15, (slime.visualRestY || 0) + modelTop + 0.35);
             slime.labelY = slime.barY + 0.22;
             slime.bubbleY = slime.barY + 1.1;
             slime.bar.position.set(slime.root.position.x, slime.barY, slime.root.position.z);
@@ -1173,7 +1187,7 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
       bubble.visible = false; bubble.renderOrder = 999; scene.add(bubble);
       const bubbleY = modelUrl ? 2.3 : 1.95;
-const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', damageEffectByLevel: (monster as any)?.config?.stats?.damageEffectByLevel || [], label, labelY, xp: 0, atkPower: Number(st.attack) || (8 + level * 4), rewardXp: Number(st.xp) || Math.round(40 * level), lines: (monster as any)?.config?.lines || [], nextVoice: 0, fleeTable: (monster as any)?.config?.stats?.fleeChanceTable || [], fleeMode: false, fleeTimer: 0, aggression: (monster as any)?.config?.stats?.aggression || (isAnimal ? 'peaceful' : 'aggressive'), aggressionByLevel: (monster as any)?.config?.stats?.aggressionByLevel || [], provoked: false, moveSpeed: Number(st.speed) > 0 ? Math.max(0.1, Number(st.speed)) : 1, attackInterval: Number(st.attackSpeed) > 0 ? (1 / Number(st.attackSpeed)) : 1.8, faceOffset: (monster as any)?.config?.modelForward === '-z' ? Math.PI : (monster as any)?.config?.modelForward === 'x' ? -Math.PI / 2 : (monster as any)?.config?.modelForward === '-x' ? Math.PI / 2 : 0, barY: 1.15 };
+const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', damageEffectByLevel: (monster as any)?.config?.stats?.damageEffectByLevel || [], label, labelY, xp: 0, atkPower: Number(st.attack) || (8 + level * 4), rewardXp: Number(st.xp) || Math.round(40 * level), lines: (monster as any)?.config?.lines || [], nextVoice: 0, fleeTable: (monster as any)?.config?.stats?.fleeChanceTable || [], fleeMode: false, fleeTimer: 0, aggression: (monster as any)?.config?.stats?.aggression || (isAnimal ? 'peaceful' : 'aggressive'), aggressionByLevel: (monster as any)?.config?.stats?.aggressionByLevel || [], provoked: false, moveSpeed: Number(st.speed) > 0 ? Math.max(0.1, Number(st.speed)) : 1, attackInterval: Number(st.attackSpeed) > 0 ? (1 / Number(st.attackSpeed)) : 1.8, faceOffset: (monster as any)?.config?.modelForward === '-z' ? Math.PI : (monster as any)?.config?.modelForward === 'x' ? -Math.PI / 2 : (monster as any)?.config?.modelForward === '-x' ? Math.PI / 2 : 0, barY: 1.15, critChance: Number(st.critChance) > 0 ? Math.min(50, Number(st.critChance)) : 5 };
       slimes.push(slime);
       return slime;
     };
@@ -1255,6 +1269,14 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         const who = s.isAnimal ? 'O animal' : 'O monstro';
         const eff = resolveDamageEffect(s) !== 'none' ? resolveDamageEffect(s) : null;
         lastPlayerAttacker = s;
+        // GOLPE CRÍTICO da criatura (como na batalha do boss): dobra o dano e mostra o aviso.
+        const cCrit = Math.random() * 100 < (s.critChance || 5);
+        if (cCrit) {
+          triggerCritFx('in', `💥 CRÍTICO! ${who} te acertou em cheio!`);
+          spawnPop(new THREE.Vector3(wx(playerPos.x), 1.5, wz(playerPos.z)), `CRÍTICO -2 ❤️`, true);
+          hurtPlayer(2, `💥 CRÍTICO! ${who} te acertou em cheio! -2 ❤️`);
+          return;
+        }
         if (eff && Math.random() < 0.4) {
           if (eff === 'bleed' || eff === 'poison') playerBleedUntil = performance.now() + 4000;
           hurtPlayer(1, `☠️ ${who} te atacou com ${eff}! -1 ❤️`);
@@ -1272,12 +1294,14 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       const raw = attacker.atkPower || (10 + (attacker.level || 1) * 5);
       const real = Math.max(1, Math.round(raw - (victim.defense || 0) * 0.3));
       victim.hp -= real;
+      // Quem foi atacado fica PROVOCADO (reage conforme a agressividade) e, se animal, HOSTIL (revida).
+      victim.provoked = true;
       // Animal atacado por um monstro REVIDA (fica hostil → barra vermelha).
       if (victim.isAnimal && !victim.hostile) {
         victim.hostile = true;
         try { (victim.fg.material as THREE.MeshBasicMaterial).color.set(0xdd3333); } catch { /* noop */ }
       }
-      flashMonster(victim); playMonsterHurtSound(victim); speakMonster(victim, 'hurt');
+      flashMonster(victim); if (!cellFogged(victim)) { playMonsterHurtSound(victim); speakMonster(victim, 'hurt'); }
       if (resolveDamageEffect(attacker) !== 'none' && Math.random() < 0.4) applyStatus(victim, resolveDamageEffect(attacker) as any);
       spawnPop(new THREE.Vector3(victim.root.position.x, victim.root.position.y + 1.5, victim.root.position.z), `-${real}`, false);
       if (victim.hp <= 0) {
@@ -1731,7 +1755,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
           grid.wall[gz][gx] = false;
           const wc = wallCells.get(key); if (wc) { scene.remove(wc.mesh); wallCells.delete(key); }
         }
-        m4.makeTranslation(wx(gx), waterH / 2, wz(gz)); waterMesh.setMatrixAt(wi, m4);
+        m4.makeTranslation(wx(gx), waterH / 2 - 0.65, wz(gz)); waterMesh.setMatrixAt(wi, m4);
         wi++;
       }
       waterMesh.instanceMatrix.needsUpdate = true; scene.add(waterMesh);
@@ -1784,7 +1808,9 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
           c.position.set(0, 0, 0);
           try { s.root.remove(s.mesh); } catch { /* noop */ }
           s.root.add(c);
-          s.visual = c; s.visualRestY = 0;
+          s.visual = c;
+          // Sprite é um plano CENTRADO na origem → sobe metade para os pés tocarem o chão.
+          try { c.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(c); s.visualRestY = -bb.min.y; } catch { s.visualRestY = 0; }
         } catch { /* noop */ }
       }
       return s;
@@ -1875,6 +1901,84 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         };
         // Mapa id do item → modelo anexado à mão (para os slots trocarem corretamente).
         const handModelById = new Map<string, any>();
+        // Divide um modelo de CALÇA/BOTA (malha única) em metade ESQUERDA/DIREITA pelos triângulos,
+        // para prender cada metade na PERNA correspondente e acompanhar o andar/correr.
+        // A divisão aplica a ROTAÇÃO do item aos vértices (frame final do personagem) e corta pelo
+        // X do MUNDO (= esquerda↔direita do personagem) — assim nunca separa frente/trás.
+        const splitLegsModel = (src: THREE.Object3D, rotX = 0, rotY = 0, rotZ = 0) => {
+          // Aplica a rotação do item (frame final do personagem) e decide o eixo de corte:
+          // esquerda↔direita é o eixo em que as METADES ficam MAIS LARGAS (perna é mais larga
+          // que a espessura de uma placa da frente/trás). Assim nunca separa frente/trás.
+          const tmp = src.clone(true);
+          tmp.rotation.set(rotX, rotY, rotZ);
+          tmp.updateMatrixWorld(true);
+          const rootM = tmp.matrixWorld.clone();
+          const v = new THREE.Vector3();
+          type Tri = { x: number; z: number };
+          const tris: Tri[] = [];
+          let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+          src.traverse((node: any) => {
+            if (!node.isMesh || !node.geometry) return;
+            const pos = node.geometry.attributes.position;
+            if (!pos) return;
+            const n = Math.floor(pos.count / 3);
+            for (let t = 0; t < n; t++) {
+              let x = 0, z = 0;
+              for (let k = 0; k < 3; k++) { const i = t * 3 + k; v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(rootM); x += v.x; z += v.z; }
+              x /= 3; z /= 3;
+              tris.push({ x, z });
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+            }
+          });
+          const evalAxis = (useX: boolean) => {
+            const center = useX ? (minX + maxX) / 2 : (minZ + maxZ) / 2;
+            let aMin = Infinity, aMax = -Infinity, bMin = Infinity, bMax = -Infinity;
+            for (const t of tris) { const a = useX ? t.x : t.z; if (a < center) { if (a < aMin) aMin = a; if (a > aMax) aMax = a; } else { if (a < bMin) bMin = a; if (a > bMax) bMax = a; } }
+            return { center, score: Math.max((aMax - aMin) || 0, (bMax - bMin) || 0) };
+          };
+          const ex = evalAxis(true), ez = evalAxis(false);
+          const useX = ex.score >= ez.score;
+          const center = useX ? ex.center : ez.center;
+          const mkHalf = (keepLeft: boolean) => {
+            const clone = src.clone(true);
+            clone.traverse((node: any) => {
+              if (!node.isMesh || !node.geometry) return;
+              try {
+                const geo = node.geometry.index ? node.geometry.toNonIndexed() : node.geometry;
+                const pos = geo.attributes.position;
+                if (!pos) { node.visible = keepLeft; return; }
+                const triCount = Math.floor(pos.count / 3);
+                const keepTri: boolean[] = new Array(triCount).fill(false);
+                for (let t = 0; t < triCount; t++) {
+                  let c = 0;
+                  for (let k = 0; k < 3; k++) { const i = t * 3 + k; v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(rootM); c += useX ? v.x : v.z; }
+                  c /= 3;
+                  if ((c < center) === keepLeft) keepTri[t] = true;
+                }
+                const idxArr: number[] = [];
+                const remap = new Map<number, number>();
+                for (let t = 0; t < triCount; t++) {
+                  if (!keepTri[t]) continue;
+                  for (let k = 0; k < 3; k++) {
+                    const vi = t * 3 + k;
+                    let ni = remap.get(vi);
+                    if (ni === undefined) { ni = remap.size; remap.set(vi, ni); }
+                    idxArr.push(ni);
+                  }
+                }
+                if (idxArr.length < 3) { node.visible = false; return; }
+                const newGeo = new THREE.BufferGeometry();
+                for (const key of Object.keys(geo.attributes)) newGeo.setAttribute(key, (geo.attributes as any)[key].clone());
+                newGeo.setIndex(idxArr);
+                node.geometry = newGeo;
+                node.visible = true;
+              } catch { node.visible = keepLeft; }
+            });
+            return clone;
+          };
+          return { left: mkHalf(true), right: mkHalf(false) };
+        };
         const attach = (model: any, item: EquippedItem, record = true) => {
           model.traverse((c: any) => { if (c.isMesh) c.frustumCulled = false; });
           try { applyForgeGlowToModel(model, (item as any).forgeLevel || 0); } catch { /* noop */ }
@@ -1901,8 +2005,52 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
             const arm = item.itemCategory === 'defense' ? (isLeftHanded ? player.skin.rightArm : player.skin.leftArm) : (isLeftHanded ? player.skin.leftArm : player.skin.rightArm);
             addTo(arm, [0, -12, 0], [Math.PI / 2, 0, 0], 10);
           } else if (p === 'head' || p === 'face') addTo(player.skin.head, [0, 0, 0], [0, Math.PI, 0], item.minecraftHeadValue ? 9.2 : 16);
-          else if (p === 'legs' || p === 'feet') addTo(player.skin.body, [0, -15, 0], [0, 0, 0], 16);
-          else addTo(player.skin.body, [0, -6, 0], [0, 0, 0], 16);
+          else if (p === 'legs' || p === 'feet') {
+            // Calça/bota: prende em CADA PERNA para acompanhar o andar/correr.
+            const scale = transform?.scale ?? 16;
+            const thickness = transform?.thickness ?? 1;
+            // 1) Detecta lados pelo NOME das malhas (como a batalha). 2) Senão, corta pela geometria.
+            const classifySide = (node: any): 'left' | 'right' | 'none' => {
+              let name = String(node.name || '').toLowerCase();
+              let par = node.parent;
+              while (par && par.type !== 'Scene') { name += ' ' + String(par.name || '').toLowerCase(); par = par.parent; }
+              const isL = /\b(left|esq|esquerda)\b/.test(name) || /(left_leg|boot_left|leg_left|leggings_left|left_pants|left_boot|left_shoe)/.test(name);
+              const isR = /\b(right|dir|direita)\b/.test(name) || /(right_leg|boot_right|leg_right|leggings_right|right_pants|right_boot|right_shoe)/.test(name);
+              if (isL && !isR) return 'left';
+              if (isR && !isL) return 'right';
+              const aL = /([_\.\-]l)($|[^a-z])/.test(name) || /\bl[_\.\-]/.test(name);
+              const aR = /([_\.\-]r)($|[^a-z])/.test(name) || /\br[_\.\-]/.test(name);
+              if (aL && !aR) return 'left';
+              if (aR && !aL) return 'right';
+              return 'none';
+            };
+            let hasL = false, hasR = false;
+            model.traverse((n: any) => { if (n.isMesh) { const sd = classifySide(n); if (sd === 'left') hasL = true; if (sd === 'right') hasR = true; } });
+            const attachToLeg = (obj: THREE.Object3D, leg: any, side: number) => {
+              obj.scale.set(scale, scale, scale * thickness);
+              if (transform) obj.rotation.set(transform.rotX, transform.rotY, transform.rotZ); else obj.rotation.set(0, 0, 0);
+              obj.position.set(0, -16, 0);
+              const wrapper = new THREE.Group();
+              wrapper.position.set(side * 2, 4, 0); // cancela o pivot da perna
+              wrapper.add(obj);
+              leg.add(wrapper);
+            };
+            if (hasL || hasR) {
+              // Malhas já separadas esquerda/direita no modelo → usa por NOME.
+              const mkSide = (keep: 'left' | 'right') => {
+                const clone = model.clone(true);
+                clone.traverse((n: any) => { if (n.isMesh) n.visible = (classifySide(n) === keep); });
+                return clone;
+              };
+              attachToLeg(mkSide('left'), player.skin.leftLeg, 1);
+              attachToLeg(mkSide('right'), player.skin.rightLeg, -1);
+            } else {
+              // Modelo em malha única sem nomes → corta pela geometria.
+              const halves = splitLegsModel(model, transform?.rotX || 0, transform?.rotY || 0, transform?.rotZ || 0);
+              attachToLeg(halves.left, player.skin.leftLeg, 1);
+              attachToLeg(halves.right, player.skin.rightLeg, -1);
+            }
+          } else addTo(player.skin.body, [0, -6, 0], [0, 0, 0], 16);
         };
         for (const item of items) {
           if (!item.gameModelUrl) continue;
@@ -2181,6 +2329,11 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
       setDamagePops(prev => [...prev, { id, text, crit, kind, left, top }]);
       setTimeout(() => setDamagePops(prev => prev.filter(p => p.id !== id)), 1100);
     };
+    // Overlay de CRÍTICO (como a animação de crítico da batalha): 'out' = você acertou, 'in' = você levou.
+    const triggerCritFx = (side: 'out' | 'in', msg?: string) => {
+      setCritFx({ id: Date.now(), side, msg });
+      window.setTimeout(() => setCritFx(null), 900);
+    };
     // Reinicia o corte a CADA aperto do Espaço (senão o early-return não repetia o movimento).
     const restartAttack = () => { playerAnim.name = 'attack'; const a = makeAttack(); a.speed = 3.2; playerAnim.current = a; attackUntil = performance.now() + ATTACK_MS; };
 
@@ -2401,6 +2554,7 @@ const hurtPlayer = (hearts: number, message: string) => {
           if (['poison', 'bleed', 'burn', 'electric', 'freeze'].includes(weaponEffect)) applyStatus(target, weaponEffect as any);
         }
         spawnPop(new THREE.Vector3(target.root.position.x, target.root.position.y + 1.5, target.root.position.z), `-${roll.damage}`, roll.isCritical);
+        if (roll.isCritical) triggerCritFx('out', `💥 CRÍTICO! -${roll.damage}`);
         maybeSpeak(roll.isCritical ? 'critical' : undefined);
         callbacks.current.setMsg(`${roll.isCritical ? '💥 CRÍTICO! ' : '⚔️ '}Acertou o monstro! -${roll.damage} HP${weaponEffect ? ` (${weaponEffect})` : ''}`);
         if (target.hp <= 0) { callbacks.current.setMsg(target.isAnimal ? '💥 Animal abatido!' : '💥 Monstro derrotado!'); callbacks.current.setCoins(n => n + 5); target.root.visible = false; if (target.label) target.label.visible = false; recordMonsterKill(target); rollMonsterDrops(target); if ((target as any).isKeyHolder) spawnBossKey(target); maybeSpeak('victory'); }
@@ -2766,7 +2920,14 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
           else if (s.bubble.visible) s.bubble.visible = false;
         }
         if (s.hp <= 0) { s.root.visible = false; s.bar.visible = false; if (s.statusBar) s.statusBar.g.visible = false; if (s.label) s.label.visible = false; continue; }
-        if (s.label) s.label.position.set(s.root.position.x, s.labelY || 1.5, s.root.position.z);
+        const fogged = cellFogged(s);
+        // Sob a NÉVOA: a criatura inteira fica oculta (não vaza por nenhum ângulo da câmera).
+        s.root.visible = !fogged;
+        // Sob a NÉVOA: esconde rótulo/HP/balão (não revela onde a criatura está).
+        if (s.label) { s.label.visible = !fogged; if (!fogged) s.label.position.set(s.root.position.x, s.labelY || 1.5, s.root.position.z); }
+        if (s.bar) s.bar.visible = !fogged;
+        if (s.bubble && fogged) s.bubble.visible = false;
+        if (s.statusBar && s.statusBar.g) s.statusBar.g.visible = fogged ? false : s.statusBar.g.visible;
         // Animal pacífico NÃO ataca: vagueia e foge do perto; só fica hostil se for atacado.
         const isPeacefulAnimal = !!s.isAnimal && !s.hostile;
         const nowMs = performance.now();
@@ -2774,7 +2935,7 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
         const sg0x = Math.round(s.root.position.x + (COLS - 1) / 2), sg0z = Math.round(s.root.position.z + (ROWS - 1) / 2);
         const distPlayer = Math.hypot(wx(playerPos.x) - s.root.position.x, wz(playerPos.z) - s.root.position.z);
         // Animal pacífico fala de vez em quando (balão), quando o jogador não está colado nele.
-        if (s.isAnimal && !s.hostile && s.lines && s.lines.length && s.bubble && distPlayer > 4 && nowMs > (s.nextVoice || 0)) {
+        if (s.isAnimal && !s.hostile && !fogged && s.lines && s.lines.length && s.bubble && distPlayer > 4 && nowMs > (s.nextVoice || 0)) {
           s.nextVoice = nowMs + 6000 + Math.random() * 10000;
           try {
             const txt = s.lines[Math.floor(Math.random() * s.lines.length)];
@@ -2792,14 +2953,14 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
           for (const o of slimes) {
             if (o === s || o.hp <= 0) continue;
 let adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal);
-            // AGRESSIVIDADE do monstro contra animais: pacífico (só se o animal o atacar),
-            // neutro (animal hostil OU se foi provocado pelo jogador), agressivo (sempre).
-            if (adversarial && !s.isAnimal && !!o.isAnimal) {
-              // Agressividade EFETIVA: base + faixas por nível (evolução conforme o monstro sobe de nível).
-              let agg = s.aggression || 'aggressive';
+            // AGRESSIVIDADE de QUEM ATACA define se ele INICIA confronto com a outra espécie:
+            // pacífico → só reage se já foi atacado (provoked); neutro → se atacado OU se o ALVO
+            // animal já está hostil; agressivo → inicia sempre. (Evolução por nível aplicada.)
+            if (adversarial) {
+              let agg = s.aggression || (s.isAnimal ? 'peaceful' : 'aggressive');
               for (const e of (s.aggressionByLevel || [])) if ((s.level || 1) >= (Number(e.level) || 1)) agg = String(e.aggression || agg);
-              if (agg === 'peaceful') adversarial = !!o.hostile;
-              else if (agg === 'neutral') adversarial = !!o.hostile || !!s.provoked;
+              if (agg === 'peaceful') adversarial = !!s.provoked;
+              else if (agg === 'neutral') adversarial = !!s.provoked || (!!o.isAnimal && !!o.hostile);
             }
               if (!adversarial) continue;
             const d = Math.hypot(o.root.position.x - s.root.position.x, o.root.position.z - s.root.position.z);
@@ -2833,7 +2994,7 @@ let adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal)
           const mz = s.root.position.z + (ffz / ff) * sp * dt;
           if (!mBlocked(s, s.root.position.x, mz)) s.root.position.z = mz;
         } else if (tgt) {
-          if (!s.hasGruntted && s.gruntUrl && tgt.player) { s.hasGruntted = true; playFx(s.gruntUrl, 0.8); }
+          if (!s.hasGruntted && s.gruntUrl && tgt.player && !fogged) { s.hasGruntted = true; playFx(s.gruntUrl, 0.8); }
           if (dist > 1.9) {
             s.pathT -= dt;
             if (s.pathT <= 0) {
@@ -2862,8 +3023,7 @@ if (!frozenNow && tgt && tgt.dist >= 0.6 && tgt.dist <= 2.6 && s.attackCd <= 0 &
               if (s.hasAnim && s.clips && s.clips.attack) {
                 s.lungeHit = true;
                 s.attackCd = s.attackInterval || 1.8;
-                playFx(s.attackSound || battleSoundsRef.current.punch, 0.8);
-                speakMonster(s, 'attack');
+                if (!fogged) { playFx(s.attackSound || battleSoundsRef.current.punch, 0.8); speakMonster(s, 'attack'); }
                 resolveCreatureHit(s, tgt);
               }
             }
@@ -2928,8 +3088,7 @@ if (!frozenNow && tgt && tgt.dist >= 0.6 && tgt.dist <= 2.6 && s.attackCd <= 0 &
 if (!s.lungeHit && pr >= 0.5) {
             s.lungeHit = true;
             s.attackCd = s.attackInterval || 1.8;
-            playFx(s.attackSound || battleSoundsRef.current.punch, 0.8);
-            speakMonster(s, 'attack');
+            if (!fogged) { playFx(s.attackSound || battleSoundsRef.current.punch, 0.8); speakMonster(s, 'attack'); }
             resolveCreatureHit(s, tgt);
           }
         }
@@ -3008,8 +3167,8 @@ if (s.kb > 0) { s.kb = Math.max(0, s.kb - dt); const kk = s.kb / 0.2; oX += s.kb
         if ((x - pgx) ** 2 + (z - pgz) ** 2 > REVEAL_RADIUS * REVEAL_RADIUS) continue;
         const k = `${x},${z}`;
         if (revealedKeys.has(k)) continue;
-        revealedKeys.add(k); explored.add(k);
-        const f = fogCells.get(k); if (f) f.visible = false;
+revealedKeys.add(k); explored.add(k);
+      const fIdx = fogCells.get(k); if (fIdx !== undefined) { fogMesh.setMatrixAt(fIdx, hideM4); fogMesh.instanceMatrix.needsUpdate = true; }
       }
       // animação do boneco
       const player = (viewer.playerObject as any);
@@ -3198,6 +3357,20 @@ return () => {
               {p.crit ? `💥 CRÍTICO ${p.text}` : p.text}
             </span>
           ))}
+          {/* Overlay de GOLPE CRÍTICO (como a animação da batalha do boss) */}
+          {critFx && (
+            <div key={critFx.id} style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 30, animation: 'critFlash 0.9s ease-out forwards' }}>
+              <div style={{
+                fontSize: '3.4rem', fontWeight: 900, whiteSpace: 'nowrap',
+                color: critFx.side === 'in' ? '#ef4444' : '#fbbf24',
+                textShadow: critFx.side === 'in'
+                  ? '0 0 25px rgba(239,68,68,0.9), 0 0 70px rgba(239,68,68,0.45), 0 3px 3px #000'
+                  : '0 0 25px rgba(251,191,36,0.9), 0 0 70px rgba(251,191,36,0.45), 0 3px 3px #000',
+              }}>
+                {critFx.msg || (critFx.side === 'in' ? '💥 CRÍTICO!' : '💥 CRÍTICO!')}
+              </div>
+            </div>
+          )}
         </div>
         {/* SLOTS DE MÃO: picaretas disponíveis (perfil/mochila). Tecla P alterna/equipa. */}
         {handOptions.length > 0 && (

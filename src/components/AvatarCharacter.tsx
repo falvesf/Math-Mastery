@@ -1659,15 +1659,93 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                     return classify(fullName);
                  };
 
-                 if ((normalizedPart === 'legs' || normalizedPart === 'feet') && !item.extractMeshName) {
-                    // Clona com SkeletonUtils para preservar esqueleto/ossos de SkinnedMesh
-                    const safeClone = (src: THREE.Object3D) => {
-                       try {
-                          return skeletonClone(src);
-                       } catch (e) {
-                          return src.clone();
-                       }
-                    };
+const safeClone = (src: THREE.Object3D) => {
+                     try {
+                        return skeletonClone(src);
+                     } catch (e) {
+                        return src.clone();
+                     }
+                  };
+                  // Divide UM MODELO ÚNICO (calça/bota em malha única) em metades ESQUERDA/DIREITA
+                  // pelos triângulos, para prender cada metade na perna correspondente e acompanhar o
+                  // movimento das pernas (senão a peça fica parada presa ao corpo).
+                  const splitLegsBySpace = (src: THREE.Object3D, rotX = 0, rotY = 0, rotZ = 0) => {
+                     // Aplica a rotação do item e decide o eixo de corte: esquerda↔direita é o eixo
+                     // em que as METADES ficam MAIS LARGAS (perna é mais larga que placa frente/trás).
+                     const tmp = src.clone(true);
+                     tmp.rotation.set(rotX, rotY, rotZ);
+                     tmp.updateMatrixWorld(true);
+                     const rootM = tmp.matrixWorld.clone();
+                     const v = new THREE.Vector3();
+                     type Tri = { x: number; z: number };
+                     const tris: Tri[] = [];
+                     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+                     src.traverse((node: any) => {
+                        if (!node.isMesh || !node.geometry) return;
+                        const pos = node.geometry.attributes.position;
+                        if (!pos) return;
+                        const n = Math.floor(pos.count / 3);
+                        for (let t = 0; t < n; t++) {
+                           let x = 0, z = 0;
+                           for (let k = 0; k < 3; k++) { const i = t * 3 + k; v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(rootM); x += v.x; z += v.z; }
+                           x /= 3; z /= 3;
+                           tris.push({ x, z });
+                           if (x < minX) minX = x; if (x > maxX) maxX = x;
+                           if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+                        }
+                     });
+                     const evalAxis = (useX: boolean) => {
+                        const center = useX ? (minX + maxX) / 2 : (minZ + maxZ) / 2;
+                        let aMin = Infinity, aMax = -Infinity, bMin = Infinity, bMax = -Infinity;
+                        for (const t of tris) { const a = useX ? t.x : t.z; if (a < center) { if (a < aMin) aMin = a; if (a > aMax) aMax = a; } else { if (a < bMin) bMin = a; if (a > bMax) bMax = a; } }
+                        return { center, score: Math.max((aMax - aMin) || 0, (bMax - bMin) || 0) };
+                     };
+                     const ex = evalAxis(true), ez = evalAxis(false);
+                     const useX = ex.score >= ez.score;
+                     const center = useX ? ex.center : ez.center;
+                     const mkHalf = (keepLeft: boolean) => {
+                        const clone = safeClone(src);
+                        clone.traverse((node: any) => {
+                           if (!node.isMesh || !node.geometry) { return; }
+                           try {
+                              const geo = node.geometry.index ? node.geometry.toNonIndexed() : node.geometry;
+                              const pos = geo.attributes.position;
+                              if (!pos) { node.visible = keepLeft; return; }
+                              const triCount = Math.floor(pos.count / 3);
+                              const keepTri: boolean[] = new Array(triCount).fill(false);
+                              for (let t = 0; t < triCount; t++) {
+                                 let c = 0;
+                                 for (let k = 0; k < 3; k++) { const i = t * 3 + k; v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(rootM); c += useX ? v.x : v.z; }
+                                 c /= 3;
+                                 if ((c < center) === keepLeft) keepTri[t] = true;
+                              }
+                              const idxArr: number[] = [];
+                              const remap = new Map<number, number>();
+                              for (let t = 0; t < triCount; t++) {
+                                 if (!keepTri[t]) continue;
+                                 for (let vv = 0; vv < 3; vv++) {
+                                    const vi = t * 3 + vv;
+                                    let ni = remap.get(vi);
+                                    if (ni === undefined) { ni = remap.size; remap.set(vi, ni); }
+                                    idxArr.push(ni);
+                                 }
+                              }
+                              if (idxArr.length < 3) { node.visible = false; return; }
+                              const newGeo = new THREE.BufferGeometry();
+                              for (const key of Object.keys(geo.attributes)) {
+                                 newGeo.setAttribute(key, (geo.attributes as any)[key].clone().setUsage(THREE.StaticDrawUsage));
+                              }
+                              newGeo.setIndex(idxArr);
+                              node.geometry = newGeo;
+                              node.visible = true;
+                           } catch { node.visible = keepLeft; }
+                        });
+                        return clone;
+                     };
+                     return { left: mkHalf(true), right: mkHalf(false) };
+                  };
+
+                  if ((normalizedPart === 'legs' || normalizedPart === 'feet') && !item.extractMeshName) {
 
                     let hasLeftMesh = false;
                     let hasRightMesh = false;
@@ -1711,13 +1789,17 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                           }
                        });
 
-                       if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
-                       if (visibleRightCount > 0) processLoadedModel(cloneRight, 'right', true);
-                       if (visibleBodyCount > 0) processLoadedModel(cloneBody, 'body_part', true);
-                    } else {
-                       // Modelo unificado (ex: ambas as botas em uma malha única): não esconde nada
-                       processLoadedModel(model, 'body_part', true);
-                    }
+if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
+                     if (visibleRightCount > 0) processLoadedModel(cloneRight, 'right', true);
+                     if (visibleBodyCount > 0) processLoadedModel(cloneBody, 'body_part', true);
+                  } else {
+                     // Modelo unificado SEM detecção por nome (ex.: calça em malha única): divide
+                     // PELO ESPAÇO e prende cada metade na perna correspondente — acompanha as pernas.
+                     const _tLeg = resolveModelTransform(item, config.gender, config.handedness, false) || (item.modelTransforms && (item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any)));
+                     const halves = splitLegsBySpace(model, _tLeg?.rotX || 0, _tLeg?.rotY || 0, _tLeg?.rotZ || 0);
+                     processLoadedModel(halves.left, 'left', true);
+                     processLoadedModel(halves.right, 'right', true);
+                  }
                  } else if (item.extractMeshName && (normalizedPart === 'legs' || normalizedPart === 'feet')) {
                     // Peça específica extraída manualmente via Extrator de Malhas
                     let targetNode: THREE.Object3D | null = null;
@@ -1730,7 +1812,12 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
                     } else if (side === 'left') {
                        processLoadedModel(model, 'left', true);
                     } else {
-                       processLoadedModel(model, 'body_part', true);
+                       // Peça única extraída sem lado identificado: divide pelo espaço e prende
+                       // em cada perna (senão a calça/greva fica parada enquanto as pernas andam).
+                       const _tExt = resolveModelTransform(item, config.gender, config.handedness, false) || (item.modelTransforms && (item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any)));
+                       const halves = splitLegsBySpace(model, _tExt?.rotX || 0, _tExt?.rotY || 0, _tExt?.rotZ || 0);
+                       processLoadedModel(halves.left, 'left', true);
+                       processLoadedModel(halves.right, 'right', true);
                     }
                  } else {
                     processLoadedModel(model, undefined, true);

@@ -8,6 +8,7 @@ import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/G
 import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/DRACOLoader.js';
 // @ts-ignore - clone preservando esqueleto (itens com SkinnedMesh, ex.: armaduras)
 import { clone as skeletonClone } from 'skinview3d/node_modules/three/examples/jsm/utils/SkeletonUtils.js';
+import { attachLegsToBones } from '../lib/legAttachment';
 import { PlayerObject } from 'skinview3d';
 import { IdleAnimation, WalkingAnimation, RunningAnimation, HitAnimation, FunctionAnimation, PlayerAnimation } from 'skinview3d';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
@@ -616,10 +617,12 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
       else { model.position.set(0, 0, 0); model.rotation.set(0, Math.PI, 0); }
       player.skin.head.add(model);
     } else if (p === 'legs' || p === 'feet') {
-      model.scale.set(transform?.scale ?? 16, transform?.scale ?? 16, (transform?.scale ?? 16) * (transform?.thickness ?? 1));
-      if (transform) { model.position.set(transform.posX ?? 0, transform.posY ?? 0, transform.posZ ?? 0); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide ?? 0); }
-      else model.position.set(0, p === 'feet' ? -22 : -15, 0);
-      player.skin.body.add(model);
+      if (!attachLegsToBones(model, player, transform)) {
+        model.scale.set(transform?.scale ?? 16, transform?.scale ?? 16, (transform?.scale ?? 16) * (transform?.thickness ?? 1));
+        if (transform) { model.position.set(transform.posX ?? 0, transform.posY ?? 0, transform.posZ ?? 0); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide ?? 0); }
+        else model.position.set(0, p === 'feet' ? -22 : -15, 0);
+        player.skin.body.add(model);
+      }
     } else {
       model.scale.set(transform?.scale ?? 16, transform?.scale ?? 16, (transform?.scale ?? 16) * (transform?.thickness ?? 1));
       if (transform) { model.position.set(transform.posX, transform.posY, transform.posZ); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide); }

@@ -2904,6 +2904,15 @@ html, body {
   100% { opacity: 0; transform: translate(-50%, -165%) scale(1); }
 }
 
+/* Overlay de GOLPE CRÍTICO no Mapa Explorável (aparece, treme e some) */
+@keyframes critFlash {
+  0% { opacity: 0; transform: scale(0.4); }
+  12% { opacity: 1; transform: scale(1.15); }
+  25% { transform: scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.4); }
+}
+
 /* "Puff" de fumaça (erro na porta do Mapa Explorável) */
 @keyframes puffPop {
   0% { opacity: 0; transform: scale(0.2); }
