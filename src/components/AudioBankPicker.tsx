@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, Music, Volume2, Globe, Building2, Loader2, Plus } from 'lucide-react';
+import { X, Search, Music, Volume2, Globe, Building2, Loader2, Plus, Edit2, Trash2, Save } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
 import { useTenant } from '../contexts/TenantContext';
@@ -18,7 +18,7 @@ interface AudioBankPickerProps {
 }
 
 export default function AudioBankPicker({ open, onClose, onSelect, categoryFilter = '', genderFilter = '', title = 'Banco de Áudio' }: AudioBankPickerProps) {
-  const { tenantId } = useTenant();
+  const { tenantId, isSuperAdmin } = useTenant();
   const [entries, setEntries] = useState<AudioBankEntry[]>([]);
   const [search, setSearch] = useState('');
   const [playingUrl, setPlayingUrl] = useState('');
@@ -26,6 +26,7 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
   const [category, setCategory] = useState(categoryFilter);
   // Cadastro rápido de um áudio NOVO (sem sair do picker)
   const [showNewForm, setShowNewForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newCategory, setNewCategory] = useState(categoryFilter || 'effect');
@@ -92,7 +93,6 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
     setNewSaving(true);
     setNewError('');
     const data = {
-      id: uuidv4(),
       name: finalName.trim(),
       url: newUrl.trim(),
       category: newCategory,
@@ -101,14 +101,22 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
       is_global: false,
     };
     try {
-      const { error } = await supabase.from('audio_bank').insert(data);
-      if (error) { console.error(error); setNewError('Erro ao salvar: ' + error.message); setNewSaving(false); return; }
+      if (editingId) {
+        // EDIÇÃO de um som já cadastrado (por nome/id)
+        const { error } = await supabase.from('audio_bank').update(data).eq('id', editingId);
+        if (error) { console.error(error); setNewError('Erro ao atualizar: ' + error.message); setNewSaving(false); return; }
+      } else {
+        const { error } = await supabase.from('audio_bank').insert({ id: uuidv4(), ...data });
+        if (error) { console.error(error); setNewError('Erro ao salvar: ' + error.message); setNewSaving(false); return; }
+      }
       sessionCache.invalidate(CACHE_KEYS.audioBank(tenantId));
       const fresh = await fetchAudioBank(tenantId);
       setEntries(fresh);
+      const wasNew = !editingId;
       setShowNewForm(false);
+      setEditingId(null);
       setNewName(''); setNewUrl(''); setNewGender('');
-      onSelect(newUrl.trim(), data.name);
+      if (wasNew) onSelect(newUrl.trim(), data.name);
     } catch (e: any) {
       console.error(e);
       setNewError('Erro ao salvar: ' + (e?.message || 'erro desconhecido'));
@@ -117,16 +125,41 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
     }
   };
 
+  const startEdit = (entry: AudioBankEntry) => {
+    if (entry._isGlobal && !isSuperAdmin) { setNewError('Áudios globais só podem ser editados pelo superadmin.'); return; }
+    setEditingId(entry.id);
+    setNewName(entry.name);
+    setNewUrl(entry.url);
+    setNewCategory(entry.category || 'effect');
+    setNewGender(entry.gender || '');
+    setNewError('');
+    setShowNewForm(true);
+  };
+
+  const removeEntry = async (entry: AudioBankEntry) => {
+    if (entry._isGlobal && !isSuperAdmin) { setNewError('Áudios globais só podem ser excluídos pelo superadmin.'); return; }
+    if (!window.confirm(`Excluir o áudio "${entry.name}"?`)) return;
+    try {
+      const { error } = await supabase.from('audio_bank').delete().eq('id', entry.id);
+      if (error) { console.error(error); setNewError('Erro ao excluir: ' + error.message); return; }
+      sessionCache.invalidate(CACHE_KEYS.audioBank(tenantId));
+      setEntries(await fetchAudioBank(tenantId));
+    } catch (e: any) {
+      console.error(e);
+      setNewError('Erro ao excluir: ' + (e?.message || 'erro desconhecido'));
+    }
+  };
+
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000000, padding: '1rem' }}>
-      <div className="glass-panel" style={{ width: '700px', maxWidth: '95vw', maxHeight: '90vh', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
+      <div className="glass-panel" style={{ width: '700px', maxWidth: '95vw', maxHeight: '90vh', padding: '1.5rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h2 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gold-primary)' }}>
             <Volume2 /> {title}
           </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
             <button
-              onClick={() => { setShowNewForm(v => !v); setNewError(''); }}
+              onClick={() => { setShowNewForm(v => !v); setEditingId(null); setNewError(''); setNewName(''); setNewUrl(''); setNewCategory(categoryFilter || 'effect'); setNewGender(''); }}
               style={{ padding: '0.45rem 0.8rem', background: 'rgba(139,92,246,0.2)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.5)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}
             >
               <Plus size={16} /> {showNewForm ? 'Fechar' : 'Novo Áudio'}
@@ -148,7 +181,7 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
 
         {showNewForm && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem', padding: '0.75rem', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px' }}>
-            <div style={{ fontWeight: 'bold', color: '#c084fc', fontSize: '0.9rem' }}>Cadastrar novo áudio</div>
+            <div style={{ fontWeight: 'bold', color: '#c084fc', fontSize: '0.9rem' }}>{editingId ? 'Editar áudio' : 'Cadastrar novo áudio'}</div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nome (vazio = nome do arquivo)" style={{ flex: '1 1 200px', padding: '0.45rem 0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
               <select value={newCategory} onChange={e => setNewCategory(e.target.value)} style={{ padding: '0.45rem 0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
@@ -166,16 +199,16 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
               <button onClick={() => togglePlay(newUrl)} disabled={!newUrl} style={{ padding: '0.4rem 0.6rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: newUrl ? 'pointer' : 'not-allowed', opacity: newUrl ? 1 : 0.4, color: 'white' }} title="Ouvir">{playingUrl === newUrl ? '⏹' : '▶'}</button>
             </div>
             {newError && <div style={{ color: '#ef4444', fontSize: '0.78rem' }}>{newError}</div>}
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowNewForm(false); setNewError(''); }} style={{ padding: '0.45rem 1rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem' }}>Cancelar</button>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexShrink: 0 }}>
+              <button onClick={() => { setShowNewForm(false); setEditingId(null); setNewError(''); }} style={{ padding: '0.45rem 1rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem' }}>Cancelar</button>
               <button onClick={saveNewAudio} disabled={newSaving} style={{ padding: '0.45rem 1.2rem', background: 'rgba(139,92,246,0.35)', color: '#fff', border: '1px solid #8b5cf6', borderRadius: '8px', cursor: newSaving ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem', opacity: newSaving ? 0.6 : 1 }}>
-                {newSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {newSaving ? 'Salvando...' : 'Salvar e Usar'}
+                {newSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {newSaving ? 'Salvando...' : editingId ? 'Salvar Alterações' : 'Salvar e Usar'}
               </button>
             </div>
           </div>
         )}
 
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {filtered.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center', padding: '2rem' }}>Nenhum áudio encontrado no banco.</p>
           ) : filtered.map(entry => (
@@ -191,9 +224,15 @@ export default function AudioBankPicker({ open, onClose, onSelect, categoryFilte
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+              <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0, alignItems: 'center' }}>
                 <button onClick={() => togglePlay(entry.url)} style={{ padding: '0.4rem 0.6rem', background: playingUrl === entry.url ? 'rgba(245,158,11,0.3)' : 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>{playingUrl === entry.url ? '⏹' : '▶'}</button>
-                <button onClick={() => onSelect(entry.url, entry.name)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.5)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>Usar</button>
+                {(entry._isGlobal ? isSuperAdmin : true) && (
+                  <button onClick={() => startEdit(entry)} title="Editar áudio" style={{ padding: '0.4rem', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '6px', cursor: 'pointer', color: '#60a5fa', display: 'inline-flex', alignItems: 'center' }}><Edit2 size={14} /></button>
+                )}
+                {(entry._isGlobal ? isSuperAdmin : true) && (
+                  <button onClick={() => removeEntry(entry)} title="Excluir áudio" style={{ padding: '0.4rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', cursor: 'pointer', color: '#f87171', display: 'inline-flex', alignItems: 'center' }}><Trash2 size={14} /></button>
+                )}
+                <button onClick={() => onSelect(entry.url, entry.name)} style={{ padding: '0.4rem 0.8rem', background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.5)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Usar</button>
               </div>
             </div>
           ))}

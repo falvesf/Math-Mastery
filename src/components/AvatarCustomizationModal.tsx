@@ -727,6 +727,20 @@ export default function AvatarCustomizationModal({
         ...((configToSave as any).stats?.fleeChanceTable && (configToSave as any).stats.fleeChanceTable.length > 0
           ? { fleeChanceTable: (configToSave as any).stats.fleeChanceTable }
           : {}),
+        // Agressividade contra animais + evolução por nível (monstros e animais).
+        ...((configToSave as any).stats?.aggression ? { aggression: (configToSave as any).stats.aggression } : {}),
+        ...((configToSave as any).stats?.aggressionByLevel && (configToSave as any).stats.aggressionByLevel.length > 0
+          ? { aggressionByLevel: (configToSave as any).stats.aggressionByLevel }
+          : {}),
+        // Campos exclusivos de ANIMAIS (hostilidade ao ser atacado e dano de efeito).
+        ...((configToSave as any).stats?.hostileChance != null ? { hostileChance: (configToSave as any).stats.hostileChance } : {}),
+        ...((configToSave as any).stats?.damageEffect && (configToSave as any).stats.damageEffect !== 'none' ? { damageEffect: (configToSave as any).stats.damageEffect } : {}),
+        ...((configToSave as any).stats?.damageEffectByLevel && (configToSave as any).stats.damageEffectByLevel.length > 0
+          ? { damageEffectByLevel: (configToSave as any).stats.damageEffectByLevel }
+          : {}),
+        // Velocidade de movimento e de ataque (monstros e animais).
+        ...((configToSave as any).stats?.speed != null ? { speed: (configToSave as any).stats.speed } : {}),
+        ...((configToSave as any).stats?.attackSpeed != null ? { attackSpeed: (configToSave as any).stats.attackSpeed } : {}),
       };
     }
     setConfig(configToSave);
@@ -1796,6 +1810,24 @@ onClick={() => setConfig(prev => {
                 Resetar (100%)
               </button>
             </div>
+
+            {/* Frente do modelo (GLB): alguns modelos têm a frente em outro eixo e atacam virados de costas. */}
+            {isGlbMonster && (
+              <div style={{ width: '100%', marginBottom: '0.75rem', background: 'rgba(59, 130, 246, 0.06)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>🧭 Frente do modelo (GLB)</label>
+                <select
+                  value={(config as any).modelForward || 'z'}
+                  onChange={e => setConfig(prev => ({ ...prev, modelForward: e.target.value } as any))}
+                  style={{ width: '100%', padding: '0.4rem 0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
+                >
+                  <option value="z">Frente padrão (+Z)</option>
+                  <option value="-z">Frente invertida (-Z)</option>
+                  <option value="x">Frente para a direita (+X)</option>
+                  <option value="-x">Frente para a esquerda (-X)</option>
+                </select>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>Se o modelo ataca/anda virado de costas, escolha outra opção até ele olhar para o alvo.</div>
+              </div>
+            )}
 
             {/* Avatar / Monstro 3D — ocupa de forma ampla todo o espaço vertical e horizontal disponível */}
             <div style={{

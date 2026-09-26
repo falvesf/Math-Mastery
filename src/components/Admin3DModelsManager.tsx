@@ -704,6 +704,17 @@ export default function Admin3DModelsManager() {
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Escala no mapa</label>
                     <input type="number" step={0.1} min={0.1} value={renderScale} onChange={e => setRenderScale(parseFloat(e.target.value) || 1)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
                   </div>
+                  {category === 'animal' && (
+                    <div style={{ width: 190 }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>🧭 Frente do modelo (GLB)</label>
+                      <select value={animalConfig.modelForward || 'z'} onChange={e => setAnimalConfig({ ...animalConfig, modelForward: e.target.value })} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
+                        <option value="z">Frente padrão (+Z)</option>
+                        <option value="-z">Frente invertida (-Z)</option>
+                        <option value="x">Frente para a direita (+X)</option>
+                        <option value="-x">Frente para a esquerda (-X)</option>
+                      </select>
+                    </div>
+                  )}
                   {category === 'scenery' && (
                     <div style={{ width: 150 }}>
                       <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Altura (blocos)</label>
@@ -732,6 +743,7 @@ export default function Admin3DModelsManager() {
                         availableStoreItems={storeItems}
                         tabMode="all"
                         monsterName={name || 'Animal'}
+                        isAnimal
                       />
                     </div>
                   </>

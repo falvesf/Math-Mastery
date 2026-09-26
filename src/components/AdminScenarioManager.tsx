@@ -40,6 +40,8 @@ interface ScenarioConfig {
   mapType?: 'closed' | 'open';
   /** Altura das paredes do mapa em unidades de mundo (padrão 3.4). */
   wallHeight?: number;
+  /** Aleatoriza o TAMANHO do mapa (linhas, colunas e altura das paredes) a cada geração (surpresa). */
+  randomizeSize?: boolean;
   /** Elaboração estratégica da geração (0-1): mais baús/monstros/portas/rochas/perigos. */
   elaboration?: number;
   /** Critérios explícitos da geração (opcionais; se 0/undefined usa a elaboração). */
@@ -88,6 +90,7 @@ const DEFAULT_CONFIG: ScenarioConfig = {
   defaultWallType: 'stone', defaultDoorType: 'wood',
     wallDensity: 0.26, elaboration: 0.5, bossKeyMode: 'none', mapType: 'closed',
   wallHeight: 3.4,
+  randomizeSize: true,
   musicVolume: 0.5,
   chestConfig: { loot: [
     { kind: 'coins', weight: 45, min: 5, max: 20 },
@@ -313,7 +316,14 @@ export default function AdminScenarioManager() {
   // pintado reflita o que a simulação vai criar.
   const generateScenarioLayout = () => setCurrent(c => {
     if (!c) return c;
-    const { cols, rows } = c.config;
+    let { cols, rows } = c.config;
+    let wallHeight = c.config.wallHeight ?? 3.4;
+    // Aleatoriza o TAMANHO (linhas/colunas/altura das paredes) quando ativado — surpresa a cada geração.
+    if (c.config.randomizeSize !== false) {
+      cols = 10 + Math.floor(Math.random() * 191); // 10..200
+      rows = 8 + Math.floor(Math.random() * 193);  // 8..200
+      wallHeight = Math.round((1 + Math.random() * 4) * 10) / 10; // 1.0..5.0
+    }
     const mapType: 'closed' | 'open' = c.config.mapType === 'open' ? 'open' : 'closed';
     const elab = Math.max(0, Math.min(1, Number(c.config.elaboration) ?? 0.5));
     const genDoorsRaw = Number(c.config.genDoors);
@@ -500,7 +510,7 @@ export default function AdminScenarioManager() {
       chestCells[key] = '1';
     }
 
-    return { ...c, config: { ...c.config, layout: g.map(r => r.join('')), wallTypeCells: {}, doorTypeCells, monsterCells, chestCells } };
+    return { ...c, config: { ...c.config, cols, rows, wallHeight, layout: g.map(r => r.join('')), wallTypeCells: {}, doorTypeCells, monsterCells, chestCells } };
   });
   const paintAt = (x: number, z: number) => setCurrent(c => {
     if (!c) return c;
@@ -748,9 +758,13 @@ export default function AdminScenarioManager() {
                     {THEME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
-                <div><label style={labelStyle}>Colunas</label><input type="number" min={10} max={120} style={inputStyle} value={current.config.cols} onChange={e => patchConfig({ cols: Math.max(10, Math.min(120, parseInt(e.target.value) || 48)) })} /></div>
-                <div><label style={labelStyle}>Linhas</label><input type="number" min={8} max={80} style={inputStyle} value={current.config.rows} onChange={e => patchConfig({ rows: Math.max(8, Math.min(80, parseInt(e.target.value) || 18)) })} /></div>
-                <div><label style={labelStyle}>Altura das paredes</label><input type="number" min={1} max={10} step={0.1} style={inputStyle} value={current.config.wallHeight ?? 3.4} onChange={e => patchConfig({ wallHeight: Math.max(1, Math.min(10, parseFloat(e.target.value) || 3.4)) })} /></div>
+<div><label style={labelStyle}>Colunas</label><input type="number" min={10} max={200} style={inputStyle} value={current.config.cols} onChange={e => patchConfig({ cols: Math.max(10, Math.min(200, parseInt(e.target.value) || 48)) })} /></div>
+<div><label style={labelStyle}>Linhas</label><input type="number" min={8} max={200} style={inputStyle} value={current.config.rows} onChange={e => patchConfig({ rows: Math.max(8, Math.min(200, parseInt(e.target.value) || 18)) })} /></div>
+<div><label style={labelStyle}>Altura das paredes</label><input type="number" min={1} max={5} step={0.1} style={inputStyle} value={current.config.wallHeight ?? 3.4} onChange={e => patchConfig({ wallHeight: Math.max(1, Math.min(5, parseFloat(e.target.value) || 3.4)) })} /></div>
+<div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+  <input type="checkbox" checked={current.config.randomizeSize !== false} onChange={e => patchConfig({ randomizeSize: e.target.checked })} style={{ width: 16, height: 16, accentColor: 'var(--gold-primary)' }} />
+  <label style={{ ...labelStyle, margin: 0 }}>🎲 Aleatorizar tamanho (linhas/colunas/altura) a cada geração</label>
+</div>
                 <div><label style={labelStyle}>Raio de visão (fog)</label><input type="number" min={2} max={15} style={inputStyle} value={current.config.revealRadius} onChange={e => patchConfig({ revealRadius: Math.max(2, Math.min(15, parseInt(e.target.value) || 7)) })} /></div>
                 <div><label style={labelStyle}>Chance de armadilha na parede (%)</label><input type="number" min={0} max={100} style={inputStyle} value={Math.round((current.config.wallTrapChance || 0) * 100)} onChange={e => patchConfig({ wallTrapChance: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) / 100 })} /></div>
                 <div style={{ gridColumn: 'span 2' }}>

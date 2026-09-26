@@ -179,12 +179,20 @@ export interface MonsterStatsConfig {
   fleeChanceTable?: Array<{ minHearts: number; chance: number }>;
   /** Animais: chance (0-1) de ficar HOSTIL quando atacado. */
   hostileChance?: number;
-  /** Dano de efeito aplicado pelos golpes (poison/bleed/burn/electric/freeze/none). */
+  /** Dano de efeito aplicado pelos golpes (poison/bleed/burn/electric/freeze/none). (Animais) */
   damageEffect?: string;
+  /** Dano de efeito por NÍVEL (animais): { level, effect } — muda conforme o animal evolui. Ex.: nível 1 já com veneno. */
+  damageEffectByLevel?: Array<{ level: number; effect: string }>;
+  /** Velocidade de movimento (multiplicador) no mapa explorável. 1 = padrão. */
+  speed?: number;
+  /** Velocidade de ataque: golpes por SEGUNDO (ex.: 2 = ataca 2x/s; 0.5 = 1 golpe a cada 2s). */
+  attackSpeed?: number;
 }
 
 export interface MonsterAttributesConfig {
   gender?: string;
+  /** Eixo "frente" do modelo GLB ('z' padrão / '-z' / 'x' / '-x') — corrige ataque/anda virado de costas. */
+  modelForward?: string;
   attackSound?: string;
   gruntSound?: string;
   damageSound?: string;
@@ -209,6 +217,8 @@ interface MonsterAttributesEditorProps {
   tabMode?: 'sounds_and_quotes' | 'drops' | 'stats' | 'lore' | 'all';
   monsterName?: string;
   monsterAttacks?: any;
+  /** true = editando um ANIMAL (mostra campos exclusivos: hostilidade ao ser atacado e dano de efeito). */
+  isAnimal?: boolean;
 }
 
 function getItemTypeLabel(item: any): string {
@@ -232,6 +242,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
   tabMode = 'all',
   monsterName = '',
   monsterAttacks,
+  isAnimal = false,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'sounds' | 'quotes' | 'drops' | 'stats' | 'lore'>(
     tabMode === 'drops' ? 'drops' : tabMode === 'stats' ? 'stats' : tabMode === 'lore' ? 'lore' : 'sounds'
@@ -279,6 +290,11 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     aggressionByLevel: value.stats?.aggressionByLevel,
     xp: value.stats?.xp ?? 0,
     fleeChanceTable: value.stats?.fleeChanceTable,
+    hostileChance: value.stats?.hostileChance,
+    damageEffect: value.stats?.damageEffect,
+    damageEffectByLevel: value.stats?.damageEffectByLevel,
+    speed: value.stats?.speed,
+    attackSpeed: value.stats?.attackSpeed,
   };
 
   const updateStats = (statsPatch: Partial<MonsterStatsConfig>) => {
@@ -552,6 +568,44 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
               />
             </div>
 
+            {/* Velocidade de Movimento */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(45, 212, 191, 0.25)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#2dd4bf', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                🏃 Velocidade
+              </label>
+              <input
+                type="number"
+                step={0.1}
+                min="0.1"
+                placeholder={currentStats.speed === undefined ? '1 (padrão)' : undefined}
+                value={currentStats.speed ?? ''}
+                onChange={e => updateStats({ speed: e.target.value === '' ? undefined : Math.max(0.1, parseFloat(e.target.value) || 0.1) })}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              />
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                Multiplicador no mapa. 2 = anda/corre 2x mais rápido (útil p/ fuga de animais).
+              </div>
+            </div>
+
+            {/* Velocidade de Ataque */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(251, 113, 133, 0.25)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#fb7185', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                ⚡ Velocidade de Ataque (golpes/s)
+              </label>
+              <input
+                type="number"
+                step={0.1}
+                min="0.1"
+                placeholder={currentStats.attackSpeed === undefined ? '0.56 (padrão)' : undefined}
+                value={currentStats.attackSpeed ?? ''}
+                onChange={e => updateStats({ attackSpeed: e.target.value === '' ? undefined : Math.max(0.1, parseFloat(e.target.value) || 0.1) })}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              />
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                Golpes por segundo (ex.: 2 = ataca 2x/s; 0.5 = 1 golpe a cada 2s).
+              </div>
+            </div>
+
             {/* XP Acumulado */}
             <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(168, 85, 247, 0.25)', borderRadius: '8px', padding: '0.65rem' }}>
               <label style={{ display: 'block', fontSize: '0.72rem', color: '#c084fc', fontWeight: 'bold', marginBottom: '0.3rem' }}>
@@ -639,10 +693,12 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
             </div>
 
           <div style={{ marginTop: '0.6rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.6rem' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Chance de ficar HOSTIL ao ser atacado (%)</label>
-              <input type="number" min={0} max={100} value={Math.round((currentStats.hostileChance ?? 0) * 100)} onChange={e => updateStats({ hostileChance: Math.min(1, Math.max(0, (parseInt(e.target.value) || 0) / 100)) })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
-            </div>
+            {isAnimal && (
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Chance de ficar HOSTIL ao ser atacado (%)</label>
+                <input type="number" min={0} max={100} value={Math.round((currentStats.hostileChance ?? 0) * 100)} onChange={e => updateStats({ hostileChance: Math.min(1, Math.max(0, (parseInt(e.target.value) || 0) / 100)) })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
+              </div>
+            )}
             <div>
               <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Agressividade (contra animais)</label>
               <select value={currentStats.aggression || 'aggressive'} onChange={e => updateStats({ aggression: e.target.value as any })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}>
@@ -668,23 +724,47 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
               <button onClick={() => updateStats({ aggressionByLevel: [...(currentStats.aggressionByLevel || []), { level: (currentStats.level || 1) + 1, aggression: 'aggressive' as any }] })} style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: 'rgba(245,158,11,0.15)', border: '1px dashed rgba(245,158,11,0.5)', color: 'var(--gold-primary)', cursor: 'pointer', fontSize: '0.75rem' }}>+ Faixa de nível</button>
               <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 4 }}>Ex.: pacífico até nv3, neutro do nv4 ao nv7, agressivo do nv8. Vale por MONSTRO (cada um sobe de nível vencendo batalhas).</div>
             </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Dano de efeito do golpe</label>
-              <select value={currentStats.damageEffect || 'none'} onChange={e => updateStats({ damageEffect: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}>
-                <option value="none">Nenhum</option>
-                <option value="poison">Veneno</option>
-                <option value="bleed">Sangramento</option>
-                <option value="burn">Queimadura</option>
-                <option value="electric">Elétrico</option>
-                <option value="freeze">Congelamento</option>
-              </select>
-            </div>
+            {isAnimal && (
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Dano de efeito base do golpe</label>
+                <select value={currentStats.damageEffect || 'none'} onChange={e => updateStats({ damageEffect: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}>
+                  <option value="none">Nenhum</option>
+                  <option value="poison">Veneno</option>
+                  <option value="bleed">Sangramento</option>
+                  <option value="burn">Queimadura</option>
+                  <option value="electric">Elétrico</option>
+                  <option value="freeze">Congelamento</option>
+                </select>
+              </div>
+            )}
+            {isAnimal && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Dano de efeito do golpe por NÍVEL (evolução)</label>
+                {(currentStats.damageEffectByLevel || []).map((e, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Nv.</span>
+                    <input type="number" min={1} value={e.level} onChange={ev => updateStats({ damageEffectByLevel: (currentStats.damageEffectByLevel || []).map((x, j) => j === idx ? { ...x, level: Math.max(1, parseInt(ev.target.value) || 1) } : x) })} style={{ width: 60, padding: '0.35rem', borderRadius: 6, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                    <select value={e.effect} onChange={ev => updateStats({ damageEffectByLevel: (currentStats.damageEffectByLevel || []).map((x, j) => j === idx ? { ...x, effect: ev.target.value } : x) })} style={{ flex: 1, padding: '0.35rem', borderRadius: 6, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }}>
+                      <option value="none">Nenhum</option>
+                      <option value="poison">Veneno</option>
+                      <option value="bleed">Sangramento</option>
+                      <option value="burn">Queimadura</option>
+                      <option value="electric">Elétrico</option>
+                      <option value="freeze">Congelamento</option>
+                    </select>
+                    <button onClick={() => updateStats({ damageEffectByLevel: (currentStats.damageEffectByLevel || []).filter((_, j) => j !== idx) })} style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                  </div>
+                ))}
+                <button onClick={() => updateStats({ damageEffectByLevel: [...(currentStats.damageEffectByLevel || []), { level: (currentStats.damageEffectByLevel || []).length ? Math.max((currentStats.damageEffectByLevel || []).map(x => x.level || 1).reduce((a, b) => Math.max(a, b), 0) + 1, 1) : 1, effect: 'poison' as string }] })} style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: 'rgba(16,185,129,0.15)', border: '1px dashed rgba(16,185,129,0.5)', color: '#34d399', cursor: 'pointer', fontSize: '0.75rem' }}>+ Faixa de nível</button>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 4 }}>Ex.: nível 1 já com veneno (animal que inflige naturalmente), nível 5 vira queimadura. Antes da 1ª faixa vale o efeito base.</div>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.2rem' }}>
             <button
               type="button"
-              onClick={() => updateStats({ level: 1, attack: 1, defense: 1, evasion: 1, critChance: 1, hp: undefined, xp: 0, fleeChanceTable: undefined })}
+              onClick={() => updateStats({ level: 1, attack: 1, defense: 1, evasion: 1, critChance: 1, hp: undefined, xp: 0, fleeChanceTable: undefined, speed: undefined, attackSpeed: undefined, hostileChance: undefined, damageEffect: undefined, damageEffectByLevel: undefined })}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',

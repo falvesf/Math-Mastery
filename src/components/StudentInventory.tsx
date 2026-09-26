@@ -1141,7 +1141,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     });
   }
   
-  bagItems.sort((a, b) => a.itemTitle.localeCompare(b.itemTitle));
+  bagItems.sort((a, b) => (a.itemTitle || '').localeCompare(b.itemTitle || ''));
 
   const totalSlotsToRender = Math.max(maxInventorySpace, bagItems.length);
   const slots: (UserItem | null)[] = Array(totalSlotsToRender).fill(null);
