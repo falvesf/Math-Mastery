@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useTenant } from '../contexts/TenantContext';
 import { useDialog } from '../contexts/DialogContext';
 // @ts-ignore
-import { X, Search, Download, Copy, Eye, BookOpen, Loader2, CheckCircle } from 'lucide-react';
+import { X, Search, Download, Copy, Eye, BookOpen, Loader2, CheckCircle, Edit2, Trash2, Save } from 'lucide-react';
 
 interface QuestionBankItem {
   id: string;
@@ -45,14 +45,18 @@ const DIFFICULTIES = [
 ];
 
 export default function QuestionBankModal({ isOpen, onClose, onSelect }: QuestionBankModalProps) {
-  const { tenantId } = useTenant();
-  const { showAlert } = useDialog();
+  const { tenantId, isSuperAdmin } = useTenant();
+  const { showAlert, showConfirm } = useDialog();
   const [questions, setQuestions] = useState<QuestionBankItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterDifficulty, setFilterDifficulty] = useState('all');
   const [previewQuestion, setPreviewQuestion] = useState<QuestionBankItem | null>(null);
+  // Edição de perguntas do banco
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{ title: string; options: string[]; correctIndex: number; category: string; difficulty: string; tags: string; timeLimit: number; imageUrl: string }>({ title: '', options: ['', '', '', ''], correctIndex: 0, category: 'geral', difficulty: 'medio', tags: '', timeLimit: 30, imageUrl: '' });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -85,6 +89,74 @@ export default function QuestionBankModal({ isOpen, onClose, onSelect }: Questio
   const handleSelect = (question: QuestionBankItem) => {
     onSelect(question);
     onClose();
+  };
+
+  // Perguntas GLOBAIS (tenant_id nulo) só podem ser editadas/excluídas pelo superadmin.
+  const canManage = (q: QuestionBankItem) => q.tenant_id != null || !!isSuperAdmin;
+
+  const startEdit = (q: QuestionBankItem) => {
+    if (!canManage(q)) { showAlert('Permissão', 'Perguntas globais só podem ser editadas pelo superadmin.'); return; }
+    const opts = (q.options || []).map(o => o.text || '');
+    while (opts.length < 4) opts.push('');
+    setEditId(q.id);
+    setEditForm({
+      title: q.title || '',
+      options: opts.slice(0, 6),
+      correctIndex: q.correct_index ?? 0,
+      category: q.category || 'geral',
+      difficulty: q.difficulty || 'medio',
+      tags: (q.tags || []).join(', '),
+      timeLimit: q.time_limit || 30,
+      imageUrl: q.image_url || '',
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editId) return;
+    if (!editForm.title.trim()) { showAlert('Atenção', 'Preencha o enunciado da pergunta.'); return; }
+    setSaving(true);
+    try {
+      const original = questions.find(q => q.id === editId);
+      const options = editForm.options
+        .map((t, i) => ({ text: (t || '').trim(), imageUrl: original?.options?.[i]?.imageUrl }))
+        .filter(o => o.text || o.imageUrl)
+        .map(o => (o.imageUrl ? o : { text: o.text }));
+      if (options.length < 2) { showAlert('Atenção', 'Preencha pelo menos 2 alternativas.'); setSaving(false); return; }
+      const payload = {
+        title: editForm.title.trim(),
+        options,
+        correct_index: Math.max(0, Math.min(options.length - 1, editForm.correctIndex)),
+        category: editForm.category,
+        difficulty: editForm.difficulty,
+        tags: editForm.tags.split(',').map(s => s.trim()).filter(Boolean),
+        time_limit: Math.max(5, Number(editForm.timeLimit) || 30),
+        image_url: editForm.imageUrl.trim() || null,
+      };
+      const { error } = await supabase.from('question_bank').update(payload).eq('id', editId);
+      if (error) throw error;
+      setEditId(null);
+      await fetchQuestions();
+      showAlert('Sucesso', 'Pergunta atualizada!');
+    } catch (e: any) {
+      console.error(e);
+      showAlert('Erro', 'Não foi possível salvar: ' + (e?.message || 'erro desconhecido'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeQuestion = async (q: QuestionBankItem) => {
+    if (!canManage(q)) { showAlert('Permissão', 'Perguntas globais só podem ser excluídas pelo superadmin.'); return; }
+    const plain = (q.title || '').replace(/<[^>]+>/g, '');
+    if (!(await showConfirm(`Excluir a pergunta "${plain}"?`))) return;
+    try {
+      const { error } = await supabase.from('question_bank').delete().eq('id', q.id);
+      if (error) throw error;
+      await fetchQuestions();
+    } catch (e: any) {
+      console.error(e);
+      showAlert('Erro', 'Não foi possível excluir: ' + (e?.message || 'erro desconhecido'));
+    }
   };
 
   const filteredQuestions = questions.filter(q => {
@@ -228,6 +300,24 @@ export default function QuestionBankModal({ isOpen, onClose, onSelect }: Questio
                       )}
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                      {canManage(question) && (
+                        <button
+                          onClick={e => { e.stopPropagation(); startEdit(question); }}
+                          style={{ padding: '0.35rem 0.5rem', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '6px', cursor: 'pointer', color: '#60a5fa' }}
+                          title="Editar"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                      )}
+                      {canManage(question) && (
+                        <button
+                          onClick={e => { e.stopPropagation(); removeQuestion(question); }}
+                          style={{ padding: '0.35rem 0.5rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', cursor: 'pointer', color: '#f87171' }}
+                          title="Excluir"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                       <button
                         onClick={e => { e.stopPropagation(); setPreviewQuestion(question); }}
                         style={{ padding: '0.35rem 0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}
@@ -304,6 +394,57 @@ export default function QuestionBankModal({ isOpen, onClose, onSelect }: Questio
                 style={{ flex: 1, padding: '0.75rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-secondary)', cursor: 'pointer' }}
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de EDIÇÃO da pergunta */}
+      {editId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002 }}>
+          <div className="glass-panel" style={{ width: '620px', maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', padding: '1.5rem', background: 'var(--bg-dark)', display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+            <h3 style={{ margin: 0, color: 'var(--gold-primary)' }}>Editar Pergunta</h3>
+            <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Enunciado</label>
+            <textarea value={editForm.title} onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))} rows={2} style={{ padding: '0.5rem', borderRadius: 8, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', resize: 'vertical' }} />
+            <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Alternativas (marque a correta)</label>
+            {editForm.options.map((opt, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input type="radio" name="qb-correct" checked={editForm.correctIndex === i} onChange={() => setEditForm(f => ({ ...f, correctIndex: i }))} style={{ accentColor: '#10b981', width: 16, height: 16 }} />
+                <span style={{ width: 16, color: 'var(--text-secondary)', fontWeight: 'bold' }}>{String.fromCharCode(65 + i)}</span>
+                <input value={opt} onChange={e => setEditForm(f => ({ ...f, options: f.options.map((o, j) => j === i ? e.target.value : o) }))} placeholder={`Alternativa ${String.fromCharCode(65 + i)}`} style={{ flex: 1, padding: '0.45rem 0.6rem', borderRadius: 8, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+                {editForm.options.length > 2 && (
+                  <button onClick={() => setEditForm(f => ({ ...f, options: f.options.filter((_, j) => j !== i), correctIndex: 0 }))} style={{ padding: '0.3rem 0.5rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 6, color: '#f87171', cursor: 'pointer' }}>✕</button>
+                )}
+              </div>
+            ))}
+            <button onClick={() => setEditForm(f => ({ ...f, options: [...f.options, ''] }))} style={{ alignSelf: 'flex-start', padding: '0.3rem 0.7rem', background: 'rgba(16,185,129,0.15)', border: '1px dashed rgba(16,185,129,0.5)', borderRadius: 6, color: '#34d399', cursor: 'pointer', fontSize: '0.78rem' }}>+ Alternativa</button>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 2 }}>Categoria</label>
+                <select value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))} style={{ width: '100%', padding: '0.45rem', borderRadius: 8, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                  {CATEGORIES.filter(c => c.value !== 'all').map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 2 }}>Dificuldade</label>
+                <select value={editForm.difficulty} onChange={e => setEditForm(f => ({ ...f, difficulty: e.target.value }))} style={{ width: '100%', padding: '0.45rem', borderRadius: 8, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                  {DIFFICULTIES.filter(d => d.value !== 'all').map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                </select>
+              </div>
+              <div style={{ width: 110 }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 2 }}>Tempo (s)</label>
+                <input type="number" min={5} value={editForm.timeLimit} onChange={e => setEditForm(f => ({ ...f, timeLimit: parseInt(e.target.value) || 30 }))} style={{ width: '100%', padding: '0.45rem', borderRadius: 8, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+              </div>
+            </div>
+            <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Tags (separadas por vírgula)</label>
+            <input value={editForm.tags} onChange={e => setEditForm(f => ({ ...f, tags: e.target.value }))} style={{ padding: '0.45rem 0.6rem', borderRadius: 8, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+            <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>URL da imagem (opcional)</label>
+            <input value={editForm.imageUrl} onChange={e => setEditForm(f => ({ ...f, imageUrl: e.target.value }))} placeholder="https://..." style={{ padding: '0.45rem 0.6rem', borderRadius: 8, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button onClick={() => setEditId(null)} style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: 8, color: 'var(--text-secondary)', cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={saveEdit} disabled={saving} style={{ padding: '0.5rem 1.2rem', background: 'rgba(16,185,129,0.25)', color: '#10b981', border: '1px solid rgba(16,185,129,0.5)', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem', opacity: saving ? 0.6 : 1 }}>
+                {saving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Salvar
               </button>
             </div>
           </div>

@@ -122,6 +122,9 @@ export interface StoreItem {
   fuseResultQty?: number; // Quantidade gerada do item resultante (ex: 1)
   fuseCost?: number; // Custo em moedas para realizar a fundição no ferreiro
   fuseSuccessChance?: number; // % de chance de sucesso na fundição (1–100, padrão 75)
+  /** PESO da arma: se > defesa da rocha/parede, ela consegue quebrar (dano tira HP até zerar).
+   *  Picaretas ignoram este campo. 0 = não quebra nada. */
+  weight?: number;
 }
 
 const ItemSelect = ItemSelectDropdown;
@@ -147,7 +150,7 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [criticalSoundPickerOpen, setCriticalSoundPickerOpen] = useState(false);
   const [useSoundPickerOpen, setUseSoundPickerOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<StoreItem>>({
-    title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', consumableAnimPreset: '', consumableEffectColor: '', useSoundUrl: ''
+    title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', usableInQuest: false, minRankRequired: 0, active: true, imageUrl: '', rarity: 'common', consumableAnimPreset: '', consumableEffectColor: '', useSoundUrl: '', weight: 0
   });
   
   const [showGallery, setShowGallery] = useState<'image' | 'model' | null>(null);
@@ -919,6 +922,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
       fatality: item.fatality || undefined,
       baseAttributeType: item.baseAttributeType,
       baseAttributeValue: item.baseAttributeValue,
+      weight: (item as any).weight ?? 0,
       fixedAttributes: item.fixedAttributes,
       backColor: item.backColor,
       extractMeshName: item.extractMeshName,
@@ -1096,6 +1100,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
 
     const itemData = {
       ...formData,
+      weight: Number((formData as any).weight) || 0,
       fatality: formData.fatality && formData.fatality !== 'auto' ? formData.fatality : undefined,
       damageEffectMin: formData.damageEffect && formData.damageEffect !== 'none' && formData.damageEffectMin !== undefined && formData.damageEffectMin !== null ? Number(formData.damageEffectMin) : undefined,
       damageEffectMax: formData.damageEffect && formData.damageEffect !== 'none' && formData.damageEffectMax !== undefined && formData.damageEffectMax !== null ? Number(formData.damageEffectMax) : undefined,
@@ -2326,6 +2331,14 @@ Responda APENAS com a frase curta em português brasileiro.`;
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Força do Atributo Base (poder MÁXIMO no +9)</label>
                     <input type="number" value={formData.baseAttributeValue || 0} onChange={e => setFormData({...formData, baseAttributeValue: parseInt(e.target.value) || 0})} className="login-input" style={{ width: '100%' }} />
                   </div>
+
+                  {['hand', 'rightHand', 'leftHand', 'two_handed', 'pickaxe'].includes(String(formData.avatarPart)) && (
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Peso da arma (quebra rocha/parede com peso &gt; defesa)</label>
+                      <input type="number" min={0} value={formData.weight || 0} onChange={e => setFormData({ ...formData, weight: Math.max(0, parseInt(e.target.value) || 0) })} className="login-input" style={{ width: '100%' }} />
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>0 = não quebra nada. Picaretas ignoram este campo.</div>
+                    </div>
+                  )}
                 </div>
 
                 {/* ===== FORJA (todos os equipáveis são forjáveis automaticamente) ===== */}

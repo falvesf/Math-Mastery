@@ -40,6 +40,8 @@ interface ScenarioConfig {
   mapType?: 'closed' | 'open';
   /** Altura das paredes do mapa em unidades de mundo (padrão 3.4). */
   wallHeight?: number;
+  /** Largura dos corredores do labirinto (1 = fino; 2-4 = corredores largos, paredes grossas). */
+  corridorWidth?: number;
   /** Aleatoriza o TAMANHO do mapa (linhas, colunas e altura das paredes) a cada geração (surpresa). */
   randomizeSize?: boolean;
   /** Elaboração estratégica da geração (0-1): mais baús/monstros/portas/rochas/perigos. */
@@ -59,6 +61,8 @@ interface ScenarioConfig {
   /** Animais: 'varied' = sorteia do catálogo; 'specific' = só os de animalIds. */
   animalMode?: 'varied' | 'specific';
   animalIds?: string[];
+  /** Veios minerais que PODEM nascer neste mapa (ids de modelos 3D kind='mineral'). Vazio = nenhum. */
+  mineralVeins?: string[];
   /** Como a porta do BOSS é aberta: 'none' (sem chave) ou 'monster_drop' (chave cai de um monstro). */
   bossKeyMode?: 'none' | 'monster_drop';
   keys?: KeyType[];
@@ -224,6 +228,15 @@ export default function AdminScenarioManager() {
     q.then(({ data }) => { if (active && data) setDoorModels((data as any[]).map(m => ({ id: m.id, name: m.name || m.id }))); }).catch(() => {});
     return () => { active = false; };
   }, [tenantId]);
+  // Modelos de VEIO MINERAL (cenário, kind = 'mineral') para escolher quais podem nascer no mapa.
+  const [mineralModels, setMineralModels] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    let active = true;
+    let q = supabase.from('3d_models').select('id,name,kind').eq('category', 'scenery');
+    if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    q.then(({ data }) => { if (active && data) setMineralModels((data as any[]).filter(m => String(m.kind) === 'mineral').map(m => ({ id: m.id, name: m.name || m.id }))); }).catch(() => {});
+    return () => { active = false; };
+  }, [tenantId]);
   useEffect(() => {
     let q = supabase.from('preset_skins').select('*').eq('type', 'monster');
     if (tenantId) q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
@@ -338,20 +351,60 @@ export default function AdminScenarioManager() {
 
     const g: string[][] = Array.from({ length: rows }, () => Array(cols).fill('.'));
     if (mapType === 'closed') {
-      // Labirinto REAL (recursive backtracker) — conectado e fechado pela borda.
       for (let z = 0; z < rows; z++) for (let x = 0; x < cols; x++) g[z][x] = '#';
-      const stack: [number, number][] = [[1, 1]]; g[1][1] = '.';
-      const dirs: [number, number][] = [[2, 0], [-2, 0], [0, 2], [0, -2]];
-      while (stack.length) {
-        const [cx, cz] = stack[stack.length - 1];
-        const opts: [number, number, number, number][] = [];
-        for (const [dx, dz] of dirs) {
-          const nx = cx + dx, nz = cz + dz;
-          if (nx > 0 && nz > 0 && nx < cols - 1 && nz < rows - 1 && g[nz][nx] === '#') opts.push([nx, nz, cx + dx / 2, cz + dz / 2]);
+      const cw = Math.max(1, Math.min(4, Math.round(Number(c.config.corridorWidth) || 1)));
+      if (cw <= 1) {
+        // Labirinto FINO (recursive backtracker) nas células ímpares; paredes de 1 célula.
+        const stack: [number, number][] = [[1, 1]]; g[1][1] = '.';
+        const dirs: [number, number][] = [[2, 0], [-2, 0], [0, 2], [0, -2]];
+        while (stack.length) {
+          const [cx, cz] = stack[stack.length - 1];
+          const opts: [number, number, number, number][] = [];
+          for (const [dx, dz] of dirs) {
+            const nx = cx + dx, nz = cz + dz;
+            if (nx > 0 && nz > 0 && nx < cols - 1 && nz < rows - 1 && g[nz][nx] === '#') opts.push([nx, nz, cx + dx / 2, cz + dz / 2]);
+          }
+          if (!opts.length) { stack.pop(); continue; }
+          const [nx, nz, wx, wz] = opts[Math.floor(Math.random() * opts.length)];
+          g[wz][wx] = '.'; g[nz][nx] = '.'; stack.push([nx, nz]);
         }
-        if (!opts.length) { stack.pop(); continue; }
-        const [nx, nz, wx, wz] = opts[Math.floor(Math.random() * opts.length)];
-        g[wz][wx] = '.'; g[nz][nx] = '.'; stack.push([nx, nz]);
+        // MAIS LABIRINTO: conecta corredores paralelos (cria loops/atalhos).
+        for (let z = 1; z < rows - 1; z++) for (let x = 1; x < cols - 1; x++) {
+          if (g[z][x] !== '#') continue;
+          const L = g[z][x - 1] !== '#', R = g[z][x + 1] !== '#', U = g[z - 1][x] !== '#', D = g[z + 1][x] !== '#';
+          const horiz = L && R && !U && !D;
+          const vert = U && D && !L && !R;
+          if ((horiz || vert) && Math.random() < 0.4) g[z][x] = '.';
+        }
+      } else {
+        // Labirinto GROSSO: corredores com largura `cw` (2-4) e paredes de 2 células.
+        const WW = 2, S = cw + WW;
+        const nI = Math.max(2, Math.floor((cols - 1) / S));
+        const nJ = Math.max(2, Math.floor((rows - 1) / S));
+        const roomX = (i: number) => 1 + i * S, roomZ = (j: number) => 1 + j * S;
+        const visited = Array.from({ length: nJ }, () => Array(nI).fill(false));
+        const openCell = (x: number, z: number) => { if (x > 0 && z > 0 && x < cols - 1 && z < rows - 1) g[z][x] = '.'; };
+        const carveRoom = (x: number, z: number) => { for (let dz = 0; dz < cw; dz++) for (let dx = 0; dx < cw; dx++) openCell(x + dx, z + dz); };
+        const stack: [number, number][] = [[0, 0]]; visited[0][0] = true;
+        while (stack.length) {
+          const [i, j] = stack[stack.length - 1];
+          carveRoom(roomX(i), roomZ(j));
+          const opts: [number, number, number, number][] = [];
+          for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+            const ni = i + di, nj = j + dj;
+            if (ni >= 0 && nj >= 0 && ni < nI && nj < nJ && !visited[nj][ni]) opts.push([ni, nj, di, dj]);
+          }
+          if (!opts.length) { stack.pop(); continue; }
+          const [ni, nj, di] = opts[Math.floor(Math.random() * opts.length)];
+          if (di !== 0) { // corredor horizontal
+            const x0 = Math.min(roomX(i), roomX(ni)), x1 = Math.max(roomX(i), roomX(ni));
+            for (let x = x0; x <= x1; x++) for (let dz = 0; dz < cw; dz++) openCell(x, roomZ(j) + dz);
+          } else { // corredor vertical
+            const z0 = Math.min(roomZ(j), roomZ(nj)), z1 = Math.max(roomZ(j), roomZ(nj));
+            for (let z = z0; z <= z1; z++) for (let dx = 0; dx < cw; dx++) openCell(roomX(i) + dx, z);
+          }
+          visited[nj][ni] = true; stack.push([ni, nj]);
+        }
       }
     }
     // Borda SEMPRE fechada (contenção).
@@ -397,26 +450,8 @@ export default function AdminScenarioManager() {
           cuts.push({ axis, pos });
         }
       }
-    } else if (doors > 0 && mapType === 'closed') {
-      // Setores no labirinto: cortes (V ou H) com uma passagem virada em porta.
-      const axis: 'v' | 'h' = Math.random() < 0.5 ? 'v' : 'h';
-      for (let b = 1; b <= doors; b++) {
-        const total = (axis === 'v' ? cols : rows) - 1;
-        const pos = Math.max(1, Math.min((axis === 'v' ? cols : rows) - 2, Math.round(total * b / (doors + 1))));
-        if (axis === 'v') {
-          const openings: number[] = []; for (let z = 1; z < rows - 1; z++) if (g[z][pos] === '.') openings.push(z);
-          for (let z = 1; z < rows - 1; z++) g[z][pos] = '#';
-          const dz = openings.length ? openings[Math.floor(Math.random() * openings.length)] : 1 + Math.floor(Math.random() * (rows - 2));
-          g[dz][pos] = 'D'; doorTypeCells[`${pos},${dz}`] = doorTypeId();
-        } else {
-          const openings: number[] = []; for (let x = 1; x < cols - 1; x++) if (g[pos][x] === '.') openings.push(x);
-          for (let x = 1; x < cols - 1; x++) g[pos][x] = '#';
-          const dx = openings.length ? openings[Math.floor(Math.random() * openings.length)] : 1 + Math.floor(Math.random() * (cols - 2));
-          g[pos][dx] = 'D'; doorTypeCells[`${dx},${pos}`] = doorTypeId();
-        }
-        cuts.push({ axis, pos });
-      }
     }
+    // (Modo FECHADO não usa cortes de setor: o labirinto fica todo conectado.)
 
     // --- INÍCIO aleatório (fora da sala do boss / no primeiro setor) e FIM no ponto MAIS DISTANTE ---
     const isOpen = (x: number, z: number) => freeFor(x, z) && g[z][x] !== '#';
@@ -1039,6 +1074,7 @@ export default function AdminScenarioManager() {
                     </select>
                   </div>
                   <div style={{ width: 130 }}><label style={labelStyle}>Portas (-1=sem, 0=auto)</label><input type="number" min={-1} style={inputStyle} value={current.config.genDoors ?? 0} onChange={e => patchConfig({ genDoors: Math.max(-1, parseInt(e.target.value) || 0) })} /></div>
+                  <div style={{ width: 160 }}><label style={labelStyle}>Largura do corredor (1-4)</label><input type="number" min={1} max={4} style={inputStyle} value={current.config.corridorWidth ?? 1} onChange={e => patchConfig({ corridorWidth: Math.max(1, Math.min(4, parseInt(e.target.value) || 1)) })} /></div>
                   <div style={{ width: 110 }}><label style={labelStyle}>Baús (0=auto)</label><input type="number" min={0} style={inputStyle} value={current.config.genChests ?? 0} onChange={e => patchConfig({ genChests: parseInt(e.target.value) || 0 })} /></div>
                   <div style={{ width: 130 }}><label style={labelStyle}>Monstros (0=auto)</label><input type="number" min={0} style={inputStyle} value={current.config.genMonsterCount ?? 0} onChange={e => patchConfig({ genMonsterCount: Math.max(0, parseInt(e.target.value) || 0) })} /></div>
                   <div style={{ width: 150 }}><label style={labelStyle}>Rochas (-1=sem, 0=auto)</label><input type="number" min={-1} style={inputStyle} value={current.config.genRocks ?? 0} onChange={e => patchConfig({ genRocks: Math.max(-1, parseInt(e.target.value) || 0) })} /></div>
@@ -1057,6 +1093,27 @@ export default function AdminScenarioManager() {
                     </div>
                   )}
                 </div>
+                {mineralModels.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <label style={labelStyle}>💎 Veios minerais que podem nascer (chance rara; cooldown por tipo)</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4 }}>
+                      {mineralModels.map(mm => {
+                        const on = (current.config.mineralVeins || []).includes(mm.id);
+                        return (
+                          <label key={mm.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={on} onChange={e => {
+                              const arr = new Set(current.config.mineralVeins || []);
+                              if (e.target.checked) arr.add(mm.id); else arr.delete(mm.id);
+                              patchConfig({ mineralVeins: [...arr] });
+                            }} style={{ accentColor: 'var(--gold-primary)' }} />
+                            {mm.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 2 }}>Nasce 1 veio se o mapa passar de 100 (0,777%) e um 2º se passar de 200 (0,123%). Esgotado, fica 1h de resfriamento (2h se 2 do mesmo tipo).</div>
+                  </div>
+                )}
               </div>
               {tool === 'wall' && current.config.wallTypes.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>

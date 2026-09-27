@@ -86,6 +86,15 @@ const SCENERY_KINDS: { value: string; label: string }[] = [
   { value: 'rock', label: '🪨 Pedra/Rocha' },
   { value: 'water', label: '💧 Água (bloco inteiro)' },
   { value: 'floor', label: '🧱 Chão (bloco)' },
+  { value: 'mineral', label: '💎 Veio mineral (HP + minério)' },
+];
+// Temas de cenário (batem com o themeKey do mapa). Vazio no modelo = aparece em TODOS.
+const SCENE_THEMES: { value: string; label: string }[] = [
+  { value: 'plains', label: '🌱 Planície Verdejante' },
+  { value: 'desert', label: '🏜️ Deserto' },
+  { value: 'nether', label: '🔥 Nether Vulcânico' },
+  { value: 'tundra', label: '❄️ Tundra Congelada' },
+  { value: 'end', label: '🌌 O Fim (apocalíptico)' },
 ];
 
 export default function Admin3DModelsManager() {
@@ -122,6 +131,15 @@ export default function Admin3DModelsManager() {
   // Cenário / Animais
   const [sceneryKind, setSceneryKind] = useState('tree');
   const [scenerySoundUrl, setScenerySoundUrl] = useState('');
+  // Veio mineral (kind='mineral'): HP, defesa, minério que dropa e quantidade.
+  const [veinHp, setVeinHp] = useState(800);
+  const [veinDef, setVeinDef] = useState(15);
+  const [veinItemId, setVeinItemId] = useState('');
+  const [veinDropMin, setVeinDropMin] = useState(1);
+  const [veinDropMax, setVeinDropMax] = useState(7);
+  // Temas em que o modelo aparece (vazio = todos).
+  const [sceneryThemes, setSceneryThemes] = useState<string[]>([]);
+  const [animalThemes, setAnimalThemes] = useState<string[]>([]);
   const [animalLines, setAnimalLines] = useState('');
   const [renderScale, setRenderScale] = useState(1);
   const [renderHeight, setRenderHeight] = useState(1);
@@ -230,6 +248,16 @@ export default function Admin3DModelsManager() {
       setRenderScale(model.renderScale ?? 1);
       setRenderHeight(model.renderHeight ?? 1);
       setAnimalConfig((model as any).config || {});
+      {
+        const vc = (model as any).config || {};
+        setVeinHp(Number(vc.veinHp) || 800);
+        setVeinDef(Number(vc.veinDef) || 15);
+        setVeinItemId(String(vc.veinItemId || ''));
+        setVeinDropMin(Number(vc.veinDropMin) || 1);
+        setVeinDropMax(Number(vc.veinDropMax) || 7);
+        setSceneryThemes(Array.isArray(vc.themes) ? vc.themes : []);
+        setAnimalThemes(Array.isArray(vc.themes) ? vc.themes : []);
+      }
     } else {
       setEditingId(null);
       setName('');
@@ -258,6 +286,8 @@ export default function Admin3DModelsManager() {
       setRenderScale(1);
       setRenderHeight(1);
       setAnimalConfig({});
+      setVeinHp(800); setVeinDef(15); setVeinItemId(''); setVeinDropMin(1); setVeinDropMax(7);
+      setSceneryThemes([]); setAnimalThemes([]);
     }
     setIsModalOpen(true);
   };
@@ -341,11 +371,22 @@ export default function Admin3DModelsManager() {
         data.render_height = Math.max(0.1, Math.min(8, renderHeight || 1));
         data.sound_url = scenerySoundUrl.trim() || null;
         data.is_active = false;
+        // Temas + (se veio mineral) HP/defesa/minério no config (lidos pelo mapa).
+        data.config = {
+          ...(sceneryKind === 'mineral' ? {
+            veinHp: Math.max(1, veinHp || 800),
+            veinDef: Math.max(1, veinDef || 15),
+            veinItemId: veinItemId.trim(),
+            veinDropMin: Math.max(1, veinDropMin || 1),
+            veinDropMax: Math.max(1, veinDropMax || 7),
+          } : {}),
+          themes: sceneryThemes,
+        };
       } else if (category === 'animal') {
         data.sound_url = scenerySoundUrl.trim() || null;
         data.lines = animalLines.trim() || null;
         data.render_scale = Math.max(0.1, Math.min(10, renderScale || 1));
-        data.config = animalConfig || {};
+        data.config = { ...(animalConfig || {}), themes: animalThemes };
         data.is_active = false;
       }
 
@@ -548,7 +589,7 @@ export default function Admin3DModelsManager() {
           return (
             <button
               key={cat}
-              onClick={() => setActiveTab(cat)}
+              onClick={() => { setActiveTab(cat); setCategory(cat); }}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 padding: '0.5rem 1.25rem', borderRadius: '8px',
@@ -690,6 +731,19 @@ export default function Admin3DModelsManager() {
               <div style={{ marginBottom: '1rem', padding: '0.75rem', borderRadius: 8, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
                 {category === 'scenery' && (
                   <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>Temas em que aparece (vazio = todos)</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                      {SCENE_THEMES.map(t => (
+                        <label key={t.value} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={sceneryThemes.includes(t.value)} onChange={e => setSceneryThemes(prev => e.target.checked ? [...new Set([...prev, t.value])] : prev.filter(x => x !== t.value))} style={{ accentColor: 'var(--gold-primary)' }} />
+                          {t.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {category === 'scenery' && (
+                  <div style={{ marginBottom: '0.75rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Tipo de cenário</label>
                     <select value={sceneryKind} onChange={e => setSceneryKind(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}>
                       {SCENERY_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
@@ -697,6 +751,31 @@ export default function Admin3DModelsManager() {
                     <span style={{ display: 'block', marginTop: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
                       💧 Água e 🧱 Chão preenchem o BLOCO inteiro (não são pintura): a altura vem do campo "Altura (blocos)".
                     </span>
+                  </div>
+                )}
+                {category === 'scenery' && sceneryKind === 'mineral' && (
+                  <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.75rem', padding: '0.6rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8 }}>
+                    <div style={{ width: 110 }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>HP do veio</label>
+                      <input type="number" min={1} value={veinHp} onChange={e => setVeinHp(Math.max(1, parseInt(e.target.value) || 800))} style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    </div>
+                    <div style={{ width: 110 }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Defesa (dureza)</label>
+                      <input type="number" min={1} value={veinDef} onChange={e => setVeinDef(Math.max(1, parseInt(e.target.value) || 15))} style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    </div>
+                    <div style={{ flex: '1 1 220px' }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>ID do item minério (bruto) que dropa</label>
+                      <input value={veinItemId} onChange={e => setVeinItemId(e.target.value)} placeholder="ex: cobre_bruto" style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    </div>
+                    <div style={{ width: 80 }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Drop mín</label>
+                      <input type="number" min={1} value={veinDropMin} onChange={e => setVeinDropMin(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    </div>
+                    <div style={{ width: 80 }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Drop máx</label>
+                      <input type="number" min={1} value={veinDropMax} onChange={e => setVeinDropMax(Math.max(1, parseInt(e.target.value) || 7))} style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    </div>
+                    <div style={{ flexBasis: '100%', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>O veio encolhe conforme o dano e solta 1–{veinDropMax} minérios com 10% de chance por golpe. Ele quebra com picareta ou arma de Peso &gt; Defesa.</div>
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -713,6 +792,25 @@ export default function Admin3DModelsManager() {
                         <option value="x">Frente para a direita (+X)</option>
                         <option value="-x">Frente para a esquerda (-X)</option>
                       </select>
+                    </div>
+                  )}
+                  {category === 'animal' && (
+                    <div style={{ flexBasis: '100%', marginTop: '0.5rem' }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>Temas em que o animal aparece (vazio = todos)</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                        {SCENE_THEMES.map(t => (
+                          <label key={t.value} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={animalThemes.includes(t.value)} onChange={e => setAnimalThemes(prev => e.target.checked ? [...new Set([...prev, t.value])] : prev.filter(x => x !== t.value))} style={{ accentColor: 'var(--gold-primary)' }} />
+                            {t.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {category === 'animal' && url && (
+                    <div style={{ flexBasis: '100%', marginTop: '0.5rem' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Pré-visualização do modelo (arraste p/ girar)</label>
+                      <InteractiveModelPreview modelUrl={url} size={220} zoom={previewZoom} offsetX={previewOffsetX} offsetY={previewOffsetY} rotY={previewRotY} onZoomChange={setPreviewZoom} onOffsetXChange={setPreviewOffsetX} onOffsetYChange={setPreviewOffsetY} onRotYChange={setPreviewRotY} />
                     </div>
                   )}
                   {category === 'scenery' && (

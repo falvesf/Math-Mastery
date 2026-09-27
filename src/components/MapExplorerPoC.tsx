@@ -14,7 +14,7 @@ import { calculateTotalStats } from '../lib/gacha';
 import { RANKS, getRankForXp } from '../lib/ranks';
 import { fetchActiveCoin, fetchActiveChest, fetchActiveDoor, fetchModelsByCategory, fetchSceneryModels, fetchAnimalModels, isImageUrl } from '../lib/model3d';
 import { calculatePlayerHitDamage } from '../lib/combatDamage';
-import { getEquippedDamageEffectInfo } from '../lib/damageEffects';
+import { getEquippedDamageEffectInfo, FATALITY_BY_EFFECT, getFatalityLabel } from '../lib/damageEffects';
 import { resolveConsumableEffect } from '../lib/consumableEffects';
 import { playConsumableSound, resolveAudioUrl } from '../lib/audioBank';
 import { fetchPlayerBattleQuotes, pickPlayerBattleQuote, type PlayerBattleQuotes } from '../lib/playerQuotes';
@@ -290,6 +290,14 @@ const [sfxOn, setSfxOn] = useState(false);
   const [doorQuestion, setDoorQuestion] = useState<any>(null);
   const [doorBusy, setDoorBusy] = useState(false);
   const [doorTarget, setDoorTarget] = useState<any>(null);
+  // LUTA CONTRA O BOSS por PERGUNTAS. HP = 10x o configurado do boss; cada acerto tira `perHit`.
+  const [bossFight, setBossFight] = useState<any>(null);
+  const [bossFeedback, setBossFeedback] = useState<string | null>(null);
+  const [bossFlash, setBossFlash] = useState<string | null>(null);
+  const bossBaseHpRef = useRef(300);
+  const bossFightRef = useRef<any>(null);
+  const bossAnswerRef = useRef<(i: number) => void>(() => {});
+  const bossFinishRef = useRef<() => void>(() => {});
   const [puffs, setPuffs] = useState<any[]>([]);
   const [hint, setHint] = useState('');
   const mountRef = useRef<HTMLDivElement>(null);
@@ -415,8 +423,10 @@ const [sfxOn, setSfxOn] = useState(false);
     if (idx === q.correctIndex) { setMsg('✅ Resposta correta! A porta se abriu.'); openDoorRef.current(t.x, t.z); }
     else { setMsg('❌ Resposta errada! Monstros surgiram perto da porta.'); doorWrongRef.current(t.x, t.z); }
   };
-  // Pausa o cenário enquanto a pergunta da porta está aberta.
-  gamePausedRef.current = !!doorQuestion || doorBusy;
+  // Pausa o cenário só enquanto a pergunta da porta OU a PERGUNTA do boss está aberta
+  // (na luta do boss, a ação flui e só pausa no momento do contato/pergunta).
+  gamePausedRef.current = !!doorQuestion || doorBusy || (!!bossFight && !bossFight.done && !!bossFight.question);
+  bossFightRef.current = bossFight;
 
   // Busca os itens equipados (para o personagem 3D), consumíveis e modelos padrão (moeda/baú).
   useEffect(() => {
@@ -490,7 +500,7 @@ const [sfxOn, setSfxOn] = useState(false);
             baseAttributeValue: da.baseAttributeValue, adds: da.adds, fixedAttributes: da.fixedAttributes, forgeConfig: da.forgeConfig,
             damageEffect: da.damageEffect, battleSoundUrl: da.battleSoundUrl, criticalSoundUrl: da.criticalSoundUrl,
             gameModelUrl: da.gameModelUrl, modelTextureUrl: da.modelTextureUrl, minecraftHeadValue: da.minecraftHeadValue,
-            modelTransforms: da.modelTransforms, backColor: da.backColor || '', forgeLevel: da.forgeLevel || 0,
+            modelTransforms: da.modelTransforms, backColor: da.backColor || '', forgeLevel: da.forgeLevel || 0, rarity: (da as any).rarity, weight: (da as any).weight,
           } as EquippedItem);
         }
         if (da.itemType !== 'consumable' || d.equipped || !USEFUL_CONSUMABLE_EFFECTS.has(da.gameEffect)) return;
@@ -536,7 +546,7 @@ if (!cancelled) {
         const t = await buildTemplate(sm, 'scenery'); if (!t) continue;
         const kind = String((sm as any).kind || 'tree');
         const arr = sceneryMap.get(kind) || [];
-        arr.push({ id: (sm as any).id, template: t, scale: Number((sm as any).renderScale) || 1, height: Number((sm as any).renderHeight) || 1, soundUrl: (sm as any).soundUrl || '' });
+        arr.push({ id: (sm as any).id, template: t, scale: Number((sm as any).renderScale) || 1, height: Number((sm as any).renderHeight) || 1, soundUrl: (sm as any).soundUrl || '', config: (sm as any).config || {}, name: (sm as any).name || '', kind });
         sceneryMap.set(kind, arr);
       }
       if (!cancelled) sceneryByKindRef.current = sceneryMap;
@@ -621,6 +631,8 @@ if (!cancelled) {
   const handInventoryRef = useRef<EquippedItem[]>([]);
   const equipHandRef = useRef<(itemId: string | null) => void>(() => {});
   const [handOptions, setHandOptions] = useState<{ id: string; title: string; imageUrl?: string; isPickaxe: boolean }[]>([]);
+  const [handPage, setHandPage] = useState(0);
+  const [handActiveShieldId, setHandActiveShieldId] = useState<string | null>(null);
   const [handActiveId, setHandActiveId] = useState<string | null>(null);
   const [handViewPickaxes, setHandViewPickaxes] = useState(false);
 
@@ -833,19 +845,27 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
         }
       }, 50);
     };
-    // Batalha (o boss assume a partir daqui). Em modo embutido (dentro da missão),
-    // avisa o pai para fazer a transição FF, levando o HP restante do cenário.
-    const triggerBossBattle = () => {
+    // LUTA do boss em TEMPO REAL: o boss fica ATIVO (persegue/luta). A pergunta só abre no
+    // CONTATO físico (o boss acerta o jogador, ou o jogador ataca o boss).
+    const startBossFight = (source: 'player' | 'boss') => {
       if (disposed) return;
-      if (onBossTouched) {
-        onBossTouched(playerHeartsRun);
-        disposed = true;
-        return;
-      }
-      callbacks.current.setBossTouched(true);
-      disposed = true;
+      const baseHp = Math.max(50, Number(bossBaseHpRef.current) || 300);
+      const cur = bossFightRef.current;
+      const bf = cur
+        ? { ...cur, qSource: source }
+        : { hp: baseHp * 10, maxHp: baseHp * 10, qIndex: 0, perHit: baseHp, question: null, done: false, fatality: false, qSource: source };
+      bossFightRef.current = bf; setBossFight(bf);
+      setBossFeedback(null);
+      pickDoorQuestion().then(q => { const c = bossFightRef.current; if (c && !c.done) { const nb = { ...c, question: q }; bossFightRef.current = nb; setBossFight(nb); } });
     };
-    // Chefe toca o jogador: toca o GRUNIDO do chefe e SÓ DEPOIS inicia a batalha.
+    // Abre uma pergunta por CONTATO (boss acertou o jogador OU o jogador atacou o boss).
+    const openBossQuestion = (source: 'player' | 'boss') => {
+      const cur = bossFightRef.current;
+      if (cur && (cur.done || cur.question)) return; // já tem pergunta aberta/terminou
+      startBossFight(source);
+    };
+    const triggerBossBattle = () => { if (!disposed) startBossFight('boss'); };
+    // Chefe toca o jogador: toca o GRUNIDO do chefe e SÓ DEPOIS começa a luta.
     const bossGruntThenBattle = (gruntUrl: string) => {
       fadeOutMapMusic();
       if (gruntUrl) {
@@ -858,6 +878,84 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
       } else {
         window.setTimeout(triggerBossBattle, 400);
       }
+    };
+    // Responde: ACERTO → o HP REAL do boss (barra acima da cabeça) cai conforme a força da arma,
+    // com hurt + tint vermelho; ERRO → o boss ESQUIVA (não perde HP) e te acerta (hurt + tint).
+    bossAnswerRef.current = (choiceIdx: number) => {
+      const bf = bossFightRef.current;
+      if (!bf || bf.done || !bf.question) return;
+      const correct = choiceIdx === bf.question.correctIndex;
+      const qIndex = bf.qIndex + 1;
+      if (correct) {
+        const dmg = Math.max(1, Math.round(activeWeaponAtk || bf.perHit || 50));
+        try {
+          if (bossSlime) {
+            bossSlime.hp = Math.max(0, bossSlime.hp - dmg);
+            flashMonster(bossSlime); playMonsterHurtSound(bossSlime); speakMonster(bossSlime, 'hurt');
+            spawnPop(new THREE.Vector3(bossSlime.root.position.x, (bossSlime.barY || 1.5) + 0.4, bossSlime.root.position.z), `-${dmg}`, false);
+          }
+        } catch { /* noop */ }
+        try { playFx(battleSoundsRef.current.punch, 0.8); } catch { /* noop */ }
+        setBossFeedback(`✅ Acertou! Você tirou ${dmg} do chefe!`);
+      } else {
+        setBossFeedback('❌ Errou! O chefe esquivou e te acertou!');
+        hurtPlayer(1, '❌ Errou! O chefe esquivou e te acertou! -1 ❤️');
+        try { if (bossSlime) { bossSlime.lunge = 0.42; bossSlime.lungeHit = true; } } catch { /* noop */ }
+        try { applyBossMeleeEffect(); } catch { /* noop */ }
+      }
+      const bossHp = bossSlime ? bossSlime.hp : 0;
+      const finished = bossHp <= 0 || qIndex >= 10;
+      const doFatality = finished && bossHp > 0;
+      // Fatalidade conforme o EFEITO/DEFINIÇÃO da arma em punho.
+      const ft = doFatality ? ((weaponEffect && FATALITY_BY_EFFECT[weaponEffect]) ? FATALITY_BY_EFFECT[weaponEffect] : 'death-evaporate') : '';
+      const nb = finished
+        ? { ...bf, hp: Math.max(0, bossHp), qIndex, question: null, done: true, fatality: doFatality, fatalityType: ft }
+        : { ...bf, hp: Math.max(0, bossHp), qIndex, question: null, done: false, fatality: false };
+      bossFightRef.current = nb; setBossFight(nb);
+      if (!finished) window.setTimeout(() => setBossFeedback(null), 900);
+      else if (doFatality) { try { playBossFatality(ft); } catch { /* noop */ } }
+    };
+    // Aplica o EFEITO do golpe MELEE configurado do boss no jogador (conforme nível e chance).
+    const applyBossMeleeEffect = () => {
+      try {
+        const melee = bossAttacksConfig?.melee;
+        if (!melee || melee.enabled === false) return;
+        const lvl = Number((bossSlime as any)?.level) || 1;
+        if (melee.minLevel && lvl < Number(melee.minLevel)) return;
+        const ef = String(melee.effect || 'none');
+        if (ef === 'none' || melee.effectEnabled === false) return;
+        if (melee.effectMinLevel && lvl < Number(melee.effectMinLevel)) return;
+        const chance = Number(melee.effectChance ?? 100) + Math.max(0, lvl - Number(melee.effectMinLevel || 1)) * Number(melee.effectChancePerLevel ?? 3);
+        if (Math.random() * 100 >= chance) return;
+        if (ef === 'bleed' || ef === 'poison') playerBleedUntil = performance.now() + 4000;
+        const label: any = { bleed: '🩸 Sangramento', poison: '☠️ Veneno', burn: '🔥 Queimadura', freeze: '❄️ Congelamento', electric: '⚡ Choque' };
+        callbacks.current.setMsg(`${label[ef] || ef} — o chefe usou um golpe com efeito!`);
+      } catch { /* noop */ }
+    };
+    // FATALITY (golpe final): efeito conforme o tipo da arma + remove o corpo do boss.
+    const playBossFatality = (type: string) => {
+      try {
+        if (bossSlime) {
+          const gx = Math.round(bossSlime.root.position.x + (COLS - 1) / 2);
+          const gz = Math.round(bossSlime.root.position.z + (ROWS - 1) / 2);
+          const col = type === 'death-evaporate' ? 0x9ca3af : type === 'death-slice' ? 0xef4444 : type === 'death-fall' ? 0x7c3aed : 0xff8800;
+          spawnShatter(gx, gz, col);
+          try { playFx(battleSoundsRef.current.fatalEvaporate || battleSoundsRef.current.punch, 0.9); } catch { /* noop */ }
+          try { bossSlime.hp = 0; bossSlime.root.visible = false; if (bossSlime.bar) bossSlime.bar.visible = false; if (bossSlime.label) bossSlime.label.visible = false; } catch { /* noop */ }
+        }
+      } catch { /* noop */ }
+      setBossFlash(type);
+      window.setTimeout(() => setBossFlash(null), 900);
+    };
+    // Encerra a luta (vitória/fatality): remove o boss e conclui o mapa.
+    bossFinishRef.current = () => {
+      try {
+        if (bossSlime) { bossSlime.hp = 0; bossSlime.root.visible = false; if (bossSlime.bar) bossSlime.bar.visible = false; if (bossSlime.label) bossSlime.label.visible = false; }
+      } catch { /* noop */ }
+      setBossFight(null); setBossFeedback(null);
+      callbacks.current.setMsg('🏆 Chefe derrotado!');
+      if (onBossTouched) { onBossTouched(0); disposed = true; }
+      else { callbacks.current.setCoins((n: number) => n + 100); }
     };
     // Materiais por TIPO de parede (4 estágios de trinca), tingidos pela cor do tipo.
     const wallTypeMats: Record<string, any[]> = {};
@@ -974,26 +1072,50 @@ type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: nu
     const slimeGeo = new THREE.SphereGeometry(0.4, 14, 12);
     const rockGeo = new THREE.DodecahedronGeometry(0.4, 0); const rockMat = new THREE.MeshStandardMaterial({ color: 0x9c8a7a, roughness: 0.9 });
     // Rocha: usa o .glb do cenário (tipo 'rock') se houver; senão fallback VARIADO (formas/tamanhos).
-    const mkRock = (x: number, z: number): THREE.Object3D => {
-      const tmpls = sceneryByKindRef.current.get('rock') || [];
+    // Filtra modelos de cenário/animal pelo TEMA do mapa (config.themes vazio = todos).
+    const themeAllowed = (cfg: any) => { const th = cfg?.themes; return !Array.isArray(th) || th.length === 0 || th.includes(themeKey); };
+    const sceneryFor = (kind: string) => (sceneryByKindRef.current.get(kind) || []).filter((e: any) => themeAllowed(e.config));
+    const mkRock = (x: number, z: number, sizeScale = 1): THREE.Object3D => {
+      const tmpls = sceneryFor('rock');
       let obj: THREE.Object3D;
       if (tmpls.length) {
         const pick = tmpls[Math.floor(Math.random() * tmpls.length)];
         obj = pick.template.clone(true);
-        obj.scale.setScalar((pick.scale || 1) * (0.85 + Math.random() * 0.5));
+        obj.scale.setScalar((pick.scale || 1) * sizeScale * (0.9 + Math.random() * 0.2));
         obj.rotation.y = Math.random() * Math.PI * 2;
         obj.position.set(wx(x), 0, wz(z));
       } else {
         const geos = [new THREE.DodecahedronGeometry(0.42, 0), new THREE.IcosahedronGeometry(0.44, 0), new THREE.DodecahedronGeometry(0.5, 0), new THREE.IcosahedronGeometry(0.34, 0)];
         const geo = geos[Math.floor(Math.random() * geos.length)];
         const m = new THREE.Mesh(geo, rockMat);
-        m.scale.set(0.8 + Math.random() * 0.8, 0.7 + Math.random() * 1.0, 0.8 + Math.random() * 0.8);
+        const s = sizeScale * (0.9 + Math.random() * 0.3);
+        m.scale.set(0.8 * s, 1.0 * s, 0.8 * s);
         m.rotation.set(Math.random() * 0.6, Math.random() * Math.PI * 2, Math.random() * 0.6);
-        m.position.set(wx(x), 0.42, wz(z)); m.castShadow = true;
+        m.position.set(wx(x), 0.42 * sizeScale, wz(z)); m.castShadow = true;
         obj = m;
       }
       scene.add(obj);
       return obj;
+    };
+    // ---- ROCHAS por CLASSE DE TAMANHO (minúscula→grande). HP e DEFESA crescem com o tamanho.
+    const ROCK_SIZES = [
+      { name: 'minúscula', scale: 0.45, hpMin: 100, hpMax: 250, def: 3 },
+      { name: 'pequena', scale: 0.85, hpMin: 250, hpMax: 450, def: 6 },
+      { name: 'média', scale: 1.5, hpMin: 450, hpMax: 700, def: 12 },
+      { name: 'grande', scale: 2.4, hpMin: 700, hpMax: 1000, def: 20 },
+    ];
+    const pickRockSize = () => {
+      const r = Math.random();
+      if (r < 0.35) return ROCK_SIZES[0];
+      if (r < 0.68) return ROCK_SIZES[1];
+      if (r < 0.9) return ROCK_SIZES[2];
+      return ROCK_SIZES[3];
+    };
+    const mkRockSized = (x: number, z: number) => {
+      const size = pickRockSize();
+      const mesh = mkRock(x, z, size.scale);
+      const hp = size.hpMin + Math.floor(Math.random() * (size.hpMax - size.hpMin + 1));
+      return { x, z, mesh, hp, maxHp: hp, def: size.def, sizeScale: size.scale, sizeName: size.name };
     };
     const hzGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.22, 12); const hzMat = new THREE.MeshStandardMaterial({ color: theme.hazardColor, emissive: theme.hazardColor, emissiveIntensity: 0.6 });
     const chestGeo = new THREE.BoxGeometry(0.5, 0.44, 0.4); const chestMat = new THREE.MeshStandardMaterial({ color: 0xb07d3a });
@@ -1161,6 +1283,14 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
                 attack: find(['attack', 'hit', 'strike', 'punch', 'bite', 'claw', 'swing', 'golpe']),
                 idle: find(['idle', 'stand', 'breath', 'pose', 'wait', 'parado']),
               };
+              // GOLPE ESPECIAL configurado (guia Golpes): se houver animação nativa com esse nome,
+              // usa como ATAQUE do monstro/boss.
+              const spCfg: any = (monster as any)?.config?.attacks?.special;
+              const spName = String(spCfg?.animation || '');
+              if (spCfg && spCfg.enabled !== false && spName) {
+                const sp = (gltf.animations as any[]).find((a: any) => String(a.name || '').toLowerCase().includes(spName.toLowerCase()));
+                if (sp) slime.clips.attack = sp;
+              }
               if (slime.clips.walk || slime.clips.attack || slime.clips.idle) {
                 slime.mixer = mixer; slime.hasAnim = true; slime.anim = { current: '', t: 0 };
               }
@@ -1261,9 +1391,14 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
     // Aplica o golpe da criatura no ALVO (jogador ou outra criatura).
     const resolveCreatureHit = (s: Slime, tgt: { x: number; z: number; s?: Slime; player?: boolean; dist: number } | null) => {
       // CHEFE: só inicia a batalha quando o ALVO é o JOGADOR (não ao atacar outra criatura).
-      if (s.isBoss) {
-        if (tgt && !tgt.s && !s.grunting) { s.grunting = true; bossGruntThenBattle(s.gruntUrl || ''); }
-      } else if (tgt && tgt.s) {
+            if (s.isBoss) {
+              if (tgt && !tgt.s) {
+                // Primeiro contato → grunido e começa a luta. Nos contatos seguintes (luta ativa)
+                // → abre a PERGUNTA (dano só depois de responder).
+                if (!bossFightRef.current) { if (!s.grunting) { s.grunting = true; bossGruntThenBattle(s.gruntUrl || ''); } }
+                else openBossQuestion('boss');
+              }
+            } else if (tgt && tgt.s) {
         // Acertou OUTRA criatura (combate monstro ↔ animal).
         damageSlime(tgt.s, s);
       } else {
@@ -1439,7 +1574,7 @@ for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
           rockSpots.push([x, z]);
         }
         for (let i = rockSpots.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = rockSpots[i]; rockSpots[i] = rockSpots[j]; rockSpots[j] = t; }
-        for (const [x, z] of rockSpots.slice(0, cfgGenRocks)) { const hp = 40 + Math.floor(Math.random() * 60); const m = mkRock(x, z); rocks.push({ x, z, mesh: m, hp, maxHp: hp, def: ROCK_DEF }); }
+        for (const [x, z] of rockSpots.slice(0, cfgGenRocks)) rocks.push(mkRockSized(x, z));
       } else {
         for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
           if (grid.wall[z][x]) continue;
@@ -1449,9 +1584,7 @@ for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
           const l = wallAt(x - 1, z), rr = wallAt(x + 1, z), u = wallAt(x, z - 1), d = wallAt(x, z + 1);
           const corridor = (l && rr && !u && !d) || (u && d && !l && !rr);
           if (!corridor || Math.random() > (0.35 + cfgElaboration * 0.45)) continue;
-          const hp = 40 + Math.floor(Math.random() * 60);
-          const m = mkRock(x, z);
-          rocks.push({ x, z, mesh: m, hp, maxHp: hp, def: ROCK_DEF });
+          rocks.push(mkRockSized(x, z));
         }
       }
     }
@@ -1490,16 +1623,57 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     chestCandidates.sort(() => Math.random() - 0.5);
     for (const cc of chestCandidates.slice(0, chestCap)) {
       if (!rocks.some(rk => rk.x === cc.entrance.x && rk.z === cc.entrance.z)) {
-        const hp = 50 + Math.floor(Math.random() * 70);
-        const rm = mkRock(cc.entrance.x, cc.entrance.z);
-        rocks.push({ x: cc.entrance.x, z: cc.entrance.z, mesh: rm, hp, maxHp: hp, def: ROCK_DEF });
+        rocks.push(mkRockSized(cc.entrance.x, cc.entrance.z));
       }
       const m = makeChestVisual(); m.position.set(wx(cc.x), 0.38, wz(cc.z)); m.castShadow = true; scene.add(m);
       chests.push({ x: cc.x, z: cc.z, mesh: m });
     }
     }
 
-// ---- PORTAS (divisórias): é preciso responder uma PERGUNTA para abrir ----
+    // ---- VEIOS MINERAIS (RAROS) — chance pequena, tipos definidos no cenário, cooldown por tipo ----
+    {
+      const veinTmpls = (sceneryByKindRef.current.get('mineral') || []);
+      const selectedVeins = new Set<string>((sc0 as any).mineralVeins || []);
+      const available = veinTmpls.filter((v: any) => selectedVeins.size > 0 && selectedVeins.has(String(v.id)));
+      const maxDim = Math.max(COLS, ROWS);
+      const chance1 = maxDim >= 100 ? 0.00777 : 0;  // 0,777% (mapa > 100)
+      const chance2 = maxDim >= 200 ? 0.00123 : 0;  // 0,123% (mapa = 200) — 2º veio
+      const cdKey = `vein_cd_${(sc0 as any).id || 'default'}`;
+      let cooldown: Record<string, number> = {};
+      try { cooldown = JSON.parse(localStorage.getItem(cdKey) || '{}') || {}; } catch { /* noop */ }
+      const nowMs0 = Date.now();
+      const pickVein = () => {
+        const pool = available.filter((v: any) => !(Number(cooldown[String(v.id)]) > nowMs0));
+        return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+      };
+      const spawnVein = (v: any) => {
+        let gx = 0, gz = 0, okFound = false;
+        for (let i = 0; i < 300; i++) {
+          gx = Math.floor(rnd(1, COLS - 1)); gz = Math.floor(rnd(1, ROWS - 1));
+          if (grid.wall[gz]?.[gx]) continue;
+          if (gx === grid.start.x && gz === grid.start.z) continue;
+          if (rocks.some(r => r.x === gx && r.z === gz)) continue;
+          okFound = true; break;
+        }
+        if (!okFound) return;
+        const cfg = v.config || {};
+        const hp = Math.max(100, Number(cfg.veinHp) || 800);
+        const def = Math.max(1, Number(cfg.veinDef) || 15);
+        const baseScale = (v.scale || 1) * (Number(cfg.veinScale) || 1);
+        const obj = v.template.clone(true);
+        obj.scale.setScalar(baseScale);
+        obj.rotation.y = Math.random() * Math.PI * 2;
+        obj.position.set(wx(gx), 0, wz(gz)); scene.add(obj);
+        rocks.push({ x: gx, z: gz, mesh: obj, hp, maxHp: hp, def, baseScale, isVein: true, veinModelId: v.id, dropItemId: cfg.veinItemId || '', dropMin: Number(cfg.veinDropMin) || 1, dropMax: Number(cfg.veinDropMax) || 7, veinCooldownKey: cdKey, sizeName: cfg.veinName || v.name || 'Veio' });
+        callbacks.current.setMsg(`💎 Encontrado: ${cfg.veinName || v.name || 'veio mineral'}!`);
+      };
+      if (available.length) {
+        if (chance1 > 0 && Math.random() < chance1) { const v = pickVein(); if (v) spawnVein(v); }
+        if (chance2 > 0 && Math.random() < chance2) { const v = pickVein(); if (v) spawnVein(v); }
+      }
+    }
+
+    // ---- PORTAS (divisórias): é preciso responder uma PERGUNTA para abrir ----
     // Material por TIPO de porta (textura custom ou procedural), tingido pela cor.
     const doorTexByType: Record<string, any> = {};
     const doorTexLoader = new THREE.TextureLoader();
@@ -1602,10 +1776,19 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
 // ---- BOSS (extremo oposto) ----
     // Prioridade: monstro da MISSÃO (bossOverride) > boss do cenário > monstro padrão > fallback.
     const bossOverrideMonster = bossOverride && (bossOverride.config || bossOverride.name) ? bossOverride : null;
+    let bossAttacksConfig: any = null;
     const bossMonsterInfo = bossOverrideMonster || (cfgBossMonsterId ? monsterCatalogRef.current.get(String(cfgBossMonsterId)) : null);
     const bossSlime = addMonster(grid.end.x, grid.end.z, 12, bossOverrideMonster ? undefined : (cfgBossMonsterId || (cfgMonsterIds.length ? cfgMonsterIds[0] : '')), bossOverrideMonster || undefined);
     if (bossSlime) {
       bossSlime.isBoss = true;
+      // GOLPES configurados do boss (guia Golpes): usados no ataque/efeito conforme o nível.
+      bossAttacksConfig = (bossOverrideMonster as any)?.config?.attacks || (bossMonsterInfo as any)?.config?.attacks || null;
+      // BOSS tem 10x o HP configurado na edição do monstro (barra real, acima da cabeça).
+      const bossConfiguredHp = Math.max(50, Number(bossSlime.maxHp) || 300);
+      bossBaseHpRef.current = bossConfiguredHp;
+      bossSlime.maxHp = bossConfiguredHp * 10;
+      bossSlime.hp = bossSlime.maxHp;
+      bossSlime.barY = (bossSlime.barY || 1.15) + 0.3;
       bossSlime.vision = 14;
       bossSlime.root.scale.setScalar(1.9);
       bossSlime.gruntUrl = (bossOverrideMonster?.config?.gruntSound) || (bossMonsterInfo?.config?.gruntSound) || '';
@@ -1655,7 +1838,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     };
     // Cenário configurável: usa o .glb/imagem do tipo cadastrado em Moldes 3D → Cenário; senão o fallback.
     const placeScenery = (kind: string, x: number, z: number, fallback: () => THREE.Object3D): THREE.Object3D => {
-      const tmpls = sceneryByKindRef.current.get(kind) || [];
+      const tmpls = sceneryFor(kind);
       if (tmpls.length) {
         const pick = tmpls[Math.floor(Math.random() * tmpls.length)];
         const obj = pick.template.clone(true) as THREE.Object3D;
@@ -1825,7 +2008,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     }
 
     // ---- FAUNA / ANIMAIS (entidades VIVAS: HP, hostilidade, fuga, drops) ----
-    const animalTmpls = animalsRef.current || [];
+    const animalTmpls = (animalsRef.current || []).filter((a: any) => themeAllowed(a.config));
     // Pool de animais: variados (catálogo) ou específicos (por id).
     const animalPool = (cfgAnimalMode === 'specific' && cfgAnimalIds.length) ? animalTmpls.filter((a: any) => cfgAnimalIds.includes(String(a.id))) : animalTmpls;
     const critters: any[] = []; // (legado visual — agora os animais são entidades com IA)
@@ -1903,7 +2086,8 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     // PICARETA DE DEBUG (tecla P): alterna espada/escudo ↔ picareta (25 de dano).
     let debugPickaxe = false;
     let debugPickaxeObj: any = null;
-    const handModels: { model: any; part: string; isPickaxe: boolean }[] = [];
+    const handModels: { model: any; part: string; isPickaxe: boolean; title: string }[] = [];
+    const bagModels = new Map<string, any>(); // modelos de armas da mochila (escondidos até equipar)
     let attackUntil = 0;
     const setPlayerAnim = (name: 'idle' | 'walk' | 'attack' | 'hurt') => {
       if (playerAnim.name === name) return;
@@ -2039,9 +2223,13 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
             parent.add(model);
           };
           if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(p)) {
+            const _isPick = String(item.avatarPart) === 'pickaxe' || /picareta|pickaxe/i.test(String((item as any).itemTitle || '')) || ['tool', 'pickaxe'].includes(String((item as any).itemCategory));
+            // Marca o modelo como ITEM DE MÃO (para o controle de "um por vez" varrer a cena).
+            model.userData.__handItem = true;
+            model.userData.__handCat = _isPick ? 'pickaxe' : (item.itemCategory === 'defense' ? 'shield' : 'weapon');
+            if (!record) model.userData.__handBag = true; // veio da mochila (só aparece se equipado)
             if (record) {
-              const _isPick = String(item.avatarPart) === 'pickaxe' || /picareta|pickaxe/i.test(String((item as any).itemTitle || '')) || ['tool', 'pickaxe'].includes(String((item as any).itemCategory));
-              handModels.push({ model, part: p, isPickaxe: _isPick }); handModelById.set(String((item as any).itemId || (item as any).docId || ''), model);
+              handModels.push({ model, part: p, isPickaxe: _isPick, title: String((item as any).itemTitle || '') }); handModelById.set(String((item as any).itemId || (item as any).docId || ''), model);
             }
           }
           if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(p)) {
@@ -2127,52 +2315,121 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
               } catch { /* noop */ }
             }
           }
-          // Sem modelo real do perfil, não oferece a picareta do perfil no slot.
-          if (profilePickaxe && !profilePickaxeModel) profilePickaxeId = '';
-          const bagPickaxes = handInventoryRef.current.filter(i => isPick(i) && itemKey(i) !== profilePickaxeId);
-          const bagModels = new Map<string, any>();
+          // TODOS os itens de MÃO do jogador (armas, lanças, picaretas...) — perfil + mochila.
+          const weaponModelById = new Map<string, any>();
           const opts: any[] = [];
-          const pushOpt = (item: any) => opts.push({ id: itemKey(item), title: item.itemTitle || 'Picareta', imageUrl: item.imageUrl, isPickaxe: true, value: Math.max(1, Number(item.baseAttributeValue) || statsRef.current.attack) });
-          if (profilePickaxe && profilePickaxeModel) pushOpt(profilePickaxe);
-          for (const item of bagPickaxes) {
+          const seenW = new Set<string>();
+          const addOpt = (item: any, model: any) => {
             const id = itemKey(item);
-            if (!opts.some(o => o.id === id)) pushOpt(item);
-            const src = item.gameModelUrl || item.imageUrl || '';
-            const raw = src ? resolveItemUrl(src) : '';
-            if (!raw) continue;
-            try {
-              if (IMG_EXT_RE.test(raw.split('?')[0])) {
-                const t = resolveModelTransform(item, (cfg as any).gender, (cfg as any).handedness, false);
-                const m = await generateVoxelItemFromImage(raw, item.backColor, t?.curveX || 0, t?.curveY || 0, undefined, 0.12 * (t?.thickness ?? 1));
-                attach(m, item, false); m.visible = false; bagModels.set(id, m);
-              } else {
-                await new Promise<void>((res) => loader.load(raw, (g: any) => { const m = g.scene; attach(m, item, false); m.visible = false; bagModels.set(id, m); res(); }, undefined, () => res()));
+            if (!id || seenW.has(id)) return;
+            seenW.add(id);
+            const isP = isPick(item);
+            opts.push({ id, title: item.itemTitle || (isP ? 'Picareta' : 'Arma'), imageUrl: item.imageUrl, isPickaxe: isP, value: Math.max(1, Number((item as any).baseAttributeValue) || statsRef.current.attack), rarity: (item as any).rarity, item });
+            if (model) weaponModelById.set(id, model);
+          };
+          const handItems = handInventoryRef.current.filter(i => ['hand', 'rightHand', 'leftHand', 'two_handed', 'pickaxe'].includes(String((i as any).avatarPart)));
+          for (const item of handItems) {
+            const id = itemKey(item);
+            let model = handModelById.get(id) || null;
+            if (!model) {
+              const src = (item as any).gameModelUrl || (item as any).imageUrl || '';
+              const raw = src ? resolveItemUrl(src) : '';
+              if (raw) {
+                try {
+                  if (IMG_EXT_RE.test(raw.split('?')[0])) {
+                    const t = resolveModelTransform(item, (cfg as any).gender, (cfg as any).handedness, false);
+                    model = await generateVoxelItemFromImage(raw, (item as any).backColor, t?.curveX || 0, t?.curveY || 0, undefined, 0.12 * (t?.thickness ?? 1));
+                    attach(model, item, false); model.visible = false; bagModels.set(id, model);
+                  } else {
+                    await new Promise<void>((res) => loader.load(raw, (g: any) => { model = g.scene; attach(model, item, false); model.visible = false; bagModels.set(id, model); res(); }, undefined, () => res()));
+                  }
+                } catch { /* noop */ }
               }
-            } catch { /* noop */ }
+            }
+            addOpt(item, model);
           }
-          handPickaxeOptions = opts;
+          // PICARETAS (para a tecla P e o slot vertical), ordenadas por RARIDADE (maior primeiro).
+          const rarityRank = (r: any) => ({ common: 0, comum: 0, uncommon: 1, incomum: 1, rare: 2, raro: 2, epic: 3, epico: 3, 'épico': 3, legendary: 4, lendario: 4, 'lendário': 4 } as any)[String(r || 'common').toLowerCase()] ?? 0;
+          const pickaxeOpts = opts.filter(o => o.isPickaxe).sort((a: any, b: any) => rarityRank(b.rarity) - rarityRank(a.rarity));
+          handPickaxeOptions = pickaxeOpts;
           setHandOptions(opts);
-          // Estado inicial COERENTE: se o perfil veio com picareta equipada, mostra a picareta e esconde a arma.
+          // Estado inicial: se o perfil veio com picareta equipada, mostra ela; senão a arma do perfil.
           if (profilePickaxe && profilePickaxeModel) {
             activePickaxeId = profilePickaxeId;
             activePickaxeValue = Math.max(1, Number((profilePickaxe as any).baseAttributeValue) || statsRef.current.attack);
             activePickaxeModel = profilePickaxeModel;
+            activeWeaponTitle = (profilePickaxe as any).itemTitle || 'Picareta';
             setHandActiveId(profilePickaxeId);
             for (const h of handModels) h.model.visible = (h.model === profilePickaxeModel);
           }
+          // Equipar QUALQUER arma: esconde TODOS os modelos de arma (perfil + mochila) e mostra só o escolhido.
+          const allWeaponModels = new Set<any>();
+          handModels.forEach(h => { if (h.model) allWeaponModels.add(h.model); });
+          handModelById.forEach(m => { if (m) allWeaponModels.add(m); });
+          bagModels.forEach(m => { if (m) allWeaponModels.add(m); });
+          const hideAllWeapons = () => { allWeaponModels.forEach(m => { try { (m as any).visible = false; } catch { /* noop */ } }); };
+          // PERSISTE no perfil (user_items.equipped), como o StudentInventory: equipar troca a arma
+          // (duas-mãos substitui tudo; escudo substitui escudo; arma substitui arma/duas-mãos).
+          const persistHandEquip = (choice: any) => {
+            const uid = (userData as any)?.uid; if (!uid || !choice) return;
+            const HAND = ['hand', 'rightHand', 'leftHand', 'two_handed', 'pickaxe'];
+            const selDoc = String(choice.docId || '');
+            const isTwo = choice.avatarPart === 'pickaxe' || choice.avatarPart === 'two_handed';
+            const isDef = choice.itemCategory === 'defense';
+            for (const it of handInventoryRef.current) {
+              if (!HAND.includes(String((it as any).avatarPart))) continue;
+              const did = String((it as any).docId || ''); if (!did) continue;
+              let eq: boolean | null = null;
+              if (did === selDoc) eq = true;
+              else {
+                const oTwo = (it as any).avatarPart === 'pickaxe' || (it as any).avatarPart === 'two_handed';
+                const oDef = (it as any).itemCategory === 'defense';
+                if (isTwo) eq = false;
+                else if (isDef) eq = oDef ? false : null;
+                else eq = (oTwo || !oDef) ? false : null;
+              }
+              if (eq !== null) supabase.from('user_items').update({ equipped: eq }).eq('id', did).then(() => {}, () => {});
+            }
+          };
+          const persistUnequip = (choice: any) => {
+            const uid = (userData as any)?.uid; const did = String(choice?.docId || '');
+            if (!uid || !did) return;
+            supabase.from('user_items').update({ equipped: false }).eq('id', did).then(() => {}, () => {});
+          };
           equipHandRef.current = (id: string | null) => {
-            const picking = !!id;
-            // Picareta é item de DUAS MÃOS: no modo picareta esconde arma E escudo do perfil.
-            for (const h of handModels) h.model.visible = picking ? (h.isPickaxe && h.model === profilePickaxeModel) : !h.isPickaxe;
-            if (picking && profilePickaxeModel && id === profilePickaxeId) profilePickaxeModel.visible = true;
-            bagModels.forEach((m, mid) => { m.visible = picking && mid === id; });
-            activePickaxeId = picking ? id : null;
-            activePickaxeValue = picking ? (opts.find(o => o.id === id)?.value || 0) : 0;
-            activePickaxeModel = picking ? ((id === profilePickaxeId ? profilePickaxeModel : bagModels.get(id as string)) || null) : null;
+            const opt = id ? opts.find(o => o.id === id) : null;
+            const item: any = opt?.item;
+            const isShield = !!(item && item.itemCategory === 'defense');
+            const model = id ? (weaponModelById.get(id) || null) : null;
+            if (isShield) {
+              // ESCUDO (mão oposta): NÃO mexe na arma. Clicar no mesmo desequipa; em outro, troca.
+              if (id && activeShieldModel === model) { activeShieldModel = null; activeShieldId = null; try { persistUnequip(item); } catch { /* noop */ } }
+              else { activeShieldModel = model; activeShieldId = id; try { persistHandEquip(item); } catch { /* noop */ } }
+            } else if (id) {
+              // ARMA (ataque/picareta): NÃO mexe no escudo. Clicar na mesma desequipa; em outra, troca.
+              if (activePickaxeModel === model) {
+                activePickaxeModel = null; activePickaxeId = null; activeWeaponTitle = '';
+                activePickaxeValue = 0; activeWeaponAtk = 0; activeWeaponWeight = 0;
+                try { persistUnequip(item); } catch { /* noop */ }
+              } else {
+                activePickaxeModel = model; activePickaxeId = id; activeWeaponTitle = opt?.title || '';
+                activeWeaponAtk = opt?.value || statsRef.current.attack;
+                activeWeaponWeight = Number((item as any)?.weight) || 0;
+                // SÓ a PICARETA quebra como picareta; outras armas usam o PESO (se houver).
+                activePickaxeValue = opt?.isPickaxe ? (opt?.value || statsRef.current.attack) : 0;
+                try { persistHandEquip(item); } catch { /* noop */ }
+              }
+            } else {
+              // id nulo: limpa arma e escudo (volta ao padrão do perfil)
+              activePickaxeModel = null; activePickaxeId = null; activeWeaponTitle = '';
+              activePickaxeValue = 0; activeWeaponAtk = 0; activeWeaponWeight = 0;
+              activeShieldModel = null; activeShieldId = null;
+            }
             debugPickaxe = false;
-            setHandActiveId(id);
-            callbacks.current.setMsg(picking ? `⛏️ Equipou: ${opts.find(o => o.id === id)?.title || 'picareta'}` : '⚔️ Voltou para a arma.');
-            if (firstPerson) buildFpWeapon(true);
+            setHandActiveId(activePickaxeId);
+            setHandActiveShieldId(activeShieldId);
+            callbacks.current.setMsg(id ? `⚔️ ${isShield ? 'Escudo' : 'Arma'} equipado: ${opt?.title || ''}` : '⚔️ Voltou para a arma padrão.');
+            buildFpWeapon(true); // SEMPRE reconstrói o item da 1ª pessoa (mesmo equipando em 3ª)
           };
         }
         callbacks.current.setMsg('✅ Personagem 3D carregado! Explore o mapa até o BOSS.');
@@ -2232,6 +2489,11 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     let activePickaxeValue = hasRealPickaxe ? pickaxePower : 0;
     let activePickaxeId: string | null = null;
     let activePickaxeModel: any = null;
+    let activeWeaponTitle = '';   // título do item ativo (define espada/lança/picareta na 1ª pessoa)
+    let activeWeaponAtk = 0;      // poder de ataque da arma EQUIPADA (dano em monstros)
+    let activeWeaponWeight = 0;   // PESO da arma equipada (>= defesa da pedra/parede → quebra)
+    let activeShieldModel: any = null; // ESCUDO ativo (mão oposta) — independente da arma
+    let activeShieldId: string | null = null;
     let handPickaxeOptions: any[] = [];
     const pickaxeActivePower = () => (activePickaxeValue > 0 ? activePickaxeValue : ((canDebugPickaxe && debugPickaxe) ? DEBUG_PICKAXE_DMG : 0));
     const pickDamage = () => pickaxeActivePower();
@@ -2357,6 +2619,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     };
     const ATTACK_COST = 20;
     const ATTACK_MS = 320;
+    let fpAttackDur = ATTACK_MS; // duração do golpe na 1ª pessoa (varia por arma)
     let staminaRun = 100;
     let nextAttackAt = 0;
     let camYaw = 0; // rotação HORIZONTAL da câmera (não permite giro vertical/livre)
@@ -2378,7 +2641,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
       window.setTimeout(() => setCritFx(null), 900);
     };
     // Reinicia o corte a CADA aperto do Espaço (senão o early-return não repetia o movimento).
-    const restartAttack = () => { playerAnim.name = 'attack'; const a = makeAttack(); a.speed = 3.2; playerAnim.current = a; attackUntil = performance.now() + ATTACK_MS; };
+    const restartAttack = () => { playerAnim.name = 'attack'; const a = makeAttack(); a.speed = 3.2; playerAnim.current = a; fpAttackDur = firstPerson ? (fpKind === 'pickaxe' ? 640 : fpKind === 'spear' ? 560 : 380) : ATTACK_MS; attackUntil = performance.now() + fpAttackDur; };
 
     // --- Sons e TINT vermelho de dano (jogador e monstros) ---
     // Fallback sintetizado (WebAudio) garantindo o "assobio" do corte mesmo sem URL configurada.
@@ -2482,6 +2745,14 @@ const hurtPlayer = (hearts: number, message: string) => {
 
     // Item da 1ª pessoa: usa a MESMA arte (.glb/.png) da arma equipada (ou a picareta de debug).
     let fpBuilt = false;
+    // Tipo da arma na 1ª pessoa (espada/lança/picareta têm pose e ataque próprios).
+    let fpKind: 'sword' | 'spear' | 'pickaxe' = 'sword';
+    const classifyWeapon = (title: string, isPick: boolean): 'sword' | 'spear' | 'pickaxe' => {
+      const t = (title || '').toLowerCase();
+      if (isPick || /picareta|pickaxe/.test(t)) return 'pickaxe';
+      if (/lan[çc]a|spear|pike|javelin|adaga|dagger|katara|estilete|stiletto|tridente|trident/.test(t)) return 'spear';
+      return 'sword';
+    };
     const addFpModel = (src: any, isPickaxe = false) => {
       const c = src.clone(true);
       c.position.set(0, 0, 0); c.rotation.set(0, 0, 0); c.scale.setScalar(1);
@@ -2499,7 +2770,7 @@ const hurtPlayer = (hearts: number, message: string) => {
       c.updateMatrixWorld(true);
       b = new THREE.Box3().setFromObject(c);
       const maxDim = Math.max(0.001, Math.max(b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z));
-      c.scale.multiplyScalar(0.75 / maxDim);
+      c.scale.multiplyScalar((isPickaxe ? 0.55 : 0.75) / maxDim);
       c.updateMatrixWorld(true);
       b = new THREE.Box3().setFromObject(c);
       // Pivô na EMPUNHADURA (base): o giro do golpe acontece a partir da mão, não do centro.
@@ -2509,12 +2780,13 @@ const hurtPlayer = (hearts: number, message: string) => {
     const buildFpWeapon = (force = false) => {
       if (fpBuilt && !force) return; fpBuilt = true;
       while (viewModel.children.length) viewModel.remove(viewModel.children[0]);
-      if (debugPickaxe && debugPickaxeObj) { addFpModel(debugPickaxeObj, true); return; }
+      if (debugPickaxe && debugPickaxeObj) { fpKind = 'pickaxe'; addFpModel(debugPickaxeObj, true); return; }
       // Picareta ATIVA (perfil/mochila) tem prioridade na 1ª pessoa.
-      if (activePickaxeModel) { try { addFpModel(activePickaxeModel, true); return; } catch { /* noop */ } }
+      if (activePickaxeModel) { try { fpKind = classifyWeapon(activeWeaponTitle, false); addFpModel(activePickaxeModel, fpKind === 'pickaxe'); return; } catch { /* noop */ } }
       // Senão, a arma da mão (excluindo picaretas).
       const wm = handModels.find(h => !h.isPickaxe && ['rightHand', 'leftHand', 'hand', 'two_handed'].includes(h.part)) || handModels.find(h => !h.isPickaxe) || null;
-      if (wm?.model) { try { addFpModel(wm.model); return; } catch { /* noop */ } }
+      if (wm?.model) { try { fpKind = classifyWeapon(wm.title, wm.isPickaxe); addFpModel(wm.model, fpKind === 'pickaxe'); return; } catch { /* noop */ } }
+      fpKind = 'sword';
       const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), new THREE.MeshStandardMaterial({ color: 0xcfd8e3, metalness: 0.8, roughness: 0.25 }));
       blade.position.y = 0.35; viewModel.add(blade);
     };
@@ -2522,7 +2794,13 @@ const hurtPlayer = (hearts: number, message: string) => {
     // Botão/slot de picareta (desktop e mobile) alterna arma ↔ picareta.
     pickaxeToggleRef.current = () => {
       // Preferência: PICARETA real (perfil/mochila). Sem nenhuma → fallback de debug (só staff).
-      if (handPickaxeOptions.length > 0) { equipHandRef.current(activePickaxeId ? null : handPickaxeOptions[0].id); return; }
+      if (handPickaxeOptions.length > 0) {
+        // A tecla P busca uma PICARETA no inventário e equipa (a de maior raridade). Se já
+        // houver uma picareta ativa, desequipa (volta para a arma padrão).
+        const activeIsPick = !!activePickaxeId && handPickaxeOptions.some((o: any) => o.id === activePickaxeId);
+        equipHandRef.current(activeIsPick ? null : handPickaxeOptions[0].id);
+        return;
+      }
       setDebugPickaxe(!debugPickaxe);
     };
 
@@ -2561,6 +2839,32 @@ const hurtPlayer = (hearts: number, message: string) => {
         if (breakNear || IS_TOUCH) pickaxeToggleRef.current();
     };
 
+    // ---- VEIOS MINERAIS: encolher conforme o dano + drops + cooldown ----
+    const onVeinHit = (obj: any, gx: number, gz: number) => {
+      if (!obj || !obj.isVein) return;
+      const frac = Math.max(0, obj.hp / Math.max(1, obj.maxHp));
+      try { obj.mesh.scale.setScalar((obj.baseScale || 1) * (0.35 + 0.65 * frac)); } catch { /* noop */ }
+      const iid = String(obj.dropItemId || '');
+      if (!iid || Math.random() >= 0.10) return; // 10% por golpe
+      const item = itemCatalogRef.current.get(iid);
+      if (!item) return;
+      const dmin = Number(obj.dropMin) || 1, dmax = Number(obj.dropMax) || 7;
+      const q = dmin + Math.floor(Math.random() * (dmax - dmin + 1));
+      for (let k = 0; k < q; k++) spawnLootPickup(gx + (Math.floor(Math.random() * 3) - 1), gz + (Math.floor(Math.random() * 3) - 1), 'item', item, 0xffd34d, true);
+    };
+    const onVeinDepleted = (obj: any) => {
+      if (!obj || !obj.isVein) return;
+      const key = String(obj.veinCooldownKey || ''), mid = String(obj.veinModelId || '');
+      if (!key || !mid) return;
+      try {
+        const cd = JSON.parse(localStorage.getItem(key) || '{}') || {};
+        const spawnedSame = rocks.filter((r: any) => r.isVein && String(r.veinModelId) === mid).length;
+        cd[mid] = Date.now() + Math.max(1, spawnedSame) * 3600_000; // 1h por veio (dobra se 2 do mesmo tipo)
+        localStorage.setItem(key, JSON.stringify(cd));
+      } catch { /* noop */ }
+      callbacks.current.setMsg('💎 Veio mineral esgotado! Ele volta a nascer neste cenário após o resfriamento.');
+    };
+
     // Ataque (Espaço no desktop, botão ⚔️ no mobile). Um ataque por ciclo.
     const doAttack = () => {
       const now = performance.now();
@@ -2585,12 +2889,12 @@ const hurtPlayer = (hearts: number, message: string) => {
       if (target) {
         const isCrit = Math.random() * 100 < statsRef.current.critChance;
         if (isCrit) playSword(true);
-        const roll = calculatePlayerHitDamage(statsRef.current.attack, target.defense, target.evasion, isCrit);
+const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack; // dano da ARMA EQUIPADA
+        const roll = calculatePlayerHitDamage(atkPower, target.defense, target.evasion, isCrit);
         if (roll.isEvasion) { spawnPop(new THREE.Vector3(target.root.position.x, target.root.position.y + 1.5, target.root.position.z), 'Esquiva!', false, 'miss'); callbacks.current.setMsg('💨 O monstro esquivou do seu golpe!'); return; }
         if ((target as any).isBoss) {
-          playMonsterHurtSound(target);
-          spawnPop(new THREE.Vector3(target.root.position.x, target.root.position.y + 1.5, target.root.position.z), 'BLOQUEADO!', false);
-          callbacks.current.setMsg('⚔️ O chefe é implacável — ele não cai por golpes. Deixe-o te alcançar para iniciar a batalha!');
+          // Atacar o boss abre a PERGUNTA (o dano ao chefe só sai depois de acertar).
+          openBossQuestion('player');
           return;
         }
         target.hp -= roll.damage;
@@ -2618,16 +2922,20 @@ const hurtPlayer = (hearts: number, message: string) => {
       const tgt = cands[0];
       if (tgt) {
         if (tgt.kind === 'wall' && tgt.obj.breakable === false) { callbacks.current.setMsg('🧱 Este tipo de parede é INDESTRUTÍVEL.'); return; }
-        if (!pickaxeActivePower()) { callbacks.current.setMsg(hasRealPickaxe ? '⛏️ Sua picareta é fraca demais para quebrar isso.' : '⛏️ Você precisa equipar uma PICARETA para quebrar isso (tecla P).'); return; }
-        const dmg = breakDamage(tgt.obj.def);
-        if (dmg <= 0) { callbacks.current.setMsg(`⛏️ Sua picareta é fraca demais (precisa vencer ${tgt.obj.def} de defesa).`); return; }
+        const canPick = pickaxeActivePower() > 0;
+        const canWeight = activeWeaponWeight > tgt.obj.def; // arma PESADA (peso > defesa) também quebra
+        if (!canPick && !canWeight) { callbacks.current.setMsg(`⛏️ Precisa de PICARETA ou arma PESADA (peso > ${tgt.obj.def}) para quebrar isso.`); return; }
+        const dmg = canPick ? breakDamage(tgt.obj.def) : Math.max(1, Math.round(activeWeaponAtk));
+        if (dmg <= 0) { callbacks.current.setMsg(`⛏️ Ferramenta fraca demais (precisa vencer ${tgt.obj.def} de defesa).`); return; }
         tgt.obj.hp = Math.max(0, tgt.obj.hp - dmg);
         playFx(battleSoundsRef.current.punch, 0.7);
         spawnPop(new THREE.Vector3(wx(tgt.gx), 1.2, wz(tgt.gz)), `-${dmg}`, false);
+        onVeinHit(tgt.obj, tgt.gx, tgt.gz);
         if (tgt.obj.hp <= 0) {
           if (tgt.kind === 'wall') { grid.wall[tgt.gz][tgt.gx] = false; wallCells.delete(tgt.key!); scene.remove(tgt.obj.mesh); }
           else if (tgt.kind === 'door') { tgt.obj.mesh.visible = false; scene.remove(tgt.obj.mesh); }
           else if (tgt.kind === 'hazard' || tgt.kind === 'rock') { tgt.obj.mesh.visible = false; }
+          onVeinDepleted(tgt.obj);
           spawnShatter(tgt.gx, tgt.gz, tgt.color);
           dropLoot(tgt.gx, tgt.gz, (tgt.obj as any)?.typeId);
           callbacks.current.setMsg('💥 Bloco quebrado!');
@@ -2648,7 +2956,7 @@ const hurtPlayer = (hearts: number, message: string) => {
     attackActionRef.current = doAttack;
     fpToggleRef.current = () => {
       firstPerson = !firstPerson;
-      if (firstPerson) buildFpWeapon();
+      if (firstPerson) buildFpWeapon(true);
       callbacks.current.setMsg(firstPerson ? '👁️ Visão em 1ª pessoa (botão novamente para voltar).' : '🎥 Visão em 3ª pessoa.');
     };
     const onDown = (e: KeyboardEvent) => {
@@ -2662,7 +2970,7 @@ const hurtPlayer = (hearts: number, message: string) => {
       // P: alterna espada/escudo ↔ picareta de debug.
       if (k === 'p') { pickaxeToggleRef.current(); return; }
       // V: alterna 3ª ↔ 1ª pessoa.
-      if (k === 'v') { firstPerson = !firstPerson; if (firstPerson) buildFpWeapon(); callbacks.current.setMsg(firstPerson ? '👁️ Visão em 1ª pessoa (V para voltar).' : '🎥 Visão em 3ª pessoa.'); return; }
+      if (k === 'v') { firstPerson = !firstPerson; if (firstPerson) buildFpWeapon(true); callbacks.current.setMsg(firstPerson ? '👁️ Visão em 1ª pessoa (V para voltar).' : '🎥 Visão em 3ª pessoa.'); return; }
       // Q: nada (bate os pés) para SUBIR quando estiver na água/submerso.
       if (k === 'q') {
         if (waterDepthAt(playerPos.x, playerPos.z) > 0) { swimRise += 0.5; callbacks.current.setMsg('🦶 Você bate os pés para subir! (Q)'); }
@@ -2746,10 +3054,12 @@ if ((target as any).isBoss) {
           tgt.obj.hp = Math.max(0, tgt.obj.hp - dmg);
           playFx(battleSoundsRef.current.punch, 0.7);
           spawnPop(new THREE.Vector3(wx(tgt.gx), 1.2, wz(tgt.gz)), `-${dmg}`, false);
+          onVeinHit(tgt.obj, tgt.gx, tgt.gz);
           if (tgt.obj.hp <= 0) {
             if (tgt.kind === 'wall') { grid.wall[tgt.gz][tgt.gx] = false; wallCells.delete(tgt.key!); scene.remove(tgt.obj.mesh); }
             else if (tgt.kind === 'door') { tgt.obj.mesh.visible = false; scene.remove(tgt.obj.mesh); }
             else if (tgt.kind === 'hazard' || tgt.kind === 'rock') { tgt.obj.mesh.visible = false; }
+            onVeinDepleted(tgt.obj);
             spawnShatter(tgt.gx, tgt.gz, tgt.color);
             dropLoot(tgt.gx, tgt.gz, (tgt.obj as any)?.typeId);
             callbacks.current.setMsg('💥 Bloco quebrado!');
@@ -2973,6 +3283,26 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
         if (oxygenHurtT <= 0) { oxygenHurtT = 1.6; hurtPlayer(1, '🫁 Ficou sem oxigênio debaixo da água! -1 ❤️'); }
       }
       playerRoot.position.set(wx(playerPos.x), waterSinkY, wz(playerPos.z));
+      // Impede ACÚMULO de armas na mão (3ª pessoa): varre a CENA e esconde todo item de mão,
+      // depois mostra só o ATIVO (sem arma ativa, mostra as do PERFIL, mantendo o escudo).
+      {
+        const playerObj: any = (viewer.playerObject as any);
+        if (playerObj) {
+          // esconde TODO item de mão; depois reexibe o que estiver ativo/perfil por GRUPO.
+          playerObj.traverse((o: any) => { if (o.userData && o.userData.__handItem) o.visible = false; });
+          const showChain = (m: any) => { let p = m; while (p && p !== playerObj) { p.visible = true; p = p.parent; } };
+          if (activePickaxeModel) showChain(activePickaxeModel);
+          if (activeShieldModel) showChain(activeShieldModel);
+          const weaponActive = !!activePickaxeModel, shieldActive = !!activeShieldModel;
+          playerObj.traverse((o: any) => {
+            if (!o.userData || !o.userData.__handItem || o.userData.__handBag) return;
+            if (o.userData.__handCat === 'pickaxe') return;
+            const isShield = o.userData.__handCat === 'shield';
+            if (!weaponActive && !isShield) o.visible = true; // arma padrão do perfil
+            if (!shieldActive && isShield) o.visible = true;  // escudo padrão do perfil
+          });
+        }
+      }
       // Balão de diálogo: esconde ao expirar. SEM fala ociosa aleatória (evita balões sem
       // nexo com o personagem parado). O estresse decai com o tempo fora de ação.
       if (bubble.visible && performance.now() > bubbleUntil) bubble.visible = false;
@@ -3256,15 +3586,33 @@ revealedKeys.add(k); explored.add(k);
         camera.position.set(hx, camBaseY, hz);
         const cp = Math.cos(camPitch), sp = Math.sin(camPitch);
         camera.lookAt(hx - Math.sin(camYaw) * cp, camBaseY + sp, hz - Math.cos(camYaw) * cp);
-        // Item na mão: só aparece ao ATACAR (golpe de CIMA para BAIXO).
+        // Item na mão: SEMPRE visível na 1ª pessoa. Pose e ATAQUE por tipo.
         const attacking = performance.now() < attackUntil;
-        viewModel.visible = attacking;
-        if (attacking) {
-          const p = 1 - Math.max(0, (attackUntil - performance.now()) / ATTACK_MS);
-          // Começa com a arma ERGUIDA (+1.1) e desce até o golpe (-1.25) — lâmina de CIMA para BAIXO.
-          const chop = p < 0.35 ? (1.1 - (p / 0.35) * 0.4) : (0.7 - ((p - 0.35) / 0.65) * 1.95);
-          viewModel.rotation.set(chop, -0.15, 0.12);
-          viewModel.position.set(0.32, -0.52, -0.5);
+        viewModel.visible = true;
+        const p = 1 - Math.max(0, (attackUntil - performance.now()) / fpAttackDur);
+        // Golpe de CIMA para BAIXO: começa erguida (+1.0) e desce até o golpe (-1.4).
+        const chop = p < 0.35 ? (1.0 - (p / 0.35) * 0.35) : (0.65 - ((p - 0.35) / 0.65) * 2.05);
+        if (fpKind === 'spear') {
+          // LANÇA/ADAGA (estocada em 3 fases): 1) ABAIXA a lâmina até o meio; 2) PUXA para trás; 3) ESTOCA.
+          let rotX = -0.15, pz = -0.55;
+          if (attacking) {
+            if (p < 0.33) { rotX = -0.15 - (p / 0.33) * 0.95; }                                   // 1) abaixa
+            else if (p < 0.5) { const t = (p - 0.33) / 0.17; rotX = -1.1; pz = -0.55 + t * 0.28; } // 2) puxa p/ trás
+            else { const t = (p - 0.5) / 0.5; rotX = -1.1; pz = -0.27 - t * 1.05; }               // 3) estoca
+          }
+          viewModel.rotation.set(rotX, -0.5, 0.2);
+          viewModel.position.set(0.42, -0.5, pz);
+        } else if (fpKind === 'pickaxe') {
+          // PICARETA: mais EM PÉ, meio de lado (virada à direita); golpe COMPLETO de cima para baixo.
+          viewModel.rotation.set(attacking ? chop : -0.05, 0.95, 0.15);
+          viewModel.position.set(0.4, -0.5, -0.5);
+        } else {
+          // ESPADA/MAÇA/MACHADO (golpe de cima para baixo): mais EM PÉ; desce da diagonal
+          // superior-direita para a inferior-esquerda.
+          const swing = attacking ? chop : -0.1;
+          const zRoll = attacking ? (0.45 - Math.min(1, p) * 1.15) : 0.15;
+          viewModel.rotation.set(swing, -0.5, zRoll);
+          viewModel.position.set(0.44, -0.6, -0.5);
         }
       } else {
         if (player) player.visible = true;
@@ -3458,18 +3806,49 @@ return () => {
             </div>
           )}
         </div>
-        {/* SLOTS DE MÃO: picaretas disponíveis (perfil/mochila). Tecla P alterna/equipa. */}
-        {handOptions.length > 0 && (
-          <div style={{ position: 'absolute', left: '50%', bottom: 70, transform: 'translateX(-50%)', zIndex: 10, display: 'flex', gap: 8, background: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)' }}>
-            <span style={{ color: '#fff', fontSize: '0.7rem', alignSelf: 'center', marginRight: 4 }}>⛏️ Mão (P):</span>
-            {handOptions.map((o, i) => (
-              <button key={i} title={`${o.title} — clique para equipar/guardar`} onClick={() => equipHandRef.current(handActiveId === o.id ? null : o.id)}
-                style={{ width: 48, height: 48, borderRadius: 8, border: handActiveId === o.id ? '2px solid #fbbf24' : '1px solid rgba(255,255,255,0.3)', background: handActiveId === o.id ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.08)', padding: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                {o.imageUrl ? <img src={o.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : '⛏️'}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* SLOTS DE ARMAS: armas na horizontal (6 por página) + PICARETAS num slot VERTICAL por raridade. */}
+        {handOptions.length > 0 && (() => {
+          const rarityRank = (r: any) => ({ common: 0, comum: 0, uncommon: 1, incomum: 1, rare: 2, raro: 2, epic: 3, epico: 3, 'épico': 3, legendary: 4, lendario: 4, 'lendário': 4 } as any)[String(r || 'common').toLowerCase()] ?? 0;
+          const weaponList = handOptions.filter((o: any) => !o.isPickaxe);
+          const pickaxes = handOptions.filter((o: any) => o.isPickaxe).sort((a: any, b: any) => rarityRank(b.rarity) - rarityRank(a.rarity));
+          const PER = 6;
+          const maxPage = Math.max(0, Math.ceil(weaponList.length / PER) - 1);
+          const page = Math.min(handPage, maxPage);
+          const pageItems = weaponList.slice(page * PER, page * PER + PER);
+          const go = (dir: number) => setHandPage(p => Math.max(0, Math.min(maxPage, p + dir)));
+          const arrowBtn = (dir: number, enabled: boolean) => (
+            <button disabled={!enabled} onClick={() => go(dir)}
+              style={{ width: 26, height: 48, borderRadius: 8, border: '1px solid rgba(255,255,255,0.25)', background: enabled ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.03)', color: enabled ? '#fff' : 'rgba(255,255,255,0.3)', cursor: enabled ? 'pointer' : 'default', fontSize: '1.05rem', fontWeight: 'bold', flexShrink: 0 }}>
+              {dir < 0 ? '‹' : '›'}
+            </button>
+          );
+          const slotBtn = (o: any, size: number) => (
+            <button key={o.id} title={`${o.title} — clique para equipar/guardar`} onClick={() => equipHandRef.current(o.id)}
+              style={{ width: size, height: size, borderRadius: 8, border: (handActiveId === o.id || handActiveShieldId === o.id) ? '2px solid #fbbf24' : '1px solid rgba(255,255,255,0.3)', background: (handActiveId === o.id || handActiveShieldId === o.id) ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.08)', padding: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+              {o.imageUrl ? <img src={o.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (o.isPickaxe ? '⛏️' : '⚔️')}
+            </button>
+          );
+          return (
+            <div
+              onTouchStart={e => { (window as any).__handSwipeX = e.touches[0].clientX; }}
+              onTouchEnd={e => { const sx = (window as any).__handSwipeX; if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1); }}
+              style={{ position: 'absolute', left: '50%', bottom: 70, transform: 'translateX(-50%)', zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', maxWidth: '96vw' }}>
+              <span style={{ color: '#fff', fontSize: '0.7rem', marginRight: 2, whiteSpace: 'nowrap' }}>⚔️ Armas:</span>
+              {arrowBtn(-1, page > 0)}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {pageItems.map((o: any) => slotBtn(o, 48))}
+              </div>
+              {arrowBtn(1, page < maxPage)}
+              {maxPage > 0 && <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.62rem', marginLeft: 2 }}>{page + 1}/{maxPage + 1}</span>}
+              {/* Slot VERTICAL de PICARETAS (uma acima da outra, por raridade) */}
+              {pickaxes.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginLeft: 6, paddingLeft: 6, borderLeft: '1px solid rgba(255,255,255,0.25)' }} title="Picaretas (por raridade)">
+                  {pickaxes.map((o: any) => slotBtn(o, 40))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {/* Inventário de consumíveis ÚTEIS (cura HP / cura de efeitos) */}
         {consumables.length > 0 && (
           <div style={{ position: 'absolute', left: '50%', bottom: 10, transform: 'translateX(-50%)', zIndex: 10, display: 'flex', gap: 8, background: 'rgba(0,0,0,0.55)', padding: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)' }}>
@@ -3541,6 +3920,54 @@ onDrop={() => {
               )}
             </div>
           </div>
+        )}
+        {/* LUTA CONTRA O BOSS por PERGUNTAS */}
+        {bossFight && (bossFight.question || bossFight.done) && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 31, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.78)', padding: 16 }}>
+            <div style={{ maxWidth: 600, width: '100%', background: '#0f172a', border: '1px solid rgba(239,68,68,0.5)', borderRadius: 12, padding: 18, color: '#fff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: '0.82rem', color: '#fca5a5', fontWeight: 'bold' }}>⚔️ LUTA CONTRA O CHEFE</span>
+                <span style={{ fontSize: '0.78rem', color: '#cbd5e1' }}>Pergunta {Math.min(10, bossFight.qIndex + 1)}/10</span>
+              </div>
+              {bossFight.done ? (
+                <div style={{ textAlign: 'center', padding: '1rem' }}>
+                  <div style={{ fontSize: '1.7rem', marginBottom: 8 }}>{bossFight.fatality ? '💀 FATALITY!' : '🏆 VITÓRIA!'}</div>
+                  <div style={{ color: '#cbd5e1', marginBottom: 14 }}>{bossFight.fatality ? `${getFatalityLabel(bossFight.fatalityType)} — o golpe final drenou o restante da vida do chefe.` : 'Você derrubou o chefe!'}</div>
+                  <button onClick={() => bossFinishRef.current()} style={{ padding: '0.6rem 1.4rem', background: 'var(--gold-primary)', color: '#000', border: 'none', borderRadius: 8, fontWeight: 'bold', cursor: 'pointer' }}>Continuar</button>
+                </div>
+              ) : bossFight.question ? (
+                <>
+                  {bossFight.question.imageUrl && <img src={bossFight.question.imageUrl} alt="" style={{ maxHeight: 110, display: 'block', margin: '0 auto 10px' }} />}
+                  <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 12 }} dangerouslySetInnerHTML={{ __html: bossFight.question.title || '' }} />
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {bossFight.question.options.map((o: any, i: number) => (
+                      <button key={i} onClick={() => bossAnswerRef.current(i)}
+                        style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(255,255,255,0.06)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+                        {o.imageUrl ? <img src={o.imageUrl} alt="" style={{ height: 26, verticalAlign: 'middle', marginRight: 8 }} /> : null}
+                        <span dangerouslySetInnerHTML={{ __html: o.text || '' }} />
+                      </button>
+                    ))}
+                  </div>
+                  {bossFeedback && <div style={{ marginTop: 10, textAlign: 'center', fontWeight: 'bold', color: bossFeedback.startsWith('✅') ? '#10b981' : '#f87171' }}>{bossFeedback}</div>}
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 20 }}>
+                  {bossFeedback ? <div style={{ fontWeight: 'bold', color: bossFeedback.startsWith('✅') ? '#10b981' : '#f87171' }}>{bossFeedback}</div> : '⏳ Preparando pergunta…'}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {/* Flash do FATALITY (golpe final no boss) */}
+        {bossFlash && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 32, pointerEvents: 'none',
+            background: bossFlash === 'death-evaporate' ? 'radial-gradient(circle, rgba(200,200,200,0.65), rgba(0,0,0,0.85))'
+              : bossFlash === 'death-slice' ? 'linear-gradient(45deg, rgba(239,68,68,0.75), rgba(0,0,0,0.6))'
+                : bossFlash === 'death-fall' ? 'radial-gradient(circle, rgba(124,58,237,0.6), rgba(0,0,0,0.85))'
+                  : 'radial-gradient(circle, rgba(255,140,0,0.75), rgba(0,0,0,0.85))',
+            animation: 'critFlash 0.9s ease-out forwards',
+          }} />
         )}
         {/* Animação de uso do consumível, seguindo o BONECO (transform atualizado no loop).
             Wrapper 0x0: a aura (ancorada no rodapé) fica exatamente sobre o personagem. */}
