@@ -549,14 +549,43 @@ if (!cancelled) {
       // CENÁRIO configurável (árvores/arbustos/flores/pedras/água/chão) por tipo.
       const sceneryModels = await fetchSceneryModels(tenantId).catch(() => []);
       const sceneryMap = new Map<string, any[]>();
+      // Infere o TIPO pelo NOME quando o modelo não tem `kind` (ex.: cadastrados antes do campo).
+      const inferKind = (nm: string) => {
+        const s = String(nm || '').toLowerCase();
+        if (/arvor|árvor|tree|pine|oak|cedar|carvalho|pinheiro/.test(s)) return 'tree';
+        if (/flor|flower|tulip|l[ií]rio|rose|rosa|daisy|margarida|girassol/.test(s)) return 'flower';
+        if (/arbusto|bush|shrub|moita/.test(s)) return 'bush';
+        if (/pedra|rock|stone|boulder|rocha/.test(s)) return 'rock';
+        if (/[aá]gua|water|lake|river|lago|rio/.test(s)) return 'water';
+        if (/ch[aã]o|floor|ground|grama|grass|tile/.test(s)) return 'floor';
+        return 'tree';
+      };
       for (const sm of (sceneryModels || [])) {
         const t = await buildTemplate(sm, 'scenery'); if (!t) continue;
-        const kind = String((sm as any).kind || 'tree');
+        const kind = String((sm as any).kind || '').trim() || inferKind((sm as any).name || (sm as any).itemTitle || '');
+        // Normaliza TAMANHO/ORIGEM (GLB costuma vir com escala/origem próprias) para ficar VISÍVEL no mapa.
+        let holder: any = t;
+        try {
+          const targetH = kind === 'flower' ? 0.55 : kind === 'bush' ? 0.8 : kind === 'rock' ? 0.7 : (kind === 'water' || kind === 'floor') ? 1 : kind === 'tree' ? 1.9 : 1.2;
+          if ((t as any).isSprite) {
+            t.scale.set(targetH, targetH, 1);
+            const g = new THREE.Group(); g.add(t); holder = g;
+          } else {
+            t.updateMatrixWorld(true);
+            const bb = new THREE.Box3().setFromObject(t);
+            const h = Math.max(0.001, bb.max.y - bb.min.y);
+            const fit = targetH / h;
+            t.scale.setScalar(fit);
+            t.position.y = -bb.min.y * fit;
+            const g = new THREE.Group(); g.add(t); holder = g;
+          }
+        } catch { /* noop */ }
         const arr = sceneryMap.get(kind) || [];
-        arr.push({ id: (sm as any).id, template: t, scale: Number((sm as any).renderScale) || 1, height: Number((sm as any).renderHeight) || 1, soundUrl: (sm as any).soundUrl || '', config: (sm as any).config || {}, name: (sm as any).name || '', kind });
+        arr.push({ id: (sm as any).id, template: holder, scale: Number((sm as any).renderScale) || 1, height: Number((sm as any).renderHeight) || 1, soundUrl: (sm as any).soundUrl || '', config: (sm as any).config || {}, name: (sm as any).name || '', kind });
         sceneryMap.set(kind, arr);
       }
       if (!cancelled) sceneryByKindRef.current = sceneryMap;
+      try { console.log('[SCENERY] tipos:', Array.from(sceneryMap.entries()).map(([k, v]) => `${k}:${(v as any[]).length}`).join(', ') || '(nenhum)'); } catch { /* noop */ }
       // ANIMAIS configuráveis (modelo + som + falas em balão).
       const animalModels = await fetchAnimalModels(tenantId).catch(() => []);
       const animalList: any[] = [];
