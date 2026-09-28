@@ -138,6 +138,8 @@ export default function Admin3DModelsManager() {
   const [veinItemId, setVeinItemId] = useState('');
   const [veinDropMin, setVeinDropMin] = useState(1);
   const [veinDropMax, setVeinDropMax] = useState(7);
+  // Cor do minério (usada no FALLBACK procedural do veio quando não há .glb).
+  const [veinColor, setVeinColor] = useState('#7ea6e0');
   // Drop OPCIONAL ao ESGOTAR o veio (item do catálogo + quantidade).
   const [veinDepleteItemId, setVeinDepleteItemId] = useState('');
   const [veinDepleteQty, setVeinDepleteQty] = useState(1);
@@ -265,6 +267,7 @@ export default function Admin3DModelsManager() {
         setVeinDropMax(Number(vc.veinDropMax) || 7);
         setVeinDepleteItemId(String(vc.veinDepleteItemId || ''));
         setVeinDepleteQty(Number(vc.veinDepleteQty) || 1);
+        setVeinColor(String(vc.veinColor || '#7ea6e0'));
         setSceneryThemes(Array.isArray(vc.themes) ? vc.themes : []);
         setAnimalThemes(Array.isArray(vc.themes) ? vc.themes : []);
       }
@@ -296,15 +299,17 @@ export default function Admin3DModelsManager() {
       setRenderScale(1);
       setRenderHeight(1);
       setAnimalConfig({});
-      setVeinHp(800); setVeinDef(15); setVeinItemId(''); setVeinDropMin(1); setVeinDropMax(7); setVeinDepleteItemId(''); setVeinDepleteQty(1);
+      setVeinHp(800); setVeinDef(15); setVeinItemId(''); setVeinDropMin(1); setVeinDropMax(7); setVeinDepleteItemId(''); setVeinDepleteQty(1); setVeinColor('#7ea6e0');
       setSceneryThemes([]); setAnimalThemes([]);
     }
     setIsModalOpen(true);
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !url.trim()) {
-      showAlert('Preencha o nome e a URL do modelo (.glb, .gltf, .png).');
+    // Cenário (incl. veio mineral) pode ser PROCEDURAL (sem URL) — usa o fallback do jogo.
+    const urlOptional = category === 'scenery';
+    if (!name.trim() || (!urlOptional && !url.trim())) {
+      showAlert('Preencha o nome' + (urlOptional ? '' : ' e a URL do modelo (.glb, .gltf, .png).'));
       return;
     }
 
@@ -312,7 +317,7 @@ export default function Admin3DModelsManager() {
     const isGlbOrGltf = urlLower.includes('.glb') || urlLower.includes('.gltf') || url.startsWith('data:');
     const isImage = urlLower.includes('.png') || urlLower.includes('.jpg') || urlLower.includes('.jpeg') || urlLower.includes('.webp') || url.startsWith('data:image/');
 
-    if (!isGlbOrGltf && !isImage) {
+    if (url.trim() && !isGlbOrGltf && !isImage) {
       const confirm = await showConfirm(
         'A URL não parece conter .glb/.gltf ou uma imagem (.png/.jpg). Você tem certeza que é um modelo válido? Deseja salvar mesmo assim?'
       );
@@ -391,6 +396,7 @@ export default function Admin3DModelsManager() {
             veinDropMax: Math.max(1, veinDropMax || 7),
             veinDepleteItemId: veinDepleteItemId.trim() || '',
             veinDepleteQty: Math.max(1, veinDepleteQty || 1),
+            veinColor: veinColor || '#7ea6e0',
           } : {}),
           themes: sceneryThemes,
         };
@@ -773,6 +779,10 @@ export default function Admin3DModelsManager() {
                     <div style={{ width: 110 }}>
                       <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Defesa (dureza)</label>
                       <input type="number" min={1} value={veinDef} onChange={e => setVeinDef(Math.max(1, parseInt(e.target.value) || 15))} style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    </div>
+                    <div style={{ width: 110 }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Cor do minério</label>
+                      <input type="color" value={veinColor} onChange={e => setVeinColor(e.target.value)} style={{ width: '100%', height: 38, padding: 2, borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)' }} />
                     </div>
                     <div style={{ flex: '1 1 260px' }}>
                       <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Minério (bruto) que dropa — itens com poder “Quebrar/Triturar”</label>

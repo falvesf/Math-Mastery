@@ -561,25 +561,28 @@ if (!cancelled) {
         return 'tree';
       };
       for (const sm of (sceneryModels || [])) {
-        const t = await buildTemplate(sm, 'scenery'); if (!t) continue;
+        const t = await buildTemplate(sm, 'scenery');
         const kind = String((sm as any).kind || '').trim() || inferKind((sm as any).name || (sm as any).itemTitle || '');
+        if (!t && kind !== 'mineral') continue; // veio mineral pode usar o FALLBACK procedural (sem .glb)
         // Normaliza TAMANHO/ORIGEM (GLB costuma vir com escala/origem próprias) para ficar VISÍVEL no mapa.
         let holder: any = t;
-        try {
-          const targetH = kind === 'flower' ? 0.55 : kind === 'bush' ? 0.8 : kind === 'rock' ? 0.7 : (kind === 'water' || kind === 'floor') ? 1 : kind === 'tree' ? 1.9 : 1.2;
-          if ((t as any).isSprite) {
-            t.scale.set(targetH, targetH, 1);
-            const g = new THREE.Group(); g.add(t); holder = g;
-          } else {
-            t.updateMatrixWorld(true);
-            const bb = new THREE.Box3().setFromObject(t);
-            const h = Math.max(0.001, bb.max.y - bb.min.y);
-            const fit = targetH / h;
-            t.scale.setScalar(fit);
-            t.position.y = -bb.min.y * fit;
-            const g = new THREE.Group(); g.add(t); holder = g;
-          }
-        } catch { /* noop */ }
+        if (t) {
+          try {
+            const targetH = kind === 'flower' ? 0.55 : kind === 'bush' ? 0.8 : kind === 'rock' ? 0.7 : (kind === 'water' || kind === 'floor') ? 1 : kind === 'tree' ? 1.9 : 1.2;
+            if ((t as any).isSprite) {
+              t.scale.set(targetH, targetH, 1);
+              const g = new THREE.Group(); g.add(t); holder = g;
+            } else {
+              t.updateMatrixWorld(true);
+              const bb = new THREE.Box3().setFromObject(t);
+              const h = Math.max(0.001, bb.max.y - bb.min.y);
+              const fit = targetH / h;
+              t.scale.setScalar(fit);
+              t.position.y = -bb.min.y * fit;
+              const g = new THREE.Group(); g.add(t); holder = g;
+            }
+          } catch { /* noop */ }
+        }
         const arr = sceneryMap.get(kind) || [];
         arr.push({ id: (sm as any).id, template: holder, scale: Number((sm as any).renderScale) || 1, height: Number((sm as any).renderHeight) || 1, soundUrl: (sm as any).soundUrl || '', config: (sm as any).config || {}, name: (sm as any).name || '', kind });
         sceneryMap.set(kind, arr);
@@ -1154,6 +1157,38 @@ type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: nu
       const mesh = mkRock(x, z, size.scale);
       const hp = size.hpMin + Math.floor(Math.random() * (size.hpMax - size.hpMin + 1));
       return { x, z, mesh, hp, maxHp: hp, def: size.def, sizeScale: size.scale, sizeName: size.name };
+    };
+    // FALLBACK procedural do VEIO MINERAL: rocha angular + cristais na cor do minério.
+    // Usado quando o veio não tem .glb (ou o modelo não carrega).
+    const makeFallbackVein = (oreColor: number): THREE.Group => {
+      const g = new THREE.Group();
+      const rockA = new THREE.MeshStandardMaterial({ color: 0x5a5a60, roughness: 0.96, flatShading: true });
+      const rockB = new THREE.MeshStandardMaterial({ color: 0x44444a, roughness: 0.96, flatShading: true });
+      const stack: [number, number, number, number, number][] = [
+        [0.95, 0.45, 0.92, 0, 0],
+        [0.74, 0.55, 0.72, 0.05, 0.02],
+        [0.52, 0.68, 0.52, -0.06, 0.01],
+        [0.34, 0.72, 0.34, 0.04, -0.03],
+      ];
+      let y = 0;
+      stack.forEach(([w, h, d, x, z], i) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), i % 2 ? rockB : rockA);
+        m.position.set(x, y + h / 2, z);
+        m.rotation.y = (Math.random() - 0.5) * 0.5; m.rotation.z = (Math.random() - 0.5) * 0.12;
+        m.castShadow = true; g.add(m);
+        y += h * 0.92;
+      });
+      const oreMat = new THREE.MeshStandardMaterial({ color: oreColor, emissive: oreColor, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.25, flatShading: true });
+      const nGems = 4 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < nGems; i++) {
+        const s = 0.08 + Math.random() * 0.08;
+        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(s, 0), oreMat);
+        const ang = Math.random() * Math.PI * 2, rr = 0.14 + Math.random() * 0.34, hh = 0.22 + Math.random() * Math.max(0.2, y * 0.9);
+        gem.position.set(Math.cos(ang) * rr, hh, Math.sin(ang) * rr);
+        gem.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+        gem.castShadow = true; g.add(gem);
+      }
+      return g;
     };
     const hzGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.22, 12); const hzMat = new THREE.MeshStandardMaterial({ color: theme.hazardColor, emissive: theme.hazardColor, emissiveIntensity: 0.6 });
     const chestGeo = new THREE.BoxGeometry(0.5, 0.44, 0.4); const chestMat = new THREE.MeshStandardMaterial({ color: 0xb07d3a });
@@ -1750,7 +1785,9 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         const hp = Math.max(100, Number(cfg.veinHp) || 800);
         const def = Math.max(1, Number(cfg.veinDef) || 15);
         const baseScale = (v.scale || 1) * (Number(cfg.veinScale) || 1);
-        const obj = v.template.clone(true);
+        // Sem .glb → FALLBACK procedural (rocha + cristais na cor do minério).
+        const oreCol = parseInt(String(cfg.veinColor || '#7ea6e0').replace('#', ''), 16) || 0x7ea6e0;
+        const obj = v.template ? v.template.clone(true) : makeFallbackVein(oreCol);
         obj.scale.setScalar(baseScale);
         obj.rotation.y = Math.random() * Math.PI * 2;
         obj.position.set(wx(gx), 0, wz(gz)); scene.add(obj);
