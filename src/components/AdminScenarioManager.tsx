@@ -254,8 +254,8 @@ export default function AdminScenarioManager() {
     return () => { active = false; };
   }, [tenantId]);
   useEffect(() => {
-    let q = supabase.from('preset_skins').select('*').eq('type', 'monster');
-    if (tenantId) q = q.or(`tenant_id.is.null,is_global.eq.true,tenant_id.eq.${tenantId}`);
+    // Monstros são COMPARTILHADOS entre as escolas: carrega TODOS (qualquer tenant) + globais.
+    const q = supabase.from('preset_skins').select('*').eq('type', 'monster');
     q.then(({ data }) => {
       const rows = ((data as any[]) || []).map(r => {
         const d = typeof r.config === 'string' ? JSON.parse(r.config) : (r.config || {});

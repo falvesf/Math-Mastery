@@ -42,8 +42,8 @@ export default function AdminEntitiesManager() {
   const fetchMonsters = async () => {
     setLoadingMonsters(true);
     sessionCache.invalidate(CACHE_KEYS.presetSkins(tenantId));
-    let q = supabase.from('preset_skins').select('*').eq('type', 'monster');
-    if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
+    // Monstros são COMPARTILHADOS entre as escolas: lista TODOS (qualquer tenant) + globais.
+    const q = supabase.from('preset_skins').select('*').eq('type', 'monster');
     const { data } = await q;
 
     // Busca missões para auto-sincronizar quaisquer sons ou falas legadas

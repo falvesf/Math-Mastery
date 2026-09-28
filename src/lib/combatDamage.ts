@@ -193,10 +193,7 @@ export async function evolveMonsterOnPlayerDefeat(
       return null;
     }
 
-    if (tenantId && !monsterPresetId) {
-      // Inclui monstros GLOBAIS/compartilhados de outras escolas, além dos do próprio tenant.
-      q = q.or(`tenant_id.is.null,is_global.eq.true,tenant_id.eq.${tenantId}`);
-    }
+    // Monstros são COMPARTILHADOS entre as escolas → não filtra por tenant (busca por id/nome).
 
     const { data: rows, error } = await q.limit(1);
     if (error || !rows || rows.length === 0) return null;

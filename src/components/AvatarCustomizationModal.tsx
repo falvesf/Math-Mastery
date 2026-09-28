@@ -461,13 +461,14 @@ export default function AvatarCustomizationModal({
 
   const fetchPresetSkins = async (forceRefresh = false) => {
     try {
-      const cacheKey = CACHE_KEYS.presetSkins(tenantId);
+      // Editor de MONSTROS (admin): lista monstros de TODAS as escolas (compartilhados).
+      const cacheKey = customSaveMode ? 'preset_skins_monsters_all' : CACHE_KEYS.presetSkins(tenantId);
       if (!forceRefresh) {
         const cached = sessionCache.get<PresetSkin[]>(cacheKey);
         if (cached) { setPresetSkins(cached); return; }
       }
       let query = supabase.from('preset_skins').select('*');
-      if (tenantId) {
+      if (tenantId && !customSaveMode) {
         query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
       }
       const { data } = await query;
@@ -850,6 +851,7 @@ export default function AvatarCustomizationModal({
               sessionCache.invalidate(CACHE_KEYS.presetSkins(tenantId));
               if (userData?.tenantId) sessionCache.invalidate(CACHE_KEYS.presetSkins(userData.tenantId));
               sessionCache.invalidate('preset_skins_null');
+              sessionCache.invalidate('preset_skins_monsters_all');
               
               await fetchPresetSkins(true);
 
