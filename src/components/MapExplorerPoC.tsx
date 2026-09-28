@@ -1754,7 +1754,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         obj.scale.setScalar(baseScale);
         obj.rotation.y = Math.random() * Math.PI * 2;
         obj.position.set(wx(gx), 0, wz(gz)); scene.add(obj);
-        rocks.push({ x: gx, z: gz, mesh: obj, hp, maxHp: hp, def, baseScale, isVein: true, veinModelId: v.id, dropItemId: cfg.veinItemId || '', dropMin: Number(cfg.veinDropMin) || 1, dropMax: Number(cfg.veinDropMax) || 7, veinCooldownKey: cdKey, sizeName: cfg.veinName || v.name || 'Veio' });
+        rocks.push({ x: gx, z: gz, mesh: obj, hp, maxHp: hp, def, baseScale, isVein: true, veinModelId: v.id, dropItemId: cfg.veinItemId || '', dropMin: Number(cfg.veinDropMin) || 1, dropMax: Number(cfg.veinDropMax) || 7, depleteItemId: cfg.veinDepleteItemId || '', depleteQty: Number(cfg.veinDepleteQty) || 1, veinCooldownKey: cdKey, sizeName: cfg.veinName || v.name || 'Veio' } as any);
         callbacks.current.setMsg(`💎 Encontrado: ${cfg.veinName || v.name || 'veio mineral'}!`);
       };
       if (available.length) {
@@ -2979,6 +2979,18 @@ const hurtPlayer = (hearts: number, message: string) => {
     };
     const onVeinDepleted = (obj: any) => {
       if (!obj || !obj.isVein) return;
+      // Drop OPCIONAL ao ESGOTAR o veio (item definido no cadastro do veio).
+      const did = String(obj.depleteItemId || '');
+      if (did) {
+        const it = itemCatalogRef.current.get(did);
+        if (it) {
+          const q = Math.max(1, Number(obj.depleteQty) || 1);
+          const gx = Math.round(obj.mesh.position.x + (COLS - 1) / 2);
+          const gz = Math.round(obj.mesh.position.z + (ROWS - 1) / 2);
+          for (let k = 0; k < q; k++) spawnLootPickup(gx, gz, 'item', it, 0xffd34d, true);
+          callbacks.current.setMsg(`💎 O veio esgotado soltou: ${it.title}${q > 1 ? ` x${q}` : ''}!`);
+        }
+      }
       const key = String(obj.veinCooldownKey || ''), mid = String(obj.veinModelId || '');
       if (!key || !mid) return;
       try {

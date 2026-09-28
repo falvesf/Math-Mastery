@@ -8,6 +8,7 @@ import DirectUploadButton from './DirectUploadButton';
 import ImageGalleryModal from './ImageGalleryModal';
 import AudioBankPicker from './AudioBankPicker';
 import { MonsterAttributesEditor, type MonsterAttributesConfig } from './MonsterAttributesEditor';
+import ItemSelectDropdown from './ItemSelectDropdown';
 import InteractiveModelPreview from './InteractiveModelPreview';
 import { playChestAudio } from '../lib/audio';
 import { playSound } from '../lib/audioBank';
@@ -137,6 +138,9 @@ export default function Admin3DModelsManager() {
   const [veinItemId, setVeinItemId] = useState('');
   const [veinDropMin, setVeinDropMin] = useState(1);
   const [veinDropMax, setVeinDropMax] = useState(7);
+  // Drop OPCIONAL ao ESGOTAR o veio (item do catálogo + quantidade).
+  const [veinDepleteItemId, setVeinDepleteItemId] = useState('');
+  const [veinDepleteQty, setVeinDepleteQty] = useState(1);
   // Temas em que o modelo aparece (vazio = todos).
   const [sceneryThemes, setSceneryThemes] = useState<string[]>([]);
   const [animalThemes, setAnimalThemes] = useState<string[]>([]);
@@ -208,12 +212,18 @@ export default function Admin3DModelsManager() {
       setStoreItems(((data as any[]) || []).map(r => ({
         id: r.id,
         itemTitle: r.name || r.data?.title || r.id,
+        imageUrl: r.data?.imageUrl || r.data?.itemImageUrl || '',
         avatarPart: r.data?.avatarPart,
         type: r.data?.type,
         rarity: r.data?.rarity,
+        gameEffect: r.data?.gameEffect || 'none',
       })));
     }).catch(() => {});
   }, []);
+  // Itens com poder "Quebrar / Triturar no Ferreiro" (material bruto) — usados nos veios minerais.
+  const rawMaterialOptions = storeItems
+    .filter((it: any) => it.gameEffect === 'break_item')
+    .map((it: any) => ({ id: it.id, title: it.itemTitle, imageUrl: it.imageUrl, rarity: it.rarity }));
 
   const filteredModels = models.filter(m => (m.category || 'skin') === activeTab);
 
@@ -253,6 +263,8 @@ export default function Admin3DModelsManager() {
         setVeinItemId(String(vc.veinItemId || ''));
         setVeinDropMin(Number(vc.veinDropMin) || 1);
         setVeinDropMax(Number(vc.veinDropMax) || 7);
+        setVeinDepleteItemId(String(vc.veinDepleteItemId || ''));
+        setVeinDepleteQty(Number(vc.veinDepleteQty) || 1);
         setSceneryThemes(Array.isArray(vc.themes) ? vc.themes : []);
         setAnimalThemes(Array.isArray(vc.themes) ? vc.themes : []);
       }
@@ -284,7 +296,7 @@ export default function Admin3DModelsManager() {
       setRenderScale(1);
       setRenderHeight(1);
       setAnimalConfig({});
-      setVeinHp(800); setVeinDef(15); setVeinItemId(''); setVeinDropMin(1); setVeinDropMax(7);
+      setVeinHp(800); setVeinDef(15); setVeinItemId(''); setVeinDropMin(1); setVeinDropMax(7); setVeinDepleteItemId(''); setVeinDepleteQty(1);
       setSceneryThemes([]); setAnimalThemes([]);
     }
     setIsModalOpen(true);
@@ -377,6 +389,8 @@ export default function Admin3DModelsManager() {
             veinItemId: veinItemId.trim(),
             veinDropMin: Math.max(1, veinDropMin || 1),
             veinDropMax: Math.max(1, veinDropMax || 7),
+            veinDepleteItemId: veinDepleteItemId.trim() || '',
+            veinDepleteQty: Math.max(1, veinDepleteQty || 1),
           } : {}),
           themes: sceneryThemes,
         };
@@ -761,9 +775,9 @@ export default function Admin3DModelsManager() {
                       <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Defesa (dureza)</label>
                       <input type="number" min={1} value={veinDef} onChange={e => setVeinDef(Math.max(1, parseInt(e.target.value) || 15))} style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
                     </div>
-                    <div style={{ flex: '1 1 220px' }}>
-                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>ID do item minério (bruto) que dropa</label>
-                      <input value={veinItemId} onChange={e => setVeinItemId(e.target.value)} placeholder="ex: cobre_bruto" style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    <div style={{ flex: '1 1 260px' }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Minério (bruto) que dropa — itens com poder “Quebrar/Triturar”</label>
+                      <ItemSelectDropdown items={rawMaterialOptions} value={veinItemId} onChange={(id) => setVeinItemId(id)} placeholder="Selecione o item bruto (ex.: Cobre Bruto)..." />
                     </div>
                     <div style={{ width: 80 }}>
                       <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Drop mín</label>
@@ -773,7 +787,15 @@ export default function Admin3DModelsManager() {
                       <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Drop máx</label>
                       <input type="number" min={1} value={veinDropMax} onChange={e => setVeinDropMax(Math.max(1, parseInt(e.target.value) || 7))} style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
                     </div>
-                    <div style={{ flexBasis: '100%', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>O veio encolhe conforme o dano e solta 1–{veinDropMax} minérios com 10% de chance por golpe. Ele quebra com picareta ou arma de Peso &gt; Defesa.</div>
+                    <div style={{ flex: '1 1 260px' }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Item ao ESGOTAR o veio (opcional)</label>
+                      <ItemSelectDropdown items={storeItems.map((it: any) => ({ id: it.id, title: it.itemTitle, imageUrl: it.imageUrl, rarity: it.rarity }))} value={veinDepleteItemId} onChange={(id) => setVeinDepleteItemId(id)} placeholder="Nenhum — não dropa ao esgotar..." />
+                    </div>
+                    <div style={{ width: 80 }}>
+                      <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Qtd</label>
+                      <input type="number" min={1} value={veinDepleteQty} onChange={e => setVeinDepleteQty(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '0.5rem', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
+                    </div>
+                    <div style={{ flexBasis: '100%', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>O veio encolhe conforme o dano e solta 1–{veinDropMax} minérios com 10% de chance por golpe. Ao ESGOTAR, pode soltar o item opcional definido acima. Ele quebra com picareta ou arma de Peso &gt; Defesa.</div>
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
