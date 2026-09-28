@@ -99,6 +99,8 @@ interface ScenarioConfig {
   chestCells?: Record<string, string>;
   /** Loot dos BAÚS (por sorteio ponderado). Sem config → moedas 1..10 (comportamento antigo). */
   chestConfig?: { loot?: LootEntry[] };
+  /** Loot POR BAÚ (índice 0..N-1). Sem entrada → usa chestConfig.loot (padrão). */
+  chestConfigs?: Array<{ loot?: LootEntry[] }>;
 }
 interface Scenario { id?: string; tenant_id?: string | null; name: string; theme: string; is_active: boolean; config: ScenarioConfig }
 
@@ -795,6 +797,56 @@ export default function AdminScenarioManager() {
   const patchLoot = (i: number, patch: Partial<LootEntry>) => setCurrent(c => { if (!c) return c; const lt = c.config.lootTable.map((l, j) => j === i ? { ...l, ...patch } : l); return { ...c, config: { ...c.config, lootTable: lt } }; });
   const patchKey = (i: number, patch: Partial<KeyType>) => setCurrent(c => { if (!c) return c; const kt = (c.config.keys || []).map((k, j) => j === i ? { ...k, ...patch } : k); return { ...c, config: { ...c.config, keys: kt } }; });
   const patchChestLoot = (i: number, patch: Partial<LootEntry>) => setCurrent(c => { if (!c) return c; const lt = (c.config.chestConfig?.loot || []).map((l, j) => j === i ? { ...l, ...patch } : l); return { ...c, config: { ...c.config, chestConfig: { ...(c.config.chestConfig || {}), loot: lt } } }; });
+  // Loot POR BAÚ (chestConfigs[slot]) — cada baú tem a própria tabela.
+  const setChestLootArr = (slot: number, loot: LootEntry[]) => setCurrent(c => {
+    if (!c) return c;
+    const arr = [...(c.config.chestConfigs || [])];
+    while (arr.length <= slot) arr.push({ loot: [] });
+    arr[slot] = { ...arr[slot], loot };
+    return { ...c, config: { ...c.config, chestConfigs: arr } };
+  });
+  const patchSlotLoot = (slot: number, i: number, patch: Partial<LootEntry>) => setCurrent(c => {
+    if (!c) return c;
+    const arr = [...(c.config.chestConfigs || [])];
+    while (arr.length <= slot) arr.push({ loot: [] });
+    const loot = (arr[slot].loot || []).map((l, j) => j === i ? { ...l, ...patch } : l);
+    arr[slot] = { ...arr[slot], loot };
+    return { ...c, config: { ...c.config, chestConfigs: arr } };
+  });
+  // Linha de edição de loot (reutilizada por baú individual e padrão).
+  const renderLootRow = (l: LootEntry, i: number, onPatch: (j: number, p: Partial<LootEntry>) => void, onRemove: (j: number) => void) => (
+    <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8, padding: '0.55rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8 }}>
+      <div style={{ width: 170 }}><label style={labelStyle}>Tipo</label>
+        <select style={inputStyle} value={l.kind} onChange={e => onPatch(i, { kind: e.target.value as any })}>
+          <option value="coins">🪙 Moedas</option>
+          <option value="item">🎒 Item do Catálogo</option>
+          <option value="nothing">— Nada</option>
+        </select>
+      </div>
+      <div style={{ width: 100 }}><label style={labelStyle}>Peso</label><input type="number" style={inputStyle} value={l.weight} onChange={e => onPatch(i, { weight: parseInt(e.target.value) || 0 })} /></div>
+      {l.kind === 'coins' && (
+        <>
+          <div style={{ width: 90 }}><label style={labelStyle}>Mín</label><input type="number" style={inputStyle} value={l.min ?? ''} onChange={e => onPatch(i, { min: parseInt(e.target.value) || 0 })} /></div>
+          <div style={{ width: 90 }}><label style={labelStyle}>Máx</label><input type="number" style={inputStyle} value={l.max ?? ''} onChange={e => onPatch(i, { max: parseInt(e.target.value) || 0 })} /></div>
+        </>
+      )}
+      {l.kind === 'item' && (
+        <div style={{ flex: '1 1 280px' }}><label style={labelStyle}>Item (catálogo)</label>
+          <ItemSelectDropdown items={catalogOptions} value={l.itemId || ''} onChange={id => onPatch(i, { itemId: id })} placeholder="Selecione um item do catálogo..." />
+        </div>
+      )}
+      {l.kind === 'key' && (
+        <div style={{ flex: '1 1 280px' }}><label style={labelStyle}>Chave (cenário)</label>
+          <select style={inputStyle} value={l.keyId || ''} onChange={e => onPatch(i, { keyId: e.target.value || undefined })}>
+            <option value="">— (selecionar chave)</option>
+            {(current?.config.keys || []).map(k => <option key={k.id} value={k.id}>🔑 {k.name} ({k.id})</option>)}
+          </select>
+        </div>
+      )}
+      <button title="Remover" style={{ ...btn('rgba(239,68,68,0.25)'), padding: '0.45rem 0.5rem', marginLeft: 'auto' }} onClick={() => onRemove(i)}>✕</button>
+    </div>
+  );
+  const chestUiCount = Math.max(0, Math.round(Number(current?.config.genChests) || 0));
 
   const save = async () => {
     if (!current) return;
@@ -1103,44 +1155,30 @@ export default function AdminScenarioManager() {
 
             {/* Loot dos BAÚS */}
             <div style={{ ...card, display: editorTab === 'loot' ? undefined : 'none' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>🎁 Loot dos Baús</strong>
-                <button style={btn('var(--accent-green, #10b981)')} onClick={() => setCurrent({ ...current, config: { ...current.config, chestConfig: { ...(current.config.chestConfig || {}), loot: [...(current.config.chestConfig?.loot || []), { kind: 'coins', weight: 10, min: 5, max: 20 }] } } })}>+ Item</button>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  {chestUiCount > 0 ? `${chestUiCount} baú(s) — cada um com sua tabela` : 'Baú padrão (defina a qtd. em “Baús” nos critérios)'}
+                </span>
               </div>
-              {(current.config.chestConfig?.loot || []).map((l, i) => (
-                <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8, padding: '0.55rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8 }}>
-                  <div style={{ width: 170 }}><label style={labelStyle}>Tipo</label>
-                    <select style={inputStyle} value={l.kind} onChange={e => patchChestLoot(i, { kind: e.target.value as any })}>
-                      <option value="coins">🪙 Moedas</option>
-                      <option value="item">🎒 Item do Catálogo</option>
-                      <option value="nothing">— Nada</option>
-                    </select>
+              {(chestUiCount > 0 ? Array.from({ length: chestUiCount }, (_, s) => s) : [-1]).map(slot => {
+                const loot = slot >= 0 ? (current.config.chestConfigs?.[slot]?.loot || []) : (current.config.chestConfig?.loot || []);
+                const addItem = () => { const e: LootEntry = { kind: 'coins', weight: 10, min: 5, max: 20 }; if (slot >= 0) setChestLootArr(slot, [...loot, e]); else patchConfig({ chestConfig: { ...(current.config.chestConfig || {}), loot: [...loot, e] } }); };
+                const onPatch = (j: number, p: Partial<LootEntry>) => { if (slot >= 0) patchSlotLoot(slot, j, p); else patchChestLoot(j, p); };
+                const onRemove = (j: number) => { const nl = loot.filter((_, k) => k !== j); if (slot >= 0) setChestLootArr(slot, nl); else patchConfig({ chestConfig: { ...(current.config.chestConfig || {}), loot: nl } }); };
+                return (
+                  <div key={slot} style={{ marginBottom: 10, padding: '0.55rem', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <strong style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>{slot >= 0 ? `🧰 Baú ${slot + 1}` : '🧰 Baú (padrão)'}</strong>
+                      <button style={btn('var(--accent-green, #10b981)')} onClick={addItem}>+ Item</button>
+                    </div>
+                    {loot.map((l, i) => renderLootRow(l, i, onPatch, onRemove))}
+                    {loot.length === 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Sem itens — cai moedas 1..10.</div>}
                   </div>
-                  <div style={{ width: 100 }}><label style={labelStyle}>Peso</label><input type="number" style={inputStyle} value={l.weight} onChange={e => patchChestLoot(i, { weight: parseInt(e.target.value) || 0 })} /></div>
-                  {l.kind === 'coins' && (
-                    <>
-                      <div style={{ width: 90 }}><label style={labelStyle}>Mín</label><input type="number" style={inputStyle} value={l.min ?? ''} onChange={e => patchChestLoot(i, { min: parseInt(e.target.value) || 0 })} /></div>
-                      <div style={{ width: 90 }}><label style={labelStyle}>Máx</label><input type="number" style={inputStyle} value={l.max ?? ''} onChange={e => patchChestLoot(i, { max: parseInt(e.target.value) || 0 })} /></div>
-                    </>
-                  )}
-                  {l.kind === 'item' && (
-                    <div style={{ flex: '1 1 280px' }}><label style={labelStyle}>Item (catálogo)</label>
-                      <ItemSelectDropdown items={catalogOptions} value={l.itemId || ''} onChange={id => patchChestLoot(i, { itemId: id })} placeholder="Selecione um item do catálogo..." />
-                    </div>
-                  )}
-                  {l.kind === 'key' && (
-                    <div style={{ flex: '1 1 280px' }}><label style={labelStyle}>Chave (cenário)</label>
-                      <select style={inputStyle} value={l.keyId || ''} onChange={e => patchChestLoot(i, { keyId: e.target.value || undefined })}>
-                        <option value="">— (selecionar chave)</option>
-                        {(current.config.keys || []).map(k => <option key={k.id} value={k.id}>🔑 {k.name} ({k.id})</option>)}
-                      </select>
-                    </div>
-                  )}
-                  <button title="Remover" style={{ ...btn('rgba(239,68,68,0.25)'), padding: '0.45rem 0.5rem', marginLeft: 'auto' }} onClick={() => setCurrent({ ...current, config: { ...current.config, chestConfig: { ...(current.config.chestConfig || {}), loot: (current.config.chestConfig?.loot || []).filter((_, j) => j !== i) } } })}>✕</button>
-                </div>
-              ))}
+                );
+              })}
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', marginTop: 4 }}>
-                Cada baú sorteia <b>um</b> resultado pela tabela acima. Sem config → moedas 1..10.
+                Cada baú sorteia <b>um</b> resultado pela tabela dele. A quantidade de baús vem do campo “Baús” nos critérios (0 = auto → usa o padrão).
               </div>
             </div>
 

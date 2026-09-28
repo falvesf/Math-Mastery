@@ -299,6 +299,13 @@ const [sfxOn, setSfxOn] = useState(false);
   const bossAnswerRef = useRef<(i: number) => void>(() => {});
   const bossFinishRef = useRef<() => void>(() => {});
   const [puffs, setPuffs] = useState<any[]>([]);
+  // Overlay de recompensa ao abrir um baú (itens em círculos por raridade).
+  const [chestReward, setChestReward] = useState<{ items: any[]; coins: number } | null>(null);
+  useEffect(() => {
+    if (!chestReward) return;
+    const t = window.setTimeout(() => setChestReward(null), 4800);
+    return () => window.clearTimeout(t);
+  }, [chestReward]);
   const [hint, setHint] = useState('');
   const mountRef = useRef<HTMLDivElement>(null);
   const theme = THEMES[themeKey];
@@ -581,6 +588,7 @@ if (!cancelled) {
           imageUrl: r.image_url || r.imageUrl || d.imageUrl || d.image_url || '',
           gameEffect: r.gameEffect || d.gameEffect || 'none',
           type: r.type || d.type || 'item',
+          rarity: d.rarity || r.rarity || 'common',
         });
       });
     }).catch(() => {});
@@ -598,7 +606,7 @@ if (!cancelled) {
   }, [userData?.uid, itemsProp]);
 
   // Estado mutável compartilhado com o loop Three
-  const callbacks = useRef({ setMsg, setCoins, setDead, setBossTouched, setPlayerHearts, setStamina, setHint: (_t: string) => {}, addPotion: () => {}, pingSfx: () => {} });
+  const callbacks = useRef({ setMsg, setCoins, setDead, setBossTouched, setPlayerHearts, setStamina, setHint: (_t: string) => {}, addPotion: () => {}, pingSfx: () => {}, setChestReward: (_r: any) => {} });
   callbacks.current = {
     setMsg, setCoins, setDead, setBossTouched, setPlayerHearts, setStamina,
     setHint: (t: string) => setHint(prev => (prev === t ? prev : t)),
@@ -608,6 +616,7 @@ if (!cancelled) {
       return [...prev, { key: 'loot_potion', title: 'Poção de Cura (drop)', imageUrl: '', heal: 1, effect: 'heal_1_hp', qty: 1 }];
     }),
     pingSfx: () => { setSfxOn(true); window.setTimeout(() => setSfxOn(false), 400); },
+    setChestReward: (r: any) => setChestReward(r),
   };
   // Modelos 3D (moeda/baú padrão ativo) pré-carregados para clonar no mapa.
   const coinTemplateRef = useRef<any>(null);
@@ -1065,7 +1074,7 @@ type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: nu
     const slimes: Slime[] = [];
     const rocks: { x: number; z: number; mesh: THREE.Object3D; hp: number; maxHp: number; def: number }[] = [];
     const hazards: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
-    const chests: { x: number; z: number; mesh: THREE.Object3D }[] = [];
+    const chests: { x: number; z: number; mesh: THREE.Object3D; idx?: number }[] = [];
     const doors: { x: number; z: number; mesh: THREE.Object3D; open: boolean; hp: number; maxHp: number; def: number; typeId: string }[] = [];
     const coinGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.08, 16);
     const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd34d, emissive: 0xffaa00, emissiveIntensity: 0.6 });
@@ -1614,7 +1623,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         if (xs === grid.start.x && zs === grid.start.z) continue;
         if (xs === grid.end.x && zs === grid.end.z) continue;
         const m = makeChestVisual(); m.position.set(wx(xs), 0.38, wz(zs)); m.castShadow = true; scene.add(m);
-        chests.push({ x: xs, z: zs, mesh: m });
+        chests.push({ x: xs, z: zs, mesh: m, idx: chests.length });
       }
     } else {
     // ---- Baús RAROS e ESTRATÉGICOS (em becos TRANCADOS por uma rocha na entrada) ----
@@ -1640,7 +1649,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         rocks.push(mkRockSized(cc.entrance.x, cc.entrance.z));
       }
       const m = makeChestVisual(); m.position.set(wx(cc.x), 0.38, wz(cc.z)); m.castShadow = true; scene.add(m);
-      chests.push({ x: cc.x, z: cc.z, mesh: m });
+      chests.push({ x: cc.x, z: cc.z, mesh: m, idx: chests.length });
     }
     }
 
@@ -2848,9 +2857,24 @@ const hurtPlayer = (hearts: number, message: string) => {
       chest.mesh.visible = false; scene.remove(chest.mesh);
       playFx(chestConfigRef.current?.chestAudioUrl || battleSoundsRef.current.punch, 0.85);
       const world = new THREE.Vector3(wx(chest.x), 1.0, wz(chest.z));
-      const table = (Array.isArray(cfgChestConfig.loot) && cfgChestConfig.loot.length) ? cfgChestConfig.loot : null;
-      if (table) { const got = applyEntry(rollEntry(table), world, true); callbacks.current.setMsg(`🎁 Baú aberto! ${got}`.trim()); }
-      else { const v = 1 + Math.floor(Math.random() * 10); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); spawnHighlightRing(world); callbacks.current.setMsg(`🎁 Baú aberto! +${v} 🪙`); }
+      // Tabela do baú: por ÍNDICE (chestConfigs[idx]) com fallback para a padrão (chestConfig.loot).
+      const cfgs: any[] = Array.isArray(sc.chestConfigs) ? sc.chestConfigs : [];
+      const idx = Number(chest.idx);
+      const perChest = (Number.isFinite(idx) && cfgs[idx] && Array.isArray(cfgs[idx].loot) && cfgs[idx].loot.length) ? cfgs[idx].loot : null;
+      const table = perChest || ((Array.isArray(cfgChestConfig.loot) && cfgChestConfig.loot.length) ? cfgChestConfig.loot : null);
+      const rewardItems: any[] = []; let rewardCoins = 0; let got = '';
+      if (table) {
+        const entry = rollEntry(table);
+        got = applyEntry(entry, world, true);
+        if (entry?.kind === 'coins') rewardCoins = Number(String(got).replace(/[^0-9]/g, '')) || 0;
+        else if (entry?.kind === 'item') { const it = itemCatalogRef.current.get(String(entry.itemId)); if (it) rewardItems.push({ title: it.title, imageUrl: it.imageUrl, rarity: (it as any).rarity || 'common', quantity: 1 }); }
+        callbacks.current.setMsg(`🎁 Baú aberto! ${got}`.trim());
+      } else {
+        const v = 1 + Math.floor(Math.random() * 10); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); spawnHighlightRing(world);
+        rewardCoins = v; callbacks.current.setMsg(`🎁 Baú aberto! +${v} 🪙`);
+      }
+      // Overlay de RECOMPENSA (baú aberto + itens em círculos por raridade + tooltip).
+      try { callbacks.current.setChestReward({ items: rewardItems, coins: rewardCoins }); } catch { /* noop */ }
     };
 
     // Interação por TOQUE/CLIQUE (mobile): porta/baú ou alterna a picareta.
@@ -3917,6 +3941,31 @@ onDrop={() => {
             }} />
           ))}
         </div>
+        {/* RECOMPENSA do baú: baú aberto + itens em círculos por RARIDADE + tooltip. */}
+        {chestReward && (
+          <div onClick={() => setChestReward(null)} style={{ position: 'absolute', inset: 0, zIndex: 32, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', padding: 16, cursor: 'pointer' }}>
+            <style>{'@keyframes chestPop{0%{transform:scale(.4) rotate(-8deg);opacity:0}60%{transform:scale(1.15) rotate(4deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}@keyframes lootIn{0%{transform:translateY(24px) scale(.4);opacity:0}100%{transform:translateY(0) scale(1);opacity:1}}'}</style>
+            <div style={{ fontSize: 60, animation: 'chestPop 0.6s ease-out', filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.55))' }}>🧰</div>
+            <div style={{ color: '#fff', fontWeight: 800, marginTop: 6, marginBottom: 16, textShadow: '0 2px 6px #000', letterSpacing: 0.5 }}>Baú aberto!</div>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 560 }}>
+              {chestReward.coins > 0 && (
+                <div title={`${chestReward.coins} moedas`} style={{ width: 66, height: 66, borderRadius: '50%', border: '3px solid #fbbf24', background: 'rgba(251,191,36,0.18)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: 24, boxShadow: '0 0 12px #fbbf2466', animation: 'lootIn 0.5s ease-out' }}>
+                  🪙<span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#fde68a' }}>+{chestReward.coins}</span>
+                </div>
+              )}
+              {chestReward.items.map((it, i) => {
+                const col = ({ common: '#9ca3af', uncommon: '#4ade80', rare: '#60a5fa', epic: '#c084fc', mestre: '#ef4444', legendary: '#fbbf24' } as any)[it.rarity] || '#9ca3af';
+                return (
+                  <div key={i} title={`${it.title} — ${it.rarity}${it.quantity > 1 ? ` x${it.quantity}` : ''}`}
+                    style={{ width: 66, height: 66, borderRadius: '50%', border: `3px solid ${col}`, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: `0 0 14px ${col}88`, animation: `lootIn 0.5s ease-out ${0.1 + i * 0.08}s both` }}>
+                    {it.imageUrl ? <img src={it.imageUrl} alt="" style={{ width: '82%', height: '82%', objectFit: 'contain' }} /> : <span style={{ fontSize: 24 }}>🎁</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ color: '#cbd5e1', fontSize: '0.75rem', marginTop: 16 }}>clique para fechar</div>
+          </div>
+        )}
         {(dead || bossTouched) && (
           <div style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center', flexDirection: 'column', gap: 12 }}>
             {bossTouched ? (<>⚔️ BOSS ENCONTRADO!<br /><span style={{ fontSize: '0.85rem', fontWeight: 'normal', color: '#fbbf24' }}>(aqui entraria a batalha da missão)</span></>) : (<>💀 Derrotado pelos perigos do mapa!</>)}
