@@ -58,6 +58,13 @@ interface ScenarioConfig {
   genTrees?: number;
   genFlowers?: number;
   genAnimals?: number;
+  /** Moedas espalhadas: -1 = nenhuma, 0/undefined = auto, >0 = quantidade exata. */
+  genCoins?: number;
+  /** Valor mínimo/máximo por moeda espalhada (padrão 1..10). */
+  coinValueMin?: number;
+  coinValueMax?: number;
+  /** Células de moeda geradas ("x,z" → valor). */
+  coinCells?: Record<string, string>;
   /** Animais: 'varied' = sorteia do catálogo; 'specific' = só os de animalIds. */
   animalMode?: 'varied' | 'specific';
   animalIds?: string[];
@@ -545,7 +552,22 @@ export default function AdminScenarioManager() {
       chestCells[key] = '1';
     }
 
-    return { ...c, config: { ...c.config, cols, rows, wallHeight, layout: g.map(r => r.join('')), wallTypeCells: {}, doorTypeCells, monsterCells, chestCells } };
+    // Moedas espalhadas: quantidade exata (-1 = nenhuma, 0 = auto) + valor min/max por moeda.
+    const coinCells: Record<string, string> = {};
+    const gc = Number(c.config.genCoins);
+    const vMin = Math.max(1, Math.round(Number(c.config.coinValueMin) || 1));
+    const vMax = Math.max(vMin, Math.round(Number(c.config.coinValueMax) || 10));
+    const coinTarget = (c.config.genCoins === -1) ? 0 : (gc > 0 ? gc : Math.round(openC.length * (0.06 + elab * 0.08)));
+    if (coinTarget > 0) {
+      const coinSpots = spots.filter(([x, z]) => !chestCells[`${x},${z}`] && !monsterCells[`${x},${z}`]);
+      shuffleArr(coinSpots);
+      for (const [x, z] of coinSpots.slice(0, coinTarget)) {
+        const val = vMin + Math.floor(Math.random() * (vMax - vMin + 1));
+        coinCells[`${x},${z}`] = String(val);
+      }
+    }
+
+    return { ...c, config: { ...c.config, cols, rows, wallHeight, layout: g.map(r => r.join('')), wallTypeCells: {}, doorTypeCells, monsterCells, chestCells, coinCells } };
   });
   const paintAt = (x: number, z: number) => setCurrent(c => {
     if (!c) return c;
@@ -654,7 +676,8 @@ export default function AdminScenarioManager() {
       const marks = existing ? existing.slice() : [];
       const rnd = cellRand(x, z);
       const coinChance = 0.06 + elab * 0.08;
-      if (rnd < coinChance) marks.push('coin');
+      // Quando há coinCells (Gerar mapa), as moedas são EXATAS — não estima por chance.
+      if (!c.config.coinCells && rnd < coinChance) marks.push('coin');
       else if (hazardOn && rnd < coinChance + (0.05 + elab * 0.10)) marks.push('hazard');
       const l = wallAt(x - 1, z), r = wallAt(x + 1, z), u = wallAt(x, z - 1), d = wallAt(x, z + 1);
       const corridor = (l && r && !u && !d) || (u && d && !l && !r);
@@ -668,6 +691,13 @@ export default function AdminScenarioManager() {
       for (const key of Object.keys(c.config.chestCells)) {
         const marks = plan.get(key) || [];
         if (!marks.includes('chest')) marks.unshift('chest');
+        plan.set(key, marks);
+      }
+    }
+    if (c.config.coinCells) {
+      for (const key of Object.keys(c.config.coinCells)) {
+        const marks = plan.get(key) || [];
+        if (!marks.includes('coin')) marks.unshift('coin');
         plan.set(key, marks);
       }
     }
@@ -1092,6 +1122,9 @@ export default function AdminScenarioManager() {
                       <input style={inputStyle} placeholder="ex: animal-id-1, animal-id-2" value={(current.config.animalIds || []).join(', ')} onChange={e => patchConfig({ animalIds: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} />
                     </div>
                   )}
+                  <div style={{ width: 160 }}><label style={labelStyle}>Moedas (-1=sem, 0=auto)</label><input type="number" min={-1} style={inputStyle} value={current.config.genCoins ?? 0} onChange={e => patchConfig({ genCoins: Math.max(-1, parseInt(e.target.value) || 0) })} /></div>
+                  <div style={{ width: 110 }}><label style={labelStyle}>Valor mín</label><input type="number" min={1} style={inputStyle} value={current.config.coinValueMin ?? 1} onChange={e => patchConfig({ coinValueMin: Math.max(1, parseInt(e.target.value) || 1) })} /></div>
+                  <div style={{ width: 110 }}><label style={labelStyle}>Valor máx</label><input type="number" min={1} style={inputStyle} value={current.config.coinValueMax ?? 10} onChange={e => patchConfig({ coinValueMax: Math.max(1, parseInt(e.target.value) || 10) })} /></div>
                 </div>
                 {mineralModels.length > 0 && (
                   <div style={{ marginTop: 8 }}>

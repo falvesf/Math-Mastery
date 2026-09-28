@@ -1488,15 +1488,29 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       if (s.statusBar) s.statusBar.g.visible = true;
     };
 
-for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
+    // Moedas: se o cenário define coinCells (Gerar mapa), usa EXATAMENTE essas células/valores.
+    const cfgCoinCellsMap: Record<string, string> = (sc0.coinCells && typeof sc0.coinCells === 'object') ? sc0.coinCells : {};
+    const cfgCoinKeys = Object.keys(cfgCoinCellsMap);
+    const cfgCoinMin = Math.max(1, Math.round(Number(sc0.coinValueMin) || 1));
+    const cfgCoinMax = Math.max(cfgCoinMin, Math.round(Number(sc0.coinValueMax) || 10));
+    const cfgNoCoins = Number(sc0.genCoins) === -1;
+    for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
       if (grid.wall[z][x]) continue;
       if (x === grid.start.x && z === grid.start.z) continue;
       if (x === grid.end.x && z === grid.end.z) continue;
+      const ckey = `${x},${z}`;
+      if (cfgCoinKeys.length) {
+        if (!(ckey in cfgCoinCellsMap)) continue;
+        const val = Math.max(1, Math.round(Number(cfgCoinCellsMap[ckey]) || cfgCoinMin));
+        const m = makeCoinVisual(); m.position.set(wx(x), 0.5, wz(z)); scene.add(m); coinsList.push({ x, z, mesh: m, value: val });
+        continue;
+      }
+      if (cfgNoCoins) continue;
       const r = Math.random();
       // Escala com a ELABORAÇÃO: mais moedas/perigos conforme o cenário é mais elaborado.
       const coinChance = 0.06 + cfgElaboration * 0.08;
       const hazardChance = theme.hazardOn ? (0.05 + cfgElaboration * 0.10) : 0;
-      if (r < coinChance) { const m = makeCoinVisual(); m.position.set(wx(x), 0.5, wz(z)); scene.add(m); coinsList.push({ x, z, mesh: m, value: 1 + Math.floor(Math.random() * 10) }); }
+      if (r < coinChance) { const m = makeCoinVisual(); m.position.set(wx(x), 0.5, wz(z)); scene.add(m); coinsList.push({ x, z, mesh: m, value: cfgCoinMin + Math.floor(Math.random() * (cfgCoinMax - cfgCoinMin + 1)) }); }
       else if (theme.hazardOn && r < coinChance + hazardChance) { const m = new THREE.Mesh(hzGeo, hzMat); m.position.set(wx(x), 0.2, wz(z)); scene.add(m); const hhp = 30 + Math.floor(Math.random() * 40); hazards.push({ x, z, mesh: m, hp: hhp, maxHp: hhp, def: HAZARD_DEF }); }
     }
 
