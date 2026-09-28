@@ -309,6 +309,8 @@ export default function AvatarCustomizationModal({
   const [exporting3d, setExporting3d] = useState(false);
   const [exportedAt, setExportedAt] = useState<number | null>(null);
   const [monsterName, setMonsterName] = useState('');
+  // Monstro compartilhado entre escolas (is_global) — usado na geração/configuração de cenários.
+  const [shareGlobal, setShareGlobal] = useState(false);
   // Quando editando um monstro já salvo na galeria: guarda o id do registro
   // para fazer UPDATE (nunca duplicar) e o nome fica travado.
   const [editingSkinId, setEditingSkinId] = useState<string | null>(null);
@@ -809,7 +811,8 @@ export default function AvatarCustomizationModal({
               ? await supabase.from('preset_skins').update({
                   name: trimmedName,
                   config: JSON.stringify(cleanConfig),
-                  baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null
+                  baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null,
+                  ...(customSaveMode ? { is_global: shareGlobal, tenant_id: shareGlobal ? null : (tenantId || userData?.tenantId || null) } : {})
                 }).eq('id', targetSkinId)
               : await supabase.from('preset_skins').insert({
                   id: newGenId,
@@ -819,8 +822,8 @@ export default function AvatarCustomizationModal({
                   baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null,
                   genderTarget: 'unisex',
                   config: JSON.stringify(cleanConfig),
-                  tenant_id: tenantId || userData?.tenantId || null,
-                  is_global: false
+                  tenant_id: (customSaveMode && shareGlobal) ? null : (tenantId || userData?.tenantId || null),
+                  is_global: customSaveMode ? shareGlobal : false
                 });
             
             if (saveError) {
@@ -2184,6 +2187,7 @@ onClick={() => setConfig(prev => {
                       onClick={() => {
                         setEditingSkinId(null);
                         setMonsterName('');
+                        setShareGlobal(false);
                         lastLoadedSkinIdRef.current = null;
                         handleUnequipSkin();
                         onEditingEntityChange?.(null);
@@ -2209,6 +2213,7 @@ onClick={() => setConfig(prev => {
                           // Abre para edição o MESMO registro (nome travado, sem duplicar).
                           setEditingSkinId(skin.id);
                           setMonsterName(skin.name || '');
+                          setShareGlobal(!!(skin as any).is_global);
                           lastLoadedSkinIdRef.current = skin.id;
 
                           const hydrated: AvatarConfig = {
@@ -2256,6 +2261,10 @@ onClick={() => setConfig(prev => {
                       placeholder="Nome do Monstro (Ex: Golem de Gelo)"
                       style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: editingSkinId ? 'var(--bg-card)' : 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', cursor: editingSkinId ? 'not-allowed' : 'text', opacity: editingSkinId ? 0.75 : 1 }}
                     />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={shareGlobal} onChange={e => setShareGlobal(e.target.checked)} />
+                      🌐 Compartilhar com TODAS as escolas (global) — reutilizável nos cenários de qualquer escola
+                    </label>
                   </div>
                 )}
 

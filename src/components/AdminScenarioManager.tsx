@@ -239,7 +239,7 @@ export default function AdminScenarioManager() {
   }, [tenantId]);
   useEffect(() => {
     let q = supabase.from('preset_skins').select('*').eq('type', 'monster');
-    if (tenantId) q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
+    if (tenantId) q = q.or(`tenant_id.is.null,is_global.eq.true,tenant_id.eq.${tenantId}`);
     q.then(({ data }) => {
       const rows = ((data as any[]) || []).map(r => {
         const d = typeof r.config === 'string' ? JSON.parse(r.config) : (r.config || {});

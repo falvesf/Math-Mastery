@@ -193,8 +193,9 @@ export async function evolveMonsterOnPlayerDefeat(
       return null;
     }
 
-    if (tenantId) {
-      q = q.eq('tenant_id', tenantId);
+    if (tenantId && !monsterPresetId) {
+      // Inclui monstros GLOBAIS/compartilhados de outras escolas, além dos do próprio tenant.
+      q = q.or(`tenant_id.is.null,is_global.eq.true,tenant_id.eq.${tenantId}`);
     }
 
     const { data: rows, error } = await q.limit(1);
