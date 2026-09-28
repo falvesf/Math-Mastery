@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { SkinViewer, IdleAnimation, WalkingAnimation, HitAnimation, PlayerAnimation } from 'skinview3d';
+import { SkinViewer, IdleAnimation, WalkingAnimation, HitAnimation, PlayerAnimation, PlayerObject } from 'skinview3d';
 // @ts-ignore - Three do skinview3d (mesma versão do boneco)
 import * as THREE from 'skinview3d/node_modules/three';
 // @ts-ignore
@@ -1070,7 +1070,7 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
 
     // ---- Itens aleatórios ----
     const coinsList: { x: number; z: number; mesh: THREE.Object3D; value: number }[] = [];
-type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number; critChance?: number };
+type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number; critChance?: number; block?: any; legPhase?: number };
     const slimes: Slime[] = [];
     const rocks: { x: number; z: number; mesh: THREE.Object3D; hp: number; maxHp: number; def: number }[] = [];
     const hazards: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
@@ -1329,6 +1329,39 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       const bubbleY = modelUrl ? 2.3 : 1.95;
 const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', damageEffectByLevel: (monster as any)?.config?.stats?.damageEffectByLevel || [], label, labelY, xp: 0, atkPower: Number(st.attack) || (8 + level * 4), rewardXp: Number(st.xp) || Math.round(40 * level), lines: (monster as any)?.config?.lines || [], nextVoice: 0, fleeTable: (monster as any)?.config?.stats?.fleeChanceTable || [], fleeMode: false, fleeTimer: 0, aggression: (monster as any)?.config?.stats?.aggression || (isAnimal ? 'peaceful' : 'aggressive'), aggressionByLevel: (monster as any)?.config?.stats?.aggressionByLevel || [], provoked: false, moveSpeed: Number(st.speed) > 0 ? Math.max(0.1, Number(st.speed)) : 1, attackInterval: Number(st.attackSpeed) > 0 ? (1 / Number(st.attackSpeed)) : 1.8, faceOffset: (monster as any)?.config?.modelForward === '-z' ? Math.PI : (monster as any)?.config?.modelForward === 'x' ? -Math.PI / 2 : (monster as any)?.config?.modelForward === '-x' ? Math.PI / 2 : 0, barY: 1.15, critChance: Number(st.critChance) > 0 ? Math.min(50, Number(st.critChance)) : 5 };
       slimes.push(slime);
+      // ---- Tipos de MONSTRO/BOSS ----
+      // .glb COM animação: caminha com a própria animação (mixer acima).
+      // .glb SEM animação: é "empurrado" pelo mapa (só translada).
+      // BLOCO (skin, sem .glb): avatar com PERNAS que ANDAM conforme a velocidade.
+      if (!modelUrl) {
+        const skinUrl = (monster as any)?.config?.customSkinUrl || (monster as any)?.url || (monster as any)?.config?.modelTextureUrl || '';
+        if (skinUrl) {
+          try {
+            const po: any = new PlayerObject();
+            po.skin.modelType = ((monster as any)?.config?.gender === 'female') ? 'slim' : 'default';
+            const tl = new THREE.TextureLoader();
+            tl.setCrossOrigin?.('anonymous');
+            tl.load(skinUrl, (tex: any) => {
+              if (disposed) return;
+              tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+              try { po.skin.map = tex; } catch { /* noop */ }
+            }, undefined, () => { /* mantém sem skin */ });
+            po.updateMatrixWorld(true);
+            const bb = new THREE.Box3().setFromObject(po);
+            const ph = Math.max(0.001, bb.max.y - bb.min.y);
+            const sc = 1.4 / ph;
+            po.scale.setScalar(sc);
+            try { slime.root.remove(slime.mesh); } catch { /* noop */ }
+            slime.root.add(po);
+            slime.block = po;
+            slime.visual = po;
+            slime.visualRestY = -bb.min.y * sc;
+            slime.barY = 1.75; slime.labelY = slime.barY + 0.2; slime.bubbleY = slime.barY + 1.1;
+            slime.bar.position.set(slime.root.position.x, slime.barY, slime.root.position.z);
+            relabelSlime(slime);
+          } catch { /* mantém slime */ }
+        }
+      }
       return slime;
     };
     // Registra a derrota de um monstro do catálogo no Mapa Explorável → Bestiário/Conquistas.
@@ -3524,6 +3557,23 @@ if (!frozenNow && tgt && tgt.dist >= 0.6 && tgt.dist <= 2.6 && s.attackCd <= 0 &
             } catch { /* noop */ }
           }
           try { (s.mixer as any).update(dt); } catch { /* noop */ }
+        }
+        // Avatar BLOCO (skin): pernas/braços balançam ao ANDAR (conforme a velocidade configurada).
+        if (s.block) {
+          const moving2 = Math.abs(mvx) + Math.abs(mvz) > 0.02;
+          if (moving2) {
+            s.legPhase = (s.legPhase || 0) + dt * 8 * (s.moveSpeed || 1);
+            const a = Math.sin(s.legPhase) * 0.8;
+            try {
+              s.block.skin.leftLeg.rotation.x = a;
+              s.block.skin.rightLeg.rotation.x = -a;
+              s.block.skin.leftArm.rotation.x = -a * 0.85;
+              s.block.skin.rightArm.rotation.x = a * 0.85;
+            } catch { /* noop */ }
+          } else if (s.legPhase) {
+            s.legPhase = 0;
+            try { s.block.skin.resetJoints(); } catch { /* noop */ }
+          }
         }
 // BOTE (pulo) + RECUO de hurt: offset visual do corpo.
         let oX = 0, oY = 0, oZ = 0;
