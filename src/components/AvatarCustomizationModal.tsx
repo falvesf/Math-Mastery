@@ -528,16 +528,13 @@ export default function AvatarCustomizationModal({
 
   const fetchModels3d = async (forceRefresh = false) => {
     try {
-      const cacheKey = CACHE_KEYS.models3d(tenantId);
+      const cacheKey = CACHE_KEYS.models3d();
       if (!forceRefresh) {
         const cached = sessionCache.get<any[]>(cacheKey);
         if (cached) { setModels3d(cached); return; }
       }
-      let query = supabase.from('3d_models').select('*');
-      if (tenantId) {
-        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
-      }
-      const { data } = await query;
+      // Moldes 3D compartilhados entre escolas → carrega TODOS.
+      const { data } = await supabase.from('3d_models').select('*');
       const fetched: any[] = [];
       if (data) {
         data.forEach(d => {

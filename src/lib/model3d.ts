@@ -13,7 +13,7 @@ export async function fetchModelsByCategory(
   tenantId?: string | null
 ): Promise<Model3D[]> {
   try {
-    const cacheKey = CACHE_KEYS.models3d(tenantId);
+    const cacheKey = CACHE_KEYS.models3d();
     let models = sessionCache.get<Model3D[]>(cacheKey);
 
     if (!models) {
@@ -90,7 +90,7 @@ export async function fetchActiveDoor(tenantId?: string | null): Promise<Model3D
  */
 export async function fetchModel3DById(id: string, tenantId?: string | null): Promise<Model3D | null> {
   try {
-    const cacheKey = CACHE_KEYS.models3d(tenantId);
+    const cacheKey = CACHE_KEYS.models3d();
     let models = sessionCache.get<Model3D[]>(cacheKey);
     if (models) {
       return models.find(m => m.id === id) || null;
