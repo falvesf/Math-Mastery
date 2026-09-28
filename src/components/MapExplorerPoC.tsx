@@ -1715,6 +1715,11 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     }
     }
 
+    // ---- SOM de IMPACTO em ROCHA/VEIO (definido em Moldes 3D → Cenário, tipo "Pedra") ----
+    // Vale para rochas .glb E fallback (o som é do TIPO rocha) e também para veios minerais.
+    const rockHitSoundUrl = (((sceneryByKindRef.current.get('rock') || []) as any[]).find(r => r.soundUrl)?.soundUrl)
+      || (((sceneryByKindRef.current.get('mineral') || []) as any[]).find(m => m.soundUrl)?.soundUrl) || '';
+    if (rockHitSoundUrl) sfx.preload(rockHitSoundUrl);
     // ---- VEIOS MINERAIS (RAROS) — chance pequena, tipos definidos no cenário, cooldown por tipo ----
     {
       const veinTmpls = (sceneryByKindRef.current.get('mineral') || []);
@@ -2015,6 +2020,8 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         }
       }
     }
+    // Árvores plantadas DENTRO do labirinto têm FÍSICA: bloqueiam a passagem na célula.
+    const treeCells = new Set<string>();
     const occupiedCell = (gx: number, gz: number) => {
       if (gx < 1 || gz < 1 || gx >= COLS - 1 || gz >= ROWS - 1) return true;
       if (grid.wall[gz]?.[gx]) return true;
@@ -2097,7 +2104,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
       const treeCount = cfgGenTrees === -1 ? 0 : (cfgGenTrees > 0 ? cfgGenTrees : autoTrees);
       const flowerCount = cfgGenFlowers === -1 ? 0 : (cfgGenFlowers > 0 ? cfgGenFlowers : autoFlowers);
       let fi = 0;
-      for (let k = 0; k < treeCount && fi < eligibleFlora.length; k++) { const [x, z] = eligibleFlora[fi++]; placeScenery('tree', wx(x), wz(z), () => mkTree(wx(x), wz(z), leafForTheme, themeKey === 'tundra')); }
+      for (let k = 0; k < treeCount && fi < eligibleFlora.length; k++) { const [x, z] = eligibleFlora[fi++]; placeScenery('tree', wx(x), wz(z), () => mkTree(wx(x), wz(z), leafForTheme, themeKey === 'tundra')); treeCells.add(`${x},${z}`); }
       for (let k = 0; k < flowerCount && fi < eligibleFlora.length; k++) { const [x, z] = eligibleFlora[fi++]; placeScenery('flower', wx(x), wz(z), () => mkFlowerFallback(wx(x), wz(z))); }
       if (cfgGenTrees === 0 && cfgGenFlowers === 0) {
         // auto: adiciona arbustos como complemento
@@ -2457,6 +2464,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
             activePickaxeValue = Math.max(1, Number((profilePickaxe as any).baseAttributeValue) || statsRef.current.attack);
             activePickaxeModel = profilePickaxeModel;
             activeWeaponTitle = (profilePickaxe as any).itemTitle || 'Picareta';
+            activeWeaponIsPickaxe = true;
             setHandActiveId(profilePickaxeId);
             for (const h of handModels) h.model.visible = (h.model === profilePickaxeModel);
           }
@@ -2507,20 +2515,21 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
               // ARMA (ataque/picareta): NÃO mexe no escudo. Clicar na mesma desequipa; em outra, troca.
               if (activePickaxeModel === model) {
                 activePickaxeModel = null; activePickaxeId = null; activeWeaponTitle = '';
-                activePickaxeValue = 0; activeWeaponAtk = 0; activeWeaponWeight = 0;
+                activePickaxeValue = 0; activeWeaponAtk = 0; activeWeaponWeight = 0; activeWeaponIsPickaxe = false;
                 try { persistUnequip(item); } catch { /* noop */ }
               } else {
                 activePickaxeModel = model; activePickaxeId = id; activeWeaponTitle = opt?.title || '';
                 activeWeaponAtk = opt?.value || statsRef.current.attack;
                 activeWeaponWeight = Number((item as any)?.weight) || 0;
                 // SÓ a PICARETA quebra como picareta; outras armas usam o PESO (se houver).
+                activeWeaponIsPickaxe = !!opt?.isPickaxe;
                 activePickaxeValue = opt?.isPickaxe ? (opt?.value || statsRef.current.attack) : 0;
                 try { persistHandEquip(item); } catch { /* noop */ }
               }
             } else {
               // id nulo: limpa arma e escudo (volta ao padrão do perfil)
               activePickaxeModel = null; activePickaxeId = null; activeWeaponTitle = '';
-              activePickaxeValue = 0; activeWeaponAtk = 0; activeWeaponWeight = 0;
+              activePickaxeValue = 0; activeWeaponAtk = 0; activeWeaponWeight = 0; activeWeaponIsPickaxe = false;
               activeShieldModel = null; activeShieldId = null;
             }
             debugPickaxe = false;
@@ -2590,10 +2599,13 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     let activeWeaponTitle = '';   // título do item ativo (define espada/lança/picareta na 1ª pessoa)
     let activeWeaponAtk = 0;      // poder de ataque da arma EQUIPADA (dano em monstros)
     let activeWeaponWeight = 0;   // PESO da arma equipada (>= defesa da pedra/parede → quebra)
+    let activeWeaponIsPickaxe = hasRealPickaxe; // a arma ativa é uma PICARETA (quebra sem precisar de peso)
     let activeShieldModel: any = null; // ESCUDO ativo (mão oposta) — independente da arma
     let activeShieldId: string | null = null;
     let handPickaxeOptions: any[] = [];
-    const pickaxeActivePower = () => (activePickaxeValue > 0 ? activePickaxeValue : ((canDebugPickaxe && debugPickaxe) ? DEBUG_PICKAXE_DMG : 0));
+    // PICARETA sempre quebra (usa o poder dela; se não houver, cai no ataque do jogador).
+    // Debug só p/ staff sem picareta.
+    const pickaxeActivePower = () => (activePickaxeValue > 0 ? activePickaxeValue : (activeWeaponIsPickaxe ? Math.max(1, statsRef.current.attack) : ((canDebugPickaxe && debugPickaxe) ? DEBUG_PICKAXE_DMG : 0)));
     const pickDamage = () => pickaxeActivePower();
     // Dano a um QUEBRÁVEL: precisa vencer a defesa; o excedente + poder de ataque vira dano.
     const breakDamage = (def: number): number => {
@@ -3041,7 +3053,9 @@ const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack
         const dmg = canPick ? breakDamage(tgt.obj.def) : Math.max(1, Math.round(activeWeaponAtk));
         if (dmg <= 0) { callbacks.current.setMsg(`⛏️ Ferramenta fraca demais (precisa vencer ${tgt.obj.def} de defesa).`); return; }
         tgt.obj.hp = Math.max(0, tgt.obj.hp - dmg);
-        playFx(battleSoundsRef.current.punch, 0.7);
+        // Picareta batendo em ROCHA/VEIO → som próprio (mais estridente); demais → som de soco.
+        const isRocky = (tgt.kind === 'rock' || tgt.kind === 'hazard');
+        playFx(isRocky && rockHitSoundUrl ? rockHitSoundUrl : battleSoundsRef.current.punch, 0.8);
         spawnPop(new THREE.Vector3(wx(tgt.gx), 1.2, wz(tgt.gz)), `-${dmg}`, false);
         onVeinHit(tgt.obj, tgt.gx, tgt.gz);
         if (tgt.obj.hp <= 0) {
@@ -3229,7 +3243,7 @@ if ((target as any).isBoss) {
     window.addEventListener('pointerup', onPU);
     cleanups.push(() => { renderer.domElement.removeEventListener('pointerdown', onPD); window.removeEventListener('pointermove', onPM); window.removeEventListener('pointerup', onPU); });
 
-    const isWall = (x: number, z: number) => x < 0 || x >= COLS || z < 0 || z >= ROWS || grid.wall[z][x];
+    const isWall = (x: number, z: number) => x < 0 || x >= COLS || z < 0 || z >= ROWS || grid.wall[z][x] || treeCells.has(`${x},${z}`);
     // Os monstros andam em coordenadas de MUNDO; convertemos para GRADE (0..COLS/ROWS).
     const toGridX = (w: number) => Math.round(w + (COLS - 1) / 2);
     const toGridZ = (w: number) => Math.round(w + (ROWS - 1) / 2);

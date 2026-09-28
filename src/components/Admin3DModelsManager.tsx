@@ -819,7 +819,7 @@ export default function Admin3DModelsManager() {
                   )}
                 </div>
                 <div style={{ marginTop: '0.75rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Som (banco de sons — opcional)</label>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>{category === 'scenery' && sceneryKind === 'rock' ? '⛏️ Som do IMPACTO da picareta na rocha/veio (banco de sons)' : 'Som (banco de sons — opcional)'}</label>
                   <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <input type="text" value={scenerySoundUrl} onChange={e => setScenerySoundUrl(e.target.value)} placeholder="https://.../som.mp3" style={{ flex: '1 1 240px', padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} />
                     <button type="button" onClick={() => playSound(scenerySoundUrl || '')} disabled={!scenerySoundUrl} title="Ouvir" style={{ padding: '0.5rem 0.7rem', background: 'var(--btn-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', cursor: scenerySoundUrl ? 'pointer' : 'not-allowed', opacity: scenerySoundUrl ? 1 : 0.4 }}>🔊</button>
