@@ -1917,7 +1917,20 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     // Água (rio/lago): SÓ em células livres — NUNCA sobre paredes. Cada célula tem PROFUNDIDADE:
     // 1 = raso (azul claro), 2 = médio, 3 = fundo/submerso (azul intenso).
     const waterCells = new Map<string, number>();
-    if (themeKey === 'plains' || themeKey === 'tundra') {
+    // Água vinda do CENÁRIO (pintada/gerada) tem prioridade; senão o rio procedural dos temas vivos.
+    const cfgWaterMap: Record<string, string> = (sc0.waterCells && typeof sc0.waterCells === 'object') ? sc0.waterCells : {};
+    const cfgWaterKeys = Object.keys(cfgWaterMap);
+    const depthToNum: Record<string, number> = { shallow: 1, medium: 2, deep: 3 };
+    if (cfgWaterKeys.length) {
+      for (const key of cfgWaterKeys) {
+        const [gx, gz] = key.split(',').map(Number);
+        if (!Number.isFinite(gx) || !Number.isFinite(gz)) continue;
+        if (gx < 1 || gz < 1 || gx >= COLS - 1 || gz >= ROWS - 1) continue;
+        if (grid.wall[gz]?.[gx]) continue;
+        if (grid.doorCells.some(dd => dd.x === gx && dd.z === gz)) continue;
+        waterCells.set(key, depthToNum[String(cfgWaterMap[key])] || 1);
+      }
+    } else if (sc0.waterEnabled !== false && (themeKey === 'plains' || themeKey === 'tundra')) {
       for (let z = 2; z < ROWS - 2; z += 1) {
         const riverX = Math.round(COLS / 2 + Math.sin(z * 0.6) * 3);
         for (let dx = -1; dx <= 1; dx++) {

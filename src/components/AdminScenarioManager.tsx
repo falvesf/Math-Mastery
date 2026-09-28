@@ -65,6 +65,12 @@ interface ScenarioConfig {
   coinValueMax?: number;
   /** Células de moeda geradas ("x,z" → valor). */
   coinCells?: Record<string, string>;
+  /** Água no mapa: habilita geração e define a profundidade MÁXIMA. */
+  waterEnabled?: boolean;
+  waterDepth?: 'shallow' | 'medium' | 'deep';
+  waterType?: 'auto' | 'river' | 'lake' | 'pond';
+  /** Células de água ("x,z" → 'shallow' | 'medium' | 'deep'), pintadas ou geradas. */
+  waterCells?: Record<string, string>;
   /** Animais: 'varied' = sorteia do catálogo; 'specific' = só os de animalIds. */
   animalMode?: 'varied' | 'specific';
   animalIds?: string[];
@@ -185,7 +191,8 @@ export default function AdminScenarioManager() {
   const [saving, setSaving] = useState(false);
   // Abas do editor (organização): Mapa / Paredes / Portas & Chaves / Loot & Baús / Monstros.
   const [editorTab, setEditorTab] = useState<'map' | 'walls' | 'doors' | 'loot' | 'monsters'>('map');
-  const [tool, setTool] = useState<'wall' | 'door' | 'monster' | 'start' | 'end' | 'erase'>('wall');
+  const [tool, setTool] = useState<'wall' | 'door' | 'monster' | 'water' | 'start' | 'end' | 'erase'>('wall');
+  const [paintWaterDepth, setPaintWaterDepth] = useState<'shallow' | 'medium' | 'deep'>('shallow');
   const [painting, setPainting] = useState(false);
   // Tipo de parede/porta selecionado para PINTAR (por célula).
   const [paintWallType, setPaintWallType] = useState('');
@@ -567,7 +574,61 @@ export default function AdminScenarioManager() {
       }
     }
 
-    return { ...c, config: { ...c.config, cols, rows, wallHeight, layout: g.map(r => r.join('')), wallTypeCells: {}, doorTypeCells, monsterCells, chestCells, coinCells } };
+    // ---- ÁGUA coerente (rio/lago/poça) com PROFUNDIDADES ----
+    const waterCells: Record<string, string> = {};
+    if (c.config.waterEnabled) {
+      const depthRank: Record<string, number> = { shallow: 1, medium: 2, deep: 3 };
+      const maxRank = depthRank[String(c.config.waterDepth || 'deep')] || 3;
+      const isWallAt = (x: number, z: number) => x <= 0 || z <= 0 || x >= cols - 1 || z >= rows - 1 || g[z][x] === '#';
+      const type = (c.config.waterType && c.config.waterType !== 'auto') ? c.config.waterType : (['river', 'lake', 'pond'][Math.floor(Math.random() * 3)] as 'river' | 'lake' | 'pond');
+      const setWater = (x: number, z: number, rank: number) => {
+        if (isWallAt(x, z)) return;
+        const ch = g[z][x];
+        if (ch === 'S' || ch === 'E' || ch === 'D') return;
+        if (chestCells[`${x},${z}`] || monsterCells[`${x},${z}`]) return;
+        const r = Math.max(1, Math.min(maxRank, rank));
+        waterCells[`${x},${z}`] = r >= 3 ? 'deep' : r === 2 ? 'medium' : 'shallow';
+      };
+      if (type === 'river') {
+        // Rio sinuoso: margens RASAS → centro mais fundo (limitado pelo máximo).
+        const centerZ = Math.round(rows / 2 + (Math.random() - 0.5) * (rows / 4));
+        const amp = Math.max(1, Math.round(rows / 6));
+        const phase = Math.random() * Math.PI * 2;
+        const halfWidth = Math.min(maxRank, 3);
+        for (let x = 1; x < cols - 1; x++) {
+          const cz = Math.round(centerZ + Math.sin((x / cols) * Math.PI * 2 + phase) * amp);
+          for (let d = -halfWidth; d <= halfWidth; d++) {
+            const rank = halfWidth - Math.abs(d) + 1;
+            setWater(x, cz + d, rank);
+          }
+        }
+      } else if (type === 'lake') {
+        const lakes = 1 + Math.floor(Math.random() * 2);
+        for (let li = 0; li < lakes; li++) {
+          const cx = 3 + Math.floor(Math.random() * Math.max(1, cols - 6));
+          const cz = 3 + Math.floor(Math.random() * Math.max(1, rows - 6));
+          const R = 2 + Math.floor(Math.random() * 3) + (maxRank >= 3 ? 1 : 0);
+          for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+            const dist = Math.hypot(dx, dz);
+            if (dist > R) continue;
+            const rank = Math.max(1, Math.min(maxRank, Math.round((R - dist) / (R / maxRank))));
+            setWater(cx + dx, cz + dz, rank);
+          }
+        }
+      } else {
+        // Poças: pequenas e RASAS, espalhadas (indício de lago/rio perto).
+        const ponds = 2 + Math.floor(Math.random() * 3);
+        for (let pi = 0; pi < ponds; pi++) {
+          const cx = 2 + Math.floor(Math.random() * Math.max(1, cols - 4));
+          const cz = 2 + Math.floor(Math.random() * Math.max(1, rows - 4));
+          for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+            if (Math.abs(dx) + Math.abs(dz) <= 1) setWater(cx + dx, cz + dz, 1);
+          }
+        }
+      }
+    }
+
+    return { ...c, config: { ...c.config, cols, rows, wallHeight, layout: g.map(r => r.join('')), wallTypeCells: {}, doorTypeCells, monsterCells, chestCells, coinCells, waterCells } };
   });
   const paintAt = (x: number, z: number) => setCurrent(c => {
     if (!c) return c;
@@ -581,11 +642,13 @@ export default function AdminScenarioManager() {
     const wallTypeCells = { ...(c.config.wallTypeCells || {}) };
     const doorTypeCells = { ...(c.config.doorTypeCells || {}) };
     const monsterCells = { ...(c.config.monsterCells || {}) };
-    if (tool === 'wall') { wallTypeCells[key] = paintWallType || c.config.defaultWallType || c.config.wallTypes[0]?.id; delete doorTypeCells[key]; delete monsterCells[key]; }
-    else if (tool === 'door') { doorTypeCells[key] = paintDoorType || c.config.defaultDoorType || c.config.doorTypes[0]?.id; delete wallTypeCells[key]; delete monsterCells[key]; }
-    else if (tool === 'monster') { if (paintMonsterId) { monsterCells[key] = paintMonsterId; delete wallTypeCells[key]; delete doorTypeCells[key]; } }
-    else { delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; }
-    return { ...c, config: { ...c.config, layout: l, wallTypeCells, doorTypeCells, monsterCells } };
+    const waterCells = { ...(c.config.waterCells || {}) };
+    if (tool === 'water') { waterCells[key] = paintWaterDepth; delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; }
+    else if (tool === 'wall') { wallTypeCells[key] = paintWallType || c.config.defaultWallType || c.config.wallTypes[0]?.id; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
+    else if (tool === 'door') { doorTypeCells[key] = paintDoorType || c.config.defaultDoorType || c.config.doorTypes[0]?.id; delete wallTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
+    else if (tool === 'monster') { if (paintMonsterId) { monsterCells[key] = paintMonsterId; delete wallTypeCells[key]; delete doorTypeCells[key]; delete waterCells[key]; } }
+    else { delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
+    return { ...c, config: { ...c.config, layout: l, wallTypeCells, doorTypeCells, monsterCells, waterCells } };
   });
 
   // --- Resumo do mapa (contagens) e plano de marcadores (pontos coloridos) ---
@@ -1086,9 +1149,9 @@ export default function AdminScenarioManager() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>🗺️ Mapa (pintar)</strong>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {(['wall', 'door', 'monster', 'start', 'end', 'erase'] as const).map(t => (
+                  {(['wall', 'door', 'monster', 'water', 'start', 'end', 'erase'] as const).map(t => (
                     <button key={t} onClick={() => setTool(t)} style={{ ...btn(tool === t ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.06)'), padding: '0.35rem 0.6rem' }}>
-                      {t === 'wall' ? '🧱 Parede' : t === 'door' ? '🚪 Porta' : t === 'monster' ? '👹 Monstro' : t === 'start' ? '🟢 Início' : t === 'end' ? '🏁 Fim' : '🧽 Apagar'}
+                      {t === 'wall' ? '🧱 Parede' : t === 'door' ? '🚪 Porta' : t === 'monster' ? '👹 Monstro' : t === 'water' ? '💧 Água' : t === 'start' ? '🟢 Início' : t === 'end' ? '🏁 Fim' : '🧽 Apagar'}
                     </button>
                   ))}
                   <button style={btn('rgba(255,255,255,0.06)')} onClick={applyDims}>Aplicar dimensões</button>
@@ -1125,6 +1188,26 @@ export default function AdminScenarioManager() {
                   <div style={{ width: 160 }}><label style={labelStyle}>Moedas (-1=sem, 0=auto)</label><input type="number" min={-1} style={inputStyle} value={current.config.genCoins ?? 0} onChange={e => patchConfig({ genCoins: Math.max(-1, parseInt(e.target.value) || 0) })} /></div>
                   <div style={{ width: 110 }}><label style={labelStyle}>Valor mín</label><input type="number" min={1} style={inputStyle} value={current.config.coinValueMin ?? 1} onChange={e => patchConfig({ coinValueMin: Math.max(1, parseInt(e.target.value) || 1) })} /></div>
                   <div style={{ width: 110 }}><label style={labelStyle}>Valor máx</label><input type="number" min={1} style={inputStyle} value={current.config.coinValueMax ?? 10} onChange={e => patchConfig({ coinValueMax: Math.max(1, parseInt(e.target.value) || 10) })} /></div>
+                  <div style={{ width: 165 }}><label style={labelStyle}>Água (prof. máx)</label>
+                    <select style={inputStyle} value={current.config.waterEnabled ? (current.config.waterDepth || 'deep') : 'none'} onChange={e => {
+                      const v = e.target.value;
+                      if (v === 'none') patchConfig({ waterEnabled: false });
+                      else patchConfig({ waterEnabled: true, waterDepth: v as any });
+                    }}>
+                      <option value="none">🚫 Sem água</option>
+                      <option value="shallow">💧 Rasa (1)</option>
+                      <option value="medium">💧💧 Média (2)</option>
+                      <option value="deep">💧💧💧 Funda (3)</option>
+                    </select>
+                  </div>
+                  <div style={{ width: 150 }}><label style={labelStyle}>Tipo de água</label>
+                    <select style={inputStyle} value={current.config.waterType || 'auto'} onChange={e => patchConfig({ waterType: e.target.value as any })}>
+                      <option value="auto">🎲 Auto</option>
+                      <option value="river">🌊 Rio</option>
+                      <option value="lake">🪞 Lago</option>
+                      <option value="pond">💧 Poças</option>
+                    </select>
+                  </div>
                 </div>
                 {mineralModels.length > 0 && (
                   <div style={{ marginTop: 8 }}>
@@ -1174,6 +1257,17 @@ export default function AdminScenarioManager() {
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Clique/arraste no mapa para colocar esse monstro na célula.</span>
                 </div>
               )}
+              {tool === 'water' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>💧 Pintar água — profundidade:</span>
+                  <select style={{ ...inputStyle, width: 160 }} value={paintWaterDepth} onChange={e => setPaintWaterDepth(e.target.value as any)}>
+                    <option value="shallow">💧 Rasa (1)</option>
+                    <option value="medium">💧💧 Média (2)</option>
+                    <option value="deep">💧💧💧 Funda (3)</option>
+                  </select>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Clique/arraste no mapa. Para rios/lagos coerentes, use os critérios + “Gerar aleatório”.</span>
+                </div>
+              )}
               <div style={{ overflow: 'auto', maxHeight: 420, border: '1px solid var(--border-glass)', borderRadius: 8, padding: 4, background: '#000' }}
                 onPointerUp={() => setPainting(false)} onPointerLeave={() => setPainting(false)}>
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${current.config.cols}, 14px)`, gap: 1, width: 'max-content' }}>
@@ -1184,6 +1278,10 @@ export default function AdminScenarioManager() {
                     else if (ch === 'D') { const dt = current.config.doorTypes.find(d => d.id === (current.config.doorTypeCells?.[key] || current.config.defaultDoorType)); bg = dt?.color || '#8b5a2b'; }
                     else if (ch === 'S') bg = '#10b981';
                     else if (ch === 'E') bg = '#ef4444';
+                    else if (current.config.waterCells?.[key]) {
+                      const wd = current.config.waterCells[key];
+                      bg = wd === 'deep' ? '#0a2f7a' : wd === 'medium' ? '#2b6cff' : '#6fa8dc';
+                    }
                     // Pontos coloridos dos elementos (monstro/baú/rocha/perigo/moeda).
                     const marks = markerPlan?.get(key) || [];
                     const mId = current.config.monsterCells?.[key];
