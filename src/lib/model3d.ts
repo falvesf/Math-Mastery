@@ -17,11 +17,8 @@ export async function fetchModelsByCategory(
     let models = sessionCache.get<Model3D[]>(cacheKey);
 
     if (!models) {
-      let query = supabase.from('3d_models').select('*');
-      if (tenantId) {
-        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
-      }
-      const { data, error } = await query;
+      // Moldes 3D são COMPARTILHADOS entre as escolas → carrega TODOS (qualquer tenant) + globais.
+      const { data, error } = await supabase.from('3d_models').select('*');
       if (error) {
         console.error('Erro ao buscar modelos 3D:', error);
         return [];

@@ -154,10 +154,8 @@ export default function Admin3DModelsManager() {
   const fetchModels = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      let query = supabase.from('3d_models').select('*');
-      if (tenantId) {
-        query = query.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
-      }
+      // Moldes 3D COMPARTILHADOS entre as escolas → lista TODOS (qualquer tenant) + globais.
+      const query = supabase.from('3d_models').select('*');
       const { data: snap, error } = await query;
       if (error) {
         console.error('Supabase fetch error:', error);
