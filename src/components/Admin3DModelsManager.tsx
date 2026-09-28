@@ -636,10 +636,9 @@ export default function Admin3DModelsManager() {
                 onChange={e => setCategory(e.target.value as ModelCategory)}
                 style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }}
               >
-                <option value="skin">Skins de Monstros e Pets</option>
-                <option value="chest">Baús de Recompensa</option>
-                <option value="coin">Moedas</option>
-                  <option value="door">Portas de Calabou?o</option>
+                {(Object.keys(CATEGORY_LABELS) as ModelCategory[]).map(cat => (
+                  <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
+                ))}
               </select>
             </div>
 
