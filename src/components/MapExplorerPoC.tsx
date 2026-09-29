@@ -1761,8 +1761,11 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
       const selectedVeins = new Set<string>((sc0 as any).mineralVeins || []);
       const available = veinTmpls.filter((v: any) => selectedVeins.size > 0 && selectedVeins.has(String(v.id)));
       const maxDim = Math.max(COLS, ROWS);
-      const chance1 = maxDim >= 100 ? 0.00777 : 0;  // 0,777% (mapa > 100)
-      const chance2 = maxDim >= 200 ? 0.00123 : 0;  // 0,123% (mapa = 200) — 2º veio
+      // Chances CONFIGURÁVEIS no cenário (0/undefined = padrão antigo por tamanho).
+      const vc1 = Number((sc0 as any).veinChance);
+      const vc2 = Number((sc0 as any).veinChance2);
+      const chance1 = vc1 > 0 ? Math.min(1, vc1 / 100) : (maxDim >= 100 ? 0.00777 : 0);  // padrão: 0,777% (mapa > 100)
+      const chance2 = vc2 > 0 ? Math.min(1, vc2 / 100) : (maxDim >= 200 ? 0.00123 : 0);  // padrão: 0,123% (2º veio)
       const cdKey = `vein_cd_${(sc0 as any).id || 'default'}`;
       let cooldown: Record<string, number> = {};
       try { cooldown = JSON.parse(localStorage.getItem(cdKey) || '{}') || {}; } catch { /* noop */ }

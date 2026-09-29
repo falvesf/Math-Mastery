@@ -76,6 +76,9 @@ interface ScenarioConfig {
   animalIds?: string[];
   /** Veios minerais que PODEM nascer neste mapa (ids de modelos 3D kind='mineral'). Vazio = nenhum. */
   mineralVeins?: string[];
+  /** Chances de nascimento de veio mineral em % (0/undefined = padrão do jogo, por tamanho do mapa). */
+  veinChance?: number;
+  veinChance2?: number;
   /** Como a porta do BOSS é aberta: 'none' (sem chave) ou 'monster_drop' (chave cai de um monstro). */
   bossKeyMode?: 'none' | 'monster_drop';
   keys?: KeyType[];
@@ -1265,7 +1268,11 @@ export default function AdminScenarioManager() {
                         );
                       })}
                     </div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 2 }}>Nasce 1 veio se o mapa passar de 100 (0,777%) e um 2º se passar de 200 (0,123%). Esgotado, fica 1h de resfriamento (2h se 2 do mesmo tipo).</div>
+                    <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+                      <div style={{ width: 160 }}><label style={labelStyle}>Chance 1º veio (%)</label><input type="number" min={0} max={100} step={0.1} style={inputStyle} value={current.config.veinChance ?? ''} placeholder="auto" onChange={e => patchConfig({ veinChance: e.target.value === '' ? undefined : Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} /></div>
+                      <div style={{ width: 160 }}><label style={labelStyle}>Chance 2º veio (%)</label><input type="number" min={0} max={100} step={0.1} style={inputStyle} value={current.config.veinChance2 ?? ''} placeholder="auto" onChange={e => patchConfig({ veinChance2: e.target.value === '' ? undefined : Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} /></div>
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 2 }}>Chances em % (vazio = auto: 1º veio 0,777% se o mapa &gt; 100; 2º veio 0,123% se &gt; 200). Esgotado, fica 1h de resfriamento (2h se 2 do mesmo tipo).</div>
                   </div>
                 )}
               </div>
