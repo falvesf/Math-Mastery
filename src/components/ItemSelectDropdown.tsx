@@ -52,6 +52,8 @@ export interface ItemSelectOption {
   badge?: string;
   rarity?: string;
   typeLabel?: string;
+  /** Ids alternativos (ex.: id interno do item) que também resolvem o mesmo valor salvo. */
+  aliases?: string[];
 }
 
 interface ItemSelectDropdownProps {
@@ -136,7 +138,7 @@ export const ItemSelectDropdown: React.FC<ItemSelectDropdownProps> = ({
       })
     : sortedItems;
 
-  const selected = items.find(i => i.id === value);
+  const selected = items.find(i => i.id === value) || items.find(i => Array.isArray(i.aliases) && i.aliases.includes(value));
   const selectedRarityColor = selected?.rarity ? getRarityColor(selected.rarity) : undefined;
 
   return (

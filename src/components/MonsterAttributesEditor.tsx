@@ -317,6 +317,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
       imageUrl: it.imageUrl || it.image_url || it.gameImage2dUrl,
       rarity: it.rarity || 'common',
       typeLabel: getItemTypeLabel(it),
+      aliases: [it.dataId, it.itemId, it.storeItemId].filter(Boolean) as string[],
     }));
   }, [availableStoreItems]);
 

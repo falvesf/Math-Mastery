@@ -372,14 +372,21 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
         scene.traverse((child) => {
           if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
-            // Preserva as propriedades originais do material (brilho, sombra), apenas troca a imagem
+            // Preserva as propriedades originais do material. IMPORTANTE: só aplica a
+            // textura customizada em materiais SEM mapa próprio — senão apagaria a skin
+            // EMBUTIDA do .glb (o modelo ficava "só os ossos" após ~1s).
             if (mesh.material) {
-              const newMat = (mesh.material as THREE.Material).clone() as any;
-              newMat.map = texture;
-              newMat.transparent = false; // Desativar transparência do alpha blending para evitar Z-fighting
-              newMat.alphaTest = 0.5; // Usar alphaTest para cutout puro (descartar pixels invisíveis)
-              newMat.needsUpdate = true;
-              mesh.material = newMat;
+              const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+              const newMats = mats.map((m: any) => {
+                if (m && m.map) return m; // já tem textura própria → mantém
+                const nm = m.clone();
+                nm.map = texture;
+                nm.transparent = false;
+                nm.alphaTest = 0.5;
+                nm.needsUpdate = true;
+                return nm;
+              });
+              mesh.material = Array.isArray(mesh.material) ? (newMats as any) : (newMats[0] as any);
             }
           }
         });

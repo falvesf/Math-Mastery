@@ -558,7 +558,7 @@ export default function AvatarCustomizationModal({
     const itemsQ = supabase.from('store_items').select('*');
     itemsQ.then(({ data }) => {
       if (data) {
-        setStoreItems(data.map((d: any) => ({ id: d.id, ...(d.data || {}) })));
+        setStoreItems(data.map((d: any) => ({ ...(d.data || {}), id: d.id, dataId: (d.data || {}).id })));
       }
     });
   }, [tenantId]);
