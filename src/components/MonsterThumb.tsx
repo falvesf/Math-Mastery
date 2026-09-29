@@ -19,8 +19,15 @@ const thumbCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
 
 function ensureRenderer() {
+  // Recria se o contexto foi perdido.
+  try {
+    if (_renderer && _renderer.getContext && _renderer.getContext().isContextLost && _renderer.getContext().isContextLost()) {
+      try { _renderer.dispose(); } catch { /* noop */ }
+      _renderer = null;
+    }
+  } catch { _renderer = null; }
   if (_renderer) return;
-  _renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
+  _renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
   _renderer.setPixelRatio(1);
   _renderer.setSize(SIZE, SIZE);
   _renderer.setClearColor(0x000000, 0);
@@ -54,7 +61,7 @@ function renderObject(obj: any, rotYdeg = 0, zoom = 1, isGlb = false): string {
   _camera.position.set(0, h * 0.55, (maxDim > 0.001 ? 3.4 : 3.4) / z);
   _camera.lookAt(0, h * 0.5, 0);
   _renderer.render(_scene, _camera);
-  try { return _renderer.domElement.toDataURL('image/png'); } catch { return ''; }
+  try { return _renderer.domElement.toDataURL('image/png'); } catch (e) { console.warn('[MonsterThumb] toDataURL falhou (canvas tainted?):', e); return ''; }
 }
 
 // Avatar BLOCO genérico (quando não há .glb nem skin): boneco minecraft simples.
@@ -75,7 +82,9 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
   // 1) .glb → modelo 3D real
   if (opts.modelUrl) {
     try {
-      const gltf: any = await new GLTFLoader().loadAsync(opts.modelUrl);
+      const loader = new GLTFLoader();
+      if ((loader as any).setCrossOrigin) (loader as any).setCrossOrigin('anonymous');
+      const gltf: any = await loader.loadAsync(opts.modelUrl);
       const model = gltf.scene;
       // Skin associada ao monstro (se for IMAGEM): aplica em TODOS os materiais.
       if (opts.skinUrl) {
@@ -117,8 +126,9 @@ function getOrBuild(key: string, opts: any, onReady: (u: string) => void): strin
   if (cached !== undefined) return cached;
   if (!inflight.has(key)) {
     const p = buildThumb(opts)
-      .then((url) => { thumbCache.set(key, url); onReady(url); return url; })
-      .catch(() => { thumbCache.set(key, ''); onReady(''); return ''; });
+      .then((url) => { if (url) thumbCache.set(key, url); if (url) onReady(url); else onReady(''); return url; })
+      .catch((e) => { console.warn('[MonsterThumb] falha ao gerar miniatura:', e); onReady(''); return ''; })
+      .finally(() => { inflight.delete(key); }); // libera p/ tentar de novo se falhou
     inflight.set(key, p);
   }
   return null;
@@ -147,7 +157,11 @@ export default function MonsterThumb({ thumbKey, modelUrl, skinUrl, slim, rotY, 
   }, [thumbKey, modelUrl, skinUrl, slim, rotY, zoom]);
   return (
     <div style={{ width: size, height: size, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      {url ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (fallbackIcon || null)}
+      {url ? (
+        <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+      ) : skinUrl ? (
+        <img src={skinUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated' }} />
+      ) : (fallbackIcon || null)}
     </div>
   );
 }
