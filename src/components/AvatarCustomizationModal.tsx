@@ -805,10 +805,26 @@ export default function AvatarCustomizationModal({
           try {
             const newGenId = uuidv4();
             const finalSavedId = targetSkinId || newGenId;
+            // MONSTRO: faz MERGE com o config existente no banco para NÃO perder campos que
+            // não estejam na memória (ex.: drops, ataques, biografia) ao salvar.
+            let configToWrite: any = cleanConfig;
+            if (customSaveMode && targetSkinId) {
+              try {
+                const { data: ex } = await supabase.from('preset_skins').select('config').eq('id', targetSkinId).maybeSingle();
+                let exCfg: any = (ex as any)?.config;
+                if (typeof exCfg === 'string') { try { exCfg = JSON.parse(exCfg); } catch { exCfg = null; } }
+                if (exCfg && typeof exCfg === 'object') {
+                  configToWrite = { ...exCfg, ...cleanConfig };
+                  for (const k of ['drops', 'stats', 'attacks', 'quotes', 'biography', 'gender', 'attackSound', 'gruntSound', 'damageSound']) {
+                    if ((cleanConfig as any)[k] === undefined && exCfg[k] !== undefined) (configToWrite as any)[k] = exCfg[k];
+                  }
+                }
+              } catch { /* noop */ }
+            }
             const { error: saveError } = targetSkinId
               ? await supabase.from('preset_skins').update({
                   name: trimmedName,
-                  config: JSON.stringify(cleanConfig),
+                  config: JSON.stringify(configToWrite),
                   baseModelId: config.customModelUrl ? (models3d.find(m => m.url === config.customModelUrl)?.id || null) : null,
                   ...(customSaveMode ? { is_global: shareGlobal, tenant_id: shareGlobal ? null : (tenantId || userData?.tenantId || null) } : {})
                 }).eq('id', targetSkinId)
