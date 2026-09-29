@@ -34,20 +34,25 @@ function addLights(scene: any) {
   const d2 = new THREE.DirectionalLight(0xffffff, 0.6); d2.position.set(-3, 2, -2); scene.add(d2);
 }
 
-function renderObject(obj: any, rotYdeg = 0, zoom = 1): string {
-  // Direção (virado para frente/trás) definida no cadastro do monstro.
-  obj.rotation.y += (Number(rotYdeg) || 0) * (Math.PI / 180);
-  const box = new THREE.Box3().setFromObject(obj);
-  const h = Math.max(0.001, box.max.y - box.min.y);
-  const s = 1.6 / h;
+function renderObject(obj: any, rotYdeg = 0, zoom = 1, isGlb = false): string {
+  // Direção: GLBs costumam vir "de costas" → base Math.PI (igual ao editor do jogo)
+  // + a rotação extra configurada no monstro (customRotY).
+  obj.rotation.y = (isGlb ? Math.PI : 0) + (Number(rotYdeg) || 0) * (Math.PI / 180);
+  const box0 = new THREE.Box3().setFromObject(obj);
+  const size0 = new THREE.Vector3(); box0.getSize(size0);
+  const center0 = new THREE.Vector3(); box0.getCenter(center0);
+  // Enquadra pelo MAIOR lado (evita estourar o quadrado em modelos largos, ex.: aranha).
+  const maxDim = Math.max(0.001, size0.x, size0.y, size0.z);
+  const s = 1.45 / maxDim;
   obj.scale.setScalar(s);
-  obj.position.y = -box.min.y * s;
+  obj.position.set(-center0.x * s, -box0.min.y * s, -center0.z * s);
   const holder = new THREE.Group(); holder.add(obj);
   _scene.clear(); addLights(_scene); _scene.add(holder);
   _camera.aspect = 1; _camera.updateProjectionMatrix();
-  // Escala do monstro (customZoom): aproxima/afasta a câmera suavemente.
-  const z = Math.max(0.5, Math.min(1.8, Number(zoom) || 1));
-  _camera.position.set(0, 1.05, 3.6 / z); _camera.lookAt(0, 0.9, 0);
+  const h = size0.y * s;
+  const z = Math.max(0.5, Math.min(1.6, Number(zoom) || 1)); // customZoom → aproxima/afasta
+  _camera.position.set(0, h * 0.55, (maxDim > 0.001 ? 3.4 : 3.4) / z);
+  _camera.lookAt(0, h * 0.5, 0);
   _renderer.render(_scene, _camera);
   try { return _renderer.domElement.toDataURL('image/png'); } catch { return ''; }
 }
@@ -72,8 +77,7 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
     try {
       const gltf: any = await new GLTFLoader().loadAsync(opts.modelUrl);
       const model = gltf.scene;
-      // Skin associada ao monstro: aplica SÓ em materiais SEM textura própria
-      // (senão apagaria a skin embutida do .glb).
+      // Skin associada ao monstro (se for IMAGEM): aplica em TODOS os materiais.
       if (opts.skinUrl) {
         try {
           const tl = new THREE.TextureLoader();
@@ -84,12 +88,12 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
             model.traverse((ch: any) => {
               if (!ch.isMesh || !ch.material) return;
               const mats = Array.isArray(ch.material) ? ch.material : [ch.material];
-              mats.forEach((m: any) => { if (m && !m.map) { m.map = tex; m.needsUpdate = true; } });
+              mats.forEach((m: any) => { if (m) { m.map = tex; m.needsUpdate = true; } });
             });
           }
         } catch { /* mantém a textura do glb */ }
       }
-      return renderObject(model, opts.rotY, opts.zoom);
+      return renderObject(model, opts.rotY, opts.zoom, true);
     } catch { /* cai para skin/bloco */ }
   }
   // 2) skin (avatar bloco) → PlayerObject com a skin
@@ -101,11 +105,11 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
       if (tl.setCrossOrigin) tl.setCrossOrigin('anonymous');
       const tex: any = await new Promise((res, rej) => tl.load(opts.skinUrl as string, res, undefined, rej));
       if (tex) { tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; po.skin.map = tex; }
-      return renderObject(po, opts.rotY, opts.zoom);
+      return renderObject(po, opts.rotY, opts.zoom, false);
     } catch { /* cai para o bloco genérico */ }
   }
   // 3) sem modelo/skin → boneco bloco genérico
-  return renderObject(blockFallback(), opts.rotY, opts.zoom);
+  return renderObject(blockFallback(), opts.rotY, opts.zoom, false);
 }
 
 function getOrBuild(key: string, opts: any, onReady: (u: string) => void): string | null {

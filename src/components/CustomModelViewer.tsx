@@ -361,24 +361,21 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
   }, [shatteredCount, shatteredOffsets, scene, initialTransforms]);
 
   useEffect(() => {
-    if (textureUrl) {
+    // Só aplica a "skin" se ela for uma IMAGEM. Se o campo vier com o próprio .glb
+    // (comum em monstros com skin embutida), NÃO sobrescreve (senão vira "só ossos").
+    if (textureUrl && !/\.(glb|gltf)(\?|$)/i.test(textureUrl)) {
       const loader = new THREE.TextureLoader();
       loader.crossOrigin = 'anonymous';
       loader.load(textureUrl, (texture) => {
         texture.flipY = false; // GLTF padrão usa flipY falso
         texture.magFilter = THREE.NearestFilter; // Para manter o estilo pixel art
         texture.minFilter = THREE.NearestFilter;
-        
         scene.traverse((child) => {
           if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
-            // Preserva as propriedades originais do material. IMPORTANTE: só aplica a
-            // textura customizada em materiais SEM mapa próprio — senão apagaria a skin
-            // EMBUTIDA do .glb (o modelo ficava "só os ossos" após ~1s).
             if (mesh.material) {
               const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
               const newMats = mats.map((m: any) => {
-                if (m && m.map) return m; // já tem textura própria → mantém
                 const nm = m.clone();
                 nm.map = texture;
                 nm.transparent = false;

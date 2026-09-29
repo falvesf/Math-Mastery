@@ -273,9 +273,9 @@ export default function AdminEntitiesManager() {
                   {monstersList.map(m => {
                     const cfg = m.parsedConfig;
                     const modelObj = skinModels.find(sm => sm.url === cfg?.customModelUrl || sm.id === m.baseModelId);
-                    const isImg = (u?: string) => !!u && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(u);
+                    const isModelFile = (u?: string) => !!u && /\.(glb|gltf)(\?|$)/i.test(u);
                     const modelUrl = cfg?.customModelUrl || modelObj?.url || '';
-                    const skinUrl = (isImg(cfg?.customSkinUrl) ? cfg.customSkinUrl : '') || (isImg(m.url) ? m.url : '');
+                    const skinUrl = (cfg?.customSkinUrl && !isModelFile(cfg.customSkinUrl) ? cfg.customSkinUrl : '') || (m.url && !isModelFile(m.url) ? m.url : '');
                     const slim = cfg?.gender === 'female';
                     return (
                       <div key={m.id} style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: 10, padding: '0.5rem 0.6rem', minWidth: 0 }}>
@@ -301,9 +301,9 @@ export default function AdminEntitiesManager() {
                     const modelObj = skinModels.find(sm => sm.url === cfg?.customModelUrl || sm.id === m.baseModelId);
                     const modelName = modelObj ? modelObj.name : (cfg?.customModelUrl ? 'Molde 3D Customizado' : (m.url ? 'Skin 2D' : 'Avatar Base'));
                     const zoomVal = cfg?.customZoom || 1;
-                    const isImg = (u?: string) => !!u && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(u);
+                    const isModelFile = (u?: string) => !!u && /\.(glb|gltf)(\?|$)/i.test(u);
                     const modelUrl = cfg?.customModelUrl || modelObj?.url || '';
-                    const skinUrl = (isImg(cfg?.customSkinUrl) ? cfg.customSkinUrl : '') || (isImg(m.url) ? m.url : '');
+                    const skinUrl = (cfg?.customSkinUrl && !isModelFile(cfg.customSkinUrl) ? cfg.customSkinUrl : '') || (m.url && !isModelFile(m.url) ? m.url : '');
                     const slim = cfg?.gender === 'female';
                     return (
                       <div key={m.id} style={{ background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '1rem', display: 'flex', gap: '0.75rem' }}>
