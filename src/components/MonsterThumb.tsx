@@ -121,13 +121,13 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
   return renderObject(blockFallback(), opts.rotY, opts.zoom, false);
 }
 
-function getOrBuild(key: string, opts: any, onReady: (u: string) => void): string | null {
+function getOrBuild(key: string, opts: any, onReady: (u: string, err?: string) => void): string | null {
   const cached = thumbCache.get(key);
   if (cached !== undefined) return cached;
   if (!inflight.has(key)) {
     const p = buildThumb(opts)
-      .then((url) => { if (url) thumbCache.set(key, url); if (url) onReady(url); else onReady(''); return url; })
-      .catch((e) => { console.warn('[MonsterThumb] falha ao gerar miniatura:', e); onReady(''); return ''; })
+      .then((url) => { if (url) { thumbCache.set(key, url); onReady(url); } else onReady('', 'render vazio'); return url; })
+      .catch((e) => { console.warn('[MonsterThumb] falha ao gerar miniatura:', e); onReady('', String((e && (e as any).message) || e)); return ''; })
       .finally(() => { inflight.delete(key); }); // libera p/ tentar de novo se falhou
     inflight.set(key, p);
   }
@@ -147,21 +147,23 @@ interface MonsterThumbProps {
 
 export default function MonsterThumb({ thumbKey, modelUrl, skinUrl, slim, rotY, zoom, size = 56, fallbackIcon }: MonsterThumbProps) {
   const [url, setUrl] = useState<string | null>(thumbCache.has(thumbKey) ? thumbCache.get(thumbKey)! : null);
+  const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
     const cached = thumbCache.get(thumbKey);
     if (cached !== undefined) { setUrl(cached); return; }
-    setUrl(null);
-    getOrBuild(thumbKey, { modelUrl, skinUrl, slim, rotY, zoom }, (u) => { if (alive) setUrl(u); });
+    setUrl(null); setErr(null);
+    getOrBuild(thumbKey, { modelUrl, skinUrl, slim, rotY, zoom }, (u, e) => { if (alive) { setUrl(u); setErr(e || null); } });
     return () => { alive = false; };
   }, [thumbKey, modelUrl, skinUrl, slim, rotY, zoom]);
   return (
-    <div style={{ width: size, height: size, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+    <div style={{ width: size, height: size, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
       {url ? (
         <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-      ) : skinUrl ? (
-        <img src={skinUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated' }} />
       ) : (fallbackIcon || null)}
+      {!url && err && (
+        <div title={err} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, fontSize: '0.5rem', color: '#f87171', background: 'rgba(0,0,0,0.6)', padding: '1px 2px', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{err}</div>
+      )}
     </div>
   );
 }
