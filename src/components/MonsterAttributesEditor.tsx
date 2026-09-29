@@ -949,7 +949,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
       {activeSubTab === 'drops' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
           <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-            Itens que este monstro deixará cair durante a luta na arena quando qualquer jogador acertar e derrotar o monstro. Lista filtrada exclusivamente pelos itens cadastrados nesta escola.
+            Itens que este monstro deixará cair durante a luta na arena quando qualquer jogador acertar e derrotar o monstro. Lista com os itens COMPARTILHADOS do catálogo (todas as escolas).
           </p>
 
           {drops.length === 0 ? (

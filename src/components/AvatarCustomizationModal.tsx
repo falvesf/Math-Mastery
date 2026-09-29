@@ -554,13 +554,8 @@ export default function AvatarCustomizationModal({
     fetchPresetSkins(true);
     fetchModels3d(true);
     
-    // Busca SOMENTE os itens cadastrados no tenant atual para drops do monstro
-    let itemsQ = supabase.from('store_items').select('*');
-    if (tenantId) {
-      itemsQ = itemsQ.eq('tenant_id', tenantId);
-    } else {
-      itemsQ = itemsQ.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
-    }
+    // Itens COMPARTILHADOS entre as escolas (monstros/drops são compartilhados) — carrega TODOS.
+    const itemsQ = supabase.from('store_items').select('*');
     itemsQ.then(({ data }) => {
       if (data) {
         setStoreItems(data.map((d: any) => ({ id: d.id, ...(d.data || {}) })));

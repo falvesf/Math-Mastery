@@ -232,6 +232,12 @@ export const ItemSelectDropdown: React.FC<ItemSelectDropdownProps> = ({
               }}
             >×</span>
           </>
+        ) : value ? (
+          <>
+            <Package size={17} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={value}>{value}</span>
+            <span style={{ flexShrink: 0, fontSize: '0.6rem', color: '#fbbf24' }}>não no catálogo</span>
+          </>
         ) : (
           <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>{placeholder}</span>
         )}
