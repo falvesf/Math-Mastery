@@ -762,8 +762,15 @@ export default function AvatarCustomizationModal({
         }
         showToast('Personagem salvo com sucesso!', 'success');
       } else {
-        if ((userData?.role === 'admin' || isAdmin || canSkins || canModels) && monsterName.trim()) {
-          const trimmedName = monsterName.trim();
+        // Se for MONSTRO e o nome estiver vazio, gera um nome provisório para NÃO perder o
+        // que foi configurado (antes caía em "memória temporária" e era descartado).
+        let effectiveMonsterName = monsterName;
+        if (customSaveMode && !monsterName.trim()) {
+          effectiveMonsterName = `Monstro sem nome ${new Date().toLocaleString('pt-BR')}`;
+          try { setMonsterName(effectiveMonsterName); } catch { /* noop */ }
+        }
+        if ((userData?.role === 'admin' || isAdmin || canSkins || canModels) && effectiveMonsterName.trim()) {
+          const trimmedName = effectiveMonsterName.trim();
           // Previne o conflito de NOMES IGUAIS: se o nome do monstro/skin bate com
           // o nome de um molde 3D, avisa antes de salvar (senão o sorteio automático
           // pode "travar" nesse modelo, como aconteceu com Wither/Enderman).
@@ -2260,16 +2267,16 @@ onClick={() => setConfig(prev => {
                       Salvar Monstro na Galeria Global
                     </label>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-                      Ao dar um nome abaixo, este monstro será salvo para ser reutilizado ou sugerido aleatoriamente.
+                      Dê um nome ao monstro. Se deixar em branco, salvamos como “Monstro sem nome …” para não perder a configuração (você pode renomear depois).
                     </p>
                     <input 
                       type="text" 
                       value={monsterName}
                       onChange={e => setMonsterName(e.target.value)}
-                      readOnly={!!editingSkinId}
-                      disabled={!!editingSkinId}
+                      readOnly={!customSaveMode && !!editingSkinId}
+                      disabled={!customSaveMode && !!editingSkinId}
                       placeholder="Nome do Monstro (Ex: Golem de Gelo)"
-                      style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: editingSkinId ? 'var(--bg-card)' : 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', cursor: editingSkinId ? 'not-allowed' : 'text', opacity: editingSkinId ? 0.75 : 1 }}
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: (!customSaveMode && editingSkinId) ? 'var(--bg-card)' : 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', cursor: (!customSaveMode && editingSkinId) ? 'not-allowed' : 'text', opacity: (!customSaveMode && editingSkinId) ? 0.75 : 1 }}
                     />
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={shareGlobal} onChange={e => setShareGlobal(e.target.checked)} />
