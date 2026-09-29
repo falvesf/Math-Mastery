@@ -621,6 +621,7 @@ if (!cancelled) {
           gameEffect: r.gameEffect || d.gameEffect || 'none',
           type: r.type || d.type || 'item',
           rarity: d.rarity || r.rarity || 'common',
+          feedHours: Number(d.feedHours) || 0,
         });
       });
     }).catch(() => {});
@@ -633,7 +634,23 @@ if (!cancelled) {
       });
     }).catch(() => {});
 
-    Promise.all([loadItems, loadConsumables, loadModels, loadScenario, loadCatalog, loadMonsters]).finally(() => { if (!cancelled) setItemsReady(true); });
+    // RAÇÕES do jogador (pet_feed) — usadas para DOMESTICAR animais no mapa.
+    const loadFeed = loadCatalog.then(() => supabase.from('user_items').select('id, item_id, quantity').eq('student_id', uid).then(({ data }) => {
+      const map = new Map<string, any>();
+      (data || []).forEach((r: any) => {
+        const it: any = itemCatalogRef.current.get(String(r.item_id));
+        if (!it || it.gameEffect !== 'pet_feed') return;
+        map.set(String(r.id), { userItemId: r.id, itemId: r.item_id, qty: Number(r.quantity) || 1, title: it.title, imageUrl: it.imageUrl, feedHours: Number(it.feedHours) || 1 });
+      });
+      feedItemsRef.current = map;
+    })).catch(() => {});
+
+    // Equipamentos do rancho do aluno (condições básicas p/ domesticar).
+    const loadRanch = supabase.from('ranch_items').select('kind').eq('student_id', uid).then(({ data }) => {
+      ranchKindsRef.current = ((data as any[]) || []).map(r => String(r.kind));
+    }).catch(() => {});
+
+    Promise.all([loadItems, loadConsumables, loadModels, loadScenario, loadCatalog, loadMonsters, loadFeed, loadRanch]).finally(() => { if (!cancelled) setItemsReady(true); });
     return () => { cancelled = true; };
   }, [userData?.uid, itemsProp]);
 
@@ -665,6 +682,10 @@ if (!cancelled) {
   const scenarioRef = useRef<any>(scenarioConfig || null);
   // Catálogo de itens (store_items) por id — usado no loot ao quebrar blocos.
   const itemCatalogRef = useRef<Map<string, any>>(new Map());
+  // Rações do jogador (pet_feed) para domesticar: userItemId → { itemId, qty, feedHours, ... }
+  const feedItemsRef = useRef<Map<string, any>>(new Map());
+  // Equipamentos do rancho (para exigir condições básicas antes de domesticar).
+  const ranchKindsRef = useRef<string[]>([]);
   // Catálogo de monstros (preset_skins type=monster) por id — povoam o mapa e o boss.
   const monsterCatalogRef = useRef<Map<string, any>>(new Map());
   const ownedItemIdsRef = useRef<Set<string>>(new Set());
@@ -1102,7 +1123,7 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
 
     // ---- Itens aleatórios ----
     const coinsList: { x: number; z: number; mesh: THREE.Object3D; value: number }[] = [];
-type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number; critChance?: number; block?: any; legPhase?: number; attacks?: any; rangedCd?: number; specialCd?: number; supportUsed?: boolean; buffUntil?: number; buffMult?: number };
+type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number; critChance?: number; block?: any; legPhase?: number; attacks?: any; rangedCd?: number; specialCd?: number; supportUsed?: boolean; buffUntil?: number; buffMult?: number; favoriteFoodIds?: string[]; giveUpDist?: number; following?: boolean; followFedAt?: number; initX?: number; initZ?: number; tameBalloon?: THREE.Sprite; tameTarget?: { x: number; z: number } | null; tameRing?: THREE.Object3D };
     const slimes: Slime[] = [];
     // Projéteis de golpes À DISTÂNCIA dos monstros (guia Golpes → ranged).
     const projectiles: { mesh: THREE.Object3D; vx: number; vz: number; life: number; dmg: number; effect: string }[] = [];
@@ -1393,7 +1414,7 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
       bubble.visible = false; bubble.renderOrder = 999; scene.add(bubble);
       const bubbleY = modelUrl ? 2.3 : 1.95;
-const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', damageEffectByLevel: (monster as any)?.config?.stats?.damageEffectByLevel || [], label, labelY, xp: 0, atkPower: Number(st.attack) || (8 + level * 4), rewardXp: Number(st.xp) || Math.round(40 * level), lines: (monster as any)?.config?.lines || [], nextVoice: 0, fleeTable: (monster as any)?.config?.stats?.fleeChanceTable || [], fleeMode: false, fleeTimer: 0, aggression: (monster as any)?.config?.stats?.aggression || (isAnimal ? 'peaceful' : 'aggressive'), aggressionByLevel: (monster as any)?.config?.stats?.aggressionByLevel || [], provoked: false, moveSpeed: Number(st.speed) > 0 ? Math.max(0.1, Number(st.speed)) : 1, attackInterval: Number(st.attackSpeed) > 0 ? (1 / Number(st.attackSpeed)) : 1.8, faceOffset: (monster as any)?.config?.modelForward === '-z' ? Math.PI : (monster as any)?.config?.modelForward === 'x' ? -Math.PI / 2 : (monster as any)?.config?.modelForward === '-x' ? Math.PI / 2 : 0, barY: 1.15, critChance: Number(st.critChance) > 0 ? Math.min(50, Number(st.critChance)) : 5, attacks: (monster as any)?.config?.attacks || null };
+const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', damageEffectByLevel: (monster as any)?.config?.stats?.damageEffectByLevel || [], label, labelY, xp: 0, atkPower: Number(st.attack) || (8 + level * 4), rewardXp: Number(st.xp) || Math.round(40 * level), lines: (monster as any)?.config?.lines || [], nextVoice: 0, fleeTable: (monster as any)?.config?.stats?.fleeChanceTable || [], fleeMode: false, fleeTimer: 0, aggression: (monster as any)?.config?.stats?.aggression || (isAnimal ? 'peaceful' : 'aggressive'), aggressionByLevel: (monster as any)?.config?.stats?.aggressionByLevel || [], provoked: false, moveSpeed: Number(st.speed) > 0 ? Math.max(0.1, Number(st.speed)) : 1, attackInterval: Number(st.attackSpeed) > 0 ? (1 / Number(st.attackSpeed)) : 1.8, faceOffset: (monster as any)?.config?.modelForward === '-z' ? Math.PI : (monster as any)?.config?.modelForward === 'x' ? -Math.PI / 2 : (monster as any)?.config?.modelForward === '-x' ? Math.PI / 2 : 0, barY: 1.15, critChance: Number(st.critChance) > 0 ? Math.min(50, Number(st.critChance)) : 5, attacks: (monster as any)?.config?.attacks || null, favoriteFoodIds: (monster as any)?.config?.stats?.favoriteFoodIds || [], giveUpDist: Number((monster as any)?.config?.stats?.followGiveUpDistance) || 2 };
       slimes.push(slime);
       // ---- Tipos de MONSTRO/BOSS ----
       // .glb COM animação: caminha com a própria animação (mixer acima).
@@ -2173,6 +2194,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     const spawnOneAnimal = (x: number, z: number) => {
       const a = animalPool.length ? animalPool[Math.floor(Math.random() * animalPool.length)] : null;
       const pseudo = {
+        id: a?.id,
         name: a?.name || 'Animal',
         isAnimal: true,
         config: {
@@ -2197,6 +2219,13 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
           try { c.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(c); s.visualRestY = -bb.min.y; } catch { s.visualRestY = 0; }
         } catch { /* noop */ }
       }
+      // BALÃO DE PENSAMENTO (💭) para animais que podem ser domesticados.
+      try {
+        const bt = makeBubbleTexture('💭');
+        const tb = new THREE.Sprite(new THREE.SpriteMaterial({ map: bt.tex, transparent: true, depthTest: false, depthWrite: false }));
+        tb.scale.set(bt.w / 150, bt.h / 150, 1); tb.position.set(0, 2.2, 0); tb.visible = false; tb.renderOrder = 999;
+        s.root.add(tb); s.tameBalloon = tb;
+      } catch { /* noop */ }
       return s;
     };
     const animalTarget = cfgGenAnimals === -1 ? 0 : (cfgGenAnimals > 0 ? cfgGenAnimals : 10);
@@ -3011,6 +3040,11 @@ const hurtPlayer = (hearts: number, message: string) => {
       if (door) { handleDoor(door); return; }
       const chest = chests.find(c => c.mesh.visible && Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1);
       if (chest) { openChest(chest); return; }
+      // DOMESTICAÇÃO: animal domesticável por perto → tenta; animal SEGUINDO → alimenta.
+      const nearTame = slimes.find(o => o.isAnimal && o.hp > 0 && !o.following && baitable(o) && Math.hypot(o.root.position.x - wx(gx), o.root.position.z - wz(gz)) <= 3);
+      if (nearTame) { if (tameAttempt(nearTame)) return; }
+      const nearFollow = slimes.find(o => o.isAnimal && o.hp > 0 && o.following && Math.hypot(o.root.position.x - wx(gx), o.root.position.z - wz(gz)) <= 3);
+      if (nearFollow) { if (feedFollowing(nearFollow)) return; }
       const breakNear = rocks.some(r => r.hp > 0 && r.mesh.visible && Math.hypot(wx(r.x) - wx(gx), wz(r.z) - wz(gz)) <= 1.4)
         || hazards.some(h => h.hp > 0 && h.mesh.visible && Math.hypot(wx(h.x) - wx(gx), wz(h.z) - wz(gz)) <= 1.4)
         || doors.some(d => d.hp > 0 && d.mesh.visible && Math.hypot(wx(d.x) - wx(gx), wz(d.z) - wz(gz)) <= 1.4);
@@ -3055,7 +3089,89 @@ const hurtPlayer = (hearts: number, message: string) => {
       callbacks.current.setMsg('💎 Veio mineral esgotado! Ele volta a nascer neste cenário após o resfriamento.');
     };
 
-    // Ataque (Espaço no desktop, botão ⚔️ no mobile). Um ataque por ciclo.
+    // ---- DOMESTICAÇÃO de animais ----
+    const baitForAnimal = (s: Slime): any | null => {
+      if (!s?.isAnimal || !s.favoriteFoodIds || !s.favoriteFoodIds.length) return null;
+      for (const [k, f] of feedItemsRef.current) { if (s.favoriteFoodIds.includes(String(f.itemId))) return { ...f, _uid: k }; }
+      return null;
+    };
+    const consumeBait = async (f: any) => {
+      try {
+        const q = Math.max(0, (Number(f.qty) || 1) - 1);
+        if (q <= 0) { await supabase.from('user_items').delete().eq('id', f.userItemId); feedItemsRef.current.delete(f._uid); }
+        else { await supabase.from('user_items').update({ quantity: q }).eq('id', f.userItemId); f.qty = q; }
+      } catch { /* noop */ }
+    };
+    const hasBasics = () => ['food_trough', 'water_trough', 'hay'].every(k => ranchKindsRef.current.includes(k));
+    const spawnTameRing = (gx: number, gz: number) => {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffd34d, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.75, 28), mat);
+      ring.rotation.x = -Math.PI / 2; ring.position.set(wx(gx), 0.07, wz(gz)); scene.add(ring);
+      return ring;
+    };
+    const pickFarValidCell = (fx: number, fz: number): { x: number; z: number } | null => {
+      let best: any = null; let bestD = -1;
+      for (let i = 0; i < 300; i++) {
+        const x = Math.floor(rnd(1, COLS - 1)), z = Math.floor(rnd(1, ROWS - 1));
+        if (grid.wall[z]?.[x]) continue;
+        if ((x === grid.start.x && z === grid.start.z) || (x === grid.end.x && z === grid.end.z)) continue;
+        if (occupiedCell(x, z)) continue;
+        const d = Math.hypot(x - fx, z - fz);
+        if (d > bestD) { bestD = d; best = { x, z }; }
+      }
+      return bestD >= 8 ? best : null;
+    };
+    const domesticate = async (s: Slime): Promise<boolean> => {
+      if (!hasBasics()) { callbacks.current.setMsg('🏠 O rancho precisa de 1 cocho de comida, 1 bebedouro e palha para domesticar!'); return false; }
+      const stats = { hp: Math.round(s.maxHp), attack: Math.round(s.atkPower || 10), defense: Math.round(s.defense || 0), evasion: Math.round(s.evasion || 0), critChance: Math.round(s.critChance || 5), speed: s.moveSpeed || 1, attackSpeed: s.attackInterval ? Math.round((1 / s.attackInterval) * 100) / 100 : 1 };
+      const hist = [{ at: new Date().toISOString(), type: 'record', text: `Foi encontrado e domesticado em um mapa (${s.name || 'animal'}).` }];
+      try {
+        await supabase.from('pets').insert({
+          student_id: userData?.uid, tenant_id: userData?.tenantId || null,
+          animal_model_id: s.monsterId || null, species_name: s.name || 'Animal', name: s.name || 'Animal',
+          level: 1, xp: 0, relationship: 1, hunger: 12.5, thirst: 12.5, interaction: 12.5, training: 0,
+          state: 'ranch', equipped: false, stats, history: hist,
+        });
+        callbacks.current.setMsg(`🎉 Você domesticou ${s.name || 'o animal'}! Ele foi para o seu rancho.`);
+        return true;
+      } catch {
+        callbacks.current.setMsg('❌ Não foi possível enviar ao rancho (rode a migration_pets.sql no Supabase).');
+        return false;
+      }
+    };
+    const removeAnimal = (s: Slime) => { s.hp = 0; try { s.root.visible = false; s.bar.visible = false; if (s.label) s.label.visible = false; if (s.tameBalloon) s.tameBalloon.visible = false; if (s.tameRing) scene.remove(s.tameRing); s.tameRing = undefined; } catch { /* noop */ } };
+    const startFollowing = (s: Slime) => {
+      s.following = true; s.hostile = false; s.initX = s.x; s.initZ = s.z; s.followFedAt = performance.now() + 8000;
+      const dest = pickFarValidCell(Math.round(playerPos.x), Math.round(playerPos.z));
+      if (dest) { s.tameTarget = dest; s.tameRing = spawnTameRing(dest.x, dest.z); }
+      callbacks.current.setMsg(`💭 ${s.name || 'O animal'} começou a te seguir! Leve-o até o ponto amarelo e dê ração no caminho para ele não perder o interesse.`);
+    };
+    const baitable = (s: Slime) => !!s.isAnimal && !s.following && s.hp > 0 && !!baitForAnimal(s);
+    const tameAttempt = (s: Slime): boolean => {
+      if (!baitable(s)) return false;
+      if (!hasBasics()) { callbacks.current.setMsg('🏠 Sem as condições básicas do rancho (cocho de comida, bebedouro e palha) você não consegue domesticar.'); return true; }
+      const bait = baitForAnimal(s);
+      if (Math.random() < 0.45) { startFollowing(s); if (bait) consumeBait(bait); }
+      else {
+        callbacks.current.setMsg(`💭 ${s.name || 'O animal'} não se interessou...`);
+        // Neutro/agressivo pode atacar; senão foge para longe.
+        const aggressive = (s.aggression && s.aggression !== 'peaceful');
+        if (aggressive && Math.random() < 0.5) { s.hostile = true; try { (s.fg.material as THREE.MeshBasicMaterial).color.set(0xdd3333); } catch { /* noop */ } callbacks.current.setMsg(`😠 ${s.name || 'O animal'} ficou hostil!`); }
+        else { s.fleeMode = true; s.fleeTimer = 6; }
+      }
+      return true;
+    };
+    // Alimenta o pet que está SEGUINDO (mantém o interesse).
+    const feedFollowing = (s: Slime): boolean => {
+      const bait = baitForAnimal(s);
+      if (!bait) return false;
+      s.followFedAt = performance.now() + 8000;
+      consumeBait(bait);
+      callbacks.current.setMsg(`🍖 Você deu ${bait.title || 'ração'} — ${s.name || 'o animal'} continua interessado!`);
+      return true;
+    };
+
+
     const doAttack = () => {
       const now = performance.now();
       if (now < nextAttackAt) return;
@@ -3524,6 +3640,8 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
         if (s.label) { s.label.visible = !fogged; if (!fogged) s.label.position.set(s.root.position.x, s.labelY || 1.5, s.root.position.z); }
         if (s.bar) s.bar.visible = !fogged;
         if (s.bubble && fogged) s.bubble.visible = false;
+        // Balão de pensamento (💭) em animais que podem ser domesticados com a ração que você tem.
+        if (s.tameBalloon) s.tameBalloon.visible = !fogged && !s.following && s.hp > 0 && baitable(s);
         if (s.statusBar && s.statusBar.g) s.statusBar.g.visible = fogged ? false : s.statusBar.g.visible;
         // Animal pacífico NÃO ataca: vagueia e foge do perto; só fica hostil se for atacado.
         const isPeacefulAnimal = !!s.isAnimal && !s.hostile;
@@ -3581,7 +3699,30 @@ let adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal)
         const dxp = tgt ? (tgt.x - s.root.position.x) : (wx(playerPos.x) - s.root.position.x);
         const dzp = tgt ? (tgt.z - s.root.position.z) : (wz(playerPos.z) - s.root.position.z);
         const dist = Math.hypot(dxp, dzp);
-        if (s.isAnimal && s.hostile && s.fleeMode) {
+        if (s.isAnimal && s.following && s.hp > 0) {
+          // Animal domesticável SEGUINDO o jogador (conduzir com ração até o ponto amarelo).
+          const nowF = performance.now();
+          const lostInterest = nowF > (s.followFedAt || 0);
+          const tooFar = dist > (s.giveUpDist || 2) + 6;
+          const tm = s.tameTarget;
+          const reachedDest = !!tm && Math.hypot(playerPos.x - tm.x, playerPos.z - tm.z) <= 1.6 && dist <= 3.5;
+          if (reachedDest) {
+            s.following = false; s.tameTarget = null;
+            if (s.tameRing) { scene.remove(s.tameRing); s.tameRing = undefined; }
+            domesticate(s).then(ok => { if (ok) removeAnimal(s); });
+          } else if (lostInterest || tooFar) {
+            s.following = false; s.followFedAt = 0; s.tameTarget = null;
+            if (s.tameRing) { scene.remove(s.tameRing); s.tameRing = undefined; }
+            callbacks.current.setMsg(`💭 ${s.name || 'O animal'} perdeu o interesse e voltou para onde estava.`);
+          } else if (dist > 1.8) {
+            const step = bfsStep(Math.round(s.root.position.x + (COLS - 1) / 2), Math.round(s.root.position.z + (ROWS - 1) / 2), Math.round(playerPos.x), Math.round(playerPos.z));
+            const tx = step ? wx(step.x) : wx(playerPos.x); const tz = step ? wz(step.z) : wz(playerPos.z);
+            const ddx = tx - s.root.position.x, ddz = tz - s.root.position.z; const dd = Math.hypot(ddx, ddz) || 1;
+            const sp = 3.2 * (frozenNow ? 0.25 : 1);
+            const mx = s.root.position.x + (ddx / dd) * sp * dt; if (!mBlocked(s, mx, s.root.position.z)) s.root.position.x = mx;
+            const mz = s.root.position.z + (ddz / dd) * sp * dt; if (!mBlocked(s, s.root.position.x, mz)) s.root.position.z = mz;
+          }
+        } else if (s.isAnimal && s.hostile && s.fleeMode) {
           // Foge do JOGADOR (HP baixo / tabela de fuga).
           const ffx = s.root.position.x - wx(playerPos.x), ffz = s.root.position.z - wz(playerPos.z);
           const ff = Math.hypot(ffx, ffz) || 1;
