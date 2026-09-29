@@ -287,7 +287,7 @@ export default function AdminEntitiesManager() {
                             <button title="Excluir" onClick={() => handleDeleteMonster(m.id, m.name)} style={{ background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: 6, padding: '4px', color: 'var(--accent-red)', cursor: 'pointer' }}><Trash2 size={14} /></button>
                           </div>
                         </div>
-                        <MonsterThumb thumbKey={`${m.id}|${modelUrl}|${skinUrl}`} modelUrl={modelUrl} skinUrl={skinUrl} slim={slim} size={64} fallbackIcon={<Swords size={26} color="var(--accent-red)" />} />
+                        <MonsterThumb thumbKey={`${m.id}|${modelUrl}|${skinUrl}|${cfg?.customRotY || 0}|${cfg?.customZoom || 1}`} modelUrl={modelUrl} skinUrl={skinUrl} slim={slim} rotY={cfg?.customRotY} zoom={cfg?.customZoom} size={64} fallbackIcon={<Swords size={26} color="var(--accent-red)" />} />
                       </div>
                     );
                   })}
@@ -332,7 +332,7 @@ export default function AdminEntitiesManager() {
                             <button title="Excluir monstro" onClick={() => handleDeleteMonster(m.id, m.name)} style={{ background: 'rgba(239, 68, 68, 0.2)', border: 'none', borderRadius: '6px', padding: '6px', color: 'var(--accent-red)', cursor: 'pointer' }}><Trash2 size={15} /></button>
                           </div>
                         </div>
-                        <MonsterThumb thumbKey={`${m.id}|${modelUrl}|${skinUrl}`} modelUrl={modelUrl} skinUrl={skinUrl} slim={slim} size={100} fallbackIcon={<Swords size={30} color="var(--accent-red)" />} />
+                        <MonsterThumb thumbKey={`${m.id}|${modelUrl}|${skinUrl}|${cfg?.customRotY || 0}|${cfg?.customZoom || 1}`} modelUrl={modelUrl} skinUrl={skinUrl} slim={slim} rotY={cfg?.customRotY} zoom={cfg?.customZoom} size={100} fallbackIcon={<Swords size={30} color="var(--accent-red)" />} />
                       </div>
                     );
                   })}

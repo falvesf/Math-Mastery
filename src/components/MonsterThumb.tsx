@@ -34,7 +34,9 @@ function addLights(scene: any) {
   const d2 = new THREE.DirectionalLight(0xffffff, 0.6); d2.position.set(-3, 2, -2); scene.add(d2);
 }
 
-function renderObject(obj: any): string {
+function renderObject(obj: any, rotYdeg = 0, zoom = 1): string {
+  // Direção (virado para frente/trás) definida no cadastro do monstro.
+  obj.rotation.y += (Number(rotYdeg) || 0) * (Math.PI / 180);
   const box = new THREE.Box3().setFromObject(obj);
   const h = Math.max(0.001, box.max.y - box.min.y);
   const s = 1.6 / h;
@@ -43,7 +45,9 @@ function renderObject(obj: any): string {
   const holder = new THREE.Group(); holder.add(obj);
   _scene.clear(); addLights(_scene); _scene.add(holder);
   _camera.aspect = 1; _camera.updateProjectionMatrix();
-  _camera.position.set(0, 1.05, 3.6); _camera.lookAt(0, 0.9, 0);
+  // Escala do monstro (customZoom): aproxima/afasta a câmera suavemente.
+  const z = Math.max(0.5, Math.min(1.8, Number(zoom) || 1));
+  _camera.position.set(0, 1.05, 3.6 / z); _camera.lookAt(0, 0.9, 0);
   _renderer.render(_scene, _camera);
   try { return _renderer.domElement.toDataURL('image/png'); } catch { return ''; }
 }
@@ -61,13 +65,31 @@ function blockFallback() {
   return g;
 }
 
-async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: boolean }): Promise<string> {
+async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: boolean; rotY?: number; zoom?: number }): Promise<string> {
   ensureRenderer();
   // 1) .glb → modelo 3D real
   if (opts.modelUrl) {
     try {
       const gltf: any = await new GLTFLoader().loadAsync(opts.modelUrl);
-      return renderObject(gltf.scene);
+      const model = gltf.scene;
+      // Skin associada ao monstro: aplica SÓ em materiais SEM textura própria
+      // (senão apagaria a skin embutida do .glb).
+      if (opts.skinUrl) {
+        try {
+          const tl = new THREE.TextureLoader();
+          if (tl.setCrossOrigin) tl.setCrossOrigin('anonymous');
+          const tex: any = await new Promise((res, rej) => tl.load(opts.skinUrl as string, res, undefined, rej));
+          if (tex) {
+            tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+            model.traverse((ch: any) => {
+              if (!ch.isMesh || !ch.material) return;
+              const mats = Array.isArray(ch.material) ? ch.material : [ch.material];
+              mats.forEach((m: any) => { if (m && !m.map) { m.map = tex; m.needsUpdate = true; } });
+            });
+          }
+        } catch { /* mantém a textura do glb */ }
+      }
+      return renderObject(model, opts.rotY, opts.zoom);
     } catch { /* cai para skin/bloco */ }
   }
   // 2) skin (avatar bloco) → PlayerObject com a skin
@@ -79,11 +101,11 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
       if (tl.setCrossOrigin) tl.setCrossOrigin('anonymous');
       const tex: any = await new Promise((res, rej) => tl.load(opts.skinUrl as string, res, undefined, rej));
       if (tex) { tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; po.skin.map = tex; }
-      return renderObject(po);
+      return renderObject(po, opts.rotY, opts.zoom);
     } catch { /* cai para o bloco genérico */ }
   }
   // 3) sem modelo/skin → boneco bloco genérico
-  return renderObject(blockFallback());
+  return renderObject(blockFallback(), opts.rotY, opts.zoom);
 }
 
 function getOrBuild(key: string, opts: any, onReady: (u: string) => void): string | null {
@@ -103,20 +125,22 @@ interface MonsterThumbProps {
   modelUrl?: string;
   skinUrl?: string;
   slim?: boolean;
+  rotY?: number;
+  zoom?: number;
   size?: number;
   fallbackIcon?: any;
 }
 
-export default function MonsterThumb({ thumbKey, modelUrl, skinUrl, slim, size = 56, fallbackIcon }: MonsterThumbProps) {
+export default function MonsterThumb({ thumbKey, modelUrl, skinUrl, slim, rotY, zoom, size = 56, fallbackIcon }: MonsterThumbProps) {
   const [url, setUrl] = useState<string | null>(thumbCache.has(thumbKey) ? thumbCache.get(thumbKey)! : null);
   useEffect(() => {
     let alive = true;
     const cached = thumbCache.get(thumbKey);
     if (cached !== undefined) { setUrl(cached); return; }
     setUrl(null);
-    getOrBuild(thumbKey, { modelUrl, skinUrl, slim }, (u) => { if (alive) setUrl(u); });
+    getOrBuild(thumbKey, { modelUrl, skinUrl, slim, rotY, zoom }, (u) => { if (alive) setUrl(u); });
     return () => { alive = false; };
-  }, [thumbKey, modelUrl, skinUrl, slim]);
+  }, [thumbKey, modelUrl, skinUrl, slim, rotY, zoom]);
   return (
     <div style={{ width: size, height: size, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
       {url ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (fallbackIcon || null)}
