@@ -21,6 +21,7 @@ import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacte
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
 import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
+import RanchModal from '../components/RanchModal';
 import MonsterBestiaryModal from '../components/MonsterBestiaryModal';
 import { getProfileAvatarState, hasProfanity } from '../lib/avatarState';
 import { Edit3, MessageCircle, X, Box, Palette, Menu, Trash2 } from 'lucide-react';
@@ -389,6 +390,7 @@ export default function Dashboard() {
 
   // Avatar State
   const [isCustomizingAvatar, setIsCustomizingAvatar] = useState(false);
+  const [ranchOpen, setRanchOpen] = useState(false);
   const [studentMobileMenuOpen, setStudentMobileMenuOpen] = useState(false);
   const [equippedItems, setEquippedItems] = useState<EquippedItem[]>([]);
   const [equippedItemsLoaded, setEquippedItemsLoaded] = useState(false);
@@ -2826,6 +2828,10 @@ export default function Dashboard() {
         />
       )}
 
+      {userData && (
+        <RanchModal isOpen={ranchOpen} onClose={() => setRanchOpen(false)} userData={userData} />
+      )}
+
       {publicProfileUser && (
         <PublicProfileModal
           isOpen={!!publicProfileUser}
@@ -3339,7 +3345,7 @@ export default function Dashboard() {
                           </div>
 
                           {/* Direita: Pet */}
-                          <div className="cube-face cube-face-right" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))' }}>
+                          <div className="cube-face cube-face-right" onClick={() => setRanchOpen(true)} title="Abrir o Rancho / Fazenda" style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))', cursor: 'pointer' }}>
                             {(() => {
                               const equippedPet = equippedItems.find(item => item.avatarPart === 'pet');
                               return equippedPet ? (
