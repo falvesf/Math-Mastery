@@ -124,8 +124,15 @@ export const ItemSelectDropdown: React.FC<ItemSelectDropdownProps> = ({
     };
   }, [open]);
 
-  // Itens classificados por raridade e por ordem alfabética
-  const sortedItems = [...items].sort(sortByRarityThenTitle);
+  // Itens classificados por raridade e por ordem alfabética.
+  // DEDUPLICA: itens compartilhados entre escolas podem vir como linhas repetidas.
+  const seenKeys = new Set<string>();
+  const uniqueItems = items.filter(i => {
+    const key = `${String(i.title || '').trim().toLowerCase()}|${i.rarity || ''}|${i.typeLabel || ''}`;
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key); return true;
+  });
+  const sortedItems = [...uniqueItems].sort(sortByRarityThenTitle);
 
   const filteredItems = search.trim()
     ? sortedItems.filter(i => {

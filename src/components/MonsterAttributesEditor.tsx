@@ -311,14 +311,29 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
 
   // Itens mapeados para o ItemSelectDropdown (com título, imagem, raridade e tag de tipo)
   const storeItemOptions: ItemSelectOption[] = useMemo(() => {
-    return availableStoreItems.map(it => ({
-      id: it.id,
-      title: it.title || it.name || it.id,
-      imageUrl: it.imageUrl || it.image_url || it.gameImage2dUrl,
-      rarity: it.rarity || 'common',
-      typeLabel: getItemTypeLabel(it),
-      aliases: [it.dataId, it.itemId, it.storeItemId].filter(Boolean) as string[],
-    }));
+    // Itens são compartilhados entre escolas → o MESMO item pode vir como linhas repetidas.
+    // Deduplica por (nome + raridade + tipo), mantendo TODOS os ids como aliases.
+    const byKey = new Map<string, ItemSelectOption>();
+    for (const it of availableStoreItems) {
+      const title = it.title || it.name || it.id;
+      const typeLabel = getItemTypeLabel(it);
+      const key = `${String(title).trim().toLowerCase()}|${it.rarity || 'common'}|${typeLabel}`;
+      const ids = [it.id, it.dataId, it.itemId, it.storeItemId].filter(Boolean) as string[];
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.aliases = Array.from(new Set([...(existing.aliases || [existing.id]), ...ids]));
+      } else {
+        byKey.set(key, {
+          id: it.id,
+          title,
+          imageUrl: it.imageUrl || it.image_url || it.gameImage2dUrl,
+          rarity: it.rarity || 'common',
+          typeLabel,
+          aliases: ids,
+        });
+      }
+    }
+    return Array.from(byKey.values());
   }, [availableStoreItems]);
 
   return (
