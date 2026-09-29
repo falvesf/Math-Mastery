@@ -121,17 +121,19 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
   return renderObject(blockFallback(), opts.rotY, opts.zoom, false);
 }
 
-function getOrBuild(key: string, opts: any, onReady: (u: string, err?: string) => void): string | null {
+// Retorna SEMPRE uma promise (a em andamento ou uma nova). Assim quem monta 2x (StrictMode)
+// recebe o resultado, em vez de "perder" o callback.
+function getOrBuild(key: string, opts: any): Promise<string> {
   const cached = thumbCache.get(key);
-  if (cached !== undefined) return cached;
-  if (!inflight.has(key)) {
-    const p = buildThumb(opts)
-      .then((url) => { if (url) { thumbCache.set(key, url); onReady(url); } else onReady('', 'render vazio'); return url; })
-      .catch((e) => { console.warn('[MonsterThumb] falha ao gerar miniatura:', e); onReady('', String((e && (e as any).message) || e)); return ''; })
-      .finally(() => { inflight.delete(key); }); // libera p/ tentar de novo se falhou
-    inflight.set(key, p);
-  }
-  return null;
+  if (cached !== undefined) return Promise.resolve(cached);
+  const existing = inflight.get(key);
+  if (existing) return existing;
+  const p = buildThumb(opts)
+    .then((url) => { if (url) thumbCache.set(key, url); return url; })
+    .catch((e) => { console.warn('[MonsterThumb] falha ao gerar miniatura:', e); return ''; })
+    .finally(() => { inflight.delete(key); }); // libera p/ tentar de novo se falhou
+  inflight.set(key, p);
+  return p;
 }
 
 interface MonsterThumbProps {
@@ -153,7 +155,9 @@ export default function MonsterThumb({ thumbKey, modelUrl, skinUrl, slim, rotY, 
     const cached = thumbCache.get(thumbKey);
     if (cached !== undefined) { setUrl(cached); return; }
     setUrl(null); setErr(null);
-    getOrBuild(thumbKey, { modelUrl, skinUrl, slim, rotY, zoom }, (u, e) => { if (alive) { setUrl(u); setErr(e || null); } });
+    getOrBuild(thumbKey, { modelUrl, skinUrl, slim, rotY, zoom })
+      .then((u) => { if (!alive) return; if (u) setUrl(u); else setErr('render vazio'); })
+      .catch((e) => { if (alive) setErr(String((e && (e as any).message) || e)); });
     return () => { alive = false; };
   }, [thumbKey, modelUrl, skinUrl, slim, rotY, zoom]);
   return (
