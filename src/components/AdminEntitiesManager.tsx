@@ -20,6 +20,8 @@ export default function AdminEntitiesManager() {
   // @ts-ignore
   const [loadingMonsters, setLoadingMonsters] = useState(false);
   const [selectedMonsterForEdit, setSelectedMonsterForEdit] = useState<any | null>(null);
+  // Sub-abas da seção Monstros: Galeria (lista) x Personalizar (editor).
+  const [monsterView, setMonsterView] = useState<'gallery' | 'editor'>('gallery');
 
   const initialMonsterConfig = useMemo(() => {
     if (selectedMonsterForEdit) return selectedMonsterForEdit.parsedConfig;
@@ -241,124 +243,50 @@ export default function AdminEntitiesManager() {
 
         {activeTab === 'monsters' && (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1.5rem' }}>
-            {/* Cabeçalho */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div>
-                <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Swords size={20} color="var(--accent-red)" /> Galeria de Monstros Criados ({monstersList.length})
-                </h3>
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                  Monstros cadastrados com golpes personalizados e tamanho definido para uso nas missões.
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  setSelectedMonsterForEdit(null);
-                  setMonsterModelUrl('');
-                }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.4rem',
-                  padding: '0.6rem 1.2rem', borderRadius: '8px',
-                  background: !selectedMonsterForEdit ? 'var(--accent-primary)' : 'rgba(59, 130, 246, 0.15)',
-                  color: '#fff', border: '1px solid var(--accent-primary)',
-                  cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem'
-                }}
-              >
-                <Plus size={16} /> Criar Novo Monstro
-              </button>
+            {/* Sub-abas: Galeria x Personalizar */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => setMonsterView('gallery')} style={{ padding: '0.5rem 1rem', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', border: monsterView === 'gallery' ? '1px solid var(--accent-primary)' : '1px solid var(--border-glass)', background: monsterView === 'gallery' ? 'rgba(59,130,246,0.2)' : 'transparent', color: monsterView === 'gallery' ? 'var(--accent-primary)' : 'var(--text-secondary)' }}>🗂️ Galeria ({monstersList.length})</button>
+              <button onClick={() => setMonsterView('editor')} style={{ padding: '0.5rem 1rem', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', border: monsterView === 'editor' ? '1px solid var(--accent-primary)' : '1px solid var(--border-glass)', background: monsterView === 'editor' ? 'rgba(59,130,246,0.2)' : 'transparent', color: monsterView === 'editor' ? 'var(--accent-primary)' : 'var(--text-secondary)' }}>🎨 Personalizar{selectedMonsterForEdit ? `: ${selectedMonsterForEdit.name}` : ''}</button>
+              <button onClick={() => { setSelectedMonsterForEdit(null); setMonsterModelUrl(''); setMonsterView('editor'); }} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: 8, background: 'var(--accent-primary)', color: '#fff', border: '1px solid var(--accent-primary)', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}><Plus size={16} /> Criar Novo Monstro</button>
             </div>
 
             {/* Lista de Monstros Existentes */}
+            {monsterView === 'gallery' && (
             <div style={{ background: 'rgba(0,0,0,0.15)', borderRadius: '10px', padding: '1rem', border: '1px solid var(--border-glass)' }}>
               {monstersList.length === 0 ? (
                 <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                   Nenhum monstro cadastrado ainda. Use o formulário abaixo para criar seu primeiro monstro!
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem', maxHeight: 250, overflowY: 'auto', paddingRight: 6 }}>
                   {monstersList.map(m => {
-                    const isEditing = selectedMonsterForEdit?.id === m.id;
                     const cfg = m.parsedConfig;
-                    const attacks = cfg?.attacks;
-                    const hasCustomAttacks = !!attacks && (!!attacks.melee || !!attacks.ranged?.enabled || !!attacks.special?.enabled || !!attacks.support?.enabled || !!attacks.heal?.enabled);
                     const modelObj = skinModels.find(sm => sm.url === cfg?.customModelUrl || sm.id === m.baseModelId);
-                    const modelName = modelObj ? modelObj.name : (cfg?.customModelUrl ? 'Molde 3D Customizado' : (m.url ? 'Skin 2D' : 'Avatar Base'));
-                    const zoomVal = cfg?.customZoom || 1;
-
+                    const isImg = (u?: string) => !!u && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(u);
+                    const thumb = isImg(cfg?.customSkinUrl) ? cfg.customSkinUrl : (isImg(m.url) ? m.url : '');
                     return (
-                      <div
-                        key={m.id}
-                        style={{
-                          background: isEditing ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-dark)',
-                          border: isEditing ? '2px solid var(--accent-primary)' : '1px solid var(--border-glass)',
-                          borderRadius: '10px',
-                          padding: '1rem',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0.6rem',
-                          position: 'relative'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div>
-                            <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1rem', fontWeight: 'bold' }}>
-                              {m.name}
-                            </h4>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                              {modelName}
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', gap: '0.4rem' }}>
-                            <button
-                              title="Editar este monstro"
-                              onClick={() => {
-                                setSelectedMonsterForEdit(m);
-                                setMonsterModelUrl(cfg?.customModelUrl || modelObj?.url || '');
-                              }}
-                              style={{ background: 'rgba(59, 130, 246, 0.2)', border: 'none', borderRadius: '6px', padding: '6px', color: 'var(--accent-primary)', cursor: 'pointer' }}
-                            >
-                              <Edit2 size={15} />
-                            </button>
-                            <button
-                              title="Excluir monstro"
-                              onClick={() => handleDeleteMonster(m.id, m.name)}
-                              style={{ background: 'rgba(239, 68, 68, 0.2)', border: 'none', borderRadius: '6px', padding: '6px', color: 'var(--accent-red)', cursor: 'pointer' }}
-                            >
-                              <Trash2 size={15} />
-                            </button>
+                      <div key={m.id} style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: 10, padding: '0.5rem 0.6rem', minWidth: 0 }}>
+                        <div style={{ width: 56, height: 56, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                          {thumb ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated' }} /> : <Swords size={26} color="var(--accent-red)" />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={m.name}>{m.name}</div>
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.68rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modelObj ? modelObj.name : (cfg?.customModelUrl ? 'Molde 3D' : 'Skin 2D')}</div>
+                          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                            <button title="Editar" onClick={() => { setSelectedMonsterForEdit(m); setMonsterModelUrl(cfg?.customModelUrl || modelObj?.url || ''); setMonsterView('editor'); }} style={{ background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: 6, padding: '4px', color: 'var(--accent-primary)', cursor: 'pointer' }}><Edit2 size={14} /></button>
+                            <button title="Excluir" onClick={() => handleDeleteMonster(m.id, m.name)} style={{ background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: 6, padding: '4px', color: 'var(--accent-red)', cursor: 'pointer' }}><Trash2 size={14} /></button>
                           </div>
                         </div>
-
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', fontSize: '0.75rem' }}>
-                          <span style={{ background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '4px', color: zoomVal !== 1 ? 'var(--accent-primary)' : 'var(--text-secondary)', fontWeight: zoomVal !== 1 ? 'bold' : 'normal' }}>
-                            📏 Escala: {zoomVal}x
-                          </span>
-                          {hasCustomAttacks ? (
-                            <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                              ⚔️ Golpes Ativos
-                            </span>
-                          ) : (
-                            <span style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '4px' }}>
-                              Golpe Básico
-                            </span>
-                          )}
-                        </div>
-
-                        {hasCustomAttacks && attacks && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                            {attacks.ranged?.enabled && <span style={{ background: 'rgba(59, 130, 246, 0.12)', padding: '1px 6px', borderRadius: '3px' }}>🏹 Distância ({attacks.ranged.effect || 'impacto'})</span>}
-                            {attacks.special?.enabled && <span style={{ background: 'rgba(168, 85, 247, 0.12)', padding: '1px 6px', borderRadius: '3px' }}>⚡ Especial ({attacks.special.proceduralType || 'redemoinho'})</span>}
-                            {attacks.support?.enabled && <span style={{ background: 'rgba(234, 179, 8, 0.12)', padding: '1px 6px', borderRadius: '3px' }}>🛡️ Suporte</span>}
-                          </div>
-                        )}
                       </div>
                     );
                   })}
                 </div>
               )}
             </div>
+            )}
 
             {/* Formulário / Customizador */}
+            {monsterView === 'editor' && (
             <div style={{ marginTop: '0.5rem' }}>
               <div style={{ marginBottom: '1rem', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', padding: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
@@ -440,6 +368,7 @@ export default function AdminEntitiesManager() {
                 }}
               />
             </div>
+            )}
           </div>
         )}
 
