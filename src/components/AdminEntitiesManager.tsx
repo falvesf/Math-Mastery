@@ -275,7 +275,7 @@ export default function AdminEntitiesManager() {
                     const modelObj = skinModels.find(sm => sm.url === cfg?.customModelUrl || sm.id === m.baseModelId);
                     const isModelFile = (u?: string) => !!u && /\.(glb|gltf)(\?|$)/i.test(u);
                     const modelUrl = cfg?.customModelUrl || modelObj?.url || '';
-                    const skinUrl = (cfg?.customSkinUrl && !isModelFile(cfg.customSkinUrl) ? cfg.customSkinUrl : '') || (m.url && !isModelFile(m.url) ? m.url : '');
+                    const skinUrl = [cfg?.customSkinUrl, cfg?.modelTextureUrl, m.url].find((u: any) => u && !isModelFile(u)) || '';
                     const slim = cfg?.gender === 'female';
                     return (
                       <div key={m.id} style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: 10, padding: '0.5rem 0.6rem', minWidth: 0 }}>
@@ -303,7 +303,7 @@ export default function AdminEntitiesManager() {
                     const zoomVal = cfg?.customZoom || 1;
                     const isModelFile = (u?: string) => !!u && /\.(glb|gltf)(\?|$)/i.test(u);
                     const modelUrl = cfg?.customModelUrl || modelObj?.url || '';
-                    const skinUrl = (cfg?.customSkinUrl && !isModelFile(cfg.customSkinUrl) ? cfg.customSkinUrl : '') || (m.url && !isModelFile(m.url) ? m.url : '');
+                    const skinUrl = [cfg?.customSkinUrl, cfg?.modelTextureUrl, m.url].find((u: any) => u && !isModelFile(u)) || '';
                     const slim = cfg?.gender === 'female';
                     return (
                       <div key={m.id} style={{ background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '1rem', display: 'flex', gap: '0.75rem' }}>

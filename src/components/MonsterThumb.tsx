@@ -93,11 +93,13 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
           if (tl.setCrossOrigin) tl.setCrossOrigin('anonymous');
           const tex: any = await new Promise((res, rej) => tl.load(opts.skinUrl as string, res, undefined, rej));
           if (tex) {
+            tex.flipY = false;
+            try { tex.colorSpace = (THREE as any).SRGBColorSpace; } catch { /* noop */ }
             tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
             model.traverse((ch: any) => {
               if (!ch.isMesh || !ch.material) return;
               const mats = Array.isArray(ch.material) ? ch.material : [ch.material];
-              mats.forEach((m: any) => { if (m) { m.map = tex; m.needsUpdate = true; } });
+              mats.forEach((m: any) => { if (m) { m.map = tex; m.transparent = false; m.alphaTest = 0.5; m.needsUpdate = true; } });
             });
           }
         } catch { /* mantém a textura do glb */ }
@@ -113,7 +115,7 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
       const tl = new THREE.TextureLoader();
       if (tl.setCrossOrigin) tl.setCrossOrigin('anonymous');
       const tex: any = await new Promise((res, rej) => tl.load(opts.skinUrl as string, res, undefined, rej));
-      if (tex) { tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; po.skin.map = tex; }
+      if (tex) { tex.colorSpace = (THREE as any).SRGBColorSpace; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; po.skin.map = tex; }
       return renderObject(po, opts.rotY, opts.zoom, false);
     } catch { /* cai para o bloco genérico */ }
   }
