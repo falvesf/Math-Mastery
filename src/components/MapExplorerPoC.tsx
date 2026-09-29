@@ -635,12 +635,12 @@ if (!cancelled) {
     }).catch(() => {});
 
     // RAÇÕES do jogador (pet_feed) — usadas para DOMESTICAR animais no mapa.
-    const loadFeed = loadCatalog.then(() => supabase.from('user_items').select('id, item_id, quantity').eq('student_id', uid).then(({ data }) => {
+    const loadFeed = loadCatalog.then(() => supabase.from('user_items').select('*').eq('student_id', uid).then(({ data }) => {
       const map = new Map<string, any>();
       (data || []).forEach((r: any) => {
         const it: any = itemCatalogRef.current.get(String(r.item_id));
         if (!it || it.gameEffect !== 'pet_feed') return;
-        map.set(String(r.id), { userItemId: r.id, itemId: r.item_id, qty: Number(r.quantity) || 1, title: it.title, imageUrl: it.imageUrl, feedHours: Number(it.feedHours) || 1 });
+        map.set(String(r.id), { userItemId: r.id, itemId: r.item_id, qty: Number(r.data?.quantity) || 1, title: it.title, imageUrl: it.imageUrl, feedHours: Number(it.feedHours) || 1 });
       });
       feedItemsRef.current = map;
     })).catch(() => {});
@@ -1811,7 +1811,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
       const spawnVein = (v: any) => {
         let gx = 0, gz = 0, okFound = false;
         for (let i = 0; i < 300; i++) {
-          gx = Math.floor(rnd(1, COLS - 1)); gz = Math.floor(rnd(1, ROWS - 1));
+          gx = 1 + Math.floor(Math.random() * (COLS - 2)); gz = 1 + Math.floor(Math.random() * (ROWS - 2));
           if (grid.wall[gz]?.[gx]) continue;
           if (gx === grid.start.x && gz === grid.start.z) continue;
           if (rocks.some(r => r.x === gx && r.z === gz)) continue;
@@ -3097,9 +3097,11 @@ const hurtPlayer = (hearts: number, message: string) => {
     };
     const consumeBait = async (f: any) => {
       try {
-        const q = Math.max(0, (Number(f.qty) || 1) - 1);
+        const { data: row } = await supabase.from('user_items').select('data').eq('id', f.userItemId).maybeSingle();
+        const cur = Number((row as any)?.data?.quantity) || 1;
+        const q = Math.max(0, cur - 1);
         if (q <= 0) { await supabase.from('user_items').delete().eq('id', f.userItemId); feedItemsRef.current.delete(f._uid); }
-        else { await supabase.from('user_items').update({ quantity: q }).eq('id', f.userItemId); f.qty = q; }
+        else { await supabase.from('user_items').update({ data: { ...((row as any)?.data || {}), quantity: q } }).eq('id', f.userItemId); f.qty = q; }
       } catch { /* noop */ }
     };
     const hasBasics = () => ['food_trough', 'water_trough', 'hay'].every(k => ranchKindsRef.current.includes(k));

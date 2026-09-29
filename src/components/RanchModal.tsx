@@ -46,7 +46,7 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
       ]);
       setPets(p); setModels(m); setRanch(r); setRanchItems(ri);
       // Itens de RAÇÃO do jogador (pet_feed)
-      const { data: inv } = await supabase.from('user_items').select('id, item_id, data, quantity').eq('student_id', uid).eq('equipped', false);
+      const { data: inv } = await supabase.from('user_items').select('*').eq('student_id', uid);
       const storeIds = Array.from(new Set((inv || []).map((i: any) => i.item_id).filter(Boolean)));
       let feedStore: any[] = [];
       if (storeIds.length) {
@@ -107,10 +107,11 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
     await savePet(withH);
     // Consome 1 unidade da ração
     try {
-      const { data: row } = await supabase.from('user_items').select('quantity').eq('id', feed.userItemId).maybeSingle();
-      const q = Math.max(0, (Number(row?.quantity) || 1) - 1);
+      const { data: row } = await supabase.from('user_items').select('data').eq('id', feed.userItemId).maybeSingle();
+      const cur = Number((row as any)?.data?.quantity) || 1;
+      const q = Math.max(0, cur - 1);
       if (q <= 0) await supabase.from('user_items').delete().eq('id', feed.userItemId);
-      else await supabase.from('user_items').update({ quantity: q }).eq('id', feed.userItemId);
+      else await supabase.from('user_items').update({ data: { ...((row as any)?.data || {}), quantity: q } }).eq('id', feed.userItemId);
     } catch { /* noop */ }
     setMsg(`🍖 ${selected.name || 'Pet'} comeu ${feed.title}.`);
     load();
