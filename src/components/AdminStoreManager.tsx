@@ -58,7 +58,7 @@ void getRarityColor;
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 
   'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 
   'bazar_sale_permit' | 'cure_bleed' | 'cure_poison' | 'cure_freeze' | 'cure_burn' | 'cure_electric' | 'blacksmith_scroll' |
-  'break_item' | 'fuse_item';
+  'break_item' | 'fuse_item' | 'pet_feed';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mestre' | 'legendary';
 
 export interface StoreItem {
@@ -114,6 +114,8 @@ export interface StoreItem {
   scrollChanceBonus?: number; // % de bônus de chance que o Pergaminho do Ferreiro concede (0–100)
   breakTargetItemId?: string; // ID do item fragmento resultante ao quebrar no ferreiro
   breakMinQty?: number; // Quantidade mínima de fragmentos ao quebrar
+  /** RAÇÃO (pet_feed): horas de saciedade que o item concede ao pet. */
+  feedHours?: number;
   breakMaxQty?: number; // Quantidade máxima de fragmentos ao quebrar
   breakCost?: number; // Custo em moedas para quebrar cada unidade no ferreiro
   breakSuccessChance?: number; // % de chance de sucesso na quebra (1–100, padrão 80)
@@ -935,6 +937,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
       gachaConfig: item.gachaConfig || null,
       useGlobalGacha: item.useGlobalGacha ?? true,
       scrollChanceBonus: item.scrollChanceBonus,
+      feedHours: (item as any).feedHours,
       breakTargetItemId: item.breakTargetItemId,
       breakMinQty: item.breakMinQty,
       breakMaxQty: item.breakMaxQty,
@@ -1114,6 +1117,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
             : 30)
         : undefined,
       breakTargetItemId: formData.gameEffect === 'break_item' ? (formData.breakTargetItemId || undefined) : undefined,
+      feedHours: formData.gameEffect === 'pet_feed' ? (Number((formData as any).feedHours) || 1) : undefined,
       breakMinQty: formData.gameEffect === 'break_item' ? (Number(formData.breakMinQty) || 1) : undefined,
       breakMaxQty: formData.gameEffect === 'break_item' ? (Number(formData.breakMaxQty) || 1) : undefined,
       breakCost: formData.gameEffect === 'break_item' ? (Number(formData.breakCost) || 0) : undefined,
@@ -1212,6 +1216,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
           consumableEffectColor: itemData.consumableEffectColor || null,
           useSoundUrl: itemData.useSoundUrl || null,
           breakTargetItemId: itemData.breakTargetItemId ?? null,
+      feedHours: (itemData as any).feedHours ?? null,
           breakMinQty: itemData.breakMinQty ?? null,
           breakMaxQty: itemData.breakMaxQty ?? null,
           breakCost: itemData.breakCost ?? null,
@@ -1783,6 +1788,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
                       <option value="blacksmith_scroll">Pergaminho do Ferreiro (Bônus de chance + Proteção contra destruição)</option>
                       <option value="break_item">⛏️ Quebrar / Triturar no Ferreiro (Material Bruto ➔ Fragmentos)</option>
                       <option value="fuse_item">🔥 Fundir / Agrupar no Ferreiro (Fragmentos ➔ Lingote/Item)</option>
+                      <option value="pet_feed">🍖 Ração / Comida de Pet (alimenta e enche a fome do pet)</option>
                     </select>
                   </div>
                   {formData.gameEffect === 'blacksmith_scroll' && (
@@ -1892,6 +1898,24 @@ Responda APENAS com a frase curta em português brasileiro.`;
                           />
                         </div>
                       </div>
+                    </div>
+                  )}
+                  {formData.gameEffect === 'pet_feed' && (
+                    <div style={{ background: 'rgba(34, 197, 94, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                      <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                        Saciedade concedida ao PET (em HORAS)
+                      </label>
+                      <input
+                        type="number"
+                        min={0.1}
+                        step={0.1}
+                        value={(formData as any).feedHours ?? 1}
+                        onChange={e => setFormData({ ...formData, feedHours: Math.max(0.1, Number(e.target.value) || 1) } as any)}
+                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+                      />
+                      <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        Ex.: 1 hora. Uma barra cheia dura 12~24h conforme o nível de relacionamento do pet (então 12 cenouras de 1h saciam por 12h num pet de relacionamento 1).
+                      </span>
                     </div>
                   )}
                   {formData.gameEffect === 'fuse_item' && (

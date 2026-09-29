@@ -183,6 +183,10 @@ export interface MonsterStatsConfig {
   damageEffect?: string;
   /** Dano de efeito por NÍVEL (animais): { level, effect } — muda conforme o animal evolui. Ex.: nível 1 já com veneno. */
   damageEffectByLevel?: Array<{ level: number; effect: string }>;
+  /** Animais: itens/rações que o animal GOSTA (usados para domesticar). */
+  favoriteFoodIds?: string[];
+  /** Animais: distância (quadrados) para desistir de seguir a ração. */
+  followGiveUpDistance?: number;
   /** Velocidade de movimento (multiplicador) no mapa explorável. 1 = padrão. */
   speed?: number;
   /** Velocidade de ataque: golpes por SEGUNDO (ex.: 2 = ataca 2x/s; 0.5 = 1 golpe a cada 2s). */
@@ -293,6 +297,8 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     hostileChance: value.stats?.hostileChance,
     damageEffect: value.stats?.damageEffect,
     damageEffectByLevel: value.stats?.damageEffectByLevel,
+    favoriteFoodIds: value.stats?.favoriteFoodIds || [],
+    followGiveUpDistance: value.stats?.followGiveUpDistance,
     speed: value.stats?.speed,
     attackSpeed: value.stats?.attackSpeed,
   };
@@ -740,6 +746,20 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
               <button onClick={() => updateStats({ aggressionByLevel: [...(currentStats.aggressionByLevel || []), { level: (currentStats.level || 1) + 1, aggression: 'aggressive' as any }] })} style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: 'rgba(245,158,11,0.15)', border: '1px dashed rgba(245,158,11,0.5)', color: 'var(--gold-primary)', cursor: 'pointer', fontSize: '0.75rem' }}>+ Faixa de nível</button>
               <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 4 }}>Ex.: pacífico até nv3, neutro do nv4 ao nv7, agressivo do nv8. Vale por MONSTRO (cada um sobe de nível vencendo batalhas).</div>
             </div>
+            {isAnimal && (
+              <>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Alimento predileto (Ctrl p/ vários) — usado para domesticar</label>
+                  <select multiple size={4} value={currentStats.favoriteFoodIds || []} onChange={e => updateStats({ favoriteFoodIds: Array.from(e.target.selectedOptions).map(o => (o as HTMLOptionElement).value) })} style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }}>
+                    {storeItemOptions.map(o => <option key={o.id} value={o.id}>{o.title}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Distância p/ desistir de seguir a ração (quadrados)</label>
+                  <input type="number" min={1} max={20} value={currentStats.followGiveUpDistance ?? 2} onChange={e => updateStats({ followGiveUpDistance: Math.max(1, Math.min(20, parseInt(e.target.value) || 2)) })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
+                </div>
+              </>
+            )}
             {isAnimal && (
               <div>
                 <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Dano de efeito base do golpe</label>
