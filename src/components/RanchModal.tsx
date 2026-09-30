@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchAnimalModels } from '../lib/model3d';
 import {
   fetchPets, savePet, fetchRanch, upsertRanch, fetchRanchItems, computePet, feedPet,
-  withHistory, relationshipName, RELATIONSHIP_LEVELS, type Pet,
+  withHistory, relationshipName, RELATIONSHIP_LEVELS, equipPet, type Pet,
 } from '../lib/pets';
 import Ranch3D, { type RanchPetView } from './Ranch3D';
 
@@ -175,6 +175,18 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
     load();
   };
 
+  const doEquipToggle = async () => {
+    if (!selected) return;
+    if (selected.equipped) {
+      await supabase.from('pets').update({ equipped: false, state: 'ranch' }).eq('id', selected.id);
+      setMsg('🔓 Pet desequipado.');
+    } else {
+      await equipPet(uid, selected.id);
+      setMsg('⚔️ Pet equipado para batalha! Ele ganhará XP nas batalhas.');
+    }
+    load();
+  };
+
   if (!isOpen) return null;
 
   const heartBar = (value: number, color: string, Icon: any, label: string) => (
@@ -290,6 +302,8 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
                     )) : <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Sem ração no inventário.</span>}
                     <button onClick={doWater} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', color: '#93c5fd', cursor: 'pointer', fontSize: '0.78rem' }}><Droplet size={14} /> Dar água</button>
                     <button onClick={doInteract} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', color: '#fde68a', cursor: 'pointer', fontSize: '0.78rem' }}><Smile size={14} /> Interagir</button>
+                    <button onClick={doEquipToggle} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: selected.equipped ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)', border: selected.equipped ? '1px solid rgba(16,185,129,0.5)' : '1px solid rgba(239,68,68,0.4)', color: selected.equipped ? '#6ee7b7' : '#fca5a5', cursor: 'pointer', fontSize: '0.78rem' }}>{selected.equipped ? '🔓 Desequipar' : '⚔️ Equipar p/ batalha'}</button>
+                    {selected.equipped && <span style={{ fontSize: '0.72rem', color: '#6ee7b7', alignSelf: 'center' }}>Ativo em batalhas</span>}
                   </div>
                 </div>
 

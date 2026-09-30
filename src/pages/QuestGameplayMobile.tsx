@@ -13,6 +13,7 @@ import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem, safeParseAvatarConfig } from '../components/AvatarCharacter';
 import CustomModelViewer from '../components/CustomModelViewer';
 import ChestReveal from '../components/ChestReveal';
+import { applyPetBattleResult, savePet } from '../lib/pets';
 import BattleTransition from '../components/BattleTransition';
 import MapExplorerPoC from '../components/MapExplorerPoC';
 import MonsterProjectileView from '../components/MonsterProjectileView';
@@ -2952,6 +2953,27 @@ const dealTransformDamageToPlayer = (damage: number) => {
         } else if (reward && !reward.ok) {
           console.error("Recompensa rejeitada pelo servidor:", reward.error, reward);
         }
+      }
+
+      // PET equipado ganha/perde XP na batalha (Fase 4)
+      if (isEligibleForXP && isWin && userData?.uid) {
+        try {
+          const { data: eqPet } = await supabase.from('pets').select('*').eq('student_id', userData.uid).eq('equipped', true).maybeSingle();
+          if (eqPet) {
+            let monsterXp = 50;
+            try {
+              if (monsterPresetIdRef.current) {
+                const { data: ps } = await supabase.from('preset_skins').select('config').eq('id', monsterPresetIdRef.current).maybeSingle();
+                const cfg = typeof (ps as any)?.config === 'string' ? JSON.parse((ps as any).config) : (ps as any)?.config;
+                monsterXp = Math.max(0, Number(cfg?.stats?.xp) || 50);
+              }
+            } catch { /* noop */ }
+            const sameSpecies = String((eqPet as any).species_name || '').toLowerCase() === String((quest as any)?.monsterName || '').toLowerCase();
+            const res = applyPetBattleResult(eqPet as any, { monsterXp, sameSpecies });
+            await savePet(res.pet);
+            if (res.message) { try { setBattleMessage(res.message); } catch { /* noop */ } }
+          }
+        } catch { /* noop */ }
       }
 
       // Buffs and Debuffs only applied if eligible for XP

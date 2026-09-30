@@ -173,3 +173,54 @@ export async function fetchRanchItems(studentId: string): Promise<{ id: string; 
 export function hasBasicRanch(kinds: string[]): boolean {
   return kinds.includes('food_trough') && kinds.includes('water_trough') && kinds.includes('hay');
 }
+
+// ---- BATALHAS / XP ----
+/** XP necessário para o próximo nível do PET (metade da curva dos monstros). */
+export function petXpToNext(level: number): number {
+  return Math.round(300 * Math.max(1, level));
+}
+
+/** Equipa um pet para batalha (só um por vez). */
+export async function equipPet(studentId: string, petId: string): Promise<void> {
+  if (!studentId) return;
+  await supabase.from('pets').update({ equipped: false, state: 'ranch' }).eq('student_id', studentId).eq('equipped', true);
+  await supabase.from('pets').update({ equipped: true, state: 'equipped' }).eq('id', petId).eq('student_id', studentId);
+}
+
+/**
+ * Aplica o resultado de uma batalha ao PET equipado:
+ * - monstro derrotado → ganha XP (sobe de nível com curva METADE dos monstros);
+ * - monstro da MESMA ESPÉCIE → perde XP; muitos abates da mesma espécie podem fazer o pet IR EMBORA (se relacionamento baixo).
+ */
+export function applyPetBattleResult(pet: Pet, opts: { monsterXp: number; sameSpecies: boolean }): { pet: Pet; message: string } {
+  if (!pet || (pet.state !== 'ranch' && pet.state !== 'equipped')) return { pet, message: '' };
+  const xp = Math.max(0, Math.round(opts.monsterXp || 0));
+
+  if (opts.sameSpecies) {
+    const stats: any = { ...(pet.stats || {}) };
+    stats.sameSpeciesKills = (stats.sameSpeciesKills || 0) + 1;
+    const lost = Math.max(1, Math.round(xp * 0.5));
+    let newXp = pet.xp - lost; let level = pet.level;
+    if (newXp < 0) { if (level > 1) { level -= 1; newXp = petXpToNext(level) + newXp; } else newXp = 0; }
+    let p = withHistory({ ...pet, xp: newXp, level, stats }, 'record', `Um ${pet.species_name || 'animal'} da mesma espécie foi abatido — perdeu ${lost} XP.`);
+    if (stats.sameSpeciesKills >= 5 && pet.relationship < 3 && Math.random() < (0.05 * (6 - pet.relationship))) {
+      p = withHistory({ ...p, state: 'ran_away', equipped: false }, 'achievement', `Foi embora: muitos ${pet.species_name || 'animais'} da sua espécie foram abatidos e o relacionamento estava baixo.`);
+      return { pet: p, message: `💔 ${pet.name || 'Seu pet'} foi embora (muitos abates da mesma espécie).` };
+    }
+    return { pet: p, message: `📉 ${pet.name || 'Pet'} perdeu ${lost} XP.` };
+  }
+
+  let xpAcc = pet.xp + xp; let level = pet.level; let leveled = false;
+  const stats: any = { ...(pet.stats || {}) };
+  while (xpAcc >= petXpToNext(level) && level < 99) {
+    xpAcc -= petXpToNext(level); level++; leveled = true;
+    if (stats.hp) stats.hp = Math.round(stats.hp * 1.08);
+    if (stats.attack) stats.attack = Math.round(stats.attack * 1.08);
+    if (stats.defense) stats.defense = Math.round(stats.defense * 1.05 + 1);
+    if (stats.speed) stats.speed = Math.round(stats.speed * 1.03 * 100) / 100;
+  }
+  let p = { ...pet, xp: xpAcc, level, stats };
+  if (leveled) p = withHistory(p, 'achievement', `Subiu para o nível ${level}!`);
+  p = withHistory(p, 'record', `Ganhou ${xp} XP em batalha.`);
+  return { pet: p, message: leveled ? `⬆️ ${pet.name || 'Pet'} subiu para o nível ${level}!` : `✨ ${pet.name || 'Pet'} ganhou ${xp} XP.` };
+}
