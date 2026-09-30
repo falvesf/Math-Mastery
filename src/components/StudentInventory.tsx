@@ -225,10 +225,16 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     const storeRarities = new Map<string, string>();
     const storeEffects = new Map<string, string>();
     const storeScrollBonuses = new Map<string, number>();
+    const storeTitles = new Map<string, string>();
+    const storeImages = new Map<string, string>();
+    const storeTypes = new Map<string, string>();
     (storeSnap || []).forEach(d => {
       storeRarities.set(d.id, d.data?.rarity || 'common');
       const effect = d.data?.gameEffect || (d.data?.type === 'consumable' ? '' : '');
       storeEffects.set(d.id, effect || '');
+      storeTitles.set(d.id, d.data?.itemTitle || d.data?.title || d.data?.name || '');
+      storeImages.set(d.id, d.data?.itemImageUrl || d.data?.imageUrl || d.data?.image_url || '');
+      storeTypes.set(d.id, d.data?.itemType || d.data?.type || '');
       if (d.data?.scrollChanceBonus !== undefined && d.data?.scrollChanceBonus !== null && d.data?.scrollChanceBonus !== '') {
         storeScrollBonuses.set(d.id, Number(d.data.scrollChanceBonus));
       }
@@ -249,7 +255,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         try { parsedAdds = typeof data.adds === 'string' ? JSON.parse(data.adds) : data.adds; } catch (e) { parsedAdds = []; }
       }
       parsedAdds = orderEffectFirst(parsedAdds);
-      loaded.push({ ...(data || {}), itemId: row.item_id || data?.itemId, adds: parsedAdds, id: row.id, equipped: row.equipped, studentId: row.student_id, gameEffect: patchedEffect, scrollChanceBonus: patchedScrollBonus, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common', rawData: data } as UserItem);
+      loaded.push({ ...(data || {}), itemId: row.item_id || data?.itemId, adds: parsedAdds, id: row.id, equipped: row.equipped, studentId: row.student_id, gameEffect: patchedEffect, scrollChanceBonus: patchedScrollBonus, rarity: data?.rarity || storeRarities.get(row.item_id) || 'common', itemTitle: data?.itemTitle || data?.title || data?.name || storeTitles.get(row.item_id) || 'Item Desconhecido', itemImageUrl: data?.itemImageUrl || data?.imageUrl || data?.image_url || storeImages.get(row.item_id) || '', itemType: (data?.itemType || data?.type || storeTypes.get(row.item_id) || 'other'), rawData: data } as UserItem);
     });
 
     const finalItems: UserItem[] = [];

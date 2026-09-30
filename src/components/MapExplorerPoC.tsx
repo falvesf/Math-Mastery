@@ -623,6 +623,7 @@ if (!cancelled) {
           type: r.type || d.type || 'item',
           rarity: d.rarity || r.rarity || 'common',
           feedHours: Number(d.feedHours) || 0,
+          storeData: d, // dados completos do item (título/tipo/imagem/atributos) p/ gravar no inventário
         });
       });
     }).catch(() => {});
@@ -2745,9 +2746,27 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         const studentId = userData?.uid;
         spawnPop(world, p.data.title || 'Item', false);
         if (studentId) {
-          supabase.from('user_items').insert({ student_id: studentId, item_id: p.data.id, equipped: false, data: {} })
-            .then(() => callbacks.current.setMsg(`🎒 Item coletado: ${p.data.title}!`))
-            .catch(() => callbacks.current.setMsg(`🎒 ${p.data.title} coletado!`));
+          // Grava o item COMPLETO no inventário (título/tipo/imagem/atributos do catálogo),
+          // senão ele vira "Item Desconhecido" sem serventia.
+          const d = (p.data.storeData || {}) as any;
+          const payload: any = {
+            ...d,
+            itemTitle: p.data.title || d.itemTitle || d.title || 'Item',
+            itemDescription: d.itemDescription || d.description || '',
+            itemType: d.itemType || d.type || 'other',
+            itemImageUrl: p.data.imageUrl || d.itemImageUrl || d.imageUrl || '',
+            gameEffect: p.data.gameEffect || d.gameEffect || 'none',
+            rarity: d.rarity || p.data.rarity || 'common',
+            usableInQuest: d.usableInQuest || false,
+            battleSoundUrl: d.battleSoundUrl || '',
+            avatarPart: d.avatarPart || null,
+            itemCategory: d.itemCategory || 'none',
+            quantity: 1,
+            giftedBy: 'Cenário',
+          };
+          supabase.from('user_items').insert({ student_id: studentId, item_id: p.data.id, equipped: false, data: payload })
+            .then(() => callbacks.current.setMsg(`🎒 Item coletado: ${payload.itemTitle}!`))
+            .catch(() => callbacks.current.setMsg(`🎒 ${payload.itemTitle} coletado!`));
         } else callbacks.current.setMsg(`🎒 ${p.data.title} coletado!`);
       }
     };
@@ -3009,7 +3028,7 @@ const hurtPlayer = (hearts: number, message: string) => {
     const applyEntry = (entry: any, world: THREE.Vector3, highlight = false): string => {
       const kind = entry?.kind;
       if (kind === 'coins') { const min = Number(entry.min) || 1, max = Number(entry.max) || 10; const v = min + Math.floor(Math.random() * (max - min + 1)); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); if (highlight) spawnHighlightRing(world); return `+${v} 🪙`; }
-      if (kind === 'item') { const item = itemCatalogRef.current.get(String(entry.itemId)) || Array.from(itemCatalogRef.current.values())[0]; if (item) { spawnLootPickup(Math.round(playerPos.x), Math.round(playerPos.z), 'item', item, 0xffd34d, highlight); return `📦 ${item.title || 'item'}`; } return '📦 item'; }
+      if (kind === 'item') { const item = itemCatalogRef.current.get(String(entry.itemId)); if (item) { spawnLootPickup(Math.round(playerPos.x), Math.round(playerPos.z), 'item', item, 0xffd34d, highlight); return `📦 ${item.title || 'item'}`; } return ''; }
       return '';
     };
     const openChest = (chest: any) => {
