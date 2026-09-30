@@ -27,6 +27,7 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
   const [ranch, setRanch] = useState<{ water_level: number; water_updated_at: string } | null>(null);
   const [ranchItems, setRanchItems] = useState<{ id: string; kind: string; level: number }[]>([]);
   const [feedItems, setFeedItems] = useState<any[]>([]);
+  const [ranchEquipItems, setRanchEquipItems] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
@@ -45,20 +46,26 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
         fetchRanchItems(uid),
       ]);
       setPets(p); setModels(m); setRanch(r); setRanchItems(ri);
-      // Itens de RAÇÃO do jogador (pet_feed)
+      // Itens do jogador: RAÇÃO (pet_feed) e EQUIPAMENTOS de rancho (ranch_item)
       const { data: inv } = await supabase.from('user_items').select('*').eq('student_id', uid);
       const storeIds = Array.from(new Set((inv || []).map((i: any) => i.item_id).filter(Boolean)));
-      let feedStore: any[] = [];
+      let store: any[] = [];
       if (storeIds.length) {
-        const { data: store } = await supabase.from('store_items').select('id, name, data').in('id', storeIds);
-        feedStore = (store || []).filter((s: any) => (s.data?.gameEffect) === 'pet_feed');
+        const { data: st } = await supabase.from('store_items').select('id, name, data').in('id', storeIds);
+        store = st || [];
       }
       const feed = (inv || []).map((i: any) => {
-        const st = feedStore.find((s: any) => s.id === i.item_id);
-        if (!st) return null;
-        return { userItemId: i.id, itemId: i.item_id, title: st.name || st.data?.title || i.item_id, feedHours: Number(st.data?.feedHours) || 1, imageUrl: st.data?.imageUrl || '' };
+        const s = store.find((x: any) => x.id === i.item_id && x.data?.gameEffect === 'pet_feed');
+        if (!s) return null;
+        return { userItemId: i.id, itemId: i.item_id, title: s.name || s.data?.title || i.item_id, feedHours: Number(s.data?.feedHours) || 1, imageUrl: s.data?.imageUrl || '' };
       }).filter(Boolean);
       setFeedItems(feed);
+      const equip = (inv || []).map((i: any) => {
+        const s = store.find((x: any) => x.id === i.item_id && x.data?.gameEffect === 'ranch_item');
+        if (!s) return null;
+        return { userItemId: i.id, itemId: i.item_id, title: s.name || s.data?.title || i.item_id, kind: s.data?.ranchKind || 'food_trough', level: Math.max(1, Number(s.data?.ranchLevel) || 1), imageUrl: s.data?.imageUrl || '' };
+      }).filter(Boolean);
+      setRanchEquipItems(equip);
       if (!selectedId && p.length) setSelectedId(p[0].id);
     } finally { setLoading(false); }
   };
@@ -97,7 +104,37 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
   const sc = selected ? computed.get(selected.id) : null;
 
   const basicRanch = ranchItems.some(r => r.kind === 'food_trough') && ranchItems.some(r => r.kind === 'water_trough') && ranchItems.some(r => r.kind === 'hay');
-  const waterLevel = ranch?.water_level ?? 100;
+  // Água do bebedouro decai em tempo real (perde ~100%/24h). A bomba d'água reabastece.
+  const waterLevel = (() => {
+    if (!ranch) return 100;
+    const hrs = Math.max(0, (Date.now() - new Date(ranch.water_updated_at).getTime()) / 3600000);
+    const lvl = Number(ranch.water_level) || 0;
+    const cap = 100 + ranchItems.filter(r => r.kind === 'water_trough').reduce((s, r) => s + (r.level - 1) * 20, 0);
+    return Math.max(0, Math.min(cap, lvl - (100 / 24) * hrs));
+  })();
+
+  const equipLevel = (kind: string) => ranchItems.filter(r => r.kind === kind).reduce((m, r) => Math.max(m, r.level), 0);
+  const installEquip = async (it: any) => {
+    if (it.kind === 'water_pump') {
+      await upsertRanch(uid, tenantId, { water_level: 100, water_updated_at: new Date().toISOString() });
+      setMsg('🚰 Bomba d\'água reabasteceu o bebedouro (100%).');
+    } else {
+      const cur = ranchItems.find(r => r.kind === it.kind);
+      const newLevel = Math.max(cur?.level || 0, it.level);
+      if (cur) await supabase.from('ranch_items').update({ level: newLevel }).eq('id', cur.id);
+      else await supabase.from('ranch_items').insert({ student_id: uid, tenant_id: tenantId, kind: it.kind, level: newLevel });
+      setMsg(`🏠 Equipamento instalado/melhorado: ${it.title} (nível ${newLevel}).`);
+    }
+    // Consome 1 unidade do item
+    try {
+      const { data: row } = await supabase.from('user_items').select('data').eq('id', it.userItemId).maybeSingle();
+      const cur = Number((row as any)?.data?.quantity) || 1;
+      const q = Math.max(0, cur - 1);
+      if (q <= 0) await supabase.from('user_items').delete().eq('id', it.userItemId);
+      else await supabase.from('user_items').update({ data: { ...((row as any)?.data || {}), quantity: q } }).eq('id', it.userItemId);
+    } catch { /* noop */ }
+    load();
+  };
 
   const doFeed = async (feed: any) => {
     if (!selected) return;
@@ -169,6 +206,27 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
         <Ranch3D pets={petViews} waterLevel={waterLevel} hasFood={ranchItems.some(r => r.kind === 'food_trough')} hasWater={ranchItems.some(r => r.kind === 'water_trough')} hasHay={ranchItems.some(r => r.kind === 'hay')} onSelectPet={setSelectedId} height={360} />
 
         {msg && <div style={{ marginTop: 8, color: '#86efac', fontSize: '0.82rem' }}>{msg}</div>}
+
+        {/* Equipamentos do Rancho (instalar/melhorar com itens do inventário) */}
+        <div style={{ marginTop: 12, background: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: 10 }}>
+          <div style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.9rem', marginBottom: 6 }}>🏠 Equipamentos do Rancho</div>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            <span>🍽️ Cocho de comida: <b style={{ color: 'var(--text-primary)' }}>{equipLevel('food_trough') || '—'}</b></span>
+            <span>💧 Bebedouro: <b style={{ color: 'var(--text-primary)' }}>{equipLevel('water_trough') || '—'}</b> <span style={{ color: '#93c5fd' }}>({Math.round(waterLevel)}% de água)</span></span>
+            <span>🌾 Palha: <b style={{ color: 'var(--text-primary)' }}>{equipLevel('hay') || '—'}</b></span>
+          </div>
+          {ranchEquipItems.length > 0 ? (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {ranchEquipItems.map((it: any) => (
+                <button key={it.userItemId} onClick={() => installEquip(it)} title={`Instalar/melhorar (nível ${it.level})`} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', color: '#fde68a', cursor: 'pointer', fontSize: '0.78rem' }}>
+                  🏠 {it.title} <span style={{ opacity: 0.8 }}>(nv.{it.level})</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 6 }}>Sem itens de rancho no inventário. Compre cochos, bebedouro, palha e a bomba d'água na Loja para liberar a domesticação.</div>
+          )}
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 280px) 1fr', gap: 14, marginTop: 14 }}>
           {/* Lista de pets */}

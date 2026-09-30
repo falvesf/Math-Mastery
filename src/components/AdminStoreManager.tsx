@@ -58,7 +58,7 @@ void getRarityColor;
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 
   'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 
   'bazar_sale_permit' | 'cure_bleed' | 'cure_poison' | 'cure_freeze' | 'cure_burn' | 'cure_electric' | 'blacksmith_scroll' |
-  'break_item' | 'fuse_item' | 'pet_feed';
+  'break_item' | 'fuse_item' | 'pet_feed' | 'ranch_item';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mestre' | 'legendary';
 
 export interface StoreItem {
@@ -116,6 +116,9 @@ export interface StoreItem {
   breakMinQty?: number; // Quantidade mínima de fragmentos ao quebrar
   /** RAÇÃO (pet_feed): horas de saciedade que o item concede ao pet. */
   feedHours?: number;
+  /** EQUIPAMENTO DE RANCHO (ranch_item): tipo e nível que instala/melhora. */
+  ranchKind?: 'food_trough' | 'water_trough' | 'hay' | 'water_pump';
+  ranchLevel?: number;
   breakMaxQty?: number; // Quantidade máxima de fragmentos ao quebrar
   breakCost?: number; // Custo em moedas para quebrar cada unidade no ferreiro
   breakSuccessChance?: number; // % de chance de sucesso na quebra (1–100, padrão 80)
@@ -938,6 +941,8 @@ Responda APENAS com a frase curta em português brasileiro.`;
       useGlobalGacha: item.useGlobalGacha ?? true,
       scrollChanceBonus: item.scrollChanceBonus,
       feedHours: (item as any).feedHours,
+      ranchKind: (item as any).ranchKind,
+      ranchLevel: (item as any).ranchLevel,
       breakTargetItemId: item.breakTargetItemId,
       breakMinQty: item.breakMinQty,
       breakMaxQty: item.breakMaxQty,
@@ -1118,6 +1123,8 @@ Responda APENAS com a frase curta em português brasileiro.`;
         : undefined,
       breakTargetItemId: formData.gameEffect === 'break_item' ? (formData.breakTargetItemId || undefined) : undefined,
       feedHours: formData.gameEffect === 'pet_feed' ? (Number((formData as any).feedHours) || 1) : undefined,
+      ranchKind: formData.gameEffect === 'ranch_item' ? ((formData as any).ranchKind || 'food_trough') : undefined,
+      ranchLevel: formData.gameEffect === 'ranch_item' ? Math.max(1, Number((formData as any).ranchLevel) || 1) : undefined,
       breakMinQty: formData.gameEffect === 'break_item' ? (Number(formData.breakMinQty) || 1) : undefined,
       breakMaxQty: formData.gameEffect === 'break_item' ? (Number(formData.breakMaxQty) || 1) : undefined,
       breakCost: formData.gameEffect === 'break_item' ? (Number(formData.breakCost) || 0) : undefined,
@@ -1217,6 +1224,8 @@ Responda APENAS com a frase curta em português brasileiro.`;
           useSoundUrl: itemData.useSoundUrl || null,
           breakTargetItemId: itemData.breakTargetItemId ?? null,
       feedHours: (itemData as any).feedHours ?? null,
+      ranchKind: (itemData as any).ranchKind ?? null,
+      ranchLevel: (itemData as any).ranchLevel ?? null,
           breakMinQty: itemData.breakMinQty ?? null,
           breakMaxQty: itemData.breakMaxQty ?? null,
           breakCost: itemData.breakCost ?? null,
@@ -1789,6 +1798,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
                       <option value="break_item">⛏️ Quebrar / Triturar no Ferreiro (Material Bruto ➔ Fragmentos)</option>
                       <option value="fuse_item">🔥 Fundir / Agrupar no Ferreiro (Fragmentos ➔ Lingote/Item)</option>
                       <option value="pet_feed">🍖 Ração / Comida de Pet (alimenta e enche a fome do pet)</option>
+                      <option value="ranch_item">🏠 Equipamento de Rancho (cocho de comida / bebedouro / palha / bomba d'água)</option>
                     </select>
                   </div>
                   {formData.gameEffect === 'blacksmith_scroll' && (
@@ -1916,6 +1926,27 @@ Responda APENAS com a frase curta em português brasileiro.`;
                       <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                         Ex.: 1 hora. Uma barra cheia dura 12~24h conforme o nível de relacionamento do pet (então 12 cenouras de 1h saciam por 12h num pet de relacionamento 1).
                       </span>
+                    </div>
+                  )}
+                  {formData.gameEffect === 'ranch_item' && (
+                    <div style={{ background: 'rgba(234,179,8,0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(234,179,8,0.3)' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#fbbf24', fontWeight: 'bold' }}>🏠 Equipamento de Rancho</label>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <div style={{ flex: '1 1 240px' }}>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Tipo</label>
+                          <select value={(formData as any).ranchKind || 'food_trough'} onChange={e => setFormData({ ...formData, ranchKind: e.target.value } as any)} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                            <option value="food_trough">🍽️ Cocho de Comida</option>
+                            <option value="water_trough">💧 Bebedouro</option>
+                            <option value="hay">🌾 Palha</option>
+                            <option value="water_pump">🚰 Bomba d'água (enche o bebedouro)</option>
+                          </select>
+                        </div>
+                        <div style={{ width: 130 }}>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Nível que instala</label>
+                          <input type="number" min={1} value={(formData as any).ranchLevel ?? 1} onChange={e => setFormData({ ...formData, ranchLevel: Math.max(1, Number(e.target.value) || 1) } as any)} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                        </div>
+                      </div>
+                      <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Ao usar o item no Rancho, ele instala/melhora o equipamento (nível maior = capacidade/duração maior).</span>
                     </div>
                   )}
                   {formData.gameEffect === 'fuse_item' && (
