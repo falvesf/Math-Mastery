@@ -1745,7 +1745,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
                 </select>
               </div>
 
-              {(formData.type === 'consumable' || formData.type === 'other') && (
+              {(formData.type === 'consumable' || formData.type === 'other' || formData.type === 'ranch') && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Poder no Jogo (Gameplay)</label>
