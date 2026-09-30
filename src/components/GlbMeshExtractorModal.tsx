@@ -82,6 +82,9 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
+  // Modo "ver textura": zera o metalness p/ o reflexo não sumir com a cor em ângulos rasantes.
+  const flatMaterialsRef = useRef(false);
+  const flatMatStateRef = useRef<Map<THREE.Mesh, { metalness: number; roughness: number; envMapIntensity: number }>>(new Map());
 
   const highlightMaterial = useMemo(() => new THREE.MeshStandardMaterial({
     color: 0xf59e0b,
@@ -91,6 +94,42 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     opacity: 0.9,
     wireframe: true
   }), []);
+
+  // Modo "ver textura": define metalness=0 (e roughness alto) nos materiais PBR para
+  // que a COR/textura do modelo apareça em qualquer ângulo — sem o "branco" do metal
+  // em ângulos rasantes (Fresnel). Restaura os valores originais ao desligar.
+  const applyFlatMaterials = useCallback((on: boolean) => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    scene.traverse((o: any) => {
+      if (!o?.isMesh || !o.material) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (!m || !('metalness' in m)) continue;
+        if (on) {
+          if (!flatMatStateRef.current.has(o)) {
+            flatMatStateRef.current.set(o, {
+              metalness: m.metalness ?? 1,
+              roughness: m.roughness ?? 1,
+              envMapIntensity: m.envMapIntensity ?? 1,
+            });
+          }
+          m.metalness = 0;
+          m.roughness = 0.92;
+          m.envMapIntensity = 0.35;
+        } else {
+          const orig = flatMatStateRef.current.get(o);
+          if (orig) {
+            m.metalness = orig.metalness;
+            m.roughness = orig.roughness;
+            m.envMapIntensity = orig.envMapIntensity;
+          }
+        }
+        m.needsUpdate = true;
+      }
+    });
+    if (!on) flatMatStateRef.current.clear();
+  }, []);
 
   // --- REFS E ESTADOS PARA CAPTURA DE ÍCONE 2D ---
   const boxHelperRef = useRef<THREE.Box3Helper | null>(null);
@@ -189,6 +228,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const [showViewfinder, setShowViewfinder] = useState(true);
   const [iconFillPercent, setIconFillPercent] = useState<number>(88);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [flatMaterials, setFlatMaterials] = useState(false);
 
   const showTemporaryToast = (msg: string) => {
     setToastMessage(msg);
@@ -1093,6 +1133,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
           
           scene.add(gltf.scene);
           tuneMaterialsForEnv(gltf.scene, 1.0);
+          if (flatMaterialsRef.current) applyFlatMaterials(true);
 
           // Cache all original materials for meshes
           gltf.scene.traverse((node) => {
@@ -1325,6 +1366,15 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
                   style={{ padding: '3px 7px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.08)', color: '#d1d5db', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold' }}
                 >
                   ➖ Zoom
+                </button>
+                <div style={{ width: '1px', background: 'rgba(255,255,255,0.2)', margin: '0 2px' }} />
+                <button
+                  type="button"
+                  onClick={() => { const next = !flatMaterials; setFlatMaterials(next); flatMaterialsRef.current = next; applyFlatMaterials(next); }}
+                  title="Mostra as CORES REAIS da textura (sem o reflexo metálico que deixa branco em certos ângulos). Ideal para capturar o ícone."
+                  style={{ padding: '3px 8px', borderRadius: '5px', border: flatMaterials ? '1px solid rgba(96,165,250,0.6)' : '1px solid rgba(255,255,255,0.1)', background: flatMaterials ? 'rgba(96,165,250,0.25)' : 'rgba(255,255,255,0.08)', color: flatMaterials ? '#93c5fd' : '#d1d5db', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold' }}
+                >
+                  🎨 {flatMaterials ? 'Textura ON' : 'Ver textura'}
                 </button>
                 {selectedNames.size > 0 && (
                   <>
