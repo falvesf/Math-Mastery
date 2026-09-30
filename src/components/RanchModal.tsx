@@ -14,6 +14,15 @@ interface RanchModalProps {
   userData: any;
 }
 
+/** Infere o tipo de equipamento do rancho a partir do nome do item (fallback). */
+function inferRanchKind(title: string): string {
+  const t = (title || '').toLowerCase();
+  if (t.includes('bomba') || t.includes('pump')) return 'water_pump';
+  if (t.includes('palha') || t.includes('feno') || t.includes('hay') || t.includes('cama')) return 'hay';
+  if (t.includes('água') || t.includes('agua') || t.includes('bebed') || t.includes('water')) return 'water_trough';
+  return 'food_trough';
+}
+
 const BARS = [
   { key: 'hunger', label: 'Fome', color: '#ef4444', Icon: Utensils },
   { key: 'thirst', label: 'Sede', color: '#3b82f6', Icon: Droplet },
@@ -52,7 +61,7 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
       const storeIds = Array.from(new Set((inv || []).map((i: any) => i.item_id).filter(Boolean)));
       let store: any[] = [];
       if (storeIds.length) {
-        const { data: st } = await supabase.from('store_items').select('id, name, data').in('id', storeIds);
+        const { data: st } = await supabase.from('store_items').select('*').in('id', storeIds);
         store = st || [];
       }
       const feed = (inv || []).map((i: any) => {
@@ -64,7 +73,7 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
       const equip = (inv || []).map((i: any) => {
         const s = store.find((x: any) => x.id === i.item_id && x.data?.gameEffect === 'ranch_item');
         if (!s) return null;
-        return { userItemId: i.id, itemId: i.item_id, title: s.name || s.data?.title || i.item_id, kind: s.data?.ranchKind || 'food_trough', level: Math.max(1, Number(s.data?.ranchLevel) || 1), imageUrl: s.data?.imageUrl || '' };
+        return { userItemId: i.id, itemId: i.item_id, title: s.name || s.data?.title || i.item_id, kind: s.data?.ranchKind || inferRanchKind(s.name || s.data?.title || ''), level: Math.max(1, Number(s.data?.ranchLevel) || 1), imageUrl: s.data?.imageUrl || '' };
       }).filter(Boolean);
       setRanchEquipItems(equip);
       if (!selectedId && p.length) setSelectedId(p[0].id);
@@ -119,25 +128,36 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
 
   const equipLevel = (kind: string) => ranchItems.filter(r => r.kind === kind).reduce((m, r) => Math.max(m, r.level), 0);
   const installEquip = async (it: any) => {
-    if (it.kind === 'water_pump') {
-      await upsertRanch(uid, tenantId, { water_level: 100, water_updated_at: new Date().toISOString() });
-      setMsg('🚰 Bomba d\'água reabasteceu o bebedouro (100%).');
-    } else {
-      const cur = ranchItems.find(r => r.kind === it.kind);
-      const newLevel = Math.max(cur?.level || 0, it.level);
-      if (cur) await supabase.from('ranch_items').update({ level: newLevel }).eq('id', cur.id);
-      else await supabase.from('ranch_items').insert({ student_id: uid, tenant_id: tenantId, kind: it.kind, level: newLevel });
-      setMsg(`🏠 Equipamento instalado/melhorado: ${it.title} (nível ${newLevel}).`);
-    }
-    // Consome 1 unidade do item
     try {
-      const { data: row } = await supabase.from('user_items').select('data').eq('id', it.userItemId).maybeSingle();
-      const cur = Number((row as any)?.data?.quantity) || 1;
-      const q = Math.max(0, cur - 1);
-      if (q <= 0) await supabase.from('user_items').delete().eq('id', it.userItemId);
-      else await supabase.from('user_items').update({ data: { ...((row as any)?.data || {}), quantity: q } }).eq('id', it.userItemId);
-    } catch { /* noop */ }
-    load();
+      if (it.kind === 'water_pump') {
+        await upsertRanch(uid, tenantId, { water_level: 100, water_updated_at: new Date().toISOString() });
+        setRanch(prev => ({ water_level: 100, water_updated_at: new Date().toISOString() }));
+        setMsg('🚰 Bomba d\'água reabasteceu o bebedouro (100%).');
+      } else {
+        const cur = ranchItems.find(r => r.kind === it.kind);
+        const newLevel = Math.max(cur?.level || 0, it.level);
+        if (cur) {
+          const { error } = await supabase.from('ranch_items').update({ level: newLevel }).eq('id', cur.id);
+          if (error) throw error;
+          setRanchItems(prev => prev.map(r => r.id === cur.id ? { ...r, level: newLevel } : r));
+        } else {
+          const { data: ins, error } = await supabase.from('ranch_items')
+            .insert({ student_id: uid, tenant_id: tenantId, kind: it.kind, level: newLevel })
+            .select().single();
+          if (error) throw error;
+          setRanchItems(prev => [...prev, { id: ins.id, kind: ins.kind, level: ins.level }]);
+        }
+        setMsg(`🏠 Equipamento instalado/melhorado: ${it.title} (nível ${newLevel}).`);
+      }
+      // Só consome o item DEPOIS de instalar com sucesso.
+      await consumeOne(it.userItemId);
+      setRanchEquipItems(prev => prev.filter(x => x.userItemId !== it.userItemId));
+      load();
+    } catch (e: any) {
+      const code = e?.code || '';
+      const extra = code === '42P01' ? ' (a tabela "ranch_items" não existe — rode o migration_pets.sql no Supabase)' : (code === '42501' ? ' (permissão negada — verifique as policies/RLS de "ranch_items")' : '');
+      setMsg(`❌ Não foi possível instalar "${it.title}": ${e?.message || e}${extra}. O item NÃO foi consumido.`);
+    }
   };
 
   const doFeed = async (feed: any) => {
