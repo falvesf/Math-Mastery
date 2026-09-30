@@ -4,7 +4,7 @@ import * as THREE from 'skinview3d/node_modules/three';
 // @ts-ignore
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { PlayerObject } from 'skinview3d';
-import { applyEnvironment, tuneMaterialsForEnv } from '../lib/studioEnv';
+import { applyEnvironment, tuneMaterialsForEnv, applyTextureAnisotropy } from '../lib/studioEnv';
 
 /**
  * Miniatura 3D do monstro usando UM ÚNICO contexto WebGL compartilhado.
@@ -109,6 +109,7 @@ async function buildThumb(opts: { modelUrl?: string; skinUrl?: string; slim?: bo
           }
         } catch { /* mantém a textura do glb */ }
       }
+      applyTextureAnisotropy(model, _renderer);
       return renderObject(model, opts.rotY, opts.zoom, true);
     } catch { /* cai para skin/bloco */ }
   }

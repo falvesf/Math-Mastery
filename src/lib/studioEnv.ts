@@ -120,3 +120,39 @@ export function tuneMaterialsForEnv(root: any, intensity = 1.4): void {
     });
   } catch { /* noop */ }
 }
+
+/**
+ * Corrige o "cintilar" da textura em ângulos oblíquos: o GLTFLoader não define
+ * `texture.anisotropy` (fica 1), então padrões finos (gravuras etc.) sofrem
+ * aliasing ao girar o modelo. Aqui ativamos a anisotropia máxima do renderer
+ * e garantimos mipmaps. É seguro chamar em qualquer modelo carregado.
+ */
+export function applyTextureAnisotropy(root: any, renderer: any): void {
+  try {
+    let aniso = 1;
+    try { aniso = renderer?.capabilities?.getMaxAnisotropy?.() || 1; } catch { /* noop */ }
+    const seen = new Set<any>();
+    const mapKeys = [
+      'map', 'normalMap', 'metalnessMap', 'roughnessMap', 'emissiveMap', 'aoMap',
+      'clearcoatMap', 'clearcoatNormalMap', 'clearcoatRoughnessMap', 'specularMap',
+      'specularIntensityMap', 'sheenColorMap', 'sheenRoughnessMap', 'alphaMap',
+      'bumpMap', 'displacementMap', 'lightMap',
+    ];
+    root?.traverse?.((o: any) => {
+      const mats = o?.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      for (const m of mats) {
+        if (!m) continue;
+        for (const k of mapKeys) {
+          const t = m[k];
+          if (!t || seen.has(t)) continue;
+          seen.add(t);
+          try { t.anisotropy = aniso; } catch { /* noop */ }
+          try {
+            if (t.generateMipmaps === false) t.generateMipmaps = true;
+            t.needsUpdate = true;
+          } catch { /* noop */ }
+        }
+      }
+    });
+  } catch { /* noop */ }
+}

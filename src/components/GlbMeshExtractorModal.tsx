@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { applyEnvironment, disposeEnvironment, tuneMaterialsForEnv } from '../lib/studioEnv';
+import { applyEnvironment, disposeEnvironment, tuneMaterialsForEnv, applyTextureAnisotropy } from '../lib/studioEnv';
 import { supabase } from '../lib/supabase';
 
 // Cache global para evitar limite de contextos WebGL e evitar crash (rostinho triste) do navegador
@@ -1140,6 +1140,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
           
           scene.add(gltf.scene);
           tuneMaterialsForEnv(gltf.scene, 1.0);
+          applyTextureAnisotropy(gltf.scene, renderer);
           if (flatMaterialsRef.current) applyFlatMaterials(true);
 
           // Cache all original materials for meshes

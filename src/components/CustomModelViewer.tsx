@@ -5,7 +5,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, useAnimations, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { getSafeUrl } from '../lib/utils';
-import { applyEnvironment, disposeEnvironment, tuneMaterialsForEnv } from '../lib/studioEnv';
+import { applyEnvironment, disposeEnvironment, tuneMaterialsForEnv, applyTextureAnisotropy } from '../lib/studioEnv';
 
 // Cache global em memória de enquadramento (fit) de entidades 3D por URL de modelo seguro.
 // Garante que o bounding box do modelo seja calculado uma única vez na pose neutra (rest pose)
@@ -220,8 +220,11 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
     return c;
   }, [originalScene]);
 
-  // Brilho PBR: intensifica o environment nos metais (dourado etc.).
-  useEffect(() => { tuneMaterialsForEnv(scene, 1.05); }, [scene]);
+  // Brilho PBR: intensifica o environment nos metais (dourado etc.) + anisotropia
+  // (evita a textura "cintilar" em ângulos oblíquos).
+  // @ts-ignore
+  const { gl } = useThree();
+  useEffect(() => { tuneMaterialsForEnv(scene, 1.05); applyTextureAnisotropy(scene, gl); }, [scene, gl]);
 
   // Efeito de dano direto nos materiais do modelo (veneno/fogo/sangramento/impacto).
   // Usa cor + emissive para ficar visível mesmo em modelos escuros e texturizados.

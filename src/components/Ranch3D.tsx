@@ -4,7 +4,7 @@ import * as THREE from 'skinview3d/node_modules/three';
 // @ts-ignore
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { PlayerObject } from 'skinview3d';
-import { applyEnvironment } from '../lib/studioEnv';
+import { applyEnvironment, applyTextureAnisotropy } from '../lib/studioEnv';
 
 export interface RanchPetView {
   id: string;
@@ -105,6 +105,7 @@ export default function Ranch3D({ pets, waterLevel, hasFood = true, hasWater = t
           if (p.modelUrl) {
             const gltf: any = await loader.loadAsync(p.modelUrl);
             const model = gltf.scene;
+            applyTextureAnisotropy(model, renderer);
             if (p.skinUrl) {
               try {
                 const tl = new THREE.TextureLoader(); if (tl.setCrossOrigin) tl.setCrossOrigin('anonymous');
