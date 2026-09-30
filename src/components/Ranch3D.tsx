@@ -4,6 +4,7 @@ import * as THREE from 'skinview3d/node_modules/three';
 // @ts-ignore
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { PlayerObject } from 'skinview3d';
+import { applyEnvironment } from '../lib/studioEnv';
 
 export interface RanchPetView {
   id: string;
@@ -51,6 +52,8 @@ export default function Ranch3D({ pets, waterLevel, hasFood = true, hasWater = t
     scene.fog = new THREE.Fog(new THREE.Color('#cfe8ff'), 22, 60);
     scene.add(new THREE.AmbientLight(0xffffff, 0.85));
     const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(6, 12, 5); sun.castShadow = true; scene.add(sun);
+    // Environment discreto: ajuda pets/objetos metálicos sem lavar a cena ensolarada.
+    applyEnvironment(THREE, renderer, scene, { intensity: 1.1, toneMapping: false });
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 300);
 

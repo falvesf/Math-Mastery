@@ -6,6 +6,7 @@ import * as THREE from 'skinview3d/node_modules/three';
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
+import { applyEnvironment } from '../lib/studioEnv';
 import { applyForgeGlowToModel, applyForgeGlint, resolveModelTransform, type AvatarConfig, type EquippedItem } from './AvatarCharacter';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchEquippedItems } from '../lib/equippedItems';
@@ -784,6 +785,8 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.shadowMap.enabled = true;
     mount.appendChild(renderer.domElement);
+    // Environment de estúdio: cenário/animais/itens .glb metálicos refletem corretamente.
+    applyEnvironment(THREE, renderer, scene, { intensity: 1.1, toneMapping: false });
 
     // Viewmodel de 1ª pessoa (aparece ao atacar) + câmera no grafo da cena.
     const viewModel = new THREE.Group();

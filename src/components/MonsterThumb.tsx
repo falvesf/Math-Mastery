@@ -4,6 +4,7 @@ import * as THREE from 'skinview3d/node_modules/three';
 // @ts-ignore
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { PlayerObject } from 'skinview3d';
+import { applyEnvironment, tuneMaterialsForEnv } from '../lib/studioEnv';
 
 /**
  * Miniatura 3D do monstro usando UM ÚNICO contexto WebGL compartilhado.
@@ -33,6 +34,9 @@ function ensureRenderer() {
   _renderer.setClearColor(0x000000, 0);
   _scene = new THREE.Scene();
   _camera = new THREE.PerspectiveCamera(32, 1, 0.1, 1000);
+  // Environment de estúdio (sem tone mapping, para manter o visual dos ícones):
+  // metais refletem como no Sketchfab. Persiste mesmo após _scene.clear().
+  applyEnvironment(THREE, _renderer, _scene, { intensity: 1.5, toneMapping: false });
 }
 
 function addLights(scene: any) {
@@ -55,6 +59,7 @@ function renderObject(obj: any, rotYdeg = 0, zoom = 1, isGlb = false): string {
   obj.position.set(-center0.x * s, -box0.min.y * s, -center0.z * s);
   const holder = new THREE.Group(); holder.add(obj);
   _scene.clear(); addLights(_scene); _scene.add(holder);
+  tuneMaterialsForEnv(holder, 1.5);
   _camera.aspect = 1; _camera.updateProjectionMatrix();
   const h = size0.y * s;
   const z = Math.max(0.5, Math.min(1.6, Number(zoom) || 1)); // customZoom → aproxima/afasta

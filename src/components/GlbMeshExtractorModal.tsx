@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { applyEnvironment, disposeEnvironment, tuneMaterialsForEnv } from '../lib/studioEnv';
 import { supabase } from '../lib/supabase';
 
 // Cache global para evitar limite de contextos WebGL e evitar crash (rostinho triste) do navegador
@@ -1001,6 +1002,8 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+    // Environment de estúdio: faz os metais (dourado etc.) refletirem como no Sketchfab.
+    applyEnvironment(THREE, renderer, scene, { intensity: 1.5, exposure: 1.05 });
     
     // Setup Controls
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -1088,6 +1091,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
           };
           
           scene.add(gltf.scene);
+          tuneMaterialsForEnv(gltf.scene, 1.5);
 
           // Cache all original materials for meshes
           gltf.scene.traverse((node) => {
@@ -1202,6 +1206,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
         containerRef.current.removeChild(renderer.domElement);
       }
       cancelAnimationFrame(animationId);
+      disposeEnvironment(scene);
       
       if (sceneRef.current) {
         sceneRef.current.traverse((object) => {

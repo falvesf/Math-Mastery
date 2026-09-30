@@ -5,12 +5,26 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, useAnimations, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { getSafeUrl } from '../lib/utils';
+import { applyEnvironment, disposeEnvironment, tuneMaterialsForEnv } from '../lib/studioEnv';
 
 // Cache global em memória de enquadramento (fit) de entidades 3D por URL de modelo seguro.
 // Garante que o bounding box do modelo seja calculado uma única vez na pose neutra (rest pose)
 // e NUNCA sofra desvios causados por animações ativas de ossos, pulos ou respiração.
 // @ts-ignore
 const entityFitCache = new Map<string, { scale: number; posY: number }>();
+
+// Aplica o environment de estúdio (PMREM procedural) na cena R3F: faz os metais
+// (metalness alto) refletirem como no Sketchfab em vez de ficarem cinza/preto.
+// @ts-ignore
+function StudioEnvironment() {
+  // @ts-ignore
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    applyEnvironment(THREE, gl, scene, { intensity: 1.5, exposure: 1.05 });
+    return () => disposeEnvironment(scene);
+  }, [gl, scene]);
+  return null;
+}
 
 export function resolveModelUrl(url?: string | null): string {
   if (!url) return '';
@@ -205,6 +219,9 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
     });
     return c;
   }, [originalScene]);
+
+  // Brilho PBR: intensifica o environment nos metais (dourado etc.).
+  useEffect(() => { tuneMaterialsForEnv(scene, 1.5); }, [scene]);
 
   // Efeito de dano direto nos materiais do modelo (veneno/fogo/sangramento/impacto).
   // Usa cor + emissive para ficar visível mesmo em modelos escuros e texturizados.
@@ -629,6 +646,7 @@ export default React.memo(function CustomModelViewer({
           style={{ width: '100%', height: '100%' }}
         >
           <CameraDistanceUpdater cameraDistance={cameraDistance} />
+          <StudioEnvironment />
           <ambientLight intensity={1.5} />
           <directionalLight position={[5, 10, 5]} intensity={0.5} />
           <OrbitControls enablePan={false} enableZoom={allowInteraction} enableRotate={allowInteraction} target={[0, 1.2, 0]} />

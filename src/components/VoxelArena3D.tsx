@@ -9,6 +9,7 @@ import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/
 // @ts-ignore - clone preservando esqueleto (itens com SkinnedMesh, ex.: armaduras)
 import { clone as skeletonClone } from 'skinview3d/node_modules/three/examples/jsm/utils/SkeletonUtils.js';
 import { attachLegsToBones } from '../lib/legAttachment';
+import { applyEnvironment } from '../lib/studioEnv';
 import { PlayerObject } from 'skinview3d';
 import { IdleAnimation, WalkingAnimation, RunningAnimation, HitAnimation, FunctionAnimation, PlayerAnimation } from 'skinview3d';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
@@ -1401,6 +1402,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = isNether ? 1.25 : (isEnd ? 1.2 : 1.1);
+    // Environment de estúdio: faz itens/monstros metálicos refletirem (dourado etc.)
+    // em vez de ficarem cinza. Mantém o tone mapping/exposição do bioma (toneMapping:false).
+    applyEnvironment(THREE, renderer, scene, { intensity: 1.35, toneMapping: false });
 
     // 4. Luzes da Arena adaptadas ao bioma
     let hemiSky = '#b8d5ff';
