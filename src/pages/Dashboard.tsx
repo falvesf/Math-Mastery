@@ -3347,7 +3347,7 @@ export default function Dashboard() {
                           </div>
 
                           {/* Direita: Pet */}
-                          <div className="cube-face cube-face-right" onClick={() => { if (ranchUnlocked) { setRanchOpen(true); } else { setActiveTab('store'); } }} title={ranchUnlocked ? 'Abrir o Rancho / Fazenda' : 'Rancho bloqueado — compre a Licença do Rancho na loja'} style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))', cursor: 'pointer', position: 'relative', opacity: ranchUnlocked ? 1 : 0.75 }}>
+                          <div className="cube-face cube-face-right" onClick={() => { if (ranchUnlocked) { setRanchOpen(true); } else { setActiveTab('store'); } }} title={ranchUnlocked ? 'Abrir o Rancho / Fazenda' : 'Rancho bloqueado — compre a Licença do Rancho na loja'} style={{ border: `3px solid ${currentRank.color}`, boxShadow: `0 0 20px ${currentRank.color}40`, flexDirection: 'column', background: 'linear-gradient(to bottom, var(--bg-panel), var(--bg-dark))', cursor: 'pointer', opacity: ranchUnlocked ? 1 : 0.75 }}>
                             {!ranchUnlocked && (
                               <div style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', zIndex: 12 }} title="Bloqueado">🔒</div>
                             )}
