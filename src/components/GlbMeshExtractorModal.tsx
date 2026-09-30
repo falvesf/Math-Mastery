@@ -84,7 +84,10 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   // Modo "ver textura": zera o metalness p/ o reflexo não sumir com a cor em ângulos rasantes.
   const flatMaterialsRef = useRef(false);
+  const unlitMaterialsRef = useRef(false);
   const flatMatStateRef = useRef<Map<THREE.Mesh, { metalness: number; roughness: number; envMapIntensity: number; clearcoat: number; clearcoatRoughness: number }>>(new Map());
+  // Modo "chapado" (unlit): troca os materiais por MeshBasicMaterial usando só a textura.
+  const unlitStateRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
 
   const highlightMaterial = useMemo(() => new THREE.MeshStandardMaterial({
     color: 0xf59e0b,
@@ -136,6 +139,45 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
       }
     });
     if (!on) flatMatStateRef.current.clear();
+  }, []);
+
+  // Modo "chapado" (unlit): usa só a COR/TEXTURA base, sem luz, environment nem
+  // reflexo (clearcoat). É o ideal para capturar o ícone: nada de branco/cintilar.
+  const applyUnlitMaterials = useCallback((on: boolean) => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (on) {
+      scene.traverse((o: any) => {
+        if (!o?.isMesh) return;
+        if (unlitStateRef.current.has(o)) return;
+        const orig = o.material;
+        unlitStateRef.current.set(o, orig);
+        const mk = (m: any) => {
+          const b = new THREE.MeshBasicMaterial({
+            map: m?.map || null,
+            color: (m?.color && m.color.clone) ? m.color.clone() : new THREE.Color(0xffffff),
+            side: m?.side ?? THREE.FrontSide,
+            transparent: !!m?.transparent,
+            alphaTest: m?.alphaTest ?? 0,
+            vertexColors: !!m?.vertexColors,
+            toneMapped: false,
+          });
+          b.name = 'icon-unlit';
+          return b;
+        };
+        o.material = Array.isArray(orig) ? orig.map(mk) : mk(orig);
+      });
+    } else {
+      unlitStateRef.current.forEach((orig, mesh) => {
+        try {
+          const cur = (mesh as any).material;
+          if (Array.isArray(cur)) cur.forEach((m: any) => m?.dispose?.());
+          else cur?.dispose?.();
+        } catch { /* noop */ }
+        (mesh as any).material = orig;
+      });
+      unlitStateRef.current.clear();
+    }
   }, []);
 
   // --- REFS E ESTADOS PARA CAPTURA DE ÍCONE 2D ---
@@ -236,6 +278,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const [iconFillPercent, setIconFillPercent] = useState<number>(88);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [flatMaterials, setFlatMaterials] = useState(false);
+  const [unlitMaterials, setUnlitMaterials] = useState(false);
 
   const showTemporaryToast = (msg: string) => {
     setToastMessage(msg);
@@ -1142,6 +1185,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
           tuneMaterialsForEnv(gltf.scene, 1.0);
           applyTextureAnisotropy(gltf.scene, renderer);
           if (flatMaterialsRef.current) applyFlatMaterials(true);
+          if (unlitMaterialsRef.current) applyUnlitMaterials(true);
 
           // Cache all original materials for meshes
           gltf.scene.traverse((node) => {
@@ -1378,11 +1422,27 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
                 <div style={{ width: '1px', background: 'rgba(255,255,255,0.2)', margin: '0 2px' }} />
                 <button
                   type="button"
-                  onClick={() => { const next = !flatMaterials; setFlatMaterials(next); flatMaterialsRef.current = next; applyFlatMaterials(next); }}
-                  title="Mostra as CORES REAIS da textura (sem o reflexo metálico que deixa branco em certos ângulos). Ideal para capturar o ícone."
+                  onClick={() => {
+                    const next = !flatMaterials;
+                    if (next && unlitMaterials) { applyUnlitMaterials(false); setUnlitMaterials(false); unlitMaterialsRef.current = false; }
+                    setFlatMaterials(next); flatMaterialsRef.current = next; applyFlatMaterials(next);
+                  }}
+                  title="Tira o reflexo metálico/clearcoat (metal 'branco' em ângulos rasantes), mantendo iluminação."
                   style={{ padding: '3px 8px', borderRadius: '5px', border: flatMaterials ? '1px solid rgba(96,165,250,0.6)' : '1px solid rgba(255,255,255,0.1)', background: flatMaterials ? 'rgba(96,165,250,0.25)' : 'rgba(255,255,255,0.08)', color: flatMaterials ? '#93c5fd' : '#d1d5db', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold' }}
                 >
                   🎨 {flatMaterials ? 'Textura ON' : 'Ver textura'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !unlitMaterials;
+                    if (next && flatMaterials) { applyFlatMaterials(false); setFlatMaterials(false); flatMaterialsRef.current = false; }
+                    setUnlitMaterials(next); unlitMaterialsRef.current = next; applyUnlitMaterials(next);
+                  }}
+                  title="Modo CHAPADO (unlit): mostra só a cor/textura, sem luz nem reflexo. O melhor para capturar o ícone."
+                  style={{ padding: '3px 8px', borderRadius: '5px', border: unlitMaterials ? '1px solid rgba(52,211,153,0.6)' : '1px solid rgba(255,255,255,0.1)', background: unlitMaterials ? 'rgba(52,211,153,0.25)' : 'rgba(255,255,255,0.08)', color: unlitMaterials ? '#6ee7b7' : '#d1d5db', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold' }}
+                >
+                  🔆 {unlitMaterials ? 'Chapa ON' : 'Chapa'}
                 </button>
                 {selectedNames.size > 0 && (
                   <>
