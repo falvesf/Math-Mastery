@@ -84,7 +84,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
   const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   // Modo "ver textura": zera o metalness p/ o reflexo não sumir com a cor em ângulos rasantes.
   const flatMaterialsRef = useRef(false);
-  const flatMatStateRef = useRef<Map<THREE.Mesh, { metalness: number; roughness: number; envMapIntensity: number }>>(new Map());
+  const flatMatStateRef = useRef<Map<THREE.Mesh, { metalness: number; roughness: number; envMapIntensity: number; clearcoat: number; clearcoatRoughness: number }>>(new Map());
 
   const highlightMaterial = useMemo(() => new THREE.MeshStandardMaterial({
     color: 0xf59e0b,
@@ -112,17 +112,24 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
               metalness: m.metalness ?? 1,
               roughness: m.roughness ?? 1,
               envMapIntensity: m.envMapIntensity ?? 1,
+              clearcoat: ('clearcoat' in m) ? (m.clearcoat ?? 0) : 0,
+              clearcoatRoughness: ('clearcoatRoughness' in m) ? (m.clearcoatRoughness ?? 1) : 1,
             });
           }
           m.metalness = 0;
           m.roughness = 0.92;
-          m.envMapIntensity = 0.35;
+          m.envMapIntensity = 0.25;
+          // Clearcoat é uma camada BRANCA especular (KHR_materials_clearcoat): é ela que
+          // deixa o ouro branco em ângulos rasantes. Zerar revela a cor real da textura.
+          if ('clearcoat' in m) { m.clearcoat = 0; m.clearcoatRoughness = 1; }
+          if ('sheen' in m) { m.sheen = 0; }
         } else {
           const orig = flatMatStateRef.current.get(o);
           if (orig) {
             m.metalness = orig.metalness;
             m.roughness = orig.roughness;
             m.envMapIntensity = orig.envMapIntensity;
+            if ('clearcoat' in m) { m.clearcoat = orig.clearcoat; m.clearcoatRoughness = orig.clearcoatRoughness; }
           }
         }
         m.needsUpdate = true;
