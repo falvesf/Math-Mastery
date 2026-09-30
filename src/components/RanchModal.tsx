@@ -27,6 +27,7 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
   const [ranch, setRanch] = useState<{ water_level: number; water_updated_at: string } | null>(null);
   const [ranchItems, setRanchItems] = useState<{ id: string; kind: string; level: number }[]>([]);
   const [feedItems, setFeedItems] = useState<any[]>([]);
+  const [quiz, setQuiz] = useState<any>(null);
   const [ranchEquipItems, setRanchEquipItems] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -188,19 +189,17 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
     } catch { /* noop */ }
   };
 
-  const doTrain = async () => {
+  // Aplica o treino (usado após vencer o mini-desafio; consome a comida predileta).
+  const applyTrain = async (trainFood: any) => {
     if (!selected) return;
     const animalCfg = models.find((m: any) => String(m.id) === String(selected.animal_model_id))?.config || {};
-    const favFoodIds: string[] = animalCfg?.stats?.favoriteFoodIds || [];
     const habilities: any[] = animalCfg?.stats?.trainingHabilities || [];
-    const trainFood = favFoodIds.length ? feedItems.find((f: any) => favFoodIds.includes(String(f.itemId))) : feedItems[0];
-    if (!trainFood) { setMsg('🎓 Você precisa da comida predileta do pet para treinar.'); return; }
     const tierOf = (v: number) => Math.min(5, Math.floor(v / 20) + 1);
     const before = tierOf(selected.training || 0);
     const training = Math.min(100, (selected.training || 0) + 12);
     const after = tierOf(training);
     let p: Pet = { ...selected, training };
-    p = withHistory(p, 'record', 'Treinou com o dono.');
+    p = withHistory(p, 'record', 'Treinou com o dono (venceu o desafio).');
     if (after > before) {
       for (const h of habilities.filter((h: any) => h.level === after)) p = withHistory(p, 'achievement', `Desbloqueou a habilidade "${h.name}" (treino nível ${after}).`);
       setMsg(`🎓 ${selected.name || 'Pet'} subiu o TREINAMENTO para o nível ${after}!`);
@@ -209,6 +208,45 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
     await savePet(p);
     await consumeOne(trainFood.userItemId);
     load();
+  };
+
+  // Treinar = mini-desafio de matemática (3 perguntas). Acertar todas treina o pet.
+  const startTrain = () => {
+    if (!selected) return;
+    const animalCfg = models.find((m: any) => String(m.id) === String(selected.animal_model_id))?.config || {};
+    const favFoodIds: string[] = animalCfg?.stats?.favoriteFoodIds || [];
+    const trainFood = favFoodIds.length ? feedItems.find((f: any) => favFoodIds.includes(String(f.itemId))) : feedItems[0];
+    if (!trainFood) { setMsg('🎓 Você precisa da comida predileta do pet para treinar.'); return; }
+    const lvl = Math.max(1, Math.min(10, selected.level || 1));
+    const rnd = (n: number) => Math.floor(Math.random() * n);
+    const makeQ = () => {
+      const mode = lvl <= 2 ? 'add' : lvl <= 4 ? (rnd(2) ? 'add' : 'sub') : lvl <= 6 ? (rnd(3) === 0 ? 'add' : 'mul') : 'mul';
+      const cap = lvl <= 2 ? 10 : lvl <= 4 ? 20 : lvl <= 6 ? 12 : 20;
+      let a = 1 + rnd(cap), b = 1 + rnd(cap), text = '', ans = 0;
+      if (mode === 'add') { text = `${a} + ${b}`; ans = a + b; }
+      else if (mode === 'sub') { if (b > a) { const t = a; a = b; b = t; } text = `${a} − ${b}`; ans = a - b; }
+      else { text = `${a} × ${b}`; ans = a * b; }
+      const opts = new Set<number>([ans]);
+      while (opts.size < 4) { const d = ans + (rnd(2) ? 1 : -1) * (1 + rnd(9)); if (d >= 0) opts.add(d); }
+      return { text, ans, options: Array.from(opts).sort(() => Math.random() - 0.5) };
+    };
+    setQuiz({ questions: [makeQ(), makeQ(), makeQ()], idx: 0, correct: 0, food: trainFood });
+    setMsg('');
+  };
+
+  const answerTrainQuiz = (val: number) => {
+    if (!quiz || !selected) return;
+    const q = quiz.questions[quiz.idx];
+    const nextCorrect = quiz.correct + (val === q.ans ? 1 : 0);
+    if (quiz.idx + 1 < quiz.questions.length) {
+      setQuiz({ ...quiz, idx: quiz.idx + 1, correct: nextCorrect });
+    } else {
+      const passed = nextCorrect === quiz.questions.length;
+      const food = quiz.food;
+      setQuiz(null);
+      if (passed) applyTrain(food);
+      else setMsg('❌ Não foi dessa vez — acerte TODAS as perguntas para treinar (a comida não foi consumida).');
+    }
   };
 
   const doEquipToggle = async () => {
@@ -347,6 +385,19 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
                     <div>⭐ Nível: <b style={{ color: 'var(--text-primary)' }}>{selected.level}</b></div>
                   </div>
 
+                  {/* Desafio de treino (mini-prova de matemática) */}
+                  {quiz && (
+                    <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.35)' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#86efac', marginBottom: 6 }}>🎯 Desafio de treino — {quiz.idx + 1}/{quiz.questions.length}: {quiz.questions[quiz.idx].text} = ?</div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {quiz.questions[quiz.idx].options.map((o: number) => (
+                          <button key={o} onClick={() => answerTrainQuiz(o)} style={{ padding: '0.4rem 0.9rem', borderRadius: 8, background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.5)', color: '#dcfce7', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>{o}</button>
+                        ))}
+                      </div>
+                      <button onClick={() => setQuiz(null)} style={{ marginTop: 8, background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.72rem' }}>Cancelar desafio</button>
+                    </div>
+                  )}
+
                   {/* Ações */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                     {feedItems.length > 0 ? feedItems.slice(0, 6).map((f: any) => (
@@ -356,7 +407,7 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
                     )) : <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Sem ração no inventário.</span>}
                     <button onClick={doWater} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', color: '#93c5fd', cursor: 'pointer', fontSize: '0.78rem' }}><Droplet size={14} /> Dar água</button>
                     <button onClick={doInteract} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', color: '#fde68a', cursor: 'pointer', fontSize: '0.78rem' }}><Smile size={14} /> Interagir</button>
-                    <button onClick={doTrain} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', color: '#86efac', cursor: 'pointer', fontSize: '0.78rem' }}><Dumbbell size={14} /> Treinar</button>
+                    <button onClick={startTrain} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', color: '#86efac', cursor: 'pointer', fontSize: '0.78rem' }}><Dumbbell size={14} /> Treinar</button>
                     <button onClick={doEquipToggle} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: selected.equipped ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)', border: selected.equipped ? '1px solid rgba(16,185,129,0.5)' : '1px solid rgba(239,68,68,0.4)', color: selected.equipped ? '#6ee7b7' : '#fca5a5', cursor: 'pointer', fontSize: '0.78rem' }}>{selected.equipped ? '🔓 Desequipar' : '⚔️ Equipar p/ batalha'}</button>
                     {selected.equipped && <span style={{ fontSize: '0.72rem', color: '#6ee7b7', alignSelf: 'center' }}>Ativo em batalhas</span>}
                   </div>
