@@ -16,6 +16,7 @@ import { RANKS, getRankForXp, getMaxAddsLimit } from '../lib/ranks';
 // @ts-ignore
 import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig, isStackableItemType, areItemsStackableMatch, getStackableItemSignature } from '../lib/gacha';
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
+import { isRanchUnlocked, isHiddenByRanchLock, RANCH_LICENSE_EFFECT } from '../lib/ranch';
 import { invalidateEquippedItems } from '../lib/equippedItems';
 import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, enhanceEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType, type EnhanceEffectResult } from '../lib/damageEffects';
 import { forgeItemName } from '../lib/forge';
@@ -24,7 +25,7 @@ interface UserItem {
   id: string;
   itemId: string;
   itemTitle: string;
-  itemType: 'consumable' | 'equippable' | 'other';
+  itemType: 'consumable' | 'equippable' | 'other' | 'ranch';
   itemImageUrl: string;
   quantity: number;
   equipped: boolean;
@@ -113,6 +114,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   
   const [activeCategory, setActiveCategory] = useState<string>(sessionStorage.getItem('pendingCategory') || userData.inventoryPreferences?.activeCategory || 'Todos');
   const [cascadeAnimationTrigger, setCascadeAnimationTrigger] = useState<number>(sessionStorage.getItem('pendingCategory') ? Date.now() : 0);
+  const ranchUnlocked = isRanchUnlocked(userData);
 
   useEffect(() => {
     if (sessionStorage.getItem('pendingCategory')) {
@@ -513,6 +515,22 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       await consumeItemQuantity(item.itemId, 1, item.id);
       fetchInventory();
       showToast("❤️ HP restaurado completamente!");
+      return;
+    }
+
+    if (item.gameEffect === RANCH_LICENSE_EFFECT) {
+      if (ranchUnlocked) {
+        await showAlert('O rancho já está desbloqueado na sua conta.');
+        return;
+      }
+      const confirmed = await showConfirm('Deseja usar a Licença do Rancho? Isso desbloqueia o rancho, a criação de animais e libera os itens de rancho na loja.');
+      if (!confirmed) return;
+      const { error } = await supabase.from('users').update({ ranch_unlocked: true }).eq('id', userData.uid);
+      if (error) { await showAlert('Não foi possível ativar a licença: ' + error.message); return; }
+      updateUserDataLocally?.({ ranchUnlocked: true });
+      await consumeItemQuantity(item.itemId, 1, item.id);
+      fetchInventory();
+      await showAlert('🏡 Rancho desbloqueado! Agora você pode criar animais no rancho e os itens de rancho aparecem na loja.');
       return;
     }
 
@@ -1118,6 +1136,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Carregando Mochila...</div>;
 
   let bagItems = items.filter(i => !i.equipped);
+  bagItems = bagItems.filter(i => !isHiddenByRanchLock(i, ranchUnlocked));
   
   if (searchQuery) bagItems = bagItems.filter(i => i.itemTitle.toLowerCase().includes(searchQuery.toLowerCase()));
   if (filterRarity !== 'all') bagItems = bagItems.filter(i => (i.rarity || 'common') === filterRarity);
@@ -1125,6 +1144,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   if (activeCategory !== 'Todos') {
     bagItems = bagItems.filter(i => {
       if (activeCategory === 'Consumíveis') return i.itemType === 'consumable';
+      if (activeCategory === 'Rancho') return i.itemType === 'ranch' || i.gameEffect === RANCH_LICENSE_EFFECT;
       if (activeCategory === 'Ataque') {
         return ['two_handed', 'rightHand', 'leftHand'].includes(i.avatarPart || '') || 
                (i.avatarPart === 'hand' && i.itemCategory !== 'defense');
@@ -1298,6 +1318,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             { id: 'Ataque', icon: <Sword size={14} /> },
             { id: 'Defesa', icon: <Shield size={14} /> },
             { id: 'Outros', icon: <Package size={14} /> },
+            ...(ranchUnlocked ? [{ id: 'Rancho', icon: <span style={{ fontSize: '0.85rem' }}>🐾</span> }] : []),
           ].map(tab => (
             <button
               key={tab.id}
@@ -1549,7 +1570,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                           borderRadius: '4px',
                           border: '1px solid var(--border-glass)'
                         }}>
-                          {item.itemType === 'consumable' ? 'Consumível' : item.itemType === 'other' ? 'Material' : 'Equipável'}
+                          {item.itemType === 'consumable' ? 'Consumível' : item.itemType === 'other' ? 'Material' : item.itemType === 'ranch' ? 'Rancho' : 'Equipável'}
                         </span>
                         <div style={{ display: 'flex', gap: '2px', marginLeft: 'auto', alignItems: 'center' }}>
                           {item.itemType === 'equippable' && (!item.gameEffect || item.gameEffect === 'none') ? (
@@ -1600,7 +1621,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                     <div style={{ textAlign: 'center', position: 'relative' }}>
                       <h4 style={{ margin: '0 0 0.15rem 0', fontSize: viewMode === 'grid-small' ? '0.6rem' : '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.itemTitle}>{item.itemType === 'equippable' ? forgeItemName(item.itemTitle, item.forgeLevel || 0) : item.itemTitle}</h4>
                       <span style={{ fontSize: viewMode === 'grid-small' ? '0.55rem' : '0.7rem', color: 'var(--text-secondary)' }}>
-                        {item.itemType === 'consumable' ? 'Consumível' : item.itemType === 'other' ? 'Material' : 'Equipável'}
+                        {item.itemType === 'consumable' ? 'Consumível' : item.itemType === 'other' ? 'Material' : item.itemType === 'ranch' ? 'Rancho' : 'Equipável'}
                       </span>
                       
 

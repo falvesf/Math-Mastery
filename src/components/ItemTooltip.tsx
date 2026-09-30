@@ -40,7 +40,7 @@ const getRarityLabel = (rarity?: string) => {
 export interface TooltipItemData {
   id?: string;
   title: string;
-  type?: 'consumable' | 'equippable' | 'other';
+  type?: 'consumable' | 'equippable' | 'other' | 'ranch';
   rarity?: string;
   itemCategory?: string;
   description?: string;
@@ -122,6 +122,7 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
     item.gameEffect === 'reroll_attributes' ? 'Sorteia novamente todos os atributos extras de um equipamento.' :
     item.gameEffect === 'unlock_skin' ? 'Desbloqueia uma skin para usar no personagem.' :
     item.gameEffect === 'bazar_sale_permit' ? 'Licença para vender itens no bazar.' :
+    item.gameEffect === 'ranch_license' ? 'Licença do Rancho: desbloqueia o rancho, a criação de animais e os itens de rancho na loja.' :
     item.gameEffect === 'blacksmith_scroll' ? (
       `Pergaminho do Ferreiro: +${item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null ? item.scrollChanceBonus : 30}% de chance de sucesso na forja e protege o item contra destruição (se falhar, regride 1 nível até o mínimo +0).`
     ) :

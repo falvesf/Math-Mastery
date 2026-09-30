@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Swords } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
+import { isRanchUnlocked, isHiddenByRanchLock } from '../lib/ranch';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
@@ -27,7 +28,7 @@ interface MarketItem {
   id: string;
   itemId: string;
   itemTitle: string;
-  itemType: 'consumable' | 'equippable' | 'other';
+  itemType: 'consumable' | 'equippable' | 'other' | 'ranch';
   itemImageUrl: string;
   quantity: number;
   price?: number;
@@ -102,7 +103,8 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
   const { tenantId } = useTenant();
   const [activeTab, setActiveTab] = useState<'official' | 'market'>('official');
   const [showHiddenItems, setShowHiddenItems] = useState(false);
-  const [officialCategoryTab, setOfficialCategoryTab] = useState<'all' | 'consumable' | 'attack' | 'defense' | 'other'>('all');
+  const ranchUnlocked = isRanchUnlocked(userData);
+  const [officialCategoryTab, setOfficialCategoryTab] = useState<'all' | 'consumable' | 'attack' | 'defense' | 'ranch' | 'other'>('all');
   const [items, setItems] = useState<StoreItem[]>([]);
   const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
   const [myInventoryCount, setMyInventoryCount] = useState(0);
@@ -222,7 +224,8 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
       i.isTransmuted ||
       i.type === 'other' ||
       i.gameEffect === 'break_item' ||
-      i.gameEffect === 'fuse_item';
+      i.gameEffect === 'fuse_item' ||
+      isHiddenByRanchLock(i, ranchUnlocked);
 
     const loaded: StoreItem[] = rawItems.filter((i: any) => (showHiddenItems ? true : !isHiddenFromStore(i)));
     setItems(loaded);
@@ -856,6 +859,8 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
       result = result.filter(i => i.type === 'equippable' && i.itemCategory === 'defense');
     } else if (officialCategoryTab === 'other') {
       result = result.filter(i => i.type === 'equippable' && i.itemCategory !== 'attack' && i.itemCategory !== 'defense');
+    } else if (officialCategoryTab === 'ranch') {
+      result = result.filter(i => i.type === 'ranch' || i.gameEffect === 'ranch_license');
     }
 
     if (filterType !== 'all') result = result.filter(i => i.type === filterType);
@@ -1076,6 +1081,7 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
               <option value="all">Todos os Tipos</option>
               <option value="consumable">Consumível</option>
               <option value="equippable">Equipável</option>
+              {ranchUnlocked && <option value="ranch">Rancho</option>}
             </select>
             <select value={filterRarity} onChange={e => setFilterRarity(e.target.value)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
               <option value="all">Qualquer Raridade</option>
@@ -1142,6 +1148,15 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
                 >
                   <Package size={14} /> <span className="category-tab-text">Outros</span>
                 </button>
+                {ranchUnlocked && (
+                  <button
+                    onClick={() => setOfficialCategoryTab('ranch')}
+                    title="Itens do Rancho"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.35rem 0.65rem', fontSize: '0.8rem', borderRadius: '20px', border: 'none', cursor: 'pointer', background: officialCategoryTab === 'ranch' ? 'var(--gold-primary)' : 'var(--btn-bg)', color: officialCategoryTab === 'ranch' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold' }}
+                  >
+                    <span style={{ fontSize: '0.85rem' }}>🐾</span> <span className="category-tab-text">Rancho</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

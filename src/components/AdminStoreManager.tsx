@@ -58,7 +58,7 @@ void getRarityColor;
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 
   'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 
   'bazar_sale_permit' | 'cure_bleed' | 'cure_poison' | 'cure_freeze' | 'cure_burn' | 'cure_electric' | 'blacksmith_scroll' |
-  'break_item' | 'fuse_item' | 'pet_feed' | 'ranch_item';
+  'break_item' | 'fuse_item' | 'pet_feed' | 'ranch_item' | 'ranch_license';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mestre' | 'legendary';
 
 export interface StoreItem {
@@ -69,7 +69,7 @@ export interface StoreItem {
   description: string;
   imageUrl?: string;
   cost: number;
-  type: 'consumable' | 'equippable' | 'other';
+  type: 'consumable' | 'equippable' | 'other' | 'ranch';
   gameEffect?: GameEffectType;
   hpCooldownReductionMinutes?: number;
   buffDurationHours?: number;
@@ -1550,7 +1550,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
                         ) : (
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                             <span>Custo: <strong style={{ color: 'var(--gold-primary)' }}>{item.cost} {economyType === 'coins' ? 'Moedas' : 'XP'}</strong></span>
-                            <span>Tipo: {item.type === 'consumable' ? 'Consumível' : item.type === 'other' ? 'Material' : 'Equipável'}</span>
+                            <span>Tipo: {item.type === 'consumable' ? 'Consumível' : item.type === 'other' ? 'Material' : item.type === 'ranch' ? 'Rancho' : 'Equipável'}</span>
                             <span>Patente Mínima: {resolveMinRankName(item.minRankRequired) || 'Sem Patente'}</span>
                           </div>
                         )}
@@ -1595,6 +1595,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
                 <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
                   <option value="consumable">Consumível (Usa 1x)</option>
                   <option value="equippable">Equipável (Ex: Título)</option>
+                  <option value="ranch">Item de Rancho (equipamentos, ração, licença — só aparece após o rancho ser desbloqueado)</option>
                   <option value="other">Outros / Diversos (materiais, drop de monstros/baú — não aparece na loja)</option>
                 </select>
               </div>
@@ -1799,6 +1800,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
                       <option value="fuse_item">🔥 Fundir / Agrupar no Ferreiro (Fragmentos ➔ Lingote/Item)</option>
                       <option value="pet_feed">🍖 Ração / Comida de Pet (alimenta e enche a fome do pet)</option>
                       <option value="ranch_item">🏠 Equipamento de Rancho (cocho de comida / bebedouro / palha / bomba d'água)</option>
+                      <option value="ranch_license">🔑 Licença do Rancho (desbloqueia o rancho na conta — libera criação de animais e itens de rancho)</option>
                     </select>
                   </div>
                   {formData.gameEffect === 'blacksmith_scroll' && (

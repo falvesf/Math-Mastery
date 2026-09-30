@@ -7,7 +7,7 @@ export type AttributeType = 'attack' | 'defense' | 'xp' | 'coins' | 'vitality' |
 
 /** Tipos de item que empilham na mochila (quantidade > 1 na mesma pilha). */
 export function isStackableItemType(t?: string): boolean {
-  return t === 'consumable' || t === 'other';
+  return t === 'consumable' || t === 'other' || t === 'ranch';
 }
 
 /**

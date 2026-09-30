@@ -39,6 +39,8 @@ export interface UserData {
   isProfilePublic?: boolean;
   characterName?: string;
   unlockedSkins?: Record<string, number>;
+  /** Rancho desbloqueado por licença (gameEffect 'ranch_license'). */
+  ranchUnlocked?: boolean;
   inventoryPreferences?: {
     viewMode?: string;
     activeCategory?: string;
@@ -76,6 +78,7 @@ export const mapUserToClient = (dbUser: any): UserData => {
     isProfilePublic: dbUser.is_profile_public,
     characterName: dbUser.character_name,
     unlockedSkins: dbUser.unlocked_skins,
+    ranchUnlocked: dbUser.ranch_unlocked,
     inventoryPreferences: dbUser.inventory_preferences,
     lastSeenRank: dbUser.inventory_preferences?.lastSeenRank || dbUser.rank,
     avatarConfig: dbUser.avatar_config,
