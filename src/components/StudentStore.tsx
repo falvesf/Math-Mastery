@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Swords } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
-import { isRanchUnlocked, isHiddenByRanchLock } from '../lib/ranch';
+import { isRanchUnlocked, isHiddenByRanchLock, isRanchLicense } from '../lib/ranch';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
@@ -225,7 +225,9 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
       i.type === 'other' ||
       i.gameEffect === 'break_item' ||
       i.gameEffect === 'fuse_item' ||
-      isHiddenByRanchLock(i, ranchUnlocked);
+      isHiddenByRanchLock(i, ranchUnlocked) ||
+      // Rancho já desbloqueado → a Licença do Rancho não fica mais disponível para compra.
+      (ranchUnlocked && isRanchLicense(i));
 
     const loaded: StoreItem[] = rawItems.filter((i: any) => (showHiddenItems ? true : !isHiddenFromStore(i)));
     setItems(loaded);
