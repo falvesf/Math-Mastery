@@ -102,6 +102,9 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
 
   const selected = pets.find(p => p.id === selectedId) || null;
   const sc = selected ? computed.get(selected.id) : null;
+  const selectedAnimalCfg: any = selected?.animal_model_id ? (modelById.get(String(selected.animal_model_id))?.config || {}) : {};
+  const trainingHabilities: any[] = selectedAnimalCfg?.stats?.trainingHabilities || [];
+  const trainLevel = Math.min(5, Math.floor((selected?.training || 0) / 20) + 1);
 
   const basicRanch = ranchItems.some(r => r.kind === 'food_trough') && ranchItems.some(r => r.kind === 'water_trough') && ranchItems.some(r => r.kind === 'hay');
   // Água do bebedouro decai em tempo real (perde ~100%/24h). A bomba d'água reabastece.
@@ -172,6 +175,39 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
     setPets(prev => prev.map(x => x.id === selected.id ? withH : x));
     await savePet(withH);
     setMsg(`😊 Você interagiu com ${selected.name || 'o pet'}.`);
+    load();
+  };
+
+  const consumeOne = async (userItemId: string) => {
+    try {
+      const { data: row } = await supabase.from('user_items').select('data').eq('id', userItemId).maybeSingle();
+      const cur = Number((row as any)?.data?.quantity) || 1;
+      const q = Math.max(0, cur - 1);
+      if (q <= 0) await supabase.from('user_items').delete().eq('id', userItemId);
+      else await supabase.from('user_items').update({ data: { ...((row as any)?.data || {}), quantity: q } }).eq('id', userItemId);
+    } catch { /* noop */ }
+  };
+
+  const doTrain = async () => {
+    if (!selected) return;
+    const animalCfg = models.find((m: any) => String(m.id) === String(selected.animal_model_id))?.config || {};
+    const favFoodIds: string[] = animalCfg?.stats?.favoriteFoodIds || [];
+    const habilities: any[] = animalCfg?.stats?.trainingHabilities || [];
+    const trainFood = favFoodIds.length ? feedItems.find((f: any) => favFoodIds.includes(String(f.itemId))) : feedItems[0];
+    if (!trainFood) { setMsg('🎓 Você precisa da comida predileta do pet para treinar.'); return; }
+    const tierOf = (v: number) => Math.min(5, Math.floor(v / 20) + 1);
+    const before = tierOf(selected.training || 0);
+    const training = Math.min(100, (selected.training || 0) + 12);
+    const after = tierOf(training);
+    let p: Pet = { ...selected, training };
+    p = withHistory(p, 'record', 'Treinou com o dono.');
+    if (after > before) {
+      for (const h of habilities.filter((h: any) => h.level === after)) p = withHistory(p, 'achievement', `Desbloqueou a habilidade "${h.name}" (treino nível ${after}).`);
+      setMsg(`🎓 ${selected.name || 'Pet'} subiu o TREINAMENTO para o nível ${after}!`);
+    } else setMsg(`🎓 ${selected.name || 'Pet'} treinou (+12%).`);
+    setPets(prev => prev.map(x => x.id === selected.id ? p : x));
+    await savePet(p);
+    await consumeOne(trainFood.userItemId);
     load();
   };
 
@@ -280,6 +316,24 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
                   {sc && heartBar(sc.thirst, '#3b82f6', Droplet, 'Sede')}
                   {sc && heartBar(sc.interaction, '#eab308', Smile, 'Interação')}
                   {heartBar(selected.training || 0, '#22c55e', Dumbbell, 'Treinamento')}
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: 4 }}>Habilidades de treino (nível {trainLevel})</div>
+                    {trainingHabilities.length === 0 ? (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Este animal ainda não tem habilidades configuradas.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {[...trainingHabilities].sort((a, b) => a.level - b.level).map((h, i) => {
+                          const unlocked = trainLevel >= h.level;
+                          return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.74rem', color: unlocked ? '#86efac' : 'var(--text-secondary)', opacity: unlocked ? 1 : 0.6 }}>
+                              <span>{unlocked ? '✅' : '🔒'}</span><b>Nv.{h.level}</b><span>{h.name}</span>
+                              {h.description && <span style={{ opacity: 0.7 }}>— {h.description}</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Atributos */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
@@ -302,6 +356,7 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
                     )) : <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Sem ração no inventário.</span>}
                     <button onClick={doWater} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', color: '#93c5fd', cursor: 'pointer', fontSize: '0.78rem' }}><Droplet size={14} /> Dar água</button>
                     <button onClick={doInteract} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', color: '#fde68a', cursor: 'pointer', fontSize: '0.78rem' }}><Smile size={14} /> Interagir</button>
+                    <button onClick={doTrain} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', color: '#86efac', cursor: 'pointer', fontSize: '0.78rem' }}><Dumbbell size={14} /> Treinar</button>
                     <button onClick={doEquipToggle} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.4rem 0.7rem', borderRadius: 8, background: selected.equipped ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)', border: selected.equipped ? '1px solid rgba(16,185,129,0.5)' : '1px solid rgba(239,68,68,0.4)', color: selected.equipped ? '#6ee7b7' : '#fca5a5', cursor: 'pointer', fontSize: '0.78rem' }}>{selected.equipped ? '🔓 Desequipar' : '⚔️ Equipar p/ batalha'}</button>
                     {selected.equipped && <span style={{ fontSize: '0.72rem', color: '#6ee7b7', alignSelf: 'center' }}>Ativo em batalhas</span>}
                   </div>

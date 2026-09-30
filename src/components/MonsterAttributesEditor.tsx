@@ -187,6 +187,8 @@ export interface MonsterStatsConfig {
   favoriteFoodIds?: string[];
   /** Animais: distância (quadrados) para desistir de seguir a ração. */
   followGiveUpDistance?: number;
+  /** Animais (PETS): habilidades desbloqueadas por NÍVEL DE TREINAMENTO. */
+  trainingHabilities?: Array<{ level: number; name: string; description?: string; effect?: string }>;
   /** Velocidade de movimento (multiplicador) no mapa explorável. 1 = padrão. */
   speed?: number;
   /** Velocidade de ataque: golpes por SEGUNDO (ex.: 2 = ataca 2x/s; 0.5 = 1 golpe a cada 2s). */
@@ -299,6 +301,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     damageEffectByLevel: value.stats?.damageEffectByLevel,
     favoriteFoodIds: value.stats?.favoriteFoodIds || [],
     followGiveUpDistance: value.stats?.followGiveUpDistance,
+    trainingHabilities: value.stats?.trainingHabilities,
     speed: value.stats?.speed,
     attackSpeed: value.stats?.attackSpeed,
   };
@@ -759,6 +762,22 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
                   <input type="number" min={1} max={20} value={currentStats.followGiveUpDistance ?? 2} onChange={e => updateStats({ followGiveUpDistance: Math.max(1, Math.min(20, parseInt(e.target.value) || 2)) })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
                 </div>
               </>
+            )}
+            {isAnimal && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>Habilidades por NÍVEL DE TREINAMENTO (PETS)</label>
+                {(currentStats.trainingHabilities || []).map((h, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Nv.</span>
+                    <input type="number" min={1} value={h.level} onChange={e => updateStats({ trainingHabilities: (currentStats.trainingHabilities || []).map((x, j) => j === idx ? { ...x, level: Math.max(1, parseInt(e.target.value) || 1) } : x) })} style={{ width: 56, padding: '0.35rem', borderRadius: 6, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                    <input value={h.name} placeholder="Nome da habilidade" onChange={e => updateStats({ trainingHabilities: (currentStats.trainingHabilities || []).map((x, j) => j === idx ? { ...x, name: e.target.value } : x) })} style={{ flex: 1, padding: '0.35rem', borderRadius: 6, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                    <input value={h.description || ''} placeholder="Descrição" onChange={e => updateStats({ trainingHabilities: (currentStats.trainingHabilities || []).map((x, j) => j === idx ? { ...x, description: e.target.value } : x) })} style={{ flex: 1, padding: '0.35rem', borderRadius: 6, background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.8rem' }} />
+                    <button onClick={() => updateStats({ trainingHabilities: (currentStats.trainingHabilities || []).filter((_, j) => j !== idx) })} style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                  </div>
+                ))}
+                <button onClick={() => updateStats({ trainingHabilities: [...(currentStats.trainingHabilities || []), { level: (currentStats.trainingHabilities?.length || 0) + 1, name: 'Nova habilidade', description: '' }] })} style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: 'rgba(34,197,94,0.15)', border: '1px dashed rgba(34,197,94,0.5)', color: '#86efac', cursor: 'pointer', fontSize: '0.75rem' }}>+ Habilidade</button>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 4 }}>Desbloqueada quando a barra de TREINAMENTO do pet atinge esse nível (a barra sobe ao treinar consumindo a comida predileta).</div>
+              </div>
             )}
             {isAnimal && (
               <div>
