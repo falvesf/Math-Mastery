@@ -946,6 +946,13 @@ export interface VoxelArena3DProps {
   /** Balão de fala 3D do jogador (texto acima da cabeça). Vazio = sem balão. */
   playerBubble?: string;
 
+  // --- PET aliado (Fase 4) ---
+  petModelUrl?: string | null;
+  petSkinUrl?: string | null;
+  petName?: string;
+  /** Incrementa a cada golpe do pet → dispara a animação (bote). */
+  petAttackTick?: number;
+
   // --- Monstro (3D) ---
   monsterModelUrl?: string | null;
   monsterSkinUrl?: string | null;
@@ -1017,6 +1024,14 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   playerAnim = 'idle',
   playerName,
   playerBubble,
+  // @ts-ignore
+  petModelUrl,
+  // @ts-ignore
+  petSkinUrl,
+  // @ts-ignore
+  petName,
+  // @ts-ignore
+  petAttackTick,
   // @ts-ignore
   monsterModelUrl,
   // @ts-ignore
@@ -1115,6 +1130,10 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const playerStatusSpriteRef = useRef<THREE.Sprite | null>(null);
   const playerStatusGroupRef = useRef<THREE.Group | null>(null);
   const playerStatusDrawnRef = useRef<string>('');
+  // PET aliado (Fase 4)
+  const petGroupRef = useRef<THREE.Group | null>(null);
+  const lastPetTickRef = useRef(0);
+  const petLungeUntilRef = useRef(0);
   // Jogador nativo (skinview3d): quando não há GLB customizado, o boneco é o próprio
   // PlayerObject do skinview3d, inserido direto na cena — fidelidade total (expressões,
   // glint, sparkles, animações), já que agora usamos a mesma versão do Three (0.156).
@@ -1762,6 +1781,20 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         unifiedMonsterMixerRef.current.update(delta);
       }
       if (unifiedPlayerMixerRef.current) unifiedPlayerMixerRef.current.update(delta);
+
+      // PET aliado: dá um bote sempre que o pet ataca (petAttackTick muda).
+      if (petGroupRef.current) {
+        const tick = Number(petAttackTick || 0);
+        if (tick !== lastPetTickRef.current) { lastPetTickRef.current = tick; petLungeUntilRef.current = performance.now() + 420; }
+        const nowP = performance.now();
+        if (nowP < petLungeUntilRef.current) {
+          const pr = 1 - (petLungeUntilRef.current - nowP) / 420;
+          const hop = Math.sin(Math.min(1, pr) * Math.PI);
+          petGroupRef.current.position.set(2.7 + hop * 0.9, 0.51 + hop * 0.35, 1.4 - hop * 0.6);
+        } else {
+          petGroupRef.current.position.set(2.7, 0.51, 1.4);
+        }
+      }
       // Jogador NATIVO (skinview3d): avança a PlayerAnimation manualmente.
       if (nativePlayerRef.current) {
         try { nativePlayerRef.current.anim?.update?.(nativePlayerRef.current.player, delta); } catch { /* noop */ }
@@ -2396,6 +2429,35 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
 
           // Hematomas no corpo (pixels roxos/vermelhos) conforme o dano sofrido.
           attachBruisesAndBlood(player, playerBruiseLevelRef.current, playerBleedingRef.current);
+
+          // ---- PET ALIADO (Fase 4): aparece ao lado do jogador e dá botes nos golpes ----
+          try {
+            if ((petModelUrl || petSkinUrl) && !disposed) {
+              const petGroup = new THREE.Group();
+              let petObj: any = null;
+              if (petModelUrl) {
+                const gltf: any = await new Promise((res) => loader.load(petModelUrl, res, undefined, () => res(null)));
+                if (gltf?.scene) {
+                  const m = gltf.scene;
+                  const box = new THREE.Box3().setFromObject(m); const size = new THREE.Vector3(); box.getSize(size); const c = new THREE.Vector3(); box.getCenter(c);
+                  const md = Math.max(0.001, Math.max(size.x, size.y, size.z)); const sc = (UNIFIED_ENTITY_HEIGHT * 0.72) / md;
+                  m.scale.setScalar(sc); m.position.set(-c.x * sc, -box.min.y * sc, -c.z * sc);
+                  petObj = m;
+                }
+              } else if (petSkinUrl) {
+                const pv = new SkinViewer({ width: 120, height: 200, renderPaused: true });
+                const rawP = petSkinUrl && !/^(https?:|data:|blob:)/i.test(petSkinUrl) ? `https://${petSkinUrl}` : petSkinUrl;
+                await pv.loadSkin(rawP as string);
+                const po = (pv as any).playerObject; fitEntityToGround(po, UNIFIED_ENTITY_HEIGHT * 0.8); petObj = po;
+              }
+              if (petObj && !disposed) {
+                petGroup.add(petObj);
+                petGroup.position.set(2.7, 0.51, 1.4); petGroup.rotation.y = 0.42;
+                scene.add(petGroup); petGroupRef.current = petGroup;
+                if (petName) { const ng = makeNameGroup(); ng.add(makeNameSprite(`${petName} 🐾`, { color: '#fbbf24' })); ng.position.set(2.7, UNIFIED_ENTITY_HEIGHT * 0.9 + 0.5, 1.4); scene.add(ng); }
+              }
+            }
+          } catch { /* sem pet */ }
 
           nativePlayerRef.current = {
             viewer,

@@ -155,6 +155,13 @@ export default function QuestGameplay() {
   // Barra de itens utilizáveis (slots): índice de rolagem para mostrar 6 por vez
   const [itemScrollIndex, setItemScrollIndex] = useState(0);
   const [playerEquippedItems, setPlayerEquippedItems] = useState<EquippedItem[]>([]);
+  // PET aliado (Fase 4): pet equipado que participa da batalha.
+  const [battlePet, setBattlePet] = useState<any>(null);
+  const battlePetRef = useRef<any>(null);
+  const [petAttackTick, setPetAttackTick] = useState(0);
+  const petHitCountRef = useRef(0);
+  const [petModelUrl, setPetModelUrl] = useState<string | null>(null);
+  const [petSkinUrl, setPetSkinUrl] = useState<string | null>(null);
   const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
   const [currentHearts, setCurrentHearts] = useState<number>(3);
   const [hasShield, setHasShield] = useState(false);
@@ -414,6 +421,29 @@ export default function QuestGameplay() {
   const animSeqRef = useRef(0);
   const playerAnimRef = useRef('idle');
   useEffect(() => { playerAnimRef.current = playerAnim; }, [playerAnim]);
+
+  // PET equipado (Fase 4) — carrega ao entrar na missão (participa da batalha).
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!userData?.uid) { setBattlePet(null); battlePetRef.current = null; setPetModelUrl(null); setPetSkinUrl(null); return; }
+      try {
+        const { data } = await supabase.from('pets').select('*').eq('student_id', userData.uid).eq('equipped', true).maybeSingle();
+        if (!active) return;
+        setBattlePet(data || null); battlePetRef.current = data || null;
+        if ((data as any)?.animal_model_id) {
+          const { data: mm } = await supabase.from('3d_models').select('url, config').eq('id', (data as any).animal_model_id).maybeSingle();
+          if (!active) return;
+          const isModel = (u?: string) => !!u && /\.(glb|gltf)(\?|$)/i.test(u);
+          setPetModelUrl((mm?.url && isModel(mm.url)) ? (mm.url as string) : null);
+          const cfg = (mm as any)?.config || {};
+          setPetSkinUrl([cfg.customSkinUrl, (mm as any)?.url].find((u: string) => u && !isModel(u)) || null);
+        }
+      } catch { /* noop */ }
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userData?.uid]);
   const heartsRef = useRef(currentHearts);
   // Fatality de corte: captura o modelo atual como "foto" (canvas) e corta a imagem.
   const monsterCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -2266,6 +2296,15 @@ const dealTransformDamageToPlayer = (damage: number) => {
               setMonsterHearts(h => Math.max(0, h - 1));
             }
             setMonsterHeartFrac(1);
+            // PET aliado (Fase 4): a cada 3 acertos, o pet desfere um golpe extra (-1 coração).
+            if (battlePetRef.current) {
+              petHitCountRef.current += 1;
+              setPetAttackTick(t => t + 1);
+              if (petHitCountRef.current % 3 === 0) {
+                setMonsterHearts(h => Math.max(0, h - 1));
+                setBattleMessage(`🐾 ${battlePetRef.current.name || 'Seu pet'} atacou o monstro! -1 ❤️`);
+              }
+            }
             // Coelho: cada golpe que ele recebe acelera o tempo (+5%) e dobra o drop
             if (transformRef.current?.animal === 'coelho') {
               coelhoHitsRef.current += 1;
@@ -4052,6 +4091,10 @@ const dealTransformDamageToPlayer = (damage: number) => {
                 playerSkinUrl={userData?.avatarConfig?.customSkinUrl}
                 playerName="Você"
                 playerBubble={playerBubble}
+                petModelUrl={petModelUrl}
+                petSkinUrl={petSkinUrl}
+                petName={battlePet?.name || battlePet?.species_name || undefined}
+                petAttackTick={petAttackTick}
                 playerStatuses={playerStatuses}
                 playerBruiseLevel={playerBruiseLevel}
                 playerBleeding={playerBleeds.length > 0}
