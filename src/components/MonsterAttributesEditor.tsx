@@ -324,7 +324,7 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     // Deduplica por (nome + raridade + tipo), mantendo TODOS os ids como aliases.
     const byKey = new Map<string, ItemSelectOption>();
     for (const it of availableStoreItems) {
-      const title = it.title || it.name || it.id;
+      const title = it.title || it.name || it.itemTitle || it.itemName || it.data?.title || it.data?.name || it.id;
       const typeLabel = getItemTypeLabel(it);
       const key = `${String(title).trim().toLowerCase()}|${it.rarity || 'common'}|${typeLabel}`;
       const ids = [it.id, it.dataId, it.itemId, it.storeItemId].filter(Boolean) as string[];

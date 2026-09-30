@@ -210,7 +210,7 @@ export default function Admin3DModelsManager() {
 
   // Catálogo de itens (store_items) para o editor de DROPS dos animais.
   useEffect(() => {
-    supabase.from('store_items').select('id, name, data').then(({ data }) => {
+    supabase.from('store_items').select('*').then(({ data }) => {
       setStoreItems(((data as any[]) || []).map(r => ({
         id: r.id,
         itemTitle: r.name || r.data?.title || r.id,
