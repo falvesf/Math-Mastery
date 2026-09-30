@@ -16,15 +16,16 @@ function makeStudioEquirect(THREE: any): any {
   cv.width = 256;
   cv.height = 128;
   const ctx = cv.getContext('2d')!;
-  // Gradiente vertical: topo claro (céu), horizonte, base mais escura (chão).
+  // Gradiente vertical neutro (cinza-azulado): topo claro, horizonte e base escura.
+  // Evita estourar o branco em metais claros (o environment ILUMINA, não "queima").
   const g = ctx.createLinearGradient(0, 0, 0, 128);
-  g.addColorStop(0.0, '#f4f7ff');
-  g.addColorStop(0.45, '#ffffff');
-  g.addColorStop(0.55, '#cdd4e0');
-  g.addColorStop(1.0, '#6b7280');
+  g.addColorStop(0.0, '#b9c4d4');
+  g.addColorStop(0.45, '#dbe2ec');
+  g.addColorStop(0.55, '#8b93a0');
+  g.addColorStop(1.0, '#3c4149');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 256, 128);
-  // "Janela" luminosa: cria o highlight especular típico de estúdio.
+  // "Janela" luminosa: cria o highlight especular típico de estúdio (sem dominar).
   const drawSoft = (x: number, y: number, rx: number, ry: number, a: number) => {
     const rg = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry));
     rg.addColorStop(0, `rgba(255,255,255,${a})`);
@@ -39,8 +40,8 @@ function makeStudioEquirect(THREE: any): any {
     ctx.fill();
     ctx.restore();
   };
-  drawSoft(70, 42, 46, 30, 0.95);
-  drawSoft(196, 54, 34, 24, 0.6);
+  drawSoft(66, 40, 40, 26, 0.7);
+  drawSoft(190, 52, 30, 20, 0.4);
   const tex = new THREE.CanvasTexture(cv);
   tex.mapping = THREE.EquirectangularReflectionMapping;
   try { tex.colorSpace = THREE.SRGBColorSpace; } catch { /* noop */ }
@@ -82,7 +83,7 @@ export function applyEnvironment(THREE: any, renderer: any, scene: any, opts: Ap
     if (opts.toneMapping !== false) {
       try {
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = opts.exposure ?? 1.05;
+        renderer.toneMappingExposure = opts.exposure ?? 0.85;
       } catch { /* noop */ }
     }
     return rt?.texture || null;

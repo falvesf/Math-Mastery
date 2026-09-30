@@ -1003,7 +1003,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
     // Environment de estúdio: faz os metais (dourado etc.) refletirem como no Sketchfab.
-    applyEnvironment(THREE, renderer, scene, { intensity: 1.5, exposure: 1.05 });
+    applyEnvironment(THREE, renderer, scene, { intensity: 1.0, exposure: 0.8 });
     
     // Setup Controls
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -1013,15 +1013,16 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
     
     // Removing debug cube since rendering is confirmed working
     
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+    // Lighting (o environment de estúdio já ilumina; mantenha as luzes diretas suaves
+    // para dar forma/volume, sem estourar metais claros).
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
     scene.add(ambientLight);
     
-    const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
     dirLight.position.set(5, 10, 7.5);
     scene.add(dirLight);
 
-    const dirLight2 = new THREE.DirectionalLight(0xffffff, 1);
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.45);
     dirLight2.position.set(-5, -5, -7.5);
     scene.add(dirLight2);
 
@@ -1091,7 +1092,7 @@ export default function GlbMeshExtractorModal({ glbUrl, currentExtractedName, on
           };
           
           scene.add(gltf.scene);
-          tuneMaterialsForEnv(gltf.scene, 1.5);
+          tuneMaterialsForEnv(gltf.scene, 1.0);
 
           // Cache all original materials for meshes
           gltf.scene.traverse((node) => {

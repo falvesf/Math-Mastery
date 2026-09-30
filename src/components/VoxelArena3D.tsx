@@ -1404,7 +1404,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     renderer.toneMappingExposure = isNether ? 1.25 : (isEnd ? 1.2 : 1.1);
     // Environment de estúdio: faz itens/monstros metálicos refletirem (dourado etc.)
     // em vez de ficarem cinza. Mantém o tone mapping/exposição do bioma (toneMapping:false).
-    applyEnvironment(THREE, renderer, scene, { intensity: 1.35, toneMapping: false });
+    applyEnvironment(THREE, renderer, scene, { intensity: 1.0, toneMapping: false });
 
     // 4. Luzes da Arena adaptadas ao bioma
     let hemiSky = '#b8d5ff';

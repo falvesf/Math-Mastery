@@ -20,7 +20,7 @@ function StudioEnvironment() {
   // @ts-ignore
   const { gl, scene } = useThree();
   useEffect(() => {
-    applyEnvironment(THREE, gl, scene, { intensity: 1.5, exposure: 1.05 });
+    applyEnvironment(THREE, gl, scene, { intensity: 1.05, exposure: 0.9 });
     return () => disposeEnvironment(scene);
   }, [gl, scene]);
   return null;
@@ -221,7 +221,7 @@ function Model({ modelUrl, textureUrl, animationName, role, chestSwapSides, conf
   }, [originalScene]);
 
   // Brilho PBR: intensifica o environment nos metais (dourado etc.).
-  useEffect(() => { tuneMaterialsForEnv(scene, 1.5); }, [scene]);
+  useEffect(() => { tuneMaterialsForEnv(scene, 1.05); }, [scene]);
 
   // Efeito de dano direto nos materiais do modelo (veneno/fogo/sangramento/impacto).
   // Usa cor + emissive para ficar visível mesmo em modelos escuros e texturizados.

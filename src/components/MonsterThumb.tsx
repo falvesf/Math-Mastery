@@ -36,7 +36,7 @@ function ensureRenderer() {
   _camera = new THREE.PerspectiveCamera(32, 1, 0.1, 1000);
   // Environment de estúdio (sem tone mapping, para manter o visual dos ícones):
   // metais refletem como no Sketchfab. Persiste mesmo após _scene.clear().
-  applyEnvironment(THREE, _renderer, _scene, { intensity: 1.5, toneMapping: false });
+  applyEnvironment(THREE, _renderer, _scene, { intensity: 0.9, toneMapping: false });
 }
 
 function addLights(scene: any) {
@@ -59,7 +59,7 @@ function renderObject(obj: any, rotYdeg = 0, zoom = 1, isGlb = false): string {
   obj.position.set(-center0.x * s, -box0.min.y * s, -center0.z * s);
   const holder = new THREE.Group(); holder.add(obj);
   _scene.clear(); addLights(_scene); _scene.add(holder);
-  tuneMaterialsForEnv(holder, 1.5);
+  tuneMaterialsForEnv(holder, 0.9);
   _camera.aspect = 1; _camera.updateProjectionMatrix();
   const h = size0.y * s;
   const z = Math.max(0.5, Math.min(1.6, Number(zoom) || 1)); // customZoom → aproxima/afasta
