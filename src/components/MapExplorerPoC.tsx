@@ -6,6 +6,7 @@ import * as THREE from 'skinview3d/node_modules/three';
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
+import { getAvailableInventorySpace } from '../lib/inventorySlots';
 import { applyForgeGlowToModel, applyForgeGlint, resolveModelTransform, type AvatarConfig, type EquippedItem } from './AvatarCharacter';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchEquippedItems } from '../lib/equippedItems';
@@ -2744,7 +2745,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         spawnPop(world, p.data.title || 'Item', false);
         if (studentId) {
           // Grava o item COMPLETO no inventário (título/tipo/imagem/atributos do catálogo),
-          // senão ele vira "Item Desconhecido" sem serventia.
+          // senão ele vira "Item Desconhecido" sem serventia. ANTES: verifica se há espaço.
           const d = (p.data.storeData || {}) as any;
           const payload: any = {
             ...d,
@@ -2761,9 +2762,24 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
             quantity: 1,
             giftedBy: 'Cenário',
           };
-          supabase.from('user_items').insert({ student_id: studentId, item_id: p.data.id, equipped: false, data: payload })
-            .then(() => callbacks.current.setMsg(`🎒 Item coletado: ${payload.itemTitle}!`))
-            .catch(() => callbacks.current.setMsg(`🎒 ${payload.itemTitle} coletado!`));
+          (async () => {
+            try {
+              const isStackable = ['consumable', 'other', 'ranch'].includes(String(p.data.type || p.data.itemType || ''));
+              let canStack = false;
+              const { count } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', studentId).eq('equipped', false);
+              if (isStackable) {
+                const { data: ex } = await supabase.from('user_items').select('id,data').eq('student_id', studentId).eq('item_id', p.data.id).eq('equipped', false).limit(5);
+                canStack = (ex || []).some(r => Number((r as any).data?.quantity || 1) < 99);
+              }
+              if (!canStack && getAvailableInventorySpace(userData, count || 0) <= 0) {
+                callbacks.current.setMsg('🎒 Inventário cheio! Libere espaço para coletar o item.');
+                return;
+              }
+            } catch { /* se a checagem falhar, tenta coletar mesmo assim */ }
+            supabase.from('user_items').insert({ student_id: studentId, item_id: p.data.id, equipped: false, data: payload })
+              .then(() => callbacks.current.setMsg(`🎒 Item coletado: ${payload.itemTitle}!`))
+              .catch(() => callbacks.current.setMsg(`🎒 ${payload.itemTitle} coletado!`));
+          })();
         } else callbacks.current.setMsg(`🎒 ${p.data.title} coletado!`);
       }
     };

@@ -17,7 +17,7 @@ import { RANKS, getRankForXp, getMaxAddsLimit } from '../lib/ranks';
 import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig, isStackableItemType, areItemsStackableMatch, getStackableItemSignature } from '../lib/gacha';
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
 import { isRanchUnlocked, isHiddenByRanchLock, RANCH_LICENSE_EFFECT } from '../lib/ranch';
-import { computeMaxInventorySpace, getActiveInventorySpaceBuff, getLockedItemIds, INVENTORY_SPACE_EFFECT } from '../lib/inventorySlots';
+import { computeMaxInventorySpace, getActiveInventorySpaceBuff, getLockedItemIds, INVENTORY_SPACE_EFFECT, applyInventorySpaceEffect } from '../lib/inventorySlots';
 import { invalidateEquippedItems } from '../lib/equippedItems';
 import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, enhanceEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType, type EnhanceEffectResult } from '../lib/damageEffects';
 import { forgeItemName } from '../lib/forge';
@@ -496,34 +496,23 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return;
     }
     if (item.gameEffect === INVENTORY_SPACE_EFFECT) {
-      const bonus = Math.max(1, Number((item as any).spaceBonus) || 5);
-      const days = Number((item as any).inventorySpaceDuration) ?? 7;
-      const confirmed = await showConfirm(`Deseja usar "${item.itemTitle}" para ganhar +${bonus} espaço${bonus > 1 ? 's' : ''} de mochila${days > 0 ? ` por ${days} dia${days > 1 ? 's' : ''}` : ' (permanente)'}?`);
-      if (!confirmed) return;
+      const res = await applyInventorySpaceEffect(userData.uid, userData, item);
+      if (!res.ok) { await showAlert('Erro ao ativar o aumento de mochila: ' + res.message); return; }
       const now = Date.now();
-      const update: any = {};
       const local: any = {};
-      if (days <= 0) {
-        const cur = Number(userData.extraInventorySpace) || 0;
-        update.extra_inventory_space = cur + bonus;
-        local.extraInventorySpace = cur + bonus;
+      if (res.days <= 0) {
+        local.extraInventorySpace = (Number(userData.extraInventorySpace) || 0) + res.bonus;
       } else {
         const curBuff = getActiveInventorySpaceBuff(userData);
         const curUntil = (userData.inventorySpaceBuffUntil && userData.inventorySpaceBuffUntil > now) ? userData.inventorySpaceBuffUntil : now;
-        const newUntil = curUntil + days * 24 * 60 * 60 * 1000;
-        update.inventory_space_buff = curBuff + bonus;
-        update.inventory_space_buff_until = new Date(newUntil).toISOString();
-        update.inventory_space_buff_days = days;
-        local.inventorySpaceBuff = curBuff + bonus;
-        local.inventorySpaceBuffUntil = newUntil;
-        local.inventorySpaceBuffDays = days;
+        local.inventorySpaceBuff = curBuff + res.bonus;
+        local.inventorySpaceBuffUntil = curUntil + res.days * 24 * 60 * 60 * 1000;
+        local.inventorySpaceBuffDays = res.days;
       }
-      const { error } = await supabase.from('users').update(update).eq('id', userData.uid);
-      if (error) { await showAlert('Erro ao ativar o aumento de mochila: ' + error.message); return; }
       if (updateUserDataLocally) updateUserDataLocally(local);
       await consumeItemQuantity(item.itemId, 1, item.id);
       fetchInventory();
-      await showAlert(`🎒 Mochila aumentada! +${bonus} espaço${bonus > 1 ? 's' : ''}${days > 0 ? ` por ${days} dia${days > 1 ? 's' : ''}` : ' (permanente)'}.`);
+      await showAlert(`🎒 Mochila aumentada! ${res.message}.`);
       return;
     }
     if (item.gameEffect === 'heal_1_hp') {

@@ -16,7 +16,7 @@ import MonsterProjectileView from '../components/MonsterProjectileView';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
-import { filterAvailableRows } from '../lib/inventorySlots';
+import { filterAvailableRows, getAvailableInventorySpace } from '../lib/inventorySlots';
 import { getMaxAddsLimit } from '../lib/ranks';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { sessionCache, CACHE_KEYS } from '../lib/sessionCache';
@@ -2584,13 +2584,19 @@ if (tr.turnsLeft <= 1) {
                   forgeLevel: slot.forgeLevel || 0,
                   scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
                 };
-                await supabase.from('user_items').insert({
-                  student_id: userData!.uid,
-                  item_id: item.id,
-                  equipped: false,
-                  data: itemData
-                });
-                finalRewards.items.push({ ...item, quantity: slot.quantity });
+                // "Inventário cheio": o item NÃO entra na mochila até liberar espaço.
+                const { count: chestSpaceCount } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', userData!.uid).eq('equipped', false);
+                if (getAvailableInventorySpace(userData, chestSpaceCount || 0) <= 0) {
+                  setBattleMessage('🎒 Inventário cheio! Algumas recompensas do baú não puderam ser guardadas.');
+                } else {
+                  await supabase.from('user_items').insert({
+                    student_id: userData!.uid,
+                    item_id: item.id,
+                    equipped: false,
+                    data: itemData
+                  });
+                  finalRewards.items.push({ ...item, quantity: slot.quantity });
+                }
               }
             }
           }
@@ -2945,12 +2951,16 @@ if (tr.turnsLeft <= 1) {
           forgeLevel: drop.dropData?.forgeLevel || 0,
           scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
         };
-        await supabase.from('user_items').insert({
-          student_id: userData.uid,
-          item_id: item.id,
-          equipped: false,
-          data: itemData
-        });
+        // "Inventário cheio": o drop não entra na mochila até liberar espaço.
+        const { count: dropSpaceCount } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', userData.uid).eq('equipped', false);
+        if (getAvailableInventorySpace(userData, dropSpaceCount || 0) > 0) {
+          await supabase.from('user_items').insert({
+            student_id: userData.uid,
+            item_id: item.id,
+            equipped: false,
+            data: itemData
+          });
+        }
       } catch (err) {
         console.error("Erro ao registrar drop de monstro:", err);
       }

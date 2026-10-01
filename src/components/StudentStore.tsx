@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Swords } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { isRanchUnlocked, isHiddenByRanchLock, isRanchLicense } from '../lib/ranch';
-import { computeMaxInventorySpace } from '../lib/inventorySlots';
+import { computeMaxInventorySpace, applyInventorySpaceEffect, getAvailableInventorySpace } from '../lib/inventorySlots';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
@@ -474,10 +474,30 @@ gameEffect: item.gameEffect || 'none',
       return;
     }
 
+    // Presente: o DESTINATÁRIO precisa de espaço na mochila para receber.
+    if (isGift) {
+      try {
+        const { data: rec } = await supabase.from('users').select('id, xp, class_id, extra_inventory_space, inventory_space_buff, inventory_space_buff_until').eq('id', recipientId).single();
+        const { count } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', recipientId).eq('equipped', false);
+        const recUserData = {
+          xp: rec?.xp || 0,
+          classId: (rec as any)?.class_id || undefined,
+          extraInventorySpace: (rec as any)?.extra_inventory_space || 0,
+          inventorySpaceBuff: (rec as any)?.inventory_space_buff || 0,
+          inventorySpaceBuffUntil: (rec as any)?.inventory_space_buff_until ? new Date((rec as any).inventory_space_buff_until).getTime() : null,
+        };
+        if (getAvailableInventorySpace(recUserData as any, count || 0) <= 0) {
+          showToast('Inventário cheio! O destinatário não pode receber o presente agora (liberar espaço).', 'error');
+          return;
+        }
+      } catch { /* se a checagem falhar, deixa prosseguir */ }
+    }
+
     const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     const method = paymentMethod || economyType;
     let quantityToBuy = isStackableItemType(item.type) ? (quantities[item.id] || 1) : 1;
     let wasCapped = false;
+    let autoUseSpaceBuff = false;
     
     if (!isStaff) {
       const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
@@ -491,25 +511,38 @@ gameEffect: item.gameEffect || 'none',
         const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
         const maxInventorySpace = computeMaxInventorySpace(userData, extraSlotsFromFortitude);
         const availableSlots = Math.max(0, maxInventorySpace - myInventoryCount);
+        const isSpaceBuff = item.gameEffect === 'inventory_space';
 
-        let maxQuantityAllowed = 0;
-        if (item.type === 'equippable') {
-          maxQuantityAllowed = availableSlots > 0 ? 1 : 0;
+        // SEM nenhum espaço disponível:
+        if (availableSlots === 0) {
+          if (isSpaceBuff) {
+            // Buff de mochila: NÃO ocupa slot — é utilizado IMEDIATAMENTE na compra.
+            autoUseSpaceBuff = true;
+            quantityToBuy = 1;
+          } else {
+            showToast('Inventário cheio! Libere espaço (venda/jogue fora) para comprar este item.', 'error');
+            return;
+          }
         } else {
-          const currentQuantity = myConsumableQuantities[item.id] || 0;
-          const capacityInLastSlot = currentQuantity === 0 ? 0 : (currentQuantity % 99 === 0 ? 0 : 99 - (currentQuantity % 99));
-          const capacityFromNewSlots = availableSlots * 99;
-          maxQuantityAllowed = capacityInLastSlot + capacityFromNewSlots;
-        }
+          let maxQuantityAllowed = 0;
+          if (item.type === 'equippable') {
+            maxQuantityAllowed = availableSlots > 0 ? 1 : 0;
+          } else {
+            const currentQuantity = myConsumableQuantities[item.id] || 0;
+            const capacityInLastSlot = currentQuantity === 0 ? 0 : (currentQuantity % 99 === 0 ? 0 : 99 - (currentQuantity % 99));
+            const capacityFromNewSlots = availableSlots * 99;
+            maxQuantityAllowed = capacityInLastSlot + capacityFromNewSlots;
+          }
 
-        if (maxQuantityAllowed === 0) {
-          showToast("Sua mochila ficará cheia! Jogue fora ou venda alguns itens antes de comprar.", 'error');
-          return;
-        }
+          if (maxQuantityAllowed === 0) {
+            showToast('Inventário cheio! Libere espaço (venda/jogue fora) para comprar este item.', 'error');
+            return;
+          }
 
-        if (quantityToBuy > maxQuantityAllowed) {
-          quantityToBuy = maxQuantityAllowed;
-          wasCapped = true;
+          if (quantityToBuy > maxQuantityAllowed) {
+            quantityToBuy = maxQuantityAllowed;
+            wasCapped = true;
+          }
         }
       }
     }
@@ -557,6 +590,20 @@ gameEffect: item.gameEffect || 'none',
       if (item.type === 'equippable') {
         const globalGachaConfig = await fetchGlobalGachaConfig();
         finalAdds = rollItemAdds(item.gachaConfig, item.fixedAttributes, (item.useGlobalGacha ?? true) ? globalGachaConfig : undefined, getMaxAddsLimit(item.minRankRequired));
+      }
+
+      // Buff de mochila comprado sem espaço: ATIVA na hora, não ocupa slot.
+      if (autoUseSpaceBuff && !isGift) {
+        const res = await applyInventorySpaceEffect(userData.uid, userData, item);
+        if (!res.ok) {
+          showToast('Erro ao ativar o buff de mochila: ' + res.message, 'error');
+          setPurchasing(null);
+          return;
+        }
+        showToast(`🎒 Buff de mochila ATIVADO automaticamente na compra! ${res.message}.`, 'success');
+        setPurchasing(null);
+        fetchStoreData(false);
+        return;
       }
       
       let remainingToBuy = quantityToBuy;

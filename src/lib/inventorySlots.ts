@@ -1,4 +1,5 @@
 import { RANKS, getRankForXp } from './ranks';
+import { supabase } from './supabase';
 import type { UserData } from '../contexts/AuthContext';
 
 /**
@@ -67,4 +68,33 @@ export function filterAvailableRows(rows: any[], userData?: Partial<UserData> | 
   const locked = getLockedItemIds(rows, slotMap || {}, maxSpace);
   if (locked.size === 0) return rows;
   return rows.filter(r => !locked.has(r.id));
+}
+
+/** Quantos slots LIVRES existem (capacidade − itens não equipados atuais). */
+export function getAvailableInventorySpace(userData?: Partial<UserData> | null, totalBagCount = 0): number {
+  return Math.max(0, computeMaxInventorySpace(userData) - (totalBagCount || 0));
+}
+
+/** Aplica o effect de aumento de mochila (inventory_space) na conta. */
+export async function applyInventorySpaceEffect(
+  uid: string,
+  userData: Partial<UserData> | null,
+  itemData: any
+): Promise<{ ok: boolean; message: string; bonus: number; days: number }> {
+  const bonus = Math.max(1, Number(itemData?.spaceBonus) || 5);
+  const days = Number(itemData?.inventorySpaceDuration) ?? 7;
+  const now = Date.now();
+  const update: any = {};
+  if (days <= 0) {
+    update.extra_inventory_space = (Number(userData?.extraInventorySpace) || 0) + bonus;
+  } else {
+    const curBuff = getActiveInventorySpaceBuff(userData);
+    const curUntil = (userData?.inventorySpaceBuffUntil && userData.inventorySpaceBuffUntil > now) ? userData.inventorySpaceBuffUntil : now;
+    update.inventory_space_buff = curBuff + bonus;
+    update.inventory_space_buff_until = new Date(curUntil + days * 24 * 60 * 60 * 1000).toISOString();
+    update.inventory_space_buff_days = days;
+  }
+  const { error } = await supabase.from('users').update(update).eq('id', uid);
+  if (error) return { ok: false, message: error.message, bonus, days };
+  return { ok: true, message: days > 0 ? `+${bonus} espaço${bonus > 1 ? 's' : ''} por ${days} dia${days > 1 ? 's' : ''}` : `+${bonus} espaço${bonus > 1 ? 's' : ''} (permanente)`, bonus, days };
 }
