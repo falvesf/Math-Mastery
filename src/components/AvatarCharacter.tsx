@@ -14,6 +14,7 @@ import { isEffectAddType, EFFECT_ADD_LABELS } from '../lib/damageEffects';
 import { generateVoxelItemFromImage, updateVoxelCurve, setVoxelThickness } from '../lib/VoxelItemGenerator';
 import { getGlobalModelTransforms } from '../lib/itemTransforms';
 import { getEquippedSetAura, hexToRgba } from '../lib/equipAura';
+import { applyEnvironment, tuneMaterialsForEnv } from '../lib/studioEnv';
 import { Eye, EyeOff, PackageX } from 'lucide-react';
 
 export interface AvatarConfig {
@@ -905,6 +906,9 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           viewer.renderer.setClearColor(0x000000, 0);
           viewer.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Garante nitidez máxima em telas Retina/High-DPI
       }
+      // Environment de estúdio: itens metálicos (escudos/armas douradas) refletem a luz
+      // em vez de ficarem escuros/marrons. Mantém o tom do avatar (toneMapping:false).
+      try { applyEnvironment(THREE, (viewer as any).renderer, (viewer as any).scene, { intensity: 1.2, toneMapping: false }); } catch { /* noop */ }
       
       viewer.camera.position.set(0, 10, 60);
 
@@ -1220,6 +1224,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             // Brilho de forja: PINTA o material do equipamento (emissive/cor no THREE),
 // proporcional ao nível (+0 opaco → +9 máximo). Nada de overlay/CSS.
             applyForgeGlowToModel(model, item.forgeLevel || 0);
+            // Material PBR: usa o environment da cena p/ metais refletirem (dourado etc.).
+            tuneMaterialsForEnv(model, 1.2);
             // Estrelas de forja (emissiveMap que desliza) só na armadura e na arma, +7/+8/+9
             {
               const _lvl = item.forgeLevel || 0;
