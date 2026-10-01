@@ -355,6 +355,9 @@ function _forgeLerp(a: number, b: number, t: number) { return a + (b - a) * t; }
 // polido refletindo a luz, sem película. Idempotente: guarda os valores-base no material.
 export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
   const lvl = Math.max(0, Math.min(9, Math.floor(level || 0)));
+  // Nível 0 = item SEM forja → NÃO altera os materiais. (Antes forçava metalness=0/roughness=1
+  // e aplicava um envMap próprio, deixando TODO metal marrom/chapado e ignorando o environment.)
+  if (lvl === 0) return;
   const intensity = lvl / 9; // +0 = 0 ... +9 = 1
   const film = 1 - intensity; // +0 = 1 (película cheia) ... +9 = 0 (sem película)
   const env = getForgeEnvMap();
