@@ -1020,7 +1020,7 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
         setBossFeedback(`✅ Acertou! Você tirou ${dmg} do chefe!`);
       } else {
         setBossFeedback('❌ Errou! O chefe esquivou e te acertou!');
-        hurtPlayer(1, '❌ Errou! O chefe esquivou e te acertou! -1 ❤️');
+        hurtPlayer(1, '❌ Errou! O chefe esquivou e te acertou! -1 ❤️', true);
         try { if (bossSlime) { bossSlime.lunge = 0.42; bossSlime.lungeHit = true; } } catch { /* noop */ }
         try { applyBossMeleeEffect(); } catch { /* noop */ }
       }
@@ -1047,7 +1047,7 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
         if (melee.effectMinLevel && lvl < Number(melee.effectMinLevel)) return;
         const chance = Number(melee.effectChance ?? 100) + Math.max(0, lvl - Number(melee.effectMinLevel || 1)) * Number(melee.effectChancePerLevel ?? 3);
         if (Math.random() * 100 >= chance) return;
-        if (ef === 'bleed' || ef === 'poison') playerBleedUntil = performance.now() + 4000;
+        if (ef === 'bleed' || ef === 'poison') { playerBleedUntil = performance.now() + 4000; playerBleedTick = 1.0; }
         const label: any = { bleed: '🩸 Sangramento', poison: '☠️ Veneno', burn: '🔥 Queimadura', freeze: '❄️ Congelamento', electric: '⚡ Choque' };
         callbacks.current.setMsg(`${label[ef] || ef} — o chefe usou um golpe com efeito!`);
       } catch { /* noop */ }
@@ -1396,6 +1396,18 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
           const scale = (1.25 / h) * zoom;
           model.scale.setScalar(scale);
           model.position.y = 0;
+          // Garante que materiais unlit (MeshBasicMaterial) nunca carreguem emissive órfão
+          model.traverse((ch: any) => {
+            if (ch.isMesh && ch.material) {
+              const mats = Array.isArray(ch.material) ? ch.material : [ch.material];
+              mats.forEach((mat: any) => {
+                if (mat.isMeshBasicMaterial && 'emissive' in mat) {
+                  delete mat.emissive;
+                  delete mat.emissiveIntensity;
+                }
+              });
+            }
+          });
           // Aplica a SKIN/textura do monstro ao GLB (mesma lógica do CustomModelViewer),
           // senão aparece só o "esqueleto" do modelo.
           const texUrl = monster?.config?.customSkinUrl || monster?.config?.modelTextureUrl;
@@ -1743,22 +1755,25 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         }
         const eff = meleeEf || (resolveDamageEffect(s) !== 'none' ? resolveDamageEffect(s) : null);
         const buffed = !!(s.buffUntil && performance.now() < s.buffUntil);
-        const baseDmg = buffed ? 2 : 1;
+        // Golpe básico SEMPRE tira exatamente 1 coração.
+        const baseDmg = 1;
         lastPlayerAttacker = s;
-        // GOLPE CRÍTICO da criatura (dobra o dano e mostra o aviso).
-        const cCrit = Math.random() * 100 < (s.critChance || 5);
+        // GOLPE CRÍTICO da criatura (tira 2 corações e exibe o aviso com som/pop).
+        // Se a criatura estiver em fúria (buffed), a chance de crítico dobra.
+        const critChance = buffed ? Math.min(50, (s.critChance || 5) * 2) : (s.critChance || 5);
+        const cCrit = Math.random() * 100 < critChance;
         if (cCrit) {
           triggerCritFx('in', `💥 CRÍTICO! ${who} te acertou em cheio!`);
-          spawnPop(new THREE.Vector3(wx(playerPos.x), 1.5, wz(playerPos.z)), `CRÍTICO -${baseDmg + 1} ❤️`, true);
-          hurtPlayer(baseDmg + 1, `💥 CRÍTICO! ${who} te acertou em cheio! -${baseDmg + 1} ❤️`);
+          spawnPop(new THREE.Vector3(wx(playerPos.x), 1.5, wz(playerPos.z)), `CRÍTICO -2 ❤️`, true);
+          hurtPlayer(2, `💥 CRÍTICO! ${who} te acertou em cheio! -2 ❤️`);
           return;
         }
         if (eff && Math.random() < 0.4) {
-          if (eff === 'bleed' || eff === 'poison') playerBleedUntil = performance.now() + 4000;
+          if (eff === 'bleed' || eff === 'poison') {
+            playerBleedUntil = performance.now() + 4000;
+            playerBleedTick = 1.0;
+          }
           hurtPlayer(baseDmg, `☠️ ${who} te atacou com ${eff}! -${baseDmg} ❤️`);
-        } else if (!eff && Math.random() < 0.3) {
-          playerBleedUntil = performance.now() + 4000;
-          hurtPlayer(baseDmg, `🩸 ${who} te feriu! -${baseDmg} ❤️ e você está SANGRANDO!`);
         } else {
           hurtPlayer(baseDmg, `👾 ${who} te atacou! -${baseDmg} ❤️`);
         }
@@ -1791,32 +1806,50 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
     const applyMonsterTint = (s: Slime, type: string | null) => {
       s.tintedType = type || undefined;
       const color = type ? new THREE.Color(STATUS_COLORS[type] || '#ffffff') : null;
+      const applyToMat = (mat: any) => {
+        if (!mat) return;
+        // CRÍTICO: Three.js falha fatalmente com "TypeError: Cannot read properties of undefined (reading 'value')"
+        // em refreshUniformsCommon se mat.emissive for injetado em MeshBasicMaterial (unlit GLB, ex: aranha).
+        // Apenas materiais com suporte real a emissive (Standard, Physical, Phong, Lambert, Toon) podem ter mat.emissive!
+        const canEmissive = !mat.isMeshBasicMaterial && 'emissive' in mat && (
+          mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial || mat.isMeshPhongMaterial || mat.isMeshLambertMaterial || mat.isMeshToonMaterial
+        );
+
+        if (color) {
+          if (canEmissive) {
+            if (!mat.userData._origEmissive) mat.userData._origEmissive = mat.emissive.clone();
+            mat.emissive.copy(color);
+            mat.emissiveIntensity = 0.45;
+          } else if (mat.color) {
+            // Em MeshBasicMaterial (unlit), aplica o tint misturando diretamente na cor difusa
+            if (!mat.userData._origColor) mat.userData._origColor = mat.color.clone();
+            mat.color.copy(mat.userData._origColor).lerp(color, 0.45);
+          }
+        } else {
+          if (canEmissive && mat.userData._origEmissive) {
+            mat.emissive.copy(mat.userData._origEmissive);
+            mat.emissiveIntensity = 0;
+          } else if (mat.userData._origColor && mat.color) {
+            mat.color.copy(mat.userData._origColor);
+          }
+        }
+        // Se porventura 'emissive' foi acidentalmente criado em MeshBasicMaterial, remove-o imediatamente!
+        if (mat.isMeshBasicMaterial && 'emissive' in mat) {
+          delete mat.emissive;
+          delete mat.emissiveIntensity;
+        }
+        mat.needsUpdate = true;
+      };
+
       if (s.visual) {
         s.visual.traverse((ch: any) => {
           if (!ch.isMesh || !ch.material) return;
           const mats = Array.isArray(ch.material) ? ch.material : [ch.material];
-          mats.forEach((mat: any) => {
-            if (color) {
-              if (!mat.userData._origEmissive) mat.userData._origEmissive = (mat.emissive || new THREE.Color(0x000000)).clone();
-              mat.emissive = color.clone();
-              mat.emissiveIntensity = 0.45;
-            } else if (mat.userData._origEmissive) {
-              mat.emissive = mat.userData._origEmissive.clone();
-              mat.emissiveIntensity = 0;
-            }
-            mat.needsUpdate = true;
-          });
+          mats.forEach(applyToMat);
         });
-      } else {
-        const mat = s.mesh.material as any;
-        if (color) {
-          if (!mat.userData._origEmissive) mat.userData._origEmissive = (mat.emissive || new THREE.Color(0x000000)).clone();
-          mat.emissive = color.clone();
-          mat.emissiveIntensity = 0.5;
-        } else if (mat.userData._origEmissive) {
-          mat.emissive = mat.userData._origEmissive.clone();
-          mat.emissiveIntensity = 0;
-        }
+      } else if (s.mesh?.material) {
+        const mats = Array.isArray(s.mesh.material) ? s.mesh.material : [s.mesh.material];
+        mats.forEach(applyToMat);
       }
     };
     // Aplica um STATUS negativo (com duração) num monstro do cenário.
@@ -3036,7 +3069,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
       spawnLootPickup(s.x, s.z, 'key', { id: 'boss_key', name: 'Chave do Boss', imageUrl: '' }, 0xfbbf24);
       callbacks.current.setMsg('🔑 A Chave do BOSS caiu! Pegue e abra a porta do chefe!');
     };
-    let playerBleedUntil = 0; let playerBleedTick = 0;
+    let playerBleedUntil = 0; let playerBleedTick = 1.0;
     let playerHurtUntil = 0;
     let playerHeartsRun = statsRef.current.startHearts;
     // Estresse do personagem (0-1): sobe ao sofrer dano e cai com o tempo parado.
@@ -3138,10 +3171,22 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     };
     const RED = new THREE.Color('#ff2b2b');
     const flashMonster = (s: any) => {
-      const mat: any = s.mesh.material; if (!mat || !mat.color) return;
-      if (!mat.userData._orig) mat.userData._orig = mat.color.clone();
-      mat.color.copy(mat.userData._orig).lerp(RED, 0.85);
-      setTimeout(() => { try { mat.color.copy(mat.userData._orig); } catch { /* noop */ } }, 220);
+      const targetObj = s?.visual || s?.mesh;
+      if (!targetObj) return;
+      targetObj.traverse((c: any) => {
+        if (!c.isMesh || !c.material) return;
+        const mats = Array.isArray(c.material) ? c.material : [c.material];
+        mats.forEach((mat: any) => {
+          if (!mat || !mat.color) return;
+          if (!mat.userData._origFlash) mat.userData._origFlash = mat.color.clone();
+          mat.color.copy(mat.userData._origFlash).lerp(RED, 0.7);
+          setTimeout(() => {
+            try {
+              if (mat.userData._origFlash) mat.color.copy(mat.userData._origFlash);
+            } catch { /* noop */ }
+          }, 220);
+        });
+      });
     };
     const flashPlayer = () => {
       try {
@@ -3168,10 +3213,15 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         lastPlayerAttacker = null;
       }
     };
-const hurtPlayer = (hearts: number, message: string) => {
+    let playerInvulnerableUntil = 0;
+    const hurtPlayer = (hearts: number, message: string, force = false) => {
+      const now = performance.now();
+      // I-Frames (500ms): impede dano simultâneo/duplo no mesmo instante por múltiplos monstros ou projéteis
+      if (!force && now < playerInvulnerableUntil) return;
+      playerInvulnerableUntil = now + 500;
       playerHeartsRun = Math.max(0, playerHeartsRun - hearts);
       callbacks.current.setPlayerHearts(playerHeartsRun);
-      playerHurtUntil = performance.now() + 650;
+      playerHurtUntil = now + 650;
       flashPlayer(); playPlayerHurtSound();
       stressRun = Math.min(1, stressRun + 0.4);
       maybeSpeak('hurt');
@@ -3883,7 +3933,7 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
       if (oRounded !== lastOxygenSent) { lastOxygenSent = oRounded; setOxygen(oRounded); }
       if (oxygenVal <= 0) {
         oxygenHurtT -= dt;
-        if (oxygenHurtT <= 0) { oxygenHurtT = 1.6; hurtPlayer(1, '🫁 Ficou sem oxigênio debaixo da água! -1 ❤️'); }
+        if (oxygenHurtT <= 0) { oxygenHurtT = 1.6; hurtPlayer(1, '🫁 Ficou sem oxigênio debaixo da água! -1 ❤️', true); }
       }
       playerRoot.position.set(wx(playerPos.x), waterSinkY, wz(playerPos.z));
       // Impede ACÚMULO de armas na mão (3ª pessoa): varre a CENA e esconde todo item de mão,
@@ -4273,10 +4323,10 @@ if (!frozenNow && tgt && tgt.dist >= 0.6 && tgt.dist <= 2.6 && s.attackCd <= 0 &
             const sp = atks.special;
             if (sp && sp.enabled !== false && lvl >= (Number(sp.minLevel) || 1) && dist <= 3.2 && nowP >= (s.specialCd || 0)) {
               s.specialCd = nowP + 6000;
-              s.lunge = 0.42; s.lungeHit = false;
+              s.lunge = 0.42; s.lungeHit = true; // Marca como golpeado para não disparar golpe físico duplicado no mesmo bote
               spawnPop(new THREE.Vector3(wx(playerPos.x), 1.7, wz(playerPos.z)), '💥 ESPECIAL!', true);
               const ef = String(sp.effect || 'none');
-              if (ef === 'bleed' || ef === 'poison') playerBleedUntil = nowP + 4000;
+              if (ef === 'bleed' || ef === 'poison') { playerBleedUntil = nowP + 4000; playerBleedTick = 1.0; }
               hurtPlayer(1, `💥 ${s.name || 'O monstro'} usou um GOLPE ESPECIAL! -1 ❤️`);
               playFx(s.attackSound || battleSoundsRef.current.punch, 0.9);
             }
@@ -4495,7 +4545,10 @@ revealedKeys.add(k); explored.add(k);
         if (pr.life <= 0) { try { scene.remove(pr.mesh); } catch { /* noop */ } projectiles.splice(i, 1); continue; }
         pr.mesh.position.x += pr.vx * dt; pr.mesh.position.z += pr.vz * dt;
         if (Math.hypot(pr.mesh.position.x - wx(playerPos.x), pr.mesh.position.z - wz(playerPos.z)) < 0.6) {
-          if (pr.effect && pr.effect !== 'none' && (pr.effect === 'bleed' || pr.effect === 'poison')) playerBleedUntil = performance.now() + 4000;
+          if (pr.effect && pr.effect !== 'none' && (pr.effect === 'bleed' || pr.effect === 'poison')) {
+            playerBleedUntil = performance.now() + 4000;
+            playerBleedTick = 1.0;
+          }
           hurtPlayer(pr.dmg || 1, `🏹 Um projétil te acertou! -${pr.dmg || 1} ❤️`);
           try { scene.remove(pr.mesh); } catch { /* noop */ }
           projectiles.splice(i, 1);

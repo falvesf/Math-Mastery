@@ -162,7 +162,7 @@ export async function fetchPlayerBattleQuotes(tenantId?: string | null): Promise
         .select('data')
         .eq('collection_name', COLLECTION)
         .eq('doc_id', DOC_ID)
-        .or('is_global.eq.true,tenant_id.is.null')
+        .is('tenant_id', null)
         .maybeSingle();
       if (globalData?.data) {
         rawData = globalData.data;
@@ -226,7 +226,7 @@ export async function savePlayerBattleQuotes(
     if (tenantId) {
       del = del.eq('tenant_id', tenantId);
     } else {
-      del = del.or('is_global.eq.true,tenant_id.is.null');
+      del = del.is('tenant_id', null);
     }
     await del;
 
@@ -235,7 +235,6 @@ export async function savePlayerBattleQuotes(
       doc_id: DOC_ID,
       data: quotes,
       tenant_id: tenantId || null,
-      is_global: !tenantId,
     });
 
     if (error) {
