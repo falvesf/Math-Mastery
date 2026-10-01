@@ -75,6 +75,7 @@ export interface QuestDef {
     hp79_50?: string;
     hp49_25?: string;
     hp24_0?: string;
+    win?: string;
   };
   monsterDefeatQuotes?: string;
   chestConfig?: {
@@ -102,6 +103,7 @@ export interface QuestDef {
   battleBiome?: 'plains' | 'nether' | 'desert' | 'snow' | 'end';
   /** Mapa explorável da missão ({ mode, scenarioId, monsters, bossId }). */
   mapConfig?: any;
+  map_config?: any;
   battleBgPosX?: number;
   battleBgPosY?: number;
   battleBgScale?: number;
@@ -1737,6 +1739,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       battleBgUrl: questBattleBgUrl,
       arena3D: questArena3D,
       battleBiome: questBattleBiome,
+      mapConfig: questMapConfig,
       map_config: questMapConfig,
       battleBgPosX: questBattleBgPosX,
       battleBgPosY: questBattleBgPosY,

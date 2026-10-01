@@ -10,6 +10,8 @@ interface DamageEffectOverlayProps {
   justHit?: boolean;
   /** Congelado (efeito de gelo após N acertos) */
   frozen?: boolean;
+  /** Piscar dreno de vida */
+  drainBlink?: boolean;
 }
 
 /**
@@ -17,7 +19,7 @@ interface DamageEffectOverlayProps {
  * Renderiza apenas as camadas do efeito ativo; o efeito 'none' não mostra nada.
  */
 // @ts-ignore
-export default function DamageEffectOverlay({ effect, level, justHit = false, frozen = false }: DamageEffectOverlayProps) {
+export default function DamageEffectOverlay({ effect, level, justHit = false, frozen = false, drainBlink = false }: DamageEffectOverlayProps) {
   const lvl = Math.max(0, Math.min(5, level));
 
   // Efeitos só aparecem APÓS o primeiro dano sofrido pelo oponente

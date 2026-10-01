@@ -1043,7 +1043,7 @@ function MapTab(p: QuestConfigModalProps) {
 
   useEffect(() => {
     let q = supabase.from('scenarios').select('*').order('created_at', { ascending: true });
-    q.then(({ data }) => setScenarios(((data as any[]) || []).map(r => ({ id: r.id, name: r.name || 'Sem nome', config: r.config || {}, theme: r.theme || 'plains' })))).catch(() => {});
+    Promise.resolve(q).then(({ data }) => setScenarios(((data as any[]) || []).map(r => ({ id: r.id, name: r.name || 'Sem nome', config: r.config || {}, theme: r.theme || 'plains' })))).catch(() => {});
   }, []);
 
   const mc = p.questMapConfig || { mode: 'none' as const, scenarioId: '', monsters: [], bossId: '' };

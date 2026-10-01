@@ -2828,6 +2828,8 @@ if (tr.turnsLeft <= 1) {
 
     const minV = Math.max(1, cfg.minValue ?? 1);
     const maxV = Math.max(minV, cfg.maxValue ?? minV);
+    const arenaW = arenaRef.current?.offsetWidth || arenaWidth || 900;
+    const arenaH = arenaRef.current?.offsetHeight || 380;
 
     // Moedas caem no chão. Se a Área de Moedas estiver configurada no Arena Debug,
     // respeita o retângulo (em % da arena); senão, cai aos pés do monstro.

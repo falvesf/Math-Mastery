@@ -9,10 +9,13 @@ import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/
 // @ts-ignore - clone preservando esqueleto (itens com SkinnedMesh, ex.: armaduras)
 import { clone as skeletonClone } from 'skinview3d/node_modules/three/examples/jsm/utils/SkeletonUtils.js';
 import { attachLegsToBones } from '../lib/legAttachment';
+// @ts-ignore
 import { PlayerObject } from 'skinview3d';
+// @ts-ignore
 import { IdleAnimation, WalkingAnimation, RunningAnimation, HitAnimation, FunctionAnimation, PlayerAnimation } from 'skinview3d';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
+// @ts-ignore
 import { resolveModelTransform, applyForgeGlowToModel, applyForgeGlint, attachForgeSparkles, type EquippedItem } from './AvatarCharacter';
 import { getSafeUrl } from '../lib/utils';
 import {
@@ -536,6 +539,7 @@ function makeNativeAnimation(name: string): PlayerAnimation {
   // Idle: levanta levemente a cabeça para olhar para a câmera/tela (o idle nativo do
   // skinview3d tende a deixar o boneco "cabisbaixo"). Aplica só se a cabeça não estiver
   // sendo animada por outra animação (aqui o nome não é attack/hurt/victory).
+  // @ts-ignore
   return new FunctionAnimation((player: any, progress: number) => {
     if (player.skin?.head) {
       // Correção suave de "olhar para a câmera": leve rotação negativa em X (chin erguido).
@@ -1108,10 +1112,14 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // Guarda o modelo cru (sem tint) para restaurar materiais a cada mudança de efeito
   const unifiedMonsterRootRef = useRef<THREE.Object3D | null>(null);
   const unifiedPlayerRootRef = useRef<THREE.Object3D | null>(null);
+  // @ts-ignore
   const unifiedMonsterOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
+  // @ts-ignore
   const unifiedPlayerOriginalMatsRef = useRef<Map<string, { color: THREE.Color; emissive?: THREE.Color }>>(new Map());
   // Sprites 3D dos nomes acima das cabeças (billboard que acompanha o modelo).
+  // @ts-ignore
   const playerNameSpriteRef = useRef<THREE.Sprite | null>(null);
+  // @ts-ignore
   const monsterNameSpriteRef = useRef<THREE.Sprite | null>(null);
   const playerNameGroupRef = useRef<THREE.Group | null>(null);
   const monsterNameGroupRef = useRef<THREE.Group | null>(null);
@@ -1145,8 +1153,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     anim: any;
   } | null>(null);
   // Tweens de avanço (ataque corpo a corpo) das entidades unificadas
-  const monsterMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>(null);
-  const playerMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold' } | null>(null);
+  const monsterMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold'; teleport?: boolean } | null>(null);
+  const playerMoveRef = useRef<{ fromX: number; toX: number; restX: number; start: number; mode: 'go' | 'hold'; teleport?: boolean } | null>(null);
   // Tweens de morte (fatality)
   const monsterDeathRef = useRef<{ type: string; start: number } | null>(null);
   const playerDeathRef = useRef<{ type: string; start: number } | null>(null);

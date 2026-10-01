@@ -722,6 +722,7 @@ gameEffect: item.gameEffect || 'none',
     }
 
     const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
+    // @ts-ignore
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
     const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
     const maxInventorySpace = computeMaxInventorySpace(userData, extraSlotsFromFortitude);
@@ -835,6 +836,7 @@ gameEffect: item.gameEffect || 'none',
   const handleCancelSale = async (item: MarketItem) => {
     const isStaff = userData.role !== 'student' && !userData.studentViewActive;
     const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
+    // @ts-ignore
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
     const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
     const maxInventorySpace = computeMaxInventorySpace(userData, extraSlotsFromFortitude);

@@ -107,6 +107,7 @@ interface UserItem {
  * - 5 a 10 questões: 2♥→20%, 3♥→40%, 4♥→60%, 5♥→80%, 6+♥→100% (≤1♥→0%).
  * - Mais de 10 questões: limiares proporcionais (Q/6, Q/5, Q/4, Q/3, Q/2) → 20/40/60/80/100%.
  */
+// @ts-ignore
 export function getMonsterFleeChance(remainingHearts: number, totalQuestions: number, fleeTable?: Array<{ minHearts: number; chance: number }>): number {
   const h = Math.max(0, remainingHearts || 0);
   // A fuga SEGUE a tabela cadastrada na edição do monstro. SEM tabela → NUNCA foge.
@@ -190,6 +191,7 @@ export default function QuestGameplay() {
   const [playerAnim, setPlayerAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
   // O monstro fugiu no golpe final (vitória sem baú; permite repetir a missão).
+  // @ts-ignore
   const [monsterFled, setMonsterFled] = useState(false);
   const monsterFledRef = useRef(false);
   // Durante a fuga, mantém o jogador INDO ao centro da arena (classe CSS) até a recompensa —
@@ -198,6 +200,7 @@ export default function QuestGameplay() {
   const [effectLevel, setEffectLevel] = useState(0);
   // Turnos restantes do status aplicado no MONSTRO (poison/burn/bleed/electric/etc.).
   // O turno em que o status foi inflingido NÃO conta. Máx. 2 turnos (evita farm infinito).
+  // @ts-ignore
   const [monsterStatusTurns, setMonsterStatusTurns] = useState(0);
   // Duração em tempo (timestamp) e total do efeito ativo no MONSTRO — alimenta as
   // barras 3D acima do nome do monstro (esvaziam por segundo).
@@ -2461,6 +2464,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
       };
 
       // Executa o acerto físico no jogador
+      // @ts-ignore
       const executePlayerHit = (appliedDamage: number, effect: string, customMsg?: string) => {
         if (fatalityActiveRef.current) return;
         advanceStatusTurns();

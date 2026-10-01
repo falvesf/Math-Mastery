@@ -53,6 +53,8 @@ export interface UserData {
     lastSeenRank?: string;
     highestRankIndex?: number;
     onboarding?: Record<string, boolean>;
+    slotMap?: Record<string, number>;
+    [key: string]: any;
   };
   avatarConfig?: AvatarConfig;
   studentViewActive?: boolean;

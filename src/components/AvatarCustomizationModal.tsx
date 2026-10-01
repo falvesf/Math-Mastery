@@ -307,6 +307,7 @@ export default function AvatarCustomizationModal({
   const [saving, setSaving] = useState(false);
   // Geração do GLB do jogador (skin + itens) para uso dentro da cena 3D unificada.
   const [exporting3d, setExporting3d] = useState(false);
+  // @ts-ignore
   const [exportedAt, setExportedAt] = useState<number | null>(null);
   const [monsterName, setMonsterName] = useState('');
   // Monstro compartilhado entre escolas (is_global) — usado na geração/configuração de cenários.

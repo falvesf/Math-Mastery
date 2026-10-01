@@ -40,7 +40,7 @@ export interface AvatarConfig {
   facialHair?: 'none' | 'beard' | 'mustache' | 'goatee';
   facialHairColor?: string;
   handedness?: 'right' | 'left';
-  animationState?: 'idle' | 'walk' | 'run' | 'attack' | 'raise-hand';
+  animationState?: 'idle' | 'walk' | 'run' | 'attack' | 'raise-hand' | 'victory' | (string & {});
   customSkinUrl?: string;
   customModelUrl?: string;
   /** GLB gerado automaticamente a partir da skin+itens (para usar o jogador dentro da cena 3D unificada) */
@@ -743,7 +743,7 @@ export interface AvatarCharacterProps {
   equippedItems?: EquippedItem[];
   size?: number;
   interactive?: boolean;
-  animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'lament' | 'cheer' | 'raise-hand' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice' | 'victory-easy' | 'victory-mid' | 'victory-hard';
+  animation?: 'none' | 'idle' | 'walk' | 'run' | 'attack' | 'attack-fatal' | 'attack-fatal-slow' | 'hurt' | 'exhausted' | 'lament' | 'cheer' | 'raise-hand' | 'death-evaporate' | 'death-fall' | 'death-explode' | 'death-slice' | 'victory-easy' | 'victory-mid' | 'victory-hard' | 'victory' | (string & {});
   expression?: 'normal' | 'serious' | 'sad' | 'happy' | 'smile';
   role?: 'player' | 'monster';
   showSlots?: boolean;

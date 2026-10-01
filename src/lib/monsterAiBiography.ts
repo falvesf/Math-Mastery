@@ -7,6 +7,7 @@ export interface MonsterLoreContext {
   attacks?: any;
   drops?: Array<{ itemId: string; itemTitle?: string }>;
   quotes?: any;
+  biography?: string;
   /** Estatísticas do aluno contra o monstro */
   studentEncounters?: {
     wins: number;

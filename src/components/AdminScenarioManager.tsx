@@ -149,6 +149,7 @@ const labelStyle: CSSProperties = { display: 'block', marginBottom: 4, color: 'v
 const btn = (bg: string): CSSProperties => ({ padding: '0.45rem 0.8rem', borderRadius: 8, border: '1px solid var(--border-glass)', background: bg, color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 });
 const card: CSSProperties = { background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '0.9rem', marginBottom: '0.9rem' };
 // Cores das regiões de spawn desenhadas no mapa (por índice).
+// @ts-ignore
 const REGION_COLORS = ['#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#22c55e', '#ef4444'];
 // Temas com perigo (cacto/lava/frio/solo instável) — alinhado com o MapExplorerPoC.
 const HAZARD_THEMES = new Set(['desert', 'nether', 'tundra', 'end']);
@@ -216,7 +217,7 @@ export default function AdminScenarioManager() {
   useEffect(() => {
     let q = supabase.from('store_items').select('*').eq('active', true);
     if (tenantId) q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
-    q.then(({ data }) => {
+    Promise.resolve(q).then(({ data }) => {
       const rows = ((data as any[]) || []).map(r => {
         const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {});
         return {
@@ -244,7 +245,7 @@ export default function AdminScenarioManager() {
     let active = true;
     let q = supabase.from('3d_models').select('id,name').eq('category', 'door');
     if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
-    q.then(({ data }) => { if (active && data) setDoorModels((data as any[]).map(m => ({ id: m.id, name: m.name || m.id }))); }).catch(() => {});
+    Promise.resolve(q).then(({ data }) => { if (active && data) setDoorModels((data as any[]).map(m => ({ id: m.id, name: m.name || m.id }))); }).catch(() => {});
     return () => { active = false; };
   }, [tenantId]);
   // Modelos de VEIO MINERAL (cenário, kind = 'mineral') para escolher quais podem nascer no mapa.
@@ -253,13 +254,13 @@ export default function AdminScenarioManager() {
     let active = true;
     let q = supabase.from('3d_models').select('id,name,kind').eq('category', 'scenery');
     if (tenantId) q = q.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
-    q.then(({ data }) => { if (active && data) setMineralModels((data as any[]).filter(m => String(m.kind) === 'mineral').map(m => ({ id: m.id, name: m.name || m.id }))); }).catch(() => {});
+    Promise.resolve(q).then(({ data }) => { if (active && data) setMineralModels((data as any[]).filter(m => String(m.kind) === 'mineral').map(m => ({ id: m.id, name: m.name || m.id }))); }).catch(() => {});
     return () => { active = false; };
   }, [tenantId]);
   useEffect(() => {
     // Monstros são COMPARTILHADOS entre as escolas: carrega TODOS (qualquer tenant) + globais.
     const q = supabase.from('preset_skins').select('*').eq('type', 'monster');
-    q.then(({ data }) => {
+    Promise.resolve(q).then(({ data }) => {
       const rows = ((data as any[]) || []).map(r => {
         const d = typeof r.config === 'string' ? JSON.parse(r.config) : (r.config || {});
         return { id: r.id, name: r.name || d.name || r.id, config: d };
@@ -341,6 +342,7 @@ export default function AdminScenarioManager() {
     if (c.config.layout && c.config.layout.length === rows && c.config.layout.every(r => r.length === cols)) return c.config.layout;
     return blankLayout(cols, rows);
   };
+  // @ts-ignore
   const setLayout = (layout: string[]) => setCurrent(c => c ? { ...c, config: { ...c.config, layout } } : c);
   const applyDims = () => setCurrent(c => { if (!c) return c; return { ...c, config: { ...c.config, layout: blankLayout(c.config.cols, c.config.rows), wallTypeCells: {}, doorTypeCells: {} } }; });
   // Geração por CRITÉRIOS (tipo fechado/aberto, nº de portas, monstros e baús).
@@ -359,7 +361,7 @@ export default function AdminScenarioManager() {
     const mapType: 'closed' | 'open' = c.config.mapType === 'open' ? 'open' : 'closed';
     const elab = Math.max(0, Math.min(1, Number(c.config.elaboration) ?? 0.5));
     const genDoorsRaw = Number(c.config.genDoors);
-    const wantDoors = (Number.isFinite(genDoorsRaw) && c.config.genDoors !== undefined && c.config.genDoors !== null && c.config.genDoors !== '') ? Math.round(genDoorsRaw) : 0;
+    const wantDoors = (Number.isFinite(genDoorsRaw) && c.config.genDoors !== undefined && c.config.genDoors !== null && (c.config.genDoors as unknown) !== '') ? Math.round(genDoorsRaw) : 0;
     // -1 = nenhuma porta (labirinto totalmente conectado); 0 = auto; >0 = quantidade.
     const doors = wantDoors === -1 ? 0 : (wantDoors > 0 ? wantDoors : (mapType === 'closed' ? (2 + Math.round(elab * 2)) : 0));
     const monList: string[] = Array.isArray(c.config.monsterConfig?.monsters) ? (c.config.monsterConfig!.monsters as string[]) : [];
