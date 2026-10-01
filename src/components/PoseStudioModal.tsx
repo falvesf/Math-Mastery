@@ -1237,7 +1237,7 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
 
           {/* Salvar / carregar */}
           <div style={{ border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '0.7rem' }}>
-            <div style={{ fontSize: '0.82rem', color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.35rem' }}>💾 Salvar Ação</div>
+            <div style={{ fontSize: '0.82rem', color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.35rem' }}>💾 Salvar Ação <span style={{ fontWeight: 400, fontSize: '0.68rem', color: 'rgba(255,255,255,0.55)' }}>— salva a ANIMAÇÃO completa (todos os frames)</span></div>
             <div style={{ display: 'flex', gap: '0.4rem' }}>
               <input
                 type="text"
@@ -1285,7 +1285,9 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
               </button>
             </div>
             <div style={{ marginTop: '0.3rem', fontSize: '0.62rem', color: 'rgba(255,255,255,0.45)' }}>
-              Salva a pose ATUAL (1 frame) por escola. Depois carregue para editar ou equipe numa ação base do personagem.
+              Pose ESTÁTICA (1 frame) — salva apenas a posição atual para reutilizar como base.
+              Para salvar a ANIMAÇÃO COMPLETA (todos os frames), use o "💾 Salvar Ação" acima
+              ou vincule ao item em "🎬 Associar cena ao item".
             </div>
             {savedPoses.length > 0 && (
               <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
