@@ -1141,16 +1141,29 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Carregando Mochila...</div>;
 
-  let bagItems = items.filter(i => !i.equipped);
-  bagItems = bagItems.filter(i => !isHiddenByRanchLock(i, ranchUnlocked));
-  // Total REAL da mochila (todas as categorias, antes dos filtros de busca/raridade/guia).
-  // Define quantos slots existem e quais estão BLOQUEADOS (excedente). Assim o excedente
-  // continua bloqueado em TODAS as guias, em vez de aparecerem slots livres sobrando.
-  const totalBagCount = bagItems.length;
-  
+  const fullBag = items.filter(i => !i.equipped).filter(i => !isHiddenByRanchLock(i, ranchUnlocked));
+  const totalBagCount = fullBag.length;
+
+  // Posição REAL de cada item na mochila (como aparece na guia "Todos") — define se o
+  // item está num slot BLOQUEADO (excedente). Essa condição vale para TODAS as guias:
+  // o mesmo item bloqueado em "Todos" continua bloqueado nos filtros.
+  const fullTotal = Math.max(maxInventorySpace, totalBagCount);
+  const fullSlots: (UserItem | null)[] = Array(fullTotal).fill(null);
+  const fullUnplaced: UserItem[] = [];
+  fullBag.forEach(item => {
+    const idx = slotMap[item.id];
+    if (idx !== undefined && idx >= 0 && idx < fullTotal && fullSlots[idx] === null) fullSlots[idx] = item;
+    else fullUnplaced.push(item);
+  });
+  fullUnplaced.forEach(item => { const ei = fullSlots.indexOf(null); if (ei !== -1) fullSlots[ei] = item; else fullSlots.push(item); });
+  const realSlotIndex = new Map<string, number>();
+  fullSlots.forEach((it, i) => { if (it) realSlotIndex.set(it.id, i); });
+
+  let bagItems = fullBag;
+
   if (searchQuery) bagItems = bagItems.filter(i => i.itemTitle.toLowerCase().includes(searchQuery.toLowerCase()));
   if (filterRarity !== 'all') bagItems = bagItems.filter(i => (i.rarity || 'common') === filterRarity);
-  
+
   if (activeCategory !== 'Todos') {
     bagItems = bagItems.filter(i => {
       if (activeCategory === 'Consumíveis') return i.itemType === 'consumable';
@@ -1170,30 +1183,37 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
       return true;
     });
   }
-  
+
   bagItems.sort((a, b) => (a.itemTitle || '').localeCompare(b.itemTitle || ''));
 
-  const totalSlotsToRender = Math.max(maxInventorySpace, totalBagCount);
+  // Guias filtradas (Ataque, Defesa, busca, raridade...): mostra APENAS os itens
+  // filtrados, compactos — sem slots vazios "sobrando". A guia "Todos" (sem filtros)
+  // mantém a grade real com as posições salvas.
+  const isCompactView = activeCategory !== 'Todos' || !!searchQuery || filterRarity !== 'all';
+  const totalSlotsToRender = isCompactView ? bagItems.length : Math.max(maxInventorySpace, totalBagCount);
   const slots: (UserItem | null)[] = Array(totalSlotsToRender).fill(null);
-  const unplacedItems: UserItem[] = [];
 
-  bagItems.forEach(item => {
-    const idx = slotMap[item.id];
-    if (idx !== undefined && idx >= 0 && idx < totalSlotsToRender && slots[idx] === null) {
-      slots[idx] = item;
-    } else {
-      unplacedItems.push(item);
-    }
-  });
-
-  unplacedItems.forEach(item => {
-    const emptyIdx = slots.indexOf(null);
-    if (emptyIdx !== -1) {
-      slots[emptyIdx] = item;
-    } else {
-      slots.push(item);
-    }
-  });
+  if (isCompactView) {
+    bagItems.forEach((item, i) => { slots[i] = item; });
+  } else {
+    const unplacedItems: UserItem[] = [];
+    bagItems.forEach(item => {
+      const idx = slotMap[item.id];
+      if (idx !== undefined && idx >= 0 && idx < totalSlotsToRender && slots[idx] === null) {
+        slots[idx] = item;
+      } else {
+        unplacedItems.push(item);
+      }
+    });
+    unplacedItems.forEach(item => {
+      const emptyIdx = slots.indexOf(null);
+      if (emptyIdx !== -1) {
+        slots[emptyIdx] = item;
+      } else {
+        slots.push(item);
+      }
+    });
+  }
 
   const handleGridSwap = async (draggedItem: UserItem, targetIndex: number, targetItem: UserItem | null) => {
     if (draggedItem.id === targetItem?.id) return;
@@ -1395,7 +1415,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         alignContent: 'start'
       }}>
           {slots.map((item, index) => {
-            const isOverflow = index >= maxInventorySpace;
+            const isOverflow = (item ? (realSlotIndex.get(item.id) ?? index) : index) >= maxInventorySpace;
             
             if (item) {
               const isDragged = draggedItem?.id === item.id;
