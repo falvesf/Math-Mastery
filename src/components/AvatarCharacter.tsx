@@ -14,7 +14,6 @@ import { isEffectAddType, EFFECT_ADD_LABELS } from '../lib/damageEffects';
 import { generateVoxelItemFromImage, updateVoxelCurve, setVoxelThickness } from '../lib/VoxelItemGenerator';
 import { getGlobalModelTransforms } from '../lib/itemTransforms';
 import { getEquippedSetAura, hexToRgba } from '../lib/equipAura';
-import { applyEnvironment, tuneMaterialsForEnv } from '../lib/studioEnv';
 import { Eye, EyeOff, PackageX } from 'lucide-react';
 
 export interface AvatarConfig {
@@ -135,6 +134,8 @@ export interface EquippedItem {
   adds?: ItemAdd[];
   extractMeshName?: string;
   gameModelUrl?: string;
+  /** Não aplica a película fosca da forja (metal reflete como no modelo original). */
+  keepMetal?: boolean;
   modelTextureUrl?: string;
   minecraftHeadValue?: string;
   modelTransforms?: ModelTransformsConfig;
@@ -378,8 +379,10 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number, opts
       if (isPbr) {
         if (preserveMetal) {
           // Item marcado "manter brilho metálico": NÃO aplica a película fosca — o metal
-          // (ouro do escudo etc.) reflete como no modelo original. Só adiciona o brilho
-          // encantado no emissivo (o glint/sparkles continuam no chamador).
+          // (ouro do escudo etc.) mantém metalness/roughness/cor originais e reflete.
+          // Aplica o envMap do estúdio SÓ neste item (não muda os bonecos em bloco).
+          if (env) mat.envMap = env;
+          if ('envMapIntensity' in mat) mat.envMapIntensity = Math.max(1, Number(mat.envMapIntensity) || 1);
           if ('emissive' in mat) {
             if (mat._forgeBaseEmissive === undefined) mat._forgeBaseEmissive = mat.emissive ? mat.emissive.clone() : new THREE.Color(0x000000);
             mat.emissive.copy(mat._forgeBaseEmissive).lerp(gl, intensity * 0.25);
@@ -917,9 +920,6 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           viewer.renderer.setClearColor(0x000000, 0);
           viewer.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Garante nitidez máxima em telas Retina/High-DPI
       }
-      // Environment de estúdio: itens metálicos (escudos/armas douradas) refletem a luz
-      // em vez de ficarem escuros/marrons. Mantém o tom do avatar (toneMapping:false).
-      try { applyEnvironment(THREE, (viewer as any).renderer, (viewer as any).scene, { intensity: 1.2, toneMapping: false }); } catch { /* noop */ }
       
       viewer.camera.position.set(0, 10, 60);
 
@@ -1235,8 +1235,6 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             // Brilho de forja: PINTA o material do equipamento (emissive/cor no THREE),
 // proporcional ao nível (+0 opaco → +9 máximo). Nada de overlay/CSS.
             applyForgeGlowToModel(model, item.forgeLevel || 0, { preserveMetal: !!(item as any).keepMetal });
-            // Material PBR: usa o environment da cena p/ metais refletirem (dourado etc.).
-            tuneMaterialsForEnv(model, 1.2);
             // Diagnóstico (temporário): detalhes dos materiais/texturas do modelo do item.
             try {
               const info: any[] = [];
