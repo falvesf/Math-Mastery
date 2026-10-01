@@ -29,7 +29,11 @@ export async function getSellerSpace(studentId: string): Promise<{ max: number; 
     if (!user) return { max: 0, current: 0, available: 0 };
 
     const rankIndex = RANKS.findIndex(r => r.name === getRankForXp(user.xp || 0, user.class_id).name) || 0;
-    const extra = user.extra_inventory_space || 0;
+    // Bônus de mochila (effect inventory_space): só conta enquanto ativo.
+    const buff = (user.inventory_space_buff || 0);
+    const buffUntil = user.inventory_space_buff_until ? new Date(user.inventory_space_buff_until).getTime() : 0;
+    const activeBuff = (buff > 0 && buffUntil > Date.now()) ? buff : 0;
+    const extra = (user.extra_inventory_space || 0) + activeBuff;
 
     const { data: items } = await supabase.from('user_items').select('*').eq('student_id', studentId);
     let current = 0;

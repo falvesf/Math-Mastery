@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Swords } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { isRanchUnlocked, isHiddenByRanchLock, isRanchLicense } from '../lib/ranch';
+import { computeMaxInventorySpace } from '../lib/inventorySlots';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
@@ -389,7 +390,9 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
               itemDescription: item.description || '',
               itemType: item.type || 'other',
               itemImageUrl: item.imageUrl || '',
-              gameEffect: item.gameEffect || 'none',
+gameEffect: item.gameEffect || 'none',
+              spaceBonus: item.gameEffect === 'inventory_space' ? Math.max(1, Number((item as any).spaceBonus) || 5) : undefined,
+              inventorySpaceDuration: item.gameEffect === 'inventory_space' ? Number((item as any).inventorySpaceDuration) ?? 7 : undefined,
               usableInQuest: item.usableInQuest || false,
               battleSoundUrl: (item as any).battleSoundUrl || '',
               quantity: qty,
@@ -486,7 +489,7 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
 
       if (!isGift) {
         const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
-        const maxInventorySpace = 12 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
+        const maxInventorySpace = computeMaxInventorySpace(userData, extraSlotsFromFortitude);
         const availableSlots = Math.max(0, maxInventorySpace - myInventoryCount);
 
         let maxQuantityAllowed = 0;
@@ -674,7 +677,7 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
     const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
     const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
-    const maxInventorySpace = 12 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
+    const maxInventorySpace = computeMaxInventorySpace(userData, extraSlotsFromFortitude);
     if (!isStaff && myInventoryCount >= maxInventorySpace) {
       await showAlert("Sua mochila está cheia!");
       return;
@@ -787,7 +790,7 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
     const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
     const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
     const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
-    const maxInventorySpace = 12 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
+    const maxInventorySpace = computeMaxInventorySpace(userData, extraSlotsFromFortitude);
 
     if (!isStaff && myInventoryCount >= maxInventorySpace) {
       await showAlert("Sua mochila está cheia! Você não pode cancelar a venda enquanto não tiver espaço para receber o item de volta.");
@@ -839,7 +842,7 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
   
   const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
-  const maxInventorySpace = 12 + currentRankIndex + (userData.extraInventorySpace || 0) + extraSlotsFromFortitude;
+  const maxInventorySpace = computeMaxInventorySpace(userData, extraSlotsFromFortitude);
 
   const getProcessedItems = () => {
     let result = [...items];

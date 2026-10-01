@@ -58,7 +58,7 @@ void getRarityColor;
 export type GameEffectType = 'none' | 'remove_wrong' | 'add_time' | 'extra_life' | 'restore_hp' | 'heal_1_hp' | 'reduce_hp_cooldown' | 
   'add_attribute' | 'remove_attribute' | 'reroll_attributes' | 'gift_wrap' | 'unlock_skin' | 'unlock_gender' | 'rename_character' | 
   'bazar_sale_permit' | 'cure_bleed' | 'cure_poison' | 'cure_freeze' | 'cure_burn' | 'cure_electric' | 'blacksmith_scroll' |
-  'break_item' | 'fuse_item' | 'pet_feed' | 'ranch_item' | 'ranch_license';
+  'break_item' | 'fuse_item' | 'pet_feed' | 'ranch_item' | 'ranch_license' | 'inventory_space';
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mestre' | 'legendary';
 
 export interface StoreItem {
@@ -77,6 +77,10 @@ export interface StoreItem {
   minRankRequired: number | string; // Nome da patente (legado: índice numérico)
   active: boolean;
   gameModelUrl?: string; // URL para modelo 3D (ex: .glb)
+  /** Aumento de mochila (inventory_space): quantos slots extras. */
+  spaceBonus?: number;
+  /** Duração em dias (0 = permanente). */
+  inventorySpaceDuration?: number;
   /** Não aplica a película fosca da forja (metal reflete como no modelo original). */
   keepMetal?: boolean;
   modelTextureUrl?: string; // URL da skin (textura) aplicada ao modelo .glb
@@ -1221,6 +1225,9 @@ Responda APENAS com a frase curta em português brasileiro.`;
           isForgeable: true,
           // "Manter brilho metálico": não aplica a película fosca da forja (metal reflete).
           keepMetal: itemData.keepMetal || false,
+          // Aumento de mochila (inventory_space).
+          spaceBonus: itemData.gameEffect === 'inventory_space' ? Math.max(1, Number(itemData.spaceBonus) || 5) : undefined,
+          inventorySpaceDuration: itemData.gameEffect === 'inventory_space' ? Number(itemData.inventorySpaceDuration) ?? 7 : undefined,
           forgeConfig: itemData.forgeConfig || null,
           isTransmutable: itemData.isTransmutable || false,
           transmuteConfig: itemData.transmuteConfig || null,
@@ -1807,6 +1814,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
                       <option value="pet_feed">🍖 Ração / Comida de Pet (alimenta e enche a fome do pet)</option>
                       <option value="ranch_item">🏠 Equipamento de Rancho (cocho de comida / bebedouro / palha / bomba d'água)</option>
                       <option value="ranch_license">🔑 Licença do Rancho (desbloqueia o rancho na conta — libera criação de animais e itens de rancho)</option>
+                      <option value="inventory_space">🎒 Aumento de Mochila (+espaços por X dias ou permanente)</option>
                     </select>
                   </div>
                   {formData.gameEffect === 'blacksmith_scroll' && (
@@ -1955,6 +1963,32 @@ Responda APENAS com a frase curta em português brasileiro.`;
                         </div>
                       </div>
                       <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Ao usar o item no Rancho, ele instala/melhora o equipamento (nível maior = capacidade/duração maior).</span>
+                    </div>
+                  )}
+                  {formData.gameEffect === 'inventory_space' && (
+                    <div style={{ background: 'rgba(16,185,129,0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.3)' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#34d399', fontWeight: 'bold' }}>🎒 Aumento de Mochila</label>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <div style={{ width: 130 }}>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Espaços extras</label>
+                          <input type="number" min={1} max={99} value={(formData as any).spaceBonus ?? 5} onChange={e => setFormData({ ...formData, spaceBonus: Math.max(1, Math.min(99, Number(e.target.value) || 5)) } as any)} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }} />
+                        </div>
+                        <div style={{ flex: '1 1 220px' }}>
+                          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Duração</label>
+                          <select value={(formData as any).inventorySpaceDuration ?? 7} onChange={e => setFormData({ ...formData, inventorySpaceDuration: Number(e.target.value) } as any)} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}>
+                            <option value={3}>3 dias</option>
+                            <option value={5}>5 dias</option>
+                            <option value={7}>7 dias</option>
+                            <option value={10}>10 dias</option>
+                            <option value={12}>12 dias</option>
+                            <option value={15}>15 dias</option>
+                            <option value={30}>30 dias</option>
+                            <option value={60}>60 dias</option>
+                            <option value={0}>Permanente</option>
+                          </select>
+                        </div>
+                      </div>
+                      <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Ao usar: +espaços na mochila (soma se já houver bônus ativo; permanente soma direto no espaço total).</span>
                     </div>
                   )}
                   {formData.gameEffect === 'fuse_item' && (

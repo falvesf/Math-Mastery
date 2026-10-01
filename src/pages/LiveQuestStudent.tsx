@@ -22,6 +22,7 @@ import { getEquippedDamageEffect, getEquippedDamageEffectInfo, FREEZE_HITS_TO_FR
 import { useDialog } from '../contexts/DialogContext';
 // @ts-ignore
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
+import { filterAvailableRows } from '../lib/inventorySlots';
 import { getMaxAddsLimit } from '../lib/ranks';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
@@ -219,7 +220,9 @@ export default function LiveQuestStudent() {
           let equippedItems: any[] = [];
           let loadedPowerups: UserItem[] = [];
           try {
-            const { data: invSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
+            const { data: _invSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
+            // Itens BLOQUEADOS (mochila cheia) não entram na missão — como se não existissem.
+            const invSnap = filterAvailableRows(_invSnap || [], userData, userData.inventoryPreferences?.slotMap || {});
             
             const pLoaded: any[] = [];
             const missingTransformIds: string[] = [];

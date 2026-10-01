@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { X, Heart, Droplet, Smile, Dumbbell, Trophy, BookOpen, Utensils, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchAnimalModels } from '../lib/model3d';
+import { filterAvailableRows } from '../lib/inventorySlots';
 import {
   fetchPets, savePet, fetchRanch, upsertRanch, fetchRanchItems, computePet, feedPet,
   withHistory, relationshipName, RELATIONSHIP_LEVELS, equipPet, type Pet,
@@ -57,7 +58,9 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
       ]);
       setPets(p); setModels(m); setRanch(r); setRanchItems(ri);
       // Itens do jogador: RAÇÃO (pet_feed) e EQUIPAMENTOS de rancho (ranch_item)
-      const { data: inv } = await supabase.from('user_items').select('*').eq('student_id', uid);
+      // (itens BLOQUEADOS da mochila não aparecem — não podem ser usados).
+      let { data: inv } = await supabase.from('user_items').select('*').eq('student_id', uid);
+      inv = filterAvailableRows(inv || [], userData, userData?.inventoryPreferences?.slotMap || {});
       const storeIds = Array.from(new Set((inv || []).map((i: any) => i.item_id).filter(Boolean)));
       let store: any[] = [];
       if (storeIds.length) {

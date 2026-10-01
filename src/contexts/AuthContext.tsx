@@ -30,6 +30,10 @@ export interface UserData {
   lastHeartRegen?: number; // timestamp in milliseconds
   rank?: string;
   extraInventorySpace?: number; // espaços extras na mochila
+  /** Espaço temporário extra (effect inventory_space) — expira em inventorySpaceBuffUntil. */
+  inventorySpaceBuff?: number;
+  inventorySpaceBuffUntil?: number | null;
+  inventorySpaceBuffDays?: number;
   stunnedUntil?: number | null;
   happyBuffUntil?: number | null;
   happyBuffDuration?: number | null;
@@ -69,6 +73,9 @@ export const mapUserToClient = (dbUser: any): UserData => {
     hpRecoveryStartTimestamp: dbUser.hp_recovery_start_timestamp,
     lastHeartRegen: dbUser.last_heart_regen,
     extraInventorySpace: dbUser.extra_inventory_space,
+    inventorySpaceBuff: dbUser.inventory_space_buff,
+    inventorySpaceBuffUntil: dbUser.inventory_space_buff_until ? new Date(dbUser.inventory_space_buff_until).getTime() : null,
+    inventorySpaceBuffDays: dbUser.inventory_space_buff_days,
     stunnedUntil: dbUser.stunned_until,
     happyBuffUntil: dbUser.happy_buff_until,
     happyBuffDuration: dbUser.happy_buff_duration,

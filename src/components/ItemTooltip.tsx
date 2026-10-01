@@ -123,6 +123,7 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
     item.gameEffect === 'unlock_skin' ? 'Desbloqueia uma skin para usar no personagem.' :
     item.gameEffect === 'bazar_sale_permit' ? 'Licença para vender itens no bazar.' :
     item.gameEffect === 'ranch_license' ? 'Licença do Rancho: desbloqueia o rancho, a criação de animais e os itens de rancho na loja.' :
+    item.gameEffect === 'inventory_space' ? `Aumenta a mochila em +${Math.max(1, Number(item.spaceBonus) || 5)} espaço(s)${(Number(item.inventorySpaceDuration) ?? 7) > 0 ? ` por ${Number(item.inventorySpaceDuration) || 7} dias` : ' (permanente)'}.` :
     item.gameEffect === 'blacksmith_scroll' ? (
       `Pergaminho do Ferreiro: +${item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null ? item.scrollChanceBonus : 30}% de chance de sucesso na forja e protege o item contra destruição (se falhar, regride 1 nível até o mínimo +0).`
     ) :

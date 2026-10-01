@@ -17,6 +17,7 @@ import { RANKS, getRankForXp, getMaxAddsLimit } from '../lib/ranks';
 import { ATTRIBUTE_LABELS, rollExactAttributes, type ItemCategory, type AttributeType, type ItemAdd, calculateTotalStats, fetchGlobalGachaConfig, isStackableItemType, areItemsStackableMatch, getStackableItemSignature } from '../lib/gacha';
 import { BAZAR_LICENSE_EFFECT, processMyExpiredSales } from '../lib/bazar';
 import { isRanchUnlocked, isHiddenByRanchLock, RANCH_LICENSE_EFFECT } from '../lib/ranch';
+import { computeMaxInventorySpace, getActiveInventorySpaceBuff, getLockedItemIds, INVENTORY_SPACE_EFFECT } from '../lib/inventorySlots';
 import { invalidateEquippedItems } from '../lib/equippedItems';
 import { isEffectAddType, EFFECT_ADD_LABELS, applyEffectAdd, enhanceEffectAdd, toAddsArray, orderEffectFirst, type EffectAddType, type EnhanceEffectResult } from '../lib/damageEffects';
 import { forgeItemName } from '../lib/forge';
@@ -176,7 +177,10 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const currentRankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
   const totalEquippedStats = calculateTotalStats(items.filter(i => i.equipped), userData?.distributedStats);
   const extraSlotsFromFortitude = Math.floor(totalEquippedStats.fortitude / 1);
-  const maxInventorySpace = 12 + currentRankIndex + (userData?.extraInventorySpace || 0) + extraSlotsFromFortitude;
+  const maxInventorySpace = computeMaxInventorySpace(userData, extraSlotsFromFortitude);
+  // Itens BLOQUEADOS (mochila cheia): como se não existissem — não podem ser usados/equipados.
+  const lockedItemIdsRef = useRef<Set<string>>(new Set());
+  lockedItemIdsRef.current = getLockedItemIds(items.filter(i => !i.equipped), slotMap, maxInventorySpace);
   const currentSpaceOccupied = items.filter(i => !i.equipped).length;
 
   // Licenças de venda no bazar (usadas/consumidas ao colocar um item à venda)
@@ -213,6 +217,13 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const fetchInventory = async (silent = false) => {
     if (!userData.uid) return;
     if (!silent && items.length === 0) setLoading(true);
+
+    // Bônus de mochila EXPIRADO → limpa (senão o jogador fica sem os slots e o
+    // bônus fantasma continua no banco).
+    if ((userData.inventorySpaceBuff || 0) > 0 && userData.inventorySpaceBuffUntil && userData.inventorySpaceBuffUntil <= Date.now()) {
+      supabase.from('users').update({ inventory_space_buff: 0, inventory_space_buff_until: null, inventory_space_buff_days: 0 }).eq('id', userData.uid).then(() => {});
+      if (updateUserDataLocally) updateUserDataLocally({ inventorySpaceBuff: 0, inventorySpaceBuffUntil: null, inventorySpaceBuffDays: 0 });
+    }
 
     // Anúncios com buff vencido voltam automaticamente para a mochila
     await processMyExpiredSales(userData.uid);
@@ -425,6 +436,11 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   };
 
   const handleEquip = async (item: UserItem) => {
+    // Item BLOQUEADO (mochila cheia): não pode ser equipado.
+    if (lockedItemIdsRef.current.has(item.id)) {
+      showToast('Este item está bloqueado (mochila cheia). Libere espaço para equipá-lo.', 'error');
+      return;
+    }
     const newState = !item.equipped;
     const docToUpdate = item.docIds ? item.docIds[0] : item.id;
 
@@ -474,6 +490,42 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   };
 
   const handleUseConsumable = async (item: UserItem) => {
+    // Item BLOQUEADO (mochila cheia): como se não existisse — não pode ser usado.
+    if (lockedItemIdsRef.current.has(item.id)) {
+      showToast('Este item está bloqueado (mochila cheia). Libere espaço para usá-lo.', 'error');
+      return;
+    }
+    if (item.gameEffect === INVENTORY_SPACE_EFFECT) {
+      const bonus = Math.max(1, Number((item as any).spaceBonus) || 5);
+      const days = Number((item as any).inventorySpaceDuration) ?? 7;
+      const confirmed = await showConfirm(`Deseja usar "${item.itemTitle}" para ganhar +${bonus} espaço${bonus > 1 ? 's' : ''} de mochila${days > 0 ? ` por ${days} dia${days > 1 ? 's' : ''}` : ' (permanente)'}?`);
+      if (!confirmed) return;
+      const now = Date.now();
+      const update: any = {};
+      const local: any = {};
+      if (days <= 0) {
+        const cur = Number(userData.extraInventorySpace) || 0;
+        update.extra_inventory_space = cur + bonus;
+        local.extraInventorySpace = cur + bonus;
+      } else {
+        const curBuff = getActiveInventorySpaceBuff(userData);
+        const curUntil = (userData.inventorySpaceBuffUntil && userData.inventorySpaceBuffUntil > now) ? userData.inventorySpaceBuffUntil : now;
+        const newUntil = curUntil + days * 24 * 60 * 60 * 1000;
+        update.inventory_space_buff = curBuff + bonus;
+        update.inventory_space_buff_until = new Date(newUntil).toISOString();
+        update.inventory_space_buff_days = days;
+        local.inventorySpaceBuff = curBuff + bonus;
+        local.inventorySpaceBuffUntil = newUntil;
+        local.inventorySpaceBuffDays = days;
+      }
+      const { error } = await supabase.from('users').update(update).eq('id', userData.uid);
+      if (error) { await showAlert('Erro ao ativar o aumento de mochila: ' + error.message); return; }
+      if (updateUserDataLocally) updateUserDataLocally(local);
+      await consumeItemQuantity(item.itemId, 1, item.id);
+      fetchInventory();
+      await showAlert(`🎒 Mochila aumentada! +${bonus} espaço${bonus > 1 ? 's' : ''}${days > 0 ? ` por ${days} dia${days > 1 ? 's' : ''}` : ' (permanente)'}.`);
+      return;
+    }
     if (item.gameEffect === 'heal_1_hp') {
       const currentRankIndex = RANKS.findIndex(r => r.name === userData.lastSeenRank) || 0;
       const maxHearts = 3 + Math.floor(currentRankIndex / 2);

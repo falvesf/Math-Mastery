@@ -19,6 +19,7 @@ import { calculateTotalStats, isStackableItemType, getStackableItemSignature } f
 import { fetchActiveCoin } from '../lib/model3d';
 // @ts-ignore
 import { forgeStrengthFraction, forgeAttributeValue, forgeAttributeValueWithConfig, nextForgeCost, nextForgeCostWithConfig, forgeSuccessChance, forgeMaterialsForLevel, MAX_FORGE_LEVEL, forgeItemName } from '../lib/forge';
+import { filterAvailableRows } from '../lib/inventorySlots';
 import { getMinRankIndex, resolveMinRankName } from '../lib/ranks';
 import { useDialog } from '../contexts/DialogContext';
 import { playSound, resolveAudioUrl } from '../lib/audioBank';
@@ -432,6 +433,10 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     } catch (consErr) {
       console.error('Erro na consolidação automática de itens:', consErr);
     }
+
+    // Itens BLOQUEADOS (mochila cheia) NÃO entram na forja (materiais/scrolls) —
+    // é como se não existissem até a mochila ter espaço.
+    userItemsSnap = filterAvailableRows(userItemsSnap || [], userData, userData.inventoryPreferences?.slotMap || {});
 
     // Catálogo de materiais/itens (nome/ícone/patente) — mesmo os que o jogador ainda não possui
     try {

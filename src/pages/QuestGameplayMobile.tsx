@@ -20,6 +20,7 @@ import MonsterProjectileView from '../components/MonsterProjectileView';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
+import { filterAvailableRows } from '../lib/inventorySlots';
 import { getMaxAddsLimit } from '../lib/ranks';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { playSound, fadeOutAllSounds, playCoinCollect, resolveAudioUrl } from '../lib/audioBank';
@@ -1440,7 +1441,9 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
         // Fetch Powerups & Equipped Items
         if (userData?.uid) {
-          const { data: pSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
+          const { data: _pSnap } = await supabase.from('user_items').select('*').eq('student_id', userData.uid);
+          // Itens BLOQUEADOS (mochila cheia) não entram na missão — como se não existissem.
+          const pSnap = filterAvailableRows(_pSnap || [], userData, userData.inventoryPreferences?.slotMap || {});
           const pLoaded: UserItem[] = [];
           const eLoaded: EquippedItem[] = [];
           
