@@ -355,10 +355,9 @@ function _forgeLerp(a: number, b: number, t: number) { return a + (b - a) * t; }
 // polido refletindo a luz, sem película. Idempotente: guarda os valores-base no material.
 export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
   const lvl = Math.max(0, Math.min(9, Math.floor(level || 0)));
-  // Nível 0 = item SEM forja → NÃO altera os materiais. (Antes forçava metalness=0/roughness=1
-  // e aplicava um envMap próprio, deixando TODO metal marrom/chapado e ignorando o environment.)
-  if (lvl === 0) return;
   const intensity = lvl / 9; // +0 = 0 ... +9 = 1
+  const film = 1 - intensity; // +0 = 1 (película cheia) ... +9 = 0 (sem película)
+  const env = getForgeEnvMap();
   const gl = new THREE.Color(FORGE_GLOW_COLOR);
   const white = new THREE.Color(0xffffff);
   model.traverse((child: any) => {
@@ -376,24 +375,29 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
       // unlit MULTIPLICA a textura pelo ambiente e deixa o item preto.
       const isPbr = !!(mat as any).isMeshStandardMaterial || !!(mat as any).isMeshPhysicalMaterial;
       if (isPbr) {
-        // NÃO alterar metalness/roughness nem o envMap: isso destruía o PBR e deixava
-        // TODO metal (ouro do escudo etc.) marrom/mate. O brilho de forja agora vem só do
-        // emissivo (abaixo) + das sparkles/glint — preservando o material original.
-        if ('emissive' in mat) {
-          if (mat._forgeBaseEmissive === undefined) mat._forgeBaseEmissive = mat.emissive ? mat.emissive.clone() : new THREE.Color(0x000000);
-          mat.emissive.copy(mat._forgeBaseEmissive).lerp(gl, intensity * 0.25);
-        }
-        if ('emissiveIntensity' in mat) mat.emissiveIntensity = 1 + intensity * 0.6;
+        if (env) mat.envMap = env;
+        // +9: polido/reflexivo — mas SEM virar "preto". Metalness alto mata a cor difusa
+        // (o item reflete só o ambiente e escurece). Mantemos o metalness BAIXO para a
+        // cor do modelo aparecer; o brilho vem do emissivo/reflexo e das sparkles.
+        if ('metalness' in mat) mat.metalness = _forgeLerp(Math.min(0.2, mat._forgeBaseMetalness * 0.2 + 0.05), 0, film);
+        if ('roughness' in mat) mat.roughness = _forgeLerp(Math.max(0.1, mat._forgeBaseRoughness * 0.3), 1.0, film);
+        if ('envMapIntensity' in mat) mat.envMapIntensity = _forgeLerp(1.6, 0.02, film);
+        // Um leve tom ciano "encantado" só nos níveis altos
+        if ('emissive' in mat) mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.10);
       }
       if (mat.color) {
         const c = mat._forgeBaseColor.clone();
         if (!isPbr) {
-          // Unlit (ex.: glb KHR_materials_unlit): multiplicar acima de 1 clareia a textura.
+          // Unlit (ex.: glb KHR_materials_unlit): a cor MULTIPLICA a textura, e o lerp p/
+          // branco não faz efeito quando a cor-base já é branca. Em níveis altos,
+          // multiplicar ACIMA de 1 clareia a textura de verdade (+6 ~ original; +9 vistoso).
           c.multiplyScalar(1 + intensity * 0.7);
         } else {
-          // Realce leve de cor conforme o nível (sem dessaturar/escurecer).
-          c.lerp(white, intensity * 0.06);
+          c.lerp(white, intensity * 0.2);
         }
+        c.multiplyScalar(1 - film * 0.22);                 // película leve (opaco só nos níveis baixos)
+        const lum = c.r * 0.299 + c.g * 0.587 + c.b * 0.114; // dessatura (aspecto opaco)
+        c.lerp(new THREE.Color(lum, lum, lum), film * 0.3);
         mat.color.copy(c);
       }
       mat.needsUpdate = true;
