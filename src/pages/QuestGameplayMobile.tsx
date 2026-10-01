@@ -707,6 +707,7 @@ export default function QuestGameplay() {
       'death-slice': battleSoundsRef.current.fatalSlice,
       'death-evaporate': battleSoundsRef.current.fatalEvaporate,
       'death-fall': battleSoundsRef.current.fatalFall,
+      'spider-flip': battleSoundsRef.current.fatalFall,
     };
     const url = map[fatality] || battleSoundsRef.current.punch;
     console.log('[fatality]', fatality, '->', map[fatality] || '(vazio, fallback soco)');
@@ -1898,13 +1899,30 @@ const dealTransformDamageToPlayer = (damage: number) => {
     const effectFatality = hasAttackWeapon && damageEffect !== 'none' ? effectFatal[damageEffect] : null;
     // Fatality fixo definido na arma (override por item)
     const weaponFatality = hasAttackWeapon ? getEquippedWeaponFatality(playerEquippedItems) : undefined;
+    const monsterRawAnim = (quest as any)?.monsterAvatarConfig?.defeatAnimation || (quest as any)?.monsterConfig?.defeatAnimation || (quest as any)?.defeatAnimation;
+    const monsterDefeatMap: Record<string, string> = {
+      splat: 'death-fall',
+      'fall-side': 'death-fall',
+      'fall-forward': 'death-fall',
+      evaporate: 'death-evaporate',
+      'death-slice': 'death-slice',
+      'death-explode': 'death-explode',
+      clip: 'death-fall',
+      'spider-flip': 'spider-flip',
+    };
+    const mName = String((quest as any)?.monsterName || (quest as any)?.title || '').toLowerCase();
+    const isSpider = mName.includes('aranha') || mName.includes('spider');
+    const monsterDefeatFatality = (monsterRawAnim && monsterRawAnim !== 'auto' && monsterDefeatMap[monsterRawAnim])
+      ? monsterDefeatMap[monsterRawAnim]
+      : (isSpider ? 'spider-flip' : null);
     // Força uma fatalidade específica via Arena Debug (SÓ para quem tem acesso ao Debug — alunos usam aleatória)
     const canForce = canArenaDebug('arena_debug', 'view') || isSuperAdmin || userData?.role === 'admin';
-    const fatality = canForce && arena.forcedFatality && deaths.includes(arena.forcedFatality)
+    const validFatalities = [...deaths, 'spider-flip'];
+    const fatality = canForce && arena.forcedFatality && validFatalities.includes(arena.forcedFatality)
       ? arena.forcedFatality
       : (weaponFatality && deaths.includes(weaponFatality)
           ? weaponFatality
-          : (effectFatality || deaths[Math.floor(Math.random() * deaths.length)]));
+          : (monsterDefeatFatality || effectFatality || deaths[Math.floor(Math.random() * deaths.length)]));
     
     // Fala do golpe final: vem da Central de Falas (events.fatality do personagem).
     const fatalityQuote = getDynamicQuote((currentHearts / maxHearts) * 100, 'player', 'fatality') || 'Caia perante mim!';
@@ -4604,7 +4622,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                         style={isMonsterGlb ? {
                           transform: `translateX(calc(-50% + ${monsterModelOX}px)) translateY(${monsterModelOY + monsterShadowOY}px) scale(${monsterModelScale * monsterShadowScale})`,
                           bottom: arenaRenderMode === '3d' ? '-6px' : '-4px',
-                          opacity: (arena.unified3D && effectiveMonsterModelUrl) ? 0 : (monsterAnim.startsWith('death-') ? 0 : 1),
+                          opacity: (arena.unified3D && effectiveMonsterModelUrl) ? 0 : ((monsterAnim.startsWith('death-') || monsterAnim === 'spider-flip') ? 0 : 1),
                         } : undefined}
                       />
                     );
@@ -4614,10 +4632,11 @@ const dealTransformDamageToPlayer = (damage: number) => {
                     (arena.unified3D && effectiveMonsterModelUrl) ? '' : (
                       monsterAnim === 'death-evaporate' ? 'anim-death-evaporate' : 
                       monsterAnim === 'death-fall' ? 'anim-death-fall' :
-                      monsterAnim === 'death-explode' ? 'anim-death-explode' : ''
+                      monsterAnim === 'death-explode' ? 'anim-death-explode' :
+                      monsterAnim === 'spider-flip' ? 'anim-spider-flip' : ''
                     )
                   }`} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', transformOrigin: 'bottom center', height: (arena.unified3D && effectiveMonsterModelUrl) ? 'var(--shadow-monster-head-lift, 190px)' : undefined }}>
-                  <div style={{ position: 'absolute', top: `${(arena.unified3D && effectiveMonsterModelUrl) ? -36 : (arena.monsterNameY - (effectiveMonsterZoom - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 150 : 230))}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: monsterAnim.startsWith('death-') ? 0.3 : 1, transition: 'opacity 2s' }}>
+                  <div style={{ position: 'absolute', top: `${(arena.unified3D && effectiveMonsterModelUrl) ? -36 : (arena.monsterNameY - (effectiveMonsterZoom - 1) * ((quest?.monsterModelUrl || quest?.monsterAvatarConfig?.customModelUrl) ? 150 : 230))}px`, left: '50%', transform: `translateX(calc(-50% + ${arena.monsterNameX}px))`, zIndex: 5, whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', opacity: (monsterAnim.startsWith('death-') || monsterAnim === 'spider-flip') ? 0.3 : 1, transition: 'opacity 2s' }}>
                     {(!(arena.unified3D && effectiveMonsterModelUrl)) && (
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>{quest?.monsterName || 'Inimigo'}</span>
                     )}

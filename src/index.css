@@ -495,6 +495,7 @@ h3 {
 /* Fade out da sombra se o personagem evaporar ou for eliminado */
 .anim-death-evaporate ~ .avatar-ground-shadow,
 .anim-death-fall ~ .avatar-ground-shadow,
+.anim-spider-flip ~ .avatar-ground-shadow,
 .anim-death-explode ~ .avatar-ground-shadow,
 .is-eliminated .avatar-ground-shadow {
   opacity: 0;
@@ -511,6 +512,21 @@ h3 {
   30% { transform: translateX(var(--death-base-x, 0px)) translateY(4px) rotate(-28deg); opacity: 1; filter: grayscale(60%); }
   60% { transform: translateX(var(--death-base-x, 0px)) translateY(10px) rotate(-66deg); opacity: 1; filter: grayscale(100%); }
   100% { transform: translateX(var(--death-base-x, 0px)) translateY(14px) rotate(-90deg); opacity: 0; filter: grayscale(100%); }
+}
+
+.anim-spider-flip {
+  animation: spider-flip-anim 3.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  transform-origin: center center;
+}
+
+@keyframes spider-flip-anim {
+  0% { transform: translateX(var(--death-base-x, 0px)) translateY(0) rotate(0deg) scale(1); opacity: 1; }
+  25% { transform: translateX(var(--death-base-x, 0px)) translateY(-8px) rotate(180deg) scale(1.02); opacity: 1; }
+  35% { transform: translateX(calc(var(--death-base-x, 0px) + 2px)) translateY(-6px) rotate(184deg) scale(0.98); opacity: 1; }
+  45% { transform: translateX(calc(var(--death-base-x, 0px) - 2px)) translateY(-6px) rotate(176deg) scale(0.96); opacity: 1; }
+  55% { transform: translateX(calc(var(--death-base-x, 0px) + 1px)) translateY(-6px) rotate(182deg) scale(0.94); opacity: 1; }
+  65% { transform: translateX(var(--death-base-x, 0px)) translateY(-6px) rotate(180deg) scale(0.9); opacity: 0.95; }
+  100% { transform: translateX(var(--death-base-x, 0px)) translateY(-6px) rotate(180deg) scale(0.85); opacity: 0; }
 }
 
 .anim-death-explode {
@@ -2918,4 +2934,35 @@ html, body {
   0% { opacity: 0; transform: scale(0.2); }
   20% { opacity: 1; transform: scale(1.1); }
   100% { opacity: 0; transform: scale(2.2); }
+}
+
+/* ============================================================
+   CONTROLES MOBILE VIRTUAIS (Dual Stick + D-Pad + Ações)
+   ============================================================ */
+.virtual-gamepad-left,
+.virtual-gamepad-right {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+@media (max-width: 820px), (orientation: portrait) {
+  .virtual-gamepad-left {
+    transform-origin: bottom left;
+    transform: scale(0.88);
+  }
+  .virtual-gamepad-right {
+    transform-origin: bottom right;
+    transform: scale(0.88);
+  }
+}
+
+@media (max-width: 480px) {
+  .virtual-gamepad-left {
+    transform-origin: bottom left;
+    transform: scale(0.78);
+  }
+  .virtual-gamepad-right {
+    transform-origin: bottom right;
+    transform: scale(0.78);
+  }
 }

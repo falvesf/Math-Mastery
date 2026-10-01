@@ -442,9 +442,16 @@ function playEntityAnimByName(
     `animation.${name}`, `animation.${name.toLowerCase()}`,
     `Armature|${name}`, `Armature|${name.toLowerCase()}`,
   ];
+  if (name.startsWith('death')) {
+    candidates.push('death', 'die', 'dead', 'defeat', 'morte', 'morrer', 'animation.death', 'animation.die', 'Armature|death', 'Armature|die');
+  }
   let action: THREE.AnimationAction | null = null;
   for (const c of candidates) { if (actions[c]) { action = actions[c]; break; } }
   if (!action) {
+    if (name.startsWith('death')) {
+      mixer.stopAllAction();
+      return;
+    }
     const idle = keys.find((k) => /idle/i.test(k));
     action = idle ? actions[idle] : actions[keys[0]];
   }
@@ -798,6 +805,8 @@ function setGroupOpacity(group: THREE.Object3D, opacity: number) {
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       mats.forEach((mat: any) => {
         mat.transparent = true;
+        mat.alphaTest = 0;
+        mat.depthWrite = opacity > 0.8;
         mat.opacity = opacity;
         mat.needsUpdate = true;
       });
@@ -817,7 +826,22 @@ function applyDeathTween(
   if (!d || !group) return;
   const el = (nowMs - d.start) / 1000;
   if (el < 0.05) console.log('[FASEB applyDeath]', d.type, 'group=', !!group, 'el=', el.toFixed(3));
-  if (d.type === 'death-explode') {
+  if (d.type === 'spider-flip' || d.type === 'death-spider') {
+    const t = clamp01(el / 2.6);
+    const flip = clamp01(el / 0.85);
+    const flipAngle = Math.PI;
+    const twitch = (el > 0.25 && el < 1.8)
+      ? Math.sin(el * 34) * Math.max(0, 1 - el / 1.8) * 0.12
+      : 0;
+    group.rotation.z = easeInOut(flip) * flipAngle + twitch;
+    group.rotation.x = twitch * 0.6;
+    group.position.y = 0.51 + Math.sin(flip * Math.PI) * 0.18;
+    const curl = t * 0.22;
+    group.scale.set(1 - curl, 1 - curl, 1 - curl * 0.4);
+    if (t > 0.65) {
+      setGroupOpacity(group, clamp01((1 - t) / 0.35));
+    }
+  } else if (d.type === 'death-explode') {
     const t = clamp01(el / 0.9);
     group.scale.setScalar(1 + easeInOut(t) * 0.6);
     setGroupOpacity(group, 1 - t);
@@ -1864,7 +1888,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         const g = unifiedMonsterGroupRef.current;
         monsterNameGroupRef.current.position.set(g.position.x, g.position.y + monsterHeadTopRef.current + 0.38, g.position.z + 0.01);
         // Some quando o monstro morre (death-*), foge ou está congelado.
-        const monsterDead = String(monsterAnimRef.current || '').startsWith('death-');
+        const monsterDead = String(monsterAnimRef.current || '').startsWith('death-') || monsterAnimRef.current === 'spider-flip';
         monsterNameGroupRef.current.visible = g.visible && !monsterFrozenRef.current && !monsterDead;
       }
       if (playerNameGroupRef.current && unifiedPlayerGroupRef.current) {
@@ -2600,7 +2624,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       if (monChanged && monCombat) unifiedMonsterGroupRef.current.scale.setScalar(1);
     }
     // Morte do monstro (fatality) — inicia SÓ quando a morte é nova (re-runs não reiniciam).
-    if (monsterAnim.startsWith('death')) {
+    if (monsterAnim.startsWith('death') || monsterAnim === 'spider-flip') {
       if (!monsterDeathRef.current || monsterDeathRef.current.type !== monsterAnim) {
         monsterDeathRef.current = { type: monsterAnim, start: performance.now() };
         // Fatality especial: se morreu congelado, o gelo se despedaça em pedaços.
@@ -2612,6 +2636,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       monsterDeathRef.current = null;
       if (unifiedMonsterGroupRef.current) {
         unifiedMonsterGroupRef.current.rotation.x = 0;
+        unifiedMonsterGroupRef.current.rotation.z = 0;
         unifiedMonsterGroupRef.current.position.y = 0.51;
         unifiedMonsterGroupRef.current.scale.setScalar(1);
         setGroupOpacity(unifiedMonsterGroupRef.current, 1);
@@ -2635,7 +2660,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedPlayerGroupRef.current.rotation.y = ((playCombat || stayCombat) && !faceCamera ? combatBase : restWithOffset) + THREE.MathUtils.degToRad(playerRotYRef.current);
       if (playChanged && playCombat) unifiedPlayerGroupRef.current.scale.setScalar(1);
     }
-    if (playerAnim.startsWith('death')) {
+    if (playerAnim.startsWith('death') || playerAnim === 'spider-flip') {
       if (!playerDeathRef.current || playerDeathRef.current.type !== playerAnim) {
         playerDeathRef.current = { type: playerAnim, start: performance.now() };
       }
@@ -2643,6 +2668,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       playerDeathRef.current = null;
       if (unifiedPlayerGroupRef.current) {
         unifiedPlayerGroupRef.current.rotation.x = 0;
+        unifiedPlayerGroupRef.current.rotation.z = 0;
         unifiedPlayerGroupRef.current.position.y = 0.51;
         unifiedPlayerGroupRef.current.scale.setScalar(1);
         setGroupOpacity(unifiedPlayerGroupRef.current, 1);

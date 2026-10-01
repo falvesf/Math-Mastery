@@ -25,6 +25,7 @@ export const FATALITY_OPTIONS: { id: string; label: string; desc: string }[] = [
   { id: 'death-explode', label: '💥 Explodir', desc: 'O inimigo explode.' },
   { id: 'death-slice', label: '🗡️ Corte ao meio', desc: 'O inimigo é cortado ao meio.' },
   { id: 'death-evaporate', label: '🌫️ Evaporar/Desintegrar', desc: 'O inimigo se desintegra.' },
+  { id: 'spider-flip', label: '🕷️ Aranha / Inseto', desc: 'Vira de barriga para cima, estremece as patas e encolhe.' },
 ];
 
 /** Mapa: efeito de dano -> fatality padrão (mesma lógica atual da batalha). */

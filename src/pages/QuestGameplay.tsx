@@ -618,6 +618,7 @@ export default function QuestGameplay() {
       'death-slice': battleSoundsRef.current.fatalSlice,
       'death-evaporate': battleSoundsRef.current.fatalEvaporate,
       'death-fall': battleSoundsRef.current.fatalFall,
+      'spider-flip': battleSoundsRef.current.fatalFall,
     };
     const url = map[fatality] || battleSoundsRef.current.punch;
     console.log('[fatality]', fatality, '->', map[fatality] || '(vazio, fallback soco)');
@@ -1636,13 +1637,30 @@ const dealTransformDamageToPlayer = (damage: number) => {
     const effectFatality = hasAttackWeapon && damageEffect !== 'none' ? effectFatal[damageEffect] : null;
     // Fatality fixo definido na arma (override por item)
     const weaponFatality = hasAttackWeapon ? getEquippedWeaponFatality(playerEquippedItems) : undefined;
+    const monsterRawAnim = (quest as any)?.monsterAvatarConfig?.defeatAnimation || (quest as any)?.monsterConfig?.defeatAnimation || (quest as any)?.defeatAnimation;
+    const monsterDefeatMap: Record<string, string> = {
+      splat: 'death-fall',
+      'fall-side': 'death-fall',
+      'fall-forward': 'death-fall',
+      evaporate: 'death-evaporate',
+      'death-slice': 'death-slice',
+      'death-explode': 'death-explode',
+      clip: 'death-fall',
+      'spider-flip': 'spider-flip',
+    };
+    const mName = String((quest as any)?.monsterName || (quest as any)?.title || '').toLowerCase();
+    const isSpider = mName.includes('aranha') || mName.includes('spider');
+    const monsterDefeatFatality = (monsterRawAnim && monsterRawAnim !== 'auto' && monsterDefeatMap[monsterRawAnim])
+      ? monsterDefeatMap[monsterRawAnim]
+      : (isSpider ? 'spider-flip' : null);
     // Força uma fatalidade específica via Arena Debug (SÓ para quem tem acesso ao Debug — alunos usam aleatória)
     const canForce = canArenaDebug('arena_debug', 'view') || isSuperAdmin || userData?.role === 'admin';
-    const fatality = canForce && arenaDebug.forcedFatality && deaths.includes(arenaDebug.forcedFatality)
+    const validFatalities = [...deaths, 'spider-flip'];
+    const fatality = canForce && arenaDebug.forcedFatality && validFatalities.includes(arenaDebug.forcedFatality)
       ? arenaDebug.forcedFatality
       : (weaponFatality && deaths.includes(weaponFatality)
           ? weaponFatality
-          : (effectFatality || deaths[Math.floor(Math.random() * deaths.length)]));
+          : (monsterDefeatFatality || effectFatality || deaths[Math.floor(Math.random() * deaths.length)]));
     
     // Fala do golpe final: vem da Central de Falas (events.fatality do personagem).
     const fatalityQuote = getDynamicQuote((currentHearts / maxHearts) * 100, 'player', 'fatality') || 'Caia perante mim!';

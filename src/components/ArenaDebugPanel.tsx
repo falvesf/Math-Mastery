@@ -947,6 +947,7 @@ export default function ArenaDebugPanel({
                   <option value="death-evaporate">Evaporar</option>
                   <option value="death-slice">Corte</option>
                   <option value="death-explode">Explosão</option>
+                  <option value="spider-flip">🕷️ Aranha (Barriga p/ cima)</option>
                 </select>
               </div>
               <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Deslocamento em cima da posição normal do monstro. Ajuste até ele cair/evaporar/explodir no ponto exato do golpe.</div>

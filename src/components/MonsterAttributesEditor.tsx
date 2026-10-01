@@ -193,12 +193,16 @@ export interface MonsterStatsConfig {
   speed?: number;
   /** Velocidade de ataque: golpes por SEGUNDO (ex.: 2 = ataca 2x/s; 0.5 = 1 golpe a cada 2s). */
   attackSpeed?: number;
+  /** Animação de derrota ao ser abatido: auto, splat, fall-side, fall-forward, evaporate, death-slice, death-explode, clip */
+  defeatAnimation?: 'auto' | 'splat' | 'fall-side' | 'fall-forward' | 'evaporate' | 'death-slice' | 'death-explode' | 'clip' | 'spider-flip' | string;
 }
 
 export interface MonsterAttributesConfig {
   gender?: string;
   /** Eixo "frente" do modelo GLB ('z' padrão / '-z' / 'x' / '-x') — corrige ataque/anda virado de costas. */
   modelForward?: string;
+  /** Animação de derrota ao ser abatido */
+  defeatAnimation?: 'auto' | 'splat' | 'fall-side' | 'fall-forward' | 'evaporate' | 'death-slice' | 'death-explode' | 'clip' | 'spider-flip' | string;
   attackSound?: string;
   gruntSound?: string;
   damageSound?: string;
@@ -643,6 +647,38 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
                 onChange={e => updateStats({ xp: Math.max(0, parseInt(e.target.value) || 0) })}
                 style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 'bold', boxSizing: 'border-box' }}
               />
+            </div>
+
+            {/* Animação de Derrota */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '8px', padding: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#f87171', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                💀 Animação de Derrota
+              </label>
+              <select
+                value={currentStats.defeatAnimation || value.defeatAnimation || 'auto'}
+                onChange={e => {
+                  const anim = e.target.value;
+                  onChange({
+                    ...value,
+                    defeatAnimation: anim,
+                    stats: { ...currentStats, defeatAnimation: anim },
+                  });
+                }}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.82rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+              >
+                <option value="auto">🎲 Automático (Efeito do golpe / Corpo)</option>
+                <option value="spider-flip">🕷️ Aranha / Inseto (Barriga p/ cima e patas tremendo)</option>
+                <option value="splat">🟢 Geléia / Poça (Splat - esparrama no chão)</option>
+                <option value="fall-side">🛏️ Queda para o Lado (Tomba e repousa)</option>
+                <option value="fall-forward">🙇 Queda para a Frente (Cai de bruços)</option>
+                <option value="evaporate">✨ Desintegração / Evaporação (Sobe e dissolve)</option>
+                <option value="death-slice">⚔️ Corte Letal (Corte crítico deslizante)</option>
+                <option value="death-explode">💥 Explosão de Impacto (Incha e desmancha)</option>
+                <option value="clip">🎬 Clipe do Modelo 3D (Usa animação death do GLB)</option>
+              </select>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                Como a criatura sucumbe ao ser abatida nos cenários e na arena.
+              </div>
             </div>
           </div>
 

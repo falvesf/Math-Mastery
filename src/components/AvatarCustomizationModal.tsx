@@ -737,7 +737,11 @@ export default function AvatarCustomizationModal({
         // Velocidade de movimento e de ataque (monstros e animais).
         ...((configToSave as any).stats?.speed != null ? { speed: (configToSave as any).stats.speed } : {}),
         ...((configToSave as any).stats?.attackSpeed != null ? { attackSpeed: (configToSave as any).stats.attackSpeed } : {}),
+        ...(((configToSave as any).stats?.defeatAnimation || (configToSave as any).defeatAnimation) ? { defeatAnimation: (configToSave as any).stats?.defeatAnimation || (configToSave as any).defeatAnimation } : {}),
       };
+      if ((configToSave as any).stats?.defeatAnimation) {
+        (configToSave as any).defeatAnimation = (configToSave as any).stats.defeatAnimation;
+      }
     }
     setConfig(configToSave);
 
@@ -2902,6 +2906,7 @@ onClick={() => setConfig(prev => {
               tabMode="stats"
               value={{
                 gender: (config as any).gender,
+                defeatAnimation: (config as any).defeatAnimation || (config as any).stats?.defeatAnimation,
                 attackSound: (config as any).attackSound,
                 gruntSound: (config as any).gruntSound,
                 damageSound: (config as any).damageSound,
@@ -2912,12 +2917,13 @@ onClick={() => setConfig(prev => {
               onChange={attrs => setConfig(prev => ({
                 ...prev,
                 gender: attrs.gender,
+                defeatAnimation: attrs.defeatAnimation,
                 attackSound: attrs.attackSound,
                 gruntSound: attrs.gruntSound,
                 damageSound: attrs.damageSound,
                 quotes: attrs.quotes,
                 drops: attrs.drops,
-                stats: attrs.stats,
+                stats: attrs.stats ? { ...attrs.stats, defeatAnimation: attrs.defeatAnimation } : attrs.stats,
               } as any))}
               availableStoreItems={storeItems}
             />
