@@ -77,6 +77,8 @@ export interface StoreItem {
   minRankRequired: number | string; // Nome da patente (legado: índice numérico)
   active: boolean;
   gameModelUrl?: string; // URL para modelo 3D (ex: .glb)
+  /** Não aplica a película fosca da forja (metal reflete como no modelo original). */
+  keepMetal?: boolean;
   modelTextureUrl?: string; // URL da skin (textura) aplicada ao modelo .glb
   minecraftHeadValue?: string; // Base64 ou URL da textura do capacete Minecraft
   gameImage2dUrl?: string; // Imagem em lona completa (ex: 512x512) para o paper doll 2D
@@ -910,6 +912,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
       type: item.type || 'consumable',
       imageUrl: item.imageUrl || '',
       gameModelUrl: item.gameModelUrl || '',
+      keepMetal: (item as any).keepMetal || false,
       modelTextureUrl: item.modelTextureUrl || '',
       minecraftHeadValue: item.minecraftHeadValue || '',
       rarity: item.rarity || 'common',
@@ -1215,6 +1218,8 @@ Responda APENAS com a frase curta em português brasileiro.`;
           backColor: itemData.backColor || '',
           extractMeshName: itemData.extractMeshName || null,
           isForgeable: true,
+          // "Manter brilho metálico": não aplica a película fosca da forja (metal reflete).
+          keepMetal: itemData.keepMetal || false,
           forgeConfig: itemData.forgeConfig || null,
           isTransmutable: itemData.isTransmutable || false,
           transmuteConfig: itemData.transmuteConfig || null,
@@ -2661,6 +2666,12 @@ Responda APENAS com a frase curta em português brasileiro.`;
                       <strong>Malha extraída selecionada:</strong> {formData.extractMeshName}
                       <button onClick={() => setFormData({...formData, extractMeshName: undefined})} style={{ marginLeft: '1rem', background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', textDecoration: 'underline' }}>Remover</button>
                     </div>
+                  )}
+                  {formData.gameModelUrl && formData.gameModelUrl.trim() !== '' && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', marginBottom: '1rem' }}>
+                      <input type="checkbox" checked={!!formData.keepMetal} onChange={e => setFormData({ ...formData, keepMetal: e.target.checked })} />
+                      ✨ Manter brilho metálico (não escurecer na forja) — para itens de metal/ouro (ex.: escudo dourado) ficarem como no modelo original.
+                    </label>
                   )}
                 </div>
                 

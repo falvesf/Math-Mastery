@@ -243,7 +243,7 @@ export async function exportAvatarToGlb(config: any, equippedItems: EquippedItem
 
       // Brilho/película de forja (mesma lógica do AvatarCharacter): ajusta
       // metalness/roughness/emissive/color conforme o nível (+0 película → +9 brilho).
-      try { applyForgeGlowToModel(model, item.forgeLevel || 0); } catch { /* noop */ }
+      try { applyForgeGlowToModel(model, item.forgeLevel || 0, { preserveMetal: !!(item as any).keepMetal }); } catch { /* noop */ }
 
       // Película/brilho deslizante (emissiveMap). No GLB fica ESTÁTICO, mas preserva
       // o aspecto encantado de +7/+8/+9.

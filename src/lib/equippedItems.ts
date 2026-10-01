@@ -45,6 +45,7 @@ export function fetchEquippedItems(uid: string): Promise<any[]> {
               itemImageUrl: d.itemImageUrl || d.imageUrl || sd.itemImageUrl || sd.imageUrl || '',
               itemType: d.itemType || sd.itemType || sd.type || 'other',
               gameModelUrl: chosenModel,
+              keepMetal: d.keepMetal ?? sd.keepMetal ?? false,
               modelTextureUrl: d.modelTextureUrl || sd.modelTextureUrl || '',
               minecraftHeadValue: d.minecraftHeadValue || sd.minecraftHeadValue || '',
               modelTransforms: d.modelTransforms || sd.modelTransforms || null,

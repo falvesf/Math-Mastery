@@ -400,6 +400,7 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
               baseAttributeValue: item.baseAttributeValue || 0,
               forgeLevel: 0,
               gameModelUrl: item.gameModelUrl || '',
+              keepMetal: (item as any).keepMetal || false,
               modelTextureUrl: item.modelTextureUrl || '',
               minecraftHeadValue: item.minecraftHeadValue || '',
               modelTransforms: item.modelTransforms || null,

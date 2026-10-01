@@ -353,10 +353,11 @@ function _forgeLerp(a: number, b: number, t: number) { return a + (b - a) * t; }
 // Aplica o BRILHO de forja (metalness/roughness + reflexo) proporcional ao nível.
 // +0 = uma "película" fosca que tira o brilho (superfície difusa) → +9 = metálico
 // polido refletindo a luz, sem película. Idempotente: guarda os valores-base no material.
-export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
+export function applyForgeGlowToModel(model: THREE.Object3D, level: number, opts?: { preserveMetal?: boolean }) {
   const lvl = Math.max(0, Math.min(9, Math.floor(level || 0)));
   const intensity = lvl / 9; // +0 = 0 ... +9 = 1
   const film = 1 - intensity; // +0 = 1 (película cheia) ... +9 = 0 (sem película)
+  const preserveMetal = !!opts?.preserveMetal; // item marcado "manter brilho metálico"
   const env = getForgeEnvMap();
   const gl = new THREE.Color(FORGE_GLOW_COLOR);
   const white = new THREE.Color(0xffffff);
@@ -375,17 +376,27 @@ export function applyForgeGlowToModel(model: THREE.Object3D, level: number) {
       // unlit MULTIPLICA a textura pelo ambiente e deixa o item preto.
       const isPbr = !!(mat as any).isMeshStandardMaterial || !!(mat as any).isMeshPhysicalMaterial;
       if (isPbr) {
-        if (env) mat.envMap = env;
-        // +9: polido/reflexivo — mas SEM virar "preto". Metalness alto mata a cor difusa
-        // (o item reflete só o ambiente e escurece). Mantemos o metalness BAIXO para a
-        // cor do modelo aparecer; o brilho vem do emissivo/reflexo e das sparkles.
-        if ('metalness' in mat) mat.metalness = _forgeLerp(Math.min(0.2, mat._forgeBaseMetalness * 0.2 + 0.05), 0, film);
-        if ('roughness' in mat) mat.roughness = _forgeLerp(Math.max(0.1, mat._forgeBaseRoughness * 0.3), 1.0, film);
-        if ('envMapIntensity' in mat) mat.envMapIntensity = _forgeLerp(1.6, 0.02, film);
-        // Um leve tom ciano "encantado" só nos níveis altos
-        if ('emissive' in mat) mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.10);
+        if (preserveMetal) {
+          // Item marcado "manter brilho metálico": NÃO aplica a película fosca — o metal
+          // (ouro do escudo etc.) reflete como no modelo original. Só adiciona o brilho
+          // encantado no emissivo (o glint/sparkles continuam no chamador).
+          if ('emissive' in mat) {
+            if (mat._forgeBaseEmissive === undefined) mat._forgeBaseEmissive = mat.emissive ? mat.emissive.clone() : new THREE.Color(0x000000);
+            mat.emissive.copy(mat._forgeBaseEmissive).lerp(gl, intensity * 0.25);
+          }
+        } else {
+          if (env) mat.envMap = env;
+          // +9: polido/reflexivo — mas SEM virar "preto". Metalness alto mata a cor difusa
+          // (o item reflete só o ambiente e escurece). Mantemos o metalness BAIXO para a
+          // cor do modelo aparecer; o brilho vem do emissivo/reflexo e das sparkles.
+          if ('metalness' in mat) mat.metalness = _forgeLerp(Math.min(0.2, mat._forgeBaseMetalness * 0.2 + 0.05), 0, film);
+          if ('roughness' in mat) mat.roughness = _forgeLerp(Math.max(0.1, mat._forgeBaseRoughness * 0.3), 1.0, film);
+          if ('envMapIntensity' in mat) mat.envMapIntensity = _forgeLerp(1.6, 0.02, film);
+          // Um leve tom ciano "encantado" só nos níveis altos
+          if ('emissive' in mat) mat.emissive = (mat.emissive || new THREE.Color(0x000000)).copy(gl).multiplyScalar(intensity * 0.10);
+        }
       }
-      if (mat.color) {
+      if (mat.color && !(preserveMetal && isPbr)) {
         const c = mat._forgeBaseColor.clone();
         if (!isPbr) {
           // Unlit (ex.: glb KHR_materials_unlit): a cor MULTIPLICA a textura, e o lerp p/
@@ -1223,7 +1234,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             });
             // Brilho de forja: PINTA o material do equipamento (emissive/cor no THREE),
 // proporcional ao nível (+0 opaco → +9 máximo). Nada de overlay/CSS.
-            applyForgeGlowToModel(model, item.forgeLevel || 0);
+            applyForgeGlowToModel(model, item.forgeLevel || 0, { preserveMetal: !!(item as any).keepMetal });
             // Material PBR: usa o environment da cena p/ metais refletirem (dourado etc.).
             tuneMaterialsForEnv(model, 1.2);
             // Diagnóstico (temporário): detalhes dos materiais/texturas do modelo do item.
@@ -1958,7 +1969,7 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
           }
 
           // Película de forja também nas peças de skin (Minecraft): escurece/dessatura o +0.
-          applyForgeGlowToModel(mesh, item.forgeLevel || 0);
+              applyForgeGlowToModel(mesh, item.forgeLevel || 0, { preserveMetal: !!(item as any).keepMetal });
 
           parent.add(mesh);
           loadedModels.push({ parent, model: mesh });

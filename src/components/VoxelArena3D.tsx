@@ -557,7 +557,7 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
 
   const attach = (model: any, item: any) => {
     model.traverse((c: any) => { if (c.isMesh) c.frustumCulled = false; });
-    try { applyForgeGlowToModel(model, item.forgeLevel || 0); } catch { /* noop */ }
+        try { applyForgeGlowToModel(model, item.forgeLevel || 0, { preserveMetal: !!(item as any).keepMetal }); } catch { /* noop */ }
     try {
       const lvl = item.forgeLevel || 0;
       const tier = lvl >= 9 ? 3 : lvl >= 8 ? 2 : lvl >= 7 ? 1 : 0;

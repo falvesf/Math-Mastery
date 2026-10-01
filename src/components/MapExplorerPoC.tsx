@@ -2399,7 +2399,7 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         };
         const attach = (model: any, item: EquippedItem, record = true) => {
           model.traverse((c: any) => { if (c.isMesh) c.frustumCulled = false; });
-          try { applyForgeGlowToModel(model, (item as any).forgeLevel || 0); } catch { /* noop */ }
+          try { applyForgeGlowToModel(model, (item as any).forgeLevel || 0, { preserveMetal: !!(item as any).keepMetal }); } catch { /* noop */ }
           try {
             const tier = ((item as any).forgeLevel || 0) >= 9 ? 3 : ((item as any).forgeLevel || 0) >= 8 ? 2 : ((item as any).forgeLevel || 0) >= 7 ? 1 : 0;
             if (tier > 0) model.traverse((c: any) => { if (c.isMesh) (Array.isArray(c.material) ? c.material : [c.material]).forEach((mm: any) => applyForgeGlint(mm, tier, 'reflect' as any)); });

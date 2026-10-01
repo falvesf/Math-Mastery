@@ -190,7 +190,7 @@ export default function ArenaAvatarPoC({ config: configProp, equippedItems: item
 
       const attach = (model: any, item: EquippedItem) => {
         model.traverse((c: any) => { if (c.isMesh) c.frustumCulled = false; });
-        try { applyForgeGlowToModel(model, item.forgeLevel || 0); } catch { /* noop */ }
+        try { applyForgeGlowToModel(model, item.forgeLevel || 0, { preserveMetal: !!(item as any).keepMetal }); } catch { /* noop */ }
         try {
           const _tier = (item.forgeLevel || 0) >= 9 ? 3 : (item.forgeLevel || 0) >= 8 ? 2 : (item.forgeLevel || 0) >= 7 ? 1 : 0;
           const _isWeaponSlot = ['hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
