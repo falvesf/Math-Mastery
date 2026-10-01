@@ -1143,6 +1143,10 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
 
   let bagItems = items.filter(i => !i.equipped);
   bagItems = bagItems.filter(i => !isHiddenByRanchLock(i, ranchUnlocked));
+  // Total REAL da mochila (todas as categorias, antes dos filtros de busca/raridade/guia).
+  // Define quantos slots existem e quais estão BLOQUEADOS (excedente). Assim o excedente
+  // continua bloqueado em TODAS as guias, em vez de aparecerem slots livres sobrando.
+  const totalBagCount = bagItems.length;
   
   if (searchQuery) bagItems = bagItems.filter(i => i.itemTitle.toLowerCase().includes(searchQuery.toLowerCase()));
   if (filterRarity !== 'all') bagItems = bagItems.filter(i => (i.rarity || 'common') === filterRarity);
@@ -1169,7 +1173,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   
   bagItems.sort((a, b) => (a.itemTitle || '').localeCompare(b.itemTitle || ''));
 
-  const totalSlotsToRender = Math.max(maxInventorySpace, bagItems.length);
+  const totalSlotsToRender = Math.max(maxInventorySpace, totalBagCount);
   const slots: (UserItem | null)[] = Array(totalSlotsToRender).fill(null);
   const unplacedItems: UserItem[] = [];
 
@@ -1636,26 +1640,29 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               </div>
             );
             } else {
+              const isOverflowEmpty = index >= maxInventorySpace;
               return (
                 <div key={`empty-${index}`} 
                   className="inventory-item-card"
-                  onDragOver={(e) => { e.preventDefault(); }}
+                  onDragOver={(e) => { if (!isOverflowEmpty) e.preventDefault(); }}
                   onDrop={(e) => { 
                     e.preventDefault(); 
-                    if (draggedItem) handleGridSwap(draggedItem, index, null); 
+                    if (draggedItem && !isOverflowEmpty) handleGridSwap(draggedItem, index, null); 
                   }}
                   style={{ 
                     ...getGridItemStyle(),
-                  background: 'var(--btn-bg)', 
+                  background: isOverflowEmpty ? 'rgba(0,0,0,0.35)' : 'var(--btn-bg)', 
                   borderRadius: '8px', 
-                  border: '2px dashed var(--border-glass)', 
+                  border: isOverflowEmpty ? '2px solid rgba(239,68,68,0.35)' : '2px dashed var(--border-glass)', 
                   display: 'flex', 
                   justifyContent: 'center', 
                   alignItems: 'center',
                   minHeight: viewMode === 'list' ? '60px' : (viewMode === 'icons' ? '60px' : '100px'),
                   ...(viewMode === 'list' ? { boxSizing: 'border-box', minWidth: 0 } : {})
                 }}>
-                   <div style={{ width: viewMode === 'grid-small' ? '24px' : '32px', height: viewMode === 'grid-small' ? '24px' : '32px', background: 'var(--btn-bg)', borderRadius: '50%' }} />
+                   {isOverflowEmpty
+                     ? <Lock size={viewMode === 'grid-small' ? 18 : 28} color="var(--accent-red)" />
+                     : <div style={{ width: viewMode === 'grid-small' ? '24px' : '32px', height: viewMode === 'grid-small' ? '24px' : '32px', background: 'var(--btn-bg)', borderRadius: '50%' }} />}
                 </div>
               );
             }
