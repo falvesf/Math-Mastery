@@ -136,8 +136,10 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
   const [savedPoses, setSavedPoses] = useState<SavedPose[]>([]);
   const [newPoseName, setNewPoseName] = useState('');
   const [userActionPoses, setUserActionPoses] = useState<Record<string, CharacterPose> | null>(null);
-  // Estado/ação que a cena gravada vai assumir (ataque, vitória, dano, parado, andando, correndo)
+  // Ação/estado que a cena gravada vai assumir (ataque, vitória, dano, parado, andando, correndo)
   const [animSlot, setAnimSlot] = useState<'attack' | 'victory' | 'hurt' | 'idle' | 'walk' | 'run'>('attack');
+  // Associa uma AÇÃO salva (animação completa) a uma pose base ou a uma pose NOVA
+  const [newSlotName, setNewSlotName] = useState('');
   const dragRef = useRef<{ startX: number; startYaw: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const draggedPalette = useRef<EquippedItem | null>(null);
@@ -509,7 +511,27 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
     }
   };
 
-  // Preview: reinicia o slider no começo ao executar
+  // Associa uma AÇÃO salva (animação completa) a uma pose base ou pose NOVA no personagem.
+  const SLOT_LABELS: Record<string, string> = { idle: 'Parado', walk: 'Andando', run: 'Correndo', attack: 'Lutar', victory: 'Vitória/Comemoração' };
+  const associateActionToSlot = async (action: SavedAction, slot: string) => {
+    if (!userData?.uid) return;
+    const slotKey = slot.trim();
+    if (!slotKey) { setStatus('Dê um nome para a pose nova.'); return; }
+    const anim = { frames: action.frames.map(clone), loop: true, duration: 1000, durationPerFrame: action.durationPerFrame };
+    try {
+      const { data: u } = await supabase.from('users').select('avatar_config').eq('id', userData.uid).single();
+      const cfg = (u?.avatar_config as any) || userData.avatarConfig || {};
+      const curAnims = (cfg.actionAnimations || {});
+      const newCfg = { ...cfg, actionAnimations: { ...curAnims, [slotKey]: anim } };
+      await supabase.from('users').update({ avatar_config: newCfg }).eq('id', userData.uid);
+      setStatus(`Ação "${action.name}" associada à pose "${SLOT_LABELS[slotKey] || slotKey}". O personagem fará essa animação nessa ação.`);
+    } catch (e) {
+      console.error(e);
+      setStatus('Erro ao associar a ação à pose.');
+    }
+  };
+
+// Preview: reinicia o slider no começo ao executar
   const togglePreview = () => {
     if (frames.length === 0) return;
     if (previewAnim) {
@@ -1256,13 +1278,40 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
               <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Ações salvas:</div>
                 {savedActions.map(a => (
-                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', padding: '0.3rem 0.5rem' }}>
-                    <button onClick={() => loadAction(a)} style={{ flex: 1, textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.8rem' }}>
-                      {a.name} <span style={{ color: 'var(--text-secondary)', fontSize: '0.68rem' }}>({a.frames.length} frame(s))</span>
-                    </button>
-                    <button onClick={() => deleteAction(a.name)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.2rem' }} title="Excluir">
-                      <Trash2 size={13} />
-                    </button>
+                  <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', padding: '0.35rem 0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={() => loadAction(a)} style={{ flex: 1, textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.8rem' }}>
+                        {a.name} <span style={{ color: 'var(--text-secondary)', fontSize: '0.68rem' }}>({a.frames.length} frame(s))</span>
+                      </button>
+                      <button onClick={() => deleteAction(a.name)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '0.2rem' }} title="Excluir">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                      {(['idle', 'walk', 'run', 'attack', 'victory'] as const).map(slot => (
+                        <button
+                          key={slot}
+                          onClick={() => associateActionToSlot(a, slot)}
+                          style={{ padding: '0.15rem 0.4rem', background: 'rgba(16,185,129,0.15)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.62rem', fontWeight: 'bold' }}
+                          title={`Associar à pose "${SLOT_LABELS[slot]}"`}
+                        >
+                          ➕ {SLOT_LABELS[slot]}
+                        </button>
+                      ))}
+                      <input
+                        value={newSlotName}
+                        onChange={e => setNewSlotName(e.target.value)}
+                        placeholder="pose nova..."
+                        style={{ width: 84, padding: '0.15rem 0.35rem', borderRadius: '5px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.62rem' }}
+                      />
+                      <button
+                        onClick={() => { if (newSlotName.trim()) { associateActionToSlot(a, newSlotName.trim()); setNewSlotName(''); } }}
+                        style={{ padding: '0.15rem 0.4rem', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.62rem', fontWeight: 'bold' }}
+                        title="Criar pose nova com essa animação"
+                      >
+                        ➕ Nova
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

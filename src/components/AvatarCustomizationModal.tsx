@@ -1905,6 +1905,7 @@ onClick={() => setConfig(prev => {
                       debugPreviewAnim={debugPreviewAnim}
                       debugAnimationDuration={debugFrameDuration}
                       actionPoses={config.actionPoses}
+                      actionAnimations={(config as any).actionAnimations}
                       faceCamera={true}
                     />
                   );
@@ -1929,6 +1930,10 @@ onClick={() => setConfig(prev => {
                   <button onClick={() => setConfig({ ...config, animationState: 'walk' })} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', background: config.animationState === 'walk' ? 'var(--gold-primary)' : 'var(--bg-card)', color: config.animationState === 'walk' ? '#000' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer' }}>Andando</button>
                   <button onClick={() => setConfig({ ...config, animationState: 'run' })} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', background: config.animationState === 'run' ? 'var(--gold-primary)' : 'var(--bg-card)', color: config.animationState === 'run' ? '#000' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer' }}>Correndo</button>
                   <button onClick={() => setConfig({ ...config, animationState: 'attack' })} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', background: config.animationState === 'attack' ? 'var(--accent-red)' : 'var(--bg-card)', color: config.animationState === 'attack' ? '#fff' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer' }}>Luta</button>
+                  <button onClick={() => setConfig({ ...config, animationState: 'victory' })} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', background: config.animationState === 'victory' ? 'var(--accent-green)' : 'var(--bg-card)', color: config.animationState === 'victory' ? '#fff' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer' }}>Vitória</button>
+                  {Object.keys((config as any).actionAnimations || {}).filter(k => !['idle','walk','run','attack','victory'].includes(k)).map(k => (
+                    <button key={k} onClick={() => setConfig({ ...config, animationState: k })} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', background: config.animationState === k ? 'var(--gold-primary)' : 'var(--bg-card)', color: config.animationState === k ? '#000' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer' }}>{k}</button>
+                  ))}
                 </div>
 
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-primary)', justifyContent: 'center', marginTop: '0.25rem' }}>

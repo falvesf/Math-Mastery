@@ -159,6 +159,7 @@ export default function LazyAnimatedAvatar({ id, config, equippedItems, size, an
             animation={animation as any}
             faceCamera={faceCamera}
             actionPoses={config.actionPoses}
+          actionAnimations={(config as any).actionAnimations}
           />
         </div>
       ) : snapshot ? (

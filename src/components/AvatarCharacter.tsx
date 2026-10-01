@@ -62,6 +62,9 @@ export interface AvatarConfig {
   hiddenSlots?: string[];
   /** Poses customizadas que substituem as ações base, por ação */
   actionPoses?: Partial<Record<'idle' | 'walk' | 'run' | 'attack', CharacterPose>>;
+  /** ANIMAÇÕES (frames) associadas a ações — substituem a pose estática/padrão.
+   *  Chaves: idle/walk/run/attack/victory ou qualquer ação personalizada. */
+  actionAnimations?: Record<string, ItemAnimation>;
   /** Configuração de ataques do monstro */
   attacks?: any;
   /** Atributos e estatísticas de combate RPG do monstro */
@@ -755,6 +758,8 @@ export interface AvatarCharacterProps {
   debugPreviewAnim?: boolean;
   /** Poses customizadas que substituem as ações base (idle/walk/run/attack) */
   actionPoses?: Partial<Record<'idle' | 'walk' | 'run' | 'attack', CharacterPose>>;
+  /** ANIMAÇÕES por ação (substituem a pose estática/padrão). Chaves: idle/walk/run/attack/victory ou personalizadas. */
+  actionAnimations?: Record<string, ItemAnimation>;
   /** Quando true, o personagem fica de frente para a câmera nas animações de ataque (ex.: edição e rankings) */
   faceCamera?: boolean;
   /** Duração em segundos de cada frame no preview de animação (padrão 0.5s) */
@@ -784,7 +789,7 @@ import CustomModelViewer from './CustomModelViewer';
 import ItemTooltip from './ItemTooltip';
 
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null, slowFactor = 1 }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, actionAnimations, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null, slowFactor = 1 }: AvatarCharacterProps) {
   // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
   // useMemo garante uma referência ESTÁVEL (senão efeitos com [config] entrariam em loop).
   const configMemo = useMemo(() => config || ({} as any), [config]);
@@ -3093,6 +3098,25 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
     // Poses customizadas que substituem as ações base (Parado/Andando/Correndo/Luta)
     // Aplicam quando NÃO existe animação de item relevante para a ação atual.
     const actionKey = animation?.startsWith('attack') ? 'attack' : animation as 'idle' | 'walk' | 'run' | 'attack';
+    // ANIMAÇÃO completa (frames) associada à ação — tem prioridade sobre a pose estática.
+    // Aceita ações personalizadas (ex.: 'victory', ou uma ação nova criada no Pose Studio).
+    const animActionKey = (() => {
+      const a = animation || 'idle';
+      if (a.startsWith('attack')) return 'attack';
+      if (a === 'cheer' || a.startsWith('victory')) return 'victory';
+      return a;
+    })();
+    const finalActionAnims = actionAnimations || (config as any)?.actionAnimations;
+    const customActionAnim = finalActionAnims && animActionKey ? finalActionAnims[animActionKey] : undefined;
+    if (customActionAnim && customActionAnim.frames.length > 0) {
+      viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        if (faceCamera && animActionKey === 'attack') {
+          player.rotation.y = 0;
+        }
+        applyInterpolatedPose(player, customActionAnim.frames, time);
+      });
+      return;
+    }
     const customActionPose = actionPoses && actionKey ? actionPoses[actionKey] : undefined;
     if (customActionPose && Object.keys(customActionPose).length > 0) {
       viewerRef.current.animation = new FunctionAnimation((player: any) => {

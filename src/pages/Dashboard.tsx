@@ -3326,6 +3326,7 @@ export default function Dashboard() {
                                   expression={getProfileAvatarState(userData, liveAvatarConfig || userData.avatarConfig).expression as any}
                                   showSlots={true}
                                   actionPoses={(liveAvatarConfig || userData.avatarConfig)?.actionPoses}
+                      actionAnimations={(liveAvatarConfig || userData.avatarConfig)?.actionAnimations}
                                   faceCamera={true}
                                   onAvatarClick={() => setIsCustomizingAvatar(true)}
                                   onSlotClick={handleUnequipItem}
