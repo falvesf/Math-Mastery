@@ -1529,7 +1529,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   modelTransforms: data.modelTransforms || sData.modelTransforms || null,
                   backColor: data.backColor || sData.backColor || '',
                   rarity: data.rarity || sData.rarity,
-                  customAnimation: data.customAnimation || sData.customAnimation,
+                  customAnimation: data.customAnimation || sData.customAnimation, itemAnimations: data.itemAnimations || sData.itemAnimations,
                   battleSoundUrl: data.battleSoundUrl || sData.battleSoundUrl,
                   criticalSoundUrl: data.criticalSoundUrl || sData.criticalSoundUrl || '',
                   damageEffect: data.damageEffect || sData.damageEffect || 'none',

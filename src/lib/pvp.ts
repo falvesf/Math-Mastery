@@ -118,7 +118,7 @@ export function normalizeEquippedItems(userItemRows: any[]): any[] {
         minecraftHeadValue: data.minecraftHeadValue,
         modelTransforms: data.modelTransforms,
         backColor: data.backColor || '',
-        customAnimation: data.customAnimation,
+        customAnimation: data.customAnimation, itemAnimations: data.itemAnimations,
         battleSoundUrl: data.battleSoundUrl,
         damageEffect: data.damageEffect || 'none',
         forgeLevel: data.forgeLevel || 0,

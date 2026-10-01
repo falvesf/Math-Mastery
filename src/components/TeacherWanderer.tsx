@@ -118,7 +118,7 @@ export default function TeacherWanderer({ myUid, tenantId, onOpenTeacherProfile,
             modelTextureUrl: data.modelTextureUrl,
             minecraftHeadValue: data.minecraftHeadValue,
             modelTransforms: data.modelTransforms,
-            customAnimation: data.customAnimation,
+            customAnimation: data.customAnimation, itemAnimations: data.itemAnimations,
           } as EquippedItem);
         }
       });

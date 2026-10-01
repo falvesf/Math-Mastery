@@ -101,7 +101,7 @@ export default function ArenaAvatarPoC({ config: configProp, equippedItems: item
                 forgeLevel: data.forgeLevel || 0, forgeConfig: data.forgeConfig || null,
                 gameModelUrl: data.gameModelUrl, modelTextureUrl: data.modelTextureUrl,
                 minecraftHeadValue: data.minecraftHeadValue, modelTransforms: data.modelTransforms,
-                backColor: data.backColor || '', customAnimation: data.customAnimation, rarity: data.rarity,
+                backColor: data.backColor || '', customAnimation: data.customAnimation, itemAnimations: data.itemAnimations, rarity: data.rarity,
               } as any);
             }
           });

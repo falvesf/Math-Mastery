@@ -953,6 +953,7 @@ export default function Dashboard() {
                 modelTransforms: data.modelTransforms,
                 backColor: data.backColor || '',
                 customAnimation: data.customAnimation,
+                itemAnimations: data.itemAnimations || null,
                 rarity: data.rarity,
                 gameEffect: data.gameEffect,
                 damageEffect: data.damageEffect,

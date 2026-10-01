@@ -142,6 +142,8 @@ export interface EquippedItem {
   rarity?: string;
   backColor?: string;
   customAnimation?: ItemAnimation;
+  /** Animações por estado (ataque/vitória/dano/parado/andando/correndo) deste item. */
+  itemAnimations?: ItemAnimations;
   /** Sprite animado (atlas) ao redor do item — efeito de brilho/encanto */
   spriteAnimation?: SpriteAnimation;
   gameEffect?: string;
@@ -171,6 +173,10 @@ export interface ItemAnimation {
   loop: boolean;
   duration?: number;
 }
+
+/** Estados de animação que um ITEM pode customizar (substitui/acrecenta ao padrão). */
+export type ItemAnimSlot = 'idle' | 'walk' | 'run' | 'attack' | 'victory' | 'hurt';
+export type ItemAnimations = Partial<Record<ItemAnimSlot, ItemAnimation>>;
 
 /** Sprite animado (atlas) ao redor do item — exibe uma célula por vez, ciclando (efeito de brilho/encanto) */
 export interface SpriteAnimation {
@@ -3013,18 +3019,29 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
     //   - escudo de defesa: itemCategory 'defense'
     const isAttackAnim = animation === 'attack' || animation === 'attack-fatal' || animation === 'attack-fatal-slow';
     const isHurtAnim = animation === 'hurt' || animation === 'exhausted';
+    const isVictoryAnim = animation === 'cheer' || (animation?.startsWith('victory') ?? false);
+    const itemAnimOf = (i: EquippedItem, slot: ItemAnimSlot): ItemAnimation | undefined => {
+      const slotAnim = i.itemAnimations?.[slot];
+      if (slotAnim && slotAnim.frames.length > 0) return slotAnim;
+      // compat: customAnimation (antigo) = ataque
+      if (slot === 'attack' && i.customAnimation && i.customAnimation.frames.length > 0) return i.customAnimation;
+      return undefined;
+    };
     const isAttackItem = (i: EquippedItem) =>
-      !!i.customAnimation && i.customAnimation.frames.length > 0 &&
+      !!itemAnimOf(i, 'attack') &&
       (i.itemCategory === 'attack' ||
         (i.itemCategory !== 'defense' && (i.avatarPart === 'hand' || i.avatarPart === 'two_handed' || i.avatarPart === 'rightHand' || i.avatarPart === 'leftHand')));
     const isDefenseItem = (i: EquippedItem) =>
-      !!i.customAnimation && i.customAnimation.frames.length > 0 &&
-      i.itemCategory === 'defense';
+      !!itemAnimOf(i, 'hurt') && i.itemCategory === 'defense';
 
-    // Animação do item relevante para a ação atual (arma no ataque; escudo no dano)
+    // Animação do item relevante para a ação atual (arma no ataque; escudo no dano; qualquer item na vitória)
+    const _attackItem = equippedItems.find(isAttackItem);
+    const _hurtItem = equippedItems.find(isDefenseItem);
+    const _victoryItem = equippedItems.find(i => !!itemAnimOf(i, 'victory'));
     const battleItemAnim =
-      isAttackAnim ? equippedItems.find(isAttackItem)?.customAnimation :
-      isHurtAnim ? equippedItems.find(isDefenseItem)?.customAnimation :
+      isAttackAnim ? (_attackItem ? itemAnimOf(_attackItem, 'attack') : undefined) :
+      isHurtAnim ? (_hurtItem ? itemAnimOf(_hurtItem, 'hurt') : undefined) :
+      isVictoryAnim ? (_victoryItem ? itemAnimOf(_victoryItem, 'victory') : undefined) :
       undefined;
     const hasCustomBattleAnim = !!battleItemAnim;
 
@@ -3059,6 +3076,18 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
         applyInterpolatedPose(player, battleItemAnim.frames, time);
       });
       return;
+    }
+
+    // Item equipado com animação própria p/ Parado/Andando/Correndo → substitui a base.
+    if (animation === 'idle' || animation === 'walk' || animation === 'run') {
+      const moveItem = equippedItems.find(i => !!itemAnimOf(i, animation as ItemAnimSlot));
+      const moveAnim = moveItem ? itemAnimOf(moveItem, animation as ItemAnimSlot) : undefined;
+      if (moveAnim) {
+        viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+          applyInterpolatedPose(player, moveAnim.frames, time);
+        });
+        return;
+      }
     }
 
     // Poses customizadas que substituem as ações base (Parado/Andando/Correndo/Luta)

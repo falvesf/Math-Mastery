@@ -109,7 +109,7 @@ export const QuestDamageRankingModal: React.FC<QuestDamageRankingModalProps> = (
               modelTransforms: data.modelTransforms,
               backColor: data.backColor || '',
               rarity: data.rarity,
-              customAnimation: data.customAnimation,
+              customAnimation: data.customAnimation, itemAnimations: data.itemAnimations,
               battleSoundUrl: data.battleSoundUrl,
               criticalSoundUrl: data.criticalSoundUrl || '',
               damageEffect: data.damageEffect || 'none',

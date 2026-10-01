@@ -136,6 +136,8 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
   const [savedPoses, setSavedPoses] = useState<SavedPose[]>([]);
   const [newPoseName, setNewPoseName] = useState('');
   const [userActionPoses, setUserActionPoses] = useState<Record<string, CharacterPose> | null>(null);
+  // Estado/ação que a cena gravada vai assumir (ataque, vitória, dano, parado, andando, correndo)
+  const [animSlot, setAnimSlot] = useState<'attack' | 'victory' | 'hurt' | 'idle' | 'walk' | 'run'>('attack');
   const dragRef = useRef<{ startX: number; startYaw: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const draggedPalette = useRef<EquippedItem | null>(null);
@@ -224,7 +226,7 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
             modelTextureUrl: dd.modelTextureUrl || '',
             minecraftHeadValue: dd.minecraftHeadValue || '',
             modelTransforms: dd.modelTransforms || null,
-            customAnimation: dd.customAnimation || null,
+            customAnimation: dd.customAnimation || null, itemAnimations: dd.itemAnimations || null,
           };
           if (type === 'consumable') cons.push(item);
           else equips.push(item);
@@ -479,20 +481,28 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
     if (!weaponItem.itemId) { setStatus('Item inválido (sem id de catálogo).'); return; }
     if (frames.length === 0) { setStatus('Crie pelo menos um frame da cena antes de associar.'); return; }
     const framesToSave = frames.map(clone);
-    const customAnimation = { frames: framesToSave, loop: true, duration: 1000, durationPerFrame: frameDuration };
+    const anim = { frames: framesToSave, loop: true, duration: 1000, durationPerFrame: frameDuration };
     try {
       const { data: storeSnap } = await supabase.from('store_items').select('data').eq('id', weaponItem.itemId).single();
       if (storeSnap) {
-        const newData = { ...(storeSnap.data as any), customAnimation };
+        const prev = (storeSnap.data as any) || {};
+        const prevAnims = (prev.itemAnimations || {});
+        const newData: any = { ...prev, itemAnimations: { ...prevAnims, [animSlot]: anim } };
+        if (animSlot === 'attack') newData.customAnimation = anim; // retrocompat
         await supabase.from('store_items').update({ data: newData }).eq('id', weaponItem.itemId);
       }
       const { data: userCopies } = await supabase.from('user_items').select('id, data').eq('item_id', weaponItem.itemId);
       if (userCopies) {
         for (const c of userCopies) {
-          await supabase.from('user_items').update({ data: { ...(c.data as any), customAnimation } }).eq('id', c.id);
+          const d = (c.data as any) || {};
+          const prevAnims2 = (d.itemAnimations || {});
+          const nd: any = { ...d, itemAnimations: { ...prevAnims2, [animSlot]: anim } };
+          if (animSlot === 'attack') nd.customAnimation = anim;
+          await supabase.from('user_items').update({ data: nd }).eq('id', c.id);
         }
       }
-      setStatus(`Cena (${framesToSave.length} frame(s)) vinculada ao item "${weaponItem.itemTitle}". Todo personagem que equipá-lo fará essa ação ao atacar.`);
+      const slotLabel: Record<string, string> = { attack: 'Ataque', victory: 'Vitória/Comemoração', hurt: 'Dano', idle: 'Parado', walk: 'Andando', run: 'Correndo' };
+      setStatus(`Cena (${framesToSave.length} frame(s)) vinculada ao item "${weaponItem.itemTitle}" → ação "${slotLabel[animSlot] || animSlot}". Todo personagem que equipá-lo fará essa animação.`);
     } catch (e) {
       console.error(e);
       setStatus('Erro ao associar a cena ao item.');
@@ -974,6 +984,18 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
                     </div>
                   </div>
                 )}
+
+                <div style={{ marginTop: '0.45rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  <label style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>Ação que esta cena representa</label>
+                  <select value={animSlot} onChange={e => setAnimSlot(e.target.value as any)} style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.78rem' }}>
+                    <option value="attack">⚔️ Ataque (arma)</option>
+                    <option value="victory">🎉 Vitória / Comemoração</option>
+                    <option value="hurt">💥 Dano (escudo/defesa)</option>
+                    <option value="idle">🧍 Parado</option>
+                    <option value="walk">🚶 Andando</option>
+                    <option value="run">🏃 Correndo</option>
+                  </select>
+                </div>
 
                 <button
                   onClick={associateToItem}

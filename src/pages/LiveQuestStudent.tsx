@@ -255,7 +255,7 @@ export default function LiveQuestStudent() {
                   modelTransforms: data.modelTransforms,
                   backColor: data.backColor || '',
                   rarity: data.rarity,
-                  customAnimation: data.customAnimation,
+                  customAnimation: data.customAnimation, itemAnimations: data.itemAnimations,
                 });
                 if (!data.modelTransforms && d.item_id) {
                   missingTransformIds.push(d.item_id);
