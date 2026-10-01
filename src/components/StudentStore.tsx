@@ -985,6 +985,7 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
                     imageUrl: (previewItem as any).imageUrl || (previewItem as any).itemImageUrl || '',
                     avatarPart: previewItem.avatarPart as any,
                     gameModelUrl: previewItem.gameModelUrl,
+                    keepMetal: (previewItem as any).keepMetal || false,
                     modelTextureUrl: previewItem.modelTextureUrl,
                     minecraftHeadValue: previewItem.minecraftHeadValue,
                     modelTransforms: resolvedMt

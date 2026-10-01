@@ -353,6 +353,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
       baseAttributeType: f.baseAttributeType || 'none',
       baseAttributeValue: f.baseAttributeValue || 0,
       gameModelUrl: f.gameModelUrl || '',
+      keepMetal: f.keepMetal || false,
       modelTextureUrl: f.modelTextureUrl || '',
       minecraftHeadValue: f.minecraftHeadValue || '',
       modelTransforms: f.modelTransforms || undefined,
