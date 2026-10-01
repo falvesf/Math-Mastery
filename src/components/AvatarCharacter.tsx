@@ -1226,6 +1226,16 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
             applyForgeGlowToModel(model, item.forgeLevel || 0);
             // Material PBR: usa o environment da cena p/ metais refletirem (dourado etc.).
             tuneMaterialsForEnv(model, 1.2);
+            // Diagnóstico (temporário): detalhes dos materiais/texturas do modelo do item.
+            try {
+              const info: any[] = [];
+              model.traverse((ch: any) => {
+                if (!ch.isMesh || !ch.material) return;
+                const ms = Array.isArray(ch.material) ? ch.material : [ch.material];
+                ms.forEach((m: any) => info.push({ type: m.type, color: m.color?.getHexString?.(), metal: m.metalness, rough: m.roughness, hasMap: !!m.map, hasNormal: !!m.normalMap, map: m.map?.image?.src }));
+              });
+              console.log('[equip-model]', item.itemTitle, (item as any).gameModelUrl, info);
+            } catch { /* noop */ }
             // Estrelas de forja (emissiveMap que desliza) só na armadura e na arma, +7/+8/+9
             {
               const _lvl = item.forgeLevel || 0;

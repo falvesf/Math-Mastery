@@ -33,13 +33,18 @@ export function fetchEquippedItems(uid: string): Promise<any[]> {
             if (!st) continue;
             const sd = (typeof st.data === 'string' ? JSON.parse(st.data) : st.data) || {};
             const d = row.data || {};
+            // Prefere o modelo 3D (.glb) do catálogo quando o item no inventário só tem imagem 2D.
+            const isGlb = (u?: string) => !!u && /\.(glb|gltf)(\?|$)/i.test(u);
+            const instModel = d.gameModelUrl || sd.gameModelUrl || '';
+            const storeModel = sd.gameModelUrl || '';
+            const chosenModel = (isGlb(storeModel) && !isGlb(instModel)) ? storeModel : (instModel || storeModel);
             row.data = {
               ...sd,
               ...d,
               itemTitle: d.itemTitle || sd.itemTitle || sd.title || st.name || d.title || undefined,
               itemImageUrl: d.itemImageUrl || d.imageUrl || sd.itemImageUrl || sd.imageUrl || '',
               itemType: d.itemType || sd.itemType || sd.type || 'other',
-              gameModelUrl: d.gameModelUrl || sd.gameModelUrl || '',
+              gameModelUrl: chosenModel,
               modelTextureUrl: d.modelTextureUrl || sd.modelTextureUrl || '',
               minecraftHeadValue: d.minecraftHeadValue || sd.minecraftHeadValue || '',
               modelTransforms: d.modelTransforms || sd.modelTransforms || null,
