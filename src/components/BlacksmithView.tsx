@@ -70,6 +70,19 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const [consumables, setConsumables] = useState<any[]>([]);
   // Catálogo (loja) dos materiais/itens — para mostrar nome/ícone mesmo sem possuir
   const [materialCatalog, setMaterialCatalog] = useState<Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string }>>({});
+
+  // Materiais podem ter IDs diferentes para o MESMO item (catálogo compartilhado entre
+  // escolas). Por isso casamos por item_id OU pelo NOME normalizado.
+  const _normTitle = (s?: any) => String(s ?? '').trim().toLowerCase();
+  const matOwned = (id: string) => {
+    const reqTitle = _normTitle(materialCatalog[id]?.title);
+    return consumables.find(c => c.itemId === id || (reqTitle && _normTitle(c.itemTitle) === reqTitle));
+  };
+  const matCount = (id: string) => {
+    const reqTitle = _normTitle(materialCatalog[id]?.title);
+    return consumables.filter(c => c.itemId === id || (reqTitle && _normTitle(c.itemTitle) === reqTitle))
+      .reduce((s, c) => s + (c.quantity || 1), 0);
+  };
   
   // Sketchfab State
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -583,14 +596,13 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       return;
     }
     const requiredMats = forgeMaterialsForLevel(nextLevel, selectedForgeItem.forgeConfig);
-    const matCounts = (id: string) => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0);
-    const missingMats = requiredMats.filter(id => matCounts(id) <= 0);
+    const missingMats = requiredMats.filter(id => matCount(id) <= 0);
     if (missingMats.length > 0) {
       showToast("Você não possui os materiais exigidos para esta forja!", 'error');
       return;
     }
     const matsLabel = requiredMats.length > 0
-      ? requiredMats.map(id => consumables.find(c => c.itemId === id)?.itemTitle || 'Material').join(', ')
+      ? requiredMats.map(id => matOwned(id)?.itemTitle || materialCatalog[id]?.title || 'Material').join(', ')
       : 'Nenhum';
     const confirmMsg = `Deseja forjar este item para +${nextLevel}?\nCusto: ${cost} moedas\nMateriais: ${matsLabel}\nChance: ${Math.min(100, finalChance)}%${useScroll ? ` (${baseChance}% base + ${scrollChanceBonus}% bônus)` : ''}\n${useScroll ? `Pergaminho ativo (${activeScroll?.title || 'Pergaminho'}): O item não será destruído em caso de falha${currentLevel > 0 ? ', mas regredirá 1 nível (-1)' : ' (mantém +0)'}.` : 'AVISO: O item SERÁ DESTRUÍDO se a forja falhar!'}\nOs materiais serão consumidos em caso de sucesso ou falha.`;
     if (!await showConfirm(confirmMsg)) return;
@@ -1860,7 +1872,6 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                       const nextBaseChance = forgeSuccessChance(curLevel + 1, selectedForgeItem.forgeConfig);
                       const nextChance = useScroll ? Math.min(100, nextBaseChance + scrollChanceBonus) : nextBaseChance;
                       const requiredMats = forgeMaterialsForLevel(curLevel + 1, selectedForgeItem.forgeConfig);
-                      const matCount = (id: string) => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0);
                       const materialsMissing = requiredMats.some(id => matCount(id) <= 0);
                       return (
                         <>
@@ -1970,7 +1981,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                               {requiredMats.map(id => {
                                 const qty = matCount(id);
-                                const owned = consumables.find(c => c.itemId === id);
+                                const owned = matOwned(id);
                                 const cat = materialCatalog[id];
                                 const title = owned?.itemTitle || cat?.title || 'Material';
                                 const img = owned?.itemImageUrl || cat?.imageUrl || '';
@@ -2105,15 +2116,15 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
                     {[0, 1].map(matIdx => {
                       const matId = selectedTransmuteItem?.transmuteConfig?.materials?.[matIdx];
-                      const haveMat = matId ? consumables.filter(c => c.itemId === matId).reduce((s, c) => s + (c.quantity || 1), 0) : 0;
-                      const matTitle = matId ? (materialCatalog[matId]?.title || consumables.find(c => c.itemId === matId)?.itemTitle || 'Material') : 'Material';
-                      const matImg = matId ? (materialCatalog[matId]?.imageUrl || consumables.find(c => c.itemId === matId)?.itemImageUrl) : undefined;
+                      const haveMat = matId ? matCount(matId) : 0;
+                      const matTitle = matId ? (materialCatalog[matId]?.title || matOwned(matId)?.itemTitle || 'Material') : 'Material';
+                      const matImg = matId ? (materialCatalog[matId]?.imageUrl || matOwned(matId)?.itemImageUrl) : undefined;
                       return (
                         <div 
                           key={matIdx} 
                           title={matTitle} 
                           onMouseEnter={() => {
-                            const matObj = matId ? (materialCatalog[matId] || consumables.find(c => c.itemId === matId)) : null;
+                            const matObj = matId ? (materialCatalog[matId] || matOwned(matId)) : null;
                             if (matObj) setHoveredTooltipItem(matObj);
                           }}
                           onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
@@ -2188,7 +2199,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                   const coinsCost = selectedTransmuteItem.transmuteConfig?.coinsCost || 0;
                   const hasCoins = isStaff || (userData.coins || 0) >= coinsCost;
                   const requiredMats = (selectedTransmuteItem.transmuteConfig?.materials || []).filter(Boolean);
-                  const hasAllMats = requiredMats.every((id: string) => consumables.filter(c => c.itemId === id).reduce((s, c) => s + (c.quantity || 1), 0) > 0);
+                      const hasAllMats = requiredMats.every((id: string) => matCount(id) > 0);
 
                   let buttonLabel = 'INICIAR RITUAL DE TRANSMUTAÇÃO';
                   if (!resultId) {
