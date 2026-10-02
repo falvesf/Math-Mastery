@@ -16,9 +16,9 @@ import { fetchEquippedItems } from '../lib/equippedItems';
 import { supabase } from '../lib/supabase';
 import { calculateTotalStats } from '../lib/gacha';
 import { RANKS, getRankForXp } from '../lib/ranks';
-import { fetchActiveCoin, fetchActiveChest, fetchActiveDoor, fetchModelsByCategory, fetchSceneryModels, fetchAnimalModels, isImageUrl } from '../lib/model3d';
+import { fetchActiveCoin, fetchActiveChest, fetchActiveDoor, fetchActiveKey, fetchModel3DById, fetchModelsByCategory, fetchSceneryModels, fetchAnimalModels, isImageUrl } from '../lib/model3d';
 import { calculatePlayerHitDamage } from '../lib/combatDamage';
-import { getEquippedDamageEffectInfo, FATALITY_BY_EFFECT, getFatalityLabel } from '../lib/damageEffects';
+import { getEquippedDamageEffectInfo, FATALITY_BY_EFFECT } from '../lib/damageEffects';
 import { resolveConsumableEffect } from '../lib/consumableEffects';
 import { playConsumableSound, resolveAudioUrl } from '../lib/audioBank';
 import { fetchPlayerBattleQuotes, pickPlayerBattleQuote, type PlayerBattleQuotes } from '../lib/playerQuotes';
@@ -219,8 +219,31 @@ const MONSTER_LINES = {
   hurt: ['Ai!', 'Grrk!', 'Argh!', 'Ouch!'],
   defeat: ['Ugh...', 'Grr...', 'Nao...', '...'],
 };
-export default function MapExplorerPoC({ onExit, config: configProp, equippedItems: itemsProp, scenarioConfig, playerMode = false, scenarioTheme, bossOverride, onBossTouched }: { onExit?: () => void; config?: AvatarConfig | null; equippedItems?: EquippedItem[]; scenarioConfig?: any; playerMode?: boolean; scenarioTheme?: ThemeKey; bossOverride?: { name?: string; config?: any }; onBossTouched?: (remainingHp: number) => void }) {
-const { userData } = useAuth();
+export default function MapExplorerPoC({
+  onExit,
+  config: configProp,
+  equippedItems: itemsProp,
+  scenarioConfig,
+  playerMode = false,
+  scenarioTheme,
+  bossOverride,
+  onBossTouched,
+  onVictory,
+  onDefeat,
+}: {
+  onExit?: () => void;
+  config?: AvatarConfig | null;
+  equippedItems?: EquippedItem[];
+  scenarioConfig?: any;
+  playerMode?: boolean;
+  scenarioTheme?: ThemeKey;
+  bossOverride?: { name?: string; config?: any };
+  onBossTouched?: (remainingHp: number) => void;
+  onVictory?: (result: { coins: number; xp: number }) => void;
+  onDefeat?: () => void;
+}) {
+  void onBossTouched;
+  const { userData } = useAuth();
   const [themeKey, setThemeKey] = useState<ThemeKey>(scenarioTheme || 'plains');
   const [seed, setSeed] = useState(0);
   const [msg, setMsg] = useState('WASD/Setas para andar · ESPAÇO para atacar (vigor) · E para abrir baú · Explore até o BOSS à direita.');
@@ -237,7 +260,7 @@ const { userData } = useAuth();
   const [damagePops, setDamagePops] = useState<any[]>([]);
   const [critFx, setCritFx] = useState<{ id: number; side: 'out' | 'in'; msg?: string } | null>(null);
   const [activeConsumableAnim, setActiveConsumableAnim] = useState<any>(null);
-const [sfxOn, setSfxOn] = useState(false);
+  const [sfxOn, setSfxOn] = useState(false);
   const [sfxDiag, setSfxDiag] = useState('');
   // Tutorial de 1ª visita: instruções de controles; monstros ficam PASSIVOS até terminar.
   // Persistido no PERFIL do aluno (users.inventory_preferences) → vale em qualquer dispositivo.
@@ -285,14 +308,25 @@ const [sfxOn, setSfxOn] = useState(false);
   const [doorQuestion, setDoorQuestion] = useState<any>(null);
   const [doorBusy, setDoorBusy] = useState(false);
   const [doorTarget, setDoorTarget] = useState<any>(null);
-  // LUTA CONTRA O BOSS por PERGUNTAS. HP = 10x o configurado do boss; cada acerto tira `perHit`.
+
+  // LUTA CONTRA O BOSS por PERGUNTAS E TURNOS 3D
   const [bossFight, setBossFight] = useState<any>(null);
   const [bossFeedback, setBossFeedback] = useState<string | null>(null);
   const [bossFlash, setBossFlash] = useState<string | null>(null);
+  void bossFlash; void setBossFlash;
+  const [scenarioResult, setScenarioResult] = useState<'victory' | 'defeat' | null>(null);
   const bossBaseHpRef = useRef(300);
   const bossFightRef = useRef<any>(null);
   const bossAnswerRef = useRef<(i: number) => void>(() => {});
   const bossFinishRef = useRef<() => void>(() => {});
+  const bossQuestionLoadingRef = useRef(false);
+  const bossGruntTimerRef = useRef<number | null>(null);
+
+  // Câmera cinematográfica lateral (Perfil)
+  const cinematicCamActive = useRef(false);
+  const cinematicCamTargetPos = useRef<THREE.Vector3 | null>(null);
+  const cinematicCamLookAt = useRef<THREE.Vector3 | null>(null);
+  const currentCamLookAt = useRef<THREE.Vector3>(new THREE.Vector3());
   const [puffs, setPuffs] = useState<any[]>([]);
   // Overlay de recompensa ao abrir um baú (itens em círculos por raridade).
   const [chestReward, setChestReward] = useState<{ items: any[]; coins: number } | null>(null);
@@ -434,9 +468,9 @@ const [sfxOn, setSfxOn] = useState(false);
     if (idx === q.correctIndex) { setMsg('✅ Resposta correta! A porta se abriu.'); openDoorRef.current(t.x, t.z); }
     else { setMsg('❌ Resposta errada! Monstros surgiram perto da porta.'); doorWrongRef.current(t.x, t.z); }
   };
-  // Pausa o cenário só enquanto a pergunta da porta OU a PERGUNTA do boss está aberta
-  // (na luta do boss, a ação flui e só pausa no momento do contato/pergunta).
-  gamePausedRef.current = !!doorQuestion || doorBusy || (!!bossFight && !bossFight.done && !!bossFight.question);
+  // Pausa o cenário só enquanto a pergunta da porta está aberta
+  // (a luta do boss não trava o render loop do Three.js, os mixers e animações continuam rodando).
+  gamePausedRef.current = !!doorQuestion || doorBusy;
   bossFightRef.current = bossFight;
 
   // Busca os itens equipados (para o personagem 3D), consumíveis e modelos padrão (moeda/baú).
@@ -447,7 +481,7 @@ const [sfxOn, setSfxOn] = useState(false);
     const tenantId = (userData as any)?.tenantId || null;
 
     // Molde da moeda/baú: PNG (plano) ou GLB. Guardado para clonar no mapa.
-    const buildTemplate = async (model: any, kind: 'coin' | 'chest' | 'door' | 'scenery' | 'animal'): Promise<any> => {
+    const buildTemplate = async (model: any, kind: 'coin' | 'chest' | 'door' | 'scenery' | 'animal' | 'key'): Promise<any> => {
       if (!model) return null;
       const url = model.url || model.open_url || '';
       if (!url) return null;
@@ -455,7 +489,7 @@ const [sfxOn, setSfxOn] = useState(false);
         if (isImageUrl(url)) {
           const tex = await new THREE.TextureLoader().loadAsync(url);
           (tex as any).colorSpace = (THREE as any).SRGBColorSpace;
-          if (kind === 'scenery' || kind === 'animal') {
+          if (kind === 'scenery' || kind === 'animal' || kind === 'key') {
             // Imagem 2D → billboard (sempre de frente para a câmera).
             const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
             spr.scale.set(1, 1, 1);
@@ -540,12 +574,28 @@ if (!cancelled) {
       }
     }).catch(() => {});
 
-    // Moeda/baú PADRÃO ativos do tenant (arte do cenário).
-    const loadModels = Promise.all([fetchActiveCoin(tenantId), fetchActiveChest(tenantId), fetchActiveDoor(tenantId)]).then(async ([coinM, chestM, doorM]) => {
+    // Moeda, baú (específico ou padrão) e chave (ativa) do tenant (arte do cenário).
+    const customChestId = scenarioRef.current?.chestConfig?.chestModelId;
+    const loadModels = Promise.all([
+      fetchActiveCoin(tenantId),
+      customChestId ? fetchModel3DById(customChestId, tenantId) : fetchActiveChest(tenantId),
+      fetchActiveDoor(tenantId),
+      fetchActiveKey(tenantId)
+    ]).then(async ([coinM, chestMInit, doorM, keyM]) => {
+      let chestM = chestMInit || (await fetchActiveChest(tenantId));
       const c = await buildTemplate(coinM, 'coin');
       const ch = await buildTemplate(chestM, 'chest');
       const dr = await buildTemplate(doorM, 'door');
-      if (!cancelled) { coinTemplateRef.current = c; chestTemplateRef.current = ch; doorTemplateRef.current = dr; coinConfigRef.current = coinM; chestConfigRef.current = chestM; }
+      const ky = await buildTemplate(keyM, 'key');
+      if (!cancelled) {
+        coinTemplateRef.current = c;
+        chestTemplateRef.current = ch;
+        doorTemplateRef.current = dr;
+        keyTemplateRef.current = ky;
+        coinConfigRef.current = coinM;
+        chestConfigRef.current = chestM;
+        keyConfigRef.current = keyM;
+      }
       // Modelos de PORTA por ID (categoria 'door') — cada tipo de porta usa o SEU modelo.
       const allDoorModels = await fetchModelsByCategory('door', tenantId).catch(() => []);
       const doorMap = new Map<string, any>();
@@ -616,7 +666,7 @@ if (!cancelled) {
       }).catch(() => {});
 
     // Catálogo de itens (store_items) para o loot ligado ao catálogo.
-    const loadCatalog = Promise.resolve(supabase.from('store_items').select('*').eq('active', true)).then(({ data }) => {
+    const loadCatalog = Promise.resolve(supabase.from('store_items').select('*')).then(({ data }) => {
       (data || []).forEach((r: any) => {
         const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {});
         itemCatalogRef.current.set(String(r.id), {
@@ -679,6 +729,8 @@ if (!cancelled) {
   const coinConfigRef = useRef<any>(null);
   const chestConfigRef = useRef<any>(null);
   const doorTemplateRef = useRef<any>(null);
+  const keyTemplateRef = useRef<any>(null);
+  const keyConfigRef = useRef<any>(null);
   // Modelos 3D de porta POR ID (associados a cada tipo de porta no cenário).
   const doorTemplatesRef = useRef<Map<string, any>>(new Map());
   // Cenário configurável: modelos por TIPO (tree/bush/flower/rock/water/floor).
@@ -746,8 +798,28 @@ if (!cancelled) {
   const activeWeaponObj = handOptions.find(o => o.id === handActiveId) || (handActiveId ? null : (handOptions.find(o => !o.isPickaxe) || null));
   const activeConsumableObj = consumables.length > 0 ? consumables[0] : null;
 
-  // Áudio: sons de batalha (espada/soco) e de dano do personagem (por gênero).
-  const battleSoundsRef = useRef<{ punch: string; fatalEvaporate: string; fatalFall: string; fatalSlice: string; fatalExplode: string }>({ punch: '', fatalEvaporate: '', fatalFall: '', fatalSlice: '', fatalExplode: '' });
+  // Áudio: sons de batalha (espada/soco), fatalidades, vitória e derrota.
+  const battleSoundsRef = useRef<{
+    punch: string;
+    fatalEvaporate: string;
+    fatalFall: string;
+    fatalSlice: string;
+    fatalExplode: string;
+    victory: string;
+    fail: string;
+    deathMale: string;
+    deathFemale: string;
+  }>({
+    punch: '',
+    fatalEvaporate: '',
+    fatalFall: '',
+    fatalSlice: '',
+    fatalExplode: '',
+    victory: '',
+    fail: '',
+    deathMale: '',
+    deathFemale: '',
+  });
   const playerDamageSoundsRef = useRef<{ male: string; female: string }>({ male: '', female: '' });
   // Sons das portas (configuráveis no admin, doc "door_sounds").
   const doorSoundsRef = useRef<{ open: string; locked: string }>({ open: '', locked: '' });
@@ -755,20 +827,56 @@ if (!cancelled) {
   const quotesRef = useRef<PlayerBattleQuotes | null>(null);
   useEffect(() => {
     let active = true;
-    supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'battle_sounds').then(({ data }) => {
+    supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'battle_sounds').then(async ({ data }) => {
       if (!active) return; let b: any = {}; (data || []).forEach((r: any) => b = { ...b, ...(r.data || {}) });
-      battleSoundsRef.current = {
+      let sounds: Record<string, string> = {
         punch: b.punch || b.punch_sound || '',
         fatalEvaporate: b.fatalEvaporate || b.fatal_evaporate || '',
         fatalFall: b.fatalFall || b.fatal_fall || '',
         fatalSlice: b.fatalSlice || b.fatal_slice || '',
         fatalExplode: b.fatalExplode || b.fatal_explode || '',
+        victory: b.victory || b.victory_sound || '',
+        fail: b.fail || b.fail_sound || '',
+        deathMale: b.deathMale || b.death_male || '',
+        deathFemale: b.deathFemale || b.death_female || '',
       };
-      if (battleSoundsRef.current.punch) sfx.preload(battleSoundsRef.current.punch);
-      if (battleSoundsRef.current.fatalEvaporate) sfx.preload(battleSoundsRef.current.fatalEvaporate);
-      if (battleSoundsRef.current.fatalFall) sfx.preload(battleSoundsRef.current.fatalFall);
-      if (battleSoundsRef.current.fatalSlice) sfx.preload(battleSoundsRef.current.fatalSlice);
-      if (battleSoundsRef.current.fatalExplode) sfx.preload(battleSoundsRef.current.fatalExplode);
+      if (!sounds.fatalFall || !sounds.fatalEvaporate || !sounds.fatalSlice || !sounds.fatalExplode || !sounds.victory) {
+        try {
+          const { data: audioBank } = await supabase.from('audio_bank').select('name, url');
+          const kw: Record<string, string[]> = {
+            fatalFall: ['queda', 'fall', 'cai', 'tombo'],
+            fatalEvaporate: ['evapor', 'pulver', 'desapare'],
+            fatalSlice: ['corte', 'slice', 'lamina', 'espada'],
+            fatalExplode: ['explos', 'explod', 'bomba'],
+            victory: ['vitoria', 'vitória', 'victory', 'win', 'fanfare'],
+          };
+          (audioBank || []).forEach((a: any) => {
+            const name = ((a.name || '') + ' ' + (a.url || '')).toLowerCase();
+            for (const [key, kws] of Object.entries(kw)) {
+              if (!sounds[key] && kws.some(k => name.includes(k))) sounds[key] = a.url;
+            }
+          });
+          const firstFatal = ['fatalFall', 'fatalEvaporate', 'fatalSlice', 'fatalExplode'].map(k => sounds[k]).find(Boolean) || '';
+          for (const key of ['fatalFall', 'fatalEvaporate', 'fatalSlice', 'fatalExplode']) {
+            if (!sounds[key]) sounds[key] = firstFatal;
+          }
+        } catch { /* ignore fallback */ }
+      }
+      battleSoundsRef.current = {
+        punch: sounds.punch,
+        fatalEvaporate: sounds.fatalEvaporate,
+        fatalFall: sounds.fatalFall,
+        fatalSlice: sounds.fatalSlice,
+        fatalExplode: sounds.fatalExplode,
+        victory: sounds.victory,
+        fail: sounds.fail,
+        deathMale: sounds.deathMale,
+        deathFemale: sounds.deathFemale,
+      };
+      ['punch', 'fatalEvaporate', 'fatalFall', 'fatalSlice', 'fatalExplode', 'victory', 'fail'].forEach(k => {
+        const u = (battleSoundsRef.current as any)[k];
+        if (u) sfx.preload(u);
+      });
     });
     supabase.from('system_collections').select('data').eq('collection_name', 'audio').eq('doc_id', 'player_damage_sounds').then(({ data }) => {
       if (!active) return; let d: any = {}; (data || []).forEach((r: any) => d = { ...d, ...(r.data || {}) });
@@ -966,76 +1074,211 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
         }
       }, 50);
     };
-    // LUTA do boss em TEMPO REAL: o boss fica ATIVO (persegue/luta). A pergunta só abre no
-    // CONTATO físico (o boss acerta o jogador, ou o jogador ataca o boss).
+    let playerCelebrateUntil = 0;
+    // Posiciona a câmera cinematográfica lateral (perfil) enquadrando jogador e chefe
+    const setupSideCamera = () => {
+      if (!bossSlime) return;
+      const px = wx(playerPos.x), pz = wz(playerPos.z);
+      const bx = bossSlime.root.position.x, bz = bossSlime.root.position.z;
+      const mx = (px + bx) / 2, mz = (pz + bz) / 2;
+      const dx = bx - px, dz = bz - pz;
+      const dist = Math.hypot(dx, dz) || 1;
+      const sideX = -dz / dist, sideZ = dx / dist;
+      const camDist = Math.max(3.8, dist * 1.6);
+      cinematicCamTargetPos.current = new THREE.Vector3(mx + sideX * camDist, 1.55, mz + sideZ * camDist);
+      cinematicCamLookAt.current = new THREE.Vector3(mx, 1.1, mz);
+      cinematicCamActive.current = true;
+    };
+
+    // Vira jogador e chefe para se encararem frente a frente no duelo
+    const faceCombatants = () => {
+      if (!bossSlime) return;
+      const dx = bossSlime.root.position.x - wx(playerPos.x);
+      const dz = bossSlime.root.position.z - wz(playerPos.z);
+      playerRoot.rotation.y = Math.atan2(dx, dz);
+      bossSlime.root.rotation.y = Math.atan2(-dx, -dz) + (bossSlime.faceOffset || 0);
+    };
+
+    // Carrega a próxima pergunta garantindo que NUNCA haja carregamento duplo/concorrente
+    const loadNextBossQuestion = () => {
+      if (disposed || bossQuestionLoadingRef.current) return;
+      const cur = bossFightRef.current;
+      if (!cur || cur.done) return;
+      bossQuestionLoadingRef.current = true;
+      pickDoorQuestion().then(q => {
+        bossQuestionLoadingRef.current = false;
+        const c = bossFightRef.current;
+        if (c && !c.done && q) {
+          const nb = { ...c, question: q };
+          bossFightRef.current = nb;
+          setBossFight(nb);
+          setupSideCamera();
+          faceCombatants();
+        }
+      }).catch(() => {
+        bossQuestionLoadingRef.current = false;
+      });
+    };
+
+    // LUTA CONTRA O CHEFE: inicia a batalha em turnos
     const startBossFight = (source: 'player' | 'boss') => {
       if (disposed) return;
+      setupSideCamera();
+      faceCombatants();
       const baseHp = Math.max(50, Number(bossBaseHpRef.current) || 300);
       const cur = bossFightRef.current;
-      const bf = cur
-        ? { ...cur, qSource: source }
-        : { hp: baseHp * 10, maxHp: baseHp * 10, qIndex: 0, perHit: baseHp, question: null, done: false, fatality: false, qSource: source };
-      bossFightRef.current = bf; setBossFight(bf);
-      setBossFeedback(null);
-      pickDoorQuestion().then(q => { const c = bossFightRef.current; if (c && !c.done) { const nb = { ...c, question: q }; bossFightRef.current = nb; setBossFight(nb); } });
+      if (!cur) {
+        const bf = {
+          hp: baseHp * 10,
+          maxHp: baseHp * 10,
+          qIndex: 0,
+          perHit: baseHp,
+          question: null,
+          done: false,
+          fatality: false,
+          qSource: source
+        };
+        bossFightRef.current = bf;
+        setBossFight(bf);
+      }
+      loadNextBossQuestion();
     };
-    // Abre uma pergunta por CONTATO (boss acertou o jogador OU o jogador atacou o boss).
+
+    // Abre uma pergunta do boss (com proteção contra múltiplos disparos)
     const openBossQuestion = (source: 'player' | 'boss') => {
       const cur = bossFightRef.current;
-      if (cur && (cur.done || cur.question)) return; // já tem pergunta aberta/terminou
+      if (cur && (cur.done || cur.question)) return;
+      if (bossQuestionLoadingRef.current) return;
       startBossFight(source);
     };
-    const triggerBossBattle = () => { if (!disposed) startBossFight('boss'); };
-    // Chefe toca o jogador: toca o GRUNIDO do chefe e SÓ DEPOIS começa a luta.
+
+    // Chefe avista o jogador: toca o GRUNIDO do chefe e SÓ DEPOIS começa a luta
     const bossGruntThenBattle = (gruntUrl: string) => {
       fadeOutMapMusic();
+      if (bossGruntTimerRef.current) {
+        window.clearTimeout(bossGruntTimerRef.current);
+        bossGruntTimerRef.current = null;
+      }
+      let fired = false;
+      const triggerOnce = () => {
+        if (fired || disposed) return;
+        fired = true;
+        if (bossGruntTimerRef.current) {
+          window.clearTimeout(bossGruntTimerRef.current);
+          bossGruntTimerRef.current = null;
+        }
+        startBossFight('boss');
+      };
       if (gruntUrl) {
         const au = new Audio(resolveAudioUrl(gruntUrl));
         au.volume = 0.9;
         au.play().catch(() => {});
-        au.addEventListener('ended', triggerBossBattle);
-        au.addEventListener('error', triggerBossBattle);
-        window.setTimeout(triggerBossBattle, 2500); // fallback de segurança
+        au.addEventListener('ended', triggerOnce, { once: true });
+        au.addEventListener('error', triggerOnce, { once: true });
+        bossGruntTimerRef.current = window.setTimeout(triggerOnce, 2200);
       } else {
-        window.setTimeout(triggerBossBattle, 400);
+        bossGruntTimerRef.current = window.setTimeout(triggerOnce, 350);
       }
     };
-    // Responde: ACERTO → o HP REAL do boss (barra acima da cabeça) cai conforme a força da arma,
-    // com hurt + tint vermelho; ERRO → o boss ESQUIVA (não perde HP) e te acerta (hurt + tint).
+
+    // Resposta do jogador no duelo contra o boss:
+    // ACERTO -> jogador ataca, impacto no chefe, chefe toma dano. Se morrer -> Fatality cinematográfico!
+    // ERRO   -> chefe contra-ataca com animação/soco/especial, jogador toma dano. Se morrer -> Derrota cinematográfica!
     bossAnswerRef.current = (choiceIdx: number) => {
       const bf = bossFightRef.current;
-      if (!bf || bf.done || !bf.question) return;
-      const correct = choiceIdx === bf.question.correctIndex;
+      if (!bf || bf.done || !bf.question || bossQuestionLoadingRef.current) return;
+      const q = bf.question;
+      const correct = choiceIdx === q.correctIndex;
       const qIndex = bf.qIndex + 1;
+
+      // Oculta a pergunta de imediato para liberar a visão completa da ação 3D
+      bossFightRef.current = { ...bf, question: null };
+      setBossFight(bossFightRef.current);
+
+      setupSideCamera();
+      faceCombatants();
+
       if (correct) {
-        const dmg = Math.max(1, Math.round(activeWeaponAtk || bf.perHit || 50));
+        setBossFeedback(`✅ Acertou! Golpe certeiro no chefe!`);
+        // Jogador disfere o ataque:
+        setPlayerAnim('attack');
+        restartAttack();
+        playSword(false);
+
+        // Impacto do golpe do jogador no chefe:
+        window.setTimeout(() => {
+          if (disposed) return;
+          const dmg = Math.max(1, Math.round(activeWeaponAtk || bf.perHit || 50));
+          try {
+            if (bossSlime) {
+              bossSlime.hp = Math.max(0, bossSlime.hp - dmg);
+              flashMonster(bossSlime);
+              playMonsterHurtSound(bossSlime);
+              speakMonster(bossSlime, 'hurt');
+              spawnPop(new THREE.Vector3(bossSlime.root.position.x, (bossSlime.barY || 1.5) + 0.4, bossSlime.root.position.z), `-${dmg}`, false);
+            }
+          } catch { /* noop */ }
+          try { playFx(battleSoundsRef.current.punch, 0.85); } catch { /* noop */ }
+
+          const bossHp = bossSlime ? bossSlime.hp : 0;
+          const isDead = bossHp <= 0 || qIndex >= 10;
+          if (isDead) {
+            startBossFatalityCinematic();
+          } else {
+            window.setTimeout(() => {
+              if (disposed) return;
+              setBossFeedback(null);
+              loadNextBossQuestion();
+            }, 1200);
+          }
+        }, 380);
+      } else {
+        setBossFeedback('❌ Errou! O chefe contra-atacou!');
+        // Chefe avança e ataca o jogador:
         try {
           if (bossSlime) {
-            bossSlime.hp = Math.max(0, bossSlime.hp - dmg);
-            flashMonster(bossSlime); playMonsterHurtSound(bossSlime); speakMonster(bossSlime, 'hurt');
-            spawnPop(new THREE.Vector3(bossSlime.root.position.x, (bossSlime.barY || 1.5) + 0.4, bossSlime.root.position.z), `-${dmg}`, false);
+            if (bossSlime.block) {
+              bossSlime.blockPunch = 1.0;
+              bossSlime.lunge = 0.42;
+            } else if (bossSlime.mixer && bossSlime.clips?.attack) {
+              try {
+                const act = (bossSlime.mixer as any).clipAction(bossSlime.clips.attack);
+                act.reset(); act.setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = true; act.play();
+              } catch { /* noop */ }
+            } else {
+              bossSlime.lunge = 0.42;
+              bossSlime.lungeHit = true;
+            }
+            const sp = bossAttacksConfig?.special;
+            if (sp && sp.enabled !== false) {
+              spawnPop(new THREE.Vector3(wx(playerPos.x), 1.7, wz(playerPos.z)), '💥 ESPECIAL!', true);
+            }
+            playFx(bossSlime.attackSound || battleSoundsRef.current.punch, 0.85);
+            speakMonster(bossSlime, 'attack');
           }
         } catch { /* noop */ }
-        try { playFx(battleSoundsRef.current.punch, 0.8); } catch { /* noop */ }
-        setBossFeedback(`✅ Acertou! Você tirou ${dmg} do chefe!`);
-      } else {
-        setBossFeedback('❌ Errou! O chefe esquivou e te acertou!');
-        hurtPlayer(1, '❌ Errou! O chefe esquivou e te acertou! -1 ❤️', true);
-        try { if (bossSlime) { bossSlime.lunge = 0.42; bossSlime.lungeHit = true; } } catch { /* noop */ }
-        try { applyBossMeleeEffect(); } catch { /* noop */ }
+
+        // Impacto do golpe do chefe no jogador:
+        window.setTimeout(() => {
+          if (disposed) return;
+          hurtPlayer(1, '❌ Errou! O chefe te acertou! -1 ❤️', true);
+          setPlayerAnim('hurt');
+          try { applyBossMeleeEffect(); } catch { /* noop */ }
+
+          if (playerHeartsRun <= 0) {
+            startPlayerDefeatCinematic();
+          } else {
+            window.setTimeout(() => {
+              if (disposed) return;
+              setBossFeedback(null);
+              loadNextBossQuestion();
+            }, 1300);
+          }
+        }, 420);
       }
-      const bossHp = bossSlime ? bossSlime.hp : 0;
-      const finished = bossHp <= 0 || qIndex >= 10;
-      // Fatalidade conforme o EFEITO/DEFINIÇÃO da arma em punho (ou death-fall).
-      const ft = (weaponEffect && FATALITY_BY_EFFECT[weaponEffect]) ? FATALITY_BY_EFFECT[weaponEffect] : 'death-fall';
-      const nb = finished
-        ? { ...bf, hp: Math.max(0, bossHp), qIndex, question: null, done: true, fatality: true, fatalityType: ft }
-        : { ...bf, hp: Math.max(0, bossHp), qIndex, question: null, done: false, fatality: false };
-      bossFightRef.current = nb; setBossFight(nb);
-      if (!finished) window.setTimeout(() => setBossFeedback(null), 900);
-      else { try { playBossFatality(ft); } catch { /* noop */ } }
     };
-    // Aplica o EFEITO do golpe MELEE configurado do boss no jogador (conforme nível e chance).
+
+    // Aplica o EFEITO do golpe MELEE configurado do boss no jogador (conforme nível e chance)
     const applyBossMeleeEffect = () => {
       try {
         const melee = bossAttacksConfig?.melee;
@@ -1052,34 +1295,134 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
         callbacks.current.setMsg(`${label[ef] || ef} — o chefe usou um golpe com efeito!`);
       } catch { /* noop */ }
     };
-    // FATALITY (golpe final): efeito conforme o tipo da arma + animação 3D de derrota do boss.
-    const playBossFatality = (type: string) => {
-      try {
-        if (bossSlime) {
-          const gx = Math.round(bossSlime.root.position.x + (COLS - 1) / 2);
-          const gz = Math.round(bossSlime.root.position.z + (ROWS - 1) / 2);
-          const col = type === 'death-evaporate' ? 0x9ca3af : type === 'death-slice' ? 0xef4444 : type === 'death-fall' ? 0x7c3aed : 0xff8800;
-          spawnShatter(gx, gz, col, 14);
-          const sound = (type === 'death-evaporate' ? battleSoundsRef.current.fatalEvaporate :
-                         type === 'death-fall' ? battleSoundsRef.current.fatalFall :
-                         type === 'death-slice' ? battleSoundsRef.current.fatalSlice :
-                         type === 'death-explode' ? battleSoundsRef.current.fatalExplode : '') || battleSoundsRef.current.punch;
-          try { playFx(sound, 0.95); } catch { /* noop */ }
-          triggerMonsterDefeat(bossSlime, type);
-        }
-      } catch { /* noop */ }
-      setBossFlash(type);
-      window.setTimeout(() => setBossFlash(null), 900);
+
+    // FATALITY CINEMATOGRÁFICO: Câmera de perfil, música para suavemente, fala "Eu venci!", golpe fatal, comemoração e vitória oficial
+    const startBossFatalityCinematic = () => {
+      const bf = bossFightRef.current;
+      const ft = (weaponEffect && FATALITY_BY_EFFECT[weaponEffect]) ? FATALITY_BY_EFFECT[weaponEffect] : 'death-fall';
+      bossFightRef.current = { ...bf, hp: 0, done: true, fatality: true, fatalityType: ft };
+      setBossFight(bossFightRef.current);
+      setBossFeedback(null);
+
+      setupSideCamera();
+      faceCombatants();
+
+      // Suspense inicial: música de fundo diminui suavemente
+      fadeOutMapMusic(2200);
+      setPlayerAnim('idle');
+      speakBubble('Eu venci!');
+      if (bossSlime) speakMonster(bossSlime, 'defeat');
+
+      // Aguarda 2.4s com a câmera de perfil antes do golpe fatal
+      window.setTimeout(() => {
+        if (disposed) return;
+        setPlayerAnim('attack');
+        restartAttack();
+
+        // Impacto do golpe fatal:
+        window.setTimeout(() => {
+          if (disposed) return;
+          try {
+            if (bossSlime) {
+              const gx = Math.round(bossSlime.root.position.x + (COLS - 1) / 2);
+              const gz = Math.round(bossSlime.root.position.z + (ROWS - 1) / 2);
+              const col = ft === 'death-evaporate' ? 0x9ca3af : ft === 'death-slice' ? 0xef4444 : ft === 'death-fall' ? 0x7c3aed : 0xff8800;
+              spawnShatter(gx, gz, col, 16);
+              const sound = (ft === 'death-evaporate' ? battleSoundsRef.current.fatalEvaporate :
+                             ft === 'death-fall' ? battleSoundsRef.current.fatalFall :
+                             ft === 'death-slice' ? battleSoundsRef.current.fatalSlice :
+                             ft === 'death-explode' ? battleSoundsRef.current.fatalExplode : '') || battleSoundsRef.current.punch;
+              try { playFx(sound, 1.0); } catch { /* noop */ }
+              triggerMonsterDefeat(bossSlime, ft);
+            }
+          } catch { /* noop */ }
+
+          // Música de vitória e início da comemoração do herói:
+          window.setTimeout(() => {
+            if (disposed) return;
+            const vicUrl = battleSoundsRef.current.victory;
+            if (vicUrl) {
+              try {
+                const au = new Audio(resolveAudioUrl(vicUrl));
+                au.volume = 0.9;
+                au.play().catch(() => {});
+              } catch { /* noop */ }
+            }
+            playerCelebrateUntil = performance.now() + 4000;
+          }, 1100);
+
+          // Encerra o cenário após a comemoração (~4.5s) e transiciona para a tela de recompensa
+          window.setTimeout(() => {
+            if (disposed) return;
+            if (onVictory) {
+              onVictory({ coins: coins + 100, xp: 120 });
+            } else {
+              setScenarioResult('victory');
+            }
+          }, 4600);
+        }, 480);
+      }, 2400);
     };
-    // Encerra a luta (vitória/fatality): remove o boss e conclui o mapa.
+
+    // DERROTA CINEMATOGRÁFICA: Câmera de perfil, queda do jogador, música de derrota e encerramento
+    const startPlayerDefeatCinematic = () => {
+      const bf = bossFightRef.current;
+      bossFightRef.current = { ...bf, done: true, fatality: false };
+      setBossFight(bossFightRef.current);
+      setBossFeedback(null);
+
+      setupSideCamera();
+      faceCombatants();
+
+      fadeOutMapMusic(1800);
+      setPlayerAnim('hurt');
+      speakBubble('NÃO!!!');
+      if (bossSlime) speakMonster(bossSlime, 'attack');
+
+      // Jogador tomba após o impacto fatal
+      window.setTimeout(() => {
+        if (disposed) return;
+        try {
+          playerRoot.rotation.z = Math.PI / 2;
+          playerRoot.position.y = 0.2;
+        } catch { /* noop */ }
+        const pGen = (cfgRef.current as any)?.gender;
+        const dSound = pGen === 'female' ? battleSoundsRef.current.deathFemale : battleSoundsRef.current.deathMale;
+        if (dSound) playFx(dSound, 0.9);
+
+        // Música de derrota entra após a queda
+        window.setTimeout(() => {
+          if (disposed) return;
+          const failUrl = battleSoundsRef.current.fail;
+          if (failUrl) {
+            try {
+              const f = new Audio(resolveAudioUrl(failUrl));
+              f.volume = 0.9; f.play().catch(() => {});
+            } catch { /* noop */ }
+          }
+        }, 1200);
+
+        // Encerra o cenário
+        window.setTimeout(() => {
+          if (disposed) return;
+          if (onDefeat) {
+            onDefeat();
+          } else {
+            setScenarioResult('defeat');
+          }
+        }, 3600);
+      }, 420);
+    };
+
+    // Encerra a luta manualmente (se chamado pelo botão continuar)
     bossFinishRef.current = () => {
       try {
         if (bossSlime) { bossSlime.hp = 0; bossSlime.root.visible = false; if (bossSlime.bar) bossSlime.bar.visible = false; if (bossSlime.label) bossSlime.label.visible = false; }
       } catch { /* noop */ }
       setBossFight(null); setBossFeedback(null);
       callbacks.current.setMsg('🏆 Chefe derrotado!');
-      if (onBossTouched) { onBossTouched(0); disposed = true; }
-      else { callbacks.current.setCoins((n: number) => n + 100); }
+      if (onVictory) { onVictory({ coins: coins + 100, xp: 120 }); }
+      else { setScenarioResult('victory'); }
     };
     // Materiais por TIPO de parede (4 estágios de trinca), tingidos pela cor do tipo.
     const wallTypeMats: Record<string, any[]> = {};
@@ -1184,8 +1527,7 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
     };
 
     // ---- Itens aleatórios ----
-    const coinsList: { x: number; z: number; mesh: THREE.Object3D; value: number }[] = [];
-type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any; death?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number; critChance?: number; block?: any; legPhase?: number; attacks?: any; rangedCd?: number; specialCd?: number; supportUsed?: boolean; buffUntil?: number; buffMult?: number; favoriteFoodIds?: string[]; giveUpDist?: number; following?: boolean; followFedAt?: number; initX?: number; initZ?: number; tameBalloon?: THREE.Sprite; tameTarget?: { x: number; z: number } | null; tameRing?: THREE.Object3D; dead?: boolean; defeatAnimation?: string; dying?: { type: string; start: number; duration: number; origScale?: { x: number; y: number; z: number }; origY?: number; origRotZ?: number; origRotX?: number } };
+type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any; death?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number; critChance?: number; block?: any; blockPunch?: number; legPhase?: number; attacks?: any; rangedCd?: number; specialCd?: number; supportUsed?: boolean; buffUntil?: number; buffMult?: number; favoriteFoodIds?: string[]; giveUpDist?: number; following?: boolean; followFedAt?: number; initX?: number; initZ?: number; tameBalloon?: THREE.Sprite; tameTarget?: { x: number; z: number } | null; tameRing?: THREE.Object3D; dead?: boolean; defeatAnimation?: string; dying?: { type: string; start: number; duration: number; origScale?: { x: number; y: number; z: number }; origY?: number; origRotZ?: number; origRotX?: number } };
     const slimes: Slime[] = [];
     // Projéteis de golpes À DISTÂNCIA dos monstros (guia Golpes → ranged).
     const projectiles: { mesh: THREE.Object3D; vx: number; vz: number; life: number; dmg: number; effect: string }[] = [];
@@ -1193,6 +1535,7 @@ type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: nu
     const hazards: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
     const chests: { x: number; z: number; mesh: THREE.Object3D; idx?: number }[] = [];
     const doors: { x: number; z: number; mesh: THREE.Object3D; open: boolean; hp: number; maxHp: number; def: number; typeId: string }[] = [];
+    const coinsList: { x: number; z: number; mesh: THREE.Object3D; value: number }[] = [];
     const coinGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.08, 16);
     const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd34d, emissive: 0xffaa00, emissiveIntensity: 0.6 });
     const slimeGeo = new THREE.SphereGeometry(0.4, 14, 12);
@@ -1280,6 +1623,7 @@ type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: nu
     };
     const hzGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.22, 12); const hzMat = new THREE.MeshStandardMaterial({ color: theme.hazardColor, emissive: theme.hazardColor, emissiveIntensity: 0.6 });
     const chestGeo = new THREE.BoxGeometry(0.5, 0.44, 0.4); const chestMat = new THREE.MeshStandardMaterial({ color: 0xb07d3a });
+    void chestGeo; void chestMat;
 const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
     const barFgGeo = new THREE.PlaneGeometry(1.0, 0.16);
     // Barra pequena de DURAÇÃO de status (acima do HP).
@@ -1312,10 +1656,15 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       const latch = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.06), gold); latch.position.set(0, 0.3, 0.25); g.add(latch);
       return g;
     };
-    const USE_CHEST_GLB = false; // GLB do baú (Sketchfab, dois estados) está problemático → usar fallback
-    const makeChestVisual = (): THREE.Object3D => {
+    const USE_CHEST_GLB = true;
+    const makeChestVisual = (rotY?: number): THREE.Object3D => {
       const g = new THREE.Group();
-      if (!USE_CHEST_GLB || !chestTemplateRef.current) { g.add(makeFallbackChest()); return g; }
+      if (!USE_CHEST_GLB || !chestTemplateRef.current) {
+        const fb = makeFallbackChest();
+        if (rotY !== undefined) fb.rotation.y = rotY;
+        g.add(fb);
+        return g;
+      }
       const tmpl = chestTemplateRef.current;
       try {
         const cfg: any = chestConfigRef.current || {};
@@ -1324,20 +1673,33 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
         void swap;
         const c = tmpl.clone(true);
         c.updateMatrixWorld(true);
+        if (c.isMesh || c.isSprite) {
+          c.scale.setScalar(0.85);
+          c.position.y = 0.42;
+          if (rotY !== undefined) c.rotation.y = rotY;
+          g.add(c);
+          return g;
+        }
         // GLB de baú (export Sketchfab) costuma ter DUAS cópias sobrepostas (fechado/aberto).
         // Mantém só a PRIMEIRA ocorrência de cada geometria (a do estado FECHADO) e esconde as duplicatas.
         const seenSig = new Set<string>();
         c.traverse((ch: any) => {
           if (!ch.isMesh) return;
+          ch.castShadow = true;
+          ch.receiveShadow = true;
           const b = new THREE.Box3().setFromObject(ch);
           const sig = [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].map(v => (Math.round(v * 10) / 10)).join(',');
           if (seenSig.has(sig)) ch.visible = false; else seenSig.add(sig);
         });
         c.updateMatrixWorld(true);
         const kb = visibleBox(c);
-        if (!kb.isEmpty()) c.position.x -= (kb.min.x + kb.max.x) / 2;
+        if (!kb.isEmpty()) {
+          c.position.x -= (kb.min.x + kb.max.x) / 2;
+          c.position.z -= (kb.min.z + kb.max.z) / 2;
+        }
         const holder = new THREE.Group(); holder.add(c);
-        holder.rotation.y = Math.PI + (((Number(cfg.chestRotY) || 0) % 360) * Math.PI) / 180;
+        const baseRotY = Math.PI + (((Number(cfg.chestRotY) || 0) % 360) * Math.PI) / 180;
+        holder.rotation.y = rotY !== undefined ? rotY : baseRotY;
         holder.updateMatrixWorld(true);
         const kb2 = visibleBox(c);
         const maxDim = Math.max(0.001, Math.max(kb2.max.x - kb2.min.x, kb2.max.y - kb2.min.y, kb2.max.z - kb2.min.z));
@@ -1346,7 +1708,61 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
         holder.scale.setScalar(scale);
         holder.position.y = -kb2.min.y * scale;
         g.add(holder);
-      } catch { g.add(new THREE.Mesh(chestGeo, chestMat)); }
+      } catch {
+        const fb = makeFallbackChest();
+        if (rotY !== undefined) fb.rotation.y = rotY;
+        g.add(fb);
+      }
+      return g;
+    };
+
+    // Visual da CHAVE (modelo .glb ou png ativo em Moldes 3D > Chaves; senão chave 3D dourada)
+    const makeKeyVisual = (): THREE.Group => {
+      const g = new THREE.Group();
+      if (keyTemplateRef.current) {
+        try {
+          const c = keyTemplateRef.current.clone(true);
+          if (c.isMesh || c.isSprite) {
+            c.scale.setScalar(0.55);
+            g.add(c);
+          } else {
+            const kb = visibleBox(c);
+            const maxDim = Math.max(0.001, Math.max(kb.max.x - kb.min.x, kb.max.y - kb.min.y, kb.max.z - kb.min.z));
+            const fit = 0.55 / maxDim;
+            c.scale.setScalar(fit);
+            if (!kb.isEmpty()) {
+              c.position.x -= ((kb.min.x + kb.max.x) / 2) * fit;
+              c.position.y -= ((kb.min.y + kb.max.y) / 2) * fit;
+              c.position.z -= ((kb.min.z + kb.max.z) / 2) * fit;
+            }
+            g.add(c);
+          }
+        } catch { /* fallback */ }
+      }
+      if (g.children.length === 0) {
+        const goldMat = new THREE.MeshStandardMaterial({
+          color: 0xffd700,
+          metalness: 0.85,
+          roughness: 0.2,
+          emissive: 0xb8860b,
+          emissiveIntensity: 0.45,
+        });
+        const bow = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.035, 12, 24), goldMat);
+        bow.position.y = 0.22;
+        g.add(bow);
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.36, 12), goldMat);
+        stem.position.y = 0.02;
+        g.add(stem);
+        const bit1 = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.04, 0.03), goldMat);
+        bit1.position.set(0.05, -0.09, 0);
+        g.add(bit1);
+        const bit2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.03), goldMat);
+        bit2.position.set(0.04, -0.02, 0);
+        g.add(bit2);
+      }
+      const glowMat = new THREE.MeshBasicMaterial({ color: 0xffea75, transparent: true, opacity: 0.35, depthWrite: false });
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 10), glowMat);
+      g.add(glow);
       return g;
     };
 
@@ -1934,19 +2350,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       }
     }
 
-    // ---- CHAVE DO BOSS (modo "monster_drop"): um monstro do mapa carrega a chave ----
-    if (cfgBossKeyMode === 'monster_drop' && slimes.length > 0) {
-      // Prefere um monstro do catálogo; senão o primeiro do mapa.
-      const holder = slimes.find(s => s.name) || slimes[0];
-      holder.isKeyHolder = true;
-      // Indicador visual: pequeno orbe dourado flutuando acima do monstro.
-      const khGeo = new THREE.SphereGeometry(0.14, 12, 10);
-      const khMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xcaa000, emissiveIntensity: 1.2 });
-      const khOrb = new THREE.Mesh(khGeo, khMat);
-      khOrb.position.set(0, 1.25, 0);
-      holder.root.add(khOrb);
-      callbacks.current.setMsg('🔑 Um dos monstros carrega a CHAVE do BOSS! Derrote-o para pegá-la.');
-    }
+
 
     // ---- Rochas: -1 = nenhuma; >0 = quantidade exata; 0 = auto (corredores) ----
     if (cfgGenRocks !== -1) {
@@ -1975,7 +2379,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       }
     }
 
-    // ---- Baús: se o cenário tem chestCells (Gerar mapa), usa EXATAMENTE essas células ----
+    // ---- Baús: se o cenário tem chestCells (Gerar mapa ou pintura), usa EXATAMENTE essas células ----
     const cfgChestCellsMap: Record<string, string> = (sc0.chestCells && typeof sc0.chestCells === 'object') ? sc0.chestCells : {};
     const chestCellKeys = Object.keys(cfgChestCellsMap);
     if (chestCellKeys.length) {
@@ -1985,35 +2389,68 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         if (wallAt(xs, zs)) continue;
         if (xs === grid.start.x && zs === grid.start.z) continue;
         if (xs === grid.end.x && zs === grid.end.z) continue;
-        const m = makeChestVisual(); m.position.set(wx(xs), 0.38, wz(zs)); m.castShadow = true; scene.add(m);
-        chests.push({ x: xs, z: zs, mesh: m, idx: chests.length });
+        const rawVal = cfgChestCellsMap[key];
+        let rotDeg: number | null = null;
+        let slotIdx: number | undefined = undefined;
+        if (typeof rawVal === 'string') {
+          const [rStr, sStr] = rawVal.split('|');
+          if (rStr && rStr !== 'auto' && rStr !== '1') {
+            const n = Number(rStr);
+            if (!isNaN(n)) rotDeg = n;
+          }
+          if (sStr && sStr !== 'default') {
+            const sn = Number(sStr);
+            if (!isNaN(sn)) slotIdx = sn;
+          }
+        } else if (typeof rawVal === 'object' && rawVal !== null) {
+          if ((rawVal as any).rot !== undefined && (rawVal as any).rot !== 'auto') rotDeg = Number((rawVal as any).rot);
+          if ((rawVal as any).slot !== undefined) slotIdx = Number((rawVal as any).slot);
+        }
+        let rotY = 0;
+        if (rotDeg !== null && !isNaN(rotDeg)) {
+          rotY = (rotDeg * Math.PI) / 180;
+        } else {
+          // Auto: vira para o espaço livre ao redor (não para a parede)
+          const freeNb = ([[0, 1], [0, -1], [1, 0], [-1, 0]] as const).find(([dx, dz]) => !wallAt(xs + dx, zs + dz));
+          if (freeNb) rotY = Math.atan2(freeNb[0], freeNb[1]);
+        }
+        const m = makeChestVisual(rotY);
+        m.position.set(wx(xs), 0, wz(zs));
+        m.castShadow = true;
+        scene.add(m);
+        chests.push({ x: xs, z: zs, mesh: m, idx: slotIdx !== undefined ? slotIdx : chests.length });
       }
     } else {
-    // ---- Baús RAROS e ESTRATÉGICOS (em becos TRANCADOS por uma rocha na entrada) ----
-    const chestCandidates: { x: number; z: number; entrance: { x: number; z: number } }[] = [];
-    for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
-      if (wallAt(x, z)) continue;
-      if (x === grid.start.x && z === grid.start.z) continue;
-      if (x === grid.end.x && z === grid.end.z) continue;
-      if (rocks.some(rk => rk.x === x && rk.z === z)) continue;
-      if (grid.doorCells.some(dd => dd.x === x && dd.z === z)) continue;
-      if (freeNeighbors(x, z) !== 1) continue; // só BECOS (pouco acesso)
-      const nb = ([[1, 0], [-1, 0], [0, 1], [0, -1]] as const).find(([dx, dz]) => !wallAt(x + dx, z + dz));
-      if (!nb) continue;
-      const ex = x + nb[0], ez = z + nb[1];
-      if (grid.doorCells.some(dd => dd.x === ex && dd.z === ez)) continue;
-      if (x === grid.start.x || x === grid.end.x) continue;
-      chestCandidates.push({ x, z, entrance: { x: ex, z: ez } });
-    }
-const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.round(1 + cfgElaboration * 3));
-    chestCandidates.sort(() => Math.random() - 0.5);
-    for (const cc of chestCandidates.slice(0, chestCap)) {
-      if (!rocks.some(rk => rk.x === cc.entrance.x && rk.z === cc.entrance.z)) {
-        rocks.push(mkRockSized(cc.entrance.x, cc.entrance.z));
+      // ---- Baús RAROS e ESTRATÉGICOS (em becos TRANCADOS por uma rocha na entrada) ----
+      const chestCandidates: { x: number; z: number; entrance: { x: number; z: number } }[] = [];
+      for (let z = 0; z < ROWS; z++) for (let x = 0; x < COLS; x++) {
+        if (wallAt(x, z)) continue;
+        if (x === grid.start.x && z === grid.start.z) continue;
+        if (x === grid.end.x && z === grid.end.z) continue;
+        if (rocks.some(rk => rk.x === x && rk.z === z)) continue;
+        if (grid.doorCells.some(dd => dd.x === x && dd.z === z)) continue;
+        if (freeNeighbors(x, z) !== 1) continue; // só BECOS (pouco acesso)
+        const nb = ([[1, 0], [-1, 0], [0, 1], [0, -1]] as const).find(([dx, dz]) => !wallAt(x + dx, z + dz));
+        if (!nb) continue;
+        const ex = x + nb[0], ez = z + nb[1];
+        if (grid.doorCells.some(dd => dd.x === ex && dd.z === ez)) continue;
+        if (x === grid.start.x || x === grid.end.x) continue;
+        chestCandidates.push({ x, z, entrance: { x: ex, z: ez } });
       }
-      const m = makeChestVisual(); m.position.set(wx(cc.x), 0.38, wz(cc.z)); m.castShadow = true; scene.add(m);
-      chests.push({ x: cc.x, z: cc.z, mesh: m, idx: chests.length });
-    }
+      const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.round(1 + cfgElaboration * 3));
+      chestCandidates.sort(() => Math.random() - 0.5);
+      for (const cc of chestCandidates.slice(0, chestCap)) {
+        if (!rocks.some(rk => rk.x === cc.entrance.x && rk.z === cc.entrance.z)) {
+          rocks.push(mkRockSized(cc.entrance.x, cc.entrance.z));
+        }
+        // Face virada para a ENTRADA do beco (costas para a parede do fundo):
+        const rotY = Math.atan2(cc.entrance.x - cc.x, cc.entrance.z - cc.z);
+        const m = makeChestVisual(rotY);
+        m.position.set(wx(cc.x), 0, wz(cc.z));
+        m.castShadow = true;
+        scene.add(m);
+        chests.push({ x: cc.x, z: cc.z, mesh: m, idx: chests.length });
+      }
     }
 
     // ---- SOM de IMPACTO em ROCHA/VEIO (definido em Moldes 3D → Cenário, tipo "Pedra") ----
@@ -2210,6 +2647,51 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
         const dm = makeDoorMesh({ id: 'boss_door', color: '#a16207' });
         dm.position.set(wx(bossDoorCell.x), 0, wz(bossDoorCell.z)); scene.add(dm);
         doors.push({ x: bossDoorCell.x, z: bossDoorCell.z, mesh: dm, open: false, hp: 999999, maxHp: 999999, def: 999999, typeId: 'boss_door' });
+      }
+    }
+
+    // ---- CHAVE DO BOSS (modo "monster_drop"): APENAS se houver porta do boss trancada! ----
+    // Um monstro na área acessível (fora da área trancada do boss, e sem ser o próprio boss) carrega a chave.
+    const hasBossDoor = doors.some(d => d.typeId === 'boss_door' && !d.open);
+    if (cfgBossKeyMode === 'monster_drop' && hasBossDoor && slimes.length > 0) {
+      // BFS a partir do início do jogador para mapear as células livres FORA da porta do boss
+      const reachableCells = new Set<string>();
+      const queue: [number, number][] = [[grid.start.x, grid.start.z]];
+      reachableCells.add(`${grid.start.x},${grid.start.z}`);
+      const isBossDoorCell = (cx: number, cz: number) => doors.some(d => d.typeId === 'boss_door' && !d.open && d.x === cx && d.z === cz);
+      while (queue.length > 0) {
+        const [cx, cz] = queue.shift()!;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nx = cx + dx, nz = cz + dz;
+          const nKey = `${nx},${nz}`;
+          if (nx < 0 || nx >= COLS || nz < 0 || nz >= ROWS) continue;
+          if (grid.wall[nz][nx] || isBossDoorCell(nx, nz)) continue;
+          if (!reachableCells.has(nKey)) {
+            reachableCells.add(nKey);
+            queue.push([nx, nz]);
+          }
+        }
+      }
+
+      // Monstros elegíveis: não é o boss, não é animal, está vivo e na área externa acessível
+      const eligibleKeyHolders = slimes.filter(s => {
+        if (s.isBoss || s.isAnimal || s.dead) return false;
+        const gx = Math.round(s.root.position.x + (COLS - 1) / 2);
+        const gz = Math.round(s.root.position.z + (ROWS - 1) / 2);
+        return reachableCells.has(`${gx},${gz}`);
+      });
+
+      if (eligibleKeyHolders.length > 0) {
+        const holder = eligibleKeyHolders.find(s => s.name) || eligibleKeyHolders[Math.floor(Math.random() * eligibleKeyHolders.length)];
+        holder.isKeyHolder = true;
+        // Indicador visual: chave 3D / modelo ativo flutuando e girando acima do monstro
+        const keyVis = makeKeyVisual();
+        keyVis.name = 'boss_key_visual';
+        keyVis.position.set(0, (holder.barY || 1.15) + 0.35, 0);
+        holder.root.add(keyVis);
+        callbacks.current.setMsg('🔑 Um monstro na área externa carrega a CHAVE DO BOSS! Derrote-o para abrir a porta do chefe.');
+      } else {
+        console.warn('[BossKey] Nenhum monstro elegível encontrado fora da porta do boss.');
       }
     }
 
@@ -2952,12 +3434,50 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
     const heldKeys = new Set<string>();
     const spawnLootPickup = (gx: number, gz: number, kind: 'item' | 'key', data: any, fallbackColor = 0xffd34d, highlight = false) => {
       const mat = new THREE.SpriteMaterial({ color: 0xffffff, transparent: true });
+      const makeKeyTexture = () => {
+        try {
+          const cv = document.createElement('canvas');
+          cv.width = 128; cv.height = 128;
+          const ctx = cv.getContext('2d');
+          if (ctx) {
+            ctx.beginPath();
+            ctx.arc(64, 64, 52, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(234, 179, 8, 0.45)';
+            ctx.fill();
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = '#facc15';
+            ctx.stroke();
+            ctx.font = '64px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🔑', 64, 66);
+            const tex = new THREE.CanvasTexture(cv);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+          }
+        } catch { /* noop */ }
+        return null;
+      };
+
       if (data.imageUrl) {
         new THREE.TextureLoader().load(data.imageUrl, (t: any) => {
           t.colorSpace = THREE.SRGBColorSpace;
           mat.map = t; mat.needsUpdate = true;
-        }, undefined, () => { mat.color.set(fallbackColor); });
-      } else mat.color.set(fallbackColor);
+        }, undefined, () => {
+          if (kind === 'key') {
+            const kt = makeKeyTexture();
+            if (kt) mat.map = kt; else mat.color.set(fallbackColor);
+          } else {
+            mat.color.set(fallbackColor);
+          }
+          mat.needsUpdate = true;
+        });
+      } else if (kind === 'key') {
+        const kt = makeKeyTexture();
+        if (kt) mat.map = kt; else mat.color.set(fallbackColor);
+      } else {
+        mat.color.set(fallbackColor);
+      }
       const spr = new THREE.Sprite(mat);
       spr.scale.set(0.65, 0.65, 1);
       spr.position.set(wx(gx), 0.75, wz(gz));
@@ -3065,8 +3585,10 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
       }
     };
     // Solta a CHAVE DO BOSS quando o monstro portador morre.
-    const spawnBossKey = (s: { x: number; z: number }) => {
-      spawnLootPickup(s.x, s.z, 'key', { id: 'boss_key', name: 'Chave do Boss', imageUrl: '' }, 0xfbbf24);
+    const spawnBossKey = (s: { root?: THREE.Group; x: number; z: number }) => {
+      const gx = s.root ? Math.round(s.root.position.x + (COLS - 1) / 2) : s.x;
+      const gz = s.root ? Math.round(s.root.position.z + (ROWS - 1) / 2) : s.z;
+      spawnLootPickup(gx, gz, 'key', { id: 'boss_key', name: 'Chave do Boss', imageUrl: keyConfigRef.current?.url || '' }, 0xfbbf24, true);
       callbacks.current.setMsg('🔑 A Chave do BOSS caiu! Pegue e abra a porta do chefe!');
     };
     let playerBleedUntil = 0; let playerBleedTick = 1.0;
@@ -3297,31 +3819,91 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
       for (const e of table) { r -= Math.max(0, Number(e.weight) || 0); if (r <= 0) { pick = e; break; } }
       return pick;
     };
-    const applyEntry = (entry: any, world: THREE.Vector3, highlight = false): string => {
+    const applyEntry = async (entry: any, world: THREE.Vector3, highlight = false): Promise<{ text: string; item?: any; coins?: number }> => {
       const kind = entry?.kind;
-      if (kind === 'coins') { const min = Number(entry.min) || 1, max = Number(entry.max) || 10; const v = min + Math.floor(Math.random() * (max - min + 1)); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); if (highlight) spawnHighlightRing(world); return `+${v} 🪙`; }
-      if (kind === 'item') { const item = itemCatalogRef.current.get(String(entry.itemId)); if (item) { spawnLootPickup(Math.round(playerPos.x), Math.round(playerPos.z), 'item', item, 0xffd34d, highlight); return `📦 ${item.title || 'item'}`; } return ''; }
-      return '';
+      if (kind === 'coins') {
+        const min = Number(entry.min) || 1, max = Number(entry.max) || 10;
+        const v = min + Math.floor(Math.random() * (max - min + 1));
+        callbacks.current.setCoins(n => n + v);
+        spawnPop(world, `+${v} 🪙`, false, 'coin');
+        if (highlight) spawnHighlightRing(world);
+        return { text: `+${v} 🪙`, coins: v };
+      }
+      if (kind === 'item') {
+        let item = itemCatalogRef.current.get(String(entry.itemId));
+        if (!item && entry.itemId) {
+          try {
+            const { data } = await supabase.from('store_items').select('*').eq('id', entry.itemId).maybeSingle();
+            if (data) {
+              const d = typeof data.data === 'string' ? JSON.parse(data.data) : (data.data || {});
+              item = {
+                id: data.id,
+                title: data.name || data.title || d.title || data.id,
+                imageUrl: data.image_url || data.imageUrl || d.imageUrl || d.image_url || '',
+                gameEffect: data.gameEffect || d.gameEffect || 'none',
+                type: data.type || d.type || 'item',
+                rarity: data.rarity || d.rarity || 'common',
+                storeData: d,
+              };
+              itemCatalogRef.current.set(String(item.id), item);
+            }
+          } catch { /* noop */ }
+        }
+        if (item) {
+          spawnLootPickup(Math.round(playerPos.x), Math.round(playerPos.z), 'item', item, 0xffd34d, highlight);
+          return { text: `📦 ${item.title || 'item'}`, item };
+        }
+        return { text: '' };
+      }
+      return { text: '' };
     };
-    const openChest = (chest: any) => {
+    const openChest = async (chest: any) => {
       chest.mesh.visible = false; scene.remove(chest.mesh);
       playFx(chestConfigRef.current?.chestAudioUrl || battleSoundsRef.current.punch, 0.85);
       const world = new THREE.Vector3(wx(chest.x), 1.0, wz(chest.z));
-      // Tabela do baú: por ÍNDICE (chestConfigs[idx]) com fallback para a padrão (chestConfig.loot).
+      // Tabela do baú: por ÍNDICE (chestConfigs[idx]) com fallback para a padrão (chestConfig.loot ou itemIds).
       const cfgs: any[] = Array.isArray(sc.chestConfigs) ? sc.chestConfigs : [];
       const idx = Number(chest.idx);
-      const perChest = (Number.isFinite(idx) && cfgs[idx] && Array.isArray(cfgs[idx].loot) && cfgs[idx].loot.length) ? cfgs[idx].loot : null;
-      const table = perChest || ((Array.isArray(cfgChestConfig.loot) && cfgChestConfig.loot.length) ? cfgChestConfig.loot : null);
-      const rewardItems: any[] = []; let rewardCoins = 0; let got = '';
-      if (table) {
+      const perChestConfig = (Number.isFinite(idx) && cfgs[idx]) ? cfgs[idx] : null;
+
+      let table: any[] | null = null;
+      if (perChestConfig) {
+        if (Array.isArray(perChestConfig.loot) && perChestConfig.loot.length > 0) {
+          table = perChestConfig.loot;
+        } else if (Array.isArray(perChestConfig.itemIds) && perChestConfig.itemIds.filter(Boolean).length > 0) {
+          table = perChestConfig.itemIds.filter(Boolean).map((id: string) => ({ kind: 'item', itemId: id, weight: 10 }));
+        }
+      }
+      if (!table) {
+        if (Array.isArray(cfgChestConfig.loot) && cfgChestConfig.loot.length > 0) {
+          table = cfgChestConfig.loot;
+        } else if (Array.isArray(cfgChestConfig.itemIds) && cfgChestConfig.itemIds.filter(Boolean).length > 0) {
+          table = cfgChestConfig.itemIds.filter(Boolean).map((id: string) => ({ kind: 'item', itemId: id, weight: 10 }));
+        }
+      }
+
+      const rewardItems: any[] = [];
+      let rewardCoins = 0;
+      if (table && table.length > 0) {
         const entry = rollEntry(table);
-        got = applyEntry(entry, world, true);
-        if (entry?.kind === 'coins') rewardCoins = Number(String(got).replace(/[^0-9]/g, '')) || 0;
-        else if (entry?.kind === 'item') { const it = itemCatalogRef.current.get(String(entry.itemId)); if (it) rewardItems.push({ title: it.title, imageUrl: it.imageUrl, rarity: (it as any).rarity || 'common', quantity: 1 }); }
-        callbacks.current.setMsg(`🎁 Baú aberto! ${got}`.trim());
+        const res = await applyEntry(entry, world, true);
+        if (res.coins) rewardCoins = res.coins;
+        if (res.item) {
+          rewardItems.push({
+            title: res.item.title,
+            imageUrl: res.item.imageUrl,
+            rarity: (res.item as any).rarity || 'common',
+            quantity: 1,
+          });
+        }
+        callbacks.current.setMsg(`🎁 Baú aberto! ${res.text}`.trim());
       } else {
-        const v = 1 + Math.floor(Math.random() * 10); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); spawnHighlightRing(world);
-        rewardCoins = v; callbacks.current.setMsg(`🎁 Baú aberto! +${v} 🪙`);
+        const v = 1 + Math.floor(Math.random() * 10);
+        callbacks.current.setCoins(n => n + v);
+        spawnPop(world, `+${v} 🪙`, false, 'coin');
+        spawnHighlightRing(world);
+        rewardCoins = v;
+        callbacks.current.setMsg(`🎁 Baú aberto! +${v} 🪙`);
       }
       // Overlay de RECOMPENSA (baú aberto + itens em círculos por raridade + tooltip).
       try { callbacks.current.setChestReward({ items: rewardItems, coins: rewardCoins }); } catch { /* noop */ }
@@ -3332,7 +3914,10 @@ const chestCap = cfgGenChests > 0 ? Math.round(cfgGenChests) : Math.max(1, Math.
       const gx = Math.round(playerPos.x), gz = Math.round(playerPos.z);
       const door = doors.find(d => d.mesh.visible && Math.abs(d.x - gx) + Math.abs(d.z - gz) <= 1);
       if (door) { handleDoor(door); return; }
-      const chest = chests.find(c => c.mesh.visible && Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1);
+      const chest = chests.find(c => c.mesh.visible && (
+        Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
+        Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
+      ));
       if (chest) { openChest(chest); return; }
       // DOMESTICAÇÃO: animal domesticável por perto → tenta; animal SEGUINDO → alimenta.
       const nearTame = slimes.find(o => o.isAnimal && o.hp > 0 && !o.following && baitable(o) && Math.hypot(o.root.position.x - wx(gx), o.root.position.z - wz(gz)) <= 3);
@@ -3701,16 +4286,16 @@ if ((target as any).isBoss) {
         const gx = Math.round(playerPos.x), gz = Math.round(playerPos.z);
         const door = doors.find(d => d.mesh.visible && Math.abs(d.x - gx) + Math.abs(d.z - gz) <= 1);
         if (door) { handleDoor(door); return; }
-        const chest = chests.find(c => c.mesh.visible && Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1);
+        const chest = chests.find(c => c.mesh.visible && (
+          Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
+          Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
+        ));
         if (chest) {
-          const value = 1 + Math.floor(Math.random() * 10);
-          chest.mesh.visible = false; scene.remove(chest.mesh);
-          playFx(chestConfigRef.current?.chestAudioUrl || battleSoundsRef.current.punch, 0.85);
-          callbacks.current.setCoins(n => n + value);
-          spawnPop(new THREE.Vector3(wx(chest.x), 1.0, wz(chest.z)), `+${value} 🪙`, false, 'coin');
-          callbacks.current.setMsg(`🎁 Baú aberto! +${value} 🪙`);
+          openChest(chest);
+          return;
+        } else {
+          callbacks.current.setMsg('Nenhum baú ou porta por perto. Chegue mais perto e pressione E.');
         }
-        else callbacks.current.setMsg('Nenhum baú por perto. Chegue mais perto e pressione E.');
       }
     };
     const onUp = (e: KeyboardEvent) => keys.delete(e.key.toLowerCase());
@@ -3749,9 +4334,9 @@ if ((target as any).isBoss) {
       const cx = toGridX(x), cz = toGridZ(z);
       if (isWall(cx, cz)) return true;
       if (rocks.some(r => r.x === cx && r.z === cz && r.mesh.visible)) return true;
-      if (chests.some(c => c.x === cx && c.z === cz && c.mesh.visible)) return true;
+      if (chests.some(c => c.mesh.visible && ((c.x === cx && c.z === cz) || Math.hypot(x - wx(c.x), z - wz(c.z)) < 0.72))) return true;
       if (doors.some(d => d.mesh.visible && d.x === cx && d.z === cz)) return true; // porta fechada bloqueia
-      if (slimes.some(o => o !== self && o.hp > 0 && o.root.visible && Math.round(o.root.position.x) === cx && Math.round(o.root.position.z) === cz)) return true;
+      if (slimes.some(o => o !== self && o.hp > 0 && o.root.visible && toGridX(o.root.position.x) === cx && toGridZ(o.root.position.z) === cz)) return true;
       if (cx === Math.round(playerPos.x) && cz === Math.round(playerPos.z)) return true;
       return false;
     };
@@ -3831,9 +4416,17 @@ if ((target as any).isBoss) {
       // Movimento RELATIVO à CÂMERA: W anda para onde a câmera olha (girar não inverte o WASD).
       // O joystick virtual (mobile) soma no mesmo eixo.
       const joyV = joyRef.current;
-      const fw = ((keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0)) + (joyV.y || 0);
-      const st = ((keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0)) + (joyV.x || 0);
+      // Durante o duelo com o chefe, o jogador foca na batalha de perguntas e turnos
+      const isFightingBoss = !!(bossFightRef.current && !bossFightRef.current.done);
+      const fw = isFightingBoss ? 0 : (((keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0)) + (joyV.y || 0));
+      const st = isFightingBoss ? 0 : (((keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0)) + (joyV.x || 0));
       const moving = fw !== 0 || st !== 0;
+
+      if (isFightingBoss && bossSlime) {
+        const dxB = bossSlime.root.position.x - wx(playerPos.x);
+        const dzB = bossSlime.root.position.z - wz(playerPos.z);
+        playerRoot.rotation.y = Math.atan2(dxB, dzB);
+      }
 
       // Giro de câmera suave pelo Stick R (mobile):
       const joyCam = joyCamRef.current;
@@ -3873,12 +4466,17 @@ if ((target as any).isBoss) {
         }
         const nx = playerPos.x + dx * speed * dt;
         const nz = playerPos.z + dz * speed * dt;
-        // colisão por célula (paredes + OBJETOS: baús e monstros), com "deslize" por eixo
+        // colisão por célula (paredes + OBJETOS: baús e pedras), com "deslize" por eixo
         // Colisão do JOGADOR: apenas paredes e objetos fixos. Monstros NÃO bloqueiam
         // (evitava "obstáculos invisíveis" quando um monstro ocupava a célula).
+        const chestBlocked = (px: number, pz: number) => {
+          return chests.some(c => c.mesh.visible && (
+            (c.x === Math.round(px) && c.z === Math.round(pz)) ||
+            Math.hypot(px - c.x, pz - c.z) < 0.72
+          ));
+        };
         const cellBlocked = (x: number, z: number) => {
           if (isWall(x, z)) return true;
-          if (chests.some(c => c.x === x && c.z === z && c.mesh.visible)) return true;
           if (rocks.some(r => r.x === x && r.z === z && r.mesh.visible)) return true;
           if (doors.some(d => d.x === x && d.z === z && d.mesh.visible)) return true;
           return false;
@@ -3887,8 +4485,8 @@ if ((target as any).isBoss) {
         // água mais rasa / solo — precisa NADAR (Q) até a cabeça aparecer.
         const curDepthMove = waterDepthAt(playerPos.x, playerPos.z);
         const waterBlocked = (x: number, z: number) => waterDepthAt(x, z) < curDepthMove && submergedNow;
-        if (!cellBlocked(Math.round(nx), Math.round(playerPos.z)) && !waterBlocked(Math.round(nx), Math.round(playerPos.z))) playerPos.x = nx;
-        if (!cellBlocked(Math.round(playerPos.x), Math.round(nz)) && !waterBlocked(Math.round(playerPos.x), Math.round(nz))) playerPos.z = nz;
+        if (!cellBlocked(Math.round(nx), Math.round(playerPos.z)) && !chestBlocked(nx, playerPos.z) && !waterBlocked(Math.round(nx), Math.round(playerPos.z))) playerPos.x = nx;
+        if (!cellBlocked(Math.round(playerPos.x), Math.round(nz)) && !chestBlocked(playerPos.x, nz) && !waterBlocked(Math.round(playerPos.x), Math.round(nz))) playerPos.z = nz;
         // gira o CORPO para o sentido do movimento
         playerRoot.rotation.y = Math.atan2(dx, dz);
         // coleta / eventos de célula
@@ -3902,20 +4500,17 @@ if ((target as any).isBoss) {
           spawnPop(new THREE.Vector3(wx(gx), 1.3, wz(gz)), `+${coin.value} 🪙`, false, 'coin');
           callbacks.current.setMsg(`🪙 +${coin.value} moeda(s)!`);
         }
-// Pickup de item do catálogo: passar por cima coleta (cura se for item de cura).
+        // Pickup de item do catálogo: passar por perto coleta (cura se for item de cura).
         for (const p of lootPickups) {
           if (p.taken) continue;
-          if (p.x === gx && p.z === gz) { p.taken = true; scene.remove(p.spr); collectPickup(p); }
+          if (Math.hypot(playerPos.x - p.x, playerPos.z - p.z) <= 0.95 || (p.x === gx && p.z === gz)) {
+            p.taken = true; scene.remove(p.spr); collectPickup(p);
+          }
         }
         // (Baús NÃO abrem mais ao passar por cima — abrem com a tecla E.)
 const hz = hazards.find(h => h.x === gx && h.z === gz);
         if (hz && explored.has(ck)) { callbacks.current.setMsg(`💥 Perigo: ${theme.hazardLabel}!`); if (theme.fatal) { callbacks.current.setDead(true); disposed = true; } }
       }
-      // Animação: ataque (espaço) > hurt > andar > parado
-      if (performance.now() < attackUntil) setPlayerAnim('attack');
-      else if (performance.now() < playerHurtUntil) setPlayerAnim('hurt');
-      else if (moving) setPlayerAnim('walk');
-      else setPlayerAnim('idle');
       // ---- Água: profundidade, natação (Q) e oxigênio ----
       const wDepth = waterDepthAt(playerPos.x, playerPos.z);
       swimRise = Math.max(0, swimRise - dt * 1.1); // sem nadar, afunda de volta
@@ -3935,7 +4530,27 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
         oxygenHurtT -= dt;
         if (oxygenHurtT <= 0) { oxygenHurtT = 1.6; hurtPlayer(1, '🫁 Ficou sem oxigênio debaixo da água! -1 ❤️', true); }
       }
-      playerRoot.position.set(wx(playerPos.x), waterSinkY, wz(playerPos.z));
+
+      // Animação: comemoração > ataque (espaço) > hurt > andar > parado
+      const isCelebrating = performance.now() < playerCelebrateUntil;
+      const hop = isCelebrating ? Math.abs(Math.sin((performance.now() / 150) * Math.PI)) * 0.35 : 0;
+      if (isCelebrating) {
+        const plObj = viewer.playerObject as any;
+        if (plObj?.skin) {
+          try {
+            plObj.skin.rightArm.rotation.x = -Math.PI * 0.85;
+            plObj.skin.leftArm.rotation.x = -Math.PI * 0.85;
+            plObj.skin.rightArm.rotation.z = -0.3;
+            plObj.skin.leftArm.rotation.z = 0.3;
+          } catch { /* noop */ }
+        }
+      }
+      else if (performance.now() < attackUntil) setPlayerAnim('attack');
+      else if (performance.now() < playerHurtUntil) setPlayerAnim('hurt');
+      else if (moving) setPlayerAnim('walk');
+      else setPlayerAnim('idle');
+
+      playerRoot.position.set(wx(playerPos.x), waterSinkY + hop, wz(playerPos.z));
       // Impede ACÚMULO de armas na mão (3ª pessoa): varre a CENA e esconde todo item de mão,
       // depois mostra só o ATIVO (sem arma ativa, mostra as do PERFIL, mantendo o escudo).
       {
@@ -4119,6 +4734,12 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
         // Balão de pensamento (💭) em animais que podem ser domesticados com a ração que você tem.
         if (s.tameBalloon) s.tameBalloon.visible = !fogged && !s.following && s.hp > 0 && baitable(s);
         if (s.statusBar && s.statusBar.g) s.statusBar.g.visible = fogged ? false : s.statusBar.g.visible;
+        // Visual da CHAVE DO BOSS (girando e flutuando acima da cabeça do monstro portador)
+        const keyChild = s.root.getObjectByName('boss_key_visual');
+        if (keyChild) {
+          keyChild.rotation.y += dt * 3.0;
+          keyChild.position.y = (s.barY || 1.15) + 0.35 + Math.sin(performance.now() * 0.005) * 0.08;
+        }
         // Animal pacífico NÃO ataca: vagueia e foge do perto; só fica hostil se for atacado.
         const isPeacefulAnimal = !!s.isAnimal && !s.hostile;
         const nowMs = performance.now();
@@ -4135,6 +4756,65 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
             s.bubble.scale.set(bt.w / 150, bt.h / 150, 1); s.bubble.visible = true; s.bubbleUntil = nowMs + 2200;
           } catch { /* noop */ }
         }
+        // BOSS EM COMBATE DIRETO (Duelo de Turnos):
+        if (s.isBoss && bossFightRef.current && !bossFightRef.current.done) {
+          const dxB = wx(playerPos.x) - s.root.position.x;
+          const dzB = wz(playerPos.z) - s.root.position.z;
+          const distB = Math.hypot(dxB, dzB) || 1;
+          s.root.rotation.y = Math.atan2(dxB, dzB) + (s.faceOffset || 0);
+
+          // Ajusta distância suave se necessário (mantém distância de combate ~2.0 a 2.5)
+          if (distB > 2.6) {
+            s.root.position.x += (dxB / distB) * 1.6 * dt;
+            s.root.position.z += (dzB / distB) * 1.6 * dt;
+          } else if (distB < 1.6) {
+            s.root.position.x -= (dxB / distB) * 1.6 * dt;
+            s.root.position.z -= (dzB / distB) * 1.6 * dt;
+          }
+
+          // Atualiza barra de HP do boss
+          s.bar.position.set(s.root.position.x, s.barY || 1.15, s.root.position.z);
+          s.bar.lookAt(camera.position);
+          const frac = Math.max(0, s.hp / s.maxHp);
+          s.fg.scale.x = frac;
+          s.fg.position.x = -(1 - frac) * 0.5;
+
+          // Atualiza animações do mixer se houver
+          if (s.mixer) {
+            try { (s.mixer as any).update(dt); } catch { /* noop */ }
+          }
+
+          // Atualiza o soco dos braços do modelo em blocos se houver
+          if (s.block) {
+            if (s.blockPunch && s.blockPunch > 0) {
+              s.blockPunch = Math.max(0, s.blockPunch - dt * 2.8);
+              const punchPhase = Math.sin((1 - s.blockPunch) * Math.PI);
+              try {
+                s.block.skin.rightArm.rotation.x = -Math.PI * 0.65 * punchPhase;
+                s.block.skin.rightArm.rotation.z = -0.2 * punchPhase;
+                s.block.skin.leftArm.rotation.x = Math.PI * 0.2 * punchPhase;
+              } catch { /* noop */ }
+            } else {
+              try { s.block.skin.resetJoints(); } catch { /* noop */ }
+            }
+          }
+
+          // Atualiza bote (lunge) visual
+          let oX = 0, oY = 0, oZ = 0;
+          if (s.lunge > 0) {
+            s.lunge = Math.max(0, s.lunge - dt);
+            const pr = 1 - s.lunge / 0.42;
+            const hop = Math.sin(Math.min(1, pr) * Math.PI);
+            oX += (dxB / distB) * hop * 0.6;
+            oZ += (dzB / distB) * hop * 0.6;
+            oY += hop * 0.5;
+          }
+          const visObj = s.visual || s.mesh;
+          visObj.position.set(oX, (s.visualRestY ?? 0.4) + oY, oZ);
+
+          continue; // Pula a IA comum para não perambular nem dar bote aleatório
+        }
+
         // ---- Escolha de ALVO: jogador e/ou criaturas ADVERSÁRIAS (monstro ↔ animal) ----
         let tgt: { x: number; z: number; s?: Slime; player?: boolean; dist: number } | null = null;
         if (!tutorialBlock && !isPeacefulAnimal) {
@@ -4448,9 +5128,21 @@ revealedKeys.add(k); explored.add(k);
       }
       // animação do boneco
       const player = (viewer.playerObject as any);
-      if (player) { try { playerAnim.current.update(player, dt); } catch { /* noop */ } }
-      // Câmera: 3ª pessoa (padrão) ou 1ª pessoa (V), com rotação HORIZONTAL (yaw).
-      if (firstPerson) {
+      if (player) {
+        try { playerAnim.current.update(player, dt); } catch { /* noop */ }
+        // Se estiver comemorando a vitória, mantém os braços erguidos e vibrando com a comemoração
+        if (performance.now() < playerCelebrateUntil && player.skin) {
+          try {
+            const armWave = Math.sin(performance.now() * 0.014) * 0.14;
+            player.skin.rightArm.rotation.x = -Math.PI * 0.82 + armWave;
+            player.skin.leftArm.rotation.x = -Math.PI * 0.82 - armWave;
+            player.skin.rightArm.rotation.z = -0.32;
+            player.skin.leftArm.rotation.z = 0.32;
+          } catch { /* noop */ }
+        }
+      }
+      // Câmera: Cinemática lateral (perfil do duelo/fatality), 1ª pessoa (V) ou 3ª pessoa padrão (WASD)
+      if (firstPerson && !cinematicCamActive.current) {
         if (player) player.visible = false;
         const hx = wx(playerPos.x), hz = wz(playerPos.z);
         const camBaseY = 1.55 + waterSinkY;
@@ -4485,12 +5177,19 @@ revealedKeys.add(k); explored.add(k);
           viewModel.rotation.set(swing, -0.5, zRoll);
           viewModel.position.set(0.44, -0.6, -0.5);
         }
+      } else if (cinematicCamActive.current && cinematicCamTargetPos.current && cinematicCamLookAt.current) {
+        if (player) player.visible = true;
+        viewModel.visible = false;
+        camera.position.lerp(cinematicCamTargetPos.current, 0.08);
+        currentCamLookAt.current.lerp(cinematicCamLookAt.current, 0.08);
+        camera.lookAt(currentCamLookAt.current);
       } else {
         if (player) player.visible = true;
         viewModel.visible = false;
         const camOff = new THREE.Vector3(0, 7.2, 8.5).applyAxisAngle(new THREE.Vector3(0, 1, 0), camYaw);
         camera.position.set(wx(playerPos.x) + camOff.x, camOff.y + waterSinkY, wz(playerPos.z) + camOff.z);
-        camera.lookAt(wx(playerPos.x), 1.2 + waterSinkY, wz(playerPos.z));
+        currentCamLookAt.current.set(wx(playerPos.x), 1.2 + waterSinkY, wz(playerPos.z));
+        camera.lookAt(currentCamLookAt.current);
       }
       camera.updateMatrixWorld();
       // Ancora a animação de uso: nos PÉS (aura) ou na BOCA (comida); na 1ª pessoa, na tela.
@@ -4838,41 +5537,10 @@ onDrop={() => {
             </div>
           </div>
         )}
-        {/* LUTA CONTRA O BOSS por PERGUNTAS */}
-        {bossFight && (bossFight.question || bossFight.done) && (
-          bossFight.done ? (
-            /* Modal de Fim de Luta (Vitória / Fatality) */
-            <div style={{ position: 'absolute', inset: 0, zIndex: 31, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', padding: 16 }}>
-              <div style={{ maxWidth: 480, width: '100%', background: '#0f172a', border: '1px solid rgba(245, 158, 11, 0.5)', borderRadius: 14, padding: 22, color: '#fff', boxShadow: '0 12px 36px rgba(0,0,0,0.7)', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: 8, color: bossFight.fatality ? '#ef4444' : '#fbbf24' }}>
-                  {bossFight.fatality ? '💀 FATALITY!' : '🏆 VITÓRIA!'}
-                </div>
-                <div style={{ color: '#cbd5e1', fontSize: '0.95rem', marginBottom: 18, lineHeight: 1.4 }}>
-                  {bossFight.fatality ? `${getFatalityLabel(bossFight.fatalityType)} — o golpe final abateu o chefe!` : 'Você derrotou o grande guardião do cenário!'}
-                </div>
-                <button
-                  onClick={() => bossFinishRef.current()}
-                  style={{
-                    padding: '0.65rem 1.6rem',
-                    background: 'var(--gold-primary, #f59e0b)',
-                    color: '#000',
-                    border: 'none',
-                    borderRadius: 8,
-                    fontWeight: 700,
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(245,158,11,0.4)',
-                    transition: 'transform 0.15s ease',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.05)')}
-                  onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
-                >
-                  Continuar
-                </button>
-              </div>
-            </div>
-          ) : bossFight.question ? (
-            /* Batalha em Andamento: Pergunta no topo, Respostas no rodapé lado a lado, centro 3D livre */
+        {/* LUTA CONTRA O BOSS por PERGUNTAS (sem modal escuro durante o combate ou fatality) */}
+        {bossFight && !bossFight.done && (
+          bossFight.question ? (
+            /* Batalha em Andamento: Pergunta no topo, Respostas no rodapé lado a lado, centro 3D 100% desobstruído */
             <div style={{ position: 'absolute', inset: 0, zIndex: 31, pointerEvents: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '12px 16px' }}>
               {/* Card de Pergunta no Topo */}
               <div style={{
@@ -4991,18 +5659,110 @@ onDrop={() => {
                 ))}
               </div>
             </div>
-          ) : (
-            /* Preparando pergunta (sem bloquear a visão) */
+          ) : bossFeedback ? (
+            /* Feedback do golpe em andamento no topo sem cobrir a ação */
             <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 31, pointerEvents: 'none' }}>
-              <div style={{ background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 999, padding: '6px 16px', color: '#fff', fontSize: '0.82rem', fontWeight: 600 }}>
-                {bossFeedback ? (
-                  <span style={{ color: bossFeedback.startsWith('✅') ? '#10b981' : '#f87171' }}>{bossFeedback}</span>
-                ) : (
-                  '⏳ Preparando pergunta do chefe…'
-                )}
+              <div style={{ background: 'rgba(15, 23, 42, 0.88)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 999, padding: '6px 18px', color: '#fff', fontSize: '0.88rem', fontWeight: 700, boxShadow: '0 4px 14px rgba(0,0,0,0.5)' }}>
+                <span style={{ color: bossFeedback.startsWith('✅') ? '#34d399' : '#f87171' }}>{bossFeedback}</span>
               </div>
             </div>
-          )
+          ) : null
+        )}
+        {/* TELA FINAL DE RESULTADO DO CENÁRIO (após a cinemática completa) */}
+        {scenarioResult && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 40,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'radial-gradient(circle, rgba(15,23,42,0.88) 0%, rgba(2,6,23,0.96) 100%)',
+            backdropFilter: 'blur(10px)', padding: 16,
+            animation: 'fadeIn 0.4s ease-out'
+          }}>
+            <div style={{
+              maxWidth: 500, width: '100%',
+              background: '#0f172a',
+              border: scenarioResult === 'victory' ? '2px solid #fbbf24' : '2px solid #ef4444',
+              borderRadius: 20, padding: '28px 24px', color: '#fff',
+              boxShadow: scenarioResult === 'victory' ? '0 16px 48px rgba(251,191,36,0.3)' : '0 16px 48px rgba(239,68,68,0.3)',
+              textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16
+            }}>
+              {scenarioResult === 'victory' ? (
+                <>
+                  <div style={{ fontSize: '3.6rem', animation: 'chestPop 0.6s ease-out' }}>🎁</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#fbbf24', letterSpacing: '0.5px' }}>
+                    🏆 VITÓRIA ÉPICA!
+                  </div>
+                  <div style={{ color: '#e2e8f0', fontSize: '0.98rem', lineHeight: 1.5, maxWidth: 420 }}>
+                    Você superou todos os perigos e derrotou o grande Guardião do Cenário!
+                  </div>
+                  {/* Recompensas do Baú */}
+                  <div style={{
+                    display: 'flex', gap: 20, justifyContent: 'center', alignItems: 'center',
+                    background: 'rgba(255,255,255,0.05)', padding: '12px 24px', borderRadius: 14,
+                    border: '1px solid rgba(255,255,255,0.1)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.15rem', fontWeight: 800, color: '#fbbf24' }}>
+                      <span style={{ fontSize: '1.5rem' }}>🪙</span> +100 Moedas
+                    </div>
+                    <div style={{ width: 1, height: 28, background: 'rgba(255,255,255,0.2)' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.15rem', fontWeight: 800, color: '#60a5fa' }}>
+                      <span style={{ fontSize: '1.5rem' }}>✨</span> +120 XP
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (onVictory) onVictory({ coins: coins + 100, xp: 120 });
+                      else if (onExit) onExit();
+                      else regenerate();
+                    }}
+                    style={{
+                      marginTop: 8, padding: '12px 32px',
+                      background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+                      color: '#000', border: 'none', borderRadius: 12,
+                      fontWeight: 800, fontSize: '1.05rem', cursor: 'pointer',
+                      boxShadow: '0 6px 20px rgba(245,158,11,0.4)',
+                      transition: 'transform 0.15s ease'
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.04)')}
+                    onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                  >
+                    Receber Recompensas
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '3.6rem' }}>💀</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#ef4444' }}>
+                    VOCÊ FOI DERROTADO
+                  </div>
+                  <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.4 }}>
+                    O Guardião do Cenário foi implacável. Recupere suas forças para tentar de novo!
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                    <button
+                      onClick={regenerate}
+                      style={{
+                        padding: '10px 24px', background: '#3b82f6', color: '#fff',
+                        border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer'
+                      }}
+                    >
+                      Tentar Novamente
+                    </button>
+                    {onExit && (
+                      <button
+                        onClick={onExit}
+                        style={{
+                          padding: '10px 24px', background: 'rgba(255,255,255,0.1)', color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, fontWeight: 700, cursor: 'pointer'
+                        }}
+                      >
+                        Sair
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
         {/* Flash do FATALITY (golpe final no boss) */}
         {bossFlash && (

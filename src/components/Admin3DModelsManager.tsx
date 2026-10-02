@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, Edit2, Save, X, Box, Globe, Building2, Swords, Package, Coins, Check, Image as ImageIcon } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Box, Globe, Building2, Swords, Package, Coins, Check, Image as ImageIcon, Key } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 import { useTenant } from '../contexts/TenantContext';
 import DirectUploadButton from './DirectUploadButton';
@@ -18,7 +18,7 @@ export interface Model3D {
   id: string;
   name: string;
   url: string;
-  category?: 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | 'animal';
+  category?: 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | 'animal' | 'key';
   rarity?: string;
   open_url?: string;
   slot_count?: number;
@@ -51,7 +51,7 @@ export interface Model3D {
   _isGlobal?: boolean;
 }
 
-export type ModelCategory = 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | 'animal';
+export type ModelCategory = 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | 'animal' | 'key';
 
 const RARITIES: { value: string; label: string }[] = [
   { value: 'common', label: 'Comum' },
@@ -69,6 +69,7 @@ const CATEGORY_LABELS: Record<ModelCategory, string> = {
   door: 'Portas de Calabouço',
   scenery: 'Cenário (árvores, pedras, água, chão)',
   animal: 'Animais (som + falas)',
+  key: 'Chaves (Boss / Portas)',
 };
 
 const CATEGORY_COLORS: Record<ModelCategory, string> = {
@@ -78,6 +79,7 @@ const CATEGORY_COLORS: Record<ModelCategory, string> = {
   door: '#8b5a2b',
   scenery: '#22c55e',
   animal: '#38bdf8',
+  key: '#eab308',
 };
 
 const SCENERY_KINDS: { value: string; label: string }[] = [
@@ -560,11 +562,37 @@ export default function Admin3DModelsManager() {
     }
   };
 
+  const handleActivateKey = async (model: Model3D) => {
+    if (model._isGlobal && !isSuperAdmin) {
+      showAlert('Modelos globais só podem ser editados pelo superadmin.');
+      return;
+    }
+    try {
+      const { error: e1 } = tenantId
+        ? await supabase.from('3d_models').update({ is_active: false }).eq('category', 'key').eq('tenant_id', tenantId)
+        : await supabase.from('3d_models').update({ is_active: false }).eq('category', 'key').is('tenant_id', null);
+      const { error: e2 } = await supabase.from('3d_models').update({ is_active: true }).eq('id', model.id);
+      const err = e1 || e2;
+      if (err) {
+        console.error('Erro ao definir chave padrão:', err);
+        showAlert(`Erro ao definir chave padrão: ${err.message}`);
+        return;
+      }
+      sessionCache.invalidate(CACHE_KEYS.models3d());
+      fetchModels(false);
+      showAlert(`Chave "${model.name}" definida como padrão para drops de boss e portas!`);
+    } catch (e) {
+      console.error(e);
+      showAlert('Erro ao definir chave padrão.');
+    }
+  };
+
   const renderIcon = (cat: ModelCategory) => {
     switch (cat) {
       case 'chest': return <Package size={24} color="#f59e0b" />;
       case 'coin': return <Coins size={24} color="#fbbf24" />;
       case 'door': return <Box size={24} color="#8b5a2b" />;
+      case 'key': return <Key size={24} color="#eab308" />;
       default: return <Box size={24} color="#10b981" />;
     }
   };
@@ -618,7 +646,7 @@ export default function Admin3DModelsManager() {
                 transition: 'all 0.2s'
               }}
             >
-              {cat === 'skin' ? <Swords size={16} /> : cat === 'chest' ? <Package size={16} /> : cat === 'coin' ? <Coins size={16} /> : <Box size={16} />}
+              {cat === 'skin' ? <Swords size={16} /> : cat === 'chest' ? <Package size={16} /> : cat === 'coin' ? <Coins size={16} /> : cat === 'key' ? <Key size={16} /> : <Box size={16} />}
               {CATEGORY_LABELS[cat]}
             </button>
           );
@@ -654,7 +682,7 @@ export default function Admin3DModelsManager() {
                 type="text" 
                 value={name} 
                 onChange={e => setName(e.target.value)} 
-                placeholder={category === 'chest' ? "Ex: Baú Lendário" : category === 'coin' ? "Ex: Moeda de Ouro" : "Ex: Iron Golem"} 
+                placeholder={category === 'chest' ? "Ex: Baú Lendário" : category === 'coin' ? "Ex: Moeda de Ouro" : category === 'key' ? "Ex: Chave Mestra Dourada" : "Ex: Iron Golem"} 
                 style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} 
               />
             </div>
@@ -668,12 +696,12 @@ export default function Admin3DModelsManager() {
                   type="text" 
                   value={url} 
                   onChange={e => setUrl(e.target.value)} 
-                  placeholder={category === 'skin' ? "https://meusite.com/golem.glb" : category === 'chest' ? "https://meusite.com/baú_fechado.png" : "https://meusite.com/moeda.png"} 
+                  placeholder={category === 'skin' ? "https://meusite.com/golem.glb" : category === 'chest' ? "https://meusite.com/baú_fechado.png" : category === 'key' ? "https://meusite.com/chave.glb" : "https://meusite.com/moeda.png"} 
                   style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', color: 'white' }} 
                 />
                 <DirectUploadButton 
                   onUploadComplete={setUrl} 
-                  folder={category === 'skin' ? '3d_models' : category === 'chest' ? 'chests' : category === 'door' ? 'doors' : category === 'scenery' ? 'scenery' : category === 'animal' ? 'animals' : 'coins'} 
+                  folder={category === 'skin' ? '3d_models' : category === 'chest' ? 'chests' : category === 'door' ? 'doors' : category === 'key' ? 'keys' : category === 'scenery' ? 'scenery' : category === 'animal' ? 'animals' : 'coins'} 
                   accept={category === 'skin' ? '.glb,.gltf' : '.glb,.gltf,.png,.jpg,.jpeg,.webp'}
                 />
                 <button
@@ -1102,6 +1130,18 @@ export default function Admin3DModelsManager() {
               </>
             )}
 
+            {category === 'key' && (
+              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={e => setIsActive(e.target.checked)}
+                  style={{ width: '20px', height: '20px' }}
+                />
+                <label style={{ color: 'var(--text-primary)' }}>Marcar como chave padrão (usada na chave do Boss e portas)</label>
+              </div>
+            )}
+
             <button 
               onClick={handleSave} 
               className="btn-primary" 
@@ -1156,6 +1196,11 @@ export default function Admin3DModelsManager() {
                           <Check size={11} /> Padrão
                         </span>
                       )}
+                      {model.category === 'key' && model.is_active && (
+                        <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', border: '1px solid #eab308', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <Check size={11} /> Padrão
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
@@ -1171,6 +1216,11 @@ export default function Admin3DModelsManager() {
                     )}
                     {model.category === 'door' && !model.is_active && (
                       <button onClick={() => handleActivateDoor(model)} disabled={model._isGlobal && !isSuperAdmin} title="Definir como porta padrão" style={{ padding: '0.5rem', color: '#c98a4b', background: 'rgba(139, 90, 43, 0.15)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
+                        <Check size={16} />
+                      </button>
+                    )}
+                    {model.category === 'key' && !model.is_active && (
+                      <button onClick={() => handleActivateKey(model)} disabled={model._isGlobal && !isSuperAdmin} title="Definir como chave padrão" style={{ padding: '0.5rem', color: '#eab308', background: 'rgba(234, 179, 8, 0.15)', borderRadius: '8px', cursor: model._isGlobal && !isSuperAdmin ? 'not-allowed' : 'pointer', border: 'none', opacity: model._isGlobal && !isSuperAdmin ? 0.4 : 1 }}>
                         <Check size={16} />
                       </button>
                     )}

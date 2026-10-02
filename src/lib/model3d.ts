@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import { sessionCache, CACHE_KEYS, CACHE_TTL } from './sessionCache';
 import type { Model3D } from '../components/Admin3DModelsManager';
 
-export type Model3DCategory = 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | 'animal';
+export type Model3DCategory = 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | 'animal' | 'key';
 
 /**
  * Busca os modelos 3D de uma categoria específica (skin/chest/coin/scenery/animal).
@@ -10,7 +10,7 @@ export type Model3DCategory = 'skin' | 'chest' | 'coin' | 'door' | 'scenery' | '
  */
 export async function fetchModelsByCategory(
   category: Model3DCategory,
-  tenantId?: string | null
+  _tenantId?: string | null
 ): Promise<Model3D[]> {
   try {
     const cacheKey = CACHE_KEYS.models3d();
@@ -85,10 +85,16 @@ export async function fetchActiveDoor(tenantId?: string | null): Promise<Model3D
   return doors.find(d => d.is_active) || null;
 }
 
+/** Busca a CHAVE PADRÃO (marca is_active) para drops de boss e portas. */
+export async function fetchActiveKey(tenantId?: string | null): Promise<Model3D | null> {
+  const keys = await fetchModelsByCategory('key', tenantId);
+  return keys.find(k => k.is_active) || null;
+}
+
 /**
  * Busca um modelo por id (usado para o baú selecionado na missão).
  */
-export async function fetchModel3DById(id: string, tenantId?: string | null): Promise<Model3D | null> {
+export async function fetchModel3DById(id: string, _tenantId?: string | null): Promise<Model3D | null> {
   try {
     const cacheKey = CACHE_KEYS.models3d();
     let models = sessionCache.get<Model3D[]>(cacheKey);

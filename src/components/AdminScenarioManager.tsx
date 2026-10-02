@@ -197,7 +197,9 @@ export default function AdminScenarioManager() {
   const [saving, setSaving] = useState(false);
   // Abas do editor (organização): Mapa / Paredes / Portas & Chaves / Loot & Baús / Monstros.
   const [editorTab, setEditorTab] = useState<'map' | 'walls' | 'doors' | 'loot' | 'monsters'>('map');
-  const [tool, setTool] = useState<'wall' | 'door' | 'monster' | 'water' | 'start' | 'end' | 'erase'>('wall');
+  const [tool, setTool] = useState<'wall' | 'door' | 'monster' | 'chest' | 'water' | 'start' | 'end' | 'erase'>('wall');
+  const [paintChestRot, setPaintChestRot] = useState<'auto' | '0' | '90' | '180' | '270'>('auto');
+  const [paintChestSlot, setPaintChestSlot] = useState<number>(0);
   const [paintWaterDepth, setPaintWaterDepth] = useState<'shallow' | 'medium' | 'deep'>('shallow');
   const [painting, setPainting] = useState(false);
   // Tipo de parede/porta selecionado para PINTAR (por célula).
@@ -650,12 +652,14 @@ export default function AdminScenarioManager() {
     const doorTypeCells = { ...(c.config.doorTypeCells || {}) };
     const monsterCells = { ...(c.config.monsterCells || {}) };
     const waterCells = { ...(c.config.waterCells || {}) };
+    const chestCells = { ...(c.config.chestCells || {}) };
     if (tool === 'water') { waterCells[key] = paintWaterDepth; delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; }
     else if (tool === 'wall') { wallTypeCells[key] = paintWallType || c.config.defaultWallType || c.config.wallTypes[0]?.id; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
     else if (tool === 'door') { doorTypeCells[key] = paintDoorType || c.config.defaultDoorType || c.config.doorTypes[0]?.id; delete wallTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
-    else if (tool === 'monster') { if (paintMonsterId) { monsterCells[key] = paintMonsterId; delete wallTypeCells[key]; delete doorTypeCells[key]; delete waterCells[key]; } }
-    else { delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
-    return { ...c, config: { ...c.config, layout: l, wallTypeCells, doorTypeCells, monsterCells, waterCells } };
+    else if (tool === 'monster') { if (paintMonsterId) { monsterCells[key] = paintMonsterId; delete wallTypeCells[key]; delete doorTypeCells[key]; delete waterCells[key]; delete chestCells[key]; } }
+    else if (tool === 'chest') { const rot = paintChestRot || 'auto'; const slot = paintChestSlot > 0 ? paintChestSlot - 1 : 'default'; chestCells[key] = `${rot}|${slot}`; delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
+    else { delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; delete chestCells[key]; }
+    return { ...c, config: { ...c.config, layout: l, wallTypeCells, doorTypeCells, monsterCells, waterCells, chestCells } };
   });
 
   // --- Resumo do mapa (contagens) e plano de marcadores (pontos coloridos) ---
@@ -1192,9 +1196,9 @@ export default function AdminScenarioManager() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                 <strong style={{ color: 'var(--text-primary)' }}>🗺️ Mapa (pintar)</strong>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {(['wall', 'door', 'monster', 'water', 'start', 'end', 'erase'] as const).map(t => (
+                  {(['wall', 'door', 'monster', 'chest', 'water', 'start', 'end', 'erase'] as const).map(t => (
                     <button key={t} onClick={() => setTool(t)} style={{ ...btn(tool === t ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.06)'), padding: '0.35rem 0.6rem' }}>
-                      {t === 'wall' ? '🧱 Parede' : t === 'door' ? '🚪 Porta' : t === 'monster' ? '👹 Monstro' : t === 'water' ? '💧 Água' : t === 'start' ? '🟢 Início' : t === 'end' ? '🏁 Fim' : '🧽 Apagar'}
+                      {t === 'wall' ? '🧱 Parede' : t === 'door' ? '🚪 Porta' : t === 'monster' ? '👹 Monstro' : t === 'chest' ? '🧰 Baú' : t === 'water' ? '💧 Água' : t === 'start' ? '🟢 Início' : t === 'end' ? '🏁 Fim' : '🧽 Apagar'}
                     </button>
                   ))}
                   <button style={btn('rgba(255,255,255,0.06)')} onClick={applyDims}>Aplicar dimensões</button>
@@ -1304,6 +1308,32 @@ export default function AdminScenarioManager() {
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Clique/arraste no mapa para colocar esse monstro na célula.</span>
                 </div>
               )}
+              {tool === 'chest' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap', padding: '0.45rem 0.65rem', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '0.78rem', color: '#f59e0b', fontWeight: 'bold' }}>🧭 Face / Direção:</span>
+                    <select style={{ ...inputStyle, width: 140 }} value={paintChestRot} onChange={e => setPaintChestRot(e.target.value as any)}>
+                      <option value="auto">🎲 Auto (p/ corredor)</option>
+                      <option value="0">⬇️ Frente / Sul (0°)</option>
+                      <option value="90">➡️ Direita / Leste (90°)</option>
+                      <option value="180">⬆️ Atrás / Norte (180°)</option>
+                      <option value="270">⬅️ Esquerda / Oeste (270°)</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>🎒 Tabela de Loot:</span>
+                    <select style={{ ...inputStyle, width: 150 }} value={paintChestSlot} onChange={e => setPaintChestSlot(Number(e.target.value))}>
+                      <option value={0}>🧰 Baú (padrão)</option>
+                      <option value={1}>🧰 Baú 1</option>
+                      <option value={2}>🧰 Baú 2</option>
+                      <option value={3}>🧰 Baú 3</option>
+                      <option value={4}>🧰 Baú 4</option>
+                      <option value={5}>🧰 Baú 5</option>
+                    </select>
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Clique no mapa para colocar o baú com a rotação selecionada.</span>
+                </div>
+              )}
               {tool === 'water' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>💧 Pintar água — profundidade:</span>
@@ -1343,6 +1373,8 @@ export default function AdminScenarioManager() {
                     }
                     const titleParts = [`(${x},${z})`];
                     if (mId) titleParts.push(`👹 ${monsterCatalog.find(mm => mm.id === mId)?.name || mId}`);
+                    const cInfo = current.config.chestCells?.[key];
+                    if (cInfo) { const [cr, cs] = String(cInfo).split('|'); const rotL = cr === '0' ? 'Sul (0°)' : cr === '90' ? 'Leste (90°)' : cr === '180' ? 'Norte (180°)' : cr === '270' ? 'Oeste (270°)' : 'Auto'; const slotL = cs && cs !== 'default' ? `Baú ${Number(cs) + 1}` : 'Padrão'; titleParts.push(`🧰 Baú [${rotL}, Loot: ${slotL}]`); }
                     marks.forEach(t => { const m = MARKER_LABELS.find(mm => mm.key === t); if (m) titleParts.push(m.label); });
                     return (
                       <div key={`${x},${z}`} title={titleParts.join(' · ')}

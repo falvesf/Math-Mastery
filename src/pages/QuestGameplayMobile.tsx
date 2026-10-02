@@ -5147,6 +5147,14 @@ chestRotY={selectedChestModel?.chestRotY}
             scenarioTheme={mapSetup.theme as any}
             bossOverride={{ name: quest.monsterName, config: quest.monsterAvatarConfig }}
             onBossTouched={handleMapBossFound}
+            onVictory={(res) => {
+              setMapSetup(null);
+              finishGame(true, (currentXp || 0) + (res?.xp || 100));
+            }}
+            onDefeat={() => {
+              setMapSetup(null);
+              finishGame(false, 0, 'Você foi derrotado pelo chefe do cenário.');
+            }}
             onExit={() => navigate('/dashboard')}
           />
         </div>
