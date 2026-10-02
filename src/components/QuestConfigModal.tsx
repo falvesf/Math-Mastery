@@ -1054,7 +1054,20 @@ function MapTab(p: QuestConfigModalProps) {
       const sc = scenarios.find(s => s.id === mc.scenarioId);
       return sc?.config || {};
     }
-    return { monsterConfig: { monsters: Array.isArray(mc.monsters) ? mc.monsters : [], bossMonsterId: mc.bossId || undefined } };
+    return {
+      monsterConfig: {
+        monsters: Array.isArray(mc.monsters) ? mc.monsters : [],
+        bossMonsterId: mc.bossId || undefined
+      },
+      cols: 44,
+      rows: 16,
+      randomizeSize: false,
+      wallDensity: 0.28,
+      genDoors: 2,
+      genRocks: 14,
+      genChests: 4,
+      genAnimals: 4,
+    };
   };
   const previewTheme = mc.mode === 'scenario' ? (scenarios.find(s => s.id === mc.scenarioId)?.theme || 'plains') : 'plains';
 
@@ -1106,7 +1119,7 @@ function MapTab(p: QuestConfigModalProps) {
         </div>
       )}
 
-      {mc.mode !== 'none' && (
+      {((mc.mode === 'scenario' && !!mc.scenarioId) || mc.mode === 'procedural') && (
         <button type="button" onClick={() => setTestOpen(true)} style={{ padding: '0.55rem 1rem', borderRadius: '8px', cursor: 'pointer', background: 'rgba(16,185,129,0.25)', color: '#34d399', border: '1px solid rgba(16,185,129,0.5)', fontWeight: 'bold' }}>
           ▶️ Testar 3D
         </button>

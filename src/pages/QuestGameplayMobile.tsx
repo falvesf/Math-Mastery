@@ -1640,10 +1640,30 @@ const dealTransformDamageToPlayer = (damage: number) => {
     await supabase.from('users').update(updates).eq('id', userData.uid);
   };
 
-  // Inicia a missão: se tiver CENÁRIO configurado, vai para o MAPA primeiro; senão, batalha.
+  // Helper para verificar se a missão tem cenário 3D ativado
+  const isMapScenarioActive = (mc: any): boolean => {
+    if (!mc) return false;
+    let parsed = mc;
+    if (typeof mc === 'string') {
+      try {
+        parsed = JSON.parse(mc);
+      } catch {
+        return false;
+      }
+    }
+    if (!parsed || typeof parsed !== 'object') return false;
+    if (parsed.mode === 'procedural') return true;
+    if (parsed.mode === 'scenario') {
+      return Boolean(parsed.scenarioId && typeof parsed.scenarioId === 'string' && parsed.scenarioId.trim() !== '');
+    }
+    return false;
+  };
+
+  // Inicia a missão: se tiver CENÁRIO configurado, vai para o MAPA primeiro; senão, batalha normal.
   const beginQuest = async () => {
-    const mc = (quest as any)?.mapConfig;
-    if (mc && mc.mode !== 'none') {
+    const rawMc = (quest as any)?.mapConfig;
+    if (isMapScenarioActive(rawMc)) {
+      const mc = typeof rawMc === 'string' ? JSON.parse(rawMc) : rawMc;
       let config: any = {};
       let theme = 'plains';
       if (mc.mode === 'scenario' && mc.scenarioId) {
@@ -1652,12 +1672,27 @@ const dealTransformDamageToPlayer = (damage: number) => {
           if (data) { config = data.config || {}; theme = data.theme || 'plains'; }
         } catch { /* usa padrão */ }
       } else if (mc.mode === 'procedural') {
-        config = { monsterConfig: { monsters: mc.monsters || [], bossMonsterId: mc.bossId || undefined } };
+        config = {
+          monsterConfig: {
+            monsters: Array.isArray(mc.monsters) ? mc.monsters : [],
+            bossMonsterId: mc.bossId || undefined
+          },
+          cols: 44,
+          rows: 16,
+          randomizeSize: false,
+          wallDensity: 0.28,
+          genDoors: 2,
+          genRocks: 14,
+          genChests: 4,
+          genAnimals: 4,
+        };
       }
       setMapSetup({ config, theme });
       setGameState('map');
       return;
     }
+    // Sem mapa 3D ativo: executa diretamente a batalha normal!
+    setMapSetup(null);
     await startGame();
   };
   // O boss do MAPA foi encontrado (tocou + rugiu): transição FF e depois a batalha da missão.
@@ -4894,7 +4929,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
 
               <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                 <button className="login-btn" onClick={() => beginQuest()} style={{ background: 'var(--gold-primary)', color: 'var(--text-on-gold, #000000)', border: 'none', padding: '1rem 2rem', fontSize: '1.25rem', borderRadius: '50px', width: '100%' }}>
-                  {((quest as any)?.mapConfig && (quest as any).mapConfig.mode !== 'none') ? '🗺️ Explorar Cenário' : 'Iniciar Batalha'}
+                  {isMapScenarioActive((quest as any)?.mapConfig) ? '🗺️ Explorar Cenário' : 'Iniciar Batalha'}
                 </button>
               </div>
             </div>
@@ -5139,7 +5174,7 @@ chestRotY={selectedChestModel?.chestRotY}
       )}
 
       {/* FASE DO CENÁRIO (mapa explorável): antes da batalha, quando a missão tem cenário. */}
-      {gameState === 'map' && quest && mapSetup && (
+      {gameState === 'map' && quest && mapSetup && isMapScenarioActive((quest as any)?.mapConfig) && (
         <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 999999, display: 'flex', flexDirection: 'column' }}>
           <MapExplorerPoC
             playerMode

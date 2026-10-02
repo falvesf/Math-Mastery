@@ -186,16 +186,15 @@ function generateGrid(cols: number, rows: number, opts?: { wallDensity?: number;
   // Colunas de portas distribuídas uniformemente.
   const DOOR_COLS: number[] = [];
   for (let i = 1; i <= doorCount; i++) DOOR_COLS.push(Math.floor(cols * (i / (doorCount + 1))));
-  for (let attempt = 0; attempt < 80; attempt++) {
+  // Tenta gerar labirinto orgânico conectando início e fim
+  for (let attempt = 0; attempt < 40; attempt++) {
     const wall: boolean[][] = [];
     for (let z = 0; z < rows; z++) { const row: boolean[] = []; for (let x = 0; x < cols; x++) row.push(Math.random() < wallDensity); wall.push(row); }
-    // Borda fechada: evita "cantos" acessíveis nas extremidades.
     for (let x = 0; x < cols; x++) { wall[0][x] = true; wall[rows - 1][x] = true; }
     for (let z = 0; z < rows; z++) { wall[z][0] = true; wall[z][cols - 1] = true; }
     const start = { x: 1, z: Math.floor(rows / 2) };
     const end = { x: cols - 2, z: Math.floor(rows / 2) };
     wall[start.z][start.x] = false; wall[end.z][end.x] = false;
-    // DIVISÓRIAS: cada coluna de porta vira parede inteira, exceto UMA célula (a porta).
     const doorCells: { x: number; z: number }[] = [];
     for (const xd of DOOR_COLS) {
       const freeCol: number[] = [];
@@ -212,8 +211,64 @@ function generateGrid(cols: number, rows: number, opts?: { wallDensity?: number;
     if (doorCells.some(d => wall[d.z][d.x])) continue;
     return { wall, start, end, doorCells };
   }
-  const wall = Array.from({ length: rows }, () => Array.from({ length: cols }, () => false));
-  return { wall, start: { x: 1, z: Math.floor(rows / 2) }, end: { x: cols - 2, z: Math.floor(rows / 2) }, doorCells: [] };
+
+  // Se não conectou aleatoriamente em 40 tentativas, gera com caminho escavado garantido (NUNCA vazio!)
+  const wall: boolean[][] = [];
+  for (let z = 0; z < rows; z++) {
+    const row: boolean[] = [];
+    for (let x = 0; x < cols; x++) row.push(Math.random() < wallDensity);
+    wall.push(row);
+  }
+  for (let x = 0; x < cols; x++) { wall[0][x] = true; wall[rows - 1][x] = true; }
+  for (let z = 0; z < rows; z++) { wall[z][0] = true; wall[z][cols - 1] = true; }
+  const start = { x: 1, z: Math.floor(rows / 2) };
+  const end = { x: cols - 2, z: Math.floor(rows / 2) };
+  wall[start.z][start.x] = false;
+  wall[end.z][end.x] = false;
+
+  const doorCells: { x: number; z: number }[] = [];
+  for (const xd of DOOR_COLS) {
+    const zc = 1 + Math.floor(Math.random() * (rows - 2));
+    for (let z = 0; z < rows; z++) wall[z][xd] = (z !== zc);
+    doorCells.push({ x: xd, z: zc });
+  }
+
+  // Escava caminho navegável interligando start -> portas -> end
+  const pathPoints = [start, ...doorCells, end];
+  for (let i = 0; i < pathPoints.length - 1; i++) {
+    const p1 = pathPoints[i];
+    const p2 = pathPoints[i + 1];
+    let cx = p1.x;
+    let cz = p1.z;
+    while (cx !== p2.x) {
+      cx += (p2.x > cx ? 1 : -1);
+      if (cx > 0 && cx < cols - 1 && cz > 0 && cz < rows - 1) {
+        wall[cz][cx] = false;
+        if (cz + 1 < rows - 1 && Math.random() < 0.4) wall[cz + 1][cx] = false;
+      }
+    }
+    while (cz !== p2.z) {
+      cz += (p2.z > cz ? 1 : -1);
+      if (cx > 0 && cx < cols - 1 && cz > 0 && cz < rows - 1) {
+        wall[cz][cx] = false;
+        if (cx + 1 < cols - 1 && Math.random() < 0.4) wall[cz][cx + 1] = false;
+      }
+    }
+  }
+
+  for (const d of doorCells) wall[d.z][d.x] = false;
+  wall[start.z][start.x] = false;
+  wall[end.z][end.x] = false;
+  for (let x = 0; x < cols; x++) { wall[0][x] = true; wall[rows - 1][x] = true; }
+  for (let z = 0; z < rows; z++) { wall[z][0] = true; wall[z][cols - 1] = true; }
+
+  const seen = reachable(wall, start);
+  for (let z = 0; z < rows; z++) {
+    for (let x = 0; x < cols; x++) {
+      if (!wall[z][x] && !seen.has(`${x},${z}`)) wall[z][x] = true;
+    }
+  }
+  return { wall, start, end, doorCells };
 }
 
 // Bal�o de fala 3D (sprite com texto) � usado pelo jogador e pelos monstros no mapa.
@@ -274,7 +329,7 @@ export default function MapExplorerPoC({
   const [playerHearts, setPlayerHearts] = useState<number>((userData as any)?.hp ?? 3);
   const [playerItems, setPlayerItems] = useState<EquippedItem[]>(itemsProp || []);
   const [consumables, setConsumables] = useState<any[]>([]);
-  const [itemsReady, setItemsReady] = useState(!!itemsProp);
+  const [itemsReady, setItemsReady] = useState(false);
   const [stamina, setStamina] = useState(100);
   const [oxygen, setOxygen] = useState(100);
   const [heldKeysCount, setHeldKeysCount] = useState(0);
@@ -544,7 +599,7 @@ export default function MapExplorerPoC({
   // Busca os itens equipados (para o personagem 3D), consumíveis e modelos padrão (moeda/baú).
   useEffect(() => {
     const uid = userData?.uid;
-    if (itemsProp || !uid) { setItemsReady(true); return; }
+    if (itemsProp || !uid) { /* catálogos de monstros e modelos continuam carregando */ }
     let cancelled = false;
     const tenantId = (userData as any)?.tenantId || null;
 
@@ -970,29 +1025,29 @@ if (!cancelled) {
 
   useEffect(() => {
     const mount = mountRef.current;
-    if (!mount) return;
+    if (!mount || !itemsReady) return;
     // Dimensões e raio de visão vindos da config do cenário (com fallback).
     const sc0: any = scenarioRef.current || {};
     const layout: string[] | null = (Array.isArray(sc0.layout) && sc0.layout.length && typeof sc0.layout[0] === 'string') ? sc0.layout as string[] : null;
-const randSize = sc0.randomizeSize !== false && !layout;
-const ROWS = layout ? layout.length : (randSize ? (8 + Math.floor(Math.random() * 193)) : Math.max(8, Math.min(200, Number(sc0.rows) || DEF_ROWS)));
-const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.random() * 191)) : Math.max(10, Math.min(200, Number(sc0.cols) || DEF_COLS)));
+const randSize = sc0.randomizeSize === true && !layout;
+    const ROWS = layout ? layout.length : (randSize ? (12 + Math.floor(Math.random() * 8)) : Math.max(8, Math.min(60, Number(sc0.rows) || DEF_ROWS)));
+    const COLS = layout ? layout[0].length : (randSize ? (32 + Math.floor(Math.random() * 16)) : Math.max(10, Math.min(100, Number(sc0.cols) || DEF_COLS)));
     const REVEAL_RADIUS = Math.max(2, Math.min(15, Number(sc0.revealRadius) || DEF_REVEAL_RADIUS));
     // Parâmetros de geração (densidade de paredes, elaboração estratégica, chave do boss).
-    const cfgWallDensity = Math.max(0.05, Math.min(0.7, Number(sc0.wallDensity) ?? 0.26));
+    const cfgWallDensity = Math.max(0.05, Math.min(0.7, Number(sc0.wallDensity) || 0.28));
     const cfgElaboration = Math.max(0, Math.min(1, Number(sc0.elaboration) ?? 0.5));
-    const cfgGenDoors = (sc0.genDoors !== undefined && sc0.genDoors !== null && sc0.genDoors !== '') ? Math.round(Number(sc0.genDoors)) : 0;
-    const cfgGenChests = Math.max(0, Number(sc0.genChests) || 0);
+    const cfgGenDoors = (sc0.genDoors !== undefined && sc0.genDoors !== null && sc0.genDoors !== '') ? Math.round(Number(sc0.genDoors)) : 2;
+    const cfgGenChests = (sc0.genChests !== undefined && sc0.genChests !== null && sc0.genChests !== '') ? Math.max(0, Number(sc0.genChests)) : 4;
     // @ts-ignore
     const cfgMonsterChance = Number(sc0.genMonsterChance) > 0 ? Math.min(1, Number(sc0.genMonsterChance)) : (0.03 + cfgElaboration * 0.06);
     void cfgMonsterChance;
     const cfgGenMonsterCount = Math.max(0, Math.round(Number(sc0.genMonsterCount) || 0));
     // Parâmetros de geração: -1 = nenhum, 0/undefined = auto, >0 = quantidade exata.
-    const genNum = (v: any) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Math.round(Number(v)) : 0);
-    const cfgGenRocks = genNum(sc0.genRocks);
-    const cfgGenTrees = genNum(sc0.genTrees);
-    const cfgGenFlowers = genNum(sc0.genFlowers);
-    const cfgGenAnimals = genNum(sc0.genAnimals);
+    const genNum = (v: any, def = 0) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Math.round(Number(v)) : def);
+    const cfgGenRocks = (sc0.genRocks !== undefined && sc0.genRocks !== null && sc0.genRocks !== '') ? genNum(sc0.genRocks) : 14;
+    const cfgGenTrees = genNum(sc0.genTrees, 0);
+    const cfgGenFlowers = genNum(sc0.genFlowers, 0);
+    const cfgGenAnimals = (sc0.genAnimals !== undefined && sc0.genAnimals !== null && sc0.genAnimals !== '') ? genNum(sc0.genAnimals) : 4;
     const cfgAnimalMode: 'varied' | 'specific' = sc0.animalMode === 'specific' ? 'specific' : 'varied';
     const cfgAnimalIds: string[] = Array.isArray(sc0.animalIds) ? sc0.animalIds.map((s: any) => String(s)) : [];
     const cfgBossKeyMode = sc0.bossKeyMode || 'none';
@@ -1945,8 +2000,27 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
     // usa stats/visual do monstro cadastrado; senão cai no slime genérico.
     const addMonster = (gx: number, gz: number, visionOverride?: number, monsterId?: string, monsterOverride?: { name?: string; config?: any }) => {
       let monster: any = monsterOverride || null;
-      if (!monster && monsterId) monster = monsterCatalogRef.current.get(String(monsterId));
-      if (!monster && cfgMonsterIds.length) monster = monsterCatalogRef.current.get(String(cfgMonsterIds[Math.floor(Math.random() * cfgMonsterIds.length)]));
+      if (!monster && monsterId) {
+        monster = monsterCatalogRef.current.get(String(monsterId));
+        if (!monster) {
+          for (const m of monsterCatalogRef.current.values()) {
+            if (String(m.id).toLowerCase() === String(monsterId).toLowerCase() || String(m.name).toLowerCase() === String(monsterId).toLowerCase()) {
+              monster = m; break;
+            }
+          }
+        }
+      }
+      if (!monster && cfgMonsterIds.length) {
+        const pickId = cfgMonsterIds[Math.floor(Math.random() * cfgMonsterIds.length)];
+        monster = monsterCatalogRef.current.get(String(pickId));
+        if (!monster) {
+          for (const m of monsterCatalogRef.current.values()) {
+            if (String(m.id).toLowerCase() === String(pickId).toLowerCase() || String(m.name).toLowerCase() === String(pickId).toLowerCase()) {
+              monster = m; break;
+            }
+          }
+        }
+      }
       const st = monster?.config?.stats || {};
       const level = Number(st.level) || 1;
       // HP configurado no monstro; vazio → automático pelo nível.
@@ -2307,13 +2381,15 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
     };
     // Aplica o golpe da criatura no ALVO (jogador ou outra criatura).
     const resolveCreatureHit = (s: Slime, tgt: { x: number; z: number; s?: Slime; player?: boolean; dist: number } | null) => {
-      // CHEFE: só inicia a batalha quando o ALVO é o JOGADOR (não ao atacar outra criatura).
+      // CHEFE: inicia a batalha quando o ALVO é o JOGADOR; se for criatura/animal, causa dano real!
       if (s.isBoss) {
         if (tgt && !tgt.s) {
-          // Primeiro contato → grunido e começa a luta. Nos contatos seguintes (luta ativa)
-          // → abre a PERGUNTA (dano só depois de responder).
+          // Primeiro contato com jogador → rugido/luta. Nos seguintes → abre pergunta
           if (!bossFightRef.current) { if (!s.grunting) { s.grunting = true; bossGruntThenBattle(s.gruntUrl || ''); } }
           else openBossQuestion('boss');
+        } else if (tgt && tgt.s) {
+          // Chefe atacou outra criatura / animal!
+          damageSlime(tgt.s, s);
         }
       } else if (tgt && tgt.s) {
         // Acertou OUTRA criatura (combate monstro ↔ animal).
@@ -2370,7 +2446,9 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
     // Dano de uma criatura em OUTRA criatura (combate monstro ↔ animal).
     const damageSlime = (victim: Slime, attacker: Slime) => {
       if (!victim || victim.hp <= 0) return;
-      const raw = attacker.atkPower || (10 + (attacker.level || 1) * 5);
+      const raw = attacker.isBoss
+        ? Math.max(65, (attacker.atkPower || 40) * 2)
+        : (attacker.atkPower || (10 + (attacker.level || 1) * 5));
       const real = Math.max(1, Math.round(raw - (victim.defense || 0) * 0.3));
       victim.hp -= real;
       // Quem foi atacado fica PROVOCADO (reage conforme a agressividade) e, se animal, HOSTIL (revida).
@@ -2402,7 +2480,9 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       if (resolveDamageEffect(attacker) !== 'none' && Math.random() < 0.4) applyStatus(victim, resolveDamageEffect(attacker) as any);
       spawnPop(new THREE.Vector3(victim.root.position.x, victim.root.position.y + 1.5, victim.root.position.z), `-${real}`, false);
       if (victim.hp <= 0) {
-        callbacks.current.setMsg(`💥 ${attacker.isAnimal ? 'O animal' : 'O monstro'} abateu ${victim.isAnimal ? 'um animal' : 'um monstro'}!`);
+        const whoAttacker = attacker.isBoss ? 'O chefe' : (attacker.isAnimal ? 'O animal' : 'O monstro');
+        const whoVictim = victim.isAnimal ? 'um animal' : 'um monstro';
+        callbacks.current.setMsg(`💥 ${whoAttacker} abateu ${whoVictim}!`);
         triggerMonsterDefeat(victim);
         // Criatura x criatura: XP = cálculo existente (derrotar jogador) ÷ 3.
         gainXp(attacker, victim, 1 / 3);
@@ -2532,10 +2612,13 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         eligible.push([x, z]);
       }
       for (let i = eligible.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = eligible[i]; eligible[i] = eligible[j]; eligible[j] = t; }
-      const autoN = Math.max(3, Math.round(eligible.length * (0.008 + cfgElaboration * 0.012)));
+      const autoN = Math.max(6, Math.min(18, Math.round(eligible.length * (0.018 + cfgElaboration * 0.02))));
       const n = cfgGenMonsterCount > 0 ? cfgGenMonsterCount : autoN;
+      const monsterPool = cfgMonsterIds.length > 0 
+        ? cfgMonsterIds 
+        : Array.from(monsterCatalogRef.current.keys());
       for (const [x, z] of eligible.slice(0, n)) {
-        const mid = cfgMonsterIds.length ? cfgMonsterIds[Math.floor(Math.random() * cfgMonsterIds.length)] : '';
+        const mid = monsterPool.length ? monsterPool[Math.floor(Math.random() * monsterPool.length)] : '';
         addMonster(x, z, undefined, mid);
       }
     }
