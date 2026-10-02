@@ -244,6 +244,7 @@ export default function MapExplorerPoC({
   playerMode = false,
   scenarioTheme,
   bossOverride,
+  missionQuestions,
   onBossTouched,
   onVictory,
   onDefeat,
@@ -255,12 +256,15 @@ export default function MapExplorerPoC({
   playerMode?: boolean;
   scenarioTheme?: ThemeKey;
   bossOverride?: { name?: string; config?: any };
+  missionQuestions?: any[];
   onBossTouched?: (remainingHp: number) => void;
   onVictory?: (result: { coins: number; xp: number }) => void;
   onDefeat?: () => void;
 }) {
   void onBossTouched;
   const { userData } = useAuth();
+  const missionQuestionsRef = useRef<any[] | null>(missionQuestions || null);
+  missionQuestionsRef.current = missionQuestions || null;
   const [themeKey, setThemeKey] = useState<ThemeKey>(scenarioTheme || 'plains');
   const [seed, setSeed] = useState(0);
   const [msg, setMsg] = useState('WASD: Andar · ESPAÇO: Pular · F ou Clique: Atacar · E: Interagir · Q: Nadar · Explore até o BOSS à direita.');
@@ -1169,11 +1173,48 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
       bossSlime.root.rotation.y = Math.atan2(-dx, -dz) + (bossSlime.faceOffset || 0);
     };
 
-    // Carrega a próxima pergunta garantindo que NUNCA haja carregamento duplo/concorrente
+    // Normaliza a pergunta definida na missão para o formato consumido pelo card do boss
+    const formatMissionQuestion = (rawQ: any, idx: number) => {
+      const qId = String(rawQ.id || rawQ._id || `mission_q_${idx}`);
+      const title = String(rawQ.title || rawQ.question || rawQ.prompt || '');
+      const imageUrl = rawQ.imageUrl || rawQ.image_url || '';
+      const timeLimit = Math.max(5, Math.min(180, Number(rawQ.timeLimit ?? rawQ.time_limit) || 30));
+      const rawOpts = Array.isArray(rawQ.options) ? rawQ.options : [];
+      const options = rawOpts.map((opt: any) => {
+        if (typeof opt === 'string') return { text: opt, imageUrl: '' };
+        return {
+          text: String(opt?.text || opt?.title || opt?.label || ''),
+          imageUrl: opt?.imageUrl || opt?.image_url || '',
+        };
+      });
+      const correctIndex = Number.isInteger(rawQ.correctIndex)
+        ? rawQ.correctIndex
+        : (Number.isInteger(rawQ.correct_index) ? rawQ.correct_index : 0);
+      return { id: qId, title, imageUrl, options, timeLimit, correctIndex };
+    };
+
+    // Carrega a próxima pergunta garantindo que NUNCA haja carregamento duplo/concorrente.
+    // SE for dentro de uma missão: usa estritamente as perguntas definidas na missão.
+    // SE for testado por fora de uma missão: usa perguntas aleatórias e diversas do question_bank.
     const loadNextBossQuestion = () => {
       if (disposed || bossQuestionLoadingRef.current) return;
       const cur = bossFightRef.current;
       if (!cur || cur.done) return;
+
+      const qIndex = cur.qIndex;
+      const mQuestions = missionQuestionsRef.current;
+      if (Array.isArray(mQuestions) && mQuestions.length > 0) {
+        if (qIndex >= mQuestions.length) return;
+        const rawQ = mQuestions[qIndex];
+        const formattedQ = formatMissionQuestion(rawQ, qIndex);
+        const nb = { ...cur, question: formattedQ };
+        bossFightRef.current = nb;
+        setBossFight(nb);
+        setupSideCamera();
+        faceCombatants();
+        return;
+      }
+
       bossQuestionLoadingRef.current = true;
       pickDoorQuestion().then(q => {
         bossQuestionLoadingRef.current = false;
@@ -1196,12 +1237,15 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
       setupSideCamera();
       faceCombatants();
       const baseHp = Math.max(50, Number(bossBaseHpRef.current) || 300);
+      const mQuestions = missionQuestionsRef.current;
+      const totalQ = (Array.isArray(mQuestions) && mQuestions.length > 0) ? mQuestions.length : 10;
       const cur = bossFightRef.current;
       if (!cur) {
         const bf = {
-          hp: baseHp * 10,
-          maxHp: baseHp * 10,
+          hp: baseHp * totalQ,
+          maxHp: baseHp * totalQ,
           qIndex: 0,
+          totalQuestions: totalQ,
           perHit: baseHp,
           question: null,
           done: false,
@@ -1293,9 +1337,10 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
           try { playFx(battleSoundsRef.current.punch, 0.85); } catch { /* noop */ }
 
           const bossHp = bossSlime ? bossSlime.hp : 0;
-          // O que acontecer primeiro: HP zerar OU as 10 perguntas terminarem!
+          // O que acontecer primeiro: HP zerar OU as perguntas terminarem!
           // Se as perguntas terminarem primeiro, o golpe fatal tira todo o restante do HP do monstro!
-          const reachedLastQuestion = qIndex >= 10;
+          const totalQ = bf.totalQuestions || (Array.isArray(missionQuestionsRef.current) && missionQuestionsRef.current.length > 0 ? missionQuestionsRef.current.length : 10);
+          const reachedLastQuestion = qIndex >= totalQ;
           const isDead = bossHp <= 0 || reachedLastQuestion;
           if (isDead) {
             if (bossSlime && bossSlime.hp > 0) {
@@ -1364,11 +1409,25 @@ const COLS = layout ? layout[0].length : (randSize ? (10 + Math.floor(Math.rando
           if (playerHeartsRun <= 0) {
             startPlayerDefeatCinematic();
           } else {
-            window.setTimeout(() => {
-              if (disposed) return;
-              setBossFeedback(null);
-              loadNextBossQuestion();
-            }, 1300);
+            const totalQ = bf.totalQuestions || (Array.isArray(missionQuestionsRef.current) && missionQuestionsRef.current.length > 0 ? missionQuestionsRef.current.length : 10);
+            if (qIndex >= totalQ) {
+              if (bossSlime && bossSlime.hp > 0) {
+                const remainingHp = bossSlime.hp;
+                bossSlime.hp = 0;
+                spawnPop(new THREE.Vector3(bossSlime.root.position.x, (bossSlime.barY || 1.5) + 0.6, bossSlime.root.position.z), `GOLPE FATAL! -${remainingHp}`, true);
+              }
+              if (bossFightRef.current) {
+                bossFightRef.current = { ...bossFightRef.current, hp: 0 };
+                setBossFight(bossFightRef.current);
+              }
+              startBossFatalityCinematic();
+            } else {
+              window.setTimeout(() => {
+                if (disposed) return;
+                setBossFeedback(null);
+                loadNextBossQuestion();
+              }, 1300);
+            }
           }
         }, 420);
       }
@@ -2747,10 +2806,12 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       bossSlime.isBoss = true;
       // GOLPES configurados do boss (guia Golpes): usados no ataque/efeito conforme o nível.
       bossAttacksConfig = (bossOverrideMonster as any)?.config?.attacks || (bossMonsterInfo as any)?.config?.attacks || null;
-      // BOSS tem 10x o HP configurado na edição do monstro (barra real, acima da cabeça).
+      // BOSS tem N vezes o HP configurado na edição do monstro (1 porção por pergunta da missão ou 10 em testes).
       const bossConfiguredHp = Math.max(50, Number(bossSlime.maxHp) || 300);
       bossBaseHpRef.current = bossConfiguredHp;
-      bossSlime.maxHp = bossConfiguredHp * 10;
+      const mQuestions = missionQuestionsRef.current;
+      const totalQ = (Array.isArray(mQuestions) && mQuestions.length > 0) ? mQuestions.length : 10;
+      bossSlime.maxHp = bossConfiguredHp * totalQ;
       bossSlime.hp = bossSlime.maxHp;
       bossSlime.barY = (bossSlime.barY || 1.15) + 0.3;
       bossSlime.vision = 14;
@@ -5968,7 +6029,7 @@ onDrop={() => {
                       </span>
                     )}
                     <span style={{ fontSize: '0.72rem', color: '#94a3b8', background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 999 }}>
-                      Pergunta {Math.min(10, bossFight.qIndex + 1)}/10
+                      Pergunta {Math.min(bossFight.totalQuestions || 10, bossFight.qIndex + 1)}/{bossFight.totalQuestions || 10}
                     </span>
                   </div>
                 </div>

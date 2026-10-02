@@ -5146,6 +5146,7 @@ chestRotY={selectedChestModel?.chestRotY}
             scenarioConfig={mapSetup.config}
             scenarioTheme={mapSetup.theme as any}
             bossOverride={{ name: quest.monsterName, config: quest.monsterAvatarConfig }}
+            missionQuestions={quest.questions}
             onBossTouched={handleMapBossFound}
             onVictory={(res) => {
               setMapSetup(null);
