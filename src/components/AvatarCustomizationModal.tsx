@@ -2913,6 +2913,8 @@ onClick={() => setConfig(prev => {
                 quotes: (config as any).quotes,
                 drops: (config as any).drops,
                 stats: (config as any).stats,
+                canSwim: (config as any).canSwim ?? (config as any).stats?.canSwim,
+                survivesUnderwater: (config as any).survivesUnderwater ?? (config as any).stats?.survivesUnderwater,
               }}
               onChange={attrs => setConfig(prev => ({
                 ...prev,
@@ -2923,7 +2925,9 @@ onClick={() => setConfig(prev => {
                 damageSound: attrs.damageSound,
                 quotes: attrs.quotes,
                 drops: attrs.drops,
-                stats: attrs.stats ? { ...attrs.stats, defeatAnimation: attrs.defeatAnimation } : attrs.stats,
+                canSwim: attrs.canSwim ?? attrs.stats?.canSwim,
+                survivesUnderwater: attrs.survivesUnderwater ?? attrs.stats?.survivesUnderwater,
+                stats: attrs.stats ? { ...attrs.stats, defeatAnimation: attrs.defeatAnimation, canSwim: attrs.stats.canSwim, survivesUnderwater: attrs.stats.survivesUnderwater } : attrs.stats,
               } as any))}
               availableStoreItems={storeItems}
             />

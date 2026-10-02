@@ -195,6 +195,10 @@ export interface MonsterStatsConfig {
   attackSpeed?: number;
   /** Animação de derrota ao ser abatido: auto, splat, fall-side, fall-forward, evaporate, death-slice, death-explode, clip */
   defeatAnimation?: 'auto' | 'splat' | 'fall-side' | 'fall-forward' | 'evaporate' | 'death-slice' | 'death-explode' | 'clip' | 'spider-flip' | string;
+  /** Pode flutuar / nadar na superfície da água (rios, lagos e canais). */
+  canSwim?: boolean;
+  /** Consegue respirar e resistir submerso em água profunda (não sofre dano de afogamento). */
+  survivesUnderwater?: boolean;
 }
 
 export interface MonsterAttributesConfig {
@@ -218,6 +222,10 @@ export interface MonsterAttributesConfig {
   drops?: Array<{ itemId: string; dropChance: number; min?: number; max?: number }>;
   stats?: MonsterStatsConfig;
   biography?: string;
+  /** Pode flutuar / nadar na superfície da água */
+  canSwim?: boolean;
+  /** Consegue respirar e sobreviver submerso na água profunda */
+  survivesUnderwater?: boolean;
 }
 
 interface MonsterAttributesEditorProps {
@@ -308,6 +316,8 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
     trainingHabilities: value.stats?.trainingHabilities,
     speed: value.stats?.speed,
     attackSpeed: value.stats?.attackSpeed,
+    canSwim: value.stats?.canSwim ?? value.canSwim,
+    survivesUnderwater: value.stats?.survivesUnderwater ?? value.survivesUnderwater,
   };
 
   const updateStats = (statsPatch: Partial<MonsterStatsConfig>) => {
@@ -317,6 +327,8 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
         ...currentStats,
         ...statsPatch,
       },
+      ...(statsPatch.canSwim !== undefined ? { canSwim: statsPatch.canSwim } : {}),
+      ...(statsPatch.survivesUnderwater !== undefined ? { survivesUnderwater: statsPatch.survivesUnderwater } : {}),
     });
   };
 
@@ -679,6 +691,119 @@ export const MonsterAttributesEditor: React.FC<MonsterAttributesEditorProps> = (
               <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
                 Como a criatura sucumbe ao ser abatida nos cenários e na arena.
               </div>
+            </div>
+          </div>
+
+          {/* FÍSICA AQUÁTICA (Flutuar e Sobreviver na Água) */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(8, 145, 178, 0.12) 0%, rgba(14, 116, 144, 0.05) 100%)',
+            border: '1px solid rgba(6, 182, 212, 0.35)',
+            borderRadius: '10px',
+            padding: '0.85rem',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <span style={{ fontSize: '1.2rem' }}>🌊</span>
+                <div>
+                  <span style={{ fontSize: '0.82rem', color: '#22d3ee', fontWeight: 'bold' }}>
+                    Física Aquática e Sobrevivência na Água
+                  </span>
+                  <div style={{ fontSize: '0.66rem', color: 'var(--text-secondary)' }}>
+                    Comportamento ao encontrar rios, canais e água profunda no cenário
+                  </div>
+                </div>
+              </div>
+
+              {/* Tag de Comportamento */}
+              {(() => {
+                const swim = currentStats.canSwim ?? false;
+                const under = currentStats.survivesUnderwater ?? false;
+                if (!swim && !under) {
+                  return (
+                    <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', borderRadius: '12px', background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.35)', color: '#fca5a5', fontWeight: 600 }}>
+                      🚫 Terrestre (bloqueia na água / afoga)
+                    </span>
+                  );
+                }
+                if (swim && under) {
+                  return (
+                    <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', borderRadius: '12px', background: 'rgba(6,182,212,0.22)', border: '1px solid rgba(6,182,212,0.45)', color: '#67e8f9', fontWeight: 600 }}>
+                      🐬 Anfíbio Total (nada e respira)
+                    </span>
+                  );
+                }
+                if (swim) {
+                  return (
+                    <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', borderRadius: '12px', background: 'rgba(14,165,233,0.2)', border: '1px solid rgba(14,165,233,0.4)', color: '#7dd3fc', fontWeight: 600 }}>
+                      🏊 Flutuante (nada na superfície)
+                    </span>
+                  );
+                }
+                return (
+                  <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', borderRadius: '12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', color: '#93c5fd', fontWeight: 600 }}>
+                    🤿 Andarilho do Fundo (resiste submerso)
+                  </span>
+                );
+              })()}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.65rem', marginTop: '0.6rem' }}>
+              {/* Toggle Flutuar / Nadar */}
+              <label style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.6rem',
+                background: currentStats.canSwim ? 'rgba(6, 182, 212, 0.14)' : 'rgba(0,0,0,0.25)',
+                border: currentStats.canSwim ? '1px solid rgba(6, 182, 212, 0.45)' : '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                padding: '0.65rem 0.75rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={!!currentStats.canSwim}
+                  onChange={e => updateStats({ canSwim: e.target.checked })}
+                  style={{ width: '18px', height: '18px', marginTop: '2px', accentColor: '#06b6d4', cursor: 'pointer' }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '0.78rem', color: currentStats.canSwim ? '#67e8f9' : 'var(--text-primary)', fontWeight: 'bold' }}>
+                    🏊 Pode Flutuar / Nadar
+                  </span>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', lineHeight: 1.3, marginTop: '2px' }}>
+                    Flutua na superfície de rios e lagos. Se desmarcado, a criatura é impedida de entrar na água ou afunda.
+                  </span>
+                </div>
+              </label>
+
+              {/* Toggle Sobreviver Submerso */}
+              <label style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.6rem',
+                background: currentStats.survivesUnderwater ? 'rgba(59, 130, 246, 0.14)' : 'rgba(0,0,0,0.25)',
+                border: currentStats.survivesUnderwater ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                padding: '0.65rem 0.75rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={!!currentStats.survivesUnderwater}
+                  onChange={e => updateStats({ survivesUnderwater: e.target.checked })}
+                  style={{ width: '18px', height: '18px', marginTop: '2px', accentColor: '#3b82f6', cursor: 'pointer' }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '0.78rem', color: currentStats.survivesUnderwater ? '#93c5fd' : 'var(--text-primary)', fontWeight: 'bold' }}>
+                    🤿 Sobrevive Submerso (Não Afoga)
+                  </span>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', lineHeight: 1.3, marginTop: '2px' }}>
+                    Consegue respirar ou resistir submerso em água profunda. Se desmarcado, sofre dano periódico (🫧 -15) até morrer.
+                  </span>
+                </div>
+              </label>
             </div>
           </div>
 
