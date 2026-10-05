@@ -181,7 +181,7 @@ export async function evolveMonsterOnPlayerDefeat(
   monsterPresetId?: string,
   monsterNameOrXp: string | number = 100,
   questBaseXpOrStats?: number | any,
-  tenantId?: string | null
+  _tenantId?: string | null
 ): Promise<MonsterCombatStats | null> {
   try {
     let q = supabase.from('preset_skins').select('id, name, config, tenant_id').eq('type', 'monster');

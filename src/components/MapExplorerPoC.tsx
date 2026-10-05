@@ -286,11 +286,7 @@ function makeBubbleTexture(text: string): { tex: any; w: number; h: number } {
   const tex = new THREE.CanvasTexture(cv); (tex as any).colorSpace = (THREE as any).SRGBColorSpace; return { tex, w: cv.width, h: cv.height };
 }
 // Falas gen�ricas dos monstros do mapa (ataque / dano / derrota).
-const MONSTER_LINES = {
-  attack: ['GRRR!', 'RAAA!', 'Te peguei!', 'Vem!', 'Ugh!'],
-  hurt: ['Ai!', 'Grrk!', 'Argh!', 'Ouch!'],
-  defeat: ['Ugh...', 'Grr...', 'Nao...', '...'],
-};
+
 export default function MapExplorerPoC({
   onExit,
   config: configProp,
@@ -1739,13 +1735,15 @@ const randSize = sc0.randomizeSize === true && !layout;
     };
 
     // ---- Itens aleatórios ----
-type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; stagger?: number; hurtTimer?: number; drownTimer?: number; drownHurtT?: number; canSwim?: boolean; survivesUnderwater?: boolean; name?: string; monsterId?: string; isKeyHolder?: boolean; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any; death?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number; critChance?: number; block?: any; blockPunch?: number; legPhase?: number; attacks?: any; rangedCd?: number; specialCd?: number; supportUsed?: boolean; buffUntil?: number; buffMult?: number; favoriteFoodIds?: string[]; giveUpDist?: number; following?: boolean; followFedAt?: number; initX?: number; initZ?: number; tameBalloon?: THREE.Sprite; tameTarget?: { x: number; z: number } | null; tameRing?: THREE.Object3D; dead?: boolean; defeatAnimation?: string; dying?: { type: string; start: number; duration: number; origScale?: { x: number; y: number; z: number }; origY?: number; origRotZ?: number; origRotX?: number } };
+type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: number; tz: number; t: number; hp: number; maxHp: number; vision: number; defense: number; evasion: number; bar: THREE.Group; fg: THREE.Mesh; attackCd: number; pathT: number; pnx: number; pnz: number; lunge: number; lungeHit: boolean; kb: number; kbx: number; kbz: number; stagger?: number; hurtTimer?: number; drownTimer?: number; drownHurtT?: number; canSwim?: boolean; survivesUnderwater?: boolean; name?: string; monsterId?: string; isKeyHolder?: boolean; isChestKeyHolder?: boolean; chestKeyId?: string; dodgeTimer?: number; dodgeTotal?: number; dodgeDirX?: number; dodgeDirZ?: number; dodgeBackX?: number; dodgeBackZ?: number; dodgeSideSign?: number; isBoss?: boolean; gruntUrl?: string; grunting?: boolean; attackSound?: string; damageSound?: string; hasGruntted?: boolean; visual?: THREE.Object3D; visualRestY?: number; level?: number; drops?: any[]; isAnimal?: boolean; hostile?: boolean; hostileChance?: number; damageEffect?: string; label?: THREE.Sprite; labelY?: number; xp?: number; atkPower?: number; rewardXp?: number; lines?: string[]; quotes?: any; nextVoice?: number; fleeTable?: any[]; fleeMode?: boolean; fleeTimer?: number; status?: { type: 'poison' | 'bleed' | 'burn' | 'electric' | 'freeze'; until: number; total: number }; statusBar?: { g: THREE.Group; fg: THREE.Mesh }; tintedType?: string; bubble?: THREE.Sprite; bubbleUntil?: number; bubbleY?: number; aggression?: string; aggressionByLevel?: any[]; provoked?: boolean; mixer?: any; clips?: { walk?: any; attack?: any; idle?: any; death?: any; dodge?: any }; animAction?: any; anim?: { current?: string; t: number }; hasAnim?: boolean; moveSpeed?: number; attackInterval?: number; damageEffectByLevel?: any[]; faceOffset?: number; barY?: number; critChance?: number; block?: any; blockPunch?: number; legPhase?: number; attacks?: any; rangedCd?: number; specialCd?: number; supportUsed?: boolean; buffUntil?: number; buffMult?: number; favoriteFoodIds?: string[]; giveUpDist?: number; following?: boolean; followFedAt?: number; initX?: number; initZ?: number; tameBalloon?: THREE.Sprite; tameTarget?: { x: number; z: number } | null; tameRing?: THREE.Object3D; dead?: boolean; defeatAnimation?: string; dying?: { type: string; start: number; duration: number; origScale?: { x: number; y: number; z: number }; origY?: number; origRotZ?: number; origRotX?: number } };
     const slimes: Slime[] = [];
     // Projéteis de golpes À DISTÂNCIA dos monstros (guia Golpes → ranged).
     const projectiles: { mesh: THREE.Object3D; vx: number; vz: number; life: number; dmg: number; effect: string }[] = [];
     const rocks: { x: number; z: number; mesh: THREE.Object3D; hp: number; maxHp: number; def: number }[] = [];
     const hazards: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
-    const chests: { x: number; z: number; mesh: THREE.Object3D; idx?: number }[] = [];
+    type ChestEntry = { x: number; z: number; mesh: THREE.Object3D; idx?: number; isLocked?: boolean; requiresKey?: boolean; keyId?: string; opened?: boolean; openAnim?: () => void; lockVisual?: THREE.Sprite };
+    const chests: ChestEntry[] = [];
+    const chestMixers: THREE.AnimationMixer[] = [];
     const doors: { x: number; z: number; mesh: THREE.Object3D; open: boolean; hp: number; maxHp: number; def: number; typeId: string }[] = [];
     const coinsList: { x: number; z: number; mesh: THREE.Object3D; value: number }[] = [];
     const coinGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.08, 16);
@@ -1869,63 +1867,220 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       return g;
     };
     const USE_CHEST_GLB = true;
-    const makeChestVisual = (rotY?: number): THREE.Object3D => {
+
+    // Detecta se o GLB do baú possui duas referências lado a lado (fechado e aberto)
+    const detectTwoStateChest = (scene: THREE.Object3D): { closedX: number; openX: number } | null => {
+      try {
+        const s = scene.clone(true);
+        s.updateMatrixWorld(true);
+        const meshes: { box: THREE.Box3; center: THREE.Vector3 }[] = [];
+        const totalBox = new THREE.Box3();
+        s.traverse((child: any) => {
+          if (child.isMesh) {
+            const box = new THREE.Box3().setFromObject(child);
+            if (!box.isEmpty()) {
+              totalBox.union(box);
+              meshes.push({ box, center: box.getCenter(new THREE.Vector3()) });
+            }
+          }
+        });
+        if (meshes.length < 2) return null;
+        const midX = (totalBox.min.x + totalBox.max.x) / 2;
+        const leftMeshes = meshes.filter(m => m.center.x <= midX);
+        const rightMeshes = meshes.filter(m => m.center.x > midX);
+        if (leftMeshes.length === 0 || rightMeshes.length === 0) return null;
+
+        const leftBox = new THREE.Box3();
+        leftMeshes.forEach(m => leftBox.union(m.box));
+        const rightBox = new THREE.Box3();
+        rightMeshes.forEach(m => rightBox.union(m.box));
+
+        // Detecção: o baú fechado é mais baixo (tampa abaixada) ou tem topo (max.y) menor
+        let closedBox = leftBox;
+        let openBox = rightBox;
+        const leftH = leftBox.max.y - leftBox.min.y;
+        const rightH = rightBox.max.y - rightBox.min.y;
+        if (Math.abs(leftH - rightH) > Math.max(leftH, rightH) * 0.05) {
+          if (rightH < leftH) { closedBox = rightBox; openBox = leftBox; }
+        } else if (rightBox.max.y < leftBox.max.y) {
+          closedBox = rightBox; openBox = leftBox;
+        }
+
+        return {
+          closedX: closedBox.getCenter(new THREE.Vector3()).x,
+          openX: openBox.getCenter(new THREE.Vector3()).x
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    // Ícone de CADEADO flutuante para baús trancados que requerem chave
+    const makeLockSprite = (): THREE.Sprite => {
+      try {
+        const cv = document.createElement('canvas');
+        cv.width = 128; cv.height = 128;
+        const ctx = cv.getContext('2d');
+        if (ctx) {
+          ctx.beginPath();
+          ctx.arc(64, 64, 52, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.75)';
+          ctx.fill();
+          ctx.lineWidth = 6;
+          ctx.strokeStyle = '#f87171';
+          ctx.stroke();
+          ctx.font = '54px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🔒', 64, 66);
+          const tex = new THREE.CanvasTexture(cv);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+          spr.scale.set(0.55, 0.55, 1);
+          return spr;
+        }
+      } catch { /* noop */ }
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xef4444 }));
+      spr.scale.set(0.4, 0.4, 1);
+      return spr;
+    };
+
+    const makeChestVisual = (rotY?: number, chestScaleMult = 1): { group: THREE.Group; openAnim: () => void } => {
       const g = new THREE.Group();
       if (!USE_CHEST_GLB || !chestTemplateRef.current) {
         const fb = makeFallbackChest();
         if (rotY !== undefined) fb.rotation.y = rotY;
+        fb.scale.setScalar(chestScaleMult);
         g.add(fb);
-        return g;
+        const lid = fb.children[1] as THREE.Mesh;
+        const openAnim = () => {
+          if (lid) {
+            lid.rotation.x = -Math.PI * 0.45;
+            lid.position.z -= 0.1;
+            lid.position.y += 0.06;
+          }
+        };
+        return { group: g, openAnim };
       }
       const tmpl = chestTemplateRef.current;
       try {
         const cfg: any = chestConfigRef.current || {};
-        // @ts-ignore
         const swap = !!cfg.chestSwapSides;
-        void swap;
         const c = tmpl.clone(true);
         c.updateMatrixWorld(true);
         if (c.isMesh || c.isSprite) {
-          c.scale.setScalar(0.85);
+          c.scale.setScalar(0.85 * chestScaleMult);
           c.position.y = 0.42;
           if (rotY !== undefined) c.rotation.y = rotY;
           g.add(c);
-          return g;
+          return { group: g, openAnim: () => {} };
         }
-        // GLB de baú (export Sketchfab) costuma ter DUAS cópias sobrepostas (fechado/aberto).
-        // Mantém só a PRIMEIRA ocorrência de cada geometria (a do estado FECHADO) e esconde as duplicatas.
-        const seenSig = new Set<string>();
-        c.traverse((ch: any) => {
-          if (!ch.isMesh) return;
-          ch.castShadow = true;
-          ch.receiveShadow = true;
-          const b = new THREE.Box3().setFromObject(ch);
-          const sig = [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].map(v => (Math.round(v * 10) / 10)).join(',');
-          if (seenSig.has(sig)) ch.visible = false; else seenSig.add(sig);
-        });
-        c.updateMatrixWorld(true);
-        const kb = visibleBox(c);
-        if (!kb.isEmpty()) {
-          c.position.x -= (kb.min.x + kb.max.x) / 2;
-          c.position.z -= (kb.min.z + kb.max.z) / 2;
+
+        const twoState = detectTwoStateChest(c);
+        let openAnim: () => void = () => {};
+
+        if (twoState) {
+          // Modelo com 2 estados lado a lado no mesmo GLB:
+          const closedX = swap ? twoState.openX : twoState.closedX;
+          const openX = swap ? twoState.closedX : twoState.openX;
+
+          const closedMeshes: THREE.Object3D[] = [];
+          const openMeshes: THREE.Object3D[] = [];
+          const seenSig = new Set<string>();
+
+          c.traverse((ch: any) => {
+            if (!ch.isMesh) return;
+            ch.castShadow = true;
+            ch.receiveShadow = true;
+            const b = new THREE.Box3().setFromObject(ch);
+            const sig = [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].map(v => (Math.round(v * 10) / 10)).join(',');
+            if (seenSig.has(sig)) { ch.visible = false; return; }
+            seenSig.add(sig);
+
+            const cx = b.getCenter(new THREE.Vector3()).x;
+            if (Math.abs(cx - closedX) <= Math.abs(cx - openX)) {
+              closedMeshes.push(ch);
+              ch.visible = true;
+            } else {
+              openMeshes.push(ch);
+              ch.visible = false;
+            }
+          });
+
+          // Centraliza inicialmente o baú fechado na origem (0, 0, 0)
+          c.position.x = -closedX;
+
+          openAnim = () => {
+            closedMeshes.forEach(m => { m.visible = false; });
+            openMeshes.forEach(m => { m.visible = true; });
+            c.position.x = -openX;
+            // Salto/bounce de abertura no baú
+            holder.scale.multiplyScalar(1.12);
+            window.setTimeout(() => { try { holder.scale.divideScalar(1.12); } catch { /* noop */ } }, 180);
+          };
+        } else {
+          // GLB único: remove duplicatas sobrepostas se houver
+          const seenSig = new Set<string>();
+          c.traverse((ch: any) => {
+            if (!ch.isMesh) return;
+            ch.castShadow = true;
+            ch.receiveShadow = true;
+            const b = new THREE.Box3().setFromObject(ch);
+            const sig = [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].map(v => (Math.round(v * 10) / 10)).join(',');
+            if (seenSig.has(sig)) ch.visible = false; else seenSig.add(sig);
+          });
+          c.updateMatrixWorld(true);
+          const kb = visibleBox(c);
+          if (!kb.isEmpty()) {
+            c.position.x -= (kb.min.x + kb.max.x) / 2;
+            c.position.z -= (kb.min.z + kb.max.z) / 2;
+          }
+
+          // Se tiver clipe nativo de animação 'open', reproduz
+          const anims = ((tmpl as any).animations as any[]) || [];
+          const openClip = anims.find((a: any) => /open|abrir/i.test(a.name || ''));
+          if (openClip) {
+            const mixer = new THREE.AnimationMixer(c);
+            chestMixers.push(mixer);
+            const act = mixer.clipAction(openClip);
+            act.setLoop(THREE.LoopOnce, 1);
+            act.clampWhenFinished = true;
+            openAnim = () => { act.reset().play(); };
+          }
         }
-        const holder = new THREE.Group(); holder.add(c);
+
+        const holder = new THREE.Group();
+        holder.add(c);
         const baseRotY = Math.PI + (((Number(cfg.chestRotY) || 0) % 360) * Math.PI) / 180;
         holder.rotation.y = rotY !== undefined ? rotY : baseRotY;
         holder.updateMatrixWorld(true);
         const kb2 = visibleBox(c);
         const maxDim = Math.max(0.001, Math.max(kb2.max.x - kb2.min.x, kb2.max.y - kb2.min.y, kb2.max.z - kb2.min.z));
         const zoom = Math.max(0.1, Math.min(5, Number(cfg.chestZoom) || 1));
-        const scale = (0.75 / maxDim) * zoom;
+        const baseScale = Math.max(0.1, Number(cfg.chestScale) || 1);
+        const scale = (0.75 / maxDim) * zoom * baseScale * chestScaleMult;
         holder.scale.setScalar(scale);
         holder.position.y = -kb2.min.y * scale;
         g.add(holder);
+
+        return { group: g, openAnim };
       } catch {
         const fb = makeFallbackChest();
         if (rotY !== undefined) fb.rotation.y = rotY;
+        fb.scale.setScalar(chestScaleMult);
         g.add(fb);
+        const lid = fb.children[1] as THREE.Mesh;
+        return {
+          group: g,
+          openAnim: () => {
+            if (lid) {
+              lid.rotation.x = -Math.PI * 0.45;
+              lid.position.z -= 0.1;
+              lid.position.y += 0.06;
+            }
+          }
+        };
       }
-      return g;
     };
 
     // Visual da CHAVE (modelo .glb ou png ativo em Moldes 3D > Chaves; senão chave 3D dourada)
@@ -2105,6 +2260,7 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
                 attack: find(['attack', 'hit', 'strike', 'punch', 'bite', 'claw', 'swing', 'golpe']),
                 idle: find(['idle', 'stand', 'breath', 'pose', 'wait', 'parado']),
                 death: find(['death', 'die', 'dead', 'fall', 'defeat', 'morte', 'morrer']),
+                dodge: find(['dodge', 'evade', 'esquiva', 'side', 'roll', 'jump', 'backstep', 'avoid', 'defend', 'parry']),
               };
               // GOLPE ESPECIAL configurado (guia Golpes): se houver animação nativa com esse nome,
               // usa como ATAQUE do monstro/boss.
@@ -2141,7 +2297,14 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
       bubble.visible = false; bubble.renderOrder = 999; scene.add(bubble);
       const bubbleY = modelUrl ? 2.3 : 1.95;
-const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', damageEffectByLevel: (monster as any)?.config?.stats?.damageEffectByLevel || [], label, labelY, xp: 0, atkPower: Number(st.attack) || (8 + level * 4), rewardXp: Number(st.xp) || Math.round(40 * level), lines: (monster as any)?.config?.lines || [], nextVoice: 0, fleeTable: (monster as any)?.config?.stats?.fleeChanceTable || [], fleeMode: false, fleeTimer: 0, aggression: (monster as any)?.config?.stats?.aggression || (isAnimal ? 'peaceful' : 'aggressive'), aggressionByLevel: (monster as any)?.config?.stats?.aggressionByLevel || [], provoked: false, moveSpeed: Number(st.speed) > 0 ? Math.max(0.1, Number(st.speed)) : 1, attackInterval: Number(st.attackSpeed) > 0 ? (1 / Number(st.attackSpeed)) : 1.8, faceOffset: (monster as any)?.config?.modelForward === '-z' ? Math.PI : (monster as any)?.config?.modelForward === 'x' ? -Math.PI / 2 : (monster as any)?.config?.modelForward === '-x' ? Math.PI / 2 : 0, barY: 1.15, critChance: Number(st.critChance) > 0 ? Math.min(50, Number(st.critChance)) : 5, attacks: (monster as any)?.config?.attacks || null, favoriteFoodIds: (monster as any)?.config?.stats?.favoriteFoodIds || [], giveUpDist: Number((monster as any)?.config?.stats?.followGiveUpDistance) || 2, defeatAnimation: (monster as any)?.config?.defeatAnimation || (monster as any)?.config?.stats?.defeatAnimation || 'auto', canSwim: (monster as any)?.config?.stats?.canSwim !== undefined ? !!(monster as any)?.config?.stats?.canSwim : ((monster as any)?.config?.canSwim !== undefined ? !!(monster as any)?.config?.canSwim : undefined), survivesUnderwater: (monster as any)?.config?.stats?.survivesUnderwater !== undefined ? !!(monster as any)?.config?.stats?.survivesUnderwater : ((monster as any)?.config?.survivesUnderwater !== undefined ? !!(monster as any)?.config?.survivesUnderwater : undefined) };
+      const monsterQuotes = (monster as any)?.config?.quotes || (monster as any)?.quotes || null;
+      const rawMonsterLines = (monster as any)?.config?.lines || (monster as any)?.lines;
+      const monsterLines = Array.isArray(rawMonsterLines)
+        ? rawMonsterLines
+        : (typeof rawMonsterLines === 'string' && rawMonsterLines.trim())
+          ? rawMonsterLines.split(';').map((str: string) => str.trim()).filter(Boolean)
+          : [];
+const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0, hp, maxHp: hp, vision: visionOverride ?? 8, defense, evasion, bar, fg, attackCd: 0, pathT: 0, pnx: NaN, pnz: NaN, lunge: 0, lungeHit: false, kb: 0, kbx: 0, kbz: 0, name: monster?.name, monsterId: monster?.id, isKeyHolder: false, gruntUrl: monster?.config?.gruntSound || '', attackSound: monster?.config?.attackSound || '', damageSound: monster?.config?.damageSound || '', hasGruntted: false, level: Number((monster as any)?.config?.stats?.level ?? (monster as any)?.config?.level ?? 1) || 1, drops: monster?.config?.drops || [], statusBar: { g: stBar, fg: stFg }, bubble, bubbleUntil: 0, bubbleY, isAnimal: !!isAnimal, hostile: !isAnimal, hostileChance: Number((monster as any)?.config?.stats?.hostileChance) || 0, damageEffect: (monster as any)?.config?.stats?.damageEffect || 'none', damageEffectByLevel: (monster as any)?.config?.stats?.damageEffectByLevel || [], label, labelY, xp: 0, atkPower: Number(st.attack) || (8 + level * 4), rewardXp: Number(st.xp) || Math.round(40 * level), lines: monsterLines, quotes: monsterQuotes, nextVoice: 0, fleeTable: (monster as any)?.config?.stats?.fleeChanceTable || [], fleeMode: false, fleeTimer: 0, aggression: (monster as any)?.config?.stats?.aggression || (isAnimal ? 'peaceful' : 'aggressive'), aggressionByLevel: (monster as any)?.config?.stats?.aggressionByLevel || [], provoked: false, moveSpeed: Number(st.speed) > 0 ? Math.max(0.1, Number(st.speed)) : 1, attackInterval: Number(st.attackSpeed) > 0 ? (1 / Number(st.attackSpeed)) : 1.8, faceOffset: (monster as any)?.config?.modelForward === '-z' ? Math.PI : (monster as any)?.config?.modelForward === 'x' ? -Math.PI / 2 : (monster as any)?.config?.modelForward === '-x' ? Math.PI / 2 : 0, barY: 1.15, critChance: Number(st.critChance) > 0 ? Math.min(50, Number(st.critChance)) : 5, attacks: (monster as any)?.config?.attacks || null, favoriteFoodIds: (monster as any)?.config?.stats?.favoriteFoodIds || [], giveUpDist: Number((monster as any)?.config?.stats?.followGiveUpDistance) || 2, defeatAnimation: (monster as any)?.config?.defeatAnimation || (monster as any)?.config?.stats?.defeatAnimation || 'auto', canSwim: (monster as any)?.config?.stats?.canSwim !== undefined ? !!(monster as any)?.config?.stats?.canSwim : ((monster as any)?.config?.canSwim !== undefined ? !!(monster as any)?.config?.canSwim : undefined), survivesUnderwater: (monster as any)?.config?.stats?.survivesUnderwater !== undefined ? !!(monster as any)?.config?.stats?.survivesUnderwater : ((monster as any)?.config?.survivesUnderwater !== undefined ? !!(monster as any)?.config?.survivesUnderwater : undefined) };
       slimes.push(slime);
       // ---- Tipos de MONSTRO/BOSS ----
       // .glb COM animação: caminha com a própria animação (mixer acima).
@@ -2242,6 +2405,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       recordMonsterKill(s);
       rollMonsterDrops(s);
       if ((s as any).isKeyHolder) spawnBossKey(s);
+      if ((s as any).isChestKeyHolder) spawnChestKey(s);
       // Som de hurt mais lento na derrota (~0.72x taxa de reprodução)
       playMonsterHurtSound(s, 0.72);
       speakMonster(s, 'defeat');
@@ -2665,8 +2829,12 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         const rawVal = cfgChestCellsMap[key];
         let rotDeg: number | null = null;
         let slotIdx: number | undefined = undefined;
+        let isLocked = false;
         if (typeof rawVal === 'string') {
-          const [rStr, sStr] = rawVal.split('|');
+          const parts = rawVal.split('|');
+          const rStr = parts[0];
+          const sStr = parts[1];
+          const lockStr = parts[2];
           if (rStr && rStr !== 'auto' && rStr !== '1') {
             const n = Number(rStr);
             if (!isNaN(n)) rotDeg = n;
@@ -2675,9 +2843,16 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
             const sn = Number(sStr);
             if (!isNaN(sn)) slotIdx = sn;
           }
+          if (lockStr === 'locked') isLocked = true;
         } else if (typeof rawVal === 'object' && rawVal !== null) {
           if ((rawVal as any).rot !== undefined && (rawVal as any).rot !== 'auto') rotDeg = Number((rawVal as any).rot);
           if ((rawVal as any).slot !== undefined) slotIdx = Number((rawVal as any).slot);
+          if ((rawVal as any).locked) isLocked = true;
+        }
+        const cfgs: any[] = Array.isArray(sc.chestConfigs) ? sc.chestConfigs : [];
+        const perSlotCfg = (slotIdx !== undefined && cfgs[slotIdx]) ? cfgs[slotIdx] : null;
+        if (perSlotCfg?.requiresKey || (slotIdx === undefined && cfgChestConfig?.requiresKey)) {
+          isLocked = true;
         }
         let rotY = 0;
         if (rotDeg !== null && !isNaN(rotDeg)) {
@@ -2687,11 +2862,31 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
           const freeNb = ([[0, 1], [0, -1], [1, 0], [-1, 0]] as const).find(([dx, dz]) => !wallAt(xs + dx, zs + dz));
           if (freeNb) rotY = Math.atan2(freeNb[0], freeNb[1]);
         }
-        const m = makeChestVisual(rotY);
+        const scenarioScale = Number(sc.chestConfig?.chestScale) || 1;
+        const perChestScale = Number(perSlotCfg?.scale) || 1;
+        const chestScaleMult = scenarioScale * perChestScale;
+        const { group: m, openAnim } = makeChestVisual(rotY, chestScaleMult);
+        let lockVisual: THREE.Sprite | undefined;
+        if (isLocked) {
+          lockVisual = makeLockSprite();
+          lockVisual.position.set(0, 0.85, 0);
+          m.add(lockVisual);
+        }
         m.position.set(wx(xs), 0, wz(zs));
         m.castShadow = true;
         scene.add(m);
-        chests.push({ x: xs, z: zs, mesh: m, idx: slotIdx !== undefined ? slotIdx : chests.length });
+        chests.push({
+          x: xs,
+          z: zs,
+          mesh: m,
+          idx: slotIdx !== undefined ? slotIdx : chests.length,
+          isLocked,
+          requiresKey: isLocked,
+          keyId: `chest_key_${chests.length}`,
+          opened: false,
+          openAnim,
+          lockVisual
+        });
       }
     } else {
       // ---- Baús RAROS e ESTRATÉGICOS (em becos TRANCADOS por uma rocha na entrada) ----
@@ -2718,11 +2913,35 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         }
         // Face virada para a ENTRADA do beco (costas para a parede do fundo):
         const rotY = Math.atan2(cc.entrance.x - cc.x, cc.entrance.z - cc.z);
-        const m = makeChestVisual(rotY);
+        const cfgs: any[] = Array.isArray(sc.chestConfigs) ? sc.chestConfigs : [];
+        const cIdx = chests.length;
+        const perSlotCfg = cfgs[cIdx];
+        const isLocked = !!(perSlotCfg?.requiresKey ?? cfgChestConfig?.requiresKey);
+        const scenarioScale = Number(sc.chestConfig?.chestScale) || 1;
+        const perChestScale = Number(perSlotCfg?.scale) || 1;
+        const chestScaleMult = scenarioScale * perChestScale;
+        const { group: m, openAnim } = makeChestVisual(rotY, chestScaleMult);
+        let lockVisual: THREE.Sprite | undefined;
+        if (isLocked) {
+          lockVisual = makeLockSprite();
+          lockVisual.position.set(0, 0.85, 0);
+          m.add(lockVisual);
+        }
         m.position.set(wx(cc.x), 0, wz(cc.z));
         m.castShadow = true;
         scene.add(m);
-        chests.push({ x: cc.x, z: cc.z, mesh: m, idx: chests.length });
+        chests.push({
+          x: cc.x,
+          z: cc.z,
+          mesh: m,
+          idx: cIdx,
+          isLocked,
+          requiresKey: isLocked,
+          keyId: `chest_key_${cIdx}`,
+          opened: false,
+          openAnim,
+          lockVisual
+        });
       }
     }
 
@@ -2900,6 +3119,15 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       bossSlime.vision = 14;
       bossSlime.root.scale.setScalar(1.9);
       bossSlime.gruntUrl = (bossOverrideMonster?.config?.gruntSound) || (bossMonsterInfo?.config?.gruntSound) || '';
+      bossSlime.quotes = (bossOverrideMonster as any)?.config?.quotes || (bossMonsterInfo as any)?.config?.quotes || (bossOverrideMonster as any)?.quotes || (bossMonsterInfo as any)?.quotes || bossSlime.quotes || null;
+      const rawBossLines = (bossOverrideMonster as any)?.config?.lines || (bossMonsterInfo as any)?.config?.lines || (bossOverrideMonster as any)?.lines || (bossMonsterInfo as any)?.lines;
+      if (rawBossLines) {
+        bossSlime.lines = Array.isArray(rawBossLines)
+          ? rawBossLines
+          : typeof rawBossLines === 'string'
+            ? rawBossLines.split(';').map((str: string) => str.trim()).filter(Boolean)
+            : bossSlime.lines;
+      }
       // Aura vermelha do chefe (identifica o perseguidor).
       const aura = new THREE.Mesh(new THREE.SphereGeometry(0.85, 14, 12), new THREE.MeshStandardMaterial({ color: 0xff3333, emissive: 0xcc0000, emissiveIntensity: 0.55, transparent: true, opacity: 0.35 }));
       aura.position.y = 0.6;
@@ -2967,6 +3195,29 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         callbacks.current.setMsg('🔑 Um monstro na área externa carrega a CHAVE DO BOSS! Derrote-o para abrir a porta do chefe.');
       } else {
         console.warn('[BossKey] Nenhum monstro elegível encontrado fora da porta do boss.');
+      }
+    }
+
+    // ---- DISTRIBUIÇÃO DAS CHAVES DOS BAÚS NOS MONSTROS (exceto boss) ----
+    const lockedChests = chests.filter(c => c.isLocked);
+    if (lockedChests.length > 0) {
+      const eligibleHolders = slimes.filter(s => !s.isBoss && !s.isAnimal && !s.dead && !s.isKeyHolder && !(s as any).isChestKeyHolder);
+      if (eligibleHolders.length > 0) {
+        const shuffled = [...eligibleHolders].sort(() => Math.random() - 0.5);
+        lockedChests.forEach((lc, idx) => {
+          const holder = shuffled[idx % shuffled.length];
+          if (holder) {
+            (holder as any).isChestKeyHolder = true;
+            (holder as any).chestKeyId = lc.keyId || 'chest_key';
+            const kVis = makeKeyVisual();
+            kVis.name = 'chest_key_visual';
+            kVis.position.set(0, (holder.barY || 1.15) + 0.35, 0);
+            holder.root.add(kVis);
+          }
+        });
+        callbacks.current.setMsg('🗝️ Há baús trancados! Derrote os monstros que carregam chaves para abri-los.');
+      } else {
+        console.warn('[ChestKey] Nenhum monstro comum elegível para carregar chave de baú.');
       }
     }
 
@@ -3378,17 +3629,74 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       } catch { /* noop */ }
     };
     // Fala do MONSTRO (balão 3D acima da cabeça dele).
-    const speakMonster = (s: any, kind: 'attack' | 'hurt' | 'defeat') => {
+    // Se o monstro não tiver falas definidas na edição de monstros, NÃO fala nada (sem fallback/sem balão).
+    const speakMonster = (s: any, kind: 'attack' | 'hurt' | 'defeat' | 'win') => {
       if (!s || !s.bubble) return;
       try {
-        const arr = MONSTER_LINES[kind];
-        const text = arr[Math.floor(Math.random() * arr.length)];
-        const { tex, w, h } = makeBubbleTexture(text);
-        (s.bubble.material as any).map = tex; (s.bubble.material as any).needsUpdate = true;
+        const customQuotes = s.quotes;
+        const customLines = s.lines;
+        let chosenText = '';
+
+        if (kind === 'defeat') {
+          const rawDefeat = (customQuotes?.defeat || '').trim();
+          if (rawDefeat) {
+            const arr = rawDefeat.split(';').map((str: string) => str.trim()).filter(Boolean);
+            if (arr.length) chosenText = arr[Math.floor(Math.random() * arr.length)];
+          }
+        } else if (kind === 'win') {
+          const rawWin = (customQuotes?.win || '').trim();
+          if (rawWin) {
+            const arr = rawWin.split(';').map((str: string) => str.trim()).filter(Boolean);
+            if (arr.length) chosenText = arr[Math.floor(Math.random() * arr.length)];
+          }
+        } else {
+          // attack ou hurt: faixas de HP configuradas no editor (hp100_80, hp79_50, hp49_25, hp24_0)
+          const hpPct = s.maxHp > 0 ? (s.hp / s.maxHp) * 100 : 100;
+          let bracket = '';
+          if (hpPct >= 80) bracket = (customQuotes?.hp100_80 || '').trim();
+          else if (hpPct >= 50) bracket = (customQuotes?.hp79_50 || '').trim();
+          else if (hpPct >= 25) bracket = (customQuotes?.hp49_25 || '').trim();
+          else bracket = (customQuotes?.hp24_0 || '').trim();
+
+          if (bracket) {
+            const arr = bracket.split(';').map((str: string) => str.trim()).filter(Boolean);
+            if (arr.length) chosenText = arr[Math.floor(Math.random() * arr.length)];
+          } else if (customQuotes) {
+            const allQuotes = [customQuotes.hp100_80, customQuotes.hp79_50, customQuotes.hp49_25, customQuotes.hp24_0]
+              .filter(Boolean)
+              .join(';')
+              .split(';')
+              .map((str: string) => str.trim())
+              .filter(Boolean);
+            if (allQuotes.length) chosenText = allQuotes[Math.floor(Math.random() * allQuotes.length)];
+          }
+        }
+
+        // Se não houver quotes estruturadas, verifica linhas genéricas (s.lines)
+        if (!chosenText && customLines) {
+          const arr = Array.isArray(customLines)
+            ? customLines
+            : typeof customLines === 'string'
+              ? customLines.split(';').map((str: string) => str.trim()).filter(Boolean)
+              : [];
+          if (arr.length) chosenText = arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        // SEM FALAS DEFINIDAS NA EDIÇÃO DE MONSTROS: FICA QUIETO! NÃO MOSTRA BALÃO!
+        if (!chosenText || !chosenText.trim()) {
+          s.bubble.visible = false;
+          return;
+        }
+
+        const { tex, w, h } = makeBubbleTexture(chosenText);
+        (s.bubble.material as any).map = tex;
+        (s.bubble.material as any).needsUpdate = true;
         s.bubble.scale.set(w / 150, h / 150, 1);
         s.bubble.visible = true;
-        s.bubbleUntil = performance.now() + (kind === 'defeat' ? 3500 : 1600);
-      } catch { /* noop */ }
+        s.bubbleUntil = performance.now() + (kind === 'defeat' ? 3500 : 1800);
+      } catch {
+        if (s.bubble) s.bubble.visible = false;
+      }
     };
     const viewer = new SkinViewer({ width: 200, height: 320, renderPaused: true });
     viewer.loadSkin('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=').catch(() => {});
@@ -4008,6 +4316,14 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       spawnLootPickup(gx, gz, 'key', { id: 'boss_key', name: 'Chave do Boss', imageUrl: keyConfigRef.current?.url || '' }, 0xfbbf24, true);
       callbacks.current.setMsg('🔑 A Chave do BOSS caiu! Pegue e abra a porta do chefe!');
     };
+    // Solta a CHAVE DO BAÚ quando o monstro portador morre
+    const spawnChestKey = (s: { root?: THREE.Group; x: number; z: number; chestKeyId?: string }) => {
+      const gx = s.root ? Math.round(s.root.position.x + (COLS - 1) / 2) : s.x;
+      const gz = s.root ? Math.round(s.root.position.z + (ROWS - 1) / 2) : s.z;
+      const kid = (s as any).chestKeyId || 'chest_key';
+      spawnLootPickup(gx, gz, 'key', { id: kid, name: 'Chave do Baú', imageUrl: keyConfigRef.current?.url || '' }, 0x38bdf8, true);
+      callbacks.current.setMsg('🗝️ Uma Chave do Baú caiu! Pegue-a para abrir o baú trancado!');
+    };
     let playerBleedUntil = 0; let playerBleedTick = 1.0;
     let playerHurtUntil = 0;
     let playerHeartsRun = statsRef.current.startHearts;
@@ -4156,6 +4472,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
     let lastPlayerAttacker: Slime | null = null;
     const awardPlayerKill = () => {
       if (lastPlayerAttacker && lastPlayerAttacker.hp > 0) {
+        speakMonster(lastPlayerAttacker, 'win');
         // Criatura derrota o JOGADOR → XP cheio (igual p/ monstro e animal), pelo nível do jogador.
         const plvl = Math.max(1, rankIndex + 1);
         gainXp(lastPlayerAttacker, { rewardXp: Math.round(40 * plvl), level: plvl } as any, 1);
@@ -4285,7 +4602,38 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       return { text: '' };
     };
     const openChest = async (chest: any) => {
-      chest.mesh.visible = false; scene.remove(chest.mesh);
+      if (chest.opened) {
+        callbacks.current.setMsg('📦 Este baú já foi aberto.');
+        return;
+      }
+      if (chest.isLocked) {
+        const hasKey = (chest.keyId && heldKeys.has(chest.keyId)) || heldKeys.has('chest_key') || (chest.keyId && ownedItemIdsRef.current.has(chest.keyId));
+        if (!hasKey) {
+          playFx(doorSoundsRef.current.locked || battleSoundsRef.current.punch, 0.8);
+          callbacks.current.setMsg('Trancado. Necessita de uma chave.');
+          const world = new THREE.Vector3(wx(chest.x), 1.0, wz(chest.z));
+          spawnPop(world, '🔒 Trancado', false, 'miss');
+          return;
+        }
+        // Consome a chave correspondente ou genérica de baú
+        if (chest.keyId && heldKeys.has(chest.keyId)) heldKeys.delete(chest.keyId);
+        else heldKeys.delete('chest_key');
+        setHeldKeysCount(heldKeys.size);
+        chest.isLocked = false;
+        if (chest.lockVisual) {
+          try {
+            chest.mesh.remove(chest.lockVisual);
+            (chest.lockVisual.material as any)?.dispose?.();
+            chest.lockVisual = undefined;
+          } catch { /* noop */ }
+        }
+      }
+
+      chest.opened = true;
+      if (typeof chest.openAnim === 'function') {
+        try { chest.openAnim(); } catch { /* noop */ }
+      }
+
       playFx(chestConfigRef.current?.chestAudioUrl || battleSoundsRef.current.punch, 0.85);
       const world = new THREE.Vector3(wx(chest.x), 1.0, wz(chest.z));
       // Tabela do baú: por ÍNDICE (chestConfigs[idx]) com fallback para a padrão (chestConfig.loot ou itemIds).
@@ -4341,7 +4689,10 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       const gx = Math.round(playerPos.x), gz = Math.round(playerPos.z);
       const door = doors.find(d => d.mesh.visible && Math.abs(d.x - gx) + Math.abs(d.z - gz) <= 1);
       if (door) { handleDoor(door); return; }
-      const chest = chests.find(c => c.mesh.visible && (
+      const chest = chests.find(c => c.mesh.visible && !c.opened && (
+        Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
+        Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
+      )) || chests.find(c => c.mesh.visible && (
         Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
         Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
       ));
@@ -4480,6 +4831,53 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
     };
 
 
+    // Executa a animação e reação física de esquiva ágil do monstro
+    const triggerMonsterDodge = (target: any, fromX: number, fromZ: number) => {
+      if (!target || !target.root) return;
+      const mpx = target.root.position.x;
+      const mpz = target.root.position.z;
+      const dx = mpx - fromX;
+      const dz = mpz - fromZ;
+      const dist = Math.hypot(dx, dz) || 1;
+      const fx = dx / dist;
+      const fz = dz / dist;
+
+      // Direção lateral da esquiva: perpendicular ao vetor do ataque
+      const side = Math.random() < 0.5 ? 1 : -1;
+      target.dodgeSideSign = side;
+      target.dodgeDirX = -fz * side;
+      target.dodgeDirZ = fx * side;
+      target.dodgeBackX = fx;
+      target.dodgeBackZ = fz;
+      target.dodgeTimer = 0.45;
+      target.dodgeTotal = 0.45;
+
+      // Interrompe bote/ataque e aplica pausa ágil
+      target.lunge = 0;
+      target.lungeHit = true;
+      target.stagger = 0.45;
+      target.attackCd = Math.max(target.attackCd || 0, 0.75);
+
+      // Clipe de animação nativo de esquiva (se houver no modelo GLB)
+      if (target.mixer && target.clips?.dodge) {
+        try {
+          if (target.animAction) (target.animAction as any).stop();
+          const act = (target.mixer as any).clipAction(target.clips.dodge);
+          target.animAction = act;
+          target.anim = { current: 'dodge', t: 0 };
+          act.reset();
+          act.setLoop(THREE.LoopOnce, 1);
+          act.clampWhenFinished = true;
+          act.play();
+        } catch { /* noop */ }
+      }
+
+      const dodgeSnd = (battleSoundsRef.current as any).dodge || battleSoundsRef.current.punch;
+      playFx(dodgeSnd, 0.85, 1.6);
+      spawnPop(new THREE.Vector3(target.root.position.x, target.root.position.y + 1.5, target.root.position.z), '💨 Esquiva!', false, 'miss');
+      callbacks.current.setMsg('💨 O monstro esquivou do seu golpe com agilidade!');
+    };
+
     const doAttack = () => {
       const now = performance.now();
       if (now < nextAttackAt) return;
@@ -4505,7 +4903,10 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         if (isCrit) playSword(true);
 const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack; // dano da ARMA EQUIPADA
         const roll = calculatePlayerHitDamage(atkPower, target.defense, target.evasion, isCrit);
-        if (roll.isEvasion) { spawnPop(new THREE.Vector3(target.root.position.x, target.root.position.y + 1.5, target.root.position.z), 'Esquiva!', false, 'miss'); callbacks.current.setMsg('💨 O monstro esquivou do seu golpe!'); return; }
+        if (roll.isEvasion) {
+          triggerMonsterDodge(target, pwx, pwz);
+          return;
+        }
         if ((target as any).isBoss) {
           // Atacar o boss abre a PERGUNTA (o dano ao chefe só sai depois de acertar).
           openBossQuestion('player');
@@ -4634,7 +5035,10 @@ const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack
         const gx = Math.round(playerPos.x), gz = Math.round(playerPos.z);
         const door = doors.find(d => d.mesh.visible && Math.abs(d.x - gx) + Math.abs(d.z - gz) <= 1);
         if (door) { handleDoor(door); return; }
-        const chest = chests.find(c => c.mesh.visible && (
+        const chest = chests.find(c => c.mesh.visible && !c.opened && (
+          Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
+          Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
+        )) || chests.find(c => c.mesh.visible && (
           Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
           Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
         ));
@@ -5156,8 +5560,8 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
         // Balão de pensamento (💭) em animais que podem ser domesticados com a ração que você tem.
         if (s.tameBalloon) s.tameBalloon.visible = !fogged && !s.following && s.hp > 0 && baitable(s);
         if (s.statusBar && s.statusBar.g) s.statusBar.g.visible = fogged ? false : s.statusBar.g.visible;
-        // Visual da CHAVE DO BOSS (girando e flutuando acima da cabeça do monstro portador)
-        const keyChild = s.root.getObjectByName('boss_key_visual');
+        // Visual da CHAVE (boss ou baú, girando e flutuando acima da cabeça do monstro portador)
+        const keyChild = s.root.getObjectByName('boss_key_visual') || s.root.getObjectByName('chest_key_visual');
         if (keyChild) {
           keyChild.rotation.y += dt * 3.0;
           keyChild.position.y = (s.barY || 1.15) + 0.35 + Math.sin(performance.now() * 0.005) * 0.08;
@@ -5274,7 +5678,7 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
             }
           }
 
-          // Atualiza bote (lunge) visual
+          // Atualiza bote (lunge) visual ou esquiva
           let oX = 0, oY = 0, oZ = 0;
           if (s.lunge > 0) {
             s.lunge = Math.max(0, s.lunge - dt);
@@ -5284,8 +5688,21 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
             oZ += (dzB / distB) * hop * 0.6;
             oY += hop * 0.5;
           }
+          if (s.dodgeTimer && s.dodgeTimer > 0) {
+            s.dodgeTimer = Math.max(0, s.dodgeTimer - dt);
+            const pr = 1 - s.dodgeTimer / (s.dodgeTotal || 0.45);
+            const curve = Math.sin(Math.min(1, pr) * Math.PI);
+            oX += (s.dodgeDirX || 0) * curve * 0.85 + (s.dodgeBackX || 0) * curve * 0.4;
+            oZ += (s.dodgeDirZ || 0) * curve * 0.85 + (s.dodgeBackZ || 0) * curve * 0.4;
+            oY += curve * 0.38;
+          }
           const visObj = s.visual || s.mesh;
           visObj.position.set(oX, (s.visualRestY ?? 0.4) + oY, oZ);
+          if (s.dodgeTimer && s.dodgeTimer > 0) {
+            const pr = 1 - s.dodgeTimer / (s.dodgeTotal || 0.45);
+            const curve = Math.sin(Math.min(1, pr) * Math.PI);
+            visObj.rotation.z = (s.dodgeSideSign || 1) * curve * 0.45;
+          }
 
           continue; // Pula a IA comum para não perambular nem dar bote aleatório
         }
@@ -5424,8 +5841,10 @@ let adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal)
         if (s.mixer) {
           const moving = Math.abs(mvx) + Math.abs(mvz) > 0.02;
           const attacking = s.lunge > 0;
+          const dodging = (s.dodgeTimer || 0) > 0;
           let want: string | null = null;
-          if (attacking && s.clips && s.clips.attack) want = 'attack';
+          if (dodging && s.clips && s.clips.dodge) want = 'dodge';
+          else if (attacking && s.clips && s.clips.attack) want = 'attack';
           else if (moving && s.clips && s.clips.walk) want = 'walk';
           else if (s.clips && s.clips.idle) want = 'idle';
           if (want && want !== (s.anim && s.anim.current)) {
@@ -5435,28 +5854,46 @@ let adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal)
               const c = (s.clips as any)[want];
               s.animAction = (s.mixer as any).clipAction(c);
               (s.animAction as any).reset();
-              if (want === 'attack') { (s.animAction as any).setLoop(THREE.LoopOnce, 1); (s.animAction as any).clampWhenFinished = true; }
+              if (want === 'attack' || want === 'dodge') { (s.animAction as any).setLoop(THREE.LoopOnce, 1); (s.animAction as any).clampWhenFinished = true; }
               else { (s.animAction as any).setLoop(THREE.LoopRepeat, 1); }
               (s.animAction as any).play();
             } catch { /* noop */ }
           }
           try { (s.mixer as any).update(dt); } catch { /* noop */ }
         }
-        // Avatar BLOCO (skin): pernas/braços balançam ao ANDAR (conforme a velocidade configurada).
+        // Avatar BLOCO (skin): pernas/braços balançam ao ANDAR ou assumem pose acrobática de esquiva.
         if (s.block) {
-          const moving2 = Math.abs(mvx) + Math.abs(mvz) > 0.02;
-          if (moving2) {
-            s.legPhase = (s.legPhase || 0) + dt * 8 * (s.moveSpeed || 1);
-            const a = Math.sin(s.legPhase) * 0.8;
+          if (s.dodgeTimer && s.dodgeTimer > 0) {
             try {
-              s.block.skin.leftLeg.rotation.x = a;
-              s.block.skin.rightLeg.rotation.x = -a;
-              s.block.skin.leftArm.rotation.x = -a * 0.85;
-              s.block.skin.rightArm.rotation.x = a * 0.85;
+              const pr = 1 - s.dodgeTimer / (s.dodgeTotal || 0.45);
+              const curve = Math.sin(Math.min(1, pr) * Math.PI);
+              const sgn = s.dodgeSideSign || 1;
+              s.block.skin.leftLeg.rotation.z = sgn * curve * 0.4;
+              s.block.skin.rightLeg.rotation.z = sgn * curve * 0.4;
+              s.block.skin.leftArm.rotation.z = -sgn * curve * 0.55;
+              s.block.skin.rightArm.rotation.z = -sgn * curve * 0.55;
+              s.block.skin.leftLeg.rotation.x = -curve * 0.3;
+              s.block.skin.rightLeg.rotation.x = curve * 0.3;
             } catch { /* noop */ }
-          } else if (s.legPhase) {
-            s.legPhase = 0;
-            try { s.block.skin.resetJoints(); } catch { /* noop */ }
+          } else {
+            const moving2 = Math.abs(mvx) + Math.abs(mvz) > 0.02;
+            if (moving2) {
+              s.legPhase = (s.legPhase || 0) + dt * 8 * (s.moveSpeed || 1);
+              const a = Math.sin(s.legPhase) * 0.8;
+              try {
+                s.block.skin.leftLeg.rotation.x = a;
+                s.block.skin.rightLeg.rotation.x = -a;
+                s.block.skin.leftArm.rotation.x = -a * 0.85;
+                s.block.skin.rightArm.rotation.x = a * 0.85;
+                s.block.skin.leftLeg.rotation.z = 0;
+                s.block.skin.rightLeg.rotation.z = 0;
+                s.block.skin.leftArm.rotation.z = 0;
+                s.block.skin.rightArm.rotation.z = 0;
+              } catch { /* noop */ }
+            } else if (s.legPhase) {
+              s.legPhase = 0;
+              try { s.block.skin.resetJoints(); } catch { /* noop */ }
+            }
           }
         }
         // ---- GOLPES CONFIGURADOS (guia Golpes): à distância / especial / suporte (cura/fúria) ----
@@ -5533,13 +5970,28 @@ let adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal)
           }
         }
         if (s.kb > 0) { s.kb = Math.max(0, s.kb - dt); const kk = s.kb / 0.45; oX += s.kbx * kk * 0.75; oZ += s.kbz * kk * 0.75; }
-        // Aplica o bote/recuo no VISUAL (modelo GLB ou slime), respeitando a altura de repouso.
+        if (s.dodgeTimer && s.dodgeTimer > 0) {
+          s.dodgeTimer = Math.max(0, s.dodgeTimer - dt);
+          const pr = 1 - s.dodgeTimer / (s.dodgeTotal || 0.45);
+          const curve = Math.sin(Math.min(1, pr) * Math.PI);
+          // Evasão lateral rápida + recuo + salto acrobático
+          oX += (s.dodgeDirX || 0) * curve * 0.85 + (s.dodgeBackX || 0) * curve * 0.4;
+          oZ += (s.dodgeDirZ || 0) * curve * 0.85 + (s.dodgeBackZ || 0) * curve * 0.4;
+          oY += curve * 0.38;
+        }
+        // Aplica o bote/recuo/esquiva no VISUAL (modelo GLB ou slime), respeitando a altura de repouso.
         const visObj = s.visual || s.mesh;
         visObj.position.set(oX, (s.visualRestY ?? 0.4) + oY, oZ);
         if (s.hurtTimer && s.hurtTimer > 0) {
           visObj.rotation.x = -Math.sin((s.hurtTimer / 0.35) * Math.PI) * 0.45;
-        } else if (visObj.rotation.x !== 0 && !s.mixer) {
-          visObj.rotation.x = 0;
+        } else if (s.dodgeTimer && s.dodgeTimer > 0) {
+          const pr = 1 - s.dodgeTimer / (s.dodgeTotal || 0.45);
+          const curve = Math.sin(Math.min(1, pr) * Math.PI);
+          visObj.rotation.z = (s.dodgeSideSign || 1) * curve * 0.45;
+          visObj.rotation.x = -curve * 0.2;
+        } else if (!s.mixer) {
+          if (visObj.rotation.x !== 0) visObj.rotation.x = 0;
+          if (visObj.rotation.z !== 0) visObj.rotation.z = 0;
         }
         // barra de HP (billboard, encolhe à esquerda)
         s.bar.position.set(s.root.position.x, s.barY || 1.15, s.root.position.z);
@@ -5592,6 +6044,10 @@ let adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal)
         d.mesh.rotation.x += d.spin; d.mesh.rotation.y += d.spin;
         d.life -= dt;
         if (d.life <= 0) { debrisGroup.remove(d.mesh); d.mesh.geometry.dispose(); (d.mesh.material as any).dispose(); debris.splice(i, 1); }
+      }
+      // Atualização dos mixers de baús animados
+      for (let i = 0; i < chestMixers.length; i++) {
+        try { chestMixers[i].update(dt); } catch { /* noop */ }
       }
       // DICA contextual de interação (porta/baú → E; quebrável → P/slot).
       {
@@ -5785,6 +6241,7 @@ revealedKeys.add(k); explored.add(k);
     window.addEventListener('resize', onResize);
     cleanups.push(() => {
       stopVictoryMusic();
+      chestMixers.length = 0;
       for (const d of waterDrops) { scene.remove(d.mesh); (d.mesh.material as any)?.dispose?.(); d.mesh.geometry?.dispose?.(); }
       for (const r of waterRipples) { scene.remove(r.mesh); (r.mesh.material as any)?.dispose?.(); r.mesh.geometry?.dispose?.(); }
     });

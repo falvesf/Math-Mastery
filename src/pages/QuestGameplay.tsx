@@ -156,6 +156,7 @@ export default function QuestGameplay() {
   const [monsterBubble, setMonsterBubble] = useState<string>('');
   const [playerAnim, setPlayerAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
+  const [monsterDodge, setMonsterDodge] = useState(false);
   // Efeitos especiais de dano do item de ataque equipado
   const [effectLevel, setEffectLevel] = useState(0);
   const [effectFlash, setEffectFlash] = useState(false);
@@ -1916,8 +1917,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
         setPlayerAnim('attack');
         playPlayerAttackSound(effectiveCrit);
         setTimeout(() => {
-          setMonsterAnim('hurt');
-
           // Dano numérico flutuante (RPG stats)
           const hitRoll = calculatePlayerHitDamage(
             totalEquippedStats.attack,
@@ -1927,11 +1926,15 @@ const dealTransformDamageToPlayer = (damage: number) => {
           );
           const evaded = hitRoll.isEvasion;
           if (evaded) {
+            setMonsterAnim('idle');
+            setMonsterDodge(true);
+            setTimeout(() => setMonsterDodge(false), 550);
             spawnFloatingDamage(0, false, 'monster', true);
             // Esquiva: o monstro não perde coração, moedas nem itens.
             setMonsterHeartFrac(1);
             setBattleMessage('O monstro ESQUIVOU do seu ataque!');
           } else {
+            setMonsterAnim('hurt');
             spawnFloatingDamage(hitRoll.damage, hitRoll.isCritical, 'monster');
             maxHitDamageDealtRef.current = Math.max(maxHitDamageDealtRef.current, hitRoll.damage);
             totalDamageDealtRef.current += hitRoll.damage;
@@ -4105,7 +4108,7 @@ useEffect(() => {
                       })()}
                     </div>
                   </div>
-                <div className={`quest-arena-monster-inner ${monsterHealPulse ? 'monster-healing-active' : ''}`} style={{ position: 'relative', display: 'inline-block' }}>
+                <div className={`quest-arena-monster-inner ${monsterHealPulse ? 'monster-healing-active' : ''} ${monsterDodge ? 'monster-dodge-anim' : ''}`} style={{ position: 'relative', display: 'inline-block' }}>
                   {monsterHealPulse && <MonsterHealAura />}
                   {(() => {
                     const healTint = monsterHealPulse ? '#2dd4bf' : null;

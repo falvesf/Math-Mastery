@@ -1145,21 +1145,31 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   const playerNameSpriteRef = useRef<THREE.Sprite | null>(null);
   // @ts-ignore
   const monsterNameSpriteRef = useRef<THREE.Sprite | null>(null);
+  // @ts-ignore
   const playerNameGroupRef = useRef<THREE.Group | null>(null);
+  // @ts-ignore
   const monsterNameGroupRef = useRef<THREE.Group | null>(null);
   // Balões de fala 3D (sprites acima dos nomes).
+  // @ts-ignore
   const playerBubbleGroupRef = useRef<THREE.Group | null>(null);
+  // @ts-ignore
   const monsterBubbleGroupRef = useRef<THREE.Group | null>(null);
+  // @ts-ignore
   const playerBubbleSpriteRef = useRef<THREE.Sprite | null>(null);
+  // @ts-ignore
   const monsterBubbleSpriteRef = useRef<THREE.Sprite | null>(null);
   const playerBubbleTextRef = useRef<string>(''); playerBubbleTextRef.current = playerBubble || '';
   const monsterBubbleTextRef = useRef<string>(''); monsterBubbleTextRef.current = monsterBubble || '';
   const playerBubbleDrawnRef = useRef<string>('\u0000');
   const monsterBubbleDrawnRef = useRef<string>('\u0000');
+  // @ts-ignore
   const monsterHeartsSpriteRef = useRef<THREE.Sprite | null>(null);
+  // @ts-ignore
   const monsterStatusSpriteRef = useRef<THREE.Sprite | null>(null);
   const monsterStatusDrawnRef = useRef<string>('');
+  // @ts-ignore
   const playerStatusSpriteRef = useRef<THREE.Sprite | null>(null);
+  // @ts-ignore
   const playerStatusGroupRef = useRef<THREE.Group | null>(null);
   const playerStatusDrawnRef = useRef<string>('');
   // PET aliado (Fase 4)

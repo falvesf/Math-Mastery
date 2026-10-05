@@ -24,6 +24,7 @@ function inferRanchKind(title: string): string {
   return 'food_trough';
 }
 
+// @ts-ignore
 const BARS = [
   { key: 'hunger', label: 'Fome', color: '#ef4444', Icon: Utensils },
   { key: 'thirst', label: 'Sede', color: '#3b82f6', Icon: Droplet },
@@ -134,7 +135,7 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
     try {
       if (it.kind === 'water_pump') {
         await upsertRanch(uid, tenantId, { water_level: 100, water_updated_at: new Date().toISOString() });
-        setRanch(prev => ({ water_level: 100, water_updated_at: new Date().toISOString() }));
+        setRanch({ water_level: 100, water_updated_at: new Date().toISOString() });
         setMsg('🚰 Bomba d\'água reabasteceu o bebedouro (100%).');
       } else {
         const cur = ranchItems.find(r => r.kind === it.kind);
@@ -365,18 +366,30 @@ export default function RanchModal({ isOpen, onClose, userData }: RanchModalProp
                 <div>
                   <h4 style={{ margin: '0 0 8px', color: 'var(--text-primary)' }}>{selected.name || selected.species_name} <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>({selected.species_name})</span></h4>
                   {/* Relacionamento */}
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 2 }}>
-                      <Heart size={13} color="#ec4899" /> Relacionamento <span style={{ marginLeft: 'auto', color: '#ec4899', fontWeight: 700 }}>Nv.{selected.relationship} · {relationshipName(selected.relationship)}</span>
-                    </div>
-                    <div style={{ height: 10, background: 'rgba(255,255,255,0.08)', borderRadius: 6, overflow: 'hidden' }}>
-                      <div style={{ width: `${(selected.relationship / 5) * 100}%`, height: '100%', background: '#ec4899' }} />
-                    </div>
-                  </div>
-                  {sc && heartBar(sc.hunger, '#ef4444', Utensils, 'Fome')}
-                  {sc && heartBar(sc.thirst, '#3b82f6', Droplet, 'Sede')}
-                  {sc && heartBar(sc.interaction, '#eab308', Smile, 'Interação')}
-                  {heartBar(selected.training || 0, '#22c55e', Dumbbell, 'Treinamento')}
+                  {(() => {
+                    const relInfo = RELATIONSHIP_LEVELS[selected.relationship];
+                    return (
+                      <div style={{ marginBottom: 10 }} title={relInfo ? `${relInfo.name}: As barras duram ${relInfo.barHours}h antes de esvaziar.` : undefined}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 2 }}>
+                          <Heart size={13} color="#ec4899" /> Relacionamento <span style={{ marginLeft: 'auto', color: '#ec4899', fontWeight: 700 }}>Nv.{selected.relationship} · {relationshipName(selected.relationship)}</span>
+                        </div>
+                        <div style={{ height: 10, background: 'rgba(255,255,255,0.08)', borderRadius: 6, overflow: 'hidden' }}>
+                          <div style={{ width: `${(selected.relationship / 5) * 100}%`, height: '100%', background: '#ec4899' }} />
+                        </div>
+                        {relInfo && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                            Barras duram {relInfo.barHours}h · Espera: {relInfo.waitHours}h
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {BARS.map(bar => {
+                    if (bar.key === 'training') {
+                      return <div key={bar.key}>{heartBar(selected.training || 0, bar.color, bar.Icon, bar.label)}</div>;
+                    }
+                    return sc ? <div key={bar.key}>{heartBar((sc as any)[bar.key] ?? 0, bar.color, bar.Icon, bar.label)}</div> : null;
+                  })}
                   <div style={{ marginTop: 8 }}>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: 4 }}>Habilidades de treino (nível {trainLevel})</div>
                     {trainingHabilities.length === 0 ? (

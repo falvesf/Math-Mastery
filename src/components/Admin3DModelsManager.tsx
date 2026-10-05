@@ -212,7 +212,7 @@ export default function Admin3DModelsManager() {
 
   // Catálogo de itens (store_items) para o editor de DROPS dos animais.
   useEffect(() => {
-    supabase.from('store_items').select('*').then(({ data }) => {
+    Promise.resolve(supabase.from('store_items').select('*')).then(({ data }) => {
       setStoreItems(((data as any[]) || []).map(r => ({
         id: r.id,
         itemTitle: r.name || r.data?.title || r.id,
@@ -339,7 +339,7 @@ export default function Admin3DModelsManager() {
         data.rarity = rarity || null;
         data.open_url = openUrl.trim() || null;
         data.slot_count = Math.max(1, Math.min(10, slotCount || 4));
-        data.chest_scale = Math.max(0.5, Math.min(3, chestScale || 1));
+        data.chest_scale = Math.max(0.5, Math.min(5, chestScale || 1));
         data.chest_zoom = Math.max(0.1, Math.min(5, previewZoom || 1));
         data.chest_offset_x = previewOffsetX || 0;
         data.chest_offset_y = previewOffsetY || 0;
@@ -975,10 +975,10 @@ export default function Admin3DModelsManager() {
                       </div>
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
-                          <label style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem' }}>Tamanho (área na premiação)</label>
+                          <label style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem' }}>Tamanho (cenário e premiação)</label>
                           <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>{(chestScale * 100).toFixed(0)}%</span>
                         </div>
-                        <input type="range" min="0.5" max="3" step="0.05" value={chestScale} onChange={e => setChestScale(parseFloat(e.target.value))} style={{ width: '100%', accentColor: 'var(--gold-primary)' }} />
+                        <input type="range" min="0.5" max="5" step="0.05" value={chestScale} onChange={e => setChestScale(parseFloat(e.target.value))} style={{ width: '100%', accentColor: 'var(--gold-primary)' }} />
                       </div>
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
@@ -1029,6 +1029,9 @@ export default function Admin3DModelsManager() {
                           style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                         />
                         <label style={{ color: 'var(--text-primary)', fontSize: '0.85rem', cursor: 'pointer' }}>Inverter lados no arquivo (fechado à direita)</label>
+                      </div>
+                      <div style={{ fontSize: '0.73rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.25)', lineHeight: 1.4 }}>
+                        ✨ <b>Baú duplo no cenário:</b> se o arquivo GLB tiver os dois baús lado a lado (fechado e aberto), o cenário 3D exibirá primeiramente o baú fechado e ele abrirá quando o jogador interagir!
                       </div>
                       <div>
                         <div style={{ marginBottom: '0.3rem' }}>

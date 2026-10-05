@@ -101,9 +101,9 @@ interface ScenarioConfig {
   /** Células com BAÚ ("x,z" → '1'). Geradas pelo "Gerar mapa" e usadas pelo runtime. */
   chestCells?: Record<string, string>;
   /** Loot dos BAÚS (por sorteio ponderado). Sem config → moedas 1..10 (comportamento antigo). */
-  chestConfig?: { loot?: LootEntry[] };
+  chestConfig?: { loot?: LootEntry[]; chestScale?: number; requiresKey?: boolean; chestModelId?: string };
   /** Loot POR BAÚ (índice 0..N-1). Sem entrada → usa chestConfig.loot (padrão). */
-  chestConfigs?: Array<{ loot?: LootEntry[] }>;
+  chestConfigs?: Array<{ loot?: LootEntry[]; scale?: number; requiresKey?: boolean; chestModelId?: string }>;
 }
 interface Scenario { id?: string; tenant_id?: string | null; name: string; theme: string; is_active: boolean; config: ScenarioConfig }
 
@@ -200,6 +200,7 @@ export default function AdminScenarioManager() {
   const [tool, setTool] = useState<'wall' | 'door' | 'monster' | 'chest' | 'water' | 'start' | 'end' | 'erase'>('wall');
   const [paintChestRot, setPaintChestRot] = useState<'auto' | '0' | '90' | '180' | '270'>('auto');
   const [paintChestSlot, setPaintChestSlot] = useState<number>(0);
+  const [paintChestLocked, setPaintChestLocked] = useState(false);
   const [paintWaterDepth, setPaintWaterDepth] = useState<'shallow' | 'medium' | 'deep'>('shallow');
   const [painting, setPainting] = useState(false);
   // Tipo de parede/porta selecionado para PINTAR (por célula).
@@ -657,7 +658,7 @@ export default function AdminScenarioManager() {
     else if (tool === 'wall') { wallTypeCells[key] = paintWallType || c.config.defaultWallType || c.config.wallTypes[0]?.id; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
     else if (tool === 'door') { doorTypeCells[key] = paintDoorType || c.config.defaultDoorType || c.config.doorTypes[0]?.id; delete wallTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
     else if (tool === 'monster') { if (paintMonsterId) { monsterCells[key] = paintMonsterId; delete wallTypeCells[key]; delete doorTypeCells[key]; delete waterCells[key]; delete chestCells[key]; } }
-    else if (tool === 'chest') { const rot = paintChestRot || 'auto'; const slot = paintChestSlot > 0 ? paintChestSlot - 1 : 'default'; chestCells[key] = `${rot}|${slot}`; delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
+    else if (tool === 'chest') { const rot = paintChestRot || 'auto'; const slot = paintChestSlot > 0 ? paintChestSlot - 1 : 'default'; const lockFlag = paintChestLocked ? 'locked' : 'open'; chestCells[key] = `${rot}|${slot}|${lockFlag}`; delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; }
     else { delete wallTypeCells[key]; delete doorTypeCells[key]; delete monsterCells[key]; delete waterCells[key]; delete chestCells[key]; }
     return { ...c, config: { ...c.config, layout: l, wallTypeCells, doorTypeCells, monsterCells, waterCells, chestCells } };
   });
@@ -1170,6 +1171,24 @@ export default function AdminScenarioManager() {
                   {chestUiCount > 0 ? `${chestUiCount} baú(s) — cada um com sua tabela` : 'Baú padrão (defina a qtd. em “Baús” nos critérios)'}
                 </span>
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.65rem 0.85rem', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>📏 Tamanho dos baús no cenário:</label>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="3.0"
+                    step="0.05"
+                    value={current.config.chestConfig?.chestScale ?? 1.0}
+                    onChange={e => patchConfig({ chestConfig: { ...(current.config.chestConfig || {}), chestScale: parseFloat(e.target.value) } })}
+                    style={{ width: 140, accentColor: 'var(--gold-primary)' }}
+                  />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                    {Math.round((current.config.chestConfig?.chestScale ?? 1.0) * 100)}%
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Ajuste a escala visual dos baús 3D no mapa.</span>
+              </div>
               {(chestUiCount > 0 ? Array.from({ length: chestUiCount }, (_, s) => s) : [-1]).map(slot => {
                 const loot = slot >= 0 ? (current.config.chestConfigs?.[slot]?.loot || []) : (current.config.chestConfig?.loot || []);
                 const addItem = () => { const e: LootEntry = { kind: 'coins', weight: 10, min: 5, max: 20 }; if (slot >= 0) setChestLootArr(slot, [...loot, e]); else patchConfig({ chestConfig: { ...(current.config.chestConfig || {}), loot: [...loot, e] } }); };
@@ -1179,7 +1198,27 @@ export default function AdminScenarioManager() {
                   <div key={slot} style={{ marginBottom: 10, padding: '0.55rem', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                       <strong style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>{slot >= 0 ? `🧰 Baú ${slot + 1}` : '🧰 Baú (padrão)'}</strong>
-                      <button style={btn('var(--accent-green, #10b981)')} onClick={addItem}>+ Item</button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: '0.74rem', color: '#f59e0b', fontWeight: 'bold' }}>
+                          <input
+                            type="checkbox"
+                            checked={slot >= 0 ? !!(current.config.chestConfigs?.[slot]?.requiresKey) : !!(current.config.chestConfig?.requiresKey)}
+                            onChange={e => {
+                              const val = e.target.checked;
+                              if (slot >= 0) {
+                                const arr = [...(current.config.chestConfigs || [])];
+                                arr[slot] = { ...(arr[slot] || {}), requiresKey: val };
+                                setCurrent(c => c ? { ...c, config: { ...c.config, chestConfigs: arr } } : c);
+                              } else {
+                                patchConfig({ chestConfig: { ...(current.config.chestConfig || {}), requiresKey: val } });
+                              }
+                            }}
+                            style={{ width: 15, height: 15, accentColor: '#f59e0b', cursor: 'pointer' }}
+                          />
+                          🔒 Requer Chave (monstro)
+                        </label>
+                        <button style={btn('var(--accent-green, #10b981)')} onClick={addItem}>+ Item</button>
+                      </div>
                     </div>
                     {loot.map((l, i) => renderLootRow(l, i, onPatch, onRemove))}
                     {loot.length === 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Sem itens — cai moedas 1..10.</div>}
@@ -1330,6 +1369,17 @@ export default function AdminScenarioManager() {
                       <option value={4}>🧰 Baú 4</option>
                       <option value={5}>🧰 Baú 5</option>
                     </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: '0.78rem', color: '#f59e0b', fontWeight: 'bold' }}>
+                      <input
+                        type="checkbox"
+                        checked={paintChestLocked}
+                        onChange={e => setPaintChestLocked(e.target.checked)}
+                        style={{ width: 16, height: 16, accentColor: '#f59e0b', cursor: 'pointer' }}
+                      />
+                      🔒 Trancado (Requer Chave)
+                    </label>
                   </div>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Clique no mapa para colocar o baú com a rotação selecionada.</span>
                 </div>

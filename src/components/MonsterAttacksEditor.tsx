@@ -522,7 +522,7 @@ export default function MonsterAttacksEditor({ value, onChange, modelUrl, models
     if (!effect || effect === 'none' || effectEnabled === false) return null;
 
     const effectLabel = getMonsterEffectLabel(effect);
-    const isEffUnlockedAt = (lvl: number) => effectEnabled !== false && lvl >= (effectMinLevel || 1);
+    const isEffUnlockedAt = (lvl: number) => lvl >= (effectMinLevel || 1);
     const calcAt = (lvl: number) => {
       if (!isEffUnlockedAt(lvl)) return 0;
       return Math.min(100, Math.max(0, Math.round((effectChance + (lvl - 1) * effectChancePerLevel) * 10) / 10));

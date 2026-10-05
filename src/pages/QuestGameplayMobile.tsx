@@ -190,6 +190,7 @@ export default function QuestGameplay() {
   const [monsterBubble, setMonsterBubble] = useState<string>('');
   const [playerAnim, setPlayerAnim] = useState<string>('idle');
   const [monsterAnim, setMonsterAnim] = useState<string>('idle');
+  const [monsterDodge, setMonsterDodge] = useState(false);
   // O monstro fugiu no golpe final (vitória sem baú; permite repetir a missão).
   // @ts-ignore
   const [monsterFled, setMonsterFled] = useState(false);
@@ -2243,8 +2244,6 @@ const dealTransformDamageToPlayer = (damage: number) => {
         setPlayerAnim('attack');
         playPlayerAttackSound(effectiveCrit);
         setTimeout(() => {
-          setMonsterAnim('hurt');
-
           // Dano numérico flutuante (RPG stats)
           const hitRoll = calculatePlayerHitDamage(
             totalEquippedStats.attack,
@@ -2254,10 +2253,14 @@ const dealTransformDamageToPlayer = (damage: number) => {
           );
           const evaded = hitRoll.isEvasion;
           if (evaded) {
+            setMonsterAnim('idle');
+            setMonsterDodge(true);
+            setTimeout(() => setMonsterDodge(false), 550);
             spawnFloatingDamage(0, false, 'monster', true);
             // Esquiva: o monstro não perde coração, moedas nem itens.
             setMonsterHeartFrac(1);
           } else {
+            setMonsterAnim('hurt');
             if (frozen) {
               // Gelo protege: mostra -100 em azul (a camada de gelo absorve).
               spawnFloatingDamage(0, false, 'monster', false, false, true);
@@ -4706,7 +4709,7 @@ const dealTransformDamageToPlayer = (damage: number) => {
                       </div>
                     )}
                   </div>
-                <div className={`quest-arena-monster-inner ${monsterHealPulse ? 'monster-healing-active' : ''}`} style={{ position: 'relative', display: 'inline-block' }}>
+                <div className={`quest-arena-monster-inner ${monsterHealPulse ? 'monster-healing-active' : ''} ${monsterDodge ? 'monster-dodge-anim' : ''}`} style={{ position: 'relative', display: 'inline-block' }}>
                   {monsterHealPulse && <MonsterHealAura />}
                   {(() => {
                     const healTint = monsterHealPulse ? '#2dd4bf' : null;

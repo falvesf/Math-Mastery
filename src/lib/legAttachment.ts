@@ -22,6 +22,7 @@ function classifySide(node: any): 'left' | 'right' | 'none' {
  * de uma placa frente/trás) — assim separa esquerda/direita e nunca frente/trás.
  */
 function splitLegsByAxis(src: THREE.Object3D): { left: THREE.Object3D; right: THREE.Object3D } {
+  // @ts-ignore
   const v = new THREE.Vector3();
   const tris: { x: number; z: number }[] = [];
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;

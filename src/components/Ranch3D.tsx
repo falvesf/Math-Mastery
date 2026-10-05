@@ -144,6 +144,8 @@ export default function Ranch3D({ pets, waterLevel, hasFood = true, hasWater = t
     const onDown = (e: MouseEvent) => { downAt = Date.now(); ndc.x = (e.offsetX / renderer.domElement.clientWidth) * 2 - 1; ndc.y = -(e.offsetY / renderer.domElement.clientHeight) * 2 + 1; };
     const onUp = (e: MouseEvent) => {
       if (Date.now() - downAt > 350) return;
+      ndc.x = (e.offsetX / renderer.domElement.clientWidth) * 2 - 1;
+      ndc.y = -(e.offsetY / renderer.domElement.clientHeight) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
       const hits = raycaster.intersectObjects(petGroups.map(pg => pg.g), true);
       if (hits.length) { let o: any = hits[0].object; while (o && !petGroups.some(pg => pg.g === o)) o = o.parent; const pg = petGroups.find(x => x.g === o); if (pg && onSelectPet) { const i = petGroups.indexOf(pg); if (pets[i]) onSelectPet(pets[i].id); } }
