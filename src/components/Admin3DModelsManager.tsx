@@ -441,6 +441,7 @@ export default function Admin3DModelsManager() {
         showAlert('Modelo adicionado com sucesso!');
       }
       sessionCache.invalidate(CACHE_KEYS.models3d());
+      if (tenantId) sessionCache.invalidate(CACHE_KEYS.models3d(tenantId));
       window.dispatchEvent(new CustomEvent('models3d-changed'));
       setIsModalOpen(false);
       fetchModels(false);
@@ -496,6 +497,8 @@ export default function Admin3DModelsManager() {
         return;
       }
       sessionCache.invalidate(CACHE_KEYS.models3d());
+      if (tenantId) sessionCache.invalidate(CACHE_KEYS.models3d(tenantId));
+      window.dispatchEvent(new CustomEvent('models3d-changed'));
       fetchModels(false);
       showAlert(`Moeda "${model.name}" ativada!`);
     } catch (e) {
@@ -525,6 +528,8 @@ export default function Admin3DModelsManager() {
         return;
       }
       sessionCache.invalidate(CACHE_KEYS.models3d());
+      if (tenantId) sessionCache.invalidate(CACHE_KEYS.models3d(tenantId));
+      window.dispatchEvent(new CustomEvent('models3d-changed'));
       fetchModels(false);
       showAlert(`Baú "${model.name}" definido como padrão!`);
     } catch (e) {
@@ -554,6 +559,8 @@ export default function Admin3DModelsManager() {
         return;
       }
       sessionCache.invalidate(CACHE_KEYS.models3d());
+      if (tenantId) sessionCache.invalidate(CACHE_KEYS.models3d(tenantId));
+      window.dispatchEvent(new CustomEvent('models3d-changed'));
       fetchModels(false);
       showAlert(`Porta "${model.name}" definida como padrão!`);
     } catch (e) {
@@ -579,6 +586,8 @@ export default function Admin3DModelsManager() {
         return;
       }
       sessionCache.invalidate(CACHE_KEYS.models3d());
+      if (tenantId) sessionCache.invalidate(CACHE_KEYS.models3d(tenantId));
+      window.dispatchEvent(new CustomEvent('models3d-changed'));
       fetchModels(false);
       showAlert(`Chave "${model.name}" definida como padrão para drops de boss e portas!`);
     } catch (e) {
@@ -939,11 +948,11 @@ export default function Admin3DModelsManager() {
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
                     Pré-visualização (igual à premiação — arraste p/ girar o objeto, scroll p/ zoom)
                   </label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
-                    <div style={{ width: Math.round(150 * chestScale), height: Math.round(150 * chestScale) }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.5rem' }}>
+                    <div style={{ width: 260, minWidth: 260, maxWidth: 260, height: 260, flexShrink: 0, position: 'sticky', top: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <InteractiveModelPreview
                         modelUrl={url}
-                        size={Math.max(120, Math.min(340, Math.round(150 * chestScale)))}
+                        size={260}
                         zoom={previewZoom}
                         offsetX={previewOffsetX}
                         offsetY={previewOffsetY}
@@ -958,7 +967,7 @@ export default function Admin3DModelsManager() {
                         onRotYChange={setPreviewRotY}
                       />
                     </div>
-                    <div style={{ flex: 1, minWidth: '240px', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
                           onClick={() => setPreviewOpen(false)}

@@ -61,12 +61,24 @@ export async function fetchModelsByCategory(
   }
 }
 
+function pickActiveModel(items: Model3D[], tenantId?: string | null): Model3D | null {
+  if (tenantId) {
+    const tenantItem = items.find(m => m.is_active && (m as any).tenant_id === tenantId);
+    if (tenantItem) return tenantItem;
+  }
+  const globalItem = items.find(m => m.is_active && (m._isGlobal || !(m as any).tenant_id));
+  if (globalItem) return globalItem;
+  const defaultTenantItem = items.find(m => m.is_active && (m as any).tenant_id === '00000000-0000-0000-0000-000000000001');
+  if (defaultTenantItem) return defaultTenantItem;
+  return items.find(m => m.is_active) || null;
+}
+
 /**
  * Busca a moeda ativa (marca is_active) usada nos drops de batalha.
  */
 export async function fetchActiveCoin(tenantId?: string | null): Promise<Model3D | null> {
   const coins = await fetchModelsByCategory('coin', tenantId);
-  return coins.find(c => c.is_active) || null;
+  return pickActiveModel(coins, tenantId);
 }
 
 /**
@@ -76,19 +88,19 @@ export async function fetchActiveCoin(tenantId?: string | null): Promise<Model3D
  */
 export async function fetchActiveChest(tenantId?: string | null): Promise<Model3D | null> {
   const chests = await fetchModelsByCategory('chest', tenantId);
-  return chests.find(c => c.is_active) || null;
+  return pickActiveModel(chests, tenantId);
 }
 
 /** Busca a PORTA de calabouço PADRÃO (marca is_active). */
 export async function fetchActiveDoor(tenantId?: string | null): Promise<Model3D | null> {
   const doors = await fetchModelsByCategory('door', tenantId);
-  return doors.find(d => d.is_active) || null;
+  return pickActiveModel(doors, tenantId);
 }
 
 /** Busca a CHAVE PADRÃO (marca is_active) para drops de boss e portas. */
 export async function fetchActiveKey(tenantId?: string | null): Promise<Model3D | null> {
   const keys = await fetchModelsByCategory('key', tenantId);
-  return keys.find(k => k.is_active) || null;
+  return pickActiveModel(keys, tenantId);
 }
 
 /**

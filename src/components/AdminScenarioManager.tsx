@@ -1608,7 +1608,7 @@ export default function AdminScenarioManager() {
     )}
     {testOpen && current && createPortal(
       <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 999999, display: 'flex', flexDirection: 'column' }}>
-        <MapExplorerPoC onExit={() => setTestOpen(false)} scenarioConfig={current.config} scenarioTheme={(current.theme || 'plains') as any} />
+        <MapExplorerPoC onExit={() => setTestOpen(false)} scenarioConfig={current.config} scenarioTheme={(current.theme || 'plains') as any} tenantId={tenantId} />
       </div>,
       document.body
     )}

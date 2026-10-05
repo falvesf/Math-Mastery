@@ -299,6 +299,7 @@ export default function MapExplorerPoC({
   onBossTouched,
   onVictory,
   onDefeat,
+  tenantId: tenantIdProp,
 }: {
   onExit?: () => void;
   config?: AvatarConfig | null;
@@ -311,6 +312,7 @@ export default function MapExplorerPoC({
   onBossTouched?: (remainingHp: number) => void;
   onVictory?: (result: { coins: number; xp: number }) => void;
   onDefeat?: () => void;
+  tenantId?: string | null;
 }) {
   void onBossTouched;
   const { userData } = useAuth();
@@ -545,7 +547,7 @@ export default function MapExplorerPoC({
   }, [userData]);
 
   const pickDoorQuestion = useCallback(async () => {
-    const tenantId = (userData as any)?.tenantId || null;
+    const tenantId = tenantIdProp || (userData as any)?.tenantId || (userData as any)?.tenant_id || null;
     let query = supabase.from('question_bank').select('*');
     if (tenantId) query = query.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
     const { data } = await query;
@@ -597,7 +599,7 @@ export default function MapExplorerPoC({
     const uid = userData?.uid;
     if (itemsProp || !uid) { /* catálogos de monstros e modelos continuam carregando */ }
     let cancelled = false;
-    const tenantId = (userData as any)?.tenantId || null;
+    const tenantId = tenantIdProp || (userData as any)?.tenantId || (userData as any)?.tenant_id || null;
 
     // Molde da moeda/baú: PNG (plano) ou GLB. Guardado para clonar no mapa.
     const buildTemplate = async (model: any, kind: 'coin' | 'chest' | 'door' | 'scenery' | 'animal' | 'key'): Promise<any> => {
@@ -780,8 +782,19 @@ if (!cancelled) {
     // Cenário ativo (tipos de parede, portas, loot). Sem tabela/config → usa os padrões.
     // Se uma `scenarioConfig` veio por prop (preview no editor), usa ela direto.
     const loadScenario = scenarioRef.current ? Promise.resolve()
-      : Promise.resolve(supabase.from('scenarios').select('config').eq('is_active', true).order('created_at', { ascending: true }).limit(1)).then(({ data }) => {
-        if (!cancelled && data && data.length) scenarioRef.current = (data[0] as any).config || {};
+      : Promise.resolve(supabase.from('scenarios').select('config').eq('is_active', true).order('created_at', { ascending: true }).limit(1)).then(async ({ data }) => {
+        if (!cancelled && data && data.length) {
+          scenarioRef.current = (data[0] as any).config || {};
+          const customChestId = scenarioRef.current?.chestConfig?.chestModelId;
+          if (customChestId) {
+            const specificChest = await fetchModel3DById(customChestId, tenantId);
+            if (specificChest && !cancelled) {
+              chestConfigRef.current = specificChest;
+              const ch = await buildTemplate(specificChest, 'chest');
+              if (ch && !cancelled) chestTemplateRef.current = ch;
+            }
+          }
+        }
       }).catch(() => {});
 
     // Catálogo de itens (store_items) para o loot ligado ao catálogo.
@@ -1950,7 +1963,8 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       if (!USE_CHEST_GLB || !chestTemplateRef.current) {
         const fb = makeFallbackChest();
         if (rotY !== undefined) fb.rotation.y = rotY;
-        fb.scale.setScalar(chestScaleMult);
+        const baseScale = Math.max(0.1, Number(chestConfigRef.current?.chestScale) || 1);
+        fb.scale.setScalar(baseScale * chestScaleMult);
         g.add(fb);
         const lid = fb.children[1] as THREE.Mesh;
         const openAnim = () => {
@@ -1969,8 +1983,9 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
         const c = tmpl.clone(true);
         c.updateMatrixWorld(true);
         if (c.isMesh || c.isSprite) {
-          c.scale.setScalar(0.85 * chestScaleMult);
-          c.position.y = 0.42;
+          const baseScale = Math.max(0.1, Number(cfg.chestScale) || 1);
+          c.scale.setScalar(0.85 * baseScale * chestScaleMult);
+          c.position.y = 0.42 * baseScale;
           if (rotY !== undefined) c.rotation.y = rotY;
           g.add(c);
           return { group: g, openAnim: () => {} };
@@ -2056,9 +2071,8 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
         holder.updateMatrixWorld(true);
         const kb2 = visibleBox(c);
         const maxDim = Math.max(0.001, Math.max(kb2.max.x - kb2.min.x, kb2.max.y - kb2.min.y, kb2.max.z - kb2.min.z));
-        const zoom = Math.max(0.1, Math.min(5, Number(cfg.chestZoom) || 1));
         const baseScale = Math.max(0.1, Number(cfg.chestScale) || 1);
-        const scale = (0.75 / maxDim) * zoom * baseScale * chestScaleMult;
+        const scale = (0.85 / maxDim) * baseScale * chestScaleMult;
         holder.scale.setScalar(scale);
         holder.position.y = -kb2.min.y * scale;
         g.add(holder);
@@ -2067,7 +2081,8 @@ const barBgGeo = new THREE.PlaneGeometry(1.0, 0.16);
       } catch {
         const fb = makeFallbackChest();
         if (rotY !== undefined) fb.rotation.y = rotY;
-        fb.scale.setScalar(chestScaleMult);
+        const baseScale = Math.max(0.1, Number(chestConfigRef.current?.chestScale) || 1);
+        fb.scale.setScalar(baseScale * chestScaleMult);
         g.add(fb);
         const lid = fb.children[1] as THREE.Mesh;
         return {
