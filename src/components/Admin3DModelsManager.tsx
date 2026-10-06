@@ -1037,7 +1037,7 @@ export default function Admin3DModelsManager() {
                           onChange={e => setPreviewSwapSides(e.target.checked)}
                           style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                         />
-                        <label style={{ color: 'var(--text-primary)', fontSize: '0.85rem', cursor: 'pointer' }}>Inverter lados no arquivo (fechado à direita)</label>
+                        <label style={{ color: 'var(--text-primary)', fontSize: '0.85rem', cursor: 'pointer' }}>Inverter abertura (usar apenas se começar aberto)</label>
                       </div>
                       <div style={{ fontSize: '0.73rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.25)', lineHeight: 1.4 }}>
                         ✨ <b>Baú duplo no cenário:</b> se o arquivo GLB tiver os dois baús lado a lado (fechado e aberto), o cenário 3D exibirá primeiramente o baú fechado e ele abrirá quando o jogador interagir!

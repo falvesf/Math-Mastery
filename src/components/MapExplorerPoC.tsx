@@ -1752,9 +1752,11 @@ type Slime = { x: number; z: number; root: THREE.Group; mesh: THREE.Mesh; tx: nu
     const slimes: Slime[] = [];
     // Projéteis de golpes À DISTÂNCIA dos monstros (guia Golpes → ranged).
     const projectiles: { mesh: THREE.Object3D; vx: number; vz: number; life: number; dmg: number; effect: string }[] = [];
-    const rocks: { x: number; z: number; mesh: THREE.Object3D; hp: number; maxHp: number; def: number }[] = [];
-    const hazards: { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number }[] = [];
-    type ChestEntry = { x: number; z: number; mesh: THREE.Object3D; idx?: number; isLocked?: boolean; requiresKey?: boolean; keyId?: string; opened?: boolean; openAnim?: () => void; lockVisual?: THREE.Sprite };
+    type RockEntry = { x: number; z: number; mesh: THREE.Object3D; hp: number; maxHp: number; def: number; sizeScale?: number; baseScale?: number; sizeName?: string; isVein?: boolean; veinModelId?: string; dropItemId?: string; dropMin?: number; dropMax?: number; depleteItemId?: string; depleteQty?: number; veinCooldownKey?: string };
+    const rocks: RockEntry[] = [];
+    type HazardEntry = { x: number; z: number; mesh: THREE.Mesh; hp: number; maxHp: number; def: number; scale?: number };
+    const hazards: HazardEntry[] = [];
+    type ChestEntry = { x: number; z: number; mesh: THREE.Object3D; idx?: number; isLocked?: boolean; requiresKey?: boolean; keyId?: string; opened?: boolean; openAnim?: () => void; lockVisual?: THREE.Sprite; scale?: number };
     const chests: ChestEntry[] = [];
     const chestMixers: THREE.AnimationMixer[] = [];
     const doors: { x: number; z: number; mesh: THREE.Object3D; open: boolean; hp: number; maxHp: number; def: number; typeId: string }[] = [];
@@ -2880,6 +2882,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         const scenarioScale = Number(sc.chestConfig?.chestScale) || 1;
         const perChestScale = Number(perSlotCfg?.scale) || 1;
         const chestScaleMult = scenarioScale * perChestScale;
+        const finalScale = (Math.max(0.1, Number(chestConfigRef.current?.chestScale) || 1)) * chestScaleMult;
         const { group: m, openAnim } = makeChestVisual(rotY, chestScaleMult);
         let lockVisual: THREE.Sprite | undefined;
         if (isLocked) {
@@ -2900,7 +2903,8 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
           keyId: `chest_key_${chests.length}`,
           opened: false,
           openAnim,
-          lockVisual
+          lockVisual,
+          scale: finalScale
         });
       }
     } else {
@@ -2935,6 +2939,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         const scenarioScale = Number(sc.chestConfig?.chestScale) || 1;
         const perChestScale = Number(perSlotCfg?.scale) || 1;
         const chestScaleMult = scenarioScale * perChestScale;
+        const finalScale = (Math.max(0.1, Number(chestConfigRef.current?.chestScale) || 1)) * chestScaleMult;
         const { group: m, openAnim } = makeChestVisual(rotY, chestScaleMult);
         let lockVisual: THREE.Sprite | undefined;
         if (isLocked) {
@@ -2955,7 +2960,8 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
           keyId: `chest_key_${cIdx}`,
           opened: false,
           openAnim,
-          lockVisual
+          lockVisual,
+          scale: finalScale
         });
       }
     }
@@ -4706,10 +4712,10 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       if (door) { handleDoor(door); return; }
       const chest = chests.find(c => c.mesh.visible && !c.opened && (
         Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
-        Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
+        Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= Math.max(1.5, (0.42 * (c.scale || 1)) + 1.1)
       )) || chests.find(c => c.mesh.visible && (
         Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
-        Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
+        Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= Math.max(1.5, (0.42 * (c.scale || 1)) + 1.1)
       ));
       if (chest) { openChest(chest); return; }
       // DOMESTICAÇÃO: animal domesticável por perto → tenta; animal SEGUINDO → alimenta.
@@ -4904,19 +4910,21 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       playSword(false); // som da espada em TODO ataque (mesmo errando)
       const pwx = wx(playerPos.x), pwz = wz(playerPos.z);
       const pgx = Math.round(playerPos.x), pgz = Math.round(playerPos.z);
-      let target: any = null; let best = 1.9;
+      let target: any = null; let bestEdgeDist = 1.65;
       for (const s of slimes) {
         if (s.hp <= 0 || s.dead || s.dying) continue;
         const dd = Math.hypot(s.root.position.x - pwx, s.root.position.z - pwz);
-        if (dd >= best) continue;
+        const targetRadius = ((s.isBoss ? 0.95 : (s.isAnimal ? 0.42 : 0.38)) * (s.root.scale.x || 1));
+        const edgeDist = Math.max(0, dd - targetRadius);
+        if (edgeDist >= bestEdgeDist) continue;
         const sgx = Math.round(s.root.position.x + (COLS - 1) / 2), sgz = Math.round(s.root.position.z + (ROWS - 1) / 2);
         if (!losClear(pgx, pgz, sgx, sgz)) continue;
-        best = dd; target = s;
+        bestEdgeDist = edgeDist; target = s;
       }
       if (target) {
         const isCrit = Math.random() * 100 < statsRef.current.critChance;
         if (isCrit) playSword(true);
-const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack; // dano da ARMA EQUIPADA
+        const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack; // dano da ARMA EQUIPADA
         const roll = calculatePlayerHitDamage(atkPower, target.defense, target.evasion, isCrit);
         if (roll.isEvasion) {
           triggerMonsterDodge(target, pwx, pwz);
@@ -4963,10 +4971,31 @@ const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack
       const pgx2 = Math.round(playerPos.x), pgz2 = Math.round(playerPos.z);
       type Cand = { obj: any; kind: 'rock' | 'hazard' | 'wall' | 'door'; gx: number; gz: number; dist: number; color: number; key?: string };
       const cands: Cand[] = [];
-      for (const rk of rocks) { if (rk.hp <= 0 || !rk.mesh.visible) continue; const dd = Math.hypot(wx(rk.x) - pwx, wz(rk.z) - pwz); if (dd < 1.95 && losClear(pgx2, pgz2, rk.x, rk.z)) cands.push({ obj: rk, kind: 'rock', gx: rk.x, gz: rk.z, dist: dd, color: 0x9c8a7a }); }
-      for (const hz of hazards) { if (hz.hp <= 0 || !hz.mesh.visible) continue; const dd = Math.hypot(wx(hz.x) - pwx, wz(hz.z) - pwz); if (dd < 1.95 && losClear(pgx2, pgz2, hz.x, hz.z)) cands.push({ obj: hz, kind: 'hazard', gx: hz.x, gz: hz.z, dist: dd, color: 0x2f9e44 }); }
-      for (const d of doors) { if (d.hp <= 0 || !d.mesh.visible) continue; const dd = Math.hypot(wx(d.x) - pwx, wz(d.z) - pwz); if (dd < 1.95 && losClear(pgx2, pgz2, d.x, d.z)) cands.push({ obj: d, kind: 'door', gx: d.x, gz: d.z, dist: dd, color: 0x8b5a2b }); }
-      for (const [wk, wc] of wallCells) { if (wc.hp <= 0) continue; const [wxg, wzg] = wk.split(',').map(Number); const dd = Math.hypot(wx(wxg) - pwx, wz(wzg) - pwz); if (dd < 1.95 && losClear(pgx2, pgz2, wxg, wzg)) cands.push({ obj: wc, kind: 'wall', gx: wxg, gz: wzg, dist: dd, color: parseInt(theme.wall.replace('#', ''), 16), key: wk }); }
+      for (const rk of rocks) {
+        if (rk.hp <= 0 || !rk.mesh.visible) continue;
+        const dd = Math.hypot(wx(rk.x) - pwx, wz(rk.z) - pwz);
+        const rkRadius = 0.42 * (Number(rk.sizeScale || (rk as any).baseScale) || 1);
+        const edgeDist = Math.max(0, dd - rkRadius);
+        if (edgeDist < 1.45 && losClear(pgx2, pgz2, rk.x, rk.z)) cands.push({ obj: rk, kind: 'rock', gx: rk.x, gz: rk.z, dist: edgeDist, color: 0x9c8a7a });
+      }
+      for (const hz of hazards) {
+        if (hz.hp <= 0 || !hz.mesh.visible) continue;
+        const dd = Math.hypot(wx(hz.x) - pwx, wz(hz.z) - pwz);
+        const hzRadius = 0.40 * (Number((hz as any).scale) || 1);
+        const edgeDist = Math.max(0, dd - hzRadius);
+        if (edgeDist < 1.45 && losClear(pgx2, pgz2, hz.x, hz.z)) cands.push({ obj: hz, kind: 'hazard', gx: hz.x, gz: hz.z, dist: edgeDist, color: 0x2f9e44 });
+      }
+      for (const d of doors) {
+        if (d.hp <= 0 || !d.mesh.visible) continue;
+        const dd = Math.hypot(wx(d.x) - pwx, wz(d.z) - pwz);
+        if (dd < 1.95 && losClear(pgx2, pgz2, d.x, d.z)) cands.push({ obj: d, kind: 'door', gx: d.x, gz: d.z, dist: dd, color: 0x8b5a2b });
+      }
+      for (const [wk, wc] of wallCells) {
+        if (wc.hp <= 0) continue;
+        const [wxg, wzg] = wk.split(',').map(Number);
+        const dd = Math.hypot(wx(wxg) - pwx, wz(wzg) - pwz);
+        if (dd < 1.95 && losClear(pgx2, pgz2, wxg, wzg)) cands.push({ obj: wc, kind: 'wall', gx: wxg, gz: wzg, dist: dd, color: parseInt(theme.wall.replace('#', ''), 16), key: wk });
+      }
       cands.sort((a, b) => a.dist - b.dist);
       const tgt = cands[0];
       if (tgt) {
@@ -5052,10 +5081,10 @@ const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack
         if (door) { handleDoor(door); return; }
         const chest = chests.find(c => c.mesh.visible && !c.opened && (
           Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
-          Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
+          Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= Math.max(1.5, (0.42 * (c.scale || 1)) + 1.1)
         )) || chests.find(c => c.mesh.visible && (
           Math.abs(c.x - gx) + Math.abs(c.z - gz) <= 1 ||
-          Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= 1.35
+          Math.hypot(playerPos.x - c.x, playerPos.z - c.z) <= Math.max(1.5, (0.42 * (c.scale || 1)) + 1.1)
         ));
         if (chest) {
           openChest(chest);
@@ -5111,11 +5140,12 @@ const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack
     const mBlocked = (self: any, x: number, z: number) => {
       const cx = toGridX(x), cz = toGridZ(z);
       if (isWall(cx, cz)) return true;
-      if (rocks.some(r => r.x === cx && r.z === cz && r.mesh.visible)) return true;
-      if (chests.some(c => c.mesh.visible && ((c.x === cx && c.z === cz) || Math.hypot(x - wx(c.x), z - wz(c.z)) < 0.72))) return true;
-      if (doors.some(d => d.mesh.visible && d.x === cx && d.z === cz)) return true; // porta fechada bloqueia
-      if (slimes.some(o => o !== self && o.hp > 0 && o.root.visible && toGridX(o.root.position.x) === cx && toGridZ(o.root.position.z) === cz)) return true;
-      if (cx === Math.round(playerPos.x) && cz === Math.round(playerPos.z)) return true;
+      if (rocks.some(r => r.mesh.visible && r.hp > 0 && Math.hypot(x - wx(r.x), z - wz(r.z)) < (0.42 * (Number(r.sizeScale || (r as any).baseScale) || 1) + 0.35))) return true;
+      if (chests.some(c => c.mesh.visible && Math.hypot(x - wx(c.x), z - wz(c.z)) < (0.42 * (Number(c.scale) || 1) + 0.35))) return true;
+      if (doors.some(d => d.mesh.visible && !d.open && d.hp > 0 && d.x === cx && d.z === cz)) return true;
+      if (hazards.some(h => h.mesh.visible && h.hp > 0 && Math.hypot(x - wx(h.x), z - wz(h.z)) < (0.38 * (Number((h as any).scale) || 1) + 0.35))) return true;
+      if (slimes.some(o => o !== self && o.hp > 0 && o.root.visible && Math.hypot(x - o.root.position.x, z - o.root.position.z) < (0.38 * (o.root.scale.x || 1) + 0.35))) return true;
+      if (Math.hypot(x - wx(playerPos.x), z - wz(playerPos.z)) < 0.65) return true;
 
       // ÁGUA: criaturas terrestres que não nadam e não sobrevivem dentro d'água não entram na água!
       if (self) {
@@ -5269,33 +5299,121 @@ const atkPower = activeWeaponAtk > 0 ? activeWeaponAtk : statsRef.current.attack
         const isAirborne = jumpY > 0.35;
         const nx = playerPos.x + dx * speed * dt;
         const nz = playerPos.z + dz * speed * dt;
-        // colisão por célula (paredes + OBJETOS: baús e pedras), com "deslize" por eixo
-        // Colisão do JOGADOR: apenas paredes e objetos fixos. Monstros NÃO bloqueiam
-        // (evitava "obstáculos invisíveis" quando um monstro ocupava a célula).
-        const chestBlocked = (px: number, pz: number) => {
-          return chests.some(c => c.mesh.visible && (
-            (c.x === Math.round(px) && c.z === Math.round(pz)) ||
-            Math.hypot(px - c.x, pz - c.z) < 0.72
-          ));
-        };
-        const cellBlocked = (x: number, z: number) => {
-          if (isWall(x, z)) return true;
-          // PULO: no ar (isAirborne), pula sobre rochas, portas baixas e pequenos obstáculos
-          if (!isAirborne) {
-            if (rocks.some(r => r.x === x && r.z === z && r.mesh.visible)) return true;
-            if (doors.some(d => d.x === x && d.z === z && d.mesh.visible)) return true;
+        // Raio físico do jogador para colisões contínuas (evita penetração)
+        const PLAYER_RADIUS = 0.28;
+
+        // Função universal de colisão contínua ponderada pela escala física real dos objetos
+        const isPositionBlocked = (px: number, pz: number, isAir: boolean): boolean => {
+          // 1. Paredes, limites e árvores sólidas (AABB das células com raio do jogador)
+          const minGx = Math.floor(px - PLAYER_RADIUS);
+          const maxGx = Math.ceil(px + PLAYER_RADIUS);
+          const minGz = Math.floor(pz - PLAYER_RADIUS);
+          const maxGz = Math.ceil(pz + PLAYER_RADIUS);
+          for (let gx = minGx; gx <= maxGx; gx++) {
+            for (let gz = minGz; gz <= maxGz; gz++) {
+              if (isWall(gx, gz)) {
+                const nearX = Math.max(gx - 0.5, Math.min(gx + 0.5, px));
+                const nearZ = Math.max(gz - 0.5, Math.min(gz + 0.5, pz));
+                const nextDistSq = (px - nearX) ** 2 + (pz - nearZ) ** 2;
+                if (nextDistSq < PLAYER_RADIUS * PLAYER_RADIUS) {
+                  const curNearX = Math.max(gx - 0.5, Math.min(gx + 0.5, playerPos.x));
+                  const curNearZ = Math.max(gz - 0.5, Math.min(gz + 0.5, playerPos.z));
+                  const curDistSq = (playerPos.x - curNearX) ** 2 + (playerPos.z - curNearZ) ** 2;
+                  if (nextDistSq < curDistSq - 0.0001) return true;
+                }
+              }
+            }
           }
+
+          // 2. Portas fechadas (bloqueio sólido no plano se não estiver no ar)
+          if (!isAir) {
+            for (const d of doors) {
+              if (!d.mesh.visible || d.open || d.hp <= 0) continue;
+              const nearX = Math.max(d.x - 0.5, Math.min(d.x + 0.5, px));
+              const nearZ = Math.max(d.z - 0.5, Math.min(d.z + 0.5, pz));
+              const nextDistSq = (px - nearX) ** 2 + (pz - nearZ) ** 2;
+              if (nextDistSq < PLAYER_RADIUS * PLAYER_RADIUS) {
+                const curNearX = Math.max(d.x - 0.5, Math.min(d.x + 0.5, playerPos.x));
+                const curNearZ = Math.max(d.z - 0.5, Math.min(d.z + 0.5, playerPos.z));
+                const curDistSq = (playerPos.x - curNearX) ** 2 + (playerPos.z - curNearZ) ** 2;
+                if (nextDistSq < curDistSq - 0.0001) return true;
+              }
+            }
+          }
+
+          // 3. Baús (física calculada conforme a escala do modelo)
+          for (const c of chests) {
+            if (!c.mesh.visible) continue;
+            const cScale = Number(c.scale) || (Number(chestConfigRef.current?.chestScale) || 1);
+            const chestRadius = 0.42 * cScale;
+            const minD = chestRadius + PLAYER_RADIUS;
+            const nextDist = Math.hypot(px - c.x, pz - c.z);
+            if (nextDist < minD) {
+              const curDist = Math.hypot(playerPos.x - c.x, playerPos.z - c.z);
+              if (nextDist < curDist - 0.0001) return true;
+            }
+          }
+
+          // 4. Rochas e Veios minerais (física proporcional ao tamanho/escala da pedra)
+          for (const r of rocks) {
+            if (!r.mesh.visible || r.hp <= 0) continue;
+            const rScale = Number(r.sizeScale || (r as any).baseScale) || 1.0;
+            if (isAir && rScale <= 0.6) continue; // Pula sobre pedras minúsculas
+            const rockRadius = 0.42 * rScale;
+            const minD = rockRadius + PLAYER_RADIUS;
+            const nextDist = Math.hypot(px - r.x, pz - r.z);
+            if (nextDist < minD) {
+              const curDist = Math.hypot(playerPos.x - r.x, playerPos.z - r.z);
+              if (nextDist < curDist - 0.0001) return true;
+            }
+          }
+
+          // 5. Cactos e Perigos temáticos (física proporcional à escala)
+          if (!isAir) {
+            for (const h of hazards) {
+              if (!h.mesh.visible || h.hp <= 0) continue;
+              const hScale = Number((h as any).scale) || 1.0;
+              const hazardRadius = 0.38 * hScale;
+              const minD = hazardRadius + PLAYER_RADIUS;
+              const nextDist = Math.hypot(px - h.x, pz - h.z);
+              if (nextDist < minD) {
+                const curDist = Math.hypot(playerPos.x - h.x, playerPos.z - h.z);
+                if (nextDist < curDist - 0.0001) return true;
+              }
+            }
+          }
+
+          // 6. Criaturas: Animais, Monstros e Boss (física condizente com a escala)
+          for (const s of slimes) {
+            if (s.dead || s.hp <= 0 || !s.root.visible || s.following) continue;
+            const sGx = s.root.position.x + (COLS - 1) / 2;
+            const sGz = s.root.position.z + (ROWS - 1) / 2;
+            const rootScale = Number(s.root.scale.x) || 1.0;
+            const baseR = s.isBoss ? 0.95 : (s.isAnimal ? 0.42 : 0.38);
+            const creatureRadius = baseR * rootScale;
+            if (isAir && creatureRadius <= 0.35) continue; // Pula sobre pequenos animais
+            const minD = creatureRadius + PLAYER_RADIUS;
+            const nextDist = Math.hypot(px - sGx, pz - sGz);
+            if (nextDist < minD) {
+              const curDist = Math.hypot(playerPos.x - sGx, playerPos.z - sGz);
+              if (nextDist < curDist - 0.0001) return true;
+            }
+          }
+
+          // 7. Água profunda se estiver submerso
+          const curDepthMove = waterDepthAt(playerPos.x, playerPos.z);
+          if (!isAir && submergedNow && waterDepthAt(px, pz) < curDepthMove) return true;
+
           return false;
         };
-        // Água: se estiver SUBMERSO (cabeça debaixo da água), não dá para sair andando para
-        // água mais rasa / solo — precisa NADAR (Q) ou PULAR (Espaço) até a cabeça aparecer.
-        const curDepthMove = waterDepthAt(playerPos.x, playerPos.z);
-        const waterBlocked = (x: number, z: number) => {
-          if (isAirborne) return false; // Pulo transpõe blocos com água profunda
-          return waterDepthAt(x, z) < curDepthMove && submergedNow;
-        };
-        if (!cellBlocked(Math.round(nx), Math.round(playerPos.z)) && !chestBlocked(nx, playerPos.z) && !waterBlocked(Math.round(nx), Math.round(playerPos.z))) playerPos.x = nx;
-        if (!cellBlocked(Math.round(playerPos.x), Math.round(nz)) && !chestBlocked(playerPos.x, nz) && !waterBlocked(Math.round(playerPos.x), Math.round(nz))) playerPos.z = nz;
+
+        // Movimento do jogador com deslizamento independente por eixo (X e Z)
+        if (!isPositionBlocked(nx, playerPos.z, isAirborne)) {
+          playerPos.x = nx;
+        }
+        if (!isPositionBlocked(playerPos.x, nz, isAirborne)) {
+          playerPos.z = nz;
+        }
         // gira o CORPO para o sentido do movimento
         playerRoot.rotation.y = Math.atan2(dx, dz);
         // coleta / eventos de célula
@@ -6069,7 +6187,7 @@ let adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal)
         const ago = 1.4;
         const nearby = (lx: number, lz: number) => Math.hypot(lx - playerPos.x, lz - playerPos.z) <= ago;
         const doorNear = doors.some(d => d.mesh.visible && nearby(d.x, d.z));
-        const chestNear = chests.some(c => c.mesh.visible && nearby(c.x, c.z));
+        const chestNear = chests.some(c => c.mesh.visible && (nearby(c.x, c.z) || Math.hypot(c.x - playerPos.x, c.z - playerPos.z) <= Math.max(1.5, (0.42 * (c.scale || 1)) + 1.1)));
         const breakNear = rocks.some(r => r.hp > 0 && r.mesh.visible && nearby(r.x, r.z))
           || hazards.some(h => h.hp > 0 && h.mesh.visible && nearby(h.x, h.z))
           || doors.some(d => d.hp > 0 && d.mesh.visible && nearby(d.x, d.z));
