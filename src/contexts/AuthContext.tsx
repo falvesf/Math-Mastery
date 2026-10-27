@@ -236,6 +236,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Blocos especiais (super admin, staff rules) só rodam na conta REAL do admin,
         // nunca durante impersonação — assim vemos os dados reais do usuário alvo.
         if (!isImpersonating) {
+          const nowIso = new Date().toISOString();
+          supabase.from('users').update({ last_seen_at: nowIso }).eq('id', sessionUser.id).then(() => {}, () => {});
+          userDoc.last_seen_at = nowIso;
+
           // Mágica de Super Admin (Abordagem Híbrida)
           // 1. Chave mestra: email hardcoded (fallback de segurança)
           // 2. Role no banco: permite adicionar outros superadmins

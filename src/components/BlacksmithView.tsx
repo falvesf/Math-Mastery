@@ -434,9 +434,15 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       console.error('Erro na consolidação automática de itens:', consErr);
     }
 
-    // Itens BLOQUEADOS (mochila cheia) NÃO entram na forja (materiais/scrolls) —
-    // é como se não existissem até a mochila ter espaço.
-    userItemsSnap = filterAvailableRows(userItemsSnap || [], userData, userData.inventoryPreferences?.slotMap || {});
+    // Itens BLOQUEADOS (mochila cheia) não entram na forja (materiais/scrolls),
+    // mas itens EQUIPADOS sempre estão disponíveis e nunca devem ser bloqueados pela capacidade da mochila.
+    const unequippedRows = (userItemsSnap || []).filter((r: any) => !r.equipped);
+    const availableUnequipped = filterAvailableRows(unequippedRows, userData, userData.inventoryPreferences?.slotMap || {});
+    const availableIds = new Set([
+      ...(userItemsSnap || []).filter((r: any) => r.equipped).map((r: any) => r.id),
+      ...availableUnequipped.map((r: any) => r.id)
+    ]);
+    userItemsSnap = (userItemsSnap || []).filter((r: any) => availableIds.has(r.id));
 
     // Catálogo de materiais/itens (nome/ícone/patente) — mesmo os que o jogador ainda não possui
     try {
@@ -517,7 +523,14 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             fuseSuccessChance: itemData.fuseSuccessChance ?? storeItemData.fuseSuccessChance ?? 75,
           });
           consumables.push({ docId: row.id, itemId: row.item_id, quantity: itemData.quantity || 1, itemTitle: itemData.itemTitle || storeItemData.title, itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '' });
-        } else if (itemData.itemType === 'equippable') {
+        } else if (
+          itemData.itemType === 'equippable' ||
+          storeItemData.type === 'equippable' ||
+          itemData.type === 'equippable' ||
+          ['weapon', 'armor', 'shield', 'helmet', 'boots', 'legs', 'chestplate', 'tool', 'pickaxe'].includes(String(itemData.itemCategory || storeItemData.itemCategory || itemData.itemType || storeItemData.type || '')) ||
+          !!itemData.avatarPart ||
+          !!storeItemData.avatarPart
+        ) {
           // Autoridade da loja para flags e configurações de transmutação/forja
           const isTransmutable = storeItemData.isTransmutable !== undefined ? storeItemData.isTransmutable : itemData.isTransmutable;
           const isTransmuted = storeItemData.isTransmuted !== undefined ? storeItemData.isTransmuted : itemData.isTransmuted;
@@ -531,6 +544,8 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             ...itemData,
             itemTitle: itemData.itemTitle || storeItemData.title || 'Equipamento',
             itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '',
+            itemType: 'equippable',
+            avatarPart: itemData.avatarPart || storeItemData.avatarPart,
             isTransmutable: !!isTransmutable,
             isTransmuted: !!isTransmuted,
             transmuteConfig: transmuteConfig || null,
@@ -1119,7 +1134,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   };
 
   const forgeableItems = items.filter(item => {
-    const isEquip = item.itemType === 'equippable' && (item.forgeLevel || 0) < 9;
+    const isEquip = (item.itemType === 'equippable' || !!item.avatarPart) && (item.forgeLevel || 0) < 9 && item.isForgeable !== false;
     const isMaterial = item.gameEffect === 'break_item' || item.gameEffect === 'fuse_item';
     if (inventoryFilter === 'equipment') return isEquip;
     if (inventoryFilter === 'materials') return isMaterial;

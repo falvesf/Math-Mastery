@@ -129,14 +129,11 @@ const DEFAULT_CONFIG: ScenarioConfig = {
     { id: 'steel', name: 'Porta de Aço', color: '#9aa4b2', hp: 3000, def: 900, openMode: 'challenge', challengeChance: 1 },
   ],
   lootTable: [
-    { kind: 'coins', weight: 40, min: 1, max: 10 },
-    { kind: 'item', weight: 20, itemId: '' },
-    { kind: 'key', weight: 10, keyId: 'chave_bronze' },
+    { kind: 'coins', weight: 45, min: 1, max: 10 },
+    { kind: 'item', weight: 25, itemId: '' },
     { kind: 'nothing', weight: 30 },
   ],
-  keys: [
-    { id: 'chave_bronze', name: 'Chave de Bronze', imageUrl: '' },
-  ],
+  keys: [],
 };
 
 const blankScenario = (tenantId: string | null): Scenario => ({

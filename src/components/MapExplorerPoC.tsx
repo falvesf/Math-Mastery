@@ -12,7 +12,7 @@ import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
 import { getAvailableInventorySpace } from '../lib/inventorySlots';
 import { applyForgeGlowToModel, applyForgeGlint, resolveModelTransform, type AvatarConfig, type EquippedItem } from './AvatarCharacter';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchEquippedItems } from '../lib/equippedItems';
+import { fetchEquippedItems, invalidateEquippedItems } from '../lib/equippedItems';
 import { supabase } from '../lib/supabase';
 import { calculateTotalStats } from '../lib/gacha';
 import { RANKS, getRankForXp } from '../lib/ranks';
@@ -20,7 +20,7 @@ import { fetchActiveCoin, fetchActiveChest, fetchActiveDoor, fetchActiveKey, fet
 import { calculatePlayerHitDamage } from '../lib/combatDamage';
 import { getEquippedDamageEffectInfo, FATALITY_BY_EFFECT } from '../lib/damageEffects';
 import { resolveConsumableEffect } from '../lib/consumableEffects';
-import { playConsumableSound, resolveAudioUrl } from '../lib/audioBank';
+import { playConsumableSound, resolveAudioUrl, playCoinCollect } from '../lib/audioBank';
 import { fetchPlayerBattleQuotes, pickPlayerBattleQuote, type PlayerBattleQuotes } from '../lib/playerQuotes';
 import ConsumableAnimationOverlay from './ConsumableAnimationOverlay';
 import MapVirtualControls from './MapVirtualControls';
@@ -1035,6 +1035,7 @@ if (!cancelled) {
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount || !itemsReady) return;
+    const playFx = (url: string, vol = 0.8, rate = 1.0) => { sfx.play(url, vol, rate); callbacks.current.pingSfx(); };
     // Dimensões e raio de visão vindos da config do cenário (com fallback).
     const sc0: any = scenarioRef.current || {};
     const layout: string[] | null = (Array.isArray(sc0.layout) && sc0.layout.length && typeof sc0.layout[0] === 'string') ? sc0.layout as string[] : null;
@@ -2875,9 +2876,9 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         if (rotDeg !== null && !isNaN(rotDeg)) {
           rotY = (rotDeg * Math.PI) / 180;
         } else {
-          // Auto: vira para o espaço livre ao redor (não para a parede)
+          // Auto: vira para o espaço livre ao redor (abertura para a frente, costas para a parede)
           const freeNb = ([[0, 1], [0, -1], [1, 0], [-1, 0]] as const).find(([dx, dz]) => !wallAt(xs + dx, zs + dz));
-          if (freeNb) rotY = Math.atan2(freeNb[0], freeNb[1]);
+          if (freeNb) rotY = Math.atan2(freeNb[0], freeNb[1]) + Math.PI;
         }
         const scenarioScale = Number(sc.chestConfig?.chestScale) || 1;
         const perChestScale = Number(perSlotCfg?.scale) || 1;
@@ -2930,8 +2931,8 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         if (!rocks.some(rk => rk.x === cc.entrance.x && rk.z === cc.entrance.z)) {
           rocks.push(mkRockSized(cc.entrance.x, cc.entrance.z));
         }
-        // Face virada para a ENTRADA do beco (costas para a parede do fundo):
-        const rotY = Math.atan2(cc.entrance.x - cc.x, cc.entrance.z - cc.z);
+        // Face virada para a ENTRADA do beco (abertura para a frente, costas para a parede do fundo):
+        const rotY = Math.atan2(cc.entrance.x - cc.x, cc.entrance.z - cc.z) + Math.PI;
         const cfgs: any[] = Array.isArray(sc.chestConfigs) ? sc.chestConfigs : [];
         const cIdx = chests.length;
         const perSlotCfg = cfgs[cIdx];
@@ -3745,14 +3746,17 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
     if (weapon?.battleSoundUrl) sfx.preload(weapon.battleSoundUrl);
     if (weapon?.criticalSoundUrl) sfx.preload(weapon.criticalSoundUrl);
 
-    // Força efetiva: PICARETA real ATIVA (perfil/mochila) tem prioridade; debug só p/ staff sem picareta.
-    let activePickaxeValue = hasRealPickaxe ? pickaxePower : 0;
+    // Força efetiva: SÓ é picareta se a arma ATIVAMENTE empunhada for picareta.
+    let activePickaxeValue = 0;
     let activePickaxeId: string | null = null;
     let activePickaxeModel: any = null;
     let activeWeaponTitle = '';   // título do item ativo (define espada/lança/picareta na 1ª pessoa)
     let activeWeaponAtk = 0;      // poder de ataque da arma EQUIPADA (dano em monstros)
     let activeWeaponWeight = 0;   // PESO da arma equipada (>= defesa da pedra/parede → quebra)
-    let activeWeaponIsPickaxe = hasRealPickaxe; // a arma ativa é uma PICARETA (quebra sem precisar de peso)
+    let activeWeaponIsPickaxe = false; // a arma ativa é uma PICARETA (quebra sem precisar de peso)
+    let activeWeaponBattleSoundUrl = weapon?.battleSoundUrl || '';
+    let activeWeaponCriticalSoundUrl = weapon?.criticalSoundUrl || '';
+    let lastNonPickaxeWeaponId: string | null = weapon ? String(weapon.itemId || weapon.docId || '') : null;
     let activeShieldModel: any = null; // ESCUDO ativo (mão oposta) — independente da arma
     let activeShieldId: string | null = null;
     let handPickaxeOptions: any[] = [];
@@ -4062,13 +4066,19 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
                 else if (isDef) eq = oDef ? false : null;
                 else eq = (oTwo || !oDef) ? false : null;
               }
-              if (eq !== null) supabase.from('user_items').update({ equipped: eq }).eq('id', did).then(() => {}, () => {});
+              if (eq !== null) {
+                supabase.from('user_items').update({ equipped: eq }).eq('id', did).then(() => {
+                  invalidateEquippedItems(uid);
+                }, () => {});
+              }
             }
           };
           const persistUnequip = (choice: any) => {
             const uid = (userData as any)?.uid; const did = String(choice?.docId || '');
             if (!uid || !did) return;
-            supabase.from('user_items').update({ equipped: false }).eq('id', did).then(() => {}, () => {});
+            supabase.from('user_items').update({ equipped: false }).eq('id', did).then(() => {
+              invalidateEquippedItems(uid);
+            }, () => {});
           };
           equipHandRef.current = (id: string | null) => {
             const opt = id ? opts.find(o => o.id === id) : null;
@@ -4077,33 +4087,71 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
             const model = id ? (weaponModelById.get(id) || null) : null;
             if (isShield) {
               // ESCUDO (mão oposta): NÃO mexe na arma. Clicar no mesmo desequipa; em outro, troca.
-              if (id && activeShieldModel === model) { activeShieldModel = null; activeShieldId = null; try { persistUnequip(item); } catch { /* noop */ } }
-              else { activeShieldModel = model; activeShieldId = id; try { persistHandEquip(item); } catch { /* noop */ } }
+              if (id && activeShieldModel === model) {
+                if (activeShieldModel) try { activeShieldModel.visible = false; } catch { /* noop */ }
+                activeShieldModel = null; activeShieldId = null;
+                try { persistUnequip(item); } catch { /* noop */ }
+              } else {
+                if (activeShieldModel && activeShieldModel !== model) try { activeShieldModel.visible = false; } catch { /* noop */ }
+                activeShieldModel = model; activeShieldId = id;
+                if (model) try { model.visible = true; } catch { /* noop */ }
+                try { persistHandEquip(item); } catch { /* noop */ }
+              }
             } else if (id) {
               // ARMA (ataque/picareta): NÃO mexe no escudo. Clicar na mesma desequipa; em outra, troca.
               if (activePickaxeModel === model) {
+                if (model) try { model.visible = false; } catch { /* noop */ }
                 activePickaxeModel = null; activePickaxeId = null; activeWeaponTitle = '';
                 activePickaxeValue = 0; activeWeaponAtk = 0; activeWeaponWeight = 0; activeWeaponIsPickaxe = false;
+                activeWeaponBattleSoundUrl = ''; activeWeaponCriticalSoundUrl = '';
                 try { persistUnequip(item); } catch { /* noop */ }
               } else {
+                if (activePickaxeModel && activePickaxeModel !== model) try { activePickaxeModel.visible = false; } catch { /* noop */ }
+                for (const h of handModels) {
+                  if (h.model && h.model !== model && (!activeShieldModel || h.model !== activeShieldModel)) {
+                    try { h.model.visible = false; } catch { /* noop */ }
+                  }
+                }
                 activePickaxeModel = model; activePickaxeId = id; activeWeaponTitle = opt?.title || '';
                 activeWeaponAtk = opt?.value || statsRef.current.attack;
                 activeWeaponWeight = Number((item as any)?.weight) || 0;
                 // SÓ a PICARETA quebra como picareta; outras armas usam o PESO (se houver).
                 activeWeaponIsPickaxe = !!opt?.isPickaxe;
                 activePickaxeValue = opt?.isPickaxe ? (opt?.value || 15) : 0;
+                if (model) try { model.visible = true; } catch { /* noop */ }
+
+                // Carrega sons configurados na arma
+                const catItem = item ? itemCatalogRef.current.get(String(item.itemId || item.id || '')) : null;
+                activeWeaponBattleSoundUrl = (item as any)?.battleSoundUrl || (item as any)?.data?.battleSoundUrl || catItem?.battleSoundUrl || catItem?.storeData?.battleSoundUrl || '';
+                activeWeaponCriticalSoundUrl = (item as any)?.criticalSoundUrl || (item as any)?.data?.criticalSoundUrl || catItem?.criticalSoundUrl || catItem?.storeData?.criticalSoundUrl || '';
+                if (activeWeaponBattleSoundUrl) sfx.preload(activeWeaponBattleSoundUrl);
+                if (activeWeaponCriticalSoundUrl) sfx.preload(activeWeaponCriticalSoundUrl);
+
+                if (!opt?.isPickaxe) {
+                  lastNonPickaxeWeaponId = id;
+                }
                 try { persistHandEquip(item); } catch { /* noop */ }
               }
             } else {
-              // id nulo: limpa arma e escudo (volta ao padrão do perfil)
+              // id nulo: desequipa arma (mãos livres)
+              if (activePickaxeModel) try { activePickaxeModel.visible = false; } catch { /* noop */ }
+              for (const h of handModels) {
+                if (h.model && (!activeShieldModel || h.model !== activeShieldModel)) {
+                  try { h.model.visible = false; } catch { /* noop */ }
+                }
+              }
+              const oldItem = activePickaxeId ? opts.find(o => o.id === activePickaxeId)?.item : null;
+              if (oldItem) {
+                try { persistUnequip(oldItem); } catch { /* noop */ }
+              }
               activePickaxeModel = null; activePickaxeId = null; activeWeaponTitle = '';
               activePickaxeValue = 0; activeWeaponAtk = 0; activeWeaponWeight = 0; activeWeaponIsPickaxe = false;
-              activeShieldModel = null; activeShieldId = null;
+              activeWeaponBattleSoundUrl = ''; activeWeaponCriticalSoundUrl = '';
             }
             debugPickaxe = false;
             setHandActiveId(activePickaxeId);
             setHandActiveShieldId(activeShieldId);
-            callbacks.current.setMsg(id ? `⚔️ ${isShield ? 'Escudo' : 'Arma'} equipado: ${opt?.title || ''}` : '⚔️ Voltou para a arma padrão.');
+            callbacks.current.setMsg(id ? `⚔️ ${isShield ? 'Escudo' : 'Arma'} equipado: ${opt?.title || ''}` : '⚔️ Arma desequipada.');
             buildFpWeapon(true); // SEMPRE reconstrói o item da 1ª pessoa (mesmo equipando em 3ª)
           };
         }
@@ -4146,11 +4194,10 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       // Reconstroi o item da 1ª pessoa (espada ↔ picareta).
       if (firstPerson) buildFpWeapon(true);
     };
-    // PICARETA: usa o poder real da ferramenta (ou fallback da debug só para staff).
+    // PICARETA: SÓ tem poder se a ferramenta estiver ATIVAMENTE empunhada na mão (ou debug staff).
     const pickaxeActivePower = () => {
-      if (activePickaxeValue > 0) return activePickaxeValue;
+      if (activeWeaponIsPickaxe && activePickaxeValue > 0) return activePickaxeValue;
       if (activeWeaponIsPickaxe && activeWeaponAtk > 0) return activeWeaponAtk;
-      if (hasRealPickaxe && pickaxePower > 0) return pickaxePower;
       if (canDebugPickaxe && debugPickaxe) return DEBUG_PICKAXE_DMG;
       return 0;
     };
@@ -4163,6 +4210,37 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       const roll = calculatePlayerHitDamage(pd, def, 0, isCrit);
       return { damage: Math.max(1, roll.damage), isCritical: roll.isCritical };
     };
+
+    // Barras de HP 3D para blocos danificados (paredes, rochas, veios minerais)
+    type BlockHpBar = { bar: THREE.Group; fg: THREE.Mesh; obj: any; posY: number; gx: number; gz: number };
+    const blockHpBars = new Map<any, BlockHpBar>();
+    const updateBlockHpBar = (tgt: any) => {
+      let b = blockHpBars.get(tgt.obj);
+      if (!b) {
+        const bar = new THREE.Group();
+        const bg = new THREE.Mesh(barBgGeo, new THREE.MeshBasicMaterial({ color: 0x1a0505 }));
+        const fg = new THREE.Mesh(barFgGeo, new THREE.MeshBasicMaterial({ color: 0xe67e22 }));
+        fg.position.z = 0.01;
+        bar.add(bg);
+        bar.add(fg);
+        const posY = tgt.kind === 'wall' ? (cfgWallHeight + 0.35) : (tgt.kind === 'rock' ? Math.max(1.3, (tgt.obj.baseScale || 1) * 1.35) : 1.35);
+        bar.position.set(wx(tgt.gx), posY, wz(tgt.gz));
+        scene.add(bar);
+        b = { bar, fg, obj: tgt.obj, posY, gx: tgt.gx, gz: tgt.gz };
+        blockHpBars.set(tgt.obj, b);
+      }
+      const frac = Math.max(0, tgt.obj.hp / Math.max(1, tgt.obj.maxHp));
+      b.fg.scale.x = frac;
+      b.fg.position.x = -(1 - frac) * 0.5;
+    };
+    const removeBlockHpBar = (obj: any) => {
+      const b = blockHpBars.get(obj);
+      if (b) {
+        try { scene.remove(b.bar); } catch { /* noop */ }
+        blockHpBars.delete(obj);
+      }
+    };
+
     // Pickups de ITEM do catálogo / CHAVE do cenário (passar por cima coleta).
     type LootPickup = { x: number; z: number; spr: THREE.Sprite; kind: 'item' | 'key'; data: any; taken: boolean; born: number; highlight: boolean };
     const lootPickups: LootPickup[] = [];
@@ -4268,21 +4346,45 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
           };
           (async () => {
             try {
+              const effectiveTenantId = tenantIdProp || (userData as any)?.tenantId || (userData as any)?.tenant_id || null;
               const isStackable = ['consumable', 'other', 'ranch'].includes(String(p.data.type || p.data.itemType || ''));
-              let canStack = false;
-              const { count } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', studentId).eq('equipped', false);
               if (isStackable) {
-                const { data: ex } = await supabase.from('user_items').select('id,data').eq('student_id', studentId).eq('item_id', p.data.id).eq('equipped', false).limit(5);
-                canStack = (ex || []).some(r => Number((r as any).data?.quantity || 1) < 99);
+                const { data: ex } = await supabase
+                  .from('user_items')
+                  .select('id, data')
+                  .eq('student_id', studentId)
+                  .eq('item_id', p.data.id)
+                  .eq('equipped', false)
+                  .limit(10);
+                const matchingRow = (ex || []).find((r: any) => {
+                  const qty = Number((r.data as any)?.quantity || 1);
+                  return qty < 99;
+                });
+                if (matchingRow) {
+                  const currentQty = Number((matchingRow.data as any)?.quantity || 1);
+                  const updatedData = { ...matchingRow.data, quantity: currentQty + 1 };
+                  await supabase.from('user_items').update({ data: updatedData }).eq('id', matchingRow.id);
+                  callbacks.current.setMsg(`🎒 ${payload.itemTitle} coletado (x${currentQty + 1})!`);
+                  return;
+                }
               }
-              if (!canStack && getAvailableInventorySpace(userData, count || 0) <= 0) {
+              const { count } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', studentId).eq('equipped', false);
+              if (getAvailableInventorySpace(userData, count || 0) <= 0) {
                 callbacks.current.setMsg('🎒 Inventário cheio! Libere espaço para coletar o item.');
                 return;
               }
-            } catch { /* se a checagem falhar, tenta coletar mesmo assim */ }
-            Promise.resolve(supabase.from('user_items').insert({ student_id: studentId, item_id: p.data.id, equipped: false, data: payload }))
-              .then(() => callbacks.current.setMsg(`🎒 Item coletado: ${payload.itemTitle}!`))
-              .catch(() => callbacks.current.setMsg(`🎒 ${payload.itemTitle} coletado!`));
+              await supabase.from('user_items').insert({
+                student_id: studentId,
+                item_id: p.data.id,
+                equipped: false,
+                data: payload,
+                tenant_id: effectiveTenantId
+              });
+              callbacks.current.setMsg(`🎒 Item coletado: ${payload.itemTitle}!`);
+            } catch (err) {
+              console.warn('[MapPoC] Falha ao coletar item:', err);
+              callbacks.current.setMsg(`🎒 ${payload.itemTitle} coletado!`);
+            }
           })();
         } else callbacks.current.setMsg(`🎒 ${p.data.title} coletado!`);
       }
@@ -4297,7 +4399,13 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       let r = Math.random() * (total || 1);
       let drop = table[table.length - 1];
       for (const e of table) { r -= Math.max(0, Number(e.weight) || 0); if (r <= 0) { drop = e; break; } }
-      if (drop.kind === 'coins') { const min = Number(drop.min) || 1, max = Number(drop.max) || 10; const v = min + Math.floor(Math.random() * (max - min + 1)); callbacks.current.setCoins(n => n + v); spawnPop(world, `+${v} 🪙`, false, 'coin'); }
+      if (drop.kind === 'coins') {
+        const min = Number(drop.min) || 1, max = Number(drop.max) || 10;
+        const v = min + Math.floor(Math.random() * (max - min + 1));
+        callbacks.current.setCoins(n => n + v);
+        spawnPop(world, `+${v} 🪙`, false, 'coin');
+        playCoinCollect(coinConfigRef.current?.coinSoundUrl);
+      }
       else if (drop.kind === 'item') {
         const item = itemCatalogRef.current.get(String(drop.itemId || ''));
         if (!item) { callbacks.current.setMsg('… o bloco não guardava nada.'); return; }
@@ -4306,7 +4414,21 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
       }
       else if (drop.kind === 'key') {
         const key = cfgKeys.find((k: any) => k.id === drop.keyId);
-        if (!key) { callbacks.current.setMsg('… o bloco não guardava nada.'); return; }
+        const hasLockedDoorNeedingKey = doors.some(d => {
+          const type = cfgDoorTypes.find((t: any) => t.id === d.typeId) || cfgDoor;
+          return type?.openMode === 'key' && String(type?.keyItemId || '') === String(drop.keyId || '');
+        });
+        const hasLockedChestNeedingKey = chests.some(c => c.isLocked && !c.opened);
+        if (!key || (!hasLockedDoorNeedingKey && !hasLockedChestNeedingKey)) {
+          // Cenário sem portas ou baús trancados precisando desta chave: solta moedas como recompensa útil
+          const min = 1, max = 10;
+          const v = min + Math.floor(Math.random() * (max - min + 1));
+          callbacks.current.setCoins(n => n + v);
+          spawnPop(world, `+${v} 🪙`, false, 'coin');
+          playCoinCollect(coinConfigRef.current?.coinSoundUrl);
+          callbacks.current.setMsg(`🪙 O bloco soltou ${v} moeda(s)!`);
+          return;
+        }
         spawnLootPickup(gx, gz, 'key', key, 0xfbbf24);
         callbacks.current.setMsg(`💥 O bloco soltou uma chave: ${key.name}!`);
       }
@@ -4404,9 +4526,13 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         src.connect(flt); flt.connect(g); g.connect(ctx.destination); src.start();
       } catch { /* noop */ }
     };
-    const playFx = (url: string, vol = 0.8, rate = 1.0) => { sfx.play(url, vol, rate); callbacks.current.pingSfx(); };
     const playSword = (isCrit: boolean) => {
-      const url = isCrit && weapon?.criticalSoundUrl ? weapon.criticalSoundUrl : (weapon?.battleSoundUrl || battleSoundsRef.current.punch);
+      let url = isCrit && activeWeaponCriticalSoundUrl ? activeWeaponCriticalSoundUrl : activeWeaponBattleSoundUrl;
+      if (!url) {
+        if (activeWeaponIsPickaxe) url = rockHitSoundUrl || battleSoundsRef.current.punch;
+        else if (activePickaxeId) url = battleSoundsRef.current.fatalSlice || battleSoundsRef.current.punch;
+        else url = weapon?.battleSoundUrl || battleSoundsRef.current.fatalSlice || battleSoundsRef.current.punch;
+      }
       if (url) playFx(url, 0.8); else { swingFallback(); callbacks.current.pingSfx(); }
     };
     const playMonsterHurtSound = (s?: any, rate = 1.0) => playFx((s && (s.damageSound || '')) || battleSoundsRef.current.punch, 0.8, rate);
@@ -4571,7 +4697,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         // A tecla P busca uma PICARETA no inventário e equipa (a de maior raridade). Se já
         // houver uma picareta ativa, desequipa (volta para a arma padrão).
         const activeIsPick = !!activePickaxeId && handPickaxeOptions.some((o: any) => o.id === activePickaxeId);
-        equipHandRef.current(activeIsPick ? null : handPickaxeOptions[0].id);
+        equipHandRef.current(activeIsPick ? (lastNonPickaxeWeaponId || null) : handPickaxeOptions[0].id);
         return;
       }
       setDebugPickaxe(!debugPickaxe);
@@ -4591,6 +4717,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         const v = min + Math.floor(Math.random() * (max - min + 1));
         callbacks.current.setCoins(n => n + v);
         spawnPop(world, `+${v} 🪙`, false, 'coin');
+        playCoinCollect(coinConfigRef.current?.coinSoundUrl);
         if (highlight) spawnHighlightRing(world);
         return { text: `+${v} 🪙`, coins: v };
       }
@@ -5021,6 +5148,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         if (hitResult.isCritical) triggerCritFx('out', `💥 CRÍTICO! -${dmg}`);
         onVeinHit(tgt.obj, tgt.gx, tgt.gz);
         if (tgt.obj.hp <= 0) {
+          removeBlockHpBar(tgt.obj);
           if (tgt.kind === 'wall') { grid.wall[tgt.gz][tgt.gx] = false; wallCells.delete(tgt.key!); scene.remove(tgt.obj.mesh); }
           else if (tgt.kind === 'door') { tgt.obj.mesh.visible = false; scene.remove(tgt.obj.mesh); }
           else if (tgt.kind === 'hazard' || tgt.kind === 'rock') { tgt.obj.mesh.visible = false; }
@@ -5033,11 +5161,12 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
             else { addMonster(tgt.gx, tgt.gz, 10); callbacks.current.setMsg('👾 Um monstro emergiu da parede!'); }
           }
         } else {
+          updateBlockHpBar(tgt);
           if (tgt.kind === 'wall') {
             const ratio = tgt.obj.hp / tgt.obj.maxHp;
             applyWallMaterial(tgt.obj.mesh, wallTypeById(tgt.obj.typeId), ratio < 0.4 ? 3 : ratio < 0.7 ? 2 : 1);
           }
-          callbacks.current.setMsg(`${hitResult.isCritical ? '💥 CRÍTICO! ' : '⛏️ '}Rachou! -${dmg} (resta ${Math.round(tgt.obj.hp)}/${Math.round(tgt.obj.maxHp)})`);
+          callbacks.current.setMsg(`${hitResult.isCritical ? '💥 CRÍTICO! ' : '⛏️ '}Rachou! -${dmg}`);
         }
         return;
       }
@@ -5423,7 +5552,7 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
         if (coin) {
           coin.mesh.visible = false;
           callbacks.current.setCoins(n => n + coin.value);
-          playFx(coinConfigRef.current?.coinSoundUrl || battleSoundsRef.current.punch, 0.7);
+          playCoinCollect(coinConfigRef.current?.coinSoundUrl);
           spawnPop(new THREE.Vector3(wx(gx), 1.3, wz(gz)), `+${coin.value} 🪙`, false, 'coin');
           callbacks.current.setMsg(`🪙 +${coin.value} moeda(s)!`);
         }
@@ -5656,8 +5785,8 @@ const hz = hazards.find(h => h.x === gx && h.z === gz);
             s.root.scale.z = Math.max(0.2, origS.z * (1 - curl));
             s.root.scale.y = Math.max(0.2, origS.y * (1 - curl * 0.5));
 
-            // Mantém repousada no solo pelo dorso
-            s.root.position.y = origY + Math.sin(flipEase * Math.PI) * 0.14 + 0.04;
+            // Eleva o pivô para que, ao inverter 180°, o corpo descanse no solo e as patas fiquem para cima (sem afundar no chão)
+            s.root.position.y = origY + Math.sin(flipEase * Math.PI) * 0.35 + flipEase * 0.55;
 
             if (p > 0.72) {
               const alpha = Math.max(0, (1 - p) / 0.28);
@@ -6182,6 +6311,10 @@ let adversarial = (!s.isAnimal && !!o.isAnimal) || (!!s.isAnimal && !o.isAnimal)
       for (let i = 0; i < chestMixers.length; i++) {
         try { chestMixers[i].update(dt); } catch { /* noop */ }
       }
+      // Billboard das barras de HP de blocos danificados (rochas, paredes, minérios)
+      for (const b of blockHpBars.values()) {
+        b.bar.lookAt(camera.position);
+      }
       // DICA contextual de interação (porta/baú → E; quebrável → P/slot).
       {
         const ago = 1.4;
@@ -6375,8 +6508,11 @@ revealedKeys.add(k); explored.add(k);
     cleanups.push(() => {
       stopVictoryMusic();
       chestMixers.length = 0;
+      for (const b of blockHpBars.values()) { try { scene.remove(b.bar); } catch { /* noop */ } }
+      blockHpBars.clear();
       for (const d of waterDrops) { scene.remove(d.mesh); (d.mesh.material as any)?.dispose?.(); d.mesh.geometry?.dispose?.(); }
       for (const r of waterRipples) { scene.remove(r.mesh); (r.mesh.material as any)?.dispose?.(); r.mesh.geometry?.dispose?.(); }
+      if (userData?.uid) invalidateEquippedItems(userData.uid);
     });
 
     return () => {

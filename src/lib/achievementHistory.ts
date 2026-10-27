@@ -806,10 +806,39 @@ export async function fetchStudentActivityLog(studentUid: string): Promise<Achie
     });
 
     // --- 3. LANÇAMENTOS DO PROFESSOR ---
+    const isLikelyUrl = (str?: string) => !!str && /^(https?:\/\/|\/|data:image\/)/i.test(str.trim());
     (teacherLogs || []).forEach((log: any) => {
-      const evalName = log.eval_name || log.reason || 'Atribuição';
+      let evalName = log.eval_name || log.reason || 'Atribuição';
+      let justification = log.justification || '';
+      let img = log.image_url || log.imageUrl || '';
+
+      const rawText = (!log.eval_name && log.reason) ? log.reason : (log.eval_name && log.eval_name.includes('|') ? log.eval_name : '');
+      if (rawText && rawText.includes('|')) {
+        const parts = rawText.split(/\s*\|\s*/);
+        evalName = parts[0]?.trim() || evalName;
+        if (parts.length === 2) {
+          if (isLikelyUrl(parts[1])) {
+            img = parts[1].trim();
+          } else if (!justification) {
+            justification = parts[1].trim();
+          }
+        } else if (parts.length >= 3) {
+          if (isLikelyUrl(parts[1])) {
+            img = parts[1].trim();
+            if (!justification) justification = parts.slice(2).join(' | ').trim();
+          } else if (parts[1].trim() === '') {
+            if (!justification) justification = parts.slice(2).join(' | ').trim();
+          } else {
+            if (!justification) justification = parts.slice(1).join(' | ').trim();
+          }
+        }
+      }
+
+      if (!isLikelyUrl(img)) {
+        img = '';
+      }
+
       const xpGained = log.xp_gained !== undefined ? log.xp_gained : (log.amount || 0);
-      const justification = log.justification || '';
       const dateStr = log.created_at || new Date().toISOString();
       const timeMs = new Date(dateStr).getTime();
 
@@ -818,7 +847,7 @@ export async function fetchStudentActivityLog(studentUid: string): Promise<Achie
         type: 'teacher_xp',
         title: `Lançamento do Professor: ${evalName}`,
         subtitle: justification ? `Justificativa: ${justification}` : undefined,
-        imageUrl: log.image_url || log.imageUrl || '',
+        imageUrl: img,
         badgeText: xpGained >= 0 ? `+${xpGained} XP` : `${xpGained} XP`,
         badgeType: xpGained >= 0 ? 'xp_positive' : 'xp_negative',
         timestamp: timeMs,

@@ -631,7 +631,8 @@ export async function executeGradebookSync(
             await supabase.from('xp_logs').insert({
               student_id: row.studentId,
               amount: row.diffXp,
-              reason: `Planilha de Notas | Sincronização Bimestral (${row.diffXp > 0 ? '+' : ''}${row.diffXp} XP)${teacherEmail ? ` por ${teacherEmail}` : ''}`,
+              reason: `Planilha de Notas |  | Sincronização Bimestral (${row.diffXp > 0 ? '+' : ''}${row.diffXp} XP)${teacherEmail ? ` por ${teacherEmail}` : ''}`,
+              tenant_id: tenantId || null,
             });
           } catch (logErr) {
             console.warn('Não foi possível gravar xp_log:', logErr);

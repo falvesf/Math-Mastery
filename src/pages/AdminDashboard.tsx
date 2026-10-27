@@ -485,6 +485,8 @@ function StudentEnrollmentCard({ reqUser, tenantId, schoolClasses, userData, onA
   );
 }
 
+const isLikelyUrl = (str?: string) => !!str && /^(https?:\/\/|\/|data:image\/)/i.test(str.trim());
+
 export default function AdminDashboard() {
   const { showAlert, showConfirm, showToast } = useDialog();
   const { userData, startImpersonation } = useAuth();
@@ -1117,21 +1119,33 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
         let eName = d.eval_name || d.reason || 'Avaliação';
         let just = d.justification || '';
         let img = '';
-        if (!d.eval_name && d.reason && d.reason.includes(' | ')) {
-           const parts = d.reason.split(' | ');
-           eName = parts[0].trim();
-           img = parts[1] ? parts[1].trim() : '';
-           just = parts[2] ? parts[2].trim() : '';
-        } else if (d.eval_name && d.eval_name.includes(' | ')) {
-           const parts = d.eval_name.split(' | ');
-           eName = parts[0].trim();
-           img = parts[1] ? parts[1].trim() : '';
+        
+        const rawReason = (!d.eval_name && d.reason) ? d.reason : (d.eval_name && d.eval_name.includes('|') ? d.eval_name : '');
+        if (rawReason && rawReason.includes('|')) {
+          const parts = rawReason.split(/\s*\|\s*/);
+          eName = parts[0]?.trim() || eName;
+          if (parts.length === 2) {
+            if (isLikelyUrl(parts[1])) {
+              img = parts[1].trim();
+            } else if (!just) {
+              just = parts[1].trim();
+            }
+          } else if (parts.length >= 3) {
+            if (isLikelyUrl(parts[1])) {
+              img = parts[1].trim();
+              if (!just) just = parts.slice(2).join(' | ').trim();
+            } else if (parts[1].trim() === '') {
+              if (!just) just = parts.slice(2).join(' | ').trim();
+            } else {
+              if (!just) just = parts.slice(1).join(' | ').trim();
+            }
+          }
         }
         
         return {
           logId: d.id, 
           evalName: eName,
-          imageUrl: img,
+          imageUrl: isLikelyUrl(img) ? img : '',
           xpGained: d.xp_gained !== undefined ? d.xp_gained : (d.amount || 0),
           justification: just,
           ...d 
@@ -2803,8 +2817,10 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                     const classB = b.classId || '';
                     comparison = classA.localeCompare(classB);
                   } else if (studentSortBy === 'lastLogin') {
-                    const aT = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
-                    const bT = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
+                    const aRaw = a.last_seen_at || (a as any).last_sign_in_at || (((a.xp || 0) > 0 || (a.coins || 0) > 0) ? (a as any).created_at : null);
+                    const bRaw = b.last_seen_at || (b as any).last_sign_in_at || (((b.xp || 0) > 0 || (b.coins || 0) > 0) ? (b as any).created_at : null);
+                    const aT = aRaw ? new Date(aRaw).getTime() : 0;
+                    const bT = bRaw ? new Date(bRaw).getTime() : 0;
                     comparison = aT - bT;
                   }
                   
@@ -2822,11 +2838,16 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                       const sClass = schoolClasses.find(c => c.name === student.classId);
                       const classColor = sClass ? sClass.color : 'var(--text-secondary)';
                       const isSelected = selectedStudentIds.includes(student.uid);
-                      const lastSeenTs = student.last_seen_at ? new Date(student.last_seen_at).getTime() : 0;
+                      const lastSeenRaw = student.last_seen_at || (student as any).last_sign_in_at;
+                      const lastSeenTs = lastSeenRaw ? new Date(lastSeenRaw).getTime() : 0;
+                      const hasActivity = (student.xp || 0) > 0 || (student.coins || 0) > 0;
                       const lastSeenLabel = lastSeenTs > 0
                         ? new Date(lastSeenTs).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + new Date(lastSeenTs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                        : 'Nunca acessou';
-                      const lastSeenRecent = lastSeenTs > 0 && (Date.now() - lastSeenTs) < 7 * 24 * 60 * 60 * 1000;
+                        : (hasActivity && (student as any).created_at
+                          ? new Date((student as any).created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                          : 'Nunca acessou');
+                      const effectiveTs = lastSeenTs > 0 ? lastSeenTs : (hasActivity && (student as any).created_at ? new Date((student as any).created_at).getTime() : 0);
+                      const lastSeenRecent = effectiveTs > 0 && (Date.now() - effectiveTs) < 7 * 24 * 60 * 60 * 1000;
 
                       return (
                         <div key={student.uid} className={`glass-panel admin-student-card ${isSelected ? 'selected' : ''}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', background: isSelected ? 'rgba(251, 191, 36, 0.05)' : 'rgba(255,255,255,0.02)', border: isSelected ? '1px solid var(--gold-primary)' : '1px solid transparent' }}>
@@ -3972,8 +3993,13 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                     <div key={log.logId} style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', borderLeft: `3px solid ${log.xpGained >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)'}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          {log.imageUrl && (
-                            <img src={log.imageUrl} alt="Badge" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+                          {log.imageUrl && isLikelyUrl(log.imageUrl) && (
+                            <img 
+                              src={log.imageUrl} 
+                              alt="Badge" 
+                              style={{ width: '32px', height: '32px', objectFit: 'contain' }} 
+                              onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                            />
                           )}
                           <div>
                             <strong style={{ fontSize: '0.95rem' }}>{log.evalName}</strong>
@@ -4001,7 +4027,13 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
                         <span>{log.grade !== undefined ? `Nota base: ${log.grade}` : ''}</span>
-                        <span>{log.timestamp ? new Date(log.timestamp.seconds * 1000).toLocaleDateString('pt-BR') : 'Agora'}</span>
+                        <span>
+                          {log.timestamp 
+                            ? new Date(log.timestamp.seconds * 1000).toLocaleDateString('pt-BR') 
+                            : log.created_at 
+                              ? new Date(log.created_at).toLocaleDateString('pt-BR') 
+                              : 'Agora'}
+                        </span>
                       </div>
                     </div>
                   ))
