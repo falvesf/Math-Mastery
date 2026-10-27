@@ -1185,14 +1185,160 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
   const loadCoinHistoryLocally = async (studentUid: string) => {
     setLoadingCoinHistory(true);
     const { data: snap } = await supabase.from('coin_logs').select('*').eq('student_id', studentUid);
-    let logs = (snap || []).map(d => ({
-      logId: d.id,
-      amount: Number(d.amount || 0),
-      reason: d.reason || '',
-      justification: d.justification || '',
-      created_at: d.created_at,
-      ...d
-    }));
+    const rawLogs = snap || [];
+    const uuidRegex = /([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/gi;
+    const referencedItemIds = new Set<string>();
+    const referencedQuestIds = new Set<string>();
+
+    rawLogs.forEach((d: any) => {
+      const combined = `${d.reason || ''} ${d.justification || ''}`;
+      const matches = combined.match(uuidRegex);
+      if (matches) {
+        matches.forEach(m => referencedItemIds.add(m.toLowerCase()));
+      }
+      const qMatch = (d.reason || '').match(/\[missão\s+([^\]]+)\]/i);
+      if (qMatch) {
+        referencedQuestIds.add(qMatch[1].trim());
+      }
+    });
+
+    const itemsMap = new Map<string, { title: string; imageUrl?: string }>();
+    (availableStoreItems || []).forEach(si => {
+      if (si.id) {
+        const title = si.title || si.name || (si.data as any)?.title || 'Item';
+        const img = si.imageUrl || (si.data as any)?.itemImageUrl || (si.data as any)?.imageUrl || '';
+        itemsMap.set(si.id.toLowerCase(), { title, imageUrl: img });
+      }
+    });
+
+    const missingItemIds = Array.from(referencedItemIds).filter(id => !itemsMap.has(id));
+    if (missingItemIds.length > 0) {
+      try {
+        const { data: storeSnap } = await supabase.from('store_items').select('id, name, data').in('id', missingItemIds);
+        (storeSnap || []).forEach((si: any) => {
+          const title = si.name || si.data?.title || si.data?.itemTitle || 'Item';
+          const img = si.data?.itemImageUrl || si.data?.imageUrl || '';
+          itemsMap.set(si.id.toLowerCase(), { title, imageUrl: img });
+        });
+      } catch (err) {
+        console.warn('Erro ao buscar store_items para histórico de moedas:', err);
+      }
+
+      const stillMissing = missingItemIds.filter(id => !itemsMap.has(id));
+      if (stillMissing.length > 0) {
+        try {
+          const { data: uiSnap } = await supabase.from('user_items').select('id, item_id, item_title, data').or(`id.in.(${stillMissing.join(',')}),item_id.in.(${stillMissing.join(',')})`);
+          (uiSnap || []).forEach((ui: any) => {
+            const title = ui.item_title || ui.data?.itemTitle || ui.data?.title || 'Item';
+            const img = ui.data?.itemImageUrl || ui.data?.imageUrl || '';
+            if (ui.id) itemsMap.set(ui.id.toLowerCase(), { title, imageUrl: img });
+            if (ui.item_id) itemsMap.set(ui.item_id.toLowerCase(), { title, imageUrl: img });
+          });
+        } catch (err) {
+          console.warn('Erro ao buscar user_items para histórico de moedas:', err);
+        }
+      }
+    }
+
+    const questsMap = new Map<string, { title: string; imageUrl?: string }>();
+    (quests || []).forEach(q => {
+      if (q.id) questsMap.set(q.id, { title: q.title || 'Missão', imageUrl: q.podiumBgUrl || '' });
+    });
+
+    const missingQuestIds = Array.from(referencedQuestIds).filter(id => !questsMap.has(id));
+    if (missingQuestIds.length > 0) {
+      try {
+        const { data: qSnap } = await supabase.from('quests').select('id, title, podium_bg_url, podiumBgUrl').in('id', missingQuestIds);
+        (qSnap || []).forEach((q: any) => {
+          questsMap.set(q.id, { title: q.title || 'Missão', imageUrl: q.podiumBgUrl || q.podium_bg_url || '' });
+        });
+      } catch (err) {
+        console.warn('Erro ao buscar quests para histórico de moedas:', err);
+      }
+    }
+
+    let logs = rawLogs.map(d => {
+      let rawTitle = (d.reason || '').trim();
+      let rawJust = (d.justification || '').trim();
+      let displayTitle = rawTitle || 'Moedas';
+      let displayJust = rawJust;
+      let displayImage = '';
+
+      const lowerReason = rawTitle.toLowerCase();
+      const isForge = lowerReason.includes('forja');
+      const isTransmute = lowerReason.includes('transmuta');
+
+      const uuidMatch = `${rawJust} ${rawTitle}`.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+
+      if (isForge || isTransmute || uuidMatch) {
+        const itemId = uuidMatch ? uuidMatch[1].toLowerCase() : null;
+        const itemInfo = itemId ? itemsMap.get(itemId) : null;
+
+        if (itemInfo) {
+          displayTitle = isTransmute ? `Transmutação: ${itemInfo.title}` : `Forja: ${itemInfo.title}`;
+          displayJust = isTransmute ? `Aprimoramento transmutado de ${itemInfo.title}` : `Aprimoramento de ${itemInfo.title}`;
+          displayImage = itemInfo.imageUrl || '';
+        } else if (isForge) {
+          displayTitle = 'Forja de Equipamento';
+          displayJust = 'Aprimoramento de equipamento na Forja';
+        } else if (isTransmute) {
+          displayTitle = 'Transmutação de Equipamento';
+          displayJust = 'Aprimoramento de equipamento transmutado';
+        }
+      } else if (lowerReason.includes('missão') || lowerReason.includes('missao')) {
+        const qMatch = rawTitle.match(/\[missão\s+([^\]]+)\]/i);
+        const qId = qMatch ? qMatch[1].trim() : null;
+        const questInfo = qId ? questsMap.get(qId) : null;
+
+        let missionName = '';
+        if (rawJust) {
+          missionName = rawJust.replace(/^Missão:\s*/i, '').trim();
+        }
+        if (!missionName && questInfo?.title) {
+          missionName = questInfo.title;
+        }
+
+        if (missionName) {
+          displayTitle = `Missão: ${missionName}`;
+          displayJust = 'Recompensa por conclusão da missão';
+        } else {
+          displayTitle = 'Recompensa de Missão';
+          displayJust = 'Conclusão de missão com sucesso';
+        }
+        if (questInfo?.imageUrl) {
+          displayImage = questInfo.imageUrl;
+        }
+      } else if (lowerReason.includes('coleta de moeda') || lowerReason.includes('batalha')) {
+        displayTitle = 'Moedas Coletadas em Batalha';
+        displayJust = rawJust || 'Coleta durante combate ou exploração';
+      } else if (rawTitle.includes(' | ') || rawTitle.includes('|')) {
+        const parts = rawTitle.split(/\s*\|\s*/);
+        displayTitle = parts[0]?.trim() || 'Moedas';
+        if (!displayJust) {
+          displayJust = parts.length > 2 ? parts.slice(2).join(' | ').trim() : (parts[1]?.trim() || '');
+        }
+      }
+
+      // Limpeza de códigos UUID ou tags soltas na justificativa se ainda existirem
+      if (displayJust) {
+        displayJust = displayJust.replace(/item\s+[a-f0-9\-]{36}/gi, '').trim();
+        displayJust = displayJust.replace(/\[missão\s+[^\]]+\]/gi, '').trim();
+        if (displayJust.startsWith(':')) displayJust = displayJust.slice(1).trim();
+      }
+
+      return {
+        logId: d.id,
+        amount: Number(d.amount || 0),
+        reason: d.reason || '',
+        justification: displayJust,
+        displayTitle,
+        displayJust,
+        imageUrl: displayImage,
+        created_at: d.created_at,
+        ...d
+      };
+    });
+
     logs.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     setCoinHistory(logs);
     setLoadingCoinHistory(false);
@@ -3852,17 +3998,17 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       {/* Modal de Gerenciar XP e Histórico */}
       {selectedStudent && (
         <div className="modal-overlay" style={{ zIndex: 100 }}>
-          <div className="glass-panel xp-modal-content modal-content" style={{ maxWidth: '800px', width: '100%', height: '85vh', display: 'flex', flexDirection: 'column', gap: '1.25rem', position: 'relative', overflow: 'hidden' }}>
+          <div className="glass-panel xp-modal-content modal-content" style={{ maxWidth: '850px', width: '100%', height: '85vh', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative', overflow: 'hidden' }}>
             <button className="xp-modal-close-top" onClick={() => setSelectedStudent(null)} style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', zIndex: 10 }}>
               <X size={24} />
             </button>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexShrink: 0 }}>
               <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--text-primary)' }}>Gerenciar ganhos</h3>
             </div>
 
             {/* Abas: XP | Moedas */}
-            <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px', width: '100%' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px', width: '100%', flexShrink: 0 }}>
               <button onClick={() => setManageTab('xp')} style={{ flex: 1, padding: '0.6rem', borderRadius: '6px', background: manageTab === 'xp' ? 'var(--gold-primary)' : 'transparent', color: manageTab === 'xp' ? 'var(--bg-dark)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
                 Gerenciar XP
               </button>
@@ -3871,7 +4017,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
               </button>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', width: '100%', flexShrink: 0 }}>
                {selectedStudent.avatarConfig ? (
                  <div style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', background: 'var(--bg-dark)', border: '2px solid var(--accent-blue)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                    <div style={{ position: 'absolute', width: 64, height: 64, bottom: -6, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
@@ -3889,11 +4035,11 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
             </div>
 
             {/* Conteúdo: formulário + histórico (rolam internamente, modal fixo) */}
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexWrap: 'wrap', gap: '2rem', overflow: 'hidden' }}>
+            <div className="xp-modal-body" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row', gap: '1.5rem', overflow: 'hidden' }}>
             {manageTab === 'xp' ? (
             <>
             {/* Lado Esquerdo: Formulário */}
-            <div style={{ flex: 1, minWidth: '280px', overflowY: 'auto' }}>
+            <div className="custom-scroll" style={{ flex: '0 0 45%', maxWidth: '45%', minWidth: '260px', overflowY: 'auto', minHeight: 0, paddingRight: '0.5rem' }}>
               {/* Toggles Adicionar/Remover */}
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
                 <button onClick={() => setModalMode('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: modalMode === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: modalMode === 'add'  ? 'var(--text-primary)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: modalMode === 'add' ? 'bold' : 'normal' }}>
@@ -3974,14 +4120,14 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
             </div>
 
             {/* Lado Direito: Histórico */}
-            <div style={{ flex: 1, minWidth: '300px', borderLeft: '1px solid var(--border-glass)', paddingLeft: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ flex: '1 1 55%', minWidth: '280px', borderLeft: '1px solid var(--border-glass)', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, height: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexShrink: 0 }}>
                 <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <History size={18} /> Histórico de XP
                 </h3>
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div className="custom-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {loadingHistory ? (
                   <p style={{ color: 'var(--text-secondary)' }}>Carregando histórico...</p>
                 ) : xpHistory.length === 0 ? (
@@ -4044,7 +4190,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
             ) : (
             <>
               {/* Lado Esquerdo: Formulário de Moedas */}
-              <div style={{ flex: 1, minWidth: '280px', overflowY: 'auto' }}>
+              <div className="custom-scroll" style={{ flex: '0 0 45%', maxWidth: '45%', minWidth: '260px', overflowY: 'auto', minHeight: 0, paddingRight: '0.5rem' }}>
                 {/* Toggles Adicionar/Remover Moedas */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
                   <button onClick={() => setCoinMode('add')} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: coinMode === 'add' ? 'rgba(255,255,255,0.1)' : 'transparent', color: coinMode === 'add' ? 'var(--text-primary)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: coinMode === 'add' ? 'bold' : 'normal' }}>
@@ -4071,14 +4217,14 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
               </div>
 
               {/* Lado Direito: Histórico de Moedas */}
-              <div style={{ flex: 1, minWidth: '300px', borderLeft: '1px solid var(--border-glass)', paddingLeft: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <div style={{ flex: '1 1 55%', minWidth: '280px', borderLeft: '1px solid var(--border-glass)', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, height: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexShrink: 0 }}>
                   <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <History size={18} /> Histórico de Moedas
                   </h3>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div className="custom-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {loadingCoinHistory ? (
                     <p style={{ color: 'var(--text-secondary)' }}>Carregando histórico...</p>
                   ) : coinHistory.length === 0 ? (
@@ -4090,11 +4236,23 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                       <div key={log.logId} style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', borderLeft: `3px solid ${log.amount >= 0 ? 'var(--gold-primary)' : 'var(--accent-red)'}` }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {log.imageUrl && isLikelyUrl(log.imageUrl) ? (
+                              <img 
+                                src={log.imageUrl} 
+                                alt="" 
+                                style={{ width: '32px', height: '32px', objectFit: 'contain', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', flexShrink: 0 }} 
+                                onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                              />
+                            ) : (
+                              <div style={{ width: '32px', height: '32px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>
+                                {log.amount >= 0 ? '🪙' : '🔨'}
+                              </div>
+                            )}
                             <div>
-                              <strong style={{ fontSize: '0.95rem' }}>{log.reason?.split(' | ')[0] || 'Moedas'}</strong>
-                              {log.justification && (
+                              <strong style={{ fontSize: '0.95rem' }}>{log.displayTitle || log.reason?.split(' | ')[0] || 'Moedas'}</strong>
+                              {log.displayJust && (
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                                  Motivo: {log.justification}
+                                  Motivo: {log.displayJust}
                                 </div>
                               )}
                             </div>

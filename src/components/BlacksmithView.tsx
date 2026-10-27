@@ -436,10 +436,17 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
 
     // Itens BLOQUEADOS (mochila cheia) não entram na forja (materiais/scrolls),
     // mas itens EQUIPADOS sempre estão disponíveis e nunca devem ser bloqueados pela capacidade da mochila.
+    const equippedRows = (userItemsSnap || [])
+      .filter((r: any) => r.equipped)
+      .map((r: any) => ({ ...r, ...(r.data || {}) }));
+    const totalEquippedStats = calculateTotalStats(equippedRows, userData?.distributedStats || (userData as any)?.distributed_stats);
+    const extraSlotsFromFortitude = Math.floor((totalEquippedStats?.fortitude || 0) / 1);
+
+    const slotMap = userData.inventoryPreferences?.slotMap || (userData as any)?.inventory_preferences?.slotMap || {};
     const unequippedRows = (userItemsSnap || []).filter((r: any) => !r.equipped);
-    const availableUnequipped = filterAvailableRows(unequippedRows, userData, userData.inventoryPreferences?.slotMap || {});
+    const availableUnequipped = filterAvailableRows(unequippedRows, userData, slotMap, extraSlotsFromFortitude);
     const availableIds = new Set([
-      ...(userItemsSnap || []).filter((r: any) => r.equipped).map((r: any) => r.id),
+      ...equippedRows.map((r: any) => r.id),
       ...availableUnequipped.map((r: any) => r.id)
     ]);
     userItemsSnap = (userItemsSnap || []).filter((r: any) => availableIds.has(r.id));

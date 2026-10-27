@@ -1,6 +1,7 @@
 import { RANKS, getRankForXp } from './ranks';
 import { supabase } from './supabase';
 import type { UserData } from '../contexts/AuthContext';
+import { calculateTotalStats } from './gacha';
 
 /**
  * Espaço da mochila + itens BLOQUEADOS (excedente).
@@ -20,19 +21,21 @@ export const INVENTORY_SPACE_DURATIONS = [3, 5, 7, 10, 12, 15, 30, 60] as const;
 /** Bônus temporário ATIVO (0 se expirado). */
 export function getActiveInventorySpaceBuff(userData?: Partial<UserData> | null): number {
   if (!userData) return 0;
-  const buff = Number(userData.inventorySpaceBuff) || 0;
-  const until = userData.inventorySpaceBuffUntil;
+  const buff = Number(userData.inventorySpaceBuff ?? (userData as any).inventory_space_buff) || 0;
+  const until = userData.inventorySpaceBuffUntil ?? (userData as any).inventory_space_buff_until;
   if (buff <= 0) return 0;
   if (typeof until === 'number' && until > 0 && until <= Date.now()) return 0; // expirado
+  if (typeof until === 'string' && new Date(until).getTime() <= Date.now()) return 0;
   return buff;
 }
 
 /** Capacidade BASE da mochila (sem slots extras de fortitude). */
 export function computeBaseInventorySpace(userData?: Partial<UserData> | null): number {
   if (!userData) return 12;
-  const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId);
+  const currentRank = getRankForXp(userData.xp || 0, (userData as any).classId || (userData as any).class_id);
   const rankIndex = RANKS.findIndex(r => r.name === currentRank.name) || 0;
-  return 12 + rankIndex + (userData.extraInventorySpace || 0) + getActiveInventorySpaceBuff(userData);
+  const extra = Number(userData.extraInventorySpace ?? (userData as any).extra_inventory_space) || 0;
+  return 12 + rankIndex + extra + getActiveInventorySpaceBuff(userData);
 }
 
 /** Capacidade TOTAL (base + slots de fortitude dos itens equipados). */
@@ -62,17 +65,41 @@ export function getLockedItemIds(rows: any[], slotMap: Record<string, number>, m
 }
 
 /** Filtra as linhas de user_items mantendo apenas as NÃO bloqueadas. */
-export function filterAvailableRows(rows: any[], userData?: Partial<UserData> | null, slotMap?: Record<string, number>, fortitudeSlots = 0): any[] {
+export function filterAvailableRows(
+  rows: any[], 
+  userData?: Partial<UserData> | null, 
+  slotMap?: Record<string, number>, 
+  fortitudeSlots: number | any[] = 0
+): any[] {
   if (!rows || !rows.length) return rows;
-  const maxSpace = computeMaxInventorySpace(userData, fortitudeSlots);
-  const locked = getLockedItemIds(rows, slotMap || {}, maxSpace);
+
+  let extraSlots = 0;
+  if (typeof fortitudeSlots === 'number') {
+    extraSlots = fortitudeSlots;
+  } else if (Array.isArray(fortitudeSlots)) {
+    const stats = calculateTotalStats(fortitudeSlots, userData?.distributedStats || (userData as any)?.distributed_stats);
+    extraSlots = Math.floor((stats?.fortitude || 0) / 1);
+  }
+
+  // Se extraSlots ainda for 0, tenta derivar de itens equipados em rows (se rows contiver itens equipados)
+  if (extraSlots <= 0) {
+    const equippedInRows = rows.filter((r: any) => r.equipped);
+    if (equippedInRows.length > 0) {
+      const stats = calculateTotalStats(equippedInRows.map((r: any) => ({ ...r, ...(r.data || {}) })), userData?.distributedStats || (userData as any)?.distributed_stats);
+      extraSlots = Math.floor((stats?.fortitude || 0) / 1);
+    }
+  }
+
+  const effectiveSlotMap = slotMap || userData?.inventoryPreferences?.slotMap || (userData as any)?.inventory_preferences?.slotMap || {};
+  const maxSpace = computeMaxInventorySpace(userData, extraSlots);
+  const locked = getLockedItemIds(rows, effectiveSlotMap, maxSpace);
   if (locked.size === 0) return rows;
   return rows.filter(r => !locked.has(r.id));
 }
 
 /** Quantos slots LIVRES existem (capacidade − itens não equipados atuais). */
-export function getAvailableInventorySpace(userData?: Partial<UserData> | null, totalBagCount = 0): number {
-  return Math.max(0, computeMaxInventorySpace(userData) - (totalBagCount || 0));
+export function getAvailableInventorySpace(userData?: Partial<UserData> | null, totalBagCount = 0, fortitudeSlots = 0): number {
+  return Math.max(0, computeMaxInventorySpace(userData, fortitudeSlots) - (totalBagCount || 0));
 }
 
 /** Aplica o effect de aumento de mochila (inventory_space) na conta. */
