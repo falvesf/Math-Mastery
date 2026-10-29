@@ -1831,10 +1831,27 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
                   } else {
                      // Modelo unificado SEM detecção por nome (ex.: calça em malha única): divide
                      // PELO ESPAÇO e prende cada metade na perna correspondente — acompanha as pernas.
-                     const _tLeg = resolveModelTransform(item, config.gender, config.handedness, false) || (item.modelTransforms && (item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any)));
-                     const halves = splitLegsBySpace(model, _tLeg?.rotX || 0, _tLeg?.rotY || 0, _tLeg?.rotZ || 0);
-                     processLoadedModel(halves.left, 'left', true);
-                     processLoadedModel(halves.right, 'right', true);
+                     let isWaistOnly = false;
+                     let meshCount = 0;
+                     model.traverse((node: any) => {
+                        if (node.isMesh) {
+                           meshCount++;
+                           const n = (node.name || '').toLowerCase();
+                           const p = (node.parent?.name || '').toLowerCase();
+                           if (/\\b(waist|belt|cintura|pelvis|hip)\\b/i.test(n) || /\\b(waist|belt|cintura|pelvis|hip)\\b/i.test(p)) {
+                              isWaistOnly = true;
+                           }
+                        }
+                     });
+
+                     if (isWaistOnly && meshCount <= 2) {
+                        processLoadedModel(model, 'body_part', true);
+                     } else {
+                        const _tLeg = resolveModelTransform(item, config.gender, config.handedness, false) || (item.modelTransforms && (item.modelTransforms.common || (Object.values(item.modelTransforms)[0] as any)));
+                        const halves = splitLegsBySpace(model, _tLeg?.rotX || 0, _tLeg?.rotY || 0, _tLeg?.rotZ || 0);
+                        processLoadedModel(halves.left, 'left', true);
+                        processLoadedModel(halves.right, 'right', true);
+                     }
                   }
                  } else if (item.extractMeshName && (normalizedPart === 'legs' || normalizedPart === 'feet')) {
                     // Peça específica extraída manualmente via Extrator de Malhas

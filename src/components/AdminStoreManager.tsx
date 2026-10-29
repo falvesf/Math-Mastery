@@ -41,6 +41,7 @@ import { type ModelTransformsConfig, type ModelTransform } from './AvatarCharact
 import { DAMAGE_EFFECTS, FATALITY_OPTIONS, getFatalityLabel, FATALITY_BY_EFFECT } from '../lib/damageEffects';
 import { v4 as uuidv4 } from 'uuid';
 import { computeItemTransformKey, invalidateGlobalItemTransforms } from '../lib/itemTransforms';
+import { convertLocalReferencesToGlobal, convertGlobalReferencesToLocal } from '../lib/itemReferenceResolver';
 // @ts-ignore
 import ItemSelectDropdown, {
   type ItemSelectOption,
@@ -674,14 +675,15 @@ Responda APENAS com a frase curta em português brasileiro.`;
           matched++;
           const bankData = bankMatch.data || {};
           const { result, changed } = mergeDeepChanged(bankData, localData);
+          const bankResult = convertLocalReferencesToGlobal(result, bankItemsList, localRows || []);
 
           // Se houve alteração nos dados do banco
-          if (changed) {
-            const columns = deriveStoreColumns(result);
-            const { error } = await supabase.from('store_items').update({ data: result, ...columns }).eq('id', bankMatch.id);
+          if (changed || JSON.stringify(bankData) !== JSON.stringify(bankResult)) {
+            const columns = deriveStoreColumns(bankResult);
+            const { error } = await supabase.from('store_items').update({ data: bankResult, ...columns }).eq('id', bankMatch.id);
             if (!error) {
               updated++;
-              bankMatch.data = result;
+              bankMatch.data = bankResult;
             } else {
               console.error('Erro ao sincronizar item do banco:', error);
             }
@@ -714,7 +716,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
         } else {
           // Item local não existe no Banco Global -> criar no Banco Global!
           const newBankId = uuidv4();
-          const newBankData = { ...localData };
+          const newBankData = convertLocalReferencesToGlobal({ ...localData }, bankItemsList, localRows || []);
           delete newBankData.importedFromId;
           const columns = deriveStoreColumns(newBankData);
 
@@ -806,11 +808,12 @@ Responda APENAS com a frase curta em português brasileiro.`;
         if (!local) {
           // Item do banco não existe nesta escola. Se marcado "Importar itens novos", importa!
           if (shouldImportNew) {
-            const newItemData = {
+            const rawNewItemData = {
               ...bankData,
               importedFromId: bank.id,
               active: bankData.active ?? true
             };
+            const newItemData = convertGlobalReferencesToLocal(rawNewItemData, currentLocalRows, bankRows || []);
             const columns = deriveStoreColumns(newItemData);
             const { data: inserted, error: insErr } = await supabase.from('store_items').insert({
               ...columns,
@@ -849,22 +852,23 @@ Responda APENAS com a frase curta em português brasileiro.`;
         matched++;
         const localData = local.data || {};
         const { result, changed } = mergeDeepChanged(localData, bankData, allowedKeys);
+        const resolvedResult = convertGlobalReferencesToLocal(result, currentLocalRows, bankRows || []);
 
         // Garante que o item local tenha o importedFromId do banco configurado
         let needLinkUpdate = false;
-        if (result.importedFromId !== bank.id) {
-          result.importedFromId = bank.id;
+        if (resolvedResult.importedFromId !== bank.id) {
+          resolvedResult.importedFromId = bank.id;
           needLinkUpdate = true;
         }
 
-        if (!changed && !needLinkUpdate) {
+        if (!changed && !needLinkUpdate && JSON.stringify(localData) === JSON.stringify(resolvedResult)) {
           unchanged++;
           continue;
         }
 
-        const columns = deriveStoreColumns(result);
-        const { error } = await supabase.from('store_items').update({ data: result, ...columns }).eq('id', local.id);
-        if (error) { console.error('Erro ao atualizar item local:', error); continue; }
+        const columns = deriveStoreColumns(resolvedResult);
+        const { error: updErr } = await supabase.from('store_items').update({ data: resolvedResult, ...columns }).eq('id', local.id);
+        if (updErr) { console.error('Erro ao atualizar item local:', updErr); continue; }
         updated++;
 
         // Cascateia a nova configuração (principalmente modelTransforms do Debug 3D)
@@ -965,13 +969,14 @@ Responda APENAS com a frase curta em português brasileiro.`;
 
     if (copyMode === 'direct') {
       // Importar direto - salvar no banco (cópia LOCAL, sem duplicar)
-      const itemData = {
+      const rawItemData = {
         ...newItem,
         cost: Number(newItem.cost),
         minRankRequired: 0,
         minSalePrice: 0,
         importedFromId: item._rawId || null,
       };
+      const itemData = convertGlobalReferencesToLocal(rawItemData, items || [], []);
 
       // DEDUP: se esta escola já importou este item, não duplicar
       const already = (items || []).find((i: any) =>
@@ -1040,10 +1045,11 @@ Responda APENAS com a frase curta em português brasileiro.`;
         delete itemData._isGlobal;
         delete itemData._tenantId;
 
-        const columns = deriveStoreColumns(itemData);
+        const resolvedItemData = convertGlobalReferencesToLocal(itemData, items || [], itemsToImport || []);
+        const columns = deriveStoreColumns(resolvedItemData);
         const { error } = await supabase.from('store_items').insert({
           ...columns,
-          data: itemData,
+          data: resolvedItemData,
           tenant_id: tenantId || null,
           is_global: false
         });
@@ -1349,12 +1355,13 @@ Responda APENAS com a frase curta em português brasileiro.`;
 
   const openEdit = (item: StoreItem) => {
     setHoveredItem(null);
+    const resolvedItem = convertGlobalReferencesToLocal(item as any, items || [], []);
     setFormData({
-      ...item,
-      minRankRequired: resolveMinRankName(item.minRankRequired),
-      scrollChanceBonus: item.scrollChanceBonus !== undefined && item.scrollChanceBonus !== null
-        ? Number(item.scrollChanceBonus)
-        : (item.gameEffect === 'blacksmith_scroll' ? 30 : undefined)
+      ...resolvedItem,
+      minRankRequired: resolveMinRankName(resolvedItem.minRankRequired),
+      scrollChanceBonus: resolvedItem.scrollChanceBonus !== undefined && resolvedItem.scrollChanceBonus !== null
+        ? Number(resolvedItem.scrollChanceBonus)
+        : (resolvedItem.gameEffect === 'blacksmith_scroll' ? 30 : undefined)
     });
     setEditingId(item.id);
     setIsEditing(true);
@@ -2546,7 +2553,15 @@ Responda APENAS com a frase curta em português brasileiro.`;
                                       return (
                                         <ItemSelect
                                           key={matIdx}
-                                          items={materialOptions.map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined, rarity: i.rarity || 'common' }))}
+                                          items={materialOptions.map(i => ({ 
+                                            id: i.id, 
+                                            title: i.title, 
+                                            imageUrl: i.imageUrl, 
+                                            badge: i._isGlobal ? 'Banco' : undefined, 
+                                            rarity: i.rarity || 'common',
+                                            importedFromId: (i as any).importedFromId || (i as any).data?.importedFromId,
+                                            aliases: [(i as any).importedFromId, (i as any).data?.importedFromId].filter(Boolean)
+                                          }))}
                                           value={current}
                                           onChange={id => setMaterial(lvl, matIdx, id)}
                                           placeholder="— sem material —"
@@ -2640,7 +2655,15 @@ Responda APENAS com a frase curta em português brasileiro.`;
                               <div key={matIdx} style={{ flex: 1, minWidth: '150px' }}>
                                 <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Material {matIdx + 1}</label>
                                 <ItemSelect
-                                  items={materialOptions.map(i => ({ id: i.id, title: i.title, imageUrl: i.imageUrl, badge: i._isGlobal ? 'Banco' : undefined, rarity: i.rarity || 'common' }))}
+                                  items={materialOptions.map(i => ({ 
+                                    id: i.id, 
+                                    title: i.title, 
+                                    imageUrl: i.imageUrl, 
+                                    badge: i._isGlobal ? 'Banco' : undefined, 
+                                    rarity: i.rarity || 'common',
+                                    importedFromId: (i as any).importedFromId || (i as any).data?.importedFromId,
+                                    aliases: [(i as any).importedFromId, (i as any).data?.importedFromId].filter(Boolean)
+                                  }))}
                                   value={formData.transmuteConfig.materials?.[matIdx] || ''}
                                   onChange={id => {
                                     const mats = [...(formData.transmuteConfig!.materials || ['', ''])];

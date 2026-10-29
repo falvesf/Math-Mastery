@@ -36,7 +36,7 @@ export const RARITY_WEIGHTS: Record<string, number> = {
 };
 
 export const sortByRarityThenTitle = (
-  a: { rarity?: string; title?: string }, 
+  a: { rarity?: string; title?: string },
   b: { rarity?: string; title?: string }
 ) => {
   const wA = RARITY_WEIGHTS[a.rarity || 'common'] ?? 99;
@@ -54,6 +54,8 @@ export interface ItemSelectOption {
   typeLabel?: string;
   /** Ids alternativos (ex.: id interno do item) que também resolvem o mesmo valor salvo. */
   aliases?: string[];
+  /** Id global do item no Banco de Itens (permite casar mesmo com IDs locais diferentes) */
+  importedFromId?: string;
 }
 
 interface ItemSelectDropdownProps {
@@ -136,16 +138,18 @@ export const ItemSelectDropdown: React.FC<ItemSelectDropdownProps> = ({
 
   const filteredItems = search.trim()
     ? sortedItems.filter(i => {
-        const q = search.toLowerCase();
-        const t = (i.title || '').toLowerCase();
-        const r = getRarityLabel(i.rarity).toLowerCase();
-        const b = (i.badge || '').toLowerCase();
-        const y = (i.typeLabel || '').toLowerCase();
-        return t.includes(q) || r.includes(q) || b.includes(q) || y.includes(q);
-      })
+      const q = search.toLowerCase();
+      const t = (i.title || '').toLowerCase();
+      const r = getRarityLabel(i.rarity).toLowerCase();
+      const b = (i.badge || '').toLowerCase();
+      const y = (i.typeLabel || '').toLowerCase();
+      return t.includes(q) || r.includes(q) || b.includes(q) || y.includes(q);
+    })
     : sortedItems;
 
-  const selected = items.find(i => i.id === value) || items.find(i => Array.isArray(i.aliases) && i.aliases.includes(value));
+  const selected = items.find(i => i.id === value)
+    || items.find(i => Array.isArray(i.aliases) && i.aliases.includes(value))
+    || items.find(i => (i as any).importedFromId && (i as any).importedFromId === value);
   const selectedRarityColor = selected?.rarity ? getRarityColor(selected.rarity) : undefined;
 
   return (

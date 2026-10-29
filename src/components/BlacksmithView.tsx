@@ -70,19 +70,30 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const [selectedTransmuteItem, setSelectedTransmuteItem] = useState<any | null>(null);
   const [consumables, setConsumables] = useState<any[]>([]);
   // Catálogo (loja) dos materiais/itens — para mostrar nome/ícone mesmo sem possuir
-  const [materialCatalog, setMaterialCatalog] = useState<Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string }>>({});
+  const [materialCatalog, setMaterialCatalog] = useState<Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string; importedFromId?: string }>>({});
 
   // Materiais podem ter IDs diferentes para o MESMO item (catálogo compartilhado entre
   // escolas). Por isso casamos por item_id OU pelo NOME normalizado.
   const _normTitle = (s?: any) => String(s ?? '').trim().toLowerCase();
   const matOwned = (id: string) => {
-    const reqTitle = _normTitle(materialCatalog[id]?.title);
-    return consumables.find(c => c.itemId === id || (reqTitle && _normTitle(c.itemTitle) === reqTitle));
+    const cat = materialCatalog[id];
+    const reqTitle = _normTitle(cat?.title);
+    const reqGlobalId = cat?.importedFromId;
+    return consumables.find(c =>
+      c.itemId === id ||
+      (reqGlobalId && (c.importedFromId === reqGlobalId || c.itemId === reqGlobalId)) ||
+      (reqTitle && _normTitle(c.itemTitle) === reqTitle)
+    );
   };
   const matCount = (id: string) => {
-    const reqTitle = _normTitle(materialCatalog[id]?.title);
-    return consumables.filter(c => c.itemId === id || (reqTitle && _normTitle(c.itemTitle) === reqTitle))
-      .reduce((s, c) => s + (c.quantity || 1), 0);
+    const cat = materialCatalog[id];
+    const reqTitle = _normTitle(cat?.title);
+    const reqGlobalId = cat?.importedFromId;
+    return consumables.filter(c =>
+      c.itemId === id ||
+      (reqGlobalId && (c.importedFromId === reqGlobalId || c.itemId === reqGlobalId)) ||
+      (reqTitle && _normTitle(c.itemTitle) === reqTitle)
+    ).reduce((s, c) => s + (c.quantity || 1), 0);
   };
   
   // Sketchfab State
@@ -456,7 +467,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
       let catQ = supabase.from('store_items').select('id, name, image_url, rarity, data');
       if (tenantId) catQ = catQ.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
       const { data: catSnap } = await catQ;
-      const catMap: Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string }> = {};
+      const catMap: Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string; importedFromId?: string }> = {};
       (catSnap || []).forEach((s: any) => {
         const d = (s.data || {}) as any;
         catMap[s.id] = {
@@ -464,9 +475,42 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           title: d.title || s.name || 'Item',
           imageUrl: d.imageUrl || s.image_url || '',
           minRankRequired: d.minRankRequired,
-          rarity: d.rarity || s.rarity || 'common'
+          rarity: d.rarity || s.rarity || 'common',
+          importedFromId: d.importedFromId || s.data?.importedFromId
         };
       });
+
+      // Busca materiais exigidos que venham de outro tenant ou banco global
+      const referencedMatIds = new Set<string>();
+      (userItemsSnap || []).forEach((row: any) => {
+        const d = row.data || {};
+        if (d.forgeConfig?.materialsPerLevel) {
+          Object.values(d.forgeConfig.materialsPerLevel).forEach((arr: any) => {
+            if (Array.isArray(arr)) arr.forEach((id: any) => { if (id && !catMap[id]) referencedMatIds.add(id); });
+          });
+        }
+        if (d.transmuteConfig?.materials && Array.isArray(d.transmuteConfig.materials)) {
+          d.transmuteConfig.materials.forEach((id: any) => { if (id && !catMap[id]) referencedMatIds.add(id); });
+        }
+      });
+
+      if (referencedMatIds.size > 0) {
+        try {
+          const { data: missingSnap } = await supabase.from('store_items').select('id, name, image_url, rarity, data').in('id', Array.from(referencedMatIds));
+          (missingSnap || []).forEach((s: any) => {
+            const d = (s.data || {}) as any;
+            catMap[s.id] = {
+              id: s.id,
+              title: d.title || s.name || 'Item',
+              imageUrl: d.imageUrl || s.image_url || '',
+              minRankRequired: d.minRankRequired,
+              rarity: d.rarity || s.rarity || 'common',
+              importedFromId: d.importedFromId || s.data?.importedFromId
+            };
+          });
+        } catch { /* ignora */ }
+      }
+
       setMaterialCatalog(catMap);
     } catch (e) { /* catálogo opcional */ }
 
@@ -529,7 +573,14 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             fuseCost: itemData.fuseCost ?? storeItemData.fuseCost ?? 0,
             fuseSuccessChance: itemData.fuseSuccessChance ?? storeItemData.fuseSuccessChance ?? 75,
           });
-          consumables.push({ docId: row.id, itemId: row.item_id, quantity: itemData.quantity || 1, itemTitle: itemData.itemTitle || storeItemData.title, itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '' });
+          consumables.push({ 
+            docId: row.id, 
+            itemId: row.item_id, 
+            quantity: itemData.quantity || 1, 
+            itemTitle: itemData.itemTitle || storeItemData.title, 
+            itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '',
+            importedFromId: itemData.importedFromId || storeItemData.importedFromId || (storeItemData as any)?.data?.importedFromId
+          });
         } else if (
           itemData.itemType === 'equippable' ||
           storeItemData.type === 'equippable' ||
@@ -563,7 +614,14 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
             forgeLevel: itemData.forgeLevel || 0
           });
         } else if (itemData.itemType === 'consumable' || itemData.itemType === 'other') {
-          consumables.push({ docId: row.id, itemId: row.item_id, quantity: itemData.quantity || 1, itemTitle: itemData.itemTitle || storeItemData.title, itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '' });
+          consumables.push({ 
+            docId: row.id, 
+            itemId: row.item_id, 
+            quantity: itemData.quantity || 1, 
+            itemTitle: itemData.itemTitle || storeItemData.title, 
+            itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '',
+            importedFromId: itemData.importedFromId || storeItemData.importedFromId || (storeItemData as any)?.data?.importedFromId
+          });
         }
       }
     }
