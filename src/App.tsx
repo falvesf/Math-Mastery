@@ -5,6 +5,7 @@ import { TenantProvider, useTenant } from './contexts/TenantContext';
 import { DialogProvider } from './contexts/DialogContext';
 import PendingApprovalToasts from './components/PendingApprovalToasts';
 import InstallPwaPrompt from './components/InstallPwaPrompt';
+import AdminConsole from './components/AdminConsole';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -200,6 +201,7 @@ function App() {
             <AppRoutes />
             <StaffApprovalNotifications />
             <InstallPwaPrompt />
+            <AdminConsole />
           </DialogProvider>
         </TenantProvider>
       </AuthProvider>

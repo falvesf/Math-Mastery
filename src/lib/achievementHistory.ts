@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { sanitizeHistoryText } from './formatAdminName';
 // @ts-ignore
 import { fetchBlacksmithMilestones, recordForgeMilestone, recordTransmuteMilestone } from './blacksmithAchievements';
 import type { BestiaryMonsterData } from '../components/MonsterBestiaryModal';
@@ -447,13 +448,14 @@ export async function fetchStudentAchievementHistory(studentUid: string, _tenant
 
     // --- 7. LANÇAMENTOS DO PROFESSOR (XP_LOGS) ---
     (teacherLogs || []).forEach((log: any) => {
-      const evalName = log.eval_name || log.reason || 'Atribuição';
-      if (evalName.startsWith('Missão:') || evalName.startsWith('Subiu de Patente:') || evalName.startsWith('Compra na Loja:')) {
+      const rawEval = log.eval_name || log.reason || 'Atribuição';
+      if (rawEval.startsWith('Missão:') || rawEval.startsWith('Subiu de Patente:') || rawEval.startsWith('Compra na Loja:')) {
         return;
       }
+      const evalName = sanitizeHistoryText(rawEval);
 
       const xpGained = log.xp_gained !== undefined ? log.xp_gained : (log.amount || 0);
-      const justification = log.justification || '';
+      const justification = sanitizeHistoryText(log.justification || '');
       const dateStr = log.created_at || new Date().toISOString();
       const timeMs = new Date(dateStr).getTime();
 
@@ -842,11 +844,14 @@ export async function fetchStudentActivityLog(studentUid: string): Promise<Achie
       const dateStr = log.created_at || new Date().toISOString();
       const timeMs = new Date(dateStr).getTime();
 
+      const cleanEvalName = sanitizeHistoryText(evalName);
+      const cleanJustification = sanitizeHistoryText(justification);
+
       logItems.push({
         id: `activity-teacher-${log.id}`,
         type: 'teacher_xp',
-        title: `Lançamento do Professor: ${evalName}`,
-        subtitle: justification ? `Justificativa: ${justification}` : undefined,
+        title: `Lançamento do Professor: ${cleanEvalName}`,
+        subtitle: cleanJustification ? `Justificativa: ${cleanJustification}` : undefined,
         imageUrl: img,
         badgeText: xpGained >= 0 ? `+${xpGained} XP` : `${xpGained} XP`,
         badgeType: xpGained >= 0 ? 'xp_positive' : 'xp_negative',

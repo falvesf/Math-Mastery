@@ -37,6 +37,7 @@ import { validateCharacterName, normalizeForComparison, formatFirstAndLastName }
 import { normalizeCombatCoinDrop } from '../lib/utils';
 import { createLocalAccount, generatePassword, resetLocalPassword, listLocalAccounts, deleteLocalAccount, type LocalAccountRow } from '../lib/localAuth';
 import GradebookManager from '../components/GradebookManager';
+import { sanitizeHistoryText } from '../lib/formatAdminName';
 
 export interface ClassDef {
   id: string;
@@ -1156,10 +1157,10 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
         
         return {
           logId: d.id, 
-          evalName: eName,
+          evalName: sanitizeHistoryText(eName),
           imageUrl: isLikelyUrl(img) ? img : '',
           xpGained: d.xp_gained !== undefined ? d.xp_gained : (d.amount || 0),
-          justification: just,
+          justification: sanitizeHistoryText(just),
           ...d 
         };
       });
@@ -1349,13 +1350,16 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
         if (displayJust.startsWith(':')) displayJust = displayJust.slice(1).trim();
       }
 
+      const cleanJust = sanitizeHistoryText(displayJust);
+      const cleanTitle = sanitizeHistoryText(displayTitle);
+
       return {
         logId: d.id,
         amount: Number(d.amount || 0),
         reason: d.reason || '',
-        justification: displayJust,
-        displayTitle,
-        displayJust,
+        justification: cleanJust,
+        displayTitle: cleanTitle,
+        displayJust: cleanJust,
         imageUrl: displayImage,
         created_at: d.created_at,
         ...d
@@ -4042,9 +4046,16 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', width: '100%', flexShrink: 0 }}>
                {selectedStudent.avatarConfig ? (
-                 <div style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', background: 'var(--bg-dark)', border: '2px solid var(--accent-blue)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                   <div style={{ position: 'absolute', width: 64, height: 64, bottom: -6, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
-                     <AvatarCharacter config={selectedStudent.avatarConfig} equippedItems={selectedStudentItems} size={64} interactive={false} animation={selectedStudent.avatarConfig.animationState as any || 'idle'} />
+                 <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'visible', border: '2px solid var(--accent-blue)', background: 'var(--bg-dark)', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0, aspectRatio: '1' }}>
+                   <div style={{ pointerEvents: 'none', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                     <LazyAnimatedAvatar
+                       id={selectedStudent.uid}
+                       config={selectedStudent.avatarConfig}
+                       equippedItems={selectedStudentItems}
+                       size={48}
+                       animation={selectedStudent.avatarConfig.animationState as any || 'idle'}
+                       faceCamera={true}
+                     />
                    </div>
                  </div>
                ) : (
@@ -4171,10 +4182,10 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                             />
                           )}
                           <div>
-                            <strong style={{ fontSize: '0.95rem' }}>{log.evalName}</strong>
+                            <strong style={{ fontSize: '0.95rem' }}>{sanitizeHistoryText(log.evalName)}</strong>
                             {log.justification && (
                               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                                Motivo: {log.justification}
+                                Motivo: {sanitizeHistoryText(log.justification)}
                               </div>
                             )}
                           </div>
@@ -4272,10 +4283,10 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
                               </div>
                             )}
                             <div>
-                              <strong style={{ fontSize: '0.95rem' }}>{log.displayTitle || log.reason?.split(' | ')[0] || 'Moedas'}</strong>
+                              <strong style={{ fontSize: '0.95rem' }}>{sanitizeHistoryText(log.displayTitle || log.reason?.split(' | ')[0] || 'Moedas')}</strong>
                               {log.displayJust && (
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                                  Motivo: {log.displayJust}
+                                  Motivo: {sanitizeHistoryText(log.displayJust)}
                                 </div>
                               )}
                             </div>

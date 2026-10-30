@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
-import { LogOut, Trophy, Settings, History, ShieldAlert, Star, Hammer, Flame, Sparkles, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus, ChevronDown, ChevronRight, Lock } from 'lucide-react';
+import { LogOut, Trophy, Settings, History, ShieldAlert, Star, Hammer, Flame, Sparkles, TrendingUp, Users, Swords, Clock, CheckCircle, Store, Package, Eye, EyeOff, Plus, ChevronDown, ChevronRight, Lock, Terminal } from 'lucide-react';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
@@ -44,6 +44,7 @@ import { usePermissions, getPanelRoleName, panelLabel, baseRolePanelLabel } from
 import StatDistributionModal from '../components/StatDistributionModal';
 import NintendoHeart from '../components/NintendoHeart';
 import { fetchStudentAchievementHistory } from '../lib/achievementHistory';
+import { sanitizeHistoryText } from '../lib/formatAdminName';
 import { fetchEquippedItems, invalidateEquippedItems } from '../lib/equippedItems';
 import { orderEffectFirst } from '../lib/damageEffects';
 import { checkAndClaimMonthlyDamageRewards } from '../lib/combatDamage';
@@ -2903,6 +2904,16 @@ export default function Dashboard() {
               </button>
             )}
 
+            {(userData?.role === 'admin' || userData?.role === 'superadmin') && (
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('open-admin-console'))}
+                className="hover-brightness"
+                style={{ background: 'transparent', border: 'none', color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.4rem' }}
+                title="Abrir Console Admin ( ' )"
+              >
+                <Terminal size={22} />
+              </button>
+            )}
             <button
               onClick={async () => {
                 setIsSettingsModalOpen(true);
@@ -3853,11 +3864,11 @@ export default function Dashboard() {
                                     color: titleColor,
                                     whiteSpace: 'normal'
                                   }}>
-                                    {item.title || item.evalName}
+                                    {sanitizeHistoryText(item.title || item.evalName)}
                                   </h4>
                                   {item.subtitle && (
                                     <p style={{ margin: '0 0 0.2rem 0', fontSize: '0.8rem', color: isSpecialMilestone ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)' }}>
-                                      {item.subtitle}
+                                      {sanitizeHistoryText(item.subtitle)}
                                     </p>
                                   )}
                                   <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>

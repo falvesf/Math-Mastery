@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 // @ts-ignore
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Package, Lock, Search, LayoutGrid, Grid, List as ListIcon, Image as ImageIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword, Filter, X } from 'lucide-react';
+import { Package, Lock, Terminal, Search, LayoutGrid, Grid, List as ListIcon, Image as ImageIcon, Shield, Coins, Trash2, Zap, Hand, Sparkles, FlaskConical, Sword, Filter, X } from 'lucide-react';
 import CachedImage from './CachedImage';
 import SkinBuffIcon from './SkinBuffIcon';
 import ItemIcon from './ItemIcon';
@@ -190,6 +190,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   useEffect(() => {
     fetchInventory();
   }, [userData.uid, inventoryRefresh]);
+
+  useEffect(() => {
+    const handleRefresh = () => { fetchInventory(true); };
+    window.addEventListener('refresh-inventory', handleRefresh);
+    return () => window.removeEventListener('refresh-inventory', handleRefresh);
+  }, []);
 
   useEffect(() => {
     const handleEquipEvent = (e: any) => {
@@ -1372,6 +1378,27 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
             <div style={{ color: 'var(--text-secondary)', fontSize: isMobile ? '0.7rem' : '0.85rem', background: 'rgba(0,0,0,0.3)', padding: isMobile ? '0.2rem 0.5rem' : '0.35rem 0.75rem', borderRadius: '12px' }}>
               Espaço: <strong style={{ color: currentSpaceOccupied >= maxInventorySpace ? 'var(--accent-red)' : 'var(--accent-green)' }}>{currentSpaceOccupied}</strong> / {maxInventorySpace}
             </div>
+            {(userData?.role === 'admin' || userData?.role === 'superadmin') && (
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('open-admin-console'))}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  padding: isMobile ? '0.25rem 0.5rem' : '0.35rem 0.65rem',
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  color: '#10b981',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                title="Abrir Console Admin ( ' )"
+              >
+                <Terminal size={isMobile ? 14 : 16} />
+                {!isMobile && <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Console</span>}
+              </button>
+            )}
             <button
               onClick={() => setIsFiltersOpen(!isFiltersOpen)}
               style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: isMobile ? '0.25rem 0.5rem' : '0.35rem 0.65rem', background: isFiltersOpen ? 'var(--btn-hover)' : 'var(--btn-bg)', color: 'var(--text-primary)', borderRadius: '8px', border: '1px solid var(--border-glass)', cursor: 'pointer', transition: 'all 0.2s' }}

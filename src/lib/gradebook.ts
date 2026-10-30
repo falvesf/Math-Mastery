@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getRankForXp } from './ranks';
+import { formatAdminFirstName } from './formatAdminName';
 // @ts-ignore
 import { RANKS, DEFAULT_RANKS, type RankDef } from './ranks';
 import * as XLSX from 'xlsx';
@@ -628,10 +629,11 @@ export async function executeGradebookSync(
         // Se houve alteração de XP, registra no histórico xp_logs para auditoria do professor
         if (row.diffXp !== 0) {
           try {
+            const author = teacherEmail ? formatAdminFirstName(undefined, teacherEmail) : '';
             await supabase.from('xp_logs').insert({
               student_id: row.studentId,
               amount: row.diffXp,
-              reason: `Planilha de Notas |  | Sincronização Bimestral (${row.diffXp > 0 ? '+' : ''}${row.diffXp} XP)${teacherEmail ? ` por ${teacherEmail}` : ''}`,
+              reason: `Planilha de Notas | Sincronização Bimestral (${row.diffXp > 0 ? '+' : ''}${row.diffXp} XP)${author ? ` por ${author}` : ''}`,
               tenant_id: tenantId || null,
             });
           } catch (logErr) {

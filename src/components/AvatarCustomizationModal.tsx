@@ -1870,7 +1870,8 @@ onClick={() => setConfig(prev => {
                 height: '100%',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                transform: 'translateY(-48px)'
               }}>
                 {(() => {
                   const activePreset = config.customSkinUrl ? presetSkins.find(s => s.url === config.customSkinUrl) : undefined;
