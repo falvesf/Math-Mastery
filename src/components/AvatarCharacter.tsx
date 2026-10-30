@@ -703,7 +703,7 @@ export function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScal
 const getPlaceholderIcon = (slotId: string, sizeStr: string, isLeftHanded: boolean = false) => {
   const color = "rgba(255, 255, 255, 0.4)";
   const opacity = 1;
-  const props = { width: sizeStr, height: sizeStr, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, style: { opacity } };
+  const props = { width: sizeStr, height: sizeStr, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, style: { opacity, display: 'block', margin: 'auto' } };
   
   const getSwordSvg = () => <svg {...props}><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline><line x1="13" y1="19" x2="19" y2="13"></line><line x1="16" y1="16" x2="20" y2="20"></line><line x1="19" y1="21" x2="21" y2="19"></line></svg>;
   const getShieldSvg = () => <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>;
@@ -747,6 +747,7 @@ export interface AvatarCharacterProps {
   expression?: 'normal' | 'serious' | 'sad' | 'happy' | 'smile';
   role?: 'player' | 'monster';
   showSlots?: boolean;
+  readOnlySlots?: boolean;
   hurt?: boolean;
   onAvatarClick?: () => void;
   onSlotClick?: (item: EquippedItem) => void;
@@ -791,7 +792,7 @@ import CustomModelViewer from './CustomModelViewer';
 import ItemTooltip from './ItemTooltip';
 
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, actionAnimations, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null, slowFactor = 1, applyBattleZoom }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, readOnlySlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, actionAnimations, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null, slowFactor = 1, applyBattleZoom }: AvatarCharacterProps) {
   // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
   // useMemo garante uma referência ESTÁVEL (senão efeitos com [config] entrariam em loop).
   const configMemo = useMemo(() => config || ({} as any), [config]);
@@ -896,7 +897,7 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   const setAura = getEquippedSetAura(equippedItems);
   // Aura posicionada por TRANSFORM (translate/scale) — não usa top/bottom negativos,
   // então NÃO vaza do container nem desloca o personagem.
-  let auraStyle: React.CSSProperties = { position: 'absolute', top: '50%', left: '50%', width: '150%', height: '150%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: -1, borderRadius: '50%' };
+  let auraStyle: React.CSSProperties = { position: 'absolute', top: showSlots ? '36%' : '50%', left: '50%', width: '150%', height: '150%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: -1, borderRadius: '50%' };
   if (setAura.active) {
     auraStyle.background = `radial-gradient(circle, ${hexToRgba(setAura.color, 0.55)} 0%, ${hexToRgba(setAura.color, 0.18)} 45%, transparent 72%)`;
     auraStyle.animation = 'forge-aura-pulse 2s infinite alternate';
@@ -2074,31 +2075,24 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
     const mult = weapons.length > 0 ? (maxWeaponScale > 14 ? 1.7 : 1.5) : 1;
     const cw = Math.max(0.3, ov.charCanvasW);
     const ch = Math.max(0.3, ov.charCanvasH);
-    // Respeita a diversidade de tamanhos configurada pelos jogadores (0.6 a 1.3),
-    // mantendo o topo da cabeça/elmo fixo na borda superior interna do círculo e o corpo crescendo para baixo.
-    const minZoom = role === 'monster' ? 0.5 : 0.6;
-    const maxZoom = role === 'monster' ? 1.6 : 1.3;
+    // Zoom base original (Imagem 1). Permite variação moderada na batalha / monstros,
+    // mas na UI normal (perfis, ranking, gerenciador) limita a uma faixa segura (0.92 a 1.08)
+    // para nunca explodir de tamanho (evita o avatar estourar a tela como na Imagem 3).
+    const minZoom = role === 'monster' ? 0.5 : (applyBattleZoom ? 0.6 : 0.92);
+    const maxZoom = role === 'monster' ? 1.6 : (applyBattleZoom ? 1.4 : 1.08);
     const userZoom = Math.max(minZoom, Math.min(maxZoom, config?.customZoom ?? 1));
     const zoom = Math.max(0.1, ov.charZoom * userZoom);
-    const fit = Math.max(20, ov.charFit - 2);
+    const fit = Math.max(20, ov.charFit);
 
     viewer.width = Math.round(size * mult * cw);
     viewer.height = Math.round(size * 1.8 * ch);
     const camZ = fit / zoom;
 
-    // Detecta se tem elmo/chapéu para calibrar a altura exata do topo da cabeça/elmo
-    const hasHelmet = (equippedItems || []).some(i => i.avatarPart === 'helmet' || i.avatarPart === 'head');
-    const headTopY = hasHelmet ? 14.5 : 12.2;
-    // Borda superior interna do círculo: 0.51 NDC (~92% do raio do círculo)
-    const fov = viewer.camera.fov || 50;
-    const tanHalfFov = Math.tan(((fov / 180) * Math.PI) / 2);
-    const targetHeadNDC = 0.51;
-    const lookAtY = headTopY - targetHeadNDC * camZ * tanHalfFov;
-    const camY = lookAtY + 4;
-
-    viewer.camera.position.set(0, camY, camZ);
-    viewer.camera.lookAt(0, lookAtY, 0);
-    viewer.controls.target.set(0, lookAtY, 0);
+    // Enquadramento clássico original (Imagem 1):
+    // Câmera posicionada a Y = 10 olhando para o centro do avatar (Y = 0)
+    viewer.camera.position.set(0, 10, camZ);
+    viewer.camera.lookAt(0, 0, 0);
+    viewer.controls.target.set(0, 0, 0);
     viewer.controls.update();
   };
   const applyCharacterFramingRef = useRef(applyCharacterFraming);
@@ -3198,12 +3192,16 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
       const run = new RunningAnimation();
       viewerRef.current.animation = new FunctionAnimation((player: any, progress: number, delta: number) => {
         run.update(player, (typeof delta === 'number' && !isNaN(delta)) ? delta : 0.016);
+        player.rotation.y = faceCamera ? 0 : targetRotation;
         if (hasTwoHanded) {
           applyTwoHandedPose(player, progress);
         }
       });
-    } else if (animation === 'cheer') {
+    } else if (animation === 'cheer' || animation === 'victory') {
       viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
+        if (faceCamera) {
+          player.rotation.y = 0;
+        }
         player.position.y = Math.abs(Math.sin(time * 5)) * 6;
         player.skin.leftArm.rotation.x = Math.PI;
         player.skin.rightArm.rotation.x = Math.PI;
@@ -3570,7 +3568,7 @@ if (config?.customModelUrl) {
           display: 'block', 
           position: 'absolute',
           left: '50%',
-          top: '50%',
+          top: showSlots ? '36%' : '50%',
           transform: 'translate(-50%, -50%)',
           zIndex: 1,
           outline: 'none',
@@ -3591,6 +3589,12 @@ if (config?.customModelUrl) {
             onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
             onClick={(e) => {
               e.stopPropagation();
+              if (readOnlySlots) {
+                if (window.matchMedia("(hover: none)").matches) {
+                  setHoveredSlot(hoveredSlot === slot.id ? null : slot.id);
+                }
+                return;
+              }
               if (item) {
                 if (window.matchMedia("(hover: none)").matches && hoveredSlot !== slot.id) {
                   setHoveredSlot(slot.id);
@@ -3606,10 +3610,12 @@ if (config?.customModelUrl) {
               }
             }}
             onDragOver={(e) => {
+              if (readOnlySlots) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = 'move';
             }}
             onDrop={(e) => {
+              if (readOnlySlots) return;
               e.preventDefault();
               const itemId = e.dataTransfer.getData('text/plain');
               if (itemId) {
@@ -3630,7 +3636,7 @@ if (config?.customModelUrl) {
               zIndex: hoveredSlot === slot.id ? 100 : 10,
               boxShadow: item ? getRarityStyle(item.rarity).boxShadow : '0 2px 8px rgba(0,0,0,0.1)',
               overflow: 'visible',
-              cursor: item && onSlotClick ? 'pointer' : 'default',
+              cursor: readOnlySlots ? (item ? 'pointer' : 'default') : (item && onSlotClick ? 'pointer' : 'default'),
               backdropFilter: 'blur(6px)'
           }}>
             {/* Passive Hidden Indicator */}
@@ -3648,7 +3654,7 @@ if (config?.customModelUrl) {
             )}
 
             {/* Submenu de Opções */}
-            {activeMenuSlot === slot.id && item && (
+            {!readOnlySlots && activeMenuSlot === slot.id && item && (
               <div style={{
                 position: 'absolute',
                 top: '50%',
@@ -3688,7 +3694,7 @@ if (config?.customModelUrl) {
                 {item ? (
                   <img src={item.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.6))' }} />
                 ) : (
-                  <div style={{ opacity: 1 }}>{getPlaceholderIcon(slot.id, '50%', isLeftHanded)}</div>
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{getPlaceholderIcon(slot.id, '52%', isLeftHanded)}</div>
                 )}
             </div>
             

@@ -11,6 +11,7 @@ import { getCustomRoleName } from '../lib/permissions';
 import { useTenant } from '../contexts/TenantContext';
 import NintendoHeart from './NintendoHeart';
 import MonsterBestiaryModal, { type BestiaryMonsterData } from './MonsterBestiaryModal';
+import { addFriend, removeFriend } from '../lib/chat';
 
 class ProfileContentErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; errorText: string }> {
   state = { hasError: false, errorText: '' };
@@ -124,6 +125,10 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
       setIsContact(!!data);
     };
     check();
+
+    const handleRefresh = () => { check(); };
+    window.addEventListener('refresh-chat-contacts', handleRefresh);
+    return () => window.removeEventListener('refresh-chat-contacts', handleRefresh);
   }, [isOpen, user.uid, currentUser?.uid]);
 
   useEffect(() => {
@@ -141,8 +146,67 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  // Garante que os itens equipados tenham dados completos mesmo se o chamador passou lista rasa/incompleta
+  const [displayEquippedItems, setDisplayEquippedItems] = useState<EquippedItem[]>(equippedItems || []);
+
+  useEffect(() => {
+    setDisplayEquippedItems(equippedItems || []);
+  }, [equippedItems]);
+
+  useEffect(() => {
+    if (!isOpen || !user?.uid) return;
+    const isMissingData = !equippedItems || equippedItems.length === 0 || equippedItems.some(i => !i.rarity || !i.type);
+    if (isMissingData) {
+      let active = true;
+      supabase
+        .from('user_items')
+        .select('*')
+        .eq('student_id', user.uid)
+        .eq('equipped', true)
+        .then(({ data }) => {
+          if (!active || !data) return;
+          const mapped = data.map((d: any) => {
+            const dt = d.data || {};
+            return {
+              ...dt,
+              docId: d.id,
+              itemId: d.item_id || dt.itemId,
+              imageUrl: dt.itemImageUrl || dt.imageUrl,
+              avatarPart: dt.avatarPart,
+              itemTitle: dt.itemTitle || dt.title,
+              itemCategory: dt.itemCategory,
+              baseAttributeType: dt.baseAttributeType,
+              baseAttributeValue: dt.baseAttributeValue,
+              forgeLevel: dt.forgeLevel || 0,
+              forgeConfig: dt.forgeConfig || null,
+              adds: dt.adds || [],
+              fixedAttributes: dt.fixedAttributes || [],
+              gameModelUrl: dt.gameModelUrl,
+              keepMetal: dt.keepMetal || false,
+              modelTextureUrl: dt.modelTextureUrl,
+              minecraftHeadValue: dt.minecraftHeadValue,
+              modelTransforms: dt.modelTransforms,
+              backColor: dt.backColor || '',
+              rarity: dt.rarity || 'common',
+              gameEffect: dt.gameEffect,
+              damageEffect: dt.damageEffect,
+              damageEffectMin: dt.damageEffectMin,
+              damageEffectMax: dt.damageEffectMax,
+              description: dt.itemDescription || dt.description || '',
+              type: dt.itemType || dt.type || 'equippable',
+              hpCooldownReductionMinutes: dt.hpCooldownReductionMinutes,
+            } as EquippedItem;
+          });
+          if (mapped.length > 0) {
+            setDisplayEquippedItems(mapped);
+          }
+        });
+      return () => { active = false; };
+    }
+  }, [isOpen, user?.uid, equippedItems]);
+
   // Valores computados (considerando nível de forja dos equipamentos e pontos distribuídos)
-  const stats = calculateTotalStats(equippedItems, user.distributedStats || (user as any).distributed_stats);
+  const stats = calculateTotalStats(displayEquippedItems, user.distributedStats || (user as any).distributed_stats);
   const maxHearts = 3 + Math.floor((RANKS.findIndex(r => r.name === rankName) || 0) / 2) + Math.floor(stats.vitality / 30);
 
   useEffect(() => {
@@ -174,18 +238,22 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
   const totalDefense = stats.defense;
   const totalAttack = stats.attack;
 
-  const petItem = equippedItems.find(i => (i.itemCategory as string) === 'pet');
+  const petItem = displayEquippedItems.find(i => (i.itemCategory as string) === 'pet');
 
   const handleAddContact = async () => {
     if (!currentUser?.uid || !user.uid || currentUser.uid === user.uid) return;
     if (isContact) {
-      const { error } = await supabase.from('user_friends').delete().eq('user_id', currentUser.uid).eq('friend_id', user.uid);
-      if (!error) setIsContact(false);
+      const ok = await removeFriend(currentUser.uid, user.uid);
+      if (ok) {
+        setIsContact(false);
+        window.dispatchEvent(new CustomEvent('refresh-chat-contacts'));
+      }
     } else {
-      const { error } = await supabase
-        .from('user_friends')
-        .upsert({ user_id: currentUser.uid, friend_id: user.uid }, { onConflict: 'user_id,friend_id' });
-      if (!error) setIsContact(true);
+      const ok = await addFriend(currentUser.uid, user.uid);
+      if (ok) {
+        setIsContact(true);
+        window.dispatchEvent(new CustomEvent('refresh-chat-contacts'));
+      }
     }
   };
 
@@ -193,7 +261,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
   if (recoveryStartMs && visualHp < maxHearts) {
     // Tempo de recuperação respeitando redução de cooldown (equipamentos/buff), como no Dashboard
     const now = Date.now();
-    const equippedReduction = equippedItems
+    const equippedReduction = displayEquippedItems
       .filter(item => (item as any).gameEffect === 'reduce_hp_cooldown')
       .reduce((acc, item) => acc + Number((item as any).hpCooldownReductionMinutes || 0), 0);
     const isBuffActive = user.hpCooldownReductionUntil && new Date(user.hpCooldownReductionUntil).getTime() > now;
@@ -277,23 +345,28 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
           
           {/* Lado Esquerdo: Avatar, Nome, HP */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ position: 'relative', width: 220, height: 220, borderRadius: '50%', background: 'var(--bg-dark)', border: `4px solid ${rankColor}`, boxShadow: `0 0 30px ${rankColor}60`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', marginBottom: '2rem' }}>
-              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', overflow: 'visible', clipPath: 'inset(-300px -300px -15px -300px)' }}>
+            <div style={{ position: 'relative', width: 270, height: 270, borderRadius: '50%', background: 'var(--bg-dark)', border: `4px solid ${rankColor}`, boxShadow: `0 0 30px ${rankColor}60`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', marginBottom: '2rem' }}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}>
                 {user.avatarConfig ? (
                   <AvatarCharacter 
                     config={user.avatarConfig} 
-                    equippedItems={equippedItems} 
-                    size={220} 
+                    equippedItems={displayEquippedItems} 
+                    size={105} 
                     interactive={false} 
-                    animation="idle" 
-                    showSlots={false} 
+                    animation={(user.avatarConfig?.animationState as any) || 'idle'} 
+                    expression={(user.avatarConfig?.mouthStyle as any) || 'normal'}
+                    showSlots={true} 
+                    readOnlySlots={true}
+                    actionPoses={user.avatarConfig?.actionPoses}
+                    actionAnimations={user.avatarConfig?.actionAnimations}
+                    faceCamera={true}
                   />
                 ) : (
                   <img src={user.photoURL} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                 )}
               </div>
               
-              <div style={{ position: 'absolute', bottom: -15, background: 'var(--bg-dark)', padding: '0.4rem 1.5rem', borderRadius: '20px', border: `2px solid ${rankColor}`, color: rankColor, fontWeight: 'bold', fontSize: '1.1rem', whiteSpace: 'nowrap', zIndex: 10, textShadow: '1px 1px 2px rgba(0,0,0,0.8)', pointerEvents: 'none' }}>
+              <div style={{ position: 'absolute', bottom: -15, background: 'var(--bg-dark)', padding: '0.4rem 1.5rem', borderRadius: '20px', border: `2px solid ${rankColor}`, color: rankColor, fontWeight: 'bold', fontSize: '1.1rem', whiteSpace: 'nowrap', zIndex: 30, textShadow: '1px 1px 2px rgba(0,0,0,0.8)', pointerEvents: 'none' }}>
                 {rankName}
               </div>
             </div>
@@ -448,7 +521,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
                             <strong style={{ color: 'var(--gold-primary)', fontSize: '1.1rem' }}>{petItem.itemTitle}</strong>
                           </div>
                         )}
-                        {equippedItems.length === 0 && (
+                        {displayEquippedItems.length === 0 && (
                           <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center', margin: 0, fontSize: '0.9rem' }}>Nenhum equipamento.</p>
                         )}
                       </div>

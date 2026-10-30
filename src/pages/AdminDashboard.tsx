@@ -1054,25 +1054,37 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     const itemsMap: Record<string, any[]> = {};
     if (itemsSnap) itemsSnap.forEach(d => {
       const data = d.data || {};
-      data.itemId = d.item_id;
-      data.studentId = d.student_id;
-      if (!itemsMap[data.studentId]) itemsMap[data.studentId] = [];
-      itemsMap[data.studentId].push({
-        itemId: data.itemId,
-        imageUrl: data.itemImageUrl,
+      const studentId = d.student_id;
+      if (!studentId) return;
+      if (!itemsMap[studentId]) itemsMap[studentId] = [];
+      itemsMap[studentId].push({
+        ...data,
+        docId: d.id,
+        itemId: d.item_id || data.itemId,
+        imageUrl: data.itemImageUrl || data.imageUrl,
         avatarPart: data.avatarPart,
-        itemTitle: data.itemTitle,
+        itemTitle: data.itemTitle || data.title,
         itemCategory: data.itemCategory,
         baseAttributeType: data.baseAttributeType,
         baseAttributeValue: data.baseAttributeValue,
         forgeLevel: data.forgeLevel || 0,
         forgeConfig: data.forgeConfig || null,
-        adds: data.adds,
+        adds: data.adds || [],
+        fixedAttributes: data.fixedAttributes || [],
         gameModelUrl: data.gameModelUrl,
+        keepMetal: data.keepMetal || false,
         modelTextureUrl: data.modelTextureUrl,
         minecraftHeadValue: data.minecraftHeadValue,
         modelTransforms: data.modelTransforms,
-        backColor: data.backColor || ''
+        backColor: data.backColor || '',
+        rarity: data.rarity || 'common',
+        gameEffect: data.gameEffect,
+        damageEffect: data.damageEffect,
+        damageEffectMin: data.damageEffectMin,
+        damageEffectMax: data.damageEffectMax,
+        description: data.itemDescription || data.description || '',
+        type: data.itemType || data.type || 'equippable',
+        hpCooldownReductionMinutes: data.hpCooldownReductionMinutes,
       });
     });
     setAllUserItems(itemsMap);
@@ -1159,22 +1171,33 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     const eqItems = (itemsSnap || []).map(d => {
       const data = d.data || {};
       return {
+        ...data,
         docId: d.id,
         itemId: d.item_id || data.itemId,
-        imageUrl: data.itemImageUrl,
+        imageUrl: data.itemImageUrl || data.imageUrl,
         avatarPart: data.avatarPart,
-        itemTitle: data.itemTitle,
+        itemTitle: data.itemTitle || data.title,
         itemCategory: data.itemCategory,
         baseAttributeType: data.baseAttributeType,
         baseAttributeValue: data.baseAttributeValue,
         forgeLevel: data.forgeLevel || 0,
         forgeConfig: data.forgeConfig || null,
-        adds: data.adds,
+        adds: data.adds || [],
+        fixedAttributes: data.fixedAttributes || [],
         gameModelUrl: data.gameModelUrl,
+        keepMetal: data.keepMetal || false,
         modelTextureUrl: data.modelTextureUrl,
         minecraftHeadValue: data.minecraftHeadValue,
         modelTransforms: data.modelTransforms,
-        backColor: data.backColor || ''
+        backColor: data.backColor || '',
+        rarity: data.rarity || 'common',
+        gameEffect: data.gameEffect,
+        damageEffect: data.damageEffect,
+        damageEffectMin: data.damageEffectMin,
+        damageEffectMax: data.damageEffectMax,
+        description: data.itemDescription || data.description || '',
+        type: data.itemType || data.type || 'equippable',
+        hpCooldownReductionMinutes: data.hpCooldownReductionMinutes,
       };
     });
     setSelectedStudentItems(eqItems);
@@ -4744,7 +4767,7 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
       )}
 
       {viewingProfileUser && (() => {
-        const rank = getRankForXp(viewingProfileUser.xp || 0);
+        const rank = getRankForXp(viewingProfileUser.xp || 0, viewingProfileUser.classId);
         return (
           <PublicProfileModal 
             isOpen={true}

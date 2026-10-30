@@ -350,6 +350,13 @@ function ChatWidgetInner({ onOpenProfile, translucent = false }: ChatWidgetProps
     return () => clearInterval(int);
   }, [uid, loadContacts]);
 
+  // Listener para sincronização instantânea de contatos quando adicionados ou removidos em outras telas
+  useEffect(() => {
+    const handleRefresh = () => { loadContacts(true); };
+    window.addEventListener('refresh-chat-contacts', handleRefresh);
+    return () => window.removeEventListener('refresh-chat-contacts', handleRefresh);
+  }, [loadContacts]);
+
   const loadUnreadMap = useCallback(async () => {
     const currentUid = uidRef.current;
     if (!currentUid) return;

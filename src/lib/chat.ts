@@ -130,34 +130,13 @@ export async function fetchContacts(uid: string, classId?: string, tenantId?: st
     return [];
   }
 
-  // 1. Amigos explícitos + quem me adicionou (amizade mútua)
+  // 1. Amigos explícitos (quem está na lista de contatos do usuário)
   const { data: friendRows } = await supabase
     .from('user_friends')
     .select('friend_id')
     .eq('user_id', uid);
 
   const friendIds = (friendRows || []).map(r => r.friend_id);
-
-  // Quem me adicionou também conta como contato (a amizade é mútua),
-  // mesmo que eu ainda não tenha processado a aceitação no meu cliente.
-  const { data: backRows } = await supabase
-    .from('user_friends')
-    .select('user_id')
-    .eq('friend_id', uid);
-  const backFriendIds = (backRows || []).map(r => r.user_id);
-
-  // Auto-reconciliação: se alguém me adicionou mas eu ainda não adicionei de volta,
-  // gravo a minha linha (no meu próprio cliente, respeitando RLS). Garante a mútua
-  // mesmo que a mensagem de aceitação não tenha sido processada.
-  const toReconcile = backFriendIds.filter(id => !friendIds.includes(id));
-  if (toReconcile.length > 0) {
-    const { error: recError } = await supabase
-      .from('user_friends')
-      .upsert(toReconcile.map(id => ({ user_id: uid, friend_id: id })), { onConflict: 'user_id,friend_id' });
-    if (!recError) {
-      friendIds.push(...toReconcile);
-    }
-  }
 
   // 2. Colegas (usuários com mesmo tenant)
   // Alguns usuários existem apenas em tenant_users (sem users.tenant_id preenchido)
@@ -184,7 +163,7 @@ export async function fetchContacts(uid: string, classId?: string, tenantId?: st
   const contacts: ChatContact[] = (users || [])
     .filter((u: any) => u.id !== uid)
     .map((u: any) => {
-      const isFriend = friendIds.includes(u.id) || backFriendIds.includes(u.id);
+      const isFriend = friendIds.includes(u.id);
       const otherIsStaff = u.role !== 'student' && u.role !== 'pending_student';
       const sameClass = !!classId && u.class_id === classId;
       // Configurações de chat do outro usuário (status/restrito)
@@ -219,12 +198,15 @@ export async function fetchContacts(uid: string, classId?: string, tenantId?: st
   return contacts;
 }
 
-/** Adiciona aos contatos */
+/** Adiciona aos contatos (mútua em ambas as direções) */
 export async function addFriend(uid: string, friendId: string): Promise<boolean> {
   if (!uid || !friendId || uid === friendId) return false;
   const { error } = await supabase
     .from('user_friends')
-    .upsert({ user_id: uid, friend_id: friendId }, { onConflict: 'user_id,friend_id' });
+    .upsert([
+      { user_id: uid, friend_id: friendId },
+      { user_id: friendId, friend_id: uid }
+    ], { onConflict: 'user_id,friend_id' });
   if (error) {
     console.error('Erro ao adicionar contato:', error);
     return false;
@@ -232,15 +214,15 @@ export async function addFriend(uid: string, friendId: string): Promise<boolean>
   return true;
 }
 
-/** Remove dos contatos */
+/** Remove dos contatos (remove em ambas as direções para evitar ressurgimento) */
 export async function removeFriend(uid: string, friendId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('user_friends')
-    .delete()
-    .eq('user_id', uid)
-    .eq('friend_id', friendId);
-  if (error) {
-    console.error('Erro ao remover contato:', error);
+  if (!uid || !friendId) return false;
+  const [res1, res2] = await Promise.all([
+    supabase.from('user_friends').delete().eq('user_id', uid).eq('friend_id', friendId),
+    supabase.from('user_friends').delete().eq('user_id', friendId).eq('friend_id', uid)
+  ]);
+  if (res1.error && res2.error) {
+    console.error('Erro ao remover contato:', res1.error || res2.error);
     return false;
   }
   return true;
