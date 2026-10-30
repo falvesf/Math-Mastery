@@ -80,9 +80,36 @@ const RankingAvatar = React.memo(({ student, size, rankPos = 1, equippedItems, a
       style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'visible', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
     >
       {showAvatars && activeBubbleId === student.uid && student.customStatusText && (
-        <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', background: 'white', color: 'black', padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap', zIndex: 50, boxShadow: '0 4px 10px rgba(0,0,0,0.5)', animation: 'epicZoom 0.3s ease-out' }}>
+        <div style={{
+          position: 'absolute',
+          bottom: 'calc(100% + 8px)',
+          left: -4,
+          background: 'white',
+          color: 'black',
+          padding: '5px 12px',
+          borderRadius: '12px',
+          fontSize: '0.75rem',
+          fontWeight: 'bold',
+          whiteSpace: 'nowrap',
+          maxWidth: '320px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          zIndex: 100,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+          animation: 'epicZoom 0.25s ease-out',
+          pointerEvents: 'none',
+          lineHeight: '1.2'
+        }}>
           {student.customStatusText}
-          <div style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%) rotate(45deg)', width: 8, height: 8, background: 'white' }} />
+          <div style={{
+            position: 'absolute',
+            bottom: -4,
+            left: Math.round(size / 2) + 4,
+            transform: 'translateX(-50%) rotate(45deg)',
+            width: 8,
+            height: 8,
+            background: 'white'
+          }} />
         </div>
       )}
 

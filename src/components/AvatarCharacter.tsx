@@ -783,13 +783,15 @@ export interface AvatarCharacterProps {
   fallenLayerPortal?: HTMLElement | null;
   /** Multiplicador de velocidade da animação (1 = normal; 0 = parado/congelado). */
   slowFactor?: number;
+  /** Quando true, aplica o slider de tamanho em batalha (customZoom). Padrão: false para jogadores (mantém enquadramento limpo em UI/rankings/perfis), true para monstros e no editor de avatar. */
+  applyBattleZoom?: boolean;
 }
 
 import CustomModelViewer from './CustomModelViewer';
 import ItemTooltip from './ItemTooltip';
 
 
-const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, actionAnimations, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null, slowFactor = 1 }: AvatarCharacterProps) {
+const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedItems = [], size = 300, interactive = true, animation = 'idle', expression = 'normal', role = 'player', showSlots = false, hurt = false, onAvatarClick, onSlotClick, onToggleSlotVisibility, debugItemTransform, debugItemId, debugPose, debugAnimationFrames, debugPreviewAnim, actionPoses, actionAnimations, faceCamera, debugAnimationDuration, closedEyes = 'none', ignoreHiddenSlots = false, hideConfigAddons, effectTint = null, fallenBodyParts = [], fallenLayerPortal = null, slowFactor = 1, applyBattleZoom }: AvatarCharacterProps) {
   // Tolerância a config nulo (ex.: usuário sem avatar configurado) para não quebrar o render.
   // useMemo garante uma referência ESTÁVEL (senão efeitos com [config] entrariam em loop).
   const configMemo = useMemo(() => config || ({} as any), [config]);
@@ -932,7 +934,8 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
           viewer.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Garante nitidez máxima em telas Retina/High-DPI
       }
       
-      viewer.camera.position.set(0, 10, 60);
+      viewer.camera.position.set(0, 6, 60);
+      viewer.camera.lookAt(0, 0, 0);
 
       // Skin dummy (fallback transparente) — carregada com .catch() para nunca virar
       // erro não tratado, mesmo se o navegador falhar ao decodificar.
@@ -2071,16 +2074,31 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
     const mult = weapons.length > 0 ? (maxWeaponScale > 14 ? 1.7 : 1.5) : 1;
     const cw = Math.max(0.3, ov.charCanvasW);
     const ch = Math.max(0.3, ov.charCanvasH);
-    const userZoom = Math.max(0.5, Math.min(1.5, config?.customZoom || 1));
+    // Respeita a diversidade de tamanhos configurada pelos jogadores (0.6 a 1.3),
+    // mantendo o topo da cabeça/elmo fixo na borda superior interna do círculo e o corpo crescendo para baixo.
+    const minZoom = role === 'monster' ? 0.5 : 0.6;
+    const maxZoom = role === 'monster' ? 1.6 : 1.3;
+    const userZoom = Math.max(minZoom, Math.min(maxZoom, config?.customZoom ?? 1));
     const zoom = Math.max(0.1, ov.charZoom * userZoom);
-    const fit = Math.max(20, ov.charFit);
+    const fit = Math.max(20, ov.charFit - 2);
 
     viewer.width = Math.round(size * mult * cw);
     viewer.height = Math.round(size * 1.8 * ch);
     const camZ = fit / zoom;
-    viewer.camera.position.set(0, 10, camZ);
-    viewer.camera.lookAt(0, 0, 0);
-    viewer.controls.target.set(0, 0, 0);
+
+    // Detecta se tem elmo/chapéu para calibrar a altura exata do topo da cabeça/elmo
+    const hasHelmet = (equippedItems || []).some(i => i.avatarPart === 'helmet' || i.avatarPart === 'head');
+    const headTopY = hasHelmet ? 14.5 : 12.2;
+    // Borda superior interna do círculo: 0.51 NDC (~92% do raio do círculo)
+    const fov = viewer.camera.fov || 50;
+    const tanHalfFov = Math.tan(((fov / 180) * Math.PI) / 2);
+    const targetHeadNDC = 0.51;
+    const lookAtY = headTopY - targetHeadNDC * camZ * tanHalfFov;
+    const camY = lookAtY + 4;
+
+    viewer.camera.position.set(0, camY, camZ);
+    viewer.camera.lookAt(0, lookAtY, 0);
+    viewer.controls.target.set(0, lookAtY, 0);
     viewer.controls.update();
   };
   const applyCharacterFramingRef = useRef(applyCharacterFraming);
@@ -2089,7 +2107,7 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
   useEffect(() => {
     applyCharacterFramingRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equippedItemsJson, size, config?.customZoom]);
+  }, [equippedItemsJson, size, config?.customZoom, applyBattleZoom]);
 
   // Aplica ao vivo quando o Arena Debug altera o render do personagem
   useEffect(() => {
@@ -2365,6 +2383,15 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
     const groundY = fallenGroundRef.current;
 
     const fallenSet = new Set(fallenBodyParts || []);
+    if (fallenSet.size === 0) {
+      skin.position.y = 0;
+      fallenGroundRef.current = null;
+      ['head', 'body', 'rightArm', 'leftArm', 'rightLeg', 'leftLeg'].forEach(p => {
+        const g = (skin as any)[p];
+        if (g) g.visible = true;
+      });
+      return;
+    }
     let side = 1;
     const newFalls: THREE.Group[] = [];
 

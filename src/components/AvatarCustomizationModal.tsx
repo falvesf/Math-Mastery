@@ -1899,6 +1899,7 @@ onClick={() => setConfig(prev => {
                   return (
                     <AvatarCharacter
                       config={{ ...config, customZoom: effectiveZoom }}
+                      applyBattleZoom={true}
                       equippedItems={showEquippedItems ? equippedItems : []}
                       size={skinSize}
                       animation={config.animationState || 'idle'}

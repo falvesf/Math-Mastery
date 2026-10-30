@@ -217,7 +217,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100000 }}>
-      <div className="glass-panel" style={{ width: '900px', maxWidth: '95vw', maxHeight: '90vh', padding: '2rem', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out', background: 'var(--bg-dark)', overflow: 'hidden' }}>
+      <div className="glass-panel" style={{ width: '1100px', maxWidth: '95vw', maxHeight: '90vh', padding: '2rem', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out', background: 'var(--bg-dark)', overflow: 'hidden' }}>
         
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -242,21 +242,21 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
         </div>
 
         {/* Filtros */}
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: '220px', position: 'relative' }}>
             <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Buscar itens..."
-              style={{ width: '100%', padding: '0.5rem 0.75rem 0.5rem 2rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit' }}
+              style={{ width: '100%', padding: '0.5rem 0.75rem 0.5rem 2rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontFamily: 'inherit', boxSizing: 'border-box' }}
             />
           </div>
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value as any)}
-            style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+            style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', cursor: 'pointer' }}
           >
             <option value="all">Todos os Tipos</option>
             <option value="consumable">Consumíveis</option>
@@ -265,7 +265,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
           <select
             value={filterRarity}
             onChange={e => setFilterRarity(e.target.value)}
-            style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)' }}
+            style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', cursor: 'pointer' }}
           >
             <option value="all">Todas as Raridades</option>
             <option value="common">Comum</option>
@@ -277,7 +277,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
           </select>
           <button
             onClick={toggleSelectAll}
-            style={{ padding: '0.5rem 0.75rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            style={{ padding: '0.5rem 0.85rem', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
           >
             <Check size={14} /> Selecionar todos visíveis
           </button>
@@ -295,7 +295,7 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
               <p>Nenhum item encontrado no banco.</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '1rem' }}>
               {filteredItems.map(item => {
                 const imported = isImported(item);
                 const selected = selectedIds.includes(item.id);
@@ -312,6 +312,11 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
                     background: `${rarityColor}10`,
                     boxShadow: `0 0 12px ${rarityColor}30`,
                     outline: selected ? '2px solid #8b5cf6' : 'none',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    borderRadius: '12px',
+                    boxSizing: 'border-box',
+                    minHeight: '170px'
                   }}
                   onClick={() => handleImportClick(item)}
                   onMouseEnter={e => {
@@ -324,22 +329,24 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
                   }}
                   onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}
                 >
-                  <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.6rem', alignItems: 'center' }}>
                     <ItemIcon item={item} size={48} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <h4 style={{ margin: 0, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</h4>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.title}>
+                          {item.title}
+                        </h4>
                         {imported && (
                           <span title="Item já importado para a loja local" style={{ color: '#10b981', display: 'inline-flex', flexShrink: 0 }}>
                             <Check size={16} strokeWidth={3} />
                           </span>
                         )}
                       </div>
-                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
-                        <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: item.type === 'consumable' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: item.type === 'consumable' ? '#10b981' : '#3b82f6' }}>
+                      <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.3rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.45rem', borderRadius: '4px', background: item.type === 'consumable' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)', color: item.type === 'consumable' ? '#10b981' : '#3b82f6', fontWeight: 500 }}>
                           {item.type === 'consumable' ? 'Consumível' : 'Equipável'}
                         </span>
-                        <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: `${getRarityColor(item.rarity)}20`, color: getRarityColor(item.rarity) }}>
+                        <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.45rem', borderRadius: '4px', background: `${getRarityColor(item.rarity)}20`, color: getRarityColor(item.rarity), fontWeight: 500 }}>
                           {getRarityLabel(item.rarity)}
                         </span>
                       </div>
@@ -355,34 +362,115 @@ export default function ItemBankModal({ isOpen, onClose, onImport, onImportMulti
                       />
                     </div>
                   </div>
-                  {item.description && (
-                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      {item.description}
-                    </p>
-                  )}
-                  <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                    {isSuperAdmin && (
-                      <>
+
+                  <div style={{ flex: 1, marginBottom: '0.75rem' }}>
+                    {item.description ? (
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {item.description}
+                      </p>
+                    ) : (
+                      <div style={{ minHeight: '1.2rem' }} />
+                    )}
+                  </div>
+
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    gap: '0.5rem', 
+                    paddingTop: '0.6rem', 
+                    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                    marginTop: 'auto'
+                  }}>
+                    {isSuperAdmin ? (
+                      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
                         <button
                           onClick={e => { e.stopPropagation(); onEditGlobal && onEditGlobal(item); onClose(); }}
-                          style={{ padding: '0.35rem 0.75rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                          title="Editar item global no Banco"
+                          style={{ 
+                            padding: '0.35rem 0.55rem', 
+                            background: 'rgba(59, 130, 246, 0.2)', 
+                            color: '#60a5fa', 
+                            border: '1px solid rgba(59, 130, 246, 0.35)', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.75rem', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.25rem',
+                            transition: 'all 0.15s'
+                          }}
                         >
-                          <Edit2 size={14} /> Editar
+                          <Edit2 size={13} />
+                          <span>Editar</span>
                         </button>
                         <button
                           onClick={e => { e.stopPropagation(); handleDeleteGlobal(item); }}
-                          style={{ padding: '0.35rem 0.75rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                          title="Excluir item do Banco Global"
+                          style={{ 
+                            padding: '0.35rem 0.55rem', 
+                            background: 'rgba(239, 68, 68, 0.2)', 
+                            color: '#f87171', 
+                            border: '1px solid rgba(239, 68, 68, 0.35)', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.75rem', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.25rem',
+                            transition: 'all 0.15s'
+                          }}
                         >
-                          <Trash2 size={14} /> Excluir
+                          <Trash2 size={13} />
+                          <span>Excluir</span>
                         </button>
-                      </>
-                    )}
-                    <button
-                      onClick={e => { e.stopPropagation(); handleImportClick(item); }}
-                      style={{ padding: '0.35rem 0.75rem', background: imported ? 'rgba(16, 185, 129, 0.15)' : 'rgba(139, 92, 246, 0.2)', color: imported ? '#10b981' : '#8b5cf6', border: imported ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                    >
-                      <Download size={14} /> {imported ? 'Importado' : 'Importar'}
-                    </button>
+                      </div>
+                    ) : <div />}
+
+                    <div>
+                      {imported ? (
+                        <span 
+                          title="Item já importado nesta escola"
+                          style={{ 
+                            padding: '0.35rem 0.65rem', 
+                            background: 'rgba(16, 185, 129, 0.15)', 
+                            color: '#10b981', 
+                            border: '1px solid rgba(16, 185, 129, 0.35)', 
+                            borderRadius: '6px', 
+                            fontSize: '0.75rem', 
+                            fontWeight: 600,
+                            display: 'inline-flex', 
+                            alignItems: 'center', 
+                            gap: '0.3rem'
+                          }}
+                        >
+                          <Check size={13} strokeWidth={2.5} />
+                          <span>Importado</span>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={e => { e.stopPropagation(); handleImportClick(item); }}
+                          title="Importar item para esta escola"
+                          style={{ 
+                            padding: '0.35rem 0.75rem', 
+                            background: 'rgba(139, 92, 246, 0.25)', 
+                            color: '#a78bfa', 
+                            border: '1px solid rgba(139, 92, 246, 0.4)', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.75rem', 
+                            fontWeight: 600,
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.3rem',
+                            transition: 'all 0.15s'
+                          }}
+                        >
+                          <Download size={13} />
+                          <span>Importar</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 );

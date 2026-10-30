@@ -81,16 +81,20 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
         
         let wins = 0;
         let defeats = 0;
-        const uniqueQuests = new Set<string>();
 
         (snap || []).forEach((row: any) => {
-          uniqueQuests.add(row.quest_id);
-          if (row.status === 'completed') wins++;
-          if (row.status === 'failed') defeats++;
+          if (row.status === 'completed') {
+            wins++;
+          } else {
+            defeats++;
+          }
         });
 
+        // Participações é rigorosamente o total de partidas (vitórias + derrotas)
+        const totalParticipations = wins + defeats;
+
         setQuestStats({
-          participations: uniqueQuests.size,
+          participations: totalParticipations,
           wins,
           defeats
         });
@@ -273,13 +277,13 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
           
           {/* Lado Esquerdo: Avatar, Nome, HP */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ position: 'relative', width: 220, height: 220, borderRadius: '50%', background: 'var(--bg-dark)', border: `4px solid ${rankColor}`, boxShadow: `0 0 30px ${rankColor}60`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', marginBottom: '1.5rem' }}>
-              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <div style={{ position: 'relative', width: 220, height: 220, borderRadius: '50%', background: 'var(--bg-dark)', border: `4px solid ${rankColor}`, boxShadow: `0 0 30px ${rankColor}60`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', marginBottom: '2rem' }}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', overflow: 'visible', clipPath: 'inset(-300px -300px -15px -300px)' }}>
                 {user.avatarConfig ? (
                   <AvatarCharacter 
                     config={user.avatarConfig} 
                     equippedItems={equippedItems} 
-                    size={200} 
+                    size={220} 
                     interactive={false} 
                     animation="idle" 
                     showSlots={false} 
@@ -294,7 +298,7 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
               </div>
             </div>
 
-            <h2 style={{ fontSize: '1.8rem', margin: '1rem 0 0.5rem 0', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px', color: 'white' }}>
+            <h2 style={{ fontSize: '1.8rem', margin: '0.8rem 0 0.5rem 0', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px', color: 'white' }}>
               {user.name}
             </h2>
             {customRoleName && (
