@@ -324,6 +324,14 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
       const data = d.data as MarketItem;
       // Ocultos: buff expirado e vendedor sem espaço — não aparecem no bazar
       if (data.hiddenFromMarket === true) return;
+      // Identifica se o vendedor é da Staff/Administração (sem turma fixa)
+      const isSellerStaff = (data as any).isStaffSeller === true || 
+        (data as any).sellerRole === 'admin' || 
+        (data as any).sellerRole === 'superadmin' || 
+        (data as any).sellerRole === 'teacher' ||
+        data.sellerClassName === 'Staff' ||
+        !data.sellerClassName;
+
       // Filtrar conforme o alcance configurado no Bazar (economia da escola)
       const scope = econ.bazarCommerceScope || 'all';
       if (scope === 'school' && tenantId && d.tenant_id !== tenantId) return;
@@ -331,7 +339,8 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
         const sellerClass = data.sellerClassName || '';
         const myClass = userData?.classId || '';
         if (tenantId && d.tenant_id !== tenantId) return;
-        if (myClass && sellerClass && sellerClass !== myClass) return;
+        // Staff/Admin fica SEMPRE liberado para todas as turmas!
+        if (!isSellerStaff && myClass && sellerClass && sellerClass !== myClass) return;
       }
       const originalStoreItem = rawItems.find((si: any) => si.id === d.item_id);
       const patchedRarity = data.rarity || originalStoreItem?.rarity || 'common';
@@ -1694,7 +1703,13 @@ gameEffect: item.gameEffect || 'none',
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     Vendido por: <strong style={{ color: 'var(--gold-primary)' }}>
                       {item.sellerName?.split(' ')[0]} 
-                      {item.sellerClassName && <span style={{ color: item.sellerClassColor || 'inherit' }}> | {item.sellerClassName}</span>}
+                      {((item as any).isStaffSeller || (item as any).sellerRole === 'admin' || (item as any).sellerRole === 'superadmin' || item.sellerClassName === 'Staff') ? (
+                        <span style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.15)', padding: '1px 5px', borderRadius: '4px', fontSize: '0.65rem', marginLeft: '4px', border: '1px solid rgba(245,158,11,0.3)', fontWeight: 'bold' }}>
+                          Staff
+                        </span>
+                      ) : item.sellerClassName ? (
+                        <span style={{ color: item.sellerClassColor || 'inherit' }}> | {item.sellerClassName}</span>
+                      ) : null}
                     </strong>
                   </p>
                   {item.saleExpiresAt && (

@@ -168,12 +168,21 @@ export async function getUnseenBazarCount(userId: string, tenantId?: string | nu
       if (d.hiddenFromMarket === true) continue;
       if (typeof d.saleExpiresAt === 'number' && d.saleExpiresAt <= now) continue;
 
+      // Identifica se o vendedor é Staff / Admin (sem turma fixa)
+      const isSellerStaff = d.isStaffSeller === true || 
+        d.sellerRole === 'admin' || 
+        d.sellerRole === 'superadmin' || 
+        d.sellerRole === 'teacher' ||
+        d.sellerClassName === 'Staff' ||
+        !d.sellerClassName;
+
       // Filtragem por escopo
       if (bazarScope === 'school' && tenantId && r.tenant_id !== tenantId) continue;
       if (bazarScope === 'class') {
         const sellerClass = d.sellerClassName || '';
         if (tenantId && r.tenant_id !== tenantId) continue;
-        if (!sellerClass || !classId || sellerClass !== classId) continue;
+        // Staff/Admin fica sempre contabilizado para todas as turmas!
+        if (!isSellerStaff && (!sellerClass || !classId || sellerClass !== classId)) continue;
       }
 
       activeIds.push(r.id);
