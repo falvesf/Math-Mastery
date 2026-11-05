@@ -23,7 +23,7 @@ import AvatarCharacter, { type EquippedItem } from './AvatarCharacter';
 import SkinBuffIcon from './SkinBuffIcon';
 import ItemIcon from './ItemIcon';
 import ItemTooltip from './ItemTooltip';
-import { processExpiredSales, formatSaleRemaining } from '../lib/bazar';
+import { processExpiredSales, formatSaleRemaining, getUnseenBazarCount, markBazarAsSeen } from '../lib/bazar';
 
 interface MarketItem {
   id: string;
@@ -104,6 +104,13 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
   const { tenantId } = useTenant();
   const [activeTab, setActiveTab] = useState<'official' | 'market'>('official');
   const [showHiddenItems, setShowHiddenItems] = useState(false);
+  const [bazarBadgeCount, setBazarBadgeCount] = useState<number>(0);
+
+  const refreshBazarBadge = async () => {
+    if (!userData?.uid) return;
+    const count = await getUnseenBazarCount(userData.uid, tenantId, (userData as any).classId || (userData as any).turmaId);
+    setBazarBadgeCount(count);
+  };
   const ranchUnlocked = isRanchUnlocked(userData);
   const [officialCategoryTab, setOfficialCategoryTab] = useState<'all' | 'consumable' | 'attack' | 'defense' | 'ranch' | 'other'>('all');
   const [items, setItems] = useState<StoreItem[]>([]);
@@ -172,6 +179,20 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
     localStorage.setItem('store_filterRarity', filterRarity);
     localStorage.setItem('store_sortBy', sortBy);
   }, [viewMode, filterType, filterRarity, sortBy]);
+
+  useEffect(() => {
+    refreshBazarBadge();
+    const handleUpdate = () => refreshBazarBadge();
+    window.addEventListener('bazar-badge-updated', handleUpdate);
+    return () => window.removeEventListener('bazar-badge-updated', handleUpdate);
+  }, [userData?.uid, tenantId, (userData as any)?.classId, (userData as any)?.turmaId]);
+
+  useEffect(() => {
+    if (activeTab === 'market' && userData?.uid && marketItems.length > 0) {
+      markBazarAsSeen(userData.uid, marketItems.map(i => i.id));
+      setBazarBadgeCount(0);
+    }
+  }, [activeTab, marketItems, userData?.uid]);
 
   useEffect(() => {
     fetchStoreData();
@@ -1101,11 +1122,40 @@ gameEffect: item.gameEffect || 'none',
             Loja Oficial
           </button>
           <button 
-            onClick={() => setActiveTab('market')}
+            onClick={() => {
+              setActiveTab('market');
+              if (userData?.uid && marketItems.length > 0) {
+                markBazarAsSeen(userData.uid, marketItems.map(i => i.id));
+                setBazarBadgeCount(0);
+              }
+            }}
             className="login-btn"
-            style={{ flex: 1, padding: '0.4rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem', justifyContent: 'center' }}
+            style={{ position: 'relative', flex: 1, padding: '0.4rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem', justifyContent: 'center' }}
           >
             Bazar
+            {bazarBadgeCount > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: '-5px',
+                right: '8px',
+                background: '#ef4444',
+                color: '#ffffff',
+                fontSize: '0.65rem',
+                fontWeight: 'bold',
+                minWidth: '18px',
+                height: '18px',
+                borderRadius: '9999px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 4px',
+                border: '2px solid var(--bg-card, #0f172a)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                lineHeight: 1
+              }}>
+                {bazarBadgeCount > 99 ? '99+' : bazarBadgeCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setIsFiltersOpen(!isFiltersOpen)}
@@ -1511,8 +1561,31 @@ gameEffect: item.gameEffect || 'none',
             
             return (
               <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
-                <div className={isList ? 'store-list-card-media' : ''} style={{ width: isList ? '75px' : '100%', height: isList ? '75px' : undefined, aspectRatio: isList ? 'none' : '1', background: 'rgba(0,0,0,0.5)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-glass)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className={isList ? 'store-list-card-media' : ''} style={{ position: 'relative', width: isList ? '75px' : '100%', height: isList ? '75px' : undefined, aspectRatio: isList ? 'none' : '1', background: 'rgba(0,0,0,0.5)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-glass)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <ItemIcon item={item} size={isList ? 70 : 80} />
+                  {(((item as any).itemType === 'equippable' || (item as any).type === 'equippable') || item.gameEffect === 'unlock_skin') && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPreviewItem(item); }}
+                      title="Ver no Personagem"
+                      style={{
+                        position: 'absolute',
+                        bottom: '4px',
+                        right: '4px',
+                        background: 'rgba(0,0,0,0.7)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '3px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-secondary)',
+                        zIndex: 6
+                      }}
+                    >
+                      <Eye size={12} />
+                    </button>
+                  )}
                 </div>
                 <div className={`rarity-badge ${item.rarity || 'common'}`}>
                   {getRarityLabel(item.rarity)}
@@ -1638,7 +1711,7 @@ gameEffect: item.gameEffect || 'none',
                       </button>
                     )}
                     
-                    {(item.itemType === 'equippable' || item.gameEffect === 'unlock_skin') && (
+                    {(((item as any).itemType === 'equippable' || (item as any).type === 'equippable') || item.gameEffect === 'unlock_skin') && (
                       <button
                         className="login-btn hover-brightness"
                         onClick={() => setPreviewItem(item)}

@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { RANKS, getRankForXp } from './ranks';
 import { calculateTotalStats, isStackableItemType } from './gacha';
 import { DROPPED_STUDENT_ID } from './utils';
+import { fetchEconomySettings } from './economy';
 
 /**
  * Sistema de LICENÇA DE VENDA no Bazar.
@@ -136,3 +137,87 @@ export function formatSaleRemaining(saleExpiresAt?: number): string {
   if (hours > 0) return `${hours}h ${mins}m`;
   return `${mins}m`;
 }
+
+/**
+ * Obtém a contagem de itens à venda no Bazar que o usuário logado ainda não visualizou.
+ */
+export async function getUnseenBazarCount(userId: string, tenantId?: string | null, classId?: string | null): Promise<number> {
+  if (!userId) return 0;
+  try {
+    const { data: rows, error } = await supabase
+      .from('user_items')
+      .select('id, student_id, tenant_id, data')
+      .eq('data->>forSale', 'true');
+
+    if (error || !rows || rows.length === 0) return 0;
+
+    // Busca configurações de escopo de comércio do bazar
+    let bazarScope = 'all';
+    try {
+      if (tenantId) {
+        const econ = await fetchEconomySettings(tenantId);
+        bazarScope = econ.bazarCommerceScope || 'all';
+      }
+    } catch { /* default all */ }
+
+    const now = Date.now();
+    const activeIds: string[] = [];
+
+    for (const r of rows) {
+      const d = r.data as any;
+      if (d.hiddenFromMarket === true) continue;
+      if (typeof d.saleExpiresAt === 'number' && d.saleExpiresAt <= now) continue;
+
+      // Filtragem por escopo
+      if (bazarScope === 'school' && tenantId && r.tenant_id !== tenantId) continue;
+      if (bazarScope === 'class') {
+        const sellerClass = d.sellerClassName || '';
+        if (tenantId && r.tenant_id !== tenantId) continue;
+        if (!sellerClass || !classId || sellerClass !== classId) continue;
+      }
+
+      activeIds.push(r.id);
+    }
+
+    if (activeIds.length === 0) return 0;
+
+    // Lê os IDs já vistos pelo usuário
+    const storageKey = `bazar_seen_item_ids_${userId}`;
+    let seenIds: string[] = [];
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) seenIds = JSON.parse(raw);
+    } catch {
+      seenIds = [];
+    }
+
+    const seenSet = new Set(seenIds);
+    const unseen = activeIds.filter(id => !seenSet.has(id));
+    return unseen.length;
+  } catch (e) {
+    console.error('Erro ao verificar itens não vistos do Bazar:', e);
+    return 0;
+  }
+}
+
+/**
+ * Marca os itens do Bazar como visualizados pelo usuário.
+ */
+export function markBazarAsSeen(userId: string, activeItemIds: string[]) {
+  if (!userId || !activeItemIds || activeItemIds.length === 0) return;
+  try {
+    const storageKey = `bazar_seen_item_ids_${userId}`;
+    let currentSeen: string[] = [];
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) currentSeen = JSON.parse(raw);
+    } catch {}
+
+    const updated = Array.from(new Set([...currentSeen, ...activeItemIds]));
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('bazar-badge-updated'));
+  } catch (e) {
+    console.error('Erro ao marcar bazar como visto:', e);
+  }
+}
+

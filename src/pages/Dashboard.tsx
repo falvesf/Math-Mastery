@@ -48,6 +48,7 @@ import { sanitizeHistoryText } from '../lib/formatAdminName';
 import { fetchEquippedItems, invalidateEquippedItems } from '../lib/equippedItems';
 import { orderEffectFirst } from '../lib/damageEffects';
 import { checkAndClaimMonthlyDamageRewards } from '../lib/combatDamage';
+import { getUnseenBazarCount } from '../lib/bazar';
 export interface RankingHistory {
   general: Record<string, { currentRank: number; previousRank: number; rankSince: number }>;
   classes: Record<string, Record<string, { currentRank: number; previousRank: number; rankSince: number }>>;
@@ -164,6 +165,36 @@ export default function Dashboard() {
   if (!userData) return null;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('quests');
+  const [bazarUnseenCount, setBazarUnseenCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!userData?.uid) return;
+    let active = true;
+
+    const checkBazar = async () => {
+      try {
+        const count = await getUnseenBazarCount(userData.uid, tenantId, (userData as any).classId || (userData as any).turmaId);
+        if (active) setBazarUnseenCount(count);
+      } catch (err) {
+        console.error('Erro ao verificar contador do bazar:', err);
+      }
+    };
+
+    checkBazar();
+
+    const handleUpdate = () => {
+      checkBazar();
+    };
+
+    window.addEventListener('bazar-badge-updated', handleUpdate);
+    const interval = setInterval(checkBazar, 45000);
+
+    return () => {
+      active = false;
+      window.removeEventListener('bazar-badge-updated', handleUpdate);
+      clearInterval(interval);
+    };
+  }, [userData?.uid, tenantId, (userData as any)?.classId, (userData as any)?.turmaId]);
   const [profileTab, setProfileTab] = useState('overview');
   const [xpHistory, setXpHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -3072,9 +3103,33 @@ export default function Dashboard() {
               <button
                 onClick={() => setActiveTab('store')}
                 title="Mercado"
-                style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
+                style={{ position: 'relative', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
               >
                 <Store size={20} /> <span className="tab-text">Mercado</span>
+                {bazarUnseenCount > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    right: '-4px',
+                    background: '#ef4444',
+                    color: '#ffffff',
+                    fontSize: '0.65rem',
+                    fontWeight: 'bold',
+                    minWidth: '20px',
+                    height: '20px',
+                    borderRadius: '9999px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px',
+                    border: '2px solid var(--bg-dark, #0b1120)',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                    lineHeight: 1,
+                    zIndex: 2
+                  }}>
+                    {bazarUnseenCount > 99 ? '99+' : bazarUnseenCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => currentRankIndex >= 5 && setActiveTab('forge')}
