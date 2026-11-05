@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   FileSpreadsheet, Save, RefreshCw, Download, ShieldCheck, 
   Search, Check, BookOpen, Medal, Users, Sliders, 
-  RotateCcw, Sparkles, Columns, EyeOff 
+  RotateCcw, Sparkles, Columns, EyeOff, Maximize2, Minimize2, X 
 } from 'lucide-react';
 // @ts-ignore
 import { Settings, ArrowUpDown, AlertCircle, Star, ChevronRight, Eye } from 'lucide-react';
@@ -106,6 +107,19 @@ export default function GradebookManager({
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [backupModalOpen, setBackupModalOpen] = useState(false);
   const [columnModalOpen, setColumnModalOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Atalho de teclado: fechar tela cheia com a tecla Escape (Esc)
+  useEffect(() => {
+    if (!isExpanded) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isExpanded]);
 
   // Colunas ocultadas pelo usuário (persistidas no Supabase e localStorage)
   const [hiddenColumns, setHiddenColumns] = useState<string[]>(() => {
@@ -540,19 +554,8 @@ export default function GradebookManager({
     exportGradebookToExcel(selectedClass, classStudents, gradebook);
   };
 
-  return (
-    <div 
-      style={{ 
-        flex: 1, 
-        minHeight: 0, 
-        height: '100%',
-        display: 'flex', 
-        flexDirection: 'column', 
-        gap: '0.45rem', 
-        animation: 'fadeIn 0.25s ease-out',
-        overflow: 'hidden'
-      }}
-    >
+  const gradebookContent = (
+    <>
       {/* Barra de Cabeçalho Compacta */}
       <div 
         style={{ 
@@ -572,9 +575,14 @@ export default function GradebookManager({
           <FileSpreadsheet size={22} color="var(--gold-primary)" />
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-              <h2 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 'bold' }}>
+              <h2 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span className="hide-on-mobile">Planilha de Notas & Controle de XP</span>
                 <span className="show-on-mobile-inline">Planilha de Notas e XP</span>
+                {isExpanded && (
+                  <span style={{ fontSize: '0.68rem', color: 'var(--gold-primary)', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.35)', padding: '1px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                    MODO TELA CHEIA
+                  </span>
+                )}
               </h2>
               {saveStatus === 'saving' && (
                 <span style={{ fontSize: '0.72rem', color: 'var(--gold-primary)', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
@@ -663,6 +671,28 @@ export default function GradebookManager({
               <span className="hide-on-mobile">Sincronizar XP com Usuários</span>
             </button>
           )}
+
+          <button
+            onClick={() => setIsExpanded(prev => !prev)}
+            className="login-btn"
+            style={{
+              background: isExpanded ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+              color: isExpanded ? '#fca5a5' : 'var(--gold-primary)',
+              border: `1px solid ${isExpanded ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)'}`,
+              padding: '0.35rem 0.75rem',
+              fontSize: '0.8rem',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              boxShadow: isExpanded ? '0 0 10px rgba(239, 68, 68, 0.3)' : '0 2px 8px rgba(245, 158, 11, 0.2)',
+              cursor: 'pointer'
+            }}
+            title={isExpanded ? "Reduzir para visualização normal (Esc)" : "Expandir Planilha em Tela Maior (Modo Amplo)"}
+          >
+            {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            <span className="hide-on-mobile">{isExpanded ? 'Reduzir (Esc)' : 'Expandir'}</span>
+          </button>
         </div>
       </div>
 
@@ -1775,6 +1805,126 @@ export default function GradebookManager({
         onSetMultiple={handleSetMultipleColumns}
         onReset={handleResetColumns}
       />
+    </>
+  );
+
+  if (isExpanded) {
+    return (
+      <>
+        {/* Placeholder no painel principal enquanto expandido */}
+        <div 
+          style={{ 
+            flex: 1, 
+            minHeight: '280px', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            gap: '1rem',
+            background: 'rgba(17, 21, 31, 0.75)', 
+            borderRadius: '12px', 
+            border: '2px dashed rgba(245, 158, 11, 0.35)',
+            padding: '2.5rem',
+            textAlign: 'center',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+          }}
+        >
+          <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 15px rgba(245, 158, 11, 0.2)' }}>
+            <Maximize2 size={30} color="var(--gold-primary)" />
+          </div>
+          <div>
+            <h3 style={{ margin: '0 0 0.35rem 0', color: 'var(--text-primary)', fontSize: '1.15rem', fontWeight: 'bold' }}>
+              Planilha de Notas Aberta em Modo Tela Cheia
+            </h3>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem', maxWidth: '420px' }}>
+              A planilha está sendo exibida em modo amplo aproveitando toda a resolução do monitor para facilitar o lançamento e conferência de notas.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsExpanded(false)}
+            className="login-btn"
+            style={{
+              background: 'var(--gold-primary)',
+              color: 'var(--text-on-gold, #000)',
+              border: 'none',
+              padding: '0.45rem 1.1rem',
+              fontSize: '0.85rem',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              cursor: 'pointer',
+              boxShadow: '0 2px 10px rgba(245, 158, 11, 0.3)'
+            }}
+          >
+            <Minimize2 size={16} />
+            <span>Voltar para Visualização Normal (Esc)</span>
+          </button>
+        </div>
+
+        {/* Modal de Tela Cheia / Modo Amplo via Portal */}
+        {typeof document !== 'undefined' && createPortal(
+          <div
+            className="modal-overlay gradebook-fullscreen-modal"
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 99999,
+              background: 'rgba(3, 7, 18, 0.96)',
+              backdropFilter: 'blur(16px)',
+              padding: '0.5rem 0.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              boxSizing: 'border-box',
+              overflow: 'hidden',
+              animation: 'fadeIn 0.2s ease-out'
+            }}
+          >
+            <div
+              className="glass-panel"
+              style={{
+                flex: 1,
+                minHeight: 0,
+                width: '100%',
+                height: '100%',
+                background: 'var(--bg-dark, #0b0f19)',
+                border: '2px solid rgba(245, 158, 11, 0.5)',
+                borderRadius: '12px',
+                padding: '0.5rem 0.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.45rem',
+                overflow: 'hidden',
+                boxShadow: '0 25px 60px rgba(0,0,0,0.9), 0 0 30px rgba(245, 158, 11, 0.15)',
+                boxSizing: 'border-box'
+              }}
+            >
+              {gradebookContent}
+            </div>
+          </div>,
+          document.body
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div 
+      style={{ 
+        flex: 1, 
+        minHeight: 0, 
+        height: '100%',
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap: '0.45rem', 
+        animation: 'fadeIn 0.25s ease-out',
+        overflow: 'hidden'
+      }}
+    >
+      {gradebookContent}
     </div>
   );
 }
