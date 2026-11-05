@@ -20,7 +20,6 @@
     "react-router-dom": "^7.18.0",
     "skinview3d": "^3.4.2",
     "three": "^0.185.1",
-    "three-stdlib": "^2.36.1",
     "uuid": "^14.0.1"
   },
   "devDependencies": {
