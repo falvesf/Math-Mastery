@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 // @ts-ignore
-import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer, Volume2, UploadCloud, DownloadCloud, Sparkles, Loader2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, Search, List, Grid, LayoutGrid, ArrowDownAZ, ArrowUpZA, LayoutList, Columns, Package, RefreshCcw, X, Hammer, Volume2, UploadCloud, DownloadCloud, Sparkles, Loader2, Clock, CheckCircle } from 'lucide-react';
 // @ts-ignore — força/custo de forja (mantido no import por segurança; usado em cálculo quando necessário)
 import { forgeStrengthFraction, forgeAttributeValue, nextForgeCost, DEFAULT_FORGE_SUCCESS } from '../lib/forge';
 import ImageGalleryModal from './ImageGalleryModal';
@@ -185,6 +185,34 @@ export default function AdminStoreManager({ pixabayKey }: { pixabayKey: string }
   const [showSyncOptions, setShowSyncOptions] = useState(false);
   const [syncSelection, setSyncSelection] = useState<Record<string, boolean>>({});
   const [transformActiveTab, setTransformActiveTab] = useState<'common' | 'battle'>('common');
+  
+  interface SyncProgressState {
+    active: boolean;
+    title: string;
+    direction: 'to_bank' | 'from_bank';
+    current: number;
+    total: number;
+    currentItemName?: string;
+    updated: number;
+    createdOrImported: number;
+    unchanged: number;
+    startTime: number;
+  }
+  const [syncProgress, setSyncProgress] = useState<SyncProgressState | null>(null);
+
+  const formatEta = (prog: SyncProgressState): string => {
+    if (prog.current <= 1 || prog.total === 0) return 'Calculando tempo...';
+    if (prog.current >= prog.total) return 'Concluindo...';
+    const elapsed = (Date.now() - prog.startTime) / 1000;
+    const rate = prog.current / Math.max(0.001, elapsed);
+    const remainingItems = prog.total - prog.current;
+    const remSec = Math.round(remainingItems / Math.max(0.01, rate));
+    if (remSec < 1) return 'Quase pronto...';
+    if (remSec < 60) return `~${remSec} seg restante${remSec > 1 ? 's' : ''}`;
+    const mins = Math.floor(remSec / 60);
+    const secs = remSec % 60;
+    return `~${mins}m ${secs}s restantes`;
+  };
   const [customSalePct, setCustomSalePct] = useState<number>(() => {
     const saved = localStorage.getItem('admin_custom_sale_pct');
     return saved ? Number(saved) : 20;
@@ -659,16 +687,43 @@ Responda APENAS com a frase curta em português brasileiro.`;
     );
     if (!confirmed) return;
     if (!tenantId) { showAlert('Selecione uma escola para sincronizar.'); return; }
-    setLoading(true);
+    const startTime = Date.now();
     try {
       const { data: localRows } = await supabase.from('store_items').select('*').eq('tenant_id', tenantId);
       const { data: bankRows } = await supabase.from('store_items').select('*').eq('is_global', true);
 
       let matched = 0, updated = 0, unchanged = 0, created = 0;
       const bankItemsList = [...(bankRows || [])];
+      const list = localRows || [];
+      const totalItems = list.length;
 
-      for (const local of (localRows || [])) {
+      setSyncProgress({
+        active: true,
+        title: 'Sincronizando com o Banco Global',
+        direction: 'to_bank',
+        current: 0,
+        total: totalItems,
+        currentItemName: '',
+        updated: 0,
+        createdOrImported: 0,
+        unchanged: 0,
+        startTime,
+      });
+
+      for (let i = 0; i < list.length; i++) {
+        const local = list[i];
         const localData = local.data || {};
+        const itemName = localData.title || localData.name || `Item #${i + 1}`;
+
+        setSyncProgress(prev => prev ? {
+          ...prev,
+          current: i + 1,
+          currentItemName: itemName,
+          updated,
+          createdOrImported: created,
+          unchanged,
+        } : null);
+
         const bankMatch = findMatch(bankItemsList, localData, local.id);
 
         if (bankMatch) {
@@ -755,14 +810,23 @@ Responda APENAS com a frase curta em português brasileiro.`;
         }
       }
 
+      setSyncProgress(prev => prev ? {
+        ...prev,
+        current: totalItems,
+        currentItemName: 'Concluindo...',
+        updated,
+        createdOrImported: created,
+        unchanged,
+      } : null);
+
       invalidateGlobalItemTransforms();
       await fetchData(false);
+      setSyncProgress(null);
       showAlert(`Sincronização com o Banco concluída!\n\n• ${updated} item(ns) atualizado(s) no Banco Global\n• ${created} novo(s) item(ns) cadastrado(s) no Banco\n• ${unchanged} item(ns) já estavam idênticos.`);
     } catch (e) {
       console.error(e);
+      setSyncProgress(null);
       showAlert('Erro ao sincronizar: ' + ((e as any)?.message || 'erro desconhecido'));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -793,16 +857,43 @@ Responda APENAS com a frase curta em português brasileiro.`;
       return;
     }
     setShowSyncOptions(false);
-    setLoading(true);
+    const startTime = Date.now();
     try {
       const { data: localRows } = await supabase.from('store_items').select('*').eq('tenant_id', tenantId);
       const { data: bankRows } = await supabase.from('store_items').select('*').eq('is_global', true);
 
       let matched = 0, updated = 0, unchanged = 0, imported = 0;
       const currentLocalRows = [...(localRows || [])];
+      const bankList = bankRows || [];
+      const totalItems = bankList.length;
 
-      for (const bank of (bankRows || [])) {
+      setSyncProgress({
+        active: true,
+        title: 'Sincronizando do Banco de Itens',
+        direction: 'from_bank',
+        current: 0,
+        total: totalItems,
+        currentItemName: '',
+        updated: 0,
+        createdOrImported: 0,
+        unchanged: 0,
+        startTime,
+      });
+
+      for (let i = 0; i < bankList.length; i++) {
+        const bank = bankList[i];
         const bankData = bank.data || {};
+        const itemName = bankData.title || bankData.name || `Item #${i + 1}`;
+
+        setSyncProgress(prev => prev ? {
+          ...prev,
+          current: i + 1,
+          currentItemName: itemName,
+          updated,
+          createdOrImported: imported,
+          unchanged,
+        } : null);
+
         const local = findMatch(currentLocalRows, bankData, bank.id);
 
         if (!local) {
@@ -902,14 +993,23 @@ Responda APENAS com a frase curta em português brasileiro.`;
         }
       }
 
+      setSyncProgress(prev => prev ? {
+        ...prev,
+        current: totalItems,
+        currentItemName: 'Concluindo...',
+        updated,
+        createdOrImported: imported,
+        unchanged,
+      } : null);
+
       invalidateGlobalItemTransforms();
       await fetchData(false);
+      setSyncProgress(null);
       showAlert(`Atualização a partir do Banco concluída!\n\n• ${updated} item(ns) desta escola atualizado(s)\n• ${imported} novo(s) item(ns) importado(s) do Banco\n• ${unchanged} item(ns) já estavam idênticos.`);
     } catch (e) {
       console.error(e);
+      setSyncProgress(null);
       showAlert('Erro ao sincronizar: ' + ((e as any)?.message || 'erro desconhecido'));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -3120,7 +3220,149 @@ Responda APENAS com a frase curta em português brasileiro.`;
         </div>,
         document.body
       )}
-      
+
+      {/* Modal de Progresso da Sincronização */}
+      {syncProgress && createPortal(
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000002,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: 'var(--bg-glass, #1a2234)',
+            border: syncProgress.direction === 'to_bank'
+              ? '1px solid rgba(16, 185, 129, 0.5)'
+              : '1px solid rgba(59, 130, 246, 0.5)',
+            borderRadius: '16px',
+            padding: '2rem',
+            width: '100%',
+            maxWidth: '520px',
+            boxShadow: syncProgress.direction === 'to_bank'
+              ? '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(16, 185, 129, 0.2)'
+              : '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(59, 130, 246, 0.2)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.25rem',
+            animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+          }}>
+            {/* Cabeçalho */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{
+                width: 46,
+                height: 46,
+                borderRadius: '12px',
+                background: syncProgress.direction === 'to_bank' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                border: syncProgress.direction === 'to_bank' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(59, 130, 246, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: syncProgress.direction === 'to_bank' ? '#10b981' : '#3b82f6',
+                flexShrink: 0
+              }}>
+                <Loader2 size={24} className="spin" />
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                  {syncProgress.title}
+                </h3>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  Sincronizando dados com o servidor...
+                </span>
+              </div>
+            </div>
+
+            {/* Barra de Progresso e Percentual */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                  Item {syncProgress.current} de {syncProgress.total}
+                </span>
+                <span style={{
+                  color: syncProgress.direction === 'to_bank' ? '#10b981' : '#3b82f6',
+                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                  fontVariantNumeric: 'tabular-nums'
+                }}>
+                  {syncProgress.total > 0 ? Math.round((syncProgress.current / syncProgress.total) * 100) : 0}%
+                </span>
+              </div>
+
+              {/* Barra */}
+              <div style={{
+                width: '100%',
+                height: '10px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                borderRadius: '999px',
+                overflow: 'hidden',
+                position: 'relative'
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${syncProgress.total > 0 ? Math.min(100, Math.round((syncProgress.current / syncProgress.total) * 100)) : 0}%`,
+                  background: syncProgress.direction === 'to_bank'
+                    ? 'linear-gradient(90deg, #10b981, #34d399, #38bdf8)'
+                    : 'linear-gradient(90deg, #3b82f6, #60a5fa, #38bdf8)',
+                  borderRadius: '999px',
+                  transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: syncProgress.direction === 'to_bank'
+                    ? '0 0 12px rgba(16, 185, 129, 0.5)'
+                    : '0 0 12px rgba(59, 130, 246, 0.5)'
+                }} />
+              </div>
+
+              {/* Item atual e tempo estimado */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '62%' }} title={syncProgress.currentItemName}>
+                  {syncProgress.currentItemName ? `Processando: ${syncProgress.currentItemName}` : 'Iniciando sincronização...'}
+                </span>
+                <span style={{ color: 'var(--gold-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+                  <Clock size={14} /> {formatEta(syncProgress)}
+                </span>
+              </div>
+            </div>
+
+            {/* Contadores em tempo real */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '0.5rem',
+              background: 'rgba(0, 0, 0, 0.25)',
+              padding: '0.75rem',
+              borderRadius: '10px',
+              border: '1px solid rgba(255, 255, 255, 0.06)'
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Atualizados</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#38bdf8', fontVariantNumeric: 'tabular-nums' }}>
+                  {syncProgress.updated}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', borderLeft: '1px solid rgba(255, 255, 255, 0.08)', borderRight: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  {syncProgress.direction === 'to_bank' ? 'Novos no Banco' : 'Importados'}
+                </div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#10b981', fontVariantNumeric: 'tabular-nums' }}>
+                  {syncProgress.createdOrImported}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Idênticos</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                  {syncProgress.unchanged}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {hoveredItem && (
         <ItemTooltip 
           item={items.find(i => i.id === hoveredItem)} 
