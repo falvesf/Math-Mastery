@@ -29,6 +29,37 @@ export function getActiveInventorySpaceBuff(userData?: Partial<UserData> | null)
   return buff;
 }
 
+/**
+ * Extrai os slots adicionais provenientes de fortitude.
+ * Aceita:
+ *  - number: valor direto em slots extras de fortitude (ex: Math.floor(totalEquippedStats.fortitude / 1))
+ *  - any[]: array de itens (linhas de user_items ou itens equipados). Se contiver campo `equipped`, filtra automaticamente os equipados.
+ *  - Se 0 ou vazio, tenta ler `fortitude` de `userData.distributedStats`.
+ */
+export function computeFortitudeSlots(
+  fortitudeSlots: number | any[] = 0,
+  userData?: Partial<UserData> | null
+): number {
+  if (typeof fortitudeSlots === 'number') {
+    return Math.max(0, Math.floor(fortitudeSlots || 0));
+  }
+  if (Array.isArray(fortitudeSlots)) {
+    const equipped = fortitudeSlots.filter((r: any) => r.equipped);
+    const targetItems = equipped.length > 0 ? equipped : (fortitudeSlots.length > 0 && fortitudeSlots[0].equipped === undefined ? fortitudeSlots : []);
+    if (targetItems.length > 0) {
+      const stats = calculateTotalStats(
+        targetItems.map((r: any) => ({ ...r, ...(r.data || {}) })),
+        userData?.distributedStats || (userData as any)?.distributed_stats
+      );
+      return Math.max(0, Math.floor((stats?.fortitude || 0) / 1));
+    }
+    // Sem itens equipados no array, checa se tem fortitude em distributedStats
+    const dist = userData?.distributedStats || (userData as any)?.distributed_stats;
+    return Math.max(0, Math.floor(Number(dist?.fortitude || 0) / 1));
+  }
+  return 0;
+}
+
 /** Capacidade BASE da mochila (sem slots extras de fortitude). */
 export function computeBaseInventorySpace(userData?: Partial<UserData> | null): number {
   if (!userData) return 12;
@@ -38,9 +69,27 @@ export function computeBaseInventorySpace(userData?: Partial<UserData> | null): 
   return 12 + rankIndex + extra + getActiveInventorySpaceBuff(userData);
 }
 
-/** Capacidade TOTAL (base + slots de fortitude dos itens equipados). */
-export function computeMaxInventorySpace(userData?: Partial<UserData> | null, fortitudeSlots = 0): number {
-  return computeBaseInventorySpace(userData) + Math.max(0, Math.floor(fortitudeSlots || 0));
+/** Capacidade TOTAL (base + slots de fortitude dos itens equipados e/ou distribuídos). */
+export function computeMaxInventorySpace(
+  userData?: Partial<UserData> | null, 
+  fortitudeSlots: number | any[] = 0
+): number {
+  const extra = computeFortitudeSlots(fortitudeSlots, userData);
+  return computeBaseInventorySpace(userData) + extra;
+}
+
+/**
+ * Determina se uma linha de user_items realmente ocupa espaço na mochila física.
+ * Itens equipados, itens à venda no bazar e itens dropados no chão do mapa
+ * NÃO ocupam slots da mochila (exatamente como em StudentInventory).
+ */
+export function isBackpackItemRow(row: any): boolean {
+  if (!row || row.equipped) return false;
+  const d = row.data || {};
+  if (d.forSale || d.isDropped || d.dropped || row.student_id === 'dropped' || row.studentId === 'dropped') {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -98,7 +147,7 @@ export function filterAvailableRows(
 }
 
 /** Quantos slots LIVRES existem (capacidade − itens não equipados atuais). */
-export function getAvailableInventorySpace(userData?: Partial<UserData> | null, totalBagCount = 0, fortitudeSlots = 0): number {
+export function getAvailableInventorySpace(userData?: Partial<UserData> | null, totalBagCount = 0, fortitudeSlots: number | any[] = 0): number {
   return Math.max(0, computeMaxInventorySpace(userData, fortitudeSlots) - (totalBagCount || 0));
 }
 

@@ -516,16 +516,24 @@ function getForgeReflectTexture(tier: number): THREE.Texture {
   return tex;
 }
 
+let _activeAvatarCount = 0;
 let _forgeGlintRaf = 0;
 function _tickForgeGlint() {
   _forgeGlintAnimated.forEach(tex => {
-    tex.offset.x = (tex.offset.x + ((tex.userData.forgeSpeedX as number) ?? 0)) % 1;
-    tex.offset.y = (tex.offset.y + ((tex.userData.forgeSpeedY as number) ?? 0)) % 1;
+    const spdX = (tex.userData.forgeSpeedX as number) ?? 0;
+    const spdY = (tex.userData.forgeSpeedY as number) ?? 0;
+    tex.offset.x = (tex.offset.x + spdX) % 1;
+    tex.offset.y = (tex.offset.y + spdY) % 1;
+    tex.updateMatrix();
   });
-  _forgeGlintRaf = requestAnimationFrame(_tickForgeGlint);
+  if (_forgeGlintAnimated.size > 0 && _activeAvatarCount > 0) {
+    _forgeGlintRaf = requestAnimationFrame(_tickForgeGlint);
+  } else {
+    _forgeGlintRaf = 0;
+  }
 }
 export function startForgeGlint() {
-  if (!_forgeGlintRaf) _forgeGlintRaf = requestAnimationFrame(_tickForgeGlint);
+  if (!_forgeGlintRaf && _forgeGlintAnimated.size > 0) _forgeGlintRaf = requestAnimationFrame(_tickForgeGlint);
 }
 export function stopForgeGlint() {
   if (_forgeGlintRaf) { cancelAnimationFrame(_forgeGlintRaf); _forgeGlintRaf = 0; }
@@ -610,27 +618,28 @@ function _forgeRandomSurfacePoint(center: THREE.Vector3, half: THREE.Vector3, ou
 }
 
 function _tickForgeSpark() {
-  _forgeSparkT += 0.05;
+  _forgeSparkT += 0.08;
+  const toDelete: THREE.Group[] = [];
   _forgeSparkGroups.forEach(grp => {
+    if (!grp.parent) {
+      toDelete.push(grp);
+      return;
+    }
     const model = grp.userData.forgeModel as THREE.Object3D | undefined;
     const baseSize = (grp.userData.forgeSparkSize as number) || 2;
     const center = grp.userData.forgeCenter as THREE.Vector3 | undefined;
     const half = grp.userData.forgeHalf as THREE.Vector3 | undefined;
-    let inv = 1;
-    if (model) {
-      const ws = model.getWorldScale(new THREE.Vector3());
-      inv = 1 / Math.max(0.0001, (Math.abs(ws.x) + Math.abs(ws.y) + Math.abs(ws.z)) / 3);
-    }
+    const inv = (grp.userData.invScale as number) || (model ? 1 / Math.max(0.001, Math.abs(model.scale.x)) : 1);
     grp.children.forEach((s, i) => {
       const spr = s as THREE.Sprite;
       const ph = (spr.userData.phase as number) ?? i * 2.1;
-      const sp = (spr.userData.speed as number) ?? 2;
+      const sp = (spr.userData.speed as number) ?? 2.5;
       const sizeMul = (spr.userData.sizeMul as number) ?? 1;
-      // tamanho aleatório + leve pulsar sincronizado com o brilho
-      const pulse = 0.8 + 0.4 * (0.5 + 0.5 * Math.sin(_forgeSparkT * sp + ph));
+      // pulsar sincronizado com rotação e deriva
+      const pulse = 0.75 + 0.45 * (0.5 + 0.5 * Math.sin(_forgeSparkT * sp + ph));
       const sc = baseSize * sizeMul * pulse * inv;
       spr.scale.set(sc, sc, 1);
-      // Deriva aleatória ao redor do item; ao sair da caixa, reaparece em outro ponto aleatório
+      // Deriva suave ao redor do item; ao sair da caixa, reaparece em outro ponto
       if (center && half) {
         const p = spr.position;
         const vel = spr.userData.vel as THREE.Vector3 | undefined;
@@ -642,10 +651,20 @@ function _tickForgeSpark() {
         }
       }
       const m = spr.material as THREE.SpriteMaterial;
-      if (m) m.opacity = 0.15 + 0.8 * (0.5 + 0.5 * Math.sin(_forgeSparkT * sp + ph));
+      if (m) m.opacity = 0.2 + 0.8 * (0.5 + 0.5 * Math.sin(_forgeSparkT * sp + ph));
     });
   });
-  _forgeSparkRaf = requestAnimationFrame(_tickForgeSpark);
+  if (toDelete.length > 0) {
+    toDelete.forEach(g => _forgeSparkGroups.delete(g));
+  }
+  if (_forgeSparkGroups.size > 0 && _activeAvatarCount > 0) {
+    _forgeSparkRaf = requestAnimationFrame(_tickForgeSpark);
+  } else {
+    _forgeSparkRaf = 0;
+  }
+}
+export function startForgeSparkles() {
+  if (!_forgeSparkRaf && _forgeSparkGroups.size > 0) _forgeSparkRaf = requestAnimationFrame(_tickForgeSpark);
 }
 export function stopForgeSparkles() {
   _forgeSparkGroups.clear();
@@ -662,14 +681,15 @@ export function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScal
     const half = new THREE.Vector3(size.x * 0.5 * boxScale, size.y * 0.5 * boxScale, size.z * 0.5 * boxScale);
     const tex = getForgeSparkTexture();
     const grp = new THREE.Group();
+    grp.userData.isForgeSparkGroup = true;
     grp.userData.forgeModel = model;
-    grp.userData.forgeSparkSize = (0.95 + tier * 0.25) * sizeScale; // tamanho MUNDIAL base (compensado no tick)
+    grp.userData.forgeSparkSize = (0.95 + tier * 0.25) * sizeScale;
     grp.userData.forgeCenter = center.clone();
     grp.userData.forgeHalf = half.clone();
-    const count = Math.max(3, Math.round((4 + tier * 2) * countMul)); // arma: 6/8/10; armadura: o dobro
-    const rate = 0.0025; // deriva mais lenta (ficam próximas do item)
-    // Cores por tier (estilo Metin2): +7 = 1 verde + resto branco; +8 = 1 rosé + 1 dourada
-    // + resto branco; +9 = todas brancas.
+    grp.userData.invScale = 1 / Math.max(0.001, Math.abs(model.scale.x) || 1);
+    // Quantidade balanceada: 4 a 6 estrelas nítidas sem pesar na GPU
+    const count = Math.max(2, Math.round((2 + tier) * countMul));
+    const rate = 0.0035;
     const starColors: string[] = new Array(count).fill('#ffffff');
     if (tier === 1) {
       starColors[Math.floor(Math.random() * count)] = '#4dff5a';
@@ -690,13 +710,13 @@ export function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScal
         (Math.random() * 2 - 1) * size.z * rate
       );
       spr.userData.phase = Math.random() * Math.PI * 2;
-      spr.userData.speed = 1.5 + Math.random() * 2.5;
-      spr.userData.sizeMul = 0.6 + Math.random() * 0.9; // tamanhos aleatórios (0.6x a 1.5x)
+      spr.userData.speed = 2.0 + Math.random() * 2.5;
+      spr.userData.sizeMul = 0.7 + Math.random() * 0.8;
       grp.add(spr);
     }
     model.add(grp);
     _forgeSparkGroups.add(grp);
-    if (!_forgeSparkRaf) _forgeSparkRaf = requestAnimationFrame(_tickForgeSpark);
+    startForgeSparkles();
   } catch (e) { /* sem sparkles */ }
 }
 
@@ -819,8 +839,19 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
     return () => window.removeEventListener('avatar-transforms-updated', handleUpdate);
   }, []);
 
-  // Para a animação das estrelas de forja ao desmontar
-  useEffect(() => () => { stopForgeGlint(); stopForgeSparkles(); }, []);
+  // Gerencia a execução dos loops de brilho/estrelas de forja com contagem de instâncias ativas
+  useEffect(() => {
+    _activeAvatarCount++;
+    startForgeGlint();
+    startForgeSparkles();
+    return () => {
+      _activeAvatarCount = Math.max(0, _activeAvatarCount - 1);
+      if (_activeAvatarCount === 0) {
+        stopForgeGlint();
+        stopForgeSparkles();
+      }
+    };
+  }, []);
 
   const customHairRef = useRef<THREE.Group | null>(null);
 
@@ -895,16 +926,6 @@ const AvatarCharacter = React.memo(function AvatarCharacter({ config, equippedIt
   // Aura de CONJUNTO (armadura completa da mesma raridade, tudo +9). O brilho por item
   // (+7/+8/+9) é feito NO MATERIAL: reflexo metálico + estrelas (emissiveMap deslizante).
   const setAura = getEquippedSetAura(equippedItems);
-  // Aura posicionada por TRANSFORM (translate/scale) — não usa top/bottom negativos,
-  // então NÃO vaza do container nem desloca o personagem.
-  let auraStyle: React.CSSProperties = { position: 'absolute', top: showSlots ? '36%' : '50%', left: '50%', width: '150%', height: '150%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: -1, borderRadius: '50%' };
-  if (setAura.active) {
-    auraStyle.background = `radial-gradient(circle, ${hexToRgba(setAura.color, 0.55)} 0%, ${hexToRgba(setAura.color, 0.18)} 45%, transparent 72%)`;
-    auraStyle.animation = 'forge-aura-pulse 2s infinite alternate';
-    auraStyle.filter = 'blur(2px)';
-  } else {
-    auraStyle.display = 'none';
-  }
 
   const bgItems = equippedItems.filter(i => i.avatarPart === 'background');
 
@@ -2027,6 +2048,11 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
       isCancelled = true;
       loadedModels.forEach(({ parent, model }) => {
         parent.remove(model);
+        model.traverse((child: any) => {
+          if (child.isGroup && child.userData?.isForgeSparkGroup) {
+            _forgeSparkGroups.delete(child as THREE.Group);
+          }
+        });
       });
       loadedModelsRef.current = [];
     };
@@ -3536,6 +3562,7 @@ if (config?.customModelUrl) {
       width: size,
       height: size * 1.8,
       display: 'inline-block',
+      isolation: 'isolate',
     }}>
       
       {/* Background Items */}
@@ -3559,7 +3586,44 @@ if (config?.customModelUrl) {
       {/* 3D Canvas — o boneco cresce da BASE (pés) para cima ao dar zoom:
           desloca o canvas para baixo conforme o zoom aumenta, para a cabeça não cortar no topo */}
 
-      <div style={auraStyle} className="forge-aura"></div>
+      {setAura.active && (
+        <div 
+          className="forge-aura-container"
+          style={{
+            position: 'absolute',
+            top: showSlots ? '36%' : '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: size * 1.55,
+            height: size * 1.55,
+            zIndex: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          {/* Núcleo de energia pulsante suave */}
+          <div 
+            className="forge-aura-core"
+            style={{
+              background: `radial-gradient(circle, ${hexToRgba(setAura.color, 0.65)} 0%, ${hexToRgba(setAura.color, 0.32)} 42%, transparent 72%)`
+            }}
+          />
+          {/* Vórtice giratório de feixes místicos */}
+          <div 
+            className="forge-aura-spin"
+            style={{
+              background: `conic-gradient(from 0deg, transparent 0%, ${hexToRgba(setAura.color, 0.45)} 25%, transparent 50%, ${hexToRgba(setAura.color, 0.45)} 75%, transparent 100%)`
+            }}
+          />
+          {/* Ondas de choque radiantes em expansão */}
+          <div 
+            className="forge-aura-wave"
+            style={{
+              borderColor: hexToRgba(setAura.color, 0.55),
+              boxShadow: `0 0 25px ${hexToRgba(setAura.color, 0.5)}, inset 0 0 20px ${hexToRgba(setAura.color, 0.35)}`
+            }}
+          />
+        </div>
+      )}
       <canvas
  
         ref={canvasRef} 

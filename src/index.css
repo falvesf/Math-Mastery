@@ -252,10 +252,85 @@ h3 {
 }
 @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.1); } }
 
-/* Aura de conjunto da forja: mantém o translate(-50%,-50%) para NÃO deslocar o layout */
+/* Aura de conjunto da forja (+9): fluída, viva e com aceleração por hardware (GPU) */
+.forge-aura-container {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.forge-aura-core {
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  animation: forge-aura-pulse 2.2s ease-in-out infinite alternate;
+  filter: blur(8px);
+  will-change: transform, opacity, filter;
+  pointer-events: none;
+}
+
+.forge-aura-spin {
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  animation: forge-aura-rotate 7s linear infinite;
+  filter: blur(6px);
+  opacity: 0.65;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.forge-aura-wave {
+  position: absolute;
+  inset: -5%;
+  border-radius: 50%;
+  border: 2px solid;
+  animation: forge-aura-shockwave 2.8s cubic-bezier(0.15, 0.85, 0.2, 1) infinite;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
 @keyframes forge-aura-pulse {
-  0%, 100% { opacity: 0.95; transform: translate(-50%, -50%) scale(1); }
-  50% { opacity: 0.55; transform: translate(-50%, -50%) scale(1.08); }
+  0% {
+    transform: scale(0.92);
+    opacity: 0.7;
+    filter: blur(6px) brightness(1);
+  }
+  50% {
+    transform: scale(1.14);
+    opacity: 1;
+    filter: blur(10px) brightness(1.35);
+  }
+  100% {
+    transform: scale(0.92);
+    opacity: 0.7;
+    filter: blur(6px) brightness(1);
+  }
+}
+
+@keyframes forge-aura-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes forge-aura-shockwave {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.9;
+  }
+  60% {
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
 }
 
 /* Heart disappearing animation - right to left */
