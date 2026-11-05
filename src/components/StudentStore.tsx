@@ -335,7 +335,33 @@ export default function StudentStore({ userData, equippedItems = [] }: { userDat
       }
       const originalStoreItem = rawItems.find((si: any) => si.id === d.item_id);
       const patchedRarity = data.rarity || originalStoreItem?.rarity || 'common';
-      loadedMarket.push({ ...data, id: d.id, itemId: d.item_id, rarity: patchedRarity });
+      const patchedDesc = data.description || (data as any).itemDescription || originalStoreItem?.description || '';
+      const patchedCategory = data.itemCategory || originalStoreItem?.itemCategory;
+      const patchedEffect = data.damageEffect || (originalStoreItem as any)?.damageEffect;
+      const patchedEffectMin = (data as any).damageEffectMin ?? (originalStoreItem as any)?.damageEffectMin;
+      const patchedEffectMax = (data as any).damageEffectMax ?? (originalStoreItem as any)?.damageEffectMax;
+      const patchedFixed = (data as any).fixedAttributes || (originalStoreItem as any)?.fixedAttributes || [];
+      const patchedForgeConfig = (data as any).forgeConfig || (originalStoreItem as any)?.forgeConfig;
+      const patchedAdds = (data as any).adds || (originalStoreItem as any)?.adds || [];
+
+      loadedMarket.push({
+        ...(originalStoreItem || {}),
+        ...data,
+        id: d.id,
+        itemId: d.item_id,
+        rarity: patchedRarity,
+        description: patchedDesc,
+        itemCategory: patchedCategory,
+        damageEffect: patchedEffect,
+        damageEffectMin: patchedEffectMin,
+        damageEffectMax: patchedEffectMax,
+        fixedAttributes: patchedFixed,
+        forgeConfig: patchedForgeConfig,
+        adds: patchedAdds,
+        forgeLevel: (data as any).forgeLevel || 0,
+        title: (data as any).itemTitle || (data as any).title || originalStoreItem?.title || 'Item',
+        itemTitle: (data as any).itemTitle || (data as any).title || originalStoreItem?.title || 'Item'
+      });
     });
     setMarketItems(loadedMarket);
 
@@ -1305,6 +1331,11 @@ gameEffect: item.gameEffect || 'none',
                 onMouseEnter={(e) => { setHoveredItem(item.id); setMousePos({ x: e.clientX, y: e.clientY }); }}
                 onMouseLeave={() => setHoveredItem(null)}
                 onMouseMove={(e) => { if (hoveredItem === item.id) setMousePos({ x: e.clientX, y: e.clientY }); }}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('button, input, select')) return;
+                  setHoveredItem(prev => prev === item.id ? null : item.id);
+                  setMousePos({ x: e.clientX, y: e.clientY });
+                }}
               >
                 <div className={isList ? 'store-list-card-media' : ''} style={{ position: 'relative', width: isList ? '75px' : '100%', aspectRatio: isList ? 'none' : '1', minHeight: isList ? '75px' : undefined, background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   {item.gameEffect === 'unlock_skin' && item.unlockedSkinId ? (
@@ -1567,7 +1598,16 @@ gameEffect: item.gameEffect || 'none',
             const isList = viewMode === 'list';
             
             return (
-              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
+              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column', cursor: 'pointer' }}
+                onMouseEnter={(e) => { setHoveredItem(item.id); setMousePos({ x: e.clientX, y: e.clientY }); }}
+                onMouseLeave={() => setHoveredItem(null)}
+                onMouseMove={(e) => { if (hoveredItem === item.id) setMousePos({ x: e.clientX, y: e.clientY }); }}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('button, input, select')) return;
+                  setHoveredItem(prev => prev === item.id ? null : item.id);
+                  setMousePos({ x: e.clientX, y: e.clientY });
+                }}
+              >
                 <div className={isList ? 'store-list-card-media' : ''} style={{ position: 'relative', width: isList ? '75px' : '100%', height: isList ? '75px' : undefined, aspectRatio: isList ? 'none' : '1', background: 'rgba(0,0,0,0.5)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-glass)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <ItemIcon item={item} size={isList ? 70 : 80} />
                   {((item as any).forgeLevel || 0) > 0 && (

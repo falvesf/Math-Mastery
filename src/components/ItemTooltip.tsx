@@ -139,8 +139,8 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
   return createPortal(
     <div className="item-tooltip" style={{
       position: 'fixed',
-      top: mousePos.y + 15,
-      left: mousePos.x + 15,
+      top: Math.max(8, Math.min(mousePos.y + 15, typeof window !== 'undefined' ? window.innerHeight - 340 : mousePos.y)),
+      left: Math.max(8, Math.min(mousePos.x + 15, typeof window !== 'undefined' ? window.innerWidth - 320 : mousePos.x)),
       background: 'var(--bg-card)',
       border: `2px solid ${rColor}`,
       borderRadius: '10px',
@@ -219,8 +219,14 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
                   
                   let valueStr = '';
                   if (isEffectAddType(add.type)) {
-                    const maxSuffix = item.damageEffectMax ? ` (máx ${item.damageEffectMax}%)` : '';
-                    valueStr = `${add.value}% de chance${maxSuffix}`;
+                    const minV = item.damageEffectMin ?? 1;
+                    const maxV = item.damageEffectMax ?? 25;
+                    const forgeLvl = Math.max(0, Math.min(9, item.forgeLevel || 0));
+                    const currentEffectChance = (add.value && add.value > minV && !item.damageEffectMax)
+                      ? add.value
+                      : Math.round(minV + (maxV - minV) * (forgeLvl / 9));
+                    const maxSuffix = item.damageEffectMax && forgeLvl < 9 ? ` (máx ${item.damageEffectMax}% em +9)` : '';
+                    valueStr = `${currentEffectChance}% de chance${maxSuffix}`;
                   } else if (add.type === 'damage') {
                     const dmgVal = effV !== null ? Math.round(effV) : Math.round(add.value || 0);
                     const sign = dmgVal >= 0 ? '+' : '';
@@ -253,8 +259,14 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
               
               let valueStr = '';
               if (isEffectAddType(add.type)) {
-                const maxSuffix = item.damageEffectMax ? ` (máx ${item.damageEffectMax}%)` : '';
-                valueStr = `${add.value}% de chance${maxSuffix}`;
+                const minV = item.damageEffectMin ?? 1;
+                const maxV = item.damageEffectMax ?? 25;
+                const forgeLvl = Math.max(0, Math.min(9, item.forgeLevel || 0));
+                const currentEffectChance = (add.value && add.value > minV && !item.damageEffectMax)
+                  ? add.value
+                  : Math.round(minV + (maxV - minV) * (forgeLvl / 9));
+                const maxSuffix = item.damageEffectMax && forgeLvl < 9 ? ` (máx ${item.damageEffectMax}% em +9)` : '';
+                valueStr = `${currentEffectChance}% de chance${maxSuffix}`;
               } else if (add.type === 'damage') {
                 const dmgVal = effV !== null ? Math.round(effV) : Math.round(add.value || 0);
                 const sign = dmgVal >= 0 ? '+' : '';
@@ -265,8 +277,16 @@ export default function ItemTooltip({ item: rawItem, mousePos }: ItemTooltipProp
               }
 
               return (
-                <li key={i} style={{ color: lbl.color }}>
-                  {lbl.icon} {lbl.label}: {valueStr}
+                <li key={i} style={{ color: lbl.color, marginBottom: '0.2rem' }}>
+                  <div>{lbl.icon} {lbl.label}: {valueStr}</div>
+                  {isEffectAddType(add.type) && (() => {
+                    const effDef = DAMAGE_EFFECTS.find(d => d.id === add.type);
+                    return effDef?.desc ? (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: '1.2rem', fontStyle: 'italic' }}>
+                        {effDef.desc}
+                      </div>
+                    ) : null;
+                  })()}
                 </li>
               );
             })}
