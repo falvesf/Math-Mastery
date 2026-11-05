@@ -1433,6 +1433,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
     setIsImportCustomize(false);
     setFormData({ title: '', description: '', cost: 100, type: 'consumable', gameEffect: 'none', minRankRequired: 0, active: true, imageUrl: '' });
     fetchData(false);
+    window.dispatchEvent(new CustomEvent('store-items-updated'));
     showToast(`Item ${editingId ? 'atualizado' : 'criado'} com sucesso!`, 'success');
   };
 
@@ -1450,6 +1451,7 @@ Responda APENAS com a frase curta em português brasileiro.`;
     if (confirmed) {
       await supabase.from('store_items').delete().eq('id', id);
       fetchData(false);
+      window.dispatchEvent(new CustomEvent('store-items-updated'));
     }
   };
 

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Terminal, X, Search, HelpCircle, Trash2, Package, Check, CornerDownLeft, Copy } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Terminal, X, Search, HelpCircle, Trash2, Package, Check, CornerDownLeft, Copy, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
 import { supabase } from '../lib/supabase';
 import { rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { applyEffectAdd, isEffectAddType } from '../lib/damageEffects';
@@ -31,6 +32,9 @@ interface IndexedStoreItem {
   baseAttributeValue?: number;
   data: any;
   created_at?: string;
+  origin: 'local' | 'global';
+  originLabel: string;
+  isCustomized?: boolean;
 }
 
 // Síntese de áudio retrô via Web Audio API (sem dependência de arquivos externos)
@@ -79,6 +83,7 @@ function playTerminalSound(type: 'open' | 'success' | 'error') {
 
 export default function AdminConsole() {
   const { userData } = useAuth();
+  const { tenantId, tenant } = useTenant();
   const [isOpen, setIsOpen] = useState(false);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [inputVal, setInputVal] = useState('');
@@ -87,6 +92,7 @@ export default function AdminConsole() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState<'all' | 'equippable' | 'consumable' | 'other'>('all');
+  const [catalogOrigin, setCatalogOrigin] = useState<'all' | 'local' | 'global'>('all');
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [copiedCode, setCopiedCode] = useState<number | null>(null);
@@ -96,53 +102,151 @@ export default function AdminConsole() {
 
   const isAdmin = userData?.role === 'admin' || userData?.role === 'superadmin';
 
-  // Carrega todos os itens de store_items e mapeia IDs sequenciais #1..#N
-  useEffect(() => {
+  // Carrega itens da escola atual com prioridade máxima e itens globais não duplicados
+  const fetchStoreItems = useCallback(async () => {
     if (!isAdmin) return;
-    let active = true;
+    setLoadingItems(true);
+    try {
+      const activeTenantId = tenantId || userData?.tenant_id || (userData as any)?.tenantId || null;
+      const tenantName = tenant?.name || 'Esta Escola';
 
-    const fetchStoreItems = async () => {
-      setLoadingItems(true);
-      try {
+      // 1. Busca os itens específicos da escola atual
+      let localData: any[] = [];
+      if (activeTenantId) {
         const { data, error } = await supabase
           .from('store_items')
           .select('*')
+          .eq('tenant_id', activeTenantId)
           .order('created_at', { ascending: true });
 
-        if (error) throw error;
-        if (!active || !data) return;
-
-        // Deduplica ou indexa ordenadamente por data de criação
-        const indexed: IndexedStoreItem[] = data.map((item, index) => {
-          const d = item.data || {};
-          return {
-            code: index + 1,
-            id: item.id,
-            name: item.name || d.title || d.itemTitle || 'Item sem nome',
-            type: item.type || d.type || 'other',
-            rarity: item.rarity || d.rarity || 'common',
-            imageUrl: item.image_url || d.imageUrl || d.itemImageUrl || '',
-            description: item.description || d.description || d.itemDescription || '',
-            itemCategory: d.itemCategory || item.avatar_part || 'none',
-            avatarPart: d.avatarPart || item.avatar_part || undefined,
-            baseAttributeType: d.baseAttributeType,
-            baseAttributeValue: d.baseAttributeValue,
-            data: d,
-            created_at: item.created_at
-          };
-        });
-
-        setItems(indexed);
-      } catch (err) {
-        console.error('[AdminConsole] Erro ao carregar catálogo de itens:', err);
-      } finally {
-        if (active) setLoadingItems(false);
+        if (error) console.error('[AdminConsole] Erro ao carregar itens da escola:', error);
+        localData = data || [];
       }
-    };
 
-    fetchStoreItems();
-    return () => { active = false; };
-  }, [isAdmin]);
+      // 2. Busca os itens do Banco de Itens Global
+      const { data: globalData, error: globalErr } = await supabase
+        .from('store_items')
+        .select('*')
+        .eq('is_global', true)
+        .order('created_at', { ascending: true });
+
+      if (globalErr) console.error('[AdminConsole] Erro ao carregar itens globais:', globalErr);
+      const bankRows = globalData || [];
+
+      // Conjuntos para deduplicação inteligente (evita itens triplicados no console)
+      const localImportedIds = new Set<string>();
+      const localNames = new Set<string>();
+      const localModelKeys = new Set<string>();
+
+      const buildItemObject = (item: any, origin: 'local' | 'global'): Omit<IndexedStoreItem, 'code'> => {
+        const d = item.data || {};
+        // Prioriza o nome e raridade definidos no JSON data (onde o admin altera e renomeia)
+        const name = d.title || d.itemTitle || item.name || 'Item sem nome';
+        const rarity = d.rarity || item.rarity || 'common';
+        const type = d.type || item.type || 'other';
+        const imageUrl = d.imageUrl || d.itemImageUrl || item.image_url || '';
+        const description = d.description || d.itemDescription || item.description || '';
+        const isCustomized = origin === 'local' && !!d.importedFromId;
+
+        return {
+          id: item.id,
+          name,
+          type,
+          rarity,
+          imageUrl,
+          description,
+          itemCategory: d.itemCategory || item.avatar_part || 'none',
+          avatarPart: d.avatarPart || item.avatar_part || undefined,
+          baseAttributeType: d.baseAttributeType,
+          baseAttributeValue: d.baseAttributeValue,
+          data: d,
+          created_at: item.created_at,
+          origin,
+          originLabel: origin === 'local' ? (tenantName.length > 20 ? 'Escola' : tenantName) : 'Banco Global',
+          isCustomized
+        };
+      };
+
+      const combined: Omit<IndexedStoreItem, 'code'>[] = [];
+
+      // A) Todos os itens locais da escola (versões ativas que o aluno realmente pode usar)
+      for (const local of localData) {
+        const it = buildItemObject(local, 'local');
+        combined.push(it);
+
+        if (local.data?.importedFromId) {
+          localImportedIds.add(local.data.importedFromId);
+        }
+        if (it.name) {
+          localNames.add(it.name.trim().toLowerCase());
+        }
+        const modelUrl = (local.data?.gameModelUrl || '').trim().toLowerCase();
+        const part = (local.data?.avatarPart || '').trim().toLowerCase();
+        if (modelUrl) {
+          localModelKeys.add(`${modelUrl}|${part}`);
+        }
+      }
+
+      // B) Itens globais não duplicados (itens exclusivos do banco que ainda não foram importados)
+      for (const globalItem of bankRows) {
+        // Se já foi importado para a escola, a versão da escola já está inclusa -> deduplica!
+        if (localImportedIds.has(globalItem.id)) continue;
+
+        const gData = globalItem.data || {};
+        const gName = (gData.title || gData.itemTitle || globalItem.name || '').trim().toLowerCase();
+        if (gName && localNames.has(gName)) {
+          // Mesmo nome já existe na escola -> deduplica!
+          continue;
+        }
+
+        const gModel = (gData.gameModelUrl || '').trim().toLowerCase();
+        const gPart = (gData.avatarPart || '').trim().toLowerCase();
+        if (gModel && localModelKeys.has(`${gModel}|${gPart}`)) {
+          // Mesmo modelo 3D já existe na escola -> deduplica!
+          continue;
+        }
+
+        combined.push(buildItemObject(globalItem, 'global'));
+      }
+
+      // Se não houver tenant definido ou escola sem itens, lista os itens globais diretamente
+      const finalItems = combined.length > 0
+        ? combined
+        : bankRows.map(it => buildItemObject(it, 'global'));
+
+      // Mapeia códigos sequenciais #1..#N
+      const indexed: IndexedStoreItem[] = finalItems.map((item, index) => ({
+        ...item,
+        code: index + 1
+      }));
+
+      setItems(indexed);
+    } catch (err) {
+      console.error('[AdminConsole] Erro ao carregar catálogo de itens:', err);
+    } finally {
+      setLoadingItems(false);
+    }
+  }, [isAdmin, tenantId, tenant?.name, userData?.tenant_id]);
+
+  // Recarrega os itens ao montar, ao abrir o console, ao abrir o catálogo ou ao alterar a escola
+  useEffect(() => {
+    if (isAdmin) {
+      fetchStoreItems();
+    }
+  }, [isAdmin, isOpen, isCatalogOpen, fetchStoreItems]);
+
+  // Atualização em tempo real quando itens são criados/editados no Catálogo
+  useEffect(() => {
+    const handleUpdate = () => {
+      if (isAdmin) fetchStoreItems();
+    };
+    window.addEventListener('store-items-updated', handleUpdate);
+    window.addEventListener('avatar-transforms-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('store-items-updated', handleUpdate);
+      window.removeEventListener('avatar-transforms-updated', handleUpdate);
+    };
+  }, [isAdmin, fetchStoreItems]);
 
   // Mensagem inicial de boas-vindas ao console
   useEffect(() => {
@@ -700,8 +804,9 @@ export default function AdminConsole() {
 
       addLine(`CATÁLOGO DE ITENS (${matches.length} encontrado(s)):`, 'info');
       matches.slice(0, 25).forEach(i => {
+        const originTag = i.origin === 'local' ? '[Escola]' : '[Global]';
         const typeBadge = i.type === 'equippable' ? '⚔️ Equipável' : (i.type === 'consumable' ? '🧪 Consumível' : '📦 Material');
-        addLine(`  #${String(i.code).padEnd(3)} | ${i.name.padEnd(28)} | ${typeBadge.padEnd(14)} | ${i.rarity}`, 'output');
+        addLine(`  #${String(i.code).padEnd(3)} | ${i.name.padEnd(28)} | ${originTag.padEnd(9)} | ${typeBadge.padEnd(14)} | ${i.rarity}`, 'output');
       });
       if (matches.length > 25) {
         addLine(`  ... e mais ${matches.length - 25} itens. Use o botão [Catálogo de IDs] acima para visualizar todos com imagens.`, 'info');
@@ -1001,9 +1106,21 @@ export default function AdminConsole() {
     }
   };
 
+  // Contagem por procedência
+  const originCounts = useMemo(() => {
+    return {
+      all: items.length,
+      local: items.filter(i => i.origin === 'local').length,
+      global: items.filter(i => i.origin === 'global').length,
+    };
+  }, [items]);
+
   // Filtro do Catálogo de IDs
   const filteredCatalog = useMemo(() => {
     let result = items;
+    if (catalogOrigin !== 'all') {
+      result = result.filter(i => i.origin === catalogOrigin);
+    }
     if (catalogCategory !== 'all') {
       result = result.filter(i => {
         if (catalogCategory === 'equippable') return i.type === 'equippable';
@@ -1017,11 +1134,12 @@ export default function AdminConsole() {
         String(i.code).includes(q) ||
         i.name.toLowerCase().includes(q) ||
         i.rarity.toLowerCase().includes(q) ||
+        i.originLabel.toLowerCase().includes(q) ||
         (i.itemCategory && i.itemCategory.toLowerCase().includes(q))
       );
     }
     return result;
-  }, [items, catalogCategory, catalogSearch]);
+  }, [items, catalogOrigin, catalogCategory, catalogSearch]);
 
   if (!isAdmin || !isOpen) return null;
 
@@ -1285,16 +1403,55 @@ export default function AdminConsole() {
             }}>
               {/* Header do Catálogo */}
               <div style={{ padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                   <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                     <Package size={15} /> Relação de IDs ({filteredCatalog.length})
                   </span>
-                  <button 
-                    onClick={() => setIsCatalogOpen(false)}
-                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
-                  >
-                    <X size={16} />
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <button
+                      onClick={fetchStoreItems}
+                      disabled={loadingItems}
+                      title="Recarregar catálogo de itens"
+                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.2rem' }}
+                    >
+                      <RefreshCw size={13} className={loadingItems ? 'spin' : ''} />
+                    </button>
+                    <button 
+                      onClick={() => setIsCatalogOpen(false)}
+                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center' }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Seletor de Origem: Todos / Escola / Global */}
+                <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.45rem' }}>
+                  {[
+                    { id: 'all', label: `Todos (${originCounts.all})` },
+                    { id: 'local', label: `🏫 Escola (${originCounts.local})` },
+                    { id: 'global', label: `🌐 Global (${originCounts.global})` },
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setCatalogOrigin(tab.id as any)}
+                      style={{
+                        flex: 1,
+                        padding: '0.2rem 0.3rem',
+                        fontSize: '0.68rem',
+                        borderRadius: '4px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: catalogOrigin === tab.id ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.05)',
+                        color: catalogOrigin === tab.id ? '#60a5fa' : 'var(--text-secondary, #94a3b8)',
+                        fontWeight: catalogOrigin === tab.id ? 'bold' : 'normal',
+                        borderBottom: catalogOrigin === tab.id ? '2px solid #3b82f6' : '2px solid transparent',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
 
                 {/* Campo de Busca */}
@@ -1415,7 +1572,18 @@ export default function AdminConsole() {
                               {it.name}
                             </span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.15rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
+                            <span style={{
+                              fontSize: '0.6rem',
+                              padding: '1px 5px',
+                              borderRadius: '3px',
+                              fontWeight: 600,
+                              background: it.origin === 'local' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                              color: it.origin === 'local' ? '#34d399' : '#60a5fa',
+                              border: it.origin === 'local' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(59, 130, 246, 0.35)'
+                            }}>
+                              {it.origin === 'local' ? 'Escola' : 'Global'}
+                            </span>
                             <span style={{ fontSize: '0.65rem', color: rColor, fontWeight: 'bold', textTransform: 'capitalize' }}>
                               {it.rarity}
                             </span>
