@@ -1184,6 +1184,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     setSellQuantity(1);
     setPreferredCurrency('xp');
     fetchInventory();
+    window.dispatchEvent(new CustomEvent('bazar-badge-updated'));
     await showAlert('Item colocado à venda com sucesso!');
   };
 

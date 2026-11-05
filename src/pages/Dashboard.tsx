@@ -187,12 +187,21 @@ export default function Dashboard() {
     };
 
     window.addEventListener('bazar-badge-updated', handleUpdate);
-    const interval = setInterval(checkBazar, 45000);
+    const interval = setInterval(checkBazar, 30000);
+
+    // Canal Realtime do Supabase: atualiza instantaneamente quando qualquer anúncio é criado ou alterado
+    const channel = supabase
+      .channel('bazar-realtime-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_items' }, () => {
+        checkBazar();
+      })
+      .subscribe();
 
     return () => {
       active = false;
       window.removeEventListener('bazar-badge-updated', handleUpdate);
       clearInterval(interval);
+      supabase.removeChannel(channel);
     };
   }, [userData?.uid, tenantId, (userData as any)?.classId, (userData as any)?.turmaId]);
   const [profileTab, setProfileTab] = useState('overview');
@@ -3105,27 +3114,25 @@ export default function Dashboard() {
                 title="Mercado"
                 style={{ position: 'relative', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: activeTab === 'store' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'store' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s', padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
               >
-                <Store size={20} /> <span className="tab-text">Mercado</span>
+                <Store size={20} />
+                <span className="tab-text">Mercado</span>
                 {bazarUnseenCount > 0 && (
                   <span style={{
-                    position: 'absolute',
-                    top: '-4px',
-                    right: '-4px',
                     background: '#ef4444',
                     color: '#ffffff',
-                    fontSize: '0.65rem',
-                    fontWeight: 'bold',
+                    fontSize: '0.68rem',
+                    fontWeight: '900',
                     minWidth: '20px',
                     height: '20px',
                     borderRadius: '9999px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    padding: '0 4px',
-                    border: '2px solid var(--bg-dark, #0b1120)',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                    padding: '0 5px',
+                    marginLeft: '0.25rem',
+                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.6)',
                     lineHeight: 1,
-                    zIndex: 2
+                    border: '1px solid rgba(255,255,255,0.4)'
                   }}>
                     {bazarUnseenCount > 99 ? '99+' : bazarUnseenCount}
                   </span>

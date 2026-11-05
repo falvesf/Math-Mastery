@@ -11,10 +11,10 @@ import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
 import { RANKS, getRankForXp, resolveMinRankName, getMinRankIndex, getMaxAddsLimit } from '../lib/ranks';
 // @ts-ignore
-import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig, ATTRIBUTE_LABELS, isStackableItemType } from '../lib/gacha';
+import { type ItemCategory, type AttributeType, type ItemAdd, rollItemAdds, calculateTotalStats, fetchGlobalGachaConfig, ATTRIBUTE_LABELS, isStackableItemType, getAddEffectiveValue } from '../lib/gacha';
 // @ts-ignore
 import { applyEffectAdd, isEffectAddType, EFFECT_ADD_LABELS, DAMAGE_EFFECTS } from '../lib/damageEffects';
-import { forgeItemName } from '../lib/forge';
+import { forgeItemName, forgeAttributeValueWithConfig } from '../lib/forge';
 import { fetchActiveCoin } from '../lib/model3d';
 import { DROPPED_STUDENT_ID } from '../lib/utils';
 import { getGlobalModelTransforms, loadGlobalItemTransforms } from '../lib/itemTransforms';
@@ -48,6 +48,8 @@ interface MarketItem {
   modelTextureUrl?: string;
   minecraftHeadValue?: string;
   modelTransforms?: any;
+  forgeLevel?: number;
+  forgeConfig?: any;
   unlockedSkinId?: string;
   buffDurationDays?: number;
   saleExpiresAt?: number;
@@ -846,7 +848,8 @@ gameEffect: item.gameEffect || 'none',
 
       showToast("Compra no Mercado realizada com sucesso!", 'success');
       setMarketBuyModalItem(null);
-      fetchStoreData(false); // Recarrega loja suavemente
+      window.dispatchEvent(new CustomEvent('bazar-badge-updated'));
+      fetchStoreData(false);
 
     } catch (err) {
       showToast('Erro ao processar a compra no mercado.', 'error');
@@ -1010,7 +1013,12 @@ gameEffect: item.gameEffect || 'none',
           <div className="glass-panel modal-content modal-content-sm" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--bg-dark)', border: '2px solid var(--border-color)', borderRadius: '16px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7)' }}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
-                Prévia: {(previewItem as StoreItem).title || (previewItem as MarketItem).itemTitle}
+                Prévia: {((previewItem as any).type || (previewItem as any).itemType) === 'equippable'
+                  ? forgeItemName(
+                      (previewItem as StoreItem).title || (previewItem as MarketItem).itemTitle,
+                      (previewItem as any).forgeLevel || 0
+                    )
+                  : ((previewItem as StoreItem).title || (previewItem as MarketItem).itemTitle)}
               </h3>
               <button onClick={() => setPreviewItem(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Fechar">
                 <X size={24} />
@@ -1061,7 +1069,9 @@ gameEffect: item.gameEffect || 'none',
                     keepMetal: (previewItem as any).keepMetal || false,
                     modelTextureUrl: previewItem.modelTextureUrl,
                     minecraftHeadValue: previewItem.minecraftHeadValue,
-                    modelTransforms: resolvedMt
+                    modelTransforms: resolvedMt,
+                    forgeLevel: (previewItem as any).forgeLevel || 0,
+                    forgeConfig: (previewItem as any).forgeConfig || null
                   });
                   if (previewConfig.hiddenSlots && previewItem.avatarPart) {
                     previewConfig.hiddenSlots = previewConfig.hiddenSlots.filter((slot: string) => slot !== previewItem.avatarPart);
@@ -1130,28 +1140,25 @@ gameEffect: item.gameEffect || 'none',
               }
             }}
             className="login-btn"
-            style={{ position: 'relative', flex: 1, padding: '0.4rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem', justifyContent: 'center' }}
+            style={{ position: 'relative', flex: 1, padding: '0.4rem', background: activeTab === 'market' ? 'var(--gold-primary)' : 'var(--bg-card)', color: activeTab === 'market' ? 'var(--text-on-gold, #000000)' : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.85rem', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
           >
-            Bazar
+            <span>Bazar</span>
             {bazarBadgeCount > 0 && (
               <span style={{
-                position: 'absolute',
-                top: '-5px',
-                right: '8px',
                 background: '#ef4444',
                 color: '#ffffff',
                 fontSize: '0.65rem',
-                fontWeight: 'bold',
+                fontWeight: '900',
                 minWidth: '18px',
                 height: '18px',
                 borderRadius: '9999px',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: '0 4px',
-                border: '2px solid var(--bg-card, #0f172a)',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
-                lineHeight: 1
+                padding: '0 5px',
+                boxShadow: '0 2px 6px rgba(239, 68, 68, 0.6)',
+                lineHeight: 1,
+                border: '1px solid rgba(255,255,255,0.4)'
               }}>
                 {bazarBadgeCount > 99 ? '99+' : bazarBadgeCount}
               </span>
@@ -1563,6 +1570,25 @@ gameEffect: item.gameEffect || 'none',
               <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}>
                 <div className={isList ? 'store-list-card-media' : ''} style={{ position: 'relative', width: isList ? '75px' : '100%', height: isList ? '75px' : undefined, aspectRatio: isList ? 'none' : '1', background: 'rgba(0,0,0,0.5)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-glass)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <ItemIcon item={item} size={isList ? 70 : 80} />
+                  {((item as any).forgeLevel || 0) > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '4px',
+                      left: '4px',
+                      fontSize: '0.75rem',
+                      color: '#ffffff',
+                      background: (item.forgeLevel || 0) >= 9 ? 'linear-gradient(135deg, #ef4444, #f59e0b)' : 'var(--accent-red, #ef4444)',
+                      fontWeight: '900',
+                      padding: '2px 6px',
+                      borderRadius: '6px',
+                      boxShadow: (item.forgeLevel || 0) >= 9 ? '0 0 10px rgba(245, 158, 11, 0.9)' : '0 2px 4px rgba(0,0,0,0.5)',
+                      zIndex: 6,
+                      border: '1px solid rgba(255,255,255,0.6)',
+                      letterSpacing: '0.5px'
+                    }}>
+                      +{item.forgeLevel}
+                    </div>
+                  )}
                   {(((item as any).itemType === 'equippable' || (item as any).type === 'equippable') || item.gameEffect === 'unlock_skin') && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setPreviewItem(item); }}
@@ -1618,7 +1644,7 @@ gameEffect: item.gameEffect || 'none',
                 ) : null}
                 <div style={{ padding: '0.5rem 0.65rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.25rem', minWidth: 0, justifyContent: 'center' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
-                    <h3 title={item.itemTitle} style={{ fontSize: viewMode === 'grid-small' ? '0.85rem' : '0.95rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, lineHeight: 1.2, fontWeight: 'bold' }}>{((item as any).type || (item as any).itemType) === 'equippable' ? forgeItemName(item.itemTitle, 0) : item.itemTitle}</h3>
+                    <h3 title={item.itemTitle} style={{ fontSize: viewMode === 'grid-small' ? '0.85rem' : '0.95rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, lineHeight: 1.2, fontWeight: 'bold' }}>{((item as any).type || (item as any).itemType) === 'equippable' ? forgeItemName(item.itemTitle, (item as any).forgeLevel || 0) : item.itemTitle}</h3>
                     {isList && (
                       <div style={{ flexShrink: 0, background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.75rem' }}>
                         {item.price || 0} {economyType === 'xp' ? 'XP' : 'M'}
@@ -1650,15 +1676,20 @@ gameEffect: item.gameEffect || 'none',
                     {item.itemType === 'equippable' && item.baseAttributeType && item.baseAttributeType !== 'none' && (
                       <div style={{ fontSize: '0.75rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem' }}>
                         <div style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                          <strong style={{ color: 'var(--gold-primary)' }}>+{item.baseAttributeValue}</strong> {getAttributeName(item.baseAttributeType)}
+                          <strong style={{ color: 'var(--gold-primary)' }}>+{forgeAttributeValueWithConfig(item.baseAttributeValue || 0, item.forgeLevel || 0, (item as any).forgeConfig)}</strong> {getAttributeName(item.baseAttributeType)}
                         </div>
                         {item.adds && item.adds.length > 0 && item.adds.map((add, idx) => (
                           <div key={idx} style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                             <span style={{ color: 'var(--border-glass)' }}>|</span>
                             <span>
-                              <strong style={{ color: add.type === 'damage' ? '#F97316' : '#60A5FA' }}>
-                                {add.type === 'damage' ? `${(add.value || 0) >= 0 ? '+' : ''}${add.value}%` : `+${add.value}`}
-                              </strong> {getAttributeName(add.type)}
+                              {(() => {
+                                const effVal = isEffectAddType(add.type) ? add.value : getAddEffectiveValue(add, item.forgeLevel || 0);
+                                return (
+                                  <strong style={{ color: add.type === 'damage' ? '#F97316' : '#60A5FA' }}>
+                                    {add.type === 'damage' ? `${(effVal || 0) >= 0 ? '+' : ''}${effVal}%` : `+${effVal}`}
+                                  </strong>
+                                );
+                              })()} {getAttributeName(add.type)}
                             </span>
                           </div>
                         ))}
