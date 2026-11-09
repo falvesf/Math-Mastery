@@ -175,6 +175,7 @@ export interface ItemAnimation {
   frames: CharacterPose[];
   loop: boolean;
   duration?: number;
+  durationPerFrame?: number;
 }
 
 /** Estados de animação que um ITEM pode customizar (substitui/acrecenta ao padrão). */

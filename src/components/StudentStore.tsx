@@ -32,6 +32,11 @@ interface MarketItem {
   itemType: 'consumable' | 'equippable' | 'other' | 'ranch';
   itemImageUrl: string;
   quantity: number;
+  description?: string;
+  itemDescription?: string;
+  damageEffect?: string;
+  damageEffectMin?: number;
+  damageEffectMax?: number;
   price?: number;
   sellerName?: string;
   sellerClassName?: string;
