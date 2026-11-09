@@ -3116,7 +3116,7 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
         if (faceCamera && isAttackAnim) {
           player.rotation.y = 0;
         }
-        applyInterpolatedPose(player, battleItemAnim.frames, time);
+        applyInterpolatedPose(player, battleItemAnim.frames, time, battleItemAnim.durationPerFrame ?? 0.25);
       });
       return;
     }
@@ -3127,7 +3127,7 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
       const moveAnim = moveItem ? itemAnimOf(moveItem, animation as ItemAnimSlot) : undefined;
       if (moveAnim) {
         viewerRef.current.animation = new FunctionAnimation((player: any, time: number) => {
-          applyInterpolatedPose(player, moveAnim.frames, time);
+          applyInterpolatedPose(player, moveAnim.frames, time, moveAnim.durationPerFrame ?? 0.25);
         });
         return;
       }
@@ -3151,7 +3151,7 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
         if (faceCamera && animActionKey === 'attack') {
           player.rotation.y = 0;
         }
-        applyInterpolatedPose(player, customActionAnim.frames, time);
+        applyInterpolatedPose(player, customActionAnim.frames, time, customActionAnim.durationPerFrame ?? 0.25);
       });
       return;
     }

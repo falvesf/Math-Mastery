@@ -444,6 +444,21 @@ export default function AvatarCustomizationModal({
       : `Ação "${ACTION_LABELS[action]}" voltou para a animação padrão.`);
   };
 
+  const handleRestoreDefaultAnimations = async () => {
+    const newConfig = { ...config, actionAnimations: {}, actionPoses: {} };
+    setConfig(newConfig);
+    try {
+      if (userData?.uid) {
+        await supabase.from('users').update({ avatar_config: newConfig }).eq('id', userData.uid);
+        updateUserDataLocally({ avatarConfig: newConfig });
+      }
+      showAlert('Sucesso', 'Todos os movimentos (Parado, Andando, Correndo, Luta, Vitória) foram restaurados para o padrão original do jogo!');
+    } catch (e) {
+      console.error(e);
+      showAlert('Erro', 'Não foi possível restaurar os movimentos.');
+    }
+  };
+
   const [debugTab, setDebugTab] = useState<'item' | 'pose'>('item');
   const [debugBodyPart, setDebugBodyPart] = useState<keyof CharacterPose>('rightArm');
   const [debugPose, setDebugPose] = useState<CharacterPose>({});
@@ -1942,6 +1957,32 @@ onClick={() => setConfig(prev => {
                     <button key={k} onClick={() => setConfig({ ...config, animationState: k })} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', background: config.animationState === k ? 'var(--gold-primary)' : 'var(--bg-card)', color: config.animationState === k ? '#000' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer' }}>{k}</button>
                   ))}
                 </div>
+
+                {Boolean((config as any)?.actionAnimations && Object.keys((config as any).actionAnimations).length > 0 || (config?.actionPoses && Object.keys(config.actionPoses).length > 0)) && (
+                  <button
+                    type="button"
+                    onClick={handleRestoreDefaultAnimations}
+                    className="hover-brightness"
+                    style={{
+                      padding: '0.35rem 0.5rem',
+                      width: '100%',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      color: '#f87171',
+                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.4rem',
+                      fontWeight: 'bold',
+                      fontSize: '0.74rem'
+                    }}
+                    title="Remover movimentos e poses personalizadas e restaurar as originais do jogo"
+                  >
+                    <RotateCcw size={13} /> Restaurar Movimentos Padrão
+                  </button>
+                )}
 
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-primary)', justifyContent: 'center', marginTop: '0.25rem' }}>
                   <input type="checkbox" checked={showEquippedItems} onChange={(e) => setShowEquippedItems(e.target.checked)} style={{ cursor: 'pointer', accentColor: 'var(--gold-primary)' }} />

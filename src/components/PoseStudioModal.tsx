@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Save, Play, Square, Plus, Undo2, Trash2, RotateCw, Download, Upload, Settings2 } from 'lucide-react';
+import { X, Save, Play, Square, Plus, Undo2, Trash2, RotateCw, Download, Upload, Settings2, RotateCcw, Check } from 'lucide-react';
 import AvatarCharacter, { type CharacterPose, type AvatarConfig, type EquippedItem, type ModelTransform, type SpriteAnimation, getModelTransformKey } from './AvatarCharacter';
 import { fetchSavedActions, saveSavedActions, fetchSavedPoses, saveSavedPoses, type SavedAction, type SavedPose } from '../lib/savedPoses';
 import { supabase } from '../lib/supabase';
@@ -136,6 +136,7 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
   const [savedPoses, setSavedPoses] = useState<SavedPose[]>([]);
   const [newPoseName, setNewPoseName] = useState('');
   const [userActionPoses, setUserActionPoses] = useState<Record<string, CharacterPose> | null>(null);
+  const [userActionAnims, setUserActionAnims] = useState<Record<string, any> | null>(null);
   // Ação/estado que a cena gravada vai assumir (ataque, vitória, dano, parado, andando, correndo)
   const [animSlot, setAnimSlot] = useState<'attack' | 'victory' | 'hurt' | 'idle' | 'walk' | 'run'>('attack');
   // Associa uma AÇÃO salva (animação completa) a uma pose base ou a uma pose NOVA
@@ -171,10 +172,15 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
         .then(({ data }) => {
           const cfg = (data?.avatar_config as any) || userData.avatarConfig || {};
           setUserActionPoses(cfg.actionPoses || null);
+          setUserActionAnims(cfg.actionAnimations || null);
         })
-        .catch(() => setUserActionPoses(null));
+        .catch(() => {
+          setUserActionPoses(null);
+          setUserActionAnims(null);
+        });
     } else {
       setUserActionPoses(null);
+      setUserActionAnims(null);
     }
     // Carrega itens com modelo 3D para as duas abas:
     //  - Consumíveis: segurar nas mãos (simular uso)
@@ -270,6 +276,43 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
     });
     // Marca o membro como "ajustado" — só ele será sobrescrito durante a animação
     setDirtyParts(prev => new Set(prev).add(part));
+  };
+
+  const resetBone = (part: PartKey) => {
+    setPose(prev => {
+      const next = { ...prev, [part]: { rx: 0, ry: 0, rz: 0 } };
+      if (currentFrame >= 0) {
+        setFrames(fs => fs.map((f, i) => i === currentFrame ? clone(next) : f));
+      }
+      return next;
+    });
+    setDirtyParts(prev => new Set(prev).add(part));
+    setStatus(`${PART_LABELS[part]} zerado(a) na posição neutra (0, 0, 0).`);
+  };
+
+  const resetAllBones = () => {
+    const neutralPose = clone(NEUTRAL);
+    setPose(neutralPose);
+    if (currentFrame >= 0) {
+      setFrames(fs => fs.map((f, i) => i === currentFrame ? clone(neutralPose) : f));
+    }
+    setDirtyParts(new Set(['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg']));
+    setYawDirty(true);
+    setStatus('Todos os membros zerados na posição parada/neutra (0, 0, 0).');
+  };
+
+  const addNeutralFrame = () => {
+    if (frames.length >= MAX_FRAMES) {
+      setStatus(`Limite máximo de ${MAX_FRAMES} frames atingido.`);
+      return;
+    }
+    const neutralPose = clone(NEUTRAL);
+    const next = [...frames, neutralPose];
+    setFrames(next);
+    setPose(neutralPose);
+    setCurrentFrame(next.length - 1);
+    setPreviewAnim(false);
+    setStatus('Novo frame na posição neutra (0, 0, 0) adicionado.');
   };
 
   const setYaw = (yaw: number) => {
@@ -505,26 +548,106 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
       }
       const slotLabel: Record<string, string> = { attack: 'Ataque', victory: 'Vitória/Comemoração', hurt: 'Dano', idle: 'Parado', walk: 'Andando', run: 'Correndo' };
       setStatus(`Cena (${framesToSave.length} frame(s)) vinculada ao item "${weaponItem.itemTitle}" → ação "${slotLabel[animSlot] || animSlot}". Todo personagem que equipá-lo fará essa animação.`);
+      setWeaponItem(prev => prev ? { ...prev, itemAnimations: { ...(prev.itemAnimations || {}), [animSlot]: anim } } : null);
     } catch (e) {
       console.error(e);
       setStatus('Erro ao associar a cena ao item.');
     }
   };
 
+  const clearItemAnimations = async () => {
+    if (!weaponItem || !weaponItem.itemId) return;
+    try {
+      const { data: storeSnap } = await supabase.from('store_items').select('data').eq('id', weaponItem.itemId).single();
+      if (storeSnap) {
+        const prev = (storeSnap.data as any) || {};
+        const newData: any = { ...prev, itemAnimations: {}, customAnimation: null };
+        await supabase.from('store_items').update({ data: newData }).eq('id', weaponItem.itemId);
+      }
+      const { data: userCopies } = await supabase.from('user_items').select('id, data').eq('item_id', weaponItem.itemId);
+      if (userCopies) {
+        for (const c of userCopies) {
+          const d = (c.data as any) || {};
+          const nd: any = { ...d, itemAnimations: {}, customAnimation: null };
+          await supabase.from('user_items').update({ data: nd }).eq('id', c.id);
+        }
+      }
+      setWeaponItem(prev => prev ? { ...prev, itemAnimations: null, customAnimation: null } : null);
+      setStatus(`✓ Animações removidas do item "${weaponItem.itemTitle}". Volta ao padrão original.`);
+    } catch (e) {
+      console.error(e);
+      setStatus('Erro ao limpar animações do item.');
+    }
+  };
+
   // Associa uma AÇÃO salva (animação completa) a uma pose base ou pose NOVA no personagem.
   const SLOT_LABELS: Record<string, string> = { idle: 'Parado', walk: 'Andando', run: 'Correndo', attack: 'Lutar', victory: 'Vitória/Comemoração' };
+
+  const resetSlotToDefault = async (slotKey: string) => {
+    if (!userData?.uid) return;
+    try {
+      const { data: u } = await supabase.from('users').select('avatar_config').eq('id', userData.uid).single();
+      const cfg = (u?.avatar_config as any) || userData.avatarConfig || {};
+      const curAnims = { ...(cfg.actionAnimations || {}) };
+      const curPoses = { ...(cfg.actionPoses || {}) };
+      delete curAnims[slotKey];
+      delete curPoses[slotKey];
+      const newCfg = { ...cfg, actionAnimations: curAnims, actionPoses: curPoses };
+      await supabase.from('users').update({ avatar_config: newCfg }).eq('id', userData.uid);
+      setUserActionAnims(curAnims);
+      setUserActionPoses(curPoses);
+      setStatus(`✓ Movimento "${SLOT_LABELS[slotKey] || slotKey}" restaurado para o padrão original!`);
+    } catch (e) {
+      console.error(e);
+      setStatus('Erro ao restaurar movimento.');
+    }
+  };
+
+  const resetAllActionsToDefault = async () => {
+    if (!userData?.uid) return;
+    try {
+      const { data: u } = await supabase.from('users').select('avatar_config').eq('id', userData.uid).single();
+      const cfg = (u?.avatar_config as any) || userData.avatarConfig || {};
+      const newCfg = { ...cfg, actionAnimations: {}, actionPoses: {} };
+      await supabase.from('users').update({ avatar_config: newCfg }).eq('id', userData.uid);
+      setUserActionAnims({});
+      setUserActionPoses({});
+      setStatus('✓ Todos os movimentos (Parado, Andando, Correndo, Lutar, Vitória) foram restaurados para o padrão original!');
+    } catch (e) {
+      console.error(e);
+      setStatus('Erro ao restaurar movimentos padrão.');
+    }
+  };
+
   const associateActionToSlot = async (action: SavedAction, slot: string) => {
     if (!userData?.uid) return;
     const slotKey = slot.trim();
     if (!slotKey) { setStatus('Dê um nome para a pose nova.'); return; }
-    const anim = { frames: action.frames.map(clone), loop: true, duration: 1000, durationPerFrame: action.durationPerFrame };
+
+    // Toggle: se esta ação já estiver vinculada a esse slot, desvincula e volta ao padrão!
+    const existingAnim = userActionAnims?.[slotKey];
+    const isSameAction = existingAnim && existingAnim.frames && action.frames &&
+      existingAnim.frames.length === action.frames.length &&
+      JSON.stringify(existingAnim.frames[0]) === JSON.stringify(action.frames[0]);
+
+    if (isSameAction) {
+      await resetSlotToDefault(slotKey);
+      return;
+    }
+
+    const anim = { frames: action.frames.map(clone), loop: true, duration: 1000, durationPerFrame: action.durationPerFrame || 0.2 };
     try {
       const { data: u } = await supabase.from('users').select('avatar_config').eq('id', userData.uid).single();
       const cfg = (u?.avatar_config as any) || userData.avatarConfig || {};
-      const curAnims = (cfg.actionAnimations || {});
-      const newCfg = { ...cfg, actionAnimations: { ...curAnims, [slotKey]: anim } };
+      const curAnims = { ...(cfg.actionAnimations || {}) };
+      const curPoses = { ...(cfg.actionPoses || {}) };
+      curAnims[slotKey] = anim;
+      delete curPoses[slotKey];
+      const newCfg = { ...cfg, actionAnimations: curAnims, actionPoses: curPoses };
       await supabase.from('users').update({ avatar_config: newCfg }).eq('id', userData.uid);
-      setStatus(`Ação "${action.name}" associada à pose "${SLOT_LABELS[slotKey] || slotKey}". O personagem fará essa animação nessa ação.`);
+      setUserActionAnims(curAnims);
+      setUserActionPoses(curPoses);
+      setStatus(`✓ Ação "${action.name}" vinculada a "${SLOT_LABELS[slotKey] || slotKey}". (Clique no botão verde para desvincular).`);
     } catch (e) {
       console.error(e);
       setStatus('Erro ao associar a ação à pose.');
@@ -691,6 +814,11 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
   dirtyParts.forEach(p => { const b = pose[p]; if (b) overridePose[p] = { ...b }; });
   if (yawDirty && typeof pose.yaw === 'number') overridePose.yaw = pose.yaw;
 
+  const hasCustomMovement = Boolean(
+    (userActionAnims && Object.keys(userActionAnims).length > 0) ||
+    (userActionPoses && Object.keys(userActionPoses).length > 0)
+  );
+
   const sliderGroup = (part: PartKey) => {
     // Se "inverter lados" está ativo, o slider do lado esquerdo controla o lado direito e vice-versa
     const eff: PartKey = !swapLR ? part
@@ -728,7 +856,27 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
           pointerEvents: 'auto',
         }}
       >
-        <span style={{ fontSize: '0.6rem', color: '#f59e0b', fontWeight: 'bold', textTransform: 'uppercase' }}>{PART_LABELS[eff]}</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '0.2rem' }}>
+          <span style={{ fontSize: '0.6rem', color: '#f59e0b', fontWeight: 'bold', textTransform: 'uppercase' }}>{PART_LABELS[eff]}</span>
+          <button
+            type="button"
+            onClick={() => resetBone(eff)}
+            title={`Zerar ${PART_LABELS[eff]} (posição neutra 0, 0, 0)`}
+            style={{
+              background: 'rgba(239, 68, 68, 0.25)',
+              border: '1px solid rgba(239, 68, 68, 0.5)',
+              borderRadius: '4px',
+              color: '#fca5a5',
+              fontSize: '0.55rem',
+              padding: '0 4px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              lineHeight: '1.2'
+            }}
+          >
+            ↺ 0
+          </button>
+        </div>
         <div style={{ height: '60px', display: 'flex', alignItems: 'center' }}>
           <input
             type="range"
@@ -801,8 +949,33 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
             closedEyes={closedEyes}
             faceCamera
           />
-          <div style={{ position: 'absolute', top: '0.5rem', left: '0.5rem', background: 'rgba(0,0,0,0.55)', padding: '0.25rem 0.6rem', borderRadius: '8px', fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem', pointerEvents: 'none' }}>
-            <RotateCw size={12} /> Arraste para girar · {previewAnim && frames.length > 0 ? `▶ ${frames.length} frame(s)` : currentFrame >= 0 ? `Editando Frame ${currentFrame + 1}/${frames.length}` : 'Pose atual'}
+          <div style={{ position: 'absolute', top: '0.5rem', left: '0.5rem', background: 'rgba(0,0,0,0.7)', border: '1px solid var(--border-glass)', padding: '0.3rem 0.6rem', borderRadius: '8px', fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', zIndex: 15 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><RotateCw size={12} /> Arraste para girar</span>
+            <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); resetAllBones(); }}
+              style={{
+                background: 'rgba(239, 68, 68, 0.2)',
+                border: '1px solid rgba(239, 68, 68, 0.45)',
+                borderRadius: '5px',
+                color: '#fca5a5',
+                padding: '0.15rem 0.45rem',
+                fontSize: '0.66rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem'
+              }}
+              title="Colocar todos os membros em 0 (posição parada/neutra)"
+            >
+              <RotateCcw size={11} /> Zerar Membros (0,0,0)
+            </button>
+            <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+            <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>
+              {previewAnim && frames.length > 0 ? `▶ ${frames.length} frame(s)` : currentFrame >= 0 ? `Editando Frame ${currentFrame + 1}/${frames.length}` : 'Pose atual'}
+            </span>
           </div>
 
           {/* Áreas de soltar: consumíveis → nas mãos; equipáveis → arma única */}
@@ -874,6 +1047,55 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
         >
           {/* Parte de CIMA (rolável): inversões, olhos, itens, ajuste e ações */}
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.9rem', paddingRight: '2px' }}>
+          
+          {/* Status dos Movimentos do Personagem */}
+          <div style={{ border: '1px solid rgba(245,158,11,0.35)', borderRadius: '8px', padding: '0.65rem', background: 'rgba(245,158,11,0.06)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+              <div style={{ fontSize: '0.8rem', color: '#fbbf24', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                🚶 Movimentos do Personagem
+              </div>
+              {hasCustomMovement && (
+                <button
+                  type="button"
+                  onClick={resetAllActionsToDefault}
+                  style={{ padding: '0.2rem 0.5rem', background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                  title="Restaurar Parado, Andando, Correndo, Lutar e Vitória para o padrão original"
+                >
+                  <RotateCcw size={10} /> Voltar Tudo ao Padrão
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.3rem' }}>
+              {(['idle', 'walk', 'run', 'attack', 'victory'] as const).map(slot => {
+                const isCustomAnim = !!userActionAnims?.[slot];
+                const isCustomPose = !!userActionPoses?.[slot];
+                const isCustom = isCustomAnim || isCustomPose;
+                return (
+                  <div key={slot} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0.45rem', borderRadius: '5px', background: isCustom ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.04)', border: isCustom ? '1px solid rgba(245,158,11,0.5)' : '1px solid rgba(255,255,255,0.08)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{SLOT_LABELS[slot]}</span>
+                      <span style={{ fontSize: '0.58rem', color: isCustom ? '#f59e0b' : '#34d399' }}>
+                        {isCustom ? 'Personalizado' : '✓ Padrão original'}
+                      </span>
+                    </div>
+                    {isCustom && (
+                      <button
+                        type="button"
+                        onClick={() => resetSlotToDefault(slot)}
+                        style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '4px', color: '#f87171', cursor: 'pointer', padding: '2px 5px', fontSize: '0.65rem', fontWeight: 'bold' }}
+                        title={`Voltar "${SLOT_LABELS[slot]}" ao movimento padrão original`}
+                      >
+                        ↺ Padrão
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: '0.35rem', fontSize: '0.62rem', color: 'rgba(255,255,255,0.45)', lineHeight: 1.25 }}>
+              Mostra se os movimentos do seu avatar estão no padrão original do jogo ou substituídos por animações/poses salvas.
+            </div>
+          </div>
           {/* Inversões de eixo / lados */}
           <div style={{ border: '1px solid rgba(59,130,246,0.25)', borderRadius: '8px', padding: '0.7rem' }}>
             <div style={{ fontSize: '0.82rem', color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.35rem' }}>↔️ Inversões</div>
@@ -992,18 +1214,35 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
                 )}
 
                 {weaponItem && (
-                  <div style={{ marginTop: '0.45rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem', background: 'rgba(245,158,11,0.1)', borderRadius: '8px', padding: '0.4rem 0.5rem' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      Equipado no boneco: <b>{weaponItem.itemTitle}</b>
+                  <div style={{ marginTop: '0.45rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', background: 'rgba(245,158,11,0.1)', borderRadius: '8px', padding: '0.4rem 0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Equipado no boneco: <b>{weaponItem.itemTitle}</b>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
+                        <button onClick={() => openAdjust(weaponItem, 'weapon', 0)} style={{ background: 'transparent', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: 0 }} title="Ajustar item (mover/tamanho/rotação/sprite)">
+                          <Settings2 size={14} />
+                        </button>
+                        <button onClick={clearWeapon} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }} title="Remover arma">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
-                      <button onClick={() => openAdjust(weaponItem, 'weapon', 0)} style={{ background: 'transparent', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: 0 }} title="Ajustar item (mover/tamanho/rotação/sprite)">
-                        <Settings2 size={14} />
-                      </button>
-                      <button onClick={clearWeapon} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }} title="Remover arma">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+                    {weaponItem.itemAnimations && Object.keys(weaponItem.itemAnimations).length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', padding: '0.25rem 0.45rem', borderRadius: '5px' }}>
+                        <span style={{ fontSize: '0.65rem', color: '#fca5a5' }}>
+                          Ações vinculadas: {Object.keys(weaponItem.itemAnimations).map(k => SLOT_LABELS[k] || k).join(', ')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={clearItemAnimations}
+                          style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold', textDecoration: 'underline' }}
+                          title="Remover todas as animações personalizadas deste item e voltar ao padrão"
+                        >
+                          Remover (Padrão)
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1225,16 +1464,46 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
             )}
 
             <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-              <button onClick={addFrame} style={{ flex: 1, padding: '0.35rem', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
-                <Plus size={13} /> Adicionar Frame
+              <button
+                type="button"
+                onClick={addFrame}
+                style={{ flex: 1, minWidth: '95px', padding: '0.35rem', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.74rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', fontWeight: 'bold' }}
+                title="Adicionar frame com a posição atual dos membros"
+              >
+                <Plus size={13} /> Frame Atual
               </button>
-              <button onClick={undoFrame} disabled={frames.length === 0} style={{ padding: '0.3rem 0.5rem', background: 'transparent', color: '#eab308', border: '1px solid #eab308', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center' }} title="Desfazer último frame">
+              <button
+                type="button"
+                onClick={addNeutralFrame}
+                style={{ flex: 1, minWidth: '105px', padding: '0.35rem', background: 'rgba(59,130,246,0.25)', color: '#93c5fd', border: '1px solid rgba(59,130,246,0.5)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.74rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', fontWeight: 'bold' }}
+                title="Adicionar frame parado (posição neutra 0, 0, 0)"
+              >
+                <Plus size={13} /> Frame Parado (0)
+              </button>
+              <button
+                type="button"
+                onClick={undoFrame}
+                disabled={frames.length === 0}
+                style={{ padding: '0.3rem 0.5rem', background: 'transparent', color: '#eab308', border: '1px solid #eab308', borderRadius: '6px', cursor: frames.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center' }}
+                title="Desfazer último frame"
+              >
                 <Undo2 size={13} />
               </button>
-              <button onClick={clearFrames} disabled={frames.length === 0} style={{ padding: '0.3rem 0.5rem', background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center' }} title="Limpar frames">
+              <button
+                type="button"
+                onClick={clearFrames}
+                disabled={frames.length === 0}
+                style={{ padding: '0.3rem 0.5rem', background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '6px', cursor: frames.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center' }}
+                title="Limpar frames"
+              >
                 <Trash2 size={13} />
               </button>
-              <button onClick={togglePreview} disabled={frames.length === 0} style={{ padding: '0.3rem 0.6rem', background: previewAnim ? '#8b5cf6' : 'transparent', color: previewAnim ? '#fff' : '#a78bfa', border: '1px solid #8b5cf6', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <button
+                type="button"
+                onClick={togglePreview}
+                disabled={frames.length === 0}
+                style={{ padding: '0.3rem 0.6rem', background: previewAnim ? '#8b5cf6' : 'transparent', color: previewAnim ? '#fff' : '#a78bfa', border: '1px solid #8b5cf6', borderRadius: '6px', cursor: frames.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+              >
                 {previewAnim ? <Square size={12} /> : <Play size={12} />} Preview
               </button>
             </div>
@@ -1287,24 +1556,46 @@ export default function PoseStudioModal({ isOpen, onClose, userData }: PoseStudi
                         <Trash2 size={13} />
                       </button>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                      {(['idle', 'walk', 'run', 'attack', 'victory'] as const).map(slot => (
-                        <button
-                          key={slot}
-                          onClick={() => associateActionToSlot(a, slot)}
-                          style={{ padding: '0.15rem 0.4rem', background: 'rgba(16,185,129,0.15)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.62rem', fontWeight: 'bold' }}
-                          title={`Associar à pose "${SLOT_LABELS[slot]}"`}
-                        >
-                          ➕ {SLOT_LABELS[slot]}
-                        </button>
-                      ))}
+                    <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginRight: '2px' }}>Vincular:</span>
+                      {(['idle', 'walk', 'run', 'attack', 'victory'] as const).map(slot => {
+                        const existingAnim = userActionAnims?.[slot];
+                        const isAttached = existingAnim && existingAnim.frames && a.frames &&
+                          existingAnim.frames.length === a.frames.length &&
+                          JSON.stringify(existingAnim.frames[0]) === JSON.stringify(a.frames[0]);
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => associateActionToSlot(a, slot)}
+                            style={{
+                              padding: '0.2rem 0.45rem',
+                              background: isAttached ? '#10b981' : 'rgba(16,185,129,0.12)',
+                              color: isAttached ? '#000' : '#6ee7b7',
+                              border: isAttached ? '1px solid #10b981' : '1px solid rgba(16,185,129,0.3)',
+                              borderRadius: '5px',
+                              cursor: 'pointer',
+                              fontSize: '0.62rem',
+                              fontWeight: 'bold',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.2rem'
+                            }}
+                            title={isAttached ? `Ativo nesta ação! Clique para desvincular e voltar ao padrão` : `Substituir movimento de "${SLOT_LABELS[slot]}" por esta animação`}
+                          >
+                            {isAttached ? <Check size={11} strokeWidth={3} /> : <Plus size={11} />}
+                            {SLOT_LABELS[slot]}
+                          </button>
+                        );
+                      })}
                       <input
                         value={newSlotName}
                         onChange={e => setNewSlotName(e.target.value)}
                         placeholder="pose nova..."
-                        style={{ width: 84, padding: '0.15rem 0.35rem', borderRadius: '5px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.62rem' }}
+                        style={{ width: 75, padding: '0.15rem 0.35rem', borderRadius: '5px', background: 'var(--bg-dark)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '0.62rem' }}
                       />
                       <button
+                        type="button"
                         onClick={() => { if (newSlotName.trim()) { associateActionToSlot(a, newSlotName.trim()); setNewSlotName(''); } }}
                         style={{ padding: '0.15rem 0.4rem', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '5px', cursor: 'pointer', fontSize: '0.62rem', fontWeight: 'bold' }}
                         title="Criar pose nova com essa animação"
