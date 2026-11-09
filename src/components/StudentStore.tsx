@@ -1060,7 +1060,7 @@ gameEffect: item.gameEffect || 'none',
               </button>
             </div>
             
-            <div style={{ height: '350px', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-card)', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ height: '380px', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-card)', borderRadius: '12px', overflow: 'hidden' }}>
               {(() => {
                 let previewConfig: any = { ...(userData.avatarConfig || { gender: 'male' as any, skinColor: '#ffcc99', hairColor: '#4a3000', eyeColor: '#000000', hairStyle: 'short', mouthStyle: 'smile', facialHair: 'none' as any, handedness: 'right' as any, animationState: 'idle' as any }) };
                 if (previewConfig.gender === 'male' && previewConfig.hairStyle === 'long') {
@@ -1117,7 +1117,7 @@ gameEffect: item.gameEffect || 'none',
                   previewAnimation = "walk";
                 }
                 
-                return <AvatarCharacter config={previewConfig} equippedItems={previewEquipped} size={300} animation={previewAnimation as any} hideConfigAddons={isSkinPreview} />;
+                return <AvatarCharacter config={previewConfig} equippedItems={previewEquipped} size={200} animation={previewAnimation as any} hideConfigAddons={isSkinPreview} />;
               })()}
             </div>
             <p style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontSize: '0.85rem', textAlign: 'center' }}>

@@ -19,6 +19,7 @@ import StudentInventory from '../components/StudentInventory';
 import CachedImage from '../components/CachedImage';
 import { useDialog } from '../contexts/DialogContext';
 import AvatarCharacter, { type EquippedItem } from '../components/AvatarCharacter';
+import AvatarPrint from '../components/AvatarPrint';
 import LazyAnimatedAvatar from '../components/LazyAnimatedAvatar';
 import PublicProfileModal from '../components/PublicProfileModal';
 import AvatarCustomizationModal from '../components/AvatarCustomizationModal';
@@ -2970,8 +2971,8 @@ export default function Dashboard() {
             <div className="hide-on-mobile" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.35rem 0.75rem', borderRadius: '50px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {userData && (
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
-                    <AvatarCharacter config={liveAvatarConfig || userData.avatarConfig} size={32} interactive={false} animation="none" />
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}>
+                    <AvatarPrint config={liveAvatarConfig || userData.avatarConfig} equippedItems={[]} size={36} />
                   </div>
                 )}
                 <span style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{userData?.name?.split(' ')[0]}</span>

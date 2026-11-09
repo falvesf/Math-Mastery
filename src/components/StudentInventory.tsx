@@ -143,7 +143,36 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
   const [slotMap, setSlotMap] = useState<Record<string, number>>((userData.inventoryPreferences as any)?.slotMap || {});
   
   const inventoryRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+
+  const handleDragOverAutoScroll = (e: React.DragEvent) => {
+    if (!draggedItem) return;
+    e.preventDefault();
+    const el = scrollContainerRef.current;
+    const clientY = e.clientY;
+
+    // Auto-scroll no container da mochila
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const threshold = 70;
+      if (clientY < rect.top + threshold && clientY >= rect.top - 20) {
+        const ratio = 1 - Math.max(0, clientY - rect.top) / threshold;
+        el.scrollTop -= Math.max(8, Math.round(ratio * 25));
+      } else if (clientY > rect.bottom - threshold && clientY <= rect.bottom + 20) {
+        const ratio = 1 - Math.max(0, rect.bottom - clientY) / threshold;
+        el.scrollTop += Math.max(8, Math.round(ratio * 25));
+      }
+    }
+
+    // Auto-scroll na janela inteira (window) caso a página esteja com zoom alto
+    const winThreshold = 80;
+    if (clientY < winThreshold) {
+      window.scrollBy({ top: -16, behavior: 'instant' as any });
+    } else if (clientY > window.innerHeight - winThreshold) {
+      window.scrollBy({ top: 16, behavior: 'instant' as any });
+    }
+  };
 
   // Mantém o tooltip dentro da tela (não corta nas bordas direita/inferior)
   useEffect(() => {
@@ -1336,7 +1365,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
     <div 
       ref={inventoryRef}
       style={{ animation: 'fadeIn 0.3s ease-out', display: 'flex', flexDirection: 'column', minHeight: '400px', height: 'auto' }}
-      onDragOver={(e) => { e.preventDefault(); }}
+      onDragOver={(e) => { e.preventDefault(); handleDragOverAutoScroll(e); }}
       onDrop={(e) => { e.preventDefault(); }}
     >
       <style>{`
@@ -1478,7 +1507,11 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         )}
       </div>
 
-      <div className="inventory-items-col" style={{ 
+      <div 
+        ref={scrollContainerRef}
+        className="inventory-items-col" 
+        onDragOver={handleDragOverAutoScroll}
+        style={{ 
         flex: 1, 
         overflowY: 'auto', 
         overflowX: 'hidden',
@@ -1501,19 +1534,20 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                 <div key={item.id || index} 
                   className={`inventory-item-card ${isFullyDragged ? '' : `rarity-${item.rarity || 'common'}`}`}
                   onMouseEnter={(e) => {
-                    if (!isOverflow) {
+                    if (!isOverflow && !draggedItem) {
                       setHoveredItem(item.id);
                       setMousePos({ x: e.clientX, y: e.clientY });
                     }
                   }}
                   onMouseLeave={() => setHoveredItem(null)}
                   onMouseMove={(e) => {
-                    if (hoveredItem === item.id) {
+                    if (!draggedItem && hoveredItem === item.id) {
                       setMousePos({ x: e.clientX, y: e.clientY });
                     }
                   }}
                   draggable={!isOverflow}
                   onDragStart={(e) => {
+                    setHoveredItem(null);
                     if (isOverflow) {
                       e.preventDefault();
                       return;
@@ -1531,6 +1565,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                     }
                   }}
                   onDragEnd={(e) => {
+                    setHoveredItem(null);
                     setDraggedItem(null);
                     if (inventoryRef.current) {
                       const rect = inventoryRef.current.getBoundingClientRect();
@@ -1543,6 +1578,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
                   onDragOver={(e) => {
                     if (!isOverflow && draggedItem && draggedItem.id !== item.id) {
                       e.preventDefault();
+                      handleDragOverAutoScroll(e);
                     }
                   }}
                   onDrop={(e) => {
@@ -1738,7 +1774,12 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
               return (
                 <div key={`empty-${index}`} 
                   className="inventory-item-card"
-                  onDragOver={(e) => { if (!isOverflowEmpty) e.preventDefault(); }}
+                  onDragOver={(e) => { 
+                    if (!isOverflowEmpty) { 
+                      e.preventDefault(); 
+                      handleDragOverAutoScroll(e); 
+                    } 
+                  }}
                   onDrop={(e) => { 
                     e.preventDefault(); 
                     if (draggedItem && !isOverflowEmpty) handleGridSwap(draggedItem, index, null); 
@@ -1976,7 +2017,7 @@ export default function StudentInventory({ userData, onEquip, inventoryRefresh }
         document.body
       )}
       {/* Tooltip Portal */}
-      {hoveredItem && (
+      {hoveredItem && !draggedItem && (
         <ItemTooltip 
           item={items.find(i => i.id === hoveredItem)} 
           mousePos={mousePos} 

@@ -2088,9 +2088,10 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
     viewer.height = Math.round(size * 1.8 * ch);
     const camZ = fit / zoom;
 
-    // Enquadramento clássico original (Imagem 1):
-    // Câmera posicionada a Y = 10 olhando para o centro do avatar (Y = 0)
-    viewer.camera.position.set(0, 10, camZ);
+    // Enquadramento equilibrado:
+    // Câmera posicionada na altura do peito (Y = 4) olhando para o centro do avatar (Y = 0)
+    // Mantém o personagem centralizado verticalmente para não cortar pernas e pés.
+    viewer.camera.position.set(0, 4, camZ);
     viewer.camera.lookAt(0, 0, 0);
     viewer.controls.target.set(0, 0, 0);
     viewer.controls.update();
