@@ -70,7 +70,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
   const [selectedTransmuteItem, setSelectedTransmuteItem] = useState<any | null>(null);
   const [consumables, setConsumables] = useState<any[]>([]);
   // Catálogo (loja) dos materiais/itens — para mostrar nome/ícone mesmo sem possuir
-  const [materialCatalog, setMaterialCatalog] = useState<Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string; importedFromId?: string }>>({});
+  const [materialCatalog, setMaterialCatalog] = useState<Record<string, any>>({});
 
   // Materiais podem ter IDs diferentes para o MESMO item (catálogo compartilhado entre
   // escolas). Por isso casamos por item_id OU pelo NOME normalizado.
@@ -462,25 +462,55 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
     ]);
     userItemsSnap = (userItemsSnap || []).filter((r: any) => availableIds.has(r.id));
 
-    // Catálogo de materiais/itens (nome/ícone/patente) — mesmo os que o jogador ainda não possui
+    // Catálogo de materiais/itens (nome/ícone/patente/dados completos) — mesmo os que o jogador ainda não possui
     try {
-      let catQ = supabase.from('store_items').select('id, name, image_url, rarity, data');
+      let catQ = supabase.from('store_items').select('*');
       if (tenantId) catQ = catQ.or(`is_global.eq.true,tenant_id.eq.${tenantId}`);
       const { data: catSnap } = await catQ;
-      const catMap: Record<string, { id?: string; title: string; imageUrl: string; minRankRequired?: any; rarity?: string; importedFromId?: string }> = {};
-      (catSnap || []).forEach((s: any) => {
+      const catMap: Record<string, any> = {};
+
+      const buildCatalogItem = (s: any) => {
         const d = (s.data || {}) as any;
-        catMap[s.id] = {
+        const rawType = d.type || d.itemType || s.type || 'other';
+        const isEquip = rawType === 'equippable';
+        return {
+          ...d,
           id: s.id,
-          title: d.title || s.name || 'Item',
-          imageUrl: d.imageUrl || s.image_url || '',
-          minRankRequired: d.minRankRequired,
+          itemId: s.id,
+          title: (d.title || d.itemTitle || s.name || 'Item').trim(),
+          name: (d.title || d.itemTitle || s.name || 'Item').trim(),
+          itemTitle: (d.title || d.itemTitle || s.name || 'Item').trim(),
+          imageUrl: d.imageUrl || d.itemImageUrl || s.image_url || '',
+          itemImageUrl: d.imageUrl || d.itemImageUrl || s.image_url || '',
+          image_url: d.imageUrl || d.itemImageUrl || s.image_url || '',
+          type: rawType,
+          itemType: rawType,
+          description: d.description || d.itemDescription || s.description || '',
+          itemDescription: d.description || d.itemDescription || s.description || '',
+          itemCategory: d.itemCategory || s.avatar_part || 'none',
+          avatarPart: d.avatarPart || s.avatar_part || null,
+          baseAttributeType: d.baseAttributeType || 'none',
+          baseAttributeValue: Number(d.baseAttributeValue) || 0,
           rarity: d.rarity || s.rarity || 'common',
-          importedFromId: d.importedFromId || s.data?.importedFromId
+          gameEffect: d.gameEffect || 'none',
+          damageEffect: d.damageEffect || 'none',
+          damageEffectMin: d.damageEffectMin,
+          damageEffectMax: d.damageEffectMax,
+          fixedAttributes: d.fixedAttributes || [],
+          adds: d.adds || [],
+          forgeConfig: d.forgeConfig || null,
+          minRankRequired: d.minRankRequired,
+          importedFromId: d.importedFromId || s.data?.importedFromId,
+          forgeLevel: isEquip ? 0 : undefined,
+          data: d,
         };
+      };
+
+      (catSnap || []).forEach((s: any) => {
+        catMap[s.id] = buildCatalogItem(s);
       });
 
-      // Busca materiais exigidos que venham de outro tenant ou banco global
+      // Busca materiais e itens resultados de transmutação exigidos que venham de outro tenant ou banco global
       const referencedMatIds = new Set<string>();
       (userItemsSnap || []).forEach((row: any) => {
         const d = row.data || {};
@@ -492,21 +522,16 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
         if (d.transmuteConfig?.materials && Array.isArray(d.transmuteConfig.materials)) {
           d.transmuteConfig.materials.forEach((id: any) => { if (id && !catMap[id]) referencedMatIds.add(id); });
         }
+        if (d.transmuteConfig?.resultItemId && !catMap[d.transmuteConfig.resultItemId]) {
+          referencedMatIds.add(d.transmuteConfig.resultItemId);
+        }
       });
 
       if (referencedMatIds.size > 0) {
         try {
-          const { data: missingSnap } = await supabase.from('store_items').select('id, name, image_url, rarity, data').in('id', Array.from(referencedMatIds));
+          const { data: missingSnap } = await supabase.from('store_items').select('*').in('id', Array.from(referencedMatIds));
           (missingSnap || []).forEach((s: any) => {
-            const d = (s.data || {}) as any;
-            catMap[s.id] = {
-              id: s.id,
-              title: d.title || s.name || 'Item',
-              imageUrl: d.imageUrl || s.image_url || '',
-              minRankRequired: d.minRankRequired,
-              rarity: d.rarity || s.rarity || 'common',
-              importedFromId: d.importedFromId || s.data?.importedFromId
-            };
+            catMap[s.id] = buildCatalogItem(s);
           });
         } catch { /* ignora */ }
       }
@@ -615,12 +640,22 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
           });
         } else if (itemData.itemType === 'consumable' || itemData.itemType === 'other') {
           consumables.push({ 
+            ...storeItemData,
+            ...itemData,
             docId: row.id, 
             itemId: row.item_id, 
             quantity: itemData.quantity || 1, 
-            itemTitle: itemData.itemTitle || storeItemData.title, 
+            title: itemData.itemTitle || storeItemData.title || itemData.title || 'Item',
+            itemTitle: itemData.itemTitle || storeItemData.title || itemData.title || 'Item', 
+            imageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '',
             itemImageUrl: itemData.itemImageUrl || storeItemData.imageUrl || '',
-            importedFromId: itemData.importedFromId || storeItemData.importedFromId || (storeItemData as any)?.data?.importedFromId
+            type: itemData.itemType || storeItemData.type || itemData.type || 'other',
+            itemType: itemData.itemType || storeItemData.type || itemData.type || 'other',
+            rarity: itemData.rarity || storeItemData.rarity || 'common',
+            description: itemData.itemDescription || itemData.description || storeItemData.description || '',
+            gameEffect: itemData.gameEffect || storeItemData.gameEffect || 'none',
+            importedFromId: itemData.importedFromId || storeItemData.importedFromId || (storeItemData as any)?.data?.importedFromId,
+            data: { ...storeItemData, ...itemData },
           });
         }
       }
@@ -2209,7 +2244,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                           key={matIdx} 
                           title={matTitle} 
                           onMouseEnter={() => {
-                            const matObj = matId ? (materialCatalog[matId] || matOwned(matId)) : null;
+                            const matObj = matId ? (matOwned(matId) || materialCatalog[matId]) : null;
                             if (matObj) setHoveredTooltipItem(matObj);
                           }}
                           onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
@@ -2239,7 +2274,7 @@ export default function BlacksmithModal({ userData, currentRankIndex, onClose, o
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
                         <div 
-                          onMouseEnter={() => resultItemInfo && setHoveredTooltipItem(resultItemInfo)}
+                          onMouseEnter={() => resultItemInfo && setHoveredTooltipItem({ ...resultItemInfo, forgeLevel: 0 })}
                           onMouseMove={(e) => setTooltipMousePos({ x: e.clientX, y: e.clientY })}
                           onMouseLeave={() => setHoveredTooltipItem(null)}
                           style={{ width: '90px', height: '90px', background: 'rgba(139,92,246,0.15)', border: `2px solid ${resultItemInfo ? '#a855f7' : '#555'}`, borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', boxShadow: resultItemInfo ? '0 0 16px rgba(168,85,247,0.4)' : 'none', cursor: resultItemInfo ? 'pointer' : 'default' }}
