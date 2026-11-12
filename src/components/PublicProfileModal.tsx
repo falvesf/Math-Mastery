@@ -155,55 +155,50 @@ export default function PublicProfileModal({ isOpen, onClose, user, equippedItem
 
   useEffect(() => {
     if (!isOpen || !user?.uid) return;
-    const isMissingData = !equippedItems || equippedItems.length === 0 || equippedItems.some(i => !i.rarity || !i.type);
-    if (isMissingData) {
-      let active = true;
-      supabase
-        .from('user_items')
-        .select('*')
-        .eq('student_id', user.uid)
-        .eq('equipped', true)
-        .then(({ data }) => {
-          if (!active || !data) return;
-          const mapped = data.map((d: any) => {
-            const dt = d.data || {};
-            return {
-              ...dt,
-              docId: d.id,
-              itemId: d.item_id || dt.itemId,
-              imageUrl: dt.itemImageUrl || dt.imageUrl,
-              avatarPart: dt.avatarPart,
-              itemTitle: dt.itemTitle || dt.title,
-              itemCategory: dt.itemCategory,
-              baseAttributeType: dt.baseAttributeType,
-              baseAttributeValue: dt.baseAttributeValue,
-              forgeLevel: dt.forgeLevel || 0,
-              forgeConfig: dt.forgeConfig || null,
-              adds: dt.adds || [],
-              fixedAttributes: dt.fixedAttributes || [],
-              gameModelUrl: dt.gameModelUrl,
-              keepMetal: dt.keepMetal || false,
-              modelTextureUrl: dt.modelTextureUrl,
-              minecraftHeadValue: dt.minecraftHeadValue,
-              modelTransforms: dt.modelTransforms,
-              backColor: dt.backColor || '',
-              rarity: dt.rarity || 'common',
-              gameEffect: dt.gameEffect,
-              damageEffect: dt.damageEffect,
-              damageEffectMin: dt.damageEffectMin,
-              damageEffectMax: dt.damageEffectMax,
-              description: dt.itemDescription || dt.description || '',
-              type: dt.itemType || dt.type || 'equippable',
-              hpCooldownReductionMinutes: dt.hpCooldownReductionMinutes,
-            } as EquippedItem;
-          });
-          if (mapped.length > 0) {
-            setDisplayEquippedItems(mapped);
-          }
+    let active = true;
+    supabase
+      .from('user_items')
+      .select('*')
+      .eq('student_id', user.uid)
+      .eq('equipped', true)
+      .then(({ data }) => {
+        if (!active || !data) return;
+        const mapped = data.map((d: any) => {
+          const dt = d.data || {};
+          return {
+            ...dt,
+            docId: d.id,
+            itemId: d.item_id || dt.itemId,
+            imageUrl: dt.itemImageUrl || dt.imageUrl,
+            avatarPart: dt.avatarPart,
+            itemTitle: dt.itemTitle || dt.title,
+            itemCategory: dt.itemCategory,
+            baseAttributeType: dt.baseAttributeType,
+            baseAttributeValue: dt.baseAttributeValue,
+            forgeLevel: dt.forgeLevel || 0,
+            forgeConfig: dt.forgeConfig || null,
+            adds: dt.adds || [],
+            fixedAttributes: dt.fixedAttributes || [],
+            gameModelUrl: dt.gameModelUrl,
+            keepMetal: dt.keepMetal || false,
+            modelTextureUrl: dt.modelTextureUrl,
+            minecraftHeadValue: dt.minecraftHeadValue,
+            modelTransforms: dt.modelTransforms,
+            backColor: dt.backColor || '',
+            rarity: dt.rarity || 'common',
+            gameEffect: dt.gameEffect,
+            damageEffect: dt.damageEffect,
+            damageEffectMin: dt.damageEffectMin,
+            damageEffectMax: dt.damageEffectMax,
+            description: dt.itemDescription || dt.description || '',
+            type: dt.itemType || dt.type || 'equippable',
+            hpCooldownReductionMinutes: dt.hpCooldownReductionMinutes,
+          } as EquippedItem;
         });
-      return () => { active = false; };
-    }
-  }, [isOpen, user?.uid, equippedItems]);
+        setDisplayEquippedItems(mapped);
+      });
+    return () => { active = false; };
+  }, [isOpen, user?.uid]);
 
   // Valores computados (considerando nível de forja dos equipamentos e pontos distribuídos)
   const stats = calculateTotalStats(displayEquippedItems, user.distributedStats || (user as any).distributed_stats);

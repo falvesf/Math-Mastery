@@ -1043,15 +1043,20 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
     // Sort by name
     loadedStudents.sort((a, b) => a.name.localeCompare(b.name));
     
-    // Buscar todos os itens equipados com filtro de tenant
-    let itemsQuery = supabase.from('user_items').select('*').eq('equipped', true);
-    if (tenantId) {
-      itemsQuery = itemsQuery.eq('tenant_id', tenantId);
-    } else {
-      // Sem tenant: não buscar itens de todas as escolas
-      itemsQuery = itemsQuery.eq('tenant_id', '00000000-0000-0000-0000-000000000001');
+    // Buscar todos os itens equipados dos alunos carregados (independente de onde o item foi gerado)
+    const studentUids = loadedStudents.map(s => s.uid);
+    const itemsSnap: any[] = [];
+    if (studentUids.length > 0) {
+      for (let i = 0; i < studentUids.length; i += 100) {
+        const chunk = studentUids.slice(i, i + 100);
+        const { data: chunkSnap } = await supabase
+          .from('user_items')
+          .select('*')
+          .eq('equipped', true)
+          .in('student_id', chunk);
+        if (chunkSnap) itemsSnap.push(...chunkSnap);
+      }
     }
-    const { data: itemsSnap } = await itemsQuery;
     const itemsMap: Record<string, any[]> = {};
     if (itemsSnap) itemsSnap.forEach(d => {
       const data = d.data || {};
