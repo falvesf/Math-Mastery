@@ -366,10 +366,13 @@ export default function AdminConsole() {
   };
 
   // Execução de comando
-  // Auxiliar para busca de jogador por ID ou Nome (com resolução de ambiguidade)
-  const resolveTargetPlayer = async (identifier: string, tenantId?: string): Promise<{ player?: any; error?: string }> => {
-    const clean = identifier.trim();
+  // Auxiliar para busca de jogador por ID ou Nome (com resolução de ambiguidade e suporte cross-tenant)
+  const resolveTargetPlayer = async (identifier: string, tenantId?: string): Promise<{ player?: any; error?: string; crossTenant?: boolean }> => {
+    let clean = identifier.trim();
     if (!clean) return { error: 'Identificador do jogador não informado.' };
+
+    // Remove aspas extras envolventes (ex: "Jefferson Jeremias de Goes" ou ""Jefferson"")
+    clean = clean.replace(/^[\"\']+|[\"\']+$/g, '').trim();
 
     // 1. UUID exato
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
@@ -379,34 +382,60 @@ export default function AdminConsole() {
       if (error) return { error: `Erro na busca por ID: ${error.message}` };
     }
 
-    // 2. Busca exata por nome, nome do personagem ou email
-    let exactQuery = supabase.from('users').select('*');
-    if (tenantId) exactQuery = exactQuery.eq('tenant_id', tenantId);
-    const { data: exactRows } = await exactQuery.or(`name.ilike.${clean},character_name.ilike.${clean},email.ilike.${clean}`);
-    if (exactRows && exactRows.length === 1) {
-      return { player: exactRows[0] };
+    // Helper interno para consultar usuários por correspondência exata, prefixo ou parcial
+    const queryUsers = async (scopeTenantId?: string) => {
+      // 2. Busca exata por nome, nome do personagem ou email
+      let exactQuery = supabase.from('users').select('*');
+      if (scopeTenantId) exactQuery = exactQuery.eq('tenant_id', scopeTenantId);
+      const { data: exactRows } = await exactQuery.or(`name.ilike.${clean},character_name.ilike.${clean},email.ilike.${clean}`);
+      if (exactRows && exactRows.length === 1) {
+        return { match: exactRows[0] };
+      }
+      if (exactRows && exactRows.length > 1) {
+        return { multiple: exactRows };
+      }
+
+      // 3. Busca por prefixo
+      let prefixQuery = supabase.from('users').select('*');
+      if (scopeTenantId) prefixQuery = prefixQuery.eq('tenant_id', scopeTenantId);
+      const { data: prefixRows } = await prefixQuery.or(`name.ilike.${clean}%,character_name.ilike.${clean}%,email.ilike.${clean}%`).limit(10);
+      if (prefixRows && prefixRows.length === 1) {
+        return { match: prefixRows[0] };
+      }
+
+      // 4. Busca parcial (contém)
+      let partialQuery = supabase.from('users').select('*');
+      if (scopeTenantId) partialQuery = partialQuery.eq('tenant_id', scopeTenantId);
+      const { data: partialRows } = await partialQuery.or(`name.ilike.%${clean}%,character_name.ilike.%${clean}%,email.ilike.%${clean}%`).limit(10);
+
+      const pool = (prefixRows && prefixRows.length > 0) ? prefixRows : (partialRows || []);
+      if (pool.length === 1) {
+        return { match: pool[0] };
+      }
+      if (pool.length > 1) {
+        return { multiple: pool };
+      }
+
+      return { none: true };
+    };
+
+    // Prioridade 1: Buscar na escola ativa atual
+    if (tenantId) {
+      const localRes = await queryUsers(tenantId);
+      if (localRes.match) return { player: localRes.match };
+      if (localRes.multiple) {
+        const names = localRes.multiple.map(p => `"${p.name || p.character_name || p.email}"`).join(', ');
+        return { error: `Mais de um jogador encontrado nesta escola (${names}). Seja mais específico ou utilize o ID.` };
+      }
     }
 
-    // 3. Busca por prefixo
-    let prefixQuery = supabase.from('users').select('*');
-    if (tenantId) prefixQuery = prefixQuery.eq('tenant_id', tenantId);
-    const { data: prefixRows } = await prefixQuery.or(`name.ilike.${clean}%,character_name.ilike.${clean}%,email.ilike.${clean}%`).limit(10);
-    if (prefixRows && prefixRows.length === 1) {
-      return { player: prefixRows[0] };
+    // Prioridade 2: Fallback para busca global (em todas as escolas cadastradas)
+    const globalRes = await queryUsers(undefined);
+    if (globalRes.match) {
+      return { player: globalRes.match, crossTenant: !!(tenantId && globalRes.match.tenant_id !== tenantId) };
     }
-
-    // 4. Busca parcial (contém)
-    let partialQuery = supabase.from('users').select('*');
-    if (tenantId) partialQuery = partialQuery.eq('tenant_id', tenantId);
-    const { data: partialRows } = await partialQuery.or(`name.ilike.%${clean}%,character_name.ilike.%${clean}%,email.ilike.%${clean}%`).limit(10);
-
-    const pool = (prefixRows && prefixRows.length > 0) ? prefixRows : (partialRows || []);
-
-    if (pool.length === 1) {
-      return { player: pool[0] };
-    }
-    if (pool.length > 1) {
-      const names = pool.map(p => `"${p.name || p.character_name || p.email}"`).join(', ');
+    if (globalRes.multiple) {
+      const names = globalRes.multiple.map(p => `"${p.name || p.character_name || p.email}" (${p.role === 'admin' ? 'Admin' : 'Aluno'})`).join(', ');
       return { error: `Mais de um jogador encontrado (${names}). Seja mais específico ou utilize o ID.` };
     }
 
@@ -466,6 +495,7 @@ export default function AdminConsole() {
     const parts = trimmed.split(/\s+/);
     const cmd = parts[0].toLowerCase();
     const args = parts.slice(1);
+    const activeTenantId = tenantId || userData?.tenant_id || (userData as any)?.tenantId || undefined;
     const adminFirstName = formatAdminFirstName(userData?.name, userData?.email);
 
     // 1. Comando de Ajuda
@@ -514,7 +544,7 @@ export default function AdminConsole() {
 
       // Verifica slots de jogador específico
       const targetIdentifier = args.join(' ').trim();
-      const res = await resolveTargetPlayer(targetIdentifier, userData?.tenant_id);
+      const res = await resolveTargetPlayer(targetIdentifier, activeTenantId);
       if (!res.player) {
         addLine(`[ERRO] ${res.error || 'Jogador não encontrado.'}`, 'error');
         playTerminalSound('error');
@@ -557,7 +587,7 @@ export default function AdminConsole() {
       let targetUser: any = userData;
       let isSelf = true;
       if (parsed.targetIdentifier) {
-        const res = await resolveTargetPlayer(parsed.targetIdentifier, userData?.tenant_id);
+        const res = await resolveTargetPlayer(parsed.targetIdentifier, activeTenantId);
         if (!res.player) {
           addLine(`[ERRO] ${res.error || 'Jogador não encontrado.'}`, 'error');
           playTerminalSound('error');
@@ -626,7 +656,7 @@ export default function AdminConsole() {
       let targetUser: any = userData;
       let isSelf = true;
       if (parsed.targetIdentifier) {
-        const res = await resolveTargetPlayer(parsed.targetIdentifier, userData?.tenant_id);
+        const res = await resolveTargetPlayer(parsed.targetIdentifier, activeTenantId);
         if (!res.player) {
           addLine(`[ERRO] ${res.error || 'Jogador não encontrado.'}`, 'error');
           playTerminalSound('error');
@@ -739,7 +769,7 @@ export default function AdminConsole() {
         targetIdentifier = args.join(' ').trim();
       }
 
-      const res = await resolveTargetPlayer(targetIdentifier, userData?.tenant_id);
+      const res = await resolveTargetPlayer(targetIdentifier, activeTenantId);
       if (!res.player) {
         addLine(`[ERRO] ${res.error || 'Jogador não encontrado.'}`, 'error');
         playTerminalSound('error');
@@ -897,7 +927,7 @@ export default function AdminConsole() {
       let recipientUser: any = userData!;
       let isSelfRecipient = true;
       if (recipientSearch) {
-        const res = await resolveTargetPlayer(recipientSearch, userData?.tenant_id);
+        const res = await resolveTargetPlayer(recipientSearch, activeTenantId);
         if (!res.player) {
           addLine(`[ERRO] Destinatário "${recipientSearch}" não encontrado: ${res.error}`, 'error');
           playTerminalSound('error');
@@ -905,6 +935,9 @@ export default function AdminConsole() {
         }
         recipientUser = res.player;
         isSelfRecipient = (recipientUser.id || recipientUser.uid) === userData?.uid;
+        if (res.crossTenant) {
+          addLine(`[INFO] Destinatário "${recipientUser.name || recipientUser.email}" localizado em outra escola cadastrada.`, 'info');
+        }
       }
 
       const recipientId = recipientUser?.id || recipientUser?.uid;
