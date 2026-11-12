@@ -5,7 +5,7 @@ import { useTenant } from '../contexts/TenantContext';
 import { supabase } from '../lib/supabase';
 import { rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { applyEffectAdd, isEffectAddType } from '../lib/damageEffects';
-import { getAvailableInventorySpace, computeMaxInventorySpace } from '../lib/inventorySlots';
+import { getAvailableInventorySpace, computeMaxInventorySpace, getActiveInventorySpaceBuff } from '../lib/inventorySlots';
 import { invalidateEquippedItems } from '../lib/equippedItems';
 import { getRankForXp, getMaxAddsLimit } from '../lib/ranks';
 import { formatAdminFirstName } from '../lib/formatAdminName';
@@ -82,7 +82,7 @@ function playTerminalSound(type: 'open' | 'success' | 'error') {
 }
 
 export default function AdminConsole() {
-  const { userData } = useAuth();
+  const { userData, updateUserDataLocally } = useAuth();
   const { tenantId, tenant } = useTenant();
   const [isOpen, setIsOpen] = useState(false);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
@@ -480,6 +480,79 @@ export default function AdminConsole() {
     return { targetIdentifier: rawArgs.join(' ').trim(), amount: null };
   };
 
+  // Parser para o comando /slots ([+/-qtd | reset] [alvo])
+  const parseSlotsArgs = (rawArgs: string[]): { mode: 'query' | 'modify' | 'reset'; targetIdentifier: string | null; delta: number } => {
+    if (rawArgs.length === 0) {
+      return { mode: 'query', targetIdentifier: null, delta: 0 };
+    }
+
+    const cleanStr = (s: string) => s.replace(/^[\"\']+|[\"\']+$/g, '').trim();
+
+    // 1. Reset / revogação do buff voltando para o padrão original
+    const resetIndex = rawArgs.findIndex(a => /^(reset|revogar|padrao|padrão|default|limpar|clear)$/i.test(cleanStr(a)));
+    if (resetIndex !== -1) {
+      const remaining = rawArgs.filter((_, i) => i !== resetIndex).join(' ');
+      const target = cleanStr(remaining);
+      return { mode: 'reset', targetIdentifier: target || null, delta: 0 };
+    }
+
+    // 2. Sinal separado: ['+', '100', 'Carlos'] ou ['-', '10']
+    if ((rawArgs[0] === '+' || rawArgs[0] === '-') && rawArgs.length >= 2 && /^\d+$/.test(rawArgs[1])) {
+      const sign = rawArgs[0] === '-' ? -1 : 1;
+      const delta = sign * parseInt(rawArgs[1], 10);
+      const target = cleanStr(rawArgs.slice(2).join(' '));
+      return { mode: 'modify', targetIdentifier: target || null, delta };
+    }
+
+    // 3. Primeiro token com sinal (+10, -10): ['+100'], ['+10', 'Carlos'], ['-10', '"Pedro"']
+    if (/^[+-]\d+$/.test(rawArgs[0])) {
+      const delta = parseInt(rawArgs[0], 10);
+      const target = cleanStr(rawArgs.slice(1).join(' '));
+      return { mode: 'modify', targetIdentifier: target || null, delta };
+    }
+
+    // 4. Primeiro token é número puro ('0' vira reset, ou número positivo)
+    if (/^\d+$/.test(rawArgs[0])) {
+      const num = parseInt(rawArgs[0], 10);
+      if (num === 0) {
+        const target = cleanStr(rawArgs.slice(1).join(' '));
+        return { mode: 'reset', targetIdentifier: target || null, delta: 0 };
+      }
+      const target = cleanStr(rawArgs.slice(1).join(' '));
+      return { mode: 'modify', targetIdentifier: target || null, delta: num };
+    }
+
+    // 5. Número no final: ['Carlos', '+', '10'], ['Carlos', '+10'], ['"Pedro"', '-10'], ['Carlos', '0']
+    const last = rawArgs[rawArgs.length - 1];
+    const secondLast = rawArgs.length >= 2 ? rawArgs[rawArgs.length - 2] : null;
+
+    if ((secondLast === '+' || secondLast === '-') && /^\d+$/.test(last)) {
+      const sign = secondLast === '-' ? -1 : 1;
+      const delta = sign * parseInt(last, 10);
+      const target = cleanStr(rawArgs.slice(0, rawArgs.length - 2).join(' '));
+      return { mode: 'modify', targetIdentifier: target || null, delta };
+    }
+
+    if (/^[+-]\d+$/.test(last)) {
+      const delta = parseInt(last, 10);
+      const target = cleanStr(rawArgs.slice(0, rawArgs.length - 1).join(' '));
+      return { mode: 'modify', targetIdentifier: target || null, delta };
+    }
+
+    if (/^\d+$/.test(last) && rawArgs.length >= 2) {
+      const num = parseInt(last, 10);
+      const target = cleanStr(rawArgs.slice(0, rawArgs.length - 1).join(' '));
+      if (num === 0) {
+        return { mode: 'reset', targetIdentifier: target || null, delta: 0 };
+      }
+      return { mode: 'modify', targetIdentifier: target || null, delta: num };
+    }
+
+    // 6. Apenas nome de jogador (consulta)
+    return { mode: 'query', targetIdentifier: cleanStr(rawArgs.join(' ')), delta: 0 };
+  };
+
+
   // Execução de comando
   const handleExecuteCommand = async (rawCmd: string) => {
     const trimmed = rawCmd.trim();
@@ -503,7 +576,7 @@ export default function AdminConsole() {
       addLine('COMANDOS DISPONÍVEIS NO CONSOLE ADMIN:', 'info');
       addLine('  • /i <id> [poder: 0-9] [qtd] [jogador]  - Gera item na mochila (sua ou de um jogador)', 'info');
       addLine('  • /items [filtro]                      - Consulta catálogo de IDs e códigos dos itens', 'info');
-      addLine('  • /slots [jogador]                     - Verifica slots ocupados e livres (seus ou de um jogador)', 'info');
+      addLine('  • /slots [+/-qtd | reset] [jogador]    - Consulta, atribui/remove slots ou reseta para o padrão', 'info');
       addLine('  • /coins [jogador] [+/-] [qtd]         - Consulta ou altera saldo de moedas (seu ou de um jogador)', 'info');
       addLine('  • /xp [jogador] [+/-] [qtd]            - Consulta ou altera experiência/patente (sua ou de um jogador)', 'info');
       addLine('  • /hp [jogador] [valor | +/- | full]   - Consulta ou altera corações de vida (seus ou de um jogador)', 'info');
@@ -518,57 +591,158 @@ export default function AdminConsole() {
       return;
     }
 
-    // 3. Comando Slots (/slots [jogador])
-    if (cmd === '/slots' || cmd === 'slots' || cmd === '/espaco') {
-      if (args.length === 0) {
-        // Verifica slots próprios
-        if (!userData?.uid) {
-          addLine('[ERRO] Usuário não autenticado.', 'error');
+    // 3. Comando Slots (/slots [+/-qtd | reset] [jogador])
+    if (cmd === '/slots' || cmd === '/slot' || cmd === 'slots' || cmd === 'slot' || cmd === '/espaco' || cmd === 'espaco') {
+      const parsed = parseSlotsArgs(args);
+
+      // Resolve o usuário alvo (próprio admin ou jogador especificado)
+      let targetUser: any = userData;
+      let isSelf = true;
+      if (parsed.targetIdentifier) {
+        const res = await resolveTargetPlayer(parsed.targetIdentifier, activeTenantId);
+        if (!res.player) {
+          addLine(`[ERRO] ${res.error || 'Jogador não encontrado.'}`, 'error');
+          playTerminalSound('error');
           return;
         }
+        targetUser = res.player;
+        isSelf = (targetUser.id || targetUser.uid) === userData?.uid;
+        if (res.crossTenant) {
+          addLine(`[INFO] Destinatário "${targetUser.name || targetUser.email}" localizado em outra escola cadastrada.`, 'info');
+        }
+      } else if (!userData?.uid) {
+        addLine('[ERRO] Usuário não autenticado.', 'error');
+        return;
+      }
+
+      const targetId = targetUser.id || targetUser.uid;
+      const targetName = targetUser.name || targetUser.character_name || targetUser.characterName || (isSelf ? 'sua conta' : 'Jogador');
+
+      // --- MODO 1: RESET / REVOGAÇÃO DO BUFF VOLTANDO AO PADRÃO DO CÁLCULO ---
+      if (parsed.mode === 'reset') {
         try {
-          const { data: myItems } = await supabase
+          const { error: resetErr } = await supabase
+            .from('users')
+            .update({
+              extra_inventory_space: 0,
+              inventory_space_buff: 0,
+              inventory_space_buff_until: null,
+              inventory_space_buff_days: 0,
+            })
+            .eq('id', targetId);
+
+          if (resetErr) throw resetErr;
+
+          if (isSelf && updateUserDataLocally) {
+            updateUserDataLocally({
+              extraInventorySpace: 0,
+              inventorySpaceBuff: 0,
+              inventorySpaceBuffUntil: null,
+              inventorySpaceBuffDays: 0,
+            });
+          }
+
+          window.dispatchEvent(new CustomEvent('inventory-changed'));
+          window.dispatchEvent(new CustomEvent('refresh-inventory'));
+
+          const { data: pItems } = await supabase
             .from('user_items')
             .select('id, equipped')
-            .eq('student_id', userData.uid);
+            .eq('student_id', targetId);
 
-          const unequipped = (myItems || []).filter(r => !r.equipped).length;
-          const free = getAvailableInventorySpace(userData, unequipped);
-          const max = computeMaxInventorySpace(userData);
-          addLine(`🎒 Sua Mochila: ${unequipped} / ${max} slots ocupados. (${free} slot(s) livre(s))`, 'info');
+          const resetUser = {
+            ...targetUser,
+            extra_inventory_space: 0,
+            extraInventorySpace: 0,
+            inventory_space_buff: 0,
+            inventorySpaceBuff: 0,
+            inventory_space_buff_until: null,
+            inventorySpaceBuffUntil: null,
+          };
+          const unequipped = (pItems || []).filter(r => !r.equipped).length;
+          const defaultMax = computeMaxInventorySpace(resetUser);
+          const free = Math.max(0, defaultMax - unequipped);
+
+          addLine(`[SUCESSO] Slots de ${isSelf ? 'sua mochila' : targetName} foram resetados para o padrão original (patente + fortitude)!`, 'success');
+          addLine(`🎒 Capacidade padrão recalculada: ${unequipped} / ${defaultMax} slots ocupados (${free} livre(s)). Bônus extra: 0.`, 'info');
+          playTerminalSound('success');
         } catch (err: any) {
-          addLine(`[ERRO] Falha ao consultar seus slots: ${err.message}`, 'error');
+          addLine(`[ERRO] Falha ao resetar slots de ${targetName}: ${err.message}`, 'error');
+          playTerminalSound('error');
         }
         return;
       }
 
-      // Verifica slots de jogador específico
-      const targetIdentifier = args.join(' ').trim();
-      const res = await resolveTargetPlayer(targetIdentifier, activeTenantId);
-      if (!res.player) {
-        addLine(`[ERRO] ${res.error || 'Jogador não encontrado.'}`, 'error');
-        playTerminalSound('error');
+      // --- MODO 2: ATRIBUIÇÃO OU REMOÇÃO DE SLOTS (+ / -) ---
+      if (parsed.mode === 'modify') {
+        const delta = parsed.delta;
+        if (delta === 0) {
+          addLine('[AVISO] Quantidade de slots a alterar não pode ser 0 (use reset para voltar ao padrão).', 'info');
+          return;
+        }
+
+        try {
+          const curExtra = Number(targetUser.extra_inventory_space ?? targetUser.extraInventorySpace) || 0;
+          const newExtra = Math.max(0, curExtra + delta);
+
+          const { error: updErr } = await supabase
+            .from('users')
+            .update({ extra_inventory_space: newExtra })
+            .eq('id', targetId);
+
+          if (updErr) throw updErr;
+
+          if (isSelf && updateUserDataLocally) {
+            updateUserDataLocally({ extraInventorySpace: newExtra });
+          }
+
+          window.dispatchEvent(new CustomEvent('inventory-changed'));
+          window.dispatchEvent(new CustomEvent('refresh-inventory'));
+
+          const { data: pItems } = await supabase
+            .from('user_items')
+            .select('id, equipped')
+            .eq('student_id', targetId);
+
+          const updatedUser = { ...targetUser, extra_inventory_space: newExtra, extraInventorySpace: newExtra };
+          const unequipped = (pItems || []).filter(r => !r.equipped).length;
+          const newMax = computeMaxInventorySpace(updatedUser);
+          const free = Math.max(0, newMax - unequipped);
+
+          const signText = delta > 0 ? `+${delta}` : `${delta}`;
+          addLine(`[SUCESSO] ${signText} slots permanentes ${delta > 0 ? 'concedidos' : 'removidos'} ${isSelf ? 'à sua mochila' : `à mochila de ${targetName}`}! (por ${adminFirstName})`, 'success');
+          addLine(`🎒 Nova capacidade: ${unequipped} / ${newMax} slots ocupados (${free} livre(s)). Bônus permanente acumulado: ${newExtra >= 0 ? `+${newExtra}` : newExtra} slots.`, 'info');
+          playTerminalSound('success');
+        } catch (err: any) {
+          addLine(`[ERRO] Falha ao alterar slots de ${targetName}: ${err.message}`, 'error');
+          playTerminalSound('error');
+        }
         return;
       }
 
-      const targetPlayer = res.player;
-      const targetName = targetPlayer.name || targetPlayer.character_name || targetPlayer.email || 'Jogador';
-
+      // --- MODO 3: CONSULTA (/slots [jogador]) ---
       try {
         const { data: pItems } = await supabase
           .from('user_items')
           .select('id, equipped')
-          .eq('student_id', targetPlayer.id);
+          .eq('student_id', targetId);
 
         const unequipped = (pItems || []).filter(r => !r.equipped).length;
-        const max = computeMaxInventorySpace(targetPlayer);
+        const max = computeMaxInventorySpace(targetUser);
         const free = Math.max(0, max - unequipped);
+        const curExtra = Number(targetUser.extra_inventory_space ?? targetUser.extraInventorySpace) || 0;
+        const curBuff = getActiveInventorySpaceBuff(targetUser);
 
-        addLine(`🎒 Mochila de ${targetName} (${targetPlayer.email || targetPlayer.id}):`, 'info');
-        addLine(`   • Slots Ocupados: ${unequipped} / ${max}`, 'output');
-        addLine(`   • Slots Livres:   ${free} ${free <= 0 ? '(⚠️ Mochila cheia!)' : ''}`, free <= 0 ? 'error' : 'success');
+        addLine(`🎒 ${isSelf ? 'Sua Mochila' : `Mochila de ${targetName}`}: ${unequipped} / ${max} slots ocupados. (${free} slot(s) livre(s))`, 'info');
+        if (curExtra !== 0 || curBuff > 0) {
+          const details: string[] = [];
+          if (curExtra !== 0) details.push(`Bônus permanente: ${curExtra > 0 ? `+${curExtra}` : curExtra} slots`);
+          if (curBuff > 0) details.push(`Buff temporário: +${curBuff} slots`);
+          addLine(`   • Modificadores ativos: ${details.join(' | ')}`, 'output');
+        }
       } catch (err: any) {
         addLine(`[ERRO] Falha ao consultar slots de ${targetName}: ${err.message}`, 'error');
+        playTerminalSound('error');
       }
       return;
     }
