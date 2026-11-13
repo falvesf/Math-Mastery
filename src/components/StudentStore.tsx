@@ -1341,7 +1341,7 @@ gameEffect: item.gameEffect || 'none',
             const isList = viewMode === 'list';
 
             return (
-              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}
+              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ position: 'relative', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column' }}
                 onMouseEnter={(e) => { setHoveredItem(item.id); setMousePos({ x: e.clientX, y: e.clientY }); }}
                 onMouseLeave={() => setHoveredItem(null)}
                 onMouseMove={(e) => { if (hoveredItem === item.id) setMousePos({ x: e.clientX, y: e.clientY }); }}
@@ -1612,7 +1612,7 @@ gameEffect: item.gameEffect || 'none',
             const isList = viewMode === 'list';
             
             return (
-              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column', cursor: 'pointer' }}
+              <div key={item.id} className={`glass-panel rarity-${item.rarity || 'common'} ${isList ? 'store-list-card' : ''}`} style={{ position: 'relative', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: isList ? 'row' : 'column', cursor: 'pointer' }}
                 onMouseEnter={(e) => { setHoveredItem(item.id); setMousePos({ x: e.clientX, y: e.clientY }); }}
                 onMouseLeave={() => setHoveredItem(null)}
                 onMouseMove={(e) => { if (hoveredItem === item.id) setMousePos({ x: e.clientX, y: e.clientY }); }}
@@ -1643,6 +1643,12 @@ gameEffect: item.gameEffect || 'none',
                       +{item.forgeLevel}
                     </div>
                   )}
+                  <div 
+                    className={`rarity-badge ${item.rarity || 'common'}`}
+                    style={((item as any).forgeLevel || 0) > 0 ? { left: '36px' } : undefined}
+                  >
+                    {getRarityLabel(item.rarity)}
+                  </div>
                   {(((item as any).itemType === 'equippable' || (item as any).type === 'equippable') || item.gameEffect === 'unlock_skin') && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setPreviewItem(item); }}
@@ -1666,36 +1672,33 @@ gameEffect: item.gameEffect || 'none',
                       <Eye size={12} />
                     </button>
                   )}
+                  {item.quantity && item.quantity > 1 && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '5px',
+                      right: '5px',
+                      color: 'white',
+                      textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold',
+                      zIndex: 2,
+                      pointerEvents: 'none',
+                      lineHeight: 1
+                    }}>
+                      {item.quantity}
+                    </div>
+                  )}
+                  {!isList && (
+                    <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem', zIndex: 6 }}>
+                      {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}
+                    </div>
+                  )}
+                  {(item as any).isTransmuted === true || (item as any).type === 'other' ? (
+                    <div style={{ position: 'absolute', bottom: '4px', left: '4px', background: 'rgba(168,85,247,0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', color: 'white', fontWeight: 'bold', fontSize: '0.65rem', zIndex: 6 }}>
+                      {(item as any).type === 'other' ? 'MATERIAL' : 'TRANSMUTÁVEL'}
+                    </div>
+                  ) : null}
                 </div>
-                <div className={`rarity-badge ${item.rarity || 'common'}`}>
-                  {getRarityLabel(item.rarity)}
-                </div>
-                {item.quantity && item.quantity > 1 && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '5px',
-                    right: '5px',
-                    color: 'white',
-                    textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
-                    fontSize: '1.1rem',
-                    fontWeight: 'bold',
-                    zIndex: 2,
-                    pointerEvents: 'none',
-                    lineHeight: 1
-                  }}>
-                    {item.quantity}
-                  </div>
-                )}
-                {!isList && (
-                  <div style={{ position: 'absolute', top: '5px', right: '5px', background: canAfford ? 'var(--bg-badge)' : 'rgba(239, 68, 68, 0.9)', padding: '0.25rem 0.5rem', borderRadius: '12px', border: `1px solid ${canAfford ? 'var(--gold-primary)' : 'var(--accent-red)'}`, color: canAfford  ? 'var(--gold-primary)'  : 'var(--text-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                    {item.price || 0} {economyType === 'xp' ? 'XP' : 'Moedas'}
-                  </div>
-                )}
-                {(item as any).isTransmuted === true || (item as any).type === 'other' ? (
-                  <div style={{ position: 'absolute', top: '5px', left: '5px', background: 'rgba(168,85,247,0.9)', padding: '0.15rem 0.4rem', borderRadius: '8px', color: 'white', fontWeight: 'bold', fontSize: '0.65rem', zIndex: 3 }}>
-                    {(item as any).type === 'other' ? 'MATERIAL' : 'TRANSMUTÁVEL'}
-                  </div>
-                ) : null}
                 <div style={{ padding: '0.5rem 0.65rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.25rem', minWidth: 0, justifyContent: 'center' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
                     <h3 title={item.itemTitle} style={{ fontSize: viewMode === 'grid-small' ? '0.85rem' : '0.95rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, lineHeight: 1.2, fontWeight: 'bold' }}>{((item as any).type || (item as any).itemType) === 'equippable' ? forgeItemName(item.itemTitle, (item as any).forgeLevel || 0) : item.itemTitle}</h3>
