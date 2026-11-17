@@ -1019,6 +1019,12 @@ export interface VoxelArena3DProps {
   /** Reporta o tamanho (em px) do stage 3D sempre que ele é medido/redimensionado. */
   onStageSizeChange?: (size: { w: number; h: number }) => void;
 
+  /** Corações restantes do jogador (exibidos em 3D no modo PvP). */
+  playerHearts?: number;
+  playerHeartFrac?: number;
+  /** Itens equipados do oponente (quando o lado direito é um jogador em PvP). */
+  monsterEquippedItems?: any[];
+
   /** TESTE (Fase B): renderiza jogador + monstro DENTRO da cena (unificada), sem overlays. */
   unified3D?: boolean;
 }
@@ -1104,6 +1110,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   cameraDist = 0,
   cameraTargetY = 0,
   onStageSizeChange,
+  playerHearts,
+  playerHeartFrac = 1,
+  monsterEquippedItems,
   unified3D = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1165,6 +1174,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // @ts-ignore
   const monsterHeartsSpriteRef = useRef<THREE.Sprite | null>(null);
   // @ts-ignore
+  const playerHeartsSpriteRef = useRef<THREE.Sprite | null>(null);
+  const playerHeartsDrawnRef = useRef<string>('');
+  // @ts-ignore
   const monsterStatusSpriteRef = useRef<THREE.Sprite | null>(null);
   const monsterStatusDrawnRef = useRef<string>('');
   // @ts-ignore
@@ -1180,6 +1192,13 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // PlayerObject do skinview3d, inserido direto na cena — fidelidade total (expressões,
   // glint, sparkles, animações), já que agora usamos a mesma versão do Three (0.156).
   const nativePlayerRef = useRef<{
+    viewer: any;
+    player: any;
+    skinViewer: any;
+    currentAnim: string;
+    anim: any;
+  } | null>(null);
+  const nativeMonsterRef = useRef<{
     viewer: any;
     player: any;
     skinViewer: any;
@@ -1221,6 +1240,10 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   monsterHeartsRef.current = monsterHearts;
   const monsterHeartFracRef = useRef(monsterHeartFrac);
   monsterHeartFracRef.current = monsterHeartFrac;
+  const playerHeartsRef = useRef(playerHearts);
+  playerHeartsRef.current = playerHearts;
+  const playerHeartFracRef = useRef(playerHeartFrac);
+  playerHeartFracRef.current = playerHeartFrac;
   const playerStatusesRef = useRef(playerStatuses);
   playerStatusesRef.current = playerStatuses;
   const monsterStatusesRef = useRef(monsterStatuses);
@@ -1841,6 +1864,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       if (nativePlayerRef.current) {
         try { nativePlayerRef.current.anim?.update?.(nativePlayerRef.current.player, delta); } catch { /* noop */ }
       }
+      if (nativeMonsterRef.current) {
+        try { nativeMonsterRef.current.anim?.update?.(nativeMonsterRef.current.player, delta); } catch { /* noop */ }
+      }
       // Derretimento ao queimar: encolhe verticalmente (scaleY) conforme o nível do fogo.
       if (unifiedMonsterRootRef.current && monsterDamageEffectRef.current === 'burn' && monsterEffectLevelRef.current > 0) {
         const meltPct = Math.max(0.55, 1 - monsterEffectLevelRef.current * 0.09);
@@ -1954,6 +1980,22 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
             current.parent?.remove(current);
             playerStatusSpriteRef.current = next;
           }
+        }
+      }
+      // Atualiza o sprite 3D de corações do jogador (quando em PvP).
+      if (playerHeartsSpriteRef.current && playerHeartsRef.current !== undefined) {
+        const pHearts = Math.max(0, Math.floor(playerHeartsRef.current));
+        const pKey = `${pHearts}_${Math.round(playerHeartFracRef.current * 100)}`;
+        if (pKey !== playerHeartsDrawnRef.current) {
+          playerHeartsDrawnRef.current = pKey;
+          const current = playerHeartsSpriteRef.current;
+          current.material.map?.dispose?.();
+          const next = makeHeartsSprite(pHearts, playerHeartFracRef.current);
+          next.position.copy(current.position);
+          next.visible = pHearts > 0;
+          current.parent?.add(next);
+          current.parent?.remove(current);
+          playerHeartsSpriteRef.current = next;
         }
       }
       // Atualiza o sprite 3D de corações quando o número/fração muda (sem re-render).
@@ -2310,6 +2352,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
   // rodar em loop (piscava a arena e recarregava os itens 3D sem parar).
   const playerConfigKey = JSON.stringify(playerConfig ?? null);
   const playerEquippedItemsKey = JSON.stringify(playerEquippedItems ?? []);
+  const monsterConfigKey = JSON.stringify(monsterConfig ?? null);
+  const monsterEquippedItemsKey = JSON.stringify(monsterEquippedItems ?? []);
 
   // Carrega jogador + monstro GLB e insere na cena.
   useEffect(() => {
@@ -2358,7 +2402,8 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       });
     };
 
-    // Monstro (GLB)
+    // Monstro (GLB) OU Oponente Jogador (skinview3d nativo em PvP)
+    if (monsterModelUrl) {
     loadEntity(monsterModelUrl, monsterSkinUrl, 3.6, monsterZoomRef.current, monsterRotYRef.current, (group, root, mixer, actions) => {
       unifiedMonsterGroupRef.current = group;
       unifiedMonsterRootRef.current = root;
@@ -2395,6 +2440,67 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       // Sinaliza que o grupo do monstro está pronto (recria gelo/poça se congelado).
       setMonsterEpoch((e) => e + 1);
     });
+    } else if (monsterConfig || monsterSkinUrl) {
+      const buildNativeMonster = async () => {
+        try {
+          const { SkinViewer } = await import('skinview3d');
+          const rawSkin = monsterSkinUrl || await generateMinecraftSkinUrl(monsterConfig || ({} as any));
+          const skinUrl = (rawSkin && !/^(https?:|data:|blob:)/i.test(rawSkin)) ? `https://${rawSkin}` : rawSkin;
+          const viewer = new SkinViewer({ width: 150, height: 250, renderPaused: true });
+          await viewer.loadSkin(skinUrl, { model: monsterConfig?.gender === 'female' ? 'slim' : 'default' });
+          if (disposed) { try { viewer.dispose(); } catch { /* noop */ } return; }
+
+          const opp = (viewer as any).playerObject;
+          fitEntityToGround(opp, UNIFIED_ENTITY_HEIGHT * Math.max(0.2, monsterZoomRef.current || 1));
+
+          const group = new THREE.Group();
+          group.add(opp);
+          group.position.set(3.6, 0.51, 0.2);
+          group.rotation.y = -0.42 + THREE.MathUtils.degToRad(monsterRotYRef.current || 0);
+          scene.add(group);
+
+          attachEquippedItemsToPlayer(opp, monsterConfig, monsterEquippedItems || [], loader);
+
+          if (monsterName) {
+            const nameGroup = makeNameGroup();
+            nameGroup.position.set(0, UNIFIED_ENTITY_HEIGHT + 0.38, 0);
+            nameGroup.add(makeNameSprite(monsterName, { color: '#ff5a5a' }));
+            const statusSprite = makeStatusBarsSprite(monsterStatusesRef.current);
+            statusSprite.position.y = 0.34;
+            statusSprite.visible = monsterStatusesRef.current.length > 0;
+            nameGroup.add(statusSprite);
+            monsterStatusSpriteRef.current = statusSprite;
+            const heartsSprite = makeHeartsSprite(monsterHeartsRef.current, monsterHeartFracRef.current);
+            heartsSprite.position.y = -0.42;
+            heartsSprite.visible = monsterHeartsRef.current > 0;
+            nameGroup.add(heartsSprite);
+            monsterHeartsSpriteRef.current = heartsSprite;
+            scene.add(nameGroup);
+            monsterNameGroupRef.current = nameGroup;
+          }
+
+          nativeMonsterRef.current = {
+            viewer,
+            player: opp,
+            skinViewer: viewer,
+            currentAnim: '',
+            anim: new IdleAnimation(),
+          };
+          unifiedMonsterGroupRef.current = group;
+          unifiedMonsterRootRef.current = opp;
+          unifiedMonsterBaseScaleRef.current = opp.scale.x || 1;
+
+          const animName = monsterAnimRef.current || 'idle';
+          nativeMonsterRef.current.anim = makeNativeAnimation(animName);
+          nativeMonsterRef.current.currentAnim = animName;
+          applyEntityTint(opp, monsterEffectTintRef.current, monsterEnragedRef.current, monsterEffectTintAmountRef.current);
+          setMonsterEpoch((e) => e + 1);
+        } catch (e) {
+          console.warn('[VoxelArena3D] Falha ao carregar oponente nativo (skinview3d):', e);
+        }
+      };
+      buildNativeMonster();
+    }
 
     // Jogador: se houver GLB customizado, usa o fluxo GLB; senão, carrega o boneco
     // NATIVO do skinview3d (fidelidade total: expressões, glint, itens, animações).
@@ -2452,6 +2558,14 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
           if (playerName) {
             const nameGroup = makeNameGroup();
             nameGroup.add(makeNameSprite(playerName, { color: '#ffffff' }));
+            if (playerHeartsRef.current !== undefined) {
+              const pHearts = Math.max(0, Math.floor(playerHeartsRef.current));
+              const heartsSprite = makeHeartsSprite(pHearts, playerHeartFracRef.current);
+              heartsSprite.position.y = -0.42;
+              heartsSprite.visible = pHearts > 0;
+              nameGroup.add(heartsSprite);
+              playerHeartsSpriteRef.current = heartsSprite;
+            }
             scene.add(nameGroup);
             playerNameGroupRef.current = nameGroup;
           }
@@ -2543,6 +2657,9 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       unifiedPlayerMixerRef.current?.stopAllAction();
       try { nativePlayerRef.current?.viewer?.dispose?.(); } catch { /* noop */ }
       nativePlayerRef.current = null;
+      try { nativeMonsterRef.current?.viewer?.dispose?.(); } catch { /* noop */ }
+      nativeMonsterRef.current = null;
+      playerHeartsSpriteRef.current = null;
       clearBruisesAndBlood();
       bloodDropsRef.current = [];
       sweatDropsRef.current.forEach(d => { d.spr.parent?.remove(d.spr); d.spr.material.dispose(); });
@@ -2573,7 +2690,7 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
       }
       draco.dispose();
     };
-  }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, playerModelUrl, playerSkinUrl, playerConfigKey, playerEquippedItemsKey, monsterZoom, monsterRotY, playerName, monsterName]);
+  }, [unified3D, biome, monsterModelUrl, monsterSkinUrl, monsterConfigKey, monsterEquippedItemsKey, playerModelUrl, playerSkinUrl, playerConfigKey, playerEquippedItemsKey, monsterZoom, monsterRotY, playerName, monsterName]);
 
   // Reaplica hematomas no boneco nativo quando o dano sofrido muda.
   useEffect(() => {
@@ -2626,10 +2743,13 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
 
     const monCombat = isCombatAnim(monsterAnim);
     if (unifiedMonsterGroupRef.current && !monsterSpecialRef.current && !monsterThrowStartRef.current) {
-      // Monstro (direita) vira -x (jogador) em combate; em repouso olha para a câmera
-      // mas levemente inclinado na direção do jogador (parecem se encarar).
-      const monRest = Math.PI - 0.42;
-      unifiedMonsterGroupRef.current.rotation.y = (monCombat ? Math.PI / 2 : monRest) + THREE.MathUtils.degToRad(monsterRotYRef.current);
+      const monNative = !!nativeMonsterRef.current;
+      const monRestBase = monNative ? 0 : Math.PI;
+      const monCombatBase = monNative ? -Math.PI / 2 : Math.PI / 2;
+      const monRest = monRestBase - 0.42;
+      const monFaceCamera = monsterAnim.startsWith('victory');
+      const monStayCombat = monsterAnim === 'idle-victory';
+      unifiedMonsterGroupRef.current.rotation.y = ((monCombat || monStayCombat) && !monFaceCamera ? monCombatBase : monRest) + THREE.MathUtils.degToRad(monsterRotYRef.current);
       // Reset de escala só na TRANSIÇÃO para combate (evita interromper o tween de morte).
       if (monChanged && monCombat) unifiedMonsterGroupRef.current.scale.setScalar(1);
     }
@@ -2684,7 +2804,21 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
         setGroupOpacity(unifiedPlayerGroupRef.current, 1);
       }
     }
-    playEntityAnimByName(unifiedMonsterActionsRef.current, unifiedMonsterMixerRef.current, monsterSpecialAnim || monsterAnim);
+    if (nativeMonsterRef.current) {
+      if (nativeMonsterRef.current.currentAnim !== monsterAnim) {
+        const opp = nativeMonsterRef.current.player;
+        ['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'].forEach((b) => {
+          const node = opp?.skin?.[b];
+          if (node) { node.rotation.set(0, 0, 0); }
+        });
+        if (opp?.skin?.leftArm) opp.skin.leftArm.position.set(5, -2, 0);
+        if (opp?.skin?.rightArm) opp.skin.rightArm.position.set(-5, -2, 0);
+        nativeMonsterRef.current.anim = makeNativeAnimation(monsterAnim);
+        nativeMonsterRef.current.currentAnim = monsterAnim;
+      }
+    } else {
+      playEntityAnimByName(unifiedMonsterActionsRef.current, unifiedMonsterMixerRef.current, monsterSpecialAnim || monsterAnim);
+    }
       if (nativePlayerRef.current) {
         // Jogador NATIVO: troca a PlayerAnimation do skinview3d conforme o nome.
         if (nativePlayerRef.current.currentAnim !== playerAnim) {
@@ -2890,9 +3024,12 @@ export const VoxelArena3D: React.FC<VoxelArena3DProps> = ({
     if (monGroup) {
       const isAttack = monsterAnim?.startsWith('attack');
       const isVictory = monsterAnim?.startsWith('victory');
-      if (isAttack || isVictory) {
+      const isIdleVictory = monsterAnim === 'idle-victory';
+      if (isAttack) {
         const isFatal = monsterAnim === 'attack-fatal' || monsterAnim === 'attack-fatal-slow';
-        monsterMoveRef.current = { fromX: monGroup.position.x, toX: 3.6 - UNIFIED_LUNGE, restX: 3.6, start: now, mode: (isVictory || isFatal) ? 'hold' : 'go', teleport: isAttack };
+        monsterMoveRef.current = { fromX: monGroup.position.x, toX: 3.6 - UNIFIED_LUNGE, restX: 3.6, start: now, mode: isFatal ? 'hold' : 'go', teleport: true };
+      } else if (isVictory || isIdleVictory) {
+        monsterMoveRef.current = { fromX: monGroup.position.x, toX: monGroup.position.x, restX: monGroup.position.x, start: now, mode: 'hold' };
       } else {
         monsterMoveRef.current = { fromX: monGroup.position.x, toX: 3.6, restX: 3.6, start: now, mode: 'go' };
       }

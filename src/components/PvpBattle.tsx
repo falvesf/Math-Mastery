@@ -139,13 +139,12 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
 
   const [renderMode3D, setRenderMode3D] = useState<boolean>(() => {
     const saved = localStorage.getItem('mm_pvp_render_mode');
-    if (saved === '3d') return true;
     if (saved === '2d') return false;
-    return isArena3D;
+    return true;
   });
 
   useEffect(() => {
-    if (isArena3D) {
+    if (isArena3D && localStorage.getItem('mm_pvp_render_mode') !== '2d') {
       setRenderMode3D(true);
     }
   }, [isArena3D]);
@@ -591,8 +590,23 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
           <div className={renderMode3D ? 'is-3d-arena' : ''} style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220', '--attack-dist': renderMode3D ? 'var(--shadow-attack-dist, 200px)' : `${Math.max(150, Math.round(combatDist2D * 2))}px` } as any}>
             {renderMode3D ? (
               <VoxelArena3D
+                unified3D={true}
                 deviceMode={isNarrowScreen ? 'mobile' : 'desktop'}
                 biome={pvpBiome as any}
+                playerConfig={fatalLeftConfig}
+                playerEquippedItems={fatalLeftEquip}
+                playerModelUrl={fatalLeftConfig?.customModelUrl}
+                playerSkinUrl={fatalLeftConfig?.customSkinUrl}
+                playerName={abbreviate(leftName)}
+                playerAnim={fatalLeftWon ? winnerAnim : (loserHurt ? 'hurt' : (loserDead ? 'death-fall' : 'idle'))}
+                playerBubble={phase === 'taunt' && fatalLeftWon ? '💪 Eu venci!' : ''}
+                monsterConfig={fatalRightConfig}
+                monsterEquippedItems={fatalRightEquip}
+                monsterModelUrl={fatalRightConfig?.customModelUrl}
+                monsterSkinUrl={fatalRightConfig?.customSkinUrl}
+                monsterName={abbreviate(rightName)}
+                monsterAnim={!fatalLeftWon ? winnerAnim : (loserHurt ? 'hurt' : (loserDead ? 'death-fall' : 'idle'))}
+                monsterBubble={phase === 'taunt' && !fatalLeftWon ? '💪 Eu venci!' : ''}
               />
             ) : (
               arenaBg && !arenaBg.startsWith('voxel:') && (
@@ -611,7 +625,8 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
               ))}
             </div>
           )}
-          <div style={{ position: 'absolute', inset: 0, background: phase === 'strike' ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.15)', zIndex: 1 }} />
+          <div style={{ position: 'absolute', inset: 0, background: phase === 'strike' ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.15)', zIndex: 1, pointerEvents: 'none' }} />
+            {!renderMode3D && (
             <div style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none' }}>
               {/* JOGADOR 1 — esquerda */}
               <div 
@@ -666,6 +681,7 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
                 <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#94a3b8', background: 'rgba(0,0,0,0.6)', padding: '0.15rem 0.6rem', borderRadius: '6px', marginTop: '0.2rem' }}>{abbreviate(rightName)}</div>
               </div>
             </div>
+            )}
           </div>
         </div>
       );
@@ -801,11 +817,31 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
       </div>
 
       {/* Arena */}
-      <div className={renderMode3D ? 'is-3d-arena' : ''} style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220', '--attack-dist': renderMode3D ? 'var(--shadow-attack-dist, 200px)' : `${Math.max(150, Math.round(combatDist2D * 2))}px` } as any}>
+      <div className={renderMode3D ? 'is-3d-arena' : ''} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', backgroundColor: '#0b1220', '--attack-dist': renderMode3D ? 'var(--shadow-attack-dist, 200px)' : `${Math.max(150, Math.round(combatDist2D * 2))}px` } as any}>
         {renderMode3D ? (
           <VoxelArena3D
+            unified3D={true}
             deviceMode={isNarrowScreen ? 'mobile' : 'desktop'}
             biome={pvpBiome as any}
+            playerConfig={leftConfig}
+            playerEquippedItems={leftEquip}
+            playerModelUrl={safeLeft?.transform ? getTransformModelUrl(safeLeft.transform.animal) : leftConfig?.customModelUrl}
+            playerSkinUrl={leftConfig?.customSkinUrl}
+            playerName={abbreviate(safeLeft?.name)}
+            playerHearts={safeLeft?.hp ?? 0}
+            playerHeartFrac={heartIsHalf(safeLeft?.hp || 0) ? 0.5 : 1}
+            playerAnim={leftAnswered ? 'attack' : (leftHurt ? 'hurt' : 'idle')}
+            playerEffectTint={leftHurt ? '#ff2222' : (!isSpectator ? (themEffectInfo.effect === 'burn' ? '#ff8833' : themEffectInfo.effect === 'poison' ? '#44ff66' : themEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null)}
+            playerEffectTintStrength={leftHurt ? 0.65 : 0.35}
+            monsterConfig={rightConfig}
+            monsterEquippedItems={rightEquip}
+            monsterModelUrl={safeRight?.transform ? getTransformModelUrl(safeRight.transform.animal) : rightConfig?.customModelUrl}
+            monsterSkinUrl={rightConfig?.customSkinUrl}
+            monsterName={abbreviate(safeRight?.name)}
+            monsterHearts={safeRight?.hp ?? 0}
+            monsterHeartFrac={heartIsHalf(safeRight?.hp || 0) ? 0.5 : 1}
+            monsterAnim={rightAnswered ? 'attack' : (rightHurt ? 'hurt' : 'idle')}
+            monsterEffectTint={rightHurt ? '#ff2222' : (!isSpectator ? (myEffectInfo.effect === 'burn' ? '#ff8833' : myEffectInfo.effect === 'poison' ? '#44ff66' : myEffectInfo.effect === 'bleed' ? '#ff3333' : null) : null)}
           />
         ) : (
           arenaBg && !arenaBg.startsWith('voxel:') && (
@@ -845,6 +881,58 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
             ))}
           </div>
         )}
+        {renderMode3D ? (
+          <div style={{ position: 'absolute', top: '0.5rem', left: '0.75rem', right: '0.75rem', zIndex: 4, pointerEvents: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+            {/* HUD Jogador 1 (Esquerda) */}
+            <div style={{ background: 'rgba(10, 12, 20, 0.72)', backdropFilter: 'blur(4px)', border: '1px solid rgba(251, 191, 36, 0.35)', borderRadius: '10px', padding: '0.35rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#fbbf24' }}>{abbreviate(safeLeft?.name)}</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: '900', color: 'var(--gold-primary)' }}>{safeLeft?.score ?? 0}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '2px' }}>
+                {Array.from({ length: safeLeft?.maxHp || 3 }).map((_, i) => {
+                  const hp = safeLeft?.hp || 0;
+                  const isHalf = i === Math.floor(hp) && heartIsHalf(hp);
+                  const filled = i < Math.floor(hp) || isHalf;
+                  return (
+                    <span key={i} style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+                      <Heart size={14} fill="rgba(239,68,68,0.15)" color="#444" />
+                      {filled && (
+                        <span style={{ position: 'absolute', inset: 0, width: isHalf ? '50%' : '100%', overflow: 'hidden' }}>
+                          <Heart size={14} fill="#ef4444" color="#ef4444" />
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+            {/* HUD Jogador 2 (Direita) */}
+            <div style={{ background: 'rgba(10, 12, 20, 0.72)', backdropFilter: 'blur(4px)', border: '1px solid rgba(148, 163, 184, 0.35)', borderRadius: '10px', padding: '0.35rem 0.65rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: '900', color: '#94a3b8' }}>{safeRight?.score ?? 0}</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#e2e8f0' }}>{abbreviate(safeRight?.name)}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '2px' }}>
+                {Array.from({ length: safeRight?.maxHp || 3 }).map((_, i) => {
+                  const hp = safeRight?.hp || 0;
+                  const isHalf = i === Math.floor(hp) && heartIsHalf(hp);
+                  const filled = i < Math.floor(hp) || isHalf;
+                  return (
+                    <span key={i} style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+                      <Heart size={14} fill="rgba(239,68,68,0.15)" color="#444" />
+                      {filled && (
+                        <span style={{ position: 'absolute', inset: 0, width: isHalf ? '50%' : '100%', overflow: 'hidden' }}>
+                          <Heart size={14} fill="#ef4444" color="#ef4444" />
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
         <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}>
           {/* JOGADOR 1 (Esquerda) */}
           <div 
@@ -964,10 +1052,11 @@ export default function PvpBattle({ matchId, userData, watchUid, onExit }: PvpBa
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Pergunta */}
-      <div style={{ zIndex: 20, padding: '1rem', borderTop: '1px solid var(--border-glass)', background: 'rgba(10,12,20,0.92)', backdropFilter: 'blur(6px)' }}>
+      <div style={{ flexShrink: 0, maxHeight: '55vh', overflowY: 'auto', zIndex: 20, padding: '1rem', borderTop: '1px solid var(--border-glass)', background: 'rgba(10,12,20,0.92)', backdropFilter: 'blur(6px)' }}>
         <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden', marginBottom: '0.75rem' }}>
           <div style={{ height: '100%', background: timePct > 25 ? '#f59e0b' : '#ef4444', width: `${timePct}%`, transition: 'width 0.3s linear' }} />
         </div>
