@@ -13,6 +13,7 @@ import QuestGameplayMobile from './pages/QuestGameplayMobile';
 import LiveQuestAdmin from './pages/LiveQuestAdmin';
 import LiveQuestStudent from './pages/LiveQuestStudent';
 import PvpPage from './pages/PvpPage';
+import GalaPresentation from './pages/GalaPresentation';
 import ArenaAvatarPoC from './components/ArenaAvatarPoC';
 import { Loader2 } from 'lucide-react';
 import { supabase } from './lib/supabase';
@@ -135,6 +136,14 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <PvpPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/gala"
+        element={
+          <PrivateRoute requiredRole="teacher">
+            <GalaPresentation />
           </PrivateRoute>
         }
       />

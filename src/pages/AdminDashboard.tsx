@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, UserPlus, Copy, RefreshCcw, Volume2, Database, FileSpreadsheet, Map as MapIcon } from 'lucide-react';
+import { ShieldAlert, Users, BookOpen, Settings, LogOut, ArrowLeft, Plus, Star, X, GraduationCap, History, Trash2, Edit2, Medal, Swords, Save, Image as ImageIcon, Search, Store, RefreshCw, Box, Package, Play, UserCheck, Menu, CircleDollarSign, ChevronDown, MessageCircle, Gift, Filter, Eye, EyeOff, ShieldCheck, KeyRound, UserPlus, Copy, RefreshCcw, Volume2, Database, FileSpreadsheet, Map as MapIcon, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, mapUserToClient, type UserData } from '../contexts/AuthContext';
 import { useTenant, type Tenant } from '../contexts/TenantContext';
@@ -37,6 +37,7 @@ import { validateCharacterName, normalizeForComparison, formatFirstAndLastName }
 import { normalizeCombatCoinDrop } from '../lib/utils';
 import { createLocalAccount, generatePassword, resetLocalPassword, listLocalAccounts, deleteLocalAccount, type LocalAccountRow } from '../lib/localAuth';
 import GradebookManager from '../components/GradebookManager';
+import AdminGalaManager from '../components/AdminGalaManager';
 import { sanitizeHistoryText } from '../lib/formatAdminName';
 
 export interface ClassDef {
@@ -511,6 +512,7 @@ export default function AdminDashboard() {
     { key: 'users', label: 'Gerenciamento de Usuários', icon: <Users size={17} />, check: canView('users', 'view') },
     { key: 'roles', label: 'Hierarquias', icon: <ShieldCheck size={17} />, check: (userData?.role === 'admin' || userData?.role === 'superadmin') },
     { key: 'ranks', label: 'Patentes', icon: <Medal size={17} />, check: canView('ranks', 'view') },
+    { key: 'gala', label: 'Premiação / Gala', icon: <Trophy size={17} />, check: canView('ranks', 'view') || canView('gradebook', 'view') || isSuperAdmin || userData?.role === 'admin' },
     { key: 'classes', label: 'Turmas', icon: <BookOpen size={17} />, check: canView('classes', 'view') },
     { key: 'speeches', label: 'Falas', icon: <MessageCircle size={17} />, check: isSuperAdmin || userData?.role === 'admin' },
   ];
@@ -529,7 +531,7 @@ export default function AdminDashboard() {
     : canView('entities', 'view') ? 'entities'
     : 'general';
   const [activeTab, setActiveTab] = useState('general');
-  const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'banks' | 'ranks' | 'roles' | 'tenants' | 'speeches' | 'gradebook'>('users');
+  const [generalTab, setGeneralTab] = useState<'users' | 'classes' | 'config' | 'banks' | 'ranks' | 'gala' | 'roles' | 'tenants' | 'speeches' | 'gradebook'>('users');
   const [showAudioBank, setShowAudioBank] = useState(false);
   const [showAudioBankModal, setShowAudioBankModal] = useState(false);
   const [showItemBank, setShowItemBank] = useState(false);
@@ -3861,6 +3863,10 @@ const [bulkCoinsReason, setBulkCoinsReason] = useState('');
           {/* Aba Ranks */}
           {activeTab === 'general' && generalTab === 'ranks' && canView('ranks', 'view') && (
             <AdminRankManager pixabayKey={pixabayKey} />
+          )}
+          {/* Aba Premiação / Gala */}
+          {activeTab === 'general' && generalTab === 'gala' && (
+            <AdminGalaManager students={students} schoolClasses={schoolClasses} />
           )}
           {/* Aba Loja */}
           {activeTab === 'store' && (
